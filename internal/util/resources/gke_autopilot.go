@@ -10,6 +10,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 // GkeAutopilotResourceAdjustmentAnnotation is the annotation GKE Autopilot adds to a workload when it has adjusted
@@ -47,8 +49,11 @@ type gkeAutopilotResourceAdjustmentContainer struct {
 // Only use the modified desired object for comparing it with the existing object, and send the unmodified desired
 // object when updating the workload, so that Autopilot keeps recording the configured resources as its input.
 //
-// Objects other than Deployments and DaemonSets, and workloads without a parseable annotation, are left unchanged.
-func AdoptGkeAutopilotResourceAdjustments(existing client.Object, desired client.Object) {
+// Objects other than Deployments and DaemonSets, and workloads without the annotation, are left unchanged. The format of
+// the annotation is not documented by Google, hence a warning is logged when it cannot be parsed or when it does not
+// contain any of the workload's containers, since the operator and GKE Autopilot will then keep overwriting each
+// other's resource settings.
+func AdoptGkeAutopilotResourceAdjustments(existing client.Object, desired client.Object, logger logd.Logger) {
 	existingPodSpec, desiredPodSpec := podSpecsOf(existing, desired)
 	if existingPodSpec == nil || desiredPodSpec == nil {
 		return
@@ -59,10 +64,35 @@ func AdoptGkeAutopilotResourceAdjustments(existing client.Object, desired client
 	}
 	var adjustment gkeAutopilotResourceAdjustment
 	if err := json.Unmarshal([]byte(rawAdjustment), &adjustment); err != nil {
+		logger.ErrorAsWarn(
+			err,
+			"cannot parse the GKE Autopilot resource adjustment annotation, resource adjustments made by GKE "+
+				"Autopilot will be reverted",
+			"namespace", existing.GetNamespace(),
+			"name", existing.GetName(),
+			"annotation", GkeAutopilotResourceAdjustmentAnnotation,
+		)
 		return
 	}
-	adoptAdjustedResources(adjustment.Input.InitContainers, existingPodSpec.InitContainers, desiredPodSpec.InitContainers)
-	adoptAdjustedResources(adjustment.Input.Containers, existingPodSpec.Containers, desiredPodSpec.Containers)
+	recordedInitContainers := adoptAdjustedResources(
+		adjustment.Input.InitContainers,
+		existingPodSpec.InitContainers,
+		desiredPodSpec.InitContainers,
+	)
+	recordedContainers := adoptAdjustedResources(
+		adjustment.Input.Containers,
+		existingPodSpec.Containers,
+		desiredPodSpec.Containers,
+	)
+	if recordedInitContainers+recordedContainers == 0 {
+		logger.Warn(
+			"the GKE Autopilot resource adjustment annotation does not contain any of the workload's containers, "+
+				"resource adjustments made by GKE Autopilot will be reverted",
+			"namespace", existing.GetNamespace(),
+			"name", existing.GetName(),
+			"annotation", GkeAutopilotResourceAdjustmentAnnotation,
+		)
+	}
 }
 
 func podSpecsOf(existing client.Object, desired client.Object) (*corev1.PodSpec, *corev1.PodSpec) {
@@ -79,17 +109,21 @@ func podSpecsOf(existing client.Object, desired client.Object) (*corev1.PodSpec,
 	return nil, nil
 }
 
+// adoptAdjustedResources adopts the adjusted resources for the desired containers that match the recorded input, and
+// returns the number of desired containers that are recorded in the input at all.
 func adoptAdjustedResources(
 	adjustmentInput []gkeAutopilotResourceAdjustmentContainer,
 	existingContainers []corev1.Container,
 	desiredContainers []corev1.Container,
-) {
+) int {
+	recorded := 0
 	for i := range desiredContainers {
 		desiredContainer := &desiredContainers[i]
 		input := findAdjustmentInput(adjustmentInput, desiredContainer.Name)
 		if input == nil {
 			continue
 		}
+		recorded++
 		existingContainer := findContainer(existingContainers, desiredContainer.Name)
 		if existingContainer == nil {
 			continue
@@ -100,6 +134,7 @@ func adoptAdjustedResources(
 		}
 		desiredContainer.Resources = *existingContainer.Resources.DeepCopy()
 	}
+	return recorded
 }
 
 func findAdjustmentInput(

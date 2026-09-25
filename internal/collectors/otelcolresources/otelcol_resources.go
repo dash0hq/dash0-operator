@@ -346,7 +346,7 @@ func (m *OTelColResourceManager) updateResource(
 	m.amendDeploymentAndDaemonSetWithSelfReferenceUIDs(existingResource, desiredResource)
 
 	desiredResourceForComparison := desiredResource.DeepCopyObject().(client.Object)
-	resources.AdoptGkeAutopilotResourceAdjustments(existingResource, desiredResourceForComparison)
+	resources.AdoptGkeAutopilotResourceAdjustments(existingResource, desiredResourceForComparison, logger)
 	patchResult, err := patch.DefaultPatchMaker.Calculate(
 		existingResource,
 		desiredResourceForComparison,

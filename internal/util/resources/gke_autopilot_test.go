@@ -4,10 +4,13 @@
 package resources
 
 import (
+	"github.com/go-logr/logr/funcr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -75,6 +78,16 @@ func withAutopilotAnnotation(value string) map[string]string {
 }
 
 var _ = Describe("AdoptGkeAutopilotResourceAdjustments", func() {
+	var logger logd.Logger
+	var logMessages []string
+
+	BeforeEach(func() {
+		logMessages = nil
+		logger = logd.NewLogger(funcr.New(func(_, args string) {
+			logMessages = append(logMessages, args)
+		}, funcr.Options{}))
+	})
+
 	adjustedPodSpec := func() corev1.PodSpec {
 		return podSpecWith(adjustedResources, adjustedResources, adjustedSidecarResources)
 	}
@@ -86,16 +99,17 @@ var _ = Describe("AdoptGkeAutopilotResourceAdjustments", func() {
 		existing := deploymentWith(withAutopilotAnnotation(autopilotAnnotation), adjustedPodSpec())
 		desired := deploymentWith(nil, configuredPodSpec())
 
-		AdoptGkeAutopilotResourceAdjustments(existing, desired)
+		AdoptGkeAutopilotResourceAdjustments(existing, desired, logger)
 
 		Expect(desired.Spec.Template.Spec).To(Equal(adjustedPodSpec()))
+		Expect(logMessages).To(BeEmpty())
 	})
 
 	It("adopts the adjusted resources of all containers of a daemonset when they match the recorded input", func() {
 		existing := daemonSetWith(withAutopilotAnnotation(autopilotAnnotation), adjustedPodSpec())
 		desired := daemonSetWith(nil, configuredPodSpec())
 
-		AdoptGkeAutopilotResourceAdjustments(existing, desired)
+		AdoptGkeAutopilotResourceAdjustments(existing, desired, logger)
 
 		Expect(desired.Spec.Template.Spec).To(Equal(adjustedPodSpec()))
 	})
@@ -104,7 +118,7 @@ var _ = Describe("AdoptGkeAutopilotResourceAdjustments", func() {
 		existing := deploymentWith(withAutopilotAnnotation(autopilotAnnotation), adjustedPodSpec())
 		desired := deploymentWith(nil, configuredPodSpec())
 
-		AdoptGkeAutopilotResourceAdjustments(existing, desired)
+		AdoptGkeAutopilotResourceAdjustments(existing, desired, logger)
 		desired.Spec.Template.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU] = resource.MustParse("1")
 
 		Expect(existing.Spec.Template.Spec).To(Equal(adjustedPodSpec()))
@@ -118,10 +132,11 @@ var _ = Describe("AdoptGkeAutopilotResourceAdjustments", func() {
 		existing := deploymentWith(withAutopilotAnnotation(autopilotAnnotation), adjustedPodSpec())
 		desired := deploymentWith(nil, podSpecWith(configuredResources, changedResources, configuredSidecarResources))
 
-		AdoptGkeAutopilotResourceAdjustments(existing, desired)
+		AdoptGkeAutopilotResourceAdjustments(existing, desired, logger)
 
 		Expect(desired.Spec.Template.Spec).To(
 			Equal(podSpecWith(adjustedResources, changedResources, adjustedSidecarResources)))
+		Expect(logMessages).To(BeEmpty())
 	})
 
 	It("keeps the desired resources of a container that is not recorded in the input", func() {
@@ -130,10 +145,11 @@ var _ = Describe("AdoptGkeAutopilotResourceAdjustments", func() {
 		), adjustedPodSpec())
 		desired := deploymentWith(nil, configuredPodSpec())
 
-		AdoptGkeAutopilotResourceAdjustments(existing, desired)
+		AdoptGkeAutopilotResourceAdjustments(existing, desired, logger)
 
 		Expect(desired.Spec.Template.Spec).To(
 			Equal(podSpecWith(configuredResources, adjustedResources, configuredSidecarResources)))
+		Expect(logMessages).To(BeEmpty())
 	})
 
 	It("keeps the desired resources of a container that does not exist in the existing object", func() {
@@ -142,7 +158,7 @@ var _ = Describe("AdoptGkeAutopilotResourceAdjustments", func() {
 		existing := deploymentWith(withAutopilotAnnotation(autopilotAnnotation), existingPodSpec)
 		desired := deploymentWith(nil, configuredPodSpec())
 
-		AdoptGkeAutopilotResourceAdjustments(existing, desired)
+		AdoptGkeAutopilotResourceAdjustments(existing, desired, logger)
 
 		Expect(desired.Spec.Template.Spec).To(
 			Equal(podSpecWith(adjustedResources, adjustedResources, configuredSidecarResources)))
@@ -156,7 +172,7 @@ var _ = Describe("AdoptGkeAutopilotResourceAdjustments", func() {
 			Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1024Mi")},
 		}, configuredSidecarResources))
 
-		AdoptGkeAutopilotResourceAdjustments(existing, desired)
+		AdoptGkeAutopilotResourceAdjustments(existing, desired, logger)
 
 		Expect(desired.Spec.Template.Spec.Containers[0].Resources).To(Equal(adjustedResources))
 	})
@@ -165,18 +181,34 @@ var _ = Describe("AdoptGkeAutopilotResourceAdjustments", func() {
 		existing := deploymentWith(nil, adjustedPodSpec())
 		desired := deploymentWith(nil, configuredPodSpec())
 
-		AdoptGkeAutopilotResourceAdjustments(existing, desired)
+		AdoptGkeAutopilotResourceAdjustments(existing, desired, logger)
 
 		Expect(desired.Spec.Template.Spec).To(Equal(configuredPodSpec()))
+		Expect(logMessages).To(BeEmpty())
 	})
 
 	It("does nothing when the resource adjustment annotation cannot be parsed", func() {
 		existing := deploymentWith(withAutopilotAnnotation("{not json"), adjustedPodSpec())
 		desired := deploymentWith(nil, configuredPodSpec())
 
-		AdoptGkeAutopilotResourceAdjustments(existing, desired)
+		AdoptGkeAutopilotResourceAdjustments(existing, desired, logger)
 
 		Expect(desired.Spec.Template.Spec).To(Equal(configuredPodSpec()))
+		Expect(logMessages).To(ConsistOf(
+			ContainSubstring("cannot parse the GKE Autopilot resource adjustment annotation")))
+	})
+
+	It("logs a warning when the resource adjustment annotation does not contain any of the containers", func() {
+		existing := deploymentWith(withAutopilotAnnotation(
+			`{"inputs":{"containers":[{"limits":{"memory":"500Mi"},"requests":{"memory":"500Mi"},"name":"main"}]}}`,
+		), adjustedPodSpec())
+		desired := deploymentWith(nil, configuredPodSpec())
+
+		AdoptGkeAutopilotResourceAdjustments(existing, desired, logger)
+
+		Expect(desired.Spec.Template.Spec).To(Equal(configuredPodSpec()))
+		Expect(logMessages).To(ConsistOf(ContainSubstring(
+			"the GKE Autopilot resource adjustment annotation does not contain any of the workload's containers")))
 	})
 
 	It("does nothing for objects other than deployments and daemonsets", func() {
@@ -185,16 +217,17 @@ var _ = Describe("AdoptGkeAutopilotResourceAdjustments", func() {
 		}}
 		desired := &corev1.ConfigMap{Data: map[string]string{"key": "value"}}
 
-		AdoptGkeAutopilotResourceAdjustments(existing, desired)
+		AdoptGkeAutopilotResourceAdjustments(existing, desired, logger)
 
 		Expect(desired.Data).To(Equal(map[string]string{"key": "value"}))
+		Expect(logMessages).To(BeEmpty())
 	})
 
 	It("does nothing when the kinds of the existing and the desired object differ", func() {
 		existing := daemonSetWith(withAutopilotAnnotation(autopilotAnnotation), adjustedPodSpec())
 		desired := deploymentWith(nil, configuredPodSpec())
 
-		AdoptGkeAutopilotResourceAdjustments(existing, desired)
+		AdoptGkeAutopilotResourceAdjustments(existing, desired, logger)
 
 		Expect(desired.Spec.Template.Spec).To(Equal(configuredPodSpec()))
 	})
