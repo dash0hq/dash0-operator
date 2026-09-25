@@ -783,6 +783,50 @@ tests:
           path: data['extra.yaml']
           pattern: deploymentSysctls
 
+  - it: should render collector daemonSet seLinuxOptions when set
+    set:
+      operator:
+        collectors:
+          daemonSetSeLinuxOptions:
+            user: system_u
+            role: system_r
+            type: container_t
+            level: s0:c1,c2
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            daemonSetSeLinuxOptions:
+              level: s0:c1,c2
+              role: system_r
+              type: container_t
+              user: system_u
+
+  - it: should not render collector daemonSet seLinuxOptions by default
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: daemonSetSeLinuxOptions
+
+  - it: should reject unknown collector daemonSet seLinuxOptions settings
+    set:
+      operator:
+        collectors:
+          daemonSetSeLinuxOptions:
+            typ: spc_t
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.daemonSetSeLinuxOptions.typ is not a valid setting. Valid settings are user, role, type and level."
+
+  - it: should reject a collector daemonSet seLinuxOptions value that is not a map
+    set:
+      operator:
+        collectors:
+          daemonSetSeLinuxOptions: spc_t
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.daemonSetSeLinuxOptions must be a map with the settings user, role, type and level."
+
   - it: should render collector labels and annotations when set
     set:
       operator:

@@ -7,10 +7,10 @@ dist:
   version: "0.161.0"
   output_path: dist
 telemetry:
-  # Custom internal-telemetry factory that wraps the default otelconftelemetry factory and additionally attaches the
-  # k8s.node.uid resource attribute to the collector's self-monitoring telemetry (the node UID is not available via the
-  # downward API and cannot be added by pipeline processors). Source: ../telemetry (relative to output_path), copied
-  # into the build image at /src/telemetry (see Dockerfile).
+  # Custom internal-telemetry factory that wraps the default otelconftelemetry factory, attaches the k8s.node.uid
+  # resource attribute to the collector's self-monitoring telemetry (the node UID is not available via the downward API
+  # and cannot be added by pipeline processors), and warns when no pod log file can be found. Source: ../telemetry
+  # (relative to output_path), copied into the build image at /src/telemetry (see Dockerfile).
   gomod: "github.com/dash0hq/dash0-operator/images/collector/src/telemetry v0.0.0"
   import: "github.com/dash0hq/dash0-operator/images/collector/src/telemetry"
   name: "dash0telemetry"

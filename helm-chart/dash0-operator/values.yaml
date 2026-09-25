@@ -800,6 +800,12 @@ operator:
     #   - name: net.ipv4.tcp_keepalive_probes
     #     value: "3"
 
+    # The pod-level SELinux options for the collector DaemonSet pods, used as is for
+    # spec.securityContext.seLinuxOptions. Unset by default.
+    # Example:
+    # daemonSetSeLinuxOptions:
+    #   type: <selinux-type>
+
     # The priority class name for the DaemonSet collector pods. If set, these manager pods will be scheduled with
     # the specified priority class.
     # This is useful if you want to make sure that the collector pods are scheduled with a higher priority than other
