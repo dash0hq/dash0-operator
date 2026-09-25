@@ -98,7 +98,7 @@ deployment should match snapshot (default values):
                 - name: DASH0_AGENT0_CONNECTOR_IMAGE
                   value: ghcr.io/dash0hq/agent0-connector:0.0.0
                 - name: DASH0_SYNTHETICS_WORKER_IMAGE
-                  value: ghcr.io/dash0hq/dash0-synthetics-worker:0.1.0
+                  value: ghcr.io/dash0hq/dash0-synthetics-worker:0.2.0
                 - name: K8S_POD_UID
                   valueFrom:
                     fieldRef:
@@ -275,7 +275,7 @@ deployment should match snapshot when using cert-manager:
                 - name: DASH0_AGENT0_CONNECTOR_IMAGE
                   value: ghcr.io/dash0hq/agent0-connector:0.0.0
                 - name: DASH0_SYNTHETICS_WORKER_IMAGE
-                  value: ghcr.io/dash0hq/dash0-synthetics-worker:0.1.0
+                  value: ghcr.io/dash0hq/dash0-synthetics-worker:0.2.0
                 - name: K8S_POD_UID
                   valueFrom:
                     fieldRef:

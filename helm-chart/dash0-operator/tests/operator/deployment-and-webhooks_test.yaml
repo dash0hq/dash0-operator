@@ -67,7 +67,7 @@ tests:
           value: DASH0_SYNTHETICS_WORKER_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[18].value
-          value: ghcr.io/dash0hq/dash0-synthetics-worker:0.1.0
+          value: ghcr.io/dash0hq/dash0-synthetics-worker:0.2.0
       - equal:
           path: spec.template.spec.containers[0].env[19].name
           value: K8S_POD_UID
@@ -628,7 +628,7 @@ tests:
           value: DASH0_SYNTHETICS_WORKER_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[25].value
-          value: ghcr.io/dash0hq/dash0-synthetics-worker:0.1.0
+          value: ghcr.io/dash0hq/dash0-synthetics-worker:0.2.0
       - equal:
           path: spec.template.spec.containers[0].env[26].name
           value: DASH0_DEVELOPMENT_MODE
