@@ -63,6 +63,11 @@ var knownUnredactedFields = map[string]string{
 	"columns.key":        "an attribute key of a table column",
 	"sort.key":           "an attribute key of a sort order",
 	"spec.key":           "the response header name of a synthetic check assertion",
+	// Standard Kubernetes pod scheduling fields (SyntheticsWorkerInstance.NodeAffinity/.Tolerations): the node label or
+	// taint key they match against, never a credential.
+	"matchExpressions.key": "a Kubernetes node label key matched by a node affinity term",
+	"matchFields.key":      "a Kubernetes node field matched by a node affinity term",
+	"tolerations.key":      "a Kubernetes taint key matched by a pod toleration",
 }
 
 // TestAgent0ConnectorRedactsEveryCredentialField guards the credential lists of the agent0-connector

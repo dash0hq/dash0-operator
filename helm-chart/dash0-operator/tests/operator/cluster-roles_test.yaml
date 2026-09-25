@@ -14,6 +14,14 @@ tests:
     asserts:
       - matchSnapshot: {}
 
+  - it: cluster roles should match snapshot with the synthetics-worker enabled
+    set:
+      operator:
+        syntheticsWorker:
+          enabled: true
+    asserts:
+      - matchSnapshot: {}
+
   - it: should grant deployments/finalizers for OwnerReferencesPermissionEnforcement
     asserts:
       - contains:
@@ -351,6 +359,64 @@ tests:
         documentSelector:
           path: metadata.name
           value: dash0-operator-manager-agent0-connector
+
+  - it: should not grant synthetics-worker permissions by default
+    asserts:
+      - containsDocument:
+          kind: ClusterRole
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-synthetics-worker
+        not: true
+
+  - it: should grant synthetics-worker permissions if the synthetics-worker is enabled
+    set:
+      operator:
+        syntheticsWorker:
+          enabled: true
+    asserts:
+      - containsDocument:
+          kind: ClusterRole
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-synthetics-worker
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-synthetics-worker
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - ""
+            resources:
+              - serviceaccounts
+            verbs:
+              - create
+              - delete
+              - get
+              - list
+              - patch
+              - update
+              - watch
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-synthetics-worker
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - apps
+            resources:
+              - deployments
+            verbs:
+              - create
+              - delete
+              - get
+              - list
+              - patch
+              - update
+              - watch
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-synthetics-worker
 
   - it: should grant agent0-connector management permissions independently of telemetry collection
     set:

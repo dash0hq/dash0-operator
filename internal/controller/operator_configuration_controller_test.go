@@ -25,6 +25,8 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
+	"github.com/dash0hq/dash0-operator/internal/syntheticsworker"
+	"github.com/dash0hq/dash0-operator/internal/syntheticsworker/swresources"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -1178,6 +1180,48 @@ var _ = Describe(
 		)
 
 		Describe(
+			"when the synthetics-worker is misconfigured", func() {
+
+				AfterEach(
+					func() {
+						RemoveOperatorConfigurationResource(ctx, k8sClient)
+					},
+				)
+
+				It(
+					"should continue with the remaining reconciliation steps instead of requeuing the request",
+					func() {
+						reconciler, _ = createReconcilerWithSyntheticsWorkerManager(
+							apiClient1,
+							apiClient2,
+							newSyntheticsWorkerManager(),
+						)
+						spec := OperatorConfigurationResourceDefaultSpec
+						spec.SelfMonitoring = dash0v1alpha1.SelfMonitoring{
+							Enabled: new(false),
+						}
+						spec.SyntheticsWorker = dash0v1alpha1.SyntheticsWorker{
+							Instances: []dash0v1alpha1.SyntheticsWorkerInstance{
+								// Authorization is deliberately left unset, which the synthetics-worker resource
+								// manager reports as a misconfiguration.
+								{LocationID: "test-location"},
+							},
+						}
+						CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, spec)
+
+						// triggerOperatorConfigurationReconcileRequest asserts that Reconcile returns no error, that
+						// is, that the misconfiguration of the synthetics-worker is not propagated to
+						// controller-runtime. Marking the resource as available is the last step of the reconcile
+						// function, so it also proves that the misconfiguration does not abort the reconciliation.
+						triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+
+						verifyOperatorConfigurationResourceIsAvailable(ctx)
+					},
+				)
+			},
+		)
+
+		Describe(
 			"uniqueness check", func() {
 				It(
 					"should mark only the most recent resource as available and the other ones as degraded when multiple resources exist",
@@ -1323,13 +1367,30 @@ func verifyOperatorManagerResourceAttributes(g Gomega, oTelSdkConfig *common.OTe
 }
 
 func createReconciler(apiClient1 *DummyApiClient, apiClient2 *DummyApiClient) (*OperatorConfigurationReconciler, *zaputil.DelegatingZapCoreWrapper) {
-	return createReconcilerWithAgent0ConnectorManager(apiClient1, apiClient2, nil)
+	return createReconcilerWithManagers(apiClient1, apiClient2, nil, nil)
 }
 
 func createReconcilerWithAgent0ConnectorManager(
 	apiClient1 *DummyApiClient,
 	apiClient2 *DummyApiClient,
 	agent0ConnectorManager *agent0connector.Agent0ConnectorManager,
+) (*OperatorConfigurationReconciler, *zaputil.DelegatingZapCoreWrapper) {
+	return createReconcilerWithManagers(apiClient1, apiClient2, agent0ConnectorManager, nil)
+}
+
+func createReconcilerWithSyntheticsWorkerManager(
+	apiClient1 *DummyApiClient,
+	apiClient2 *DummyApiClient,
+	syntheticsWorkerManager *syntheticsworker.SyntheticsWorkerManager,
+) (*OperatorConfigurationReconciler, *zaputil.DelegatingZapCoreWrapper) {
+	return createReconcilerWithManagers(apiClient1, apiClient2, nil, syntheticsWorkerManager)
+}
+
+func createReconcilerWithManagers(
+	apiClient1 *DummyApiClient,
+	apiClient2 *DummyApiClient,
+	agent0ConnectorManager *agent0connector.Agent0ConnectorManager,
+	syntheticsWorkerManager *syntheticsworker.SyntheticsWorkerManager,
 ) (*OperatorConfigurationReconciler, *zaputil.DelegatingZapCoreWrapper) {
 	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
 		k8sClient,
@@ -1377,6 +1438,7 @@ func createReconcilerWithAgent0ConnectorManager(
 		collectorManager,
 		targetallocatorManager,
 		agent0ConnectorManager,
+		syntheticsWorkerManager,
 		nil,
 		util.NewClusterInstrumentationConfig(
 			TestImages,
@@ -1399,6 +1461,29 @@ func createReconcilerWithAgent0ConnectorManager(
 		false,
 	)
 	return operatorConfigurationReconciler, delegatingZapCoreWrapper
+}
+
+// newSyntheticsWorkerManager creates a synthetics-worker manager. Whether a reconcile with it is misconfigured
+// depends on the Dash0OperatorConfiguration resource under test (spec.syntheticsWorker.instances in particular), not
+// on this manager's own configuration.
+func newSyntheticsWorkerManager() *syntheticsworker.SyntheticsWorkerManager {
+	syntheticsWorkerResourceManager := swresources.NewSyntheticsWorkerResourceManager(
+		k8sClient,
+		k8sClient.Scheme(),
+		OperatorManagerDeployment,
+		util.SyntheticsWorkerConfig{
+			Images:            TestImages,
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        "unit-test",
+			ServerAddress:     SyntheticsWorkerServerAddress,
+		},
+	)
+	return syntheticsworker.NewSyntheticsWorkerManager(
+		k8sClient,
+		false,
+		syntheticsWorkerResourceManager,
+		recorder,
+	)
 }
 
 // newAgent0ConnectorManagerWithInvalidClusterRoleRules creates an agent0-connector manager with custom cluster role
