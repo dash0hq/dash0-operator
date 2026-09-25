@@ -117,6 +117,8 @@ jobs:
   collector_configs_validation:
     name: Collector Configuration Validation
     runs-on: depot-ubuntu-24.04-4
+    needs: check_for_successful_builds_for_same_commit
+    if: always() && needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
     timeout-minutes: 20
 
     steps:
