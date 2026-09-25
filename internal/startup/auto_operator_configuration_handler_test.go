@@ -31,6 +31,11 @@ var (
 		Endpoint: EndpointDash0Test,
 		Token:    AuthorizationTokenTest,
 	}
+	operatorConfigurationValuesWithTokenAndTelemetryCollection = OperatorConfigurationValues{
+		Endpoint:                   EndpointDash0Test,
+		Token:                      AuthorizationTokenTest,
+		TelemetryCollectionEnabled: true,
+	}
 	operatorConfigurationValuesWithSecretRef = OperatorConfigurationValues{
 		Endpoint:  EndpointDash0Test,
 		SecretRef: secretRef,
@@ -75,8 +80,7 @@ var _ = Describe(
 					OperatorConfigurationValues{
 						Token: AuthorizationTokenTest,
 					},
-					nil,
-					nil,
+					util.ExtraConfig{},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -100,8 +104,7 @@ var _ = Describe(
 					OperatorConfigurationValues{
 						Endpoint: AuthorizationTokenTest,
 					},
-					nil,
-					nil,
+					util.ExtraConfig{},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -127,8 +130,7 @@ var _ = Describe(
 							Name: "test-secret",
 						},
 					},
-					nil,
-					nil,
+					util.ExtraConfig{},
 				)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
 				Expect(err).To(
@@ -148,8 +150,7 @@ var _ = Describe(
 					k8sClient,
 					readyCheckExecuter,
 					operatorConfigurationValuesWithToken,
-					nil,
-					nil,
+					util.ExtraConfig{},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -207,8 +208,7 @@ var _ = Describe(
 					k8sClient,
 					readyCheckExecuter,
 					operatorConfigurationValuesWithSecretRef,
-					nil,
-					nil,
+					util.ExtraConfig{},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -250,8 +250,7 @@ var _ = Describe(
 					k8sClient,
 					readyCheckExecuter,
 					operatorConfigurationValuesWithToken,
-					nil,
-					nil,
+					util.ExtraConfig{},
 				)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
 				Expect(err).ToNot(HaveOccurred())
@@ -293,8 +292,7 @@ var _ = Describe(
 					k8sClient,
 					readyCheckExecuter,
 					operatorConfigurationValuesWithToken,
-					nil,
-					nil,
+					util.ExtraConfig{},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -326,8 +324,7 @@ var _ = Describe(
 						Token:       AuthorizationTokenTest,
 						ApiEndpoint: ApiEndpointTest,
 					},
-					nil,
-					nil,
+					util.ExtraConfig{},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -367,8 +364,7 @@ var _ = Describe(
 						Token:    AuthorizationTokenTest,
 						Dataset:  "custom",
 					},
-					nil,
-					nil,
+					util.ExtraConfig{},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -410,8 +406,7 @@ var _ = Describe(
 						KeepaliveTimeout:             "10s",
 						KeepalivePermitWithoutStream: true,
 					},
-					nil,
-					nil,
+					util.ExtraConfig{},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -448,8 +443,7 @@ var _ = Describe(
 					k8sClient,
 					readyCheckExecuter,
 					operatorConfigurationValuesWithToken,
-					nil,
-					nil,
+					util.ExtraConfig{},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -484,8 +478,7 @@ var _ = Describe(
 						Token:         AuthorizationTokenTest,
 						KeepaliveTime: "60s",
 					},
-					nil,
-					nil,
+					util.ExtraConfig{},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -524,8 +517,7 @@ var _ = Describe(
 						Token:       AuthorizationTokenTest,
 						ClusterName: "cluster-name",
 					},
-					nil,
-					nil,
+					util.ExtraConfig{},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -574,8 +566,7 @@ var _ = Describe(
 						AutoMonitorNamespacesEnabled:                     true,
 						TelemetryCollectionEnabled:                       false,
 					},
-					nil,
-					nil,
+					util.ExtraConfig{},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -622,8 +613,7 @@ var _ = Describe(
 					k8sClient,
 					readyCheckExecuter,
 					operatorConfigurationValuesWithToken,
-					&monitoringTemplateJSON,
-					nil,
+					util.ExtraConfig{MonitoringTemplateRaw: &monitoringTemplateJSON},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -654,8 +644,7 @@ var _ = Describe(
 					k8sClient,
 					readyCheckExecuter,
 					operatorConfigurationValuesWithToken,
-					&invalid,
-					nil,
+					util.ExtraConfig{MonitoringTemplateRaw: &invalid},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -674,8 +663,7 @@ var _ = Describe(
 					k8sClient,
 					readyCheckExecuter,
 					operatorConfigurationValuesWithToken,
-					nil,
-					nil,
+					util.ExtraConfig{},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -720,8 +708,7 @@ var _ = Describe(
 					k8sClient,
 					readyCheckExecuter,
 					operatorConfigurationValuesWithToken,
-					&monitoringTemplateJSON,
-					nil,
+					util.ExtraConfig{MonitoringTemplateRaw: &monitoringTemplateJSON},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -763,8 +750,7 @@ var _ = Describe(
 					k8sClient,
 					readyCheckExecuter,
 					operatorConfigurationValuesWithToken,
-					&monitoringTemplateJSON,
-					nil,
+					util.ExtraConfig{MonitoringTemplateRaw: &monitoringTemplateJSON},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -810,8 +796,7 @@ var _ = Describe(
 					k8sClient,
 					readyCheckExecuter,
 					operatorConfigurationValuesWithToken,
-					&monitoringTemplateJSON,
-					nil,
+					util.ExtraConfig{MonitoringTemplateRaw: &monitoringTemplateJSON},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -855,8 +840,7 @@ var _ = Describe(
 					k8sClient,
 					readyCheckExecuter,
 					operatorConfigurationValuesWithToken,
-					nil,
-					nil,
+					util.ExtraConfig{},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -894,6 +878,145 @@ var _ = Describe(
 		)
 
 		It(
+			"should create a new operator configuration resource with cluster-wide filters and transformations",
+			func() {
+				filterJSON := json.RawMessage(
+					`{"traces":{"span":["attributes[\"http.route\"] == \"/ready\""]}}`)
+				transformJSON := json.RawMessage(
+					`{"trace_statements":["truncate_all(span.attributes, 128)"]}`)
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithTokenAndTelemetryCollection,
+					util.ExtraConfig{FilterRaw: &filterJSON, TransformRaw: &transformJSON},
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+							&operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+						filter := operatorConfiguration.Spec.Filter
+						g.Expect(filter).ToNot(BeNil())
+						g.Expect(filter.Traces).ToNot(BeNil())
+						g.Expect(filter.Traces.SpanFilter).To(
+							ConsistOf(`attributes["http.route"] == "/ready"`))
+						transform := operatorConfiguration.Spec.Transform
+						g.Expect(transform).ToNot(BeNil())
+						g.Expect(transform.Traces).To(HaveLen(1))
+						g.Expect(string(transform.Traces[0])).To(
+							Equal(`"truncate_all(span.attributes, 128)"`))
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		It(
+			"should drop cluster-wide filters and transformations if telemetry collection is disabled", func() {
+				filterJSON := json.RawMessage(
+					`{"traces":{"span":["attributes[\"http.route\"] == \"/ready\""]}}`)
+				transformJSON := json.RawMessage(
+					`{"trace_statements":["truncate_all(span.attributes, 128)"]}`)
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithToken,
+					util.ExtraConfig{FilterRaw: &filterJSON, TransformRaw: &transformJSON},
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+							&operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+						g.Expect(*operatorConfiguration.Spec.TelemetryCollection.Enabled).To(BeFalse())
+						g.Expect(operatorConfiguration.Spec.Filter).To(BeNil())
+						g.Expect(operatorConfiguration.Spec.Transform).To(BeNil())
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		It(
+			"should fail to create the resource if the filter is invalid JSON", func() {
+				invalid := json.RawMessage(`{not valid json}`)
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithTokenAndTelemetryCollection,
+					util.ExtraConfig{FilterRaw: &invalid},
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).To(
+					MatchError(
+						ContainSubstring("invalid operator configuration: the filter cannot be parsed"),
+					),
+				)
+			},
+		)
+
+		It(
+			"should update the existing resource when UpdateExtraConfig is called with a changed filter", func() {
+				filterJSON := json.RawMessage(
+					`{"traces":{"span":["attributes[\"http.route\"] == \"/ready\""]}}`)
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithTokenAndTelemetryCollection,
+					util.ExtraConfig{FilterRaw: &filterJSON},
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+							&operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+						g.Expect(operatorConfiguration.Spec.Filter).ToNot(BeNil())
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+
+				updatedFilterJSON := json.RawMessage(
+					`{"traces":{"span":["attributes[\"http.route\"] == \"/metrics\""]}}`)
+				handler.UpdateExtraConfig(ctx, util.ExtraConfig{FilterRaw: &updatedFilterJSON}, logger)
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+							&operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+						filter := operatorConfiguration.Spec.Filter
+						g.Expect(filter).ToNot(BeNil())
+						g.Expect(filter.Traces).ToNot(BeNil())
+						g.Expect(filter.Traces.SpanFilter).To(
+							ConsistOf(`attributes["http.route"] == "/metrics"`))
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		It(
 			"should update the existing resource if there already is an auto-operator-configuration-resource", func() {
 				handler1 := NewAutoOperatorConfigurationResourceHandler(
 					k8sClient,
@@ -910,8 +1033,7 @@ var _ = Describe(
 						ProfilingEnabled:                                 false,
 						TelemetryCollectionEnabled:                       true,
 					},
-					nil,
-					nil,
+					util.ExtraConfig{},
 				)
 				handler1.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler1.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -965,8 +1087,7 @@ var _ = Describe(
 						ProfilingEnabled:                                 true,
 						TelemetryCollectionEnabled:                       true,
 					},
-					nil,
-					nil,
+					util.ExtraConfig{},
 				)
 				handler2.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err = handler2.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -1013,8 +1134,7 @@ var _ = Describe(
 					k8sClient,
 					readyCheckExecuter,
 					OperatorConfigurationValues{},
-					nil,
-					[]dash0common.Export{
+					util.ExtraConfig{Exports: []dash0common.Export{
 						{
 							Grpc: &dash0common.GrpcConfiguration{
 								Endpoint: "otel-collector.other-namespace.svc.cluster.local:4317",
@@ -1025,7 +1145,7 @@ var _ = Describe(
 								}},
 							},
 						},
-					},
+					}},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -1063,11 +1183,10 @@ var _ = Describe(
 					k8sClient,
 					readyCheckExecuter,
 					operatorConfigurationValuesWithToken,
-					nil,
-					[]dash0common.Export{
+					util.ExtraConfig{Exports: []dash0common.Export{
 						{Http: &dash0common.HttpConfiguration{Endpoint: "https://otlp.example.com"}},
 						{Grpc: &dash0common.GrpcConfiguration{Endpoint: "otelcol:4317"}},
-					},
+					}},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -1102,8 +1221,7 @@ var _ = Describe(
 					k8sClient,
 					readyCheckExecuter,
 					OperatorConfigurationValues{},
-					nil,
-					[]dash0common.Export{export},
+					util.ExtraConfig{Exports: []dash0common.Export{export}},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -1137,8 +1255,7 @@ var _ = Describe(
 					k8sClient,
 					readyCheckExecuter,
 					operatorConfigurationValuesWithToken,
-					nil,
-					nil,
+					util.ExtraConfig{},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)

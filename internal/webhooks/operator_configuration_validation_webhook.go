@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"go.uber.org/multierr"
 	admissionv1 "k8s.io/api/admission/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -182,6 +183,11 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		}
 	}
 
+	if response, denied := validateOttlOfOperatorConfiguration(&spec); denied {
+		logger.Warn(response.Result.Message)
+		return response
+	}
+
 	if request.Operation == admissionv1.Create {
 		allOperatorConfigurationResources := &dash0v1alpha1.Dash0OperatorConfigurationList{}
 		if err := h.Client.List(ctx, allOperatorConfigurationResources); err != nil {
@@ -293,6 +299,41 @@ func validateTelemetryCollectionDisabledConsistency(
 			"profiling.enabled=false."
 		logger.Warn(msg)
 		return admission.Denied(msg), true
+	}
+	if spec.Filter != nil {
+		msg := "The provided Dash0 operator configuration resource has telemetry filters, although telemetry " +
+			"collection is disabled. This is an invalid combination. Please either set " +
+			"telemetryCollection.enabled=true or remove the filters."
+		logger.Warn(msg)
+		return admission.Denied(msg), true
+	}
+	if spec.Transform != nil {
+		msg := "The provided Dash0 operator configuration resource has telemetry transformations, although telemetry " +
+			"collection is disabled. This is an invalid combination. Please either set " +
+			"telemetryCollection.enabled=true or remove the transformations."
+		logger.Warn(msg)
+		return admission.Denied(msg), true
+	}
+	return admission.Response{}, false
+}
+
+// validateOttlOfOperatorConfiguration checks the cluster-wide filter conditions and transform statements of an operator
+// configuration resource by rendering them into the configuration of the collector's filter and transform processor and
+// running those processors' own validation.
+func validateOttlOfOperatorConfiguration(
+	spec *dash0v1alpha1.Dash0OperatorConfigurationSpec,
+) (admission.Response, bool) {
+	var errors error
+
+	if spec.Filter != nil {
+		errors = multierr.Append(errors, validateFilter(spec.Filter))
+	}
+	if spec.NormalizedTransformSpec != nil {
+		errors = multierr.Append(errors, validateTransform(spec.NormalizedTransformSpec))
+	}
+
+	if errors != nil {
+		return admission.Denied(errors.Error()), true
 	}
 	return admission.Response{}, false
 }

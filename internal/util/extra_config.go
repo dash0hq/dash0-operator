@@ -127,9 +127,12 @@ type ExtraConfig struct {
 	Agent0ConnectorTolerations           []corev1.Toleration                `json:"agent0ConnectorTolerations,omitempty"`
 	Agent0ConnectorNodeAffinity          *corev1.NodeAffinity               `json:"agent0ConnectorNodeAffinity,omitempty"`
 
-	// Actually we would like to use the type *dash0v1alpha1.MonitoringTemplate here, but that leads to circular package
-	// dependencies. We should revisit how to untangle this.
+	// Actually we would like to use the types *dash0v1alpha1.MonitoringTemplate, *dash0common.Filter and
+	// *dash0common.Transform here, but that leads to circular package dependencies. We should revisit how to untangle
+	// this.
 	MonitoringTemplateRaw *json.RawMessage `json:"monitoringTemplate,omitempty"`
+	FilterRaw             *json.RawMessage `json:"filter,omitempty"`
+	TransformRaw          *json.RawMessage `json:"transform,omitempty"`
 
 	// Exports are the exports for the automatically created operator configuration resource, provided via the Helm
 	// value operator.exports. They are appended to the Dash0 export that is derived from the operator.dash0Export.*

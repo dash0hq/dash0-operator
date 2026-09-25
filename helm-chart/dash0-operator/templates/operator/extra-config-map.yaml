@@ -275,3 +275,12 @@ data:
     monitoringTemplate:
       {{- toYaml .Values.operator.monitoringTemplate | nindent 6 }}
     {{- end }}
+
+    {{- if .Values.operator.filter }}
+    filter:
+      {{- toYaml .Values.operator.filter | nindent 6 }}
+    {{- end }}
+    {{- if .Values.operator.transform }}
+    transform:
+      {{- toYaml .Values.operator.transform | nindent 6 }}
+    {{- end }}

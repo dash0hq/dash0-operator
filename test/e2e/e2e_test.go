@@ -1655,6 +1655,68 @@ traces:
 					)
 				})
 
+				It("does not emit health check spans when a cluster-wide filter is active", func() {
+					minTimestampCollectorConfigReload := time.Now()
+					deployDash0MonitoringResourceWithRetry(
+						applicationUnderTestNamespace,
+						dash0MonitoringValuesWithExport,
+						operatorNamespace,
+					)
+					setOperatorConfigurationFilter(
+						`{"traces":{"span":["attributes[\"http.route\"] == \"/ready\""]}}`)
+					DeferCleanup(removeOperatorConfigurationFilterAndTransform)
+
+					// The condition of a cluster-wide filter is not scoped to a namespace.
+					verifyDaemonSetCollectorConfigMapContainsString(
+						operatorNamespace,
+						`- 'attributes["http.route"] == "/ready"'`,
+					)
+					verifyDaemonSetCollectorConfigMapDoesNotContainStrings(
+						operatorNamespace,
+						// nolint:lll
+						`- 'resource.attributes["k8s.namespace.name"] == "e2e-test-ns" and (attributes["http.route"] == "/ready")'`,
+					)
+					verifyCollectorHasReloadedItsConfiguration(collectorDaemonSetNameQualified, minTimestampCollectorConfigReload)
+
+					testId := uuid.New().String()
+					timestampLowerBound := time.Now()
+					By("verifying that the Node.js deployment emits spans")
+					Eventually(func(g Gomega) {
+						verifySpans(
+							g,
+							runtimeTypeNodeJs,
+							workloadTypeDeployment,
+							testEndpoint,
+							fmt.Sprintf("id=%s", testId),
+							timestampLowerBound,
+							false,
+						)
+					}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
+					By("Node.js deployment: matching spans have been received")
+					By("now searching collected spans for health checks...")
+					askTelemetryMatcherForMatchingSpans(
+						Default,
+						shared.ExpectNoMatches,
+						runtimeTypeNodeJs,
+						workloadTypeDeployment,
+						false,
+						false,
+						timestampLowerBound,
+						"/ready",
+						"", // health check spans have no query parameter
+						"",
+					)
+				})
+
+				It("rejects an operator configuration resource with an undefined function in a cluster-wide filter",
+					func() {
+						setOperatorConfigurationFilterExpectingRejection(
+							`{"logs":{"log_records":["NoSuchFunction(body)"]}}`,
+							`unable to parse OTTL condition "NoSuchFunction(body)"`,
+							`undefined function "NoSuchFunction"`,
+						)
+					})
+
 				It("rejects a monitoring resource with a syntactically invalid span filter", func() {
 					filter :=
 						`
@@ -1760,6 +1822,54 @@ trace_statements:
 							// This is the expected http.target attribute. Since the route "/dash0-k8s-operator-test" is
 							// already > 10 chars, so the target (which is route + query) will only contain the truncated
 							// route.
+							truncatedRoute,
+						)
+					}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
+				})
+
+				It("truncates attributes when a cluster-wide transform is active", func() {
+					minTimestampCollectorConfigReload := time.Now()
+					deployDash0MonitoringResourceWithRetry(
+						applicationUnderTestNamespace,
+						dash0MonitoringValuesWithExport,
+						operatorNamespace,
+					)
+					setOperatorConfigurationTransform(
+						`{"trace_statements":["truncate_all(span.attributes, 10)"]}`)
+					DeferCleanup(removeOperatorConfigurationFilterAndTransform)
+
+					verifyDaemonSetCollectorConfigMapContainsString(
+						operatorNamespace,
+						`- 'truncate_all(span.attributes, 10)'`,
+					)
+					// A cluster-wide transform group has no namespace condition.
+					verifyDaemonSetCollectorConfigMapDoesNotContainStrings(
+						operatorNamespace,
+						`- 'resource.attributes["k8s.namespace.name"] == "e2e-test-ns"'`,
+					)
+					verifyCollectorHasReloadedItsConfiguration(collectorDaemonSetNameQualified, minTimestampCollectorConfigReload)
+
+					testId := uuid.New().String()
+					timestampLowerBound := time.Now()
+					By("verifying that span attributes have been transformed")
+					Eventually(func(g Gomega) {
+						route := testEndpoint
+						query := fmt.Sprintf("id=%s", testId)
+
+						sendRequest(g, runtimeTypeNodeJs, workloadTypeDeployment, route, query)
+
+						truncatedRoute := route[0:10]
+						truncatedQuery := query[0:10]
+						askTelemetryMatcherForMatchingSpans(
+							g,
+							shared.ExpectAtLeastOne,
+							runtimeTypeNodeJs,
+							workloadTypeDeployment,
+							false,
+							false,
+							timestampLowerBound,
+							truncatedRoute,
+							truncatedQuery,
 							truncatedRoute,
 						)
 					}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())

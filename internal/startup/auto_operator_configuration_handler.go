@@ -55,8 +55,17 @@ type AutoOperatorConfigurationResourceHandler struct {
 	readyCheckExecuter          *ReadyCheckExecuter
 	hasBecomeLeaderChan         chan struct{}
 	operatorConfigurationValues OperatorConfigurationValues
-	monitoringTemplateRaw       atomic.Pointer[json.RawMessage]
-	exports                     atomic.Pointer[[]dash0common.Export]
+	extraConfigValues           atomic.Pointer[operatorConfigurationExtraConfigValues]
+}
+
+// operatorConfigurationExtraConfigValues are the parts of the extra config map that end up in the automatically created
+// operator configuration resource. The monitoring template, filter and transform are kept as raw JSON, since using the
+// actual types here would lead to circular package dependencies.
+type operatorConfigurationExtraConfigValues struct {
+	monitoringTemplateRaw *json.RawMessage
+	filterRaw             *json.RawMessage
+	transformRaw          *json.RawMessage
+	exports               []dash0common.Export
 }
 
 const (
@@ -69,8 +78,7 @@ func NewAutoOperatorConfigurationResourceHandler(
 	client client.Client,
 	readyCheckExecuter *ReadyCheckExecuter,
 	operatorConfigurationValues OperatorConfigurationValues,
-	monitoringTemplateRaw *json.RawMessage,
-	exports []dash0common.Export,
+	extraConfig util.ExtraConfig,
 ) *AutoOperatorConfigurationResourceHandler {
 	r := &AutoOperatorConfigurationResourceHandler{
 		Client:                      client,
@@ -78,9 +86,19 @@ func NewAutoOperatorConfigurationResourceHandler(
 		hasBecomeLeaderChan:         make(chan struct{}),
 		operatorConfigurationValues: operatorConfigurationValues,
 	}
-	r.monitoringTemplateRaw.Store(monitoringTemplateRaw)
-	r.exports.Store(&exports)
+	r.extraConfigValues.Store(newOperatorConfigurationExtraConfigValues(extraConfig))
 	return r
+}
+
+func newOperatorConfigurationExtraConfigValues(
+	extraConfig util.ExtraConfig,
+) *operatorConfigurationExtraConfigValues {
+	return &operatorConfigurationExtraConfigValues{
+		monitoringTemplateRaw: extraConfig.MonitoringTemplateRaw,
+		filterRaw:             extraConfig.FilterRaw,
+		transformRaw:          extraConfig.TransformRaw,
+		exports:               extraConfig.Exports,
+	}
 }
 
 func (r *AutoOperatorConfigurationResourceHandler) NotifyOperatorManagerJustBecameLeader(
@@ -95,37 +113,54 @@ func (r *AutoOperatorConfigurationResourceHandler) UpdateExtraConfig(
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) {
-	logger.Debug("extra config map update, checking for monitoring template and export changes")
-	previousMonitoringTemplate := r.monitoringTemplateRaw.Swap(extraConfig.MonitoringTemplateRaw)
-	previousExports := r.exports.Swap(&extraConfig.Exports)
-
-	monitoringTemplateHasChanged := false
-	if previousMonitoringTemplate == nil || extraConfig.MonitoringTemplateRaw == nil {
-		monitoringTemplateHasChanged = previousMonitoringTemplate != extraConfig.MonitoringTemplateRaw
-	} else {
-		monitoringTemplateHasChanged = !reflect.DeepEqual(*previousMonitoringTemplate, *extraConfig.MonitoringTemplateRaw)
-	}
-
-	exportsHaveChanged := previousExports == nil || !reflect.DeepEqual(*previousExports, extraConfig.Exports)
-
-	if !monitoringTemplateHasChanged && !exportsHaveChanged {
-		logger.Debug(
-			"ignoring extra config map update, the monitoring template and the exports have not changed",
-		)
+	logger.Debug("extra config map update, checking for changes of the monitoring template, exports, filters and " +
+		"transformations")
+	newValues := newOperatorConfigurationExtraConfigValues(extraConfig)
+	previousValues := r.extraConfigValues.Swap(newValues)
+	if !hasExtraConfigValuesChanged(previousValues, newValues) {
+		logger.Debug("ignoring extra config map update, the monitoring template, the exports, the filters and the " +
+			"transformations have the same content as before")
 		return
 	}
 
-	logger.Info("updating the operator configuration resource after the monitoring template or the exports have been updated")
+	logger.Info("updating the operator configuration resource after the monitoring template, the exports, the " +
+		"filters or the transformations have been updated")
 	if _, err := r.CreateOrUpdateOperatorConfigurationResource(
 		ctx,
 		logger,
 	); err != nil {
 		logger.Error(
 			err,
-			"Failed to update the Dash0 operator configuration resource after updating the monitoring template or the "+
-				"exports via Helm.",
+			"Failed to update the Dash0 operator configuration resource after updating the monitoring template, the "+
+				"exports, the filters or the transformations via Helm.",
 		)
 	}
+}
+
+func hasExtraConfigValuesChanged(
+	previousValues *operatorConfigurationExtraConfigValues,
+	newValues *operatorConfigurationExtraConfigValues,
+) bool {
+	if previousValues == nil {
+		return newValues != nil
+	}
+	if newValues == nil {
+		return true
+	}
+	return hasRawValueChanged(previousValues.monitoringTemplateRaw, newValues.monitoringTemplateRaw) ||
+		hasRawValueChanged(previousValues.filterRaw, newValues.filterRaw) ||
+		hasRawValueChanged(previousValues.transformRaw, newValues.transformRaw) ||
+		!reflect.DeepEqual(previousValues.exports, newValues.exports)
+}
+
+func hasRawValueChanged(previousValue *json.RawMessage, newValue *json.RawMessage) bool {
+	if previousValue == nil && newValue == nil {
+		return false
+	}
+	if previousValue == nil || newValue == nil {
+		return true
+	}
+	return !reflect.DeepEqual(*previousValue, *newValue)
 }
 
 // CreateOrUpdateOperatorConfigurationResource waits until this replica becomes the leader, then it creates or updates
@@ -142,12 +177,22 @@ func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigu
 	if err := r.validateOperatorConfiguration(exports); err != nil {
 		return nil, err
 	}
-	monitoringTemplate, err := r.parseMonitoringTemplate()
+	extraConfigValues := r.extraConfigValues.Load()
+	monitoringTemplate, err := parseMonitoringTemplate(extraConfigValues)
+	if err != nil {
+		return nil, err
+	}
+	filter, err := parseFilter(extraConfigValues)
+	if err != nil {
+		return nil, err
+	}
+	transform, err := parseTransform(extraConfigValues)
 	if err != nil {
 		return nil, err
 	}
 
-	operatorConfigurationResource := convertValuesToResource(r.operatorConfigurationValues, monitoringTemplate, exports)
+	operatorConfigurationResource :=
+		convertValuesToResource(r.operatorConfigurationValues, monitoringTemplate, exports, filter, transform)
 	go func() {
 		// If multiple replicas are active, only the leader should attempt to create or update the operator
 		// configuration resource.
@@ -201,11 +246,11 @@ func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigu
 }
 
 func (r *AutoOperatorConfigurationResourceHandler) loadExports() []dash0common.Export {
-	exports := r.exports.Load()
-	if exports == nil {
+	extraConfigValues := r.extraConfigValues.Load()
+	if extraConfigValues == nil {
 		return nil
 	}
-	return *exports
+	return extraConfigValues.exports
 }
 
 func (r *AutoOperatorConfigurationResourceHandler) validateOperatorConfiguration(exports []dash0common.Export) error {
@@ -260,16 +305,39 @@ func validateExportFromHelm(index int, export dash0common.Export) error {
 	return nil
 }
 
-func (r *AutoOperatorConfigurationResourceHandler) parseMonitoringTemplate() (*dash0v1alpha1.MonitoringTemplate, error) {
-	monitoringTemplateRaw := r.monitoringTemplateRaw.Load()
-	if monitoringTemplateRaw == nil {
+func parseMonitoringTemplate(
+	extraConfigValues *operatorConfigurationExtraConfigValues,
+) (*dash0v1alpha1.MonitoringTemplate, error) {
+	if extraConfigValues == nil || extraConfigValues.monitoringTemplateRaw == nil {
 		return nil, nil
 	}
 	monitoringTemplate := dash0v1alpha1.MonitoringTemplate{}
-	if err := json.Unmarshal(*monitoringTemplateRaw, &monitoringTemplate); err != nil {
+	if err := json.Unmarshal(*extraConfigValues.monitoringTemplateRaw, &monitoringTemplate); err != nil {
 		return nil, fmt.Errorf("invalid operator configuration: the monitoring template cannot be parsed: %v", err)
 	}
 	return &monitoringTemplate, nil
+}
+
+func parseFilter(extraConfigValues *operatorConfigurationExtraConfigValues) (*dash0common.Filter, error) {
+	if extraConfigValues == nil || extraConfigValues.filterRaw == nil {
+		return nil, nil
+	}
+	filter := dash0common.Filter{}
+	if err := json.Unmarshal(*extraConfigValues.filterRaw, &filter); err != nil {
+		return nil, fmt.Errorf("invalid operator configuration: the filter cannot be parsed: %v", err)
+	}
+	return &filter, nil
+}
+
+func parseTransform(extraConfigValues *operatorConfigurationExtraConfigValues) (*dash0common.Transform, error) {
+	if extraConfigValues == nil || extraConfigValues.transformRaw == nil {
+		return nil, nil
+	}
+	transform := dash0common.Transform{}
+	if err := json.Unmarshal(*extraConfigValues.transformRaw, &transform); err != nil {
+		return nil, fmt.Errorf("invalid operator configuration: the transformation cannot be parsed: %v", err)
+	}
+	return &transform, nil
 }
 
 func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigurationResourceWithRetry(
@@ -386,6 +454,8 @@ func convertValuesToResource(
 	operatorConfigurationValues OperatorConfigurationValues,
 	monitoringTemplate *dash0v1alpha1.MonitoringTemplate,
 	exportsFromExtraConfig []dash0common.Export,
+	filter *dash0common.Filter,
+	transform *dash0common.Transform,
 ) *dash0v1alpha1.Dash0OperatorConfiguration {
 	// The Dash0 export is derived from the operator.dash0Export.* Helm values, which are transported as command line
 	// arguments; the exports from the Helm value operator.exports are transported via the extra config map. The Dash0
@@ -403,6 +473,10 @@ func convertValuesToResource(
 	}
 
 	if !operatorConfigurationValues.TelemetryCollectionEnabled {
+		// Setting filters or transformations together with telemetryCollection.enabled=false is a validation error, so
+		// they are dropped here, analogous to the collection settings below.
+		filter = nil
+		transform = nil
 		operatorConfigurationValues.KubernetesInfrastructureMetricsCollectionEnabled = false
 		operatorConfigurationValues.CollectPodLabelsAndAnnotationsEnabled = false
 		operatorConfigurationValues.CollectNamespaceLabelsAndAnnotationsEnabled = false
@@ -433,6 +507,8 @@ func convertValuesToResource(
 			Enabled: new(operatorConfigurationValues.PrometheusCrdSupportEnabled),
 		},
 		ClusterName:        operatorConfigurationValues.ClusterName,
+		Filter:             filter,
+		Transform:          transform,
 		MonitoringTemplate: monitoringTemplate,
 		Profiling: &dash0v1alpha1.Profiling{
 			Enabled: new(operatorConfigurationValues.ProfilingEnabled),

@@ -379,8 +379,8 @@ func newCollectorConfigurationTemplateValues(
 		monitoredNamespaces,
 		config,
 	)
-	customTelemetryFilters := aggregateCustomFilters(filters)
-	customTelemetryTransforms := aggregateCustomTransforms(transforms)
+	customTelemetryFilters := aggregateCustomFilters(filters, config.GlobalFilter)
+	customTelemetryTransforms := aggregateCustomTransforms(transforms, config.GlobalNormalizedTransform)
 	selfMonitoringMetricsConfig :=
 		selfmonitoringapiaccess.ConvertExportConfigurationToCollectorMetricsSelfMonitoringPipelineString(
 			config.SelfMonitoringConfiguration,
@@ -560,7 +560,10 @@ func labelAndAnnotationExclusionPatterns() []string {
 	return patterns
 }
 
-func aggregateCustomFilters(filtersSpec []NamespacedFilter) customFilters {
+func aggregateCustomFilters(
+	filtersSpec []NamespacedFilter,
+	globalFilter *dash0common.Filter,
+) customFilters {
 	var errorMode dash0common.FilterTransformErrorMode
 	var allSpanFilters []string
 	var allSpanEventFilters []string
@@ -623,6 +626,27 @@ func aggregateCustomFilters(filtersSpec []NamespacedFilter) customFilters {
 		errorMode = compareErrorMode(errorMode, filterSpecForNamespace.ErrorMode)
 	}
 
+	// The cluster-wide filters from the operator configuration resource are appended to the conditions of all
+	// namespaces. Their conditions are deliberately not scoped to a namespace, so they also apply to telemetry that is
+	// not associated with a namespace, like node metrics or cluster-level metrics.
+	if globalFilter != nil && globalFilter.HasAnyFilters() {
+		if globalFilter.Traces != nil {
+			allSpanFilters = slices.Concat(allSpanFilters, globalFilter.Traces.SpanFilter)
+			allSpanEventFilters = slices.Concat(allSpanEventFilters, globalFilter.Traces.SpanEventFilter)
+		}
+		if globalFilter.Metrics != nil {
+			allMetricFilters = slices.Concat(allMetricFilters, globalFilter.Metrics.MetricFilter)
+			allDataPointFilters = slices.Concat(allDataPointFilters, globalFilter.Metrics.DataPointFilter)
+		}
+		if globalFilter.Logs != nil {
+			allLogRecordFilters = slices.Concat(allLogRecordFilters, globalFilter.Logs.LogRecordFilter)
+		}
+		if globalFilter.Profiles != nil {
+			allProfileFilters = slices.Concat(allProfileFilters, globalFilter.Profiles.ProfileFilter)
+		}
+		errorMode = compareErrorMode(errorMode, globalFilter.ErrorMode)
+	}
+
 	if errorMode == "" {
 		// If no error mode has been specified at all, use ignore as the default. This should not actually happen
 		// if there is at least one monitoring resource with a telemetry filter, since the Dash0Monitoring spec
@@ -645,7 +669,10 @@ func prependNamespaceCheckToOttlCondition(namespace string, condition string) st
 	return fmt.Sprintf(`resource.attributes["k8s.namespace.name"] == "%s" and (%s)`, namespace, condition)
 }
 
-func aggregateCustomTransforms(transformsSpec []NamespacedTransform) customTransforms {
+func aggregateCustomTransforms(
+	transformsSpec []NamespacedTransform,
+	globalTransform *dash0common.NormalizedTransformSpec,
+) customTransforms {
 	var globalErrorMode dash0common.FilterTransformErrorMode
 	var allTraceGroups []customTransformGroup
 	var allMetricTraceGroups []customTransformGroup
@@ -685,6 +712,20 @@ func aggregateCustomTransforms(transformsSpec []NamespacedTransform) customTrans
 		}
 	}
 
+	// The cluster-wide transformations from the operator configuration resource are appended after the transformations
+	// of all namespaces, that is, they are applied last. Their conditions are deliberately not scoped to a namespace,
+	// so they also apply to telemetry that is not associated with a namespace, like node metrics or cluster-level
+	// metrics.
+	if globalTransform != nil && globalTransform.HasAnyStatements() {
+		allTraceGroups = slices.Concat(allTraceGroups, convertTransformGroups(globalTransform.Traces))
+		allMetricTraceGroups = slices.Concat(allMetricTraceGroups, convertTransformGroups(globalTransform.Metrics))
+		allLogGroups = slices.Concat(allLogGroups, convertTransformGroups(globalTransform.Logs))
+		allProfileGroups = slices.Concat(allProfileGroups, convertTransformGroups(globalTransform.Profiles))
+		if globalTransform.ErrorMode != nil {
+			globalErrorMode = compareErrorMode(globalErrorMode, *globalTransform.ErrorMode)
+		}
+	}
+
 	if globalErrorMode == "" {
 		// If no error mode has been specified at all, use ignore as the default. This should not actually happen
 		// if there is at least one monitoring resource with a transform configuration, since the Dash0Monitoring spec
@@ -707,13 +748,7 @@ func prependNamespaceConditionToTransformGroupConditions(
 ) []customTransformGroup {
 	groupsWithNamespaceCondition := make([]customTransformGroup, 0, len(transformGroups))
 	for _, transformGroup := range transformGroups {
-		transformGroupWithNamespaceCondition := customTransformGroup{}
-		if transformGroup.Context != nil && *transformGroup.Context != "" {
-			transformGroupWithNamespaceCondition.Context = *transformGroup.Context
-		}
-		if transformGroup.ErrorMode != nil && *transformGroup.ErrorMode != "" {
-			transformGroupWithNamespaceCondition.ErrorMode = *transformGroup.ErrorMode
-		}
+		transformGroupWithNamespaceCondition := convertTransformGroup(transformGroup)
 		// The transformprocessor ORs items in the list of conditions for a group. To scope the user's conditions to a specific
 		// namespace, we prepend the namespace check with AND to each existing condition.
 		if len(transformGroup.Conditions) > 0 {
@@ -729,13 +764,35 @@ func prependNamespaceConditionToTransformGroupConditions(
 				fmt.Sprintf(`resource.attributes["k8s.namespace.name"] == "%s"`, namespace),
 			}
 		}
-		if len(transformGroup.Statements) > 0 {
-			transformGroupWithNamespaceCondition.Statements = transformGroup.Statements
-		}
 
 		groupsWithNamespaceCondition = append(groupsWithNamespaceCondition, transformGroupWithNamespaceCondition)
 	}
 	return groupsWithNamespaceCondition
+}
+
+func convertTransformGroups(transformGroups []dash0common.NormalizedTransformGroup) []customTransformGroup {
+	converted := make([]customTransformGroup, 0, len(transformGroups))
+	for _, transformGroup := range transformGroups {
+		converted = append(converted, convertTransformGroup(transformGroup))
+	}
+	return converted
+}
+
+func convertTransformGroup(transformGroup dash0common.NormalizedTransformGroup) customTransformGroup {
+	converted := customTransformGroup{}
+	if transformGroup.Context != nil && *transformGroup.Context != "" {
+		converted.Context = *transformGroup.Context
+	}
+	if transformGroup.ErrorMode != nil && *transformGroup.ErrorMode != "" {
+		converted.ErrorMode = *transformGroup.ErrorMode
+	}
+	if len(transformGroup.Conditions) > 0 {
+		converted.Conditions = transformGroup.Conditions
+	}
+	if len(transformGroup.Statements) > 0 {
+		converted.Statements = transformGroup.Statements
+	}
+	return converted
 }
 
 func compareErrorMode(
