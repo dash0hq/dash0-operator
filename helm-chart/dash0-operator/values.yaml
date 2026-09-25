@@ -800,6 +800,18 @@ operator:
     #   - name: net.ipv4.tcp_keepalive_probes
     #     value: "3"
 
+    # The pod-level SELinux options applied to the collector DaemonSet pods (spec.securityContext.seLinuxOptions).
+    # Disabled by default. Set this on SELinux-enforcing clusters (e.g. RKE2 on Rocky/RHEL) where the collector can
+    # list /var/log/pods but reading the pod log files fails with "permission denied": the default container_t
+    # SELinux type cannot read the container_log_t-labelled log files. Setting type: spc_t makes the collector
+    # SELinux-unconfined so it can read them, at the cost of weaker SELinux confinement for the collector. Only
+    # spc_t is verified for this use case; a more confined type such as container_logreader_t may read the logs but
+    # can prevent the collector from writing its filelog offset volume. Not needed on OpenShift
+    # (operator.openShift.enabled already grants this via the collector's SCC) and a no-op on clusters without SELinux.
+    # Example:
+    # daemonSetSeLinuxOptions:
+    #   type: spc_t
+
     # The priority class name for the DaemonSet collector pods. If set, these manager pods will be scheduled with
     # the specified priority class.
     # This is useful if you want to make sure that the collector pods are scheduled with a higher priority than other
