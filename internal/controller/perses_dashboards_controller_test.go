@@ -1189,6 +1189,8 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 
 					Expect(resultingDashboardInRequest["metadata"]).ToNot(BeNil())
 					Expect(ReadFromMap(resultingDashboardInRequest, []string{"metadata", "name"})).To(Equal("perses-dashboard"))
+					// The perses object carries kind: PersesDashboard; the reconciler overwrites it with the Dash0 API kind.
+					Expect(ReadFromMap(resultingDashboardInRequest, []string{"kind"})).To(Equal("Dashboard"))
 
 					if testConfig.expectedAnnotations != nil {
 						annotationsRaw := ReadFromMap(resultingDashboardInRequest, []string{"metadata", "annotations"})

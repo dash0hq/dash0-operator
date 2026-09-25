@@ -553,6 +553,9 @@ var _ = Describe(
 					"maps spam filters", func(testConfig spamFilterToRequestTestConfig) {
 						spamFilter := map[string]any{}
 						Expect(yaml.Unmarshal([]byte(testConfig.spamFilter), &spamFilter)).To(Succeed())
+						// Mimic production: a typed Get leaves TypeMeta empty, so the resource map has no kind/apiVersion.
+						delete(spamFilter, "kind")
+						delete(spamFilter, "apiVersion")
 						apiConfig := ApiConfig{
 							Endpoint: ApiEndpointTest,
 							Dataset:  DatasetCustomTest,
@@ -587,6 +590,7 @@ var _ = Describe(
 
 						Expect(resultingSpamFilterInRequest["metadata"]).ToNot(BeNil())
 						Expect(ReadFromMap(resultingSpamFilterInRequest, []string{"metadata", "name"})).To(Equal("dash0-spam-filter"))
+						Expect(ReadFromMap(resultingSpamFilterInRequest, []string{"kind"})).To(Equal("Dash0SpamFilter"))
 
 						if testConfig.expectedAnnotations != nil {
 							annotationsRaw := ReadFromMap(resultingSpamFilterInRequest, []string{"metadata", "annotations"})

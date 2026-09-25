@@ -379,6 +379,7 @@ func (r *NotificationChannelReconciler) MapResourceToHttpRequests(
 		// - assemble the type-specific config (e.g. spec.slackConfig) into spec.config
 		resource := preconditionChecksResult.resource
 		prepareNotificationChannelApiPayload(resource)
+		setPayloadKind(resource, "Dash0NotificationChannel")
 		serializedResource, _ := json.Marshal(resource)
 		requestPayload := bytes.NewBuffer(serializedResource)
 		method = http.MethodPut

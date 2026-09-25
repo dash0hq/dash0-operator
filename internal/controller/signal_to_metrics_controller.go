@@ -365,6 +365,7 @@ func (r *SignalToMetricsReconciler) MapResourceToHttpRequests(
 	switch action {
 	case upsertAction:
 		signalToMetrics := preconditionChecksResult.resource
+		setPayloadKind(signalToMetrics, "Dash0SignalToMetrics")
 		serialized, _ := json.Marshal(signalToMetrics)
 		requestPayload := bytes.NewBuffer(serialized)
 		method = http.MethodPut

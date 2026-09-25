@@ -705,6 +705,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 		}
 		r.setDisplayNameIfMissing(preconditionChecksResult, display)
 
+		setPayloadKind(dashboard, "Dashboard")
 		serializedDashboard, _ := json.Marshal(dashboard)
 		requestPayload := bytes.NewBuffer(serializedDashboard)
 
