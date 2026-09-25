@@ -115,6 +115,10 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 			created, updated := aggregateResults(results)
 			Expect(created).To(BeTrue())
 			Expect(updated).To(BeFalse())
+			Expect(results).To(HaveLen(1))
+			// envtest does not run a Deployment controller, so no replica ever becomes ready.
+			Expect(results[0].DesiredReplicas).To(Equal(int32(1)))
+			Expect(results[0].ReadyReplicas).To(Equal(int32(0)))
 
 			verifySyntheticsWorkerResourcesExist(ctx, testLocationID)
 		})

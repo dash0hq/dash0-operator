@@ -4,6 +4,7 @@
 package syntheticsworker
 
 import (
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -17,6 +18,10 @@ import (
 
 func serviceAccount(namespace, name string, labels map[string]string) *corev1.ServiceAccount {
 	return &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name, Labels: labels}}
+}
+
+func deploymentWithReadyReplicas(readyReplicas int32) *appsv1.Deployment {
+	return &appsv1.Deployment{Status: appsv1.DeploymentStatus{ReadyReplicas: readyReplicas}}
 }
 
 var _ = Describe("The synthetics-worker controller", func() {
@@ -64,6 +69,26 @@ var _ = Describe("The synthetics-worker controller", func() {
 
 		It("accepts a delete event for a synthetics-worker resource", func() {
 			Expect(predicate.Delete(event.DeleteEvent{Object: serviceAccount(OperatorNamespace, "watched", featureLabels)})).To(BeTrue())
+		})
+	})
+
+	Describe("deploymentReadyReplicasChangedPredicate", func() {
+		It("accepts an update event when the ready-replica count changed", func() {
+			update := event.UpdateEvent{ObjectOld: deploymentWithReadyReplicas(0), ObjectNew: deploymentWithReadyReplicas(1)}
+			Expect(deploymentReadyReplicasChangedPredicate.Update(update)).To(BeTrue())
+		})
+
+		It("rejects an update event when the ready-replica count is unchanged", func() {
+			update := event.UpdateEvent{ObjectOld: deploymentWithReadyReplicas(1), ObjectNew: deploymentWithReadyReplicas(1)}
+			Expect(deploymentReadyReplicasChangedPredicate.Update(update)).To(BeFalse())
+		})
+
+		It("rejects an update event for a non-Deployment object", func() {
+			update := event.UpdateEvent{
+				ObjectOld: serviceAccount(OperatorNamespace, "a", featureLabels),
+				ObjectNew: serviceAccount(OperatorNamespace, "a", featureLabels),
+			}
+			Expect(deploymentReadyReplicasChangedPredicate.Update(update)).To(BeFalse())
 		})
 	})
 })

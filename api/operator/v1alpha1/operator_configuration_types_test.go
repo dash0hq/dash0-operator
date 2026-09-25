@@ -197,4 +197,68 @@ var _ = Describe("v1alpha1 Dash0 operator configuration CRD", func() {
 			Entry("explicitly false, disabled via Helm: disabled", ptr.To(false), false, false),
 		)
 	})
+
+	Describe("SetSyntheticsWorkerStatus readiness", func() {
+		var resource *Dash0OperatorConfiguration
+
+		BeforeEach(func() {
+			resource = &Dash0OperatorConfiguration{}
+		})
+
+		instance := func(locationID string, ready bool, readyReason string) SyntheticsWorkerInstanceStatus {
+			return SyntheticsWorkerInstanceStatus{
+				LocationID:  locationID,
+				Deployed:    true,
+				Ready:       ready,
+				ReadyReason: readyReason,
+			}
+		}
+
+		It("aggregates Ready=true when every instance is ready", func() {
+			resource.SetSyntheticsWorkerStatus([]SyntheticsWorkerInstanceStatus{
+				instance("a", true, "Ready"),
+				instance("b", true, "Ready"),
+			})
+			Expect(resource.Status.SyntheticsWorker.Ready).To(BeTrue())
+			Expect(resource.Status.SyntheticsWorker.ReadyReason).To(Equal("Ready"))
+		})
+
+		It("keeps a single instance's reason when only that instance is not ready", func() {
+			resource.SetSyntheticsWorkerStatus([]SyntheticsWorkerInstanceStatus{
+				instance("a", true, "Ready"),
+				instance("b", false, "NoReadyReplicas"),
+			})
+			Expect(resource.Status.SyntheticsWorker.Ready).To(BeFalse())
+			Expect(resource.Status.SyntheticsWorker.ReadyReason).To(Equal("NoReadyReplicas"))
+		})
+
+		It("reports PartiallyReady when instances are not ready for different reasons", func() {
+			resource.SetSyntheticsWorkerStatus([]SyntheticsWorkerInstanceStatus{
+				instance("a", false, "NoReadyReplicas"),
+				instance("b", false, "PartiallyReady"),
+			})
+			Expect(resource.Status.SyntheticsWorker.Ready).To(BeFalse())
+			Expect(resource.Status.SyntheticsWorker.ReadyReason).To(Equal("PartiallyReady"))
+		})
+
+		It("reports NoInstancesConfigured when there are no instances", func() {
+			resource.SetSyntheticsWorkerStatus(nil)
+			Expect(resource.Status.SyntheticsWorker.Ready).To(BeFalse())
+			Expect(resource.Status.SyntheticsWorker.ReadyReason).To(Equal("NoInstancesConfigured"))
+		})
+
+		It("reports changed only on a readiness transition, not on repeating the same outcome", func() {
+			Expect(resource.SetSyntheticsWorkerStatus([]SyntheticsWorkerInstanceStatus{
+				instance("a", false, "NoReadyReplicas"),
+			})).To(BeTrue())
+
+			Expect(resource.SetSyntheticsWorkerStatus([]SyntheticsWorkerInstanceStatus{
+				instance("a", false, "NoReadyReplicas"),
+			})).To(BeFalse())
+
+			Expect(resource.SetSyntheticsWorkerStatus([]SyntheticsWorkerInstanceStatus{
+				instance("a", true, "Ready"),
+			})).To(BeTrue())
+		})
+	})
 })

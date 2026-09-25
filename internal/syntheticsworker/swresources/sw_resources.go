@@ -43,6 +43,11 @@ type InstanceResult struct {
 	Created    bool
 	Updated    bool
 	Err        error
+
+	// ReadyReplicas and DesiredReplicas are read back from the instance's Deployment after it has been created or
+	// updated; both are zero when Err is set.
+	ReadyReplicas   int32
+	DesiredReplicas int32
 }
 
 type SyntheticsWorkerResourceManager struct {
@@ -136,6 +141,18 @@ func (m *SyntheticsWorkerResourceManager) createOrUpdateInstance(
 		result.Created = result.Created || isNew
 		result.Updated = result.Updated || isChanged
 	}
+
+	var deployment appsv1.Deployment
+	deploymentKey := client.ObjectKey{
+		Namespace: m.syntheticsWorkerConfig.OperatorNamespace,
+		Name:      DeploymentName(m.syntheticsWorkerConfig.NamePrefix, instance.LocationID),
+	}
+	if err := m.Get(ctx, deploymentKey, &deployment); err != nil {
+		logger.Error(err, "cannot read back the synthetics-worker deployment to determine its readiness")
+		return result
+	}
+	result.ReadyReplicas = deployment.Status.ReadyReplicas
+	result.DesiredReplicas = ptr.Deref(deployment.Spec.Replicas, defaultReplicas)
 
 	return result
 }
