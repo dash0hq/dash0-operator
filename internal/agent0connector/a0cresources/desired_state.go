@@ -387,12 +387,25 @@ var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 	//  - /version - server version info
 	//  - /healthz, /livez, /readyz - health endpoints
 	//
-	// On a stock cluster this rule grants nothing new: Kubernetes binds the system:discovery cluster role, which covers
-	// exactly these URLs, to the group system:authenticated, and every service account is a member of that group. The
-	// rule keeps the agent0-connector working on a cluster that has revoked that default binding.
+	// The list is identical to the system:discovery cluster role, which Kubernetes binds to the group
+	// system:authenticated. Every service account is a member of that group - that is, these are permissions anyone has
+	// per default anyway. They are spelled out here to keep the agent0-connector working in clusters where that default
+	// binding has been revoked.
 	{
-		NonResourceURLs: []string{"*"},
-		Verbs:           []string{"get"},
+		NonResourceURLs: []string{
+			"/api",
+			"/api/*",
+			"/apis",
+			"/apis/*",
+			"/healthz",
+			"/livez",
+			"/openapi",
+			"/openapi/*",
+			"/readyz",
+			"/version",
+			"/version/",
+		},
+		Verbs: []string{"get"},
 	},
 }
 
