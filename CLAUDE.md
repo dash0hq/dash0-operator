@@ -85,18 +85,7 @@ output formats that reshape a response (`-o go-template/template/jsonpath/jsonpa
 
 A CRD change has to be checked against the list of credential *field names* in
 `images/agent0-connector/src/kubectl/redaction.go`, which is a copy of knowledge that actually lives in
-`api/operator`:
-
-- `credentialFieldsPerConfigObject` - the fields that only hold a credential within a particular configuration object,
-  keyed by the name of that object (e.g. `slackConfig` -> `webhookURL`). Generic field names such as `url` or `key` are
-  credentials in one object and harmless in another, which is why they are keyed this way.
-- `urlFieldsPerConfigObject` - the fields that hold a URL which is not a credential itself, but can contain one. Only
-  sensitive parts of the URL are redacted. A URL that is a credential as a whole, such as a webhook URL, belongs in
-  `credentialFieldsPerConfigObject` instead.
-- The field names that are credentials wherever they occur are handled in `redactDocumentNodeRecursively`: `token`,
-  `password`, the header/query parameter values under `headers`, `queryParameters` and `httpHeaders`, and the values
-  under `env`, `command` and `args`, which are replaced in full because a credential cannot be told apart from an
-  innocuous value there.
+`api/operator`.
 
 Missing that step can be silent: the new credential is simply not matched, the response is still considered fully
 redacted, and the credential is sent to the backend in plaintext. The test
@@ -106,16 +95,22 @@ against a list of fragments (`token`, `key`, `header`, ...) and only looks at fi
 string, or a map of strings. It does not see a credential inside a list of name/value pairs, nor one in a free-text
 field, so a new credential field whose name matches no fragment passes it unnoticed.
 
-When adding or changing a CRD, grep for `credentialFieldsPerConfigObject` and `urlFieldsPerConfigObject`, read the
-`case` clauses of `redactDocumentNodeRecursively` for the field names that are credentials wherever they occur, and
-extend the fixtures in `images/agent0-connector/src/kubectl/redaction_test.go` for any new credential field. Then run
+When adding or changing a CRD, grep for `credentialFieldsPerConfigObject`, `isUrlField` and
+`queryParameterFieldsPerResourceKind`, read the `case` clauses of `redactDocumentNodeRecursively` for the field names
+that are credentials wherever they occur, and extend the fixtures in
+`images/agent0-connector/src/kubectl/redaction_test.go` for any new credential field. Then run
 `go test ./api/operator/... -run TestAgent0ConnectorRedactsEveryCredentialField` to check the CRDs against the lists.
 
 Note which of the lists a field belongs in: a field listed in `credentialFieldsPerConfigObject` is redacted
-unconditionally, while a header or query parameter value - including a query parameter of a URL listed in
-`urlFieldsPerConfigObject` - is only redacted when it does not look like a well-known non-secret value (see
+unconditionally, while a header or query parameter value - including a query parameter of a URL whose field name is
+recognized as a URL by `isUrlField` - is only redacted when it does not look like a well-known non-secret value (see
 `wellKnownNonSecretValues`). A field that always holds a credential belongs in the former, even when it is a header -
 which is why `incidentioConfig` lists `headers`.
+
+A URL that is a credential as a whole belongs in `credentialFieldsPerConfigObject` even though its field is named
+`url`, which `isUrlField` also matches. The two do not collide: the configuration object is redacted one level above,
+before the walk descends to the `url` key, and `redactUrlParts` leaves the placeholder alone, so the unconditional
+rule wins. `TestWholeUrlCredentialWinsOverUrlFields` pins that ordering.
 
 Kubernetes secrets are the one resource type that is not redacted but blocked: listing them and checking for the
 presence of a particular one is allowed (assuming custom RBAC rules have been applied via

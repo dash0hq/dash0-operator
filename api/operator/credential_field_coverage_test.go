@@ -47,10 +47,17 @@ var credentialNameFragments = []string{
 
 // knownUnredactedFields are the fields that credentialNameFragments flags, although they actually hold no credential.
 // The key is "<enclosing object>.<field>".
+//
+// Note: A field whose name isUrlField matches needs an entry here unless the URL as a whole is a credential and listed
+// in credentialFieldsPerConfigObject. For isUrlField matches, only the user information and the query parameters of the
+// URL are redacted, but that might not be sufficient for some URLs.
 var knownUnredactedFields = map[string]string{
 	// The endpoint a PagerDuty integration posts to. Unlike the webhook URLs of the other channel types it carries no
 	// token; the credential of this channel is pagerdutyConfig.key, which is redacted.
 	"pagerdutyConfig.url": "the public PagerDuty events endpoint, not an unguessable URL",
+	// The target of a synthetic check. isUrlField matches it, so the parts of it that can carry a credential (the
+	// user information and the query parameters) are redacted.
+	"request.url": "the target of a synthetic check, with its credential-bearing parts redacted via isUrlField",
 	// The name of the entry within a Kubernetes secret, not its value. The value never reaches the response: the
 	// operator resolves it into the workload, and the custom resource only ever holds the reference.
 	"secretKeyRef.key": "the name of an entry in a Kubernetes secret, not its value",
@@ -86,7 +93,16 @@ func TestAgent0ConnectorRedactsEveryCredentialField(t *testing.T) {
 		_, handledAnywhere := fieldsThatAreRedactedEverywhere[field.name]
 		handledInObject := slices.Contains(coveredFieldsPerConfigObject[field.enclosingObject], field.name)
 		if !handledAnywhere && !handledInObject {
-			uncovered = append(uncovered, field.path+" (field "+field.name+" in "+field.enclosingObject+")")
+			entry := field.path + " (field " + field.name + " in " + field.enclosingObject + ")"
+
+			// The contains("url") check is only used to word the message differently, never to decide whether a field is
+			// covered.
+			if strings.Contains(strings.ToLower(field.name), "url") {
+				entry += ": looks like a URL - if it is covered by redaction.go#isUrlField, user information and query " +
+					"parameters are redacted. Double check if it is covered by isUrlField, and/or decide whether the URL as a" +
+					"whole is a credential (e.g. webhook URL with secret in path)"
+			}
+			uncovered = append(uncovered, entry)
 		}
 	}
 
@@ -95,10 +111,11 @@ func TestAgent0ConnectorRedactsEveryCredentialField(t *testing.T) {
 		t.Errorf(
 			"%d credential-like field(s) of the custom resources are not redacted by the agent0-connector:\n  %s\n\n"+
 				"Either add them to %s - to credentialFieldsPerConfigObject when the field only holds a credential "+
-				"within that configuration object, to urlFieldsPerConfigObject when it holds a URL that is not itself "+
-				"a credential but can carry one, or to the field names handled in redactDocumentNodeRecursively when "+
+				"within that configuration object, or to the field names handled in redactDocumentNodeRecursively when "+
 				"it holds a credential wherever it occurs. Or, if the value is not a credential, add it to "+
-				"knownUnredactedFields in this test with the reason why it does not need redaction.",
+				"knownUnredactedFields in this test with the reason why it does not need redaction. Note that "+
+				"isUrlField is not a substitute for either: it redacts the credential-bearing parts of a URL, not the "+
+				"URL itself, so a field it matches still needs one of the decisions above.",
 			len(uncovered),
 			strings.Join(uncovered, "\n  "),
 			redactionSourceFile,
@@ -234,9 +251,13 @@ func hasCredentialLikeName(name string) bool {
 }
 
 // parseRedactionLists reads the credential lists of the agent0-connector from its source: the fields that are only
-// redacted within a particular configuration object (credentialFieldsPerConfigObject and urlFieldsPerConfigObject,
-// merged into one map), and the field names that are redacted wherever they occur (the case clauses of
-// redactDocumentNodeRecursively).
+// redacted within a particular configuration object (credentialFieldsPerConfigObject), and the field names that are
+// redacted wherever they occur (the case clauses of redactDocumentNodeRecursively).
+//
+// The URL fields of the connector (isUrlField) are deliberately not read as coverage: redactUrlParts replaces the user
+// information and the query parameter values of a URL and leaves its path alone, so a webhook URL whose path holds an
+// unguessable token passes through it unchanged. A field named "url" therefore still has to be decided per enclosing
+// object, either by listing it in credentialFieldsPerConfigObject or in knownUnredactedFields.
 func parseRedactionLists(t *testing.T) (map[string][]string, map[string]struct{}) {
 	t.Helper()
 
@@ -247,7 +268,7 @@ func parseRedactionLists(t *testing.T) (map[string][]string, map[string]struct{}
 
 	coveredFieldsPerConfigObject := map[string][]string{}
 	fieldsThatAreRedactedEverywhere := map[string]struct{}{}
-	var credentialFieldListsFound []string
+	credentialFieldsPerConfigObjectFound := false
 
 	ast.Inspect(file, func(node ast.Node) bool {
 		switch typedNode := node.(type) {
@@ -266,9 +287,8 @@ func parseRedactionLists(t *testing.T) (map[string][]string, map[string]struct{}
 				if !isComposite {
 					continue
 				}
-				switch name.Name {
-				case "credentialFieldsPerConfigObject", "urlFieldsPerConfigObject":
-					credentialFieldListsFound = append(credentialFieldListsFound, name.Name)
+				if name.Name == "credentialFieldsPerConfigObject" {
+					credentialFieldsPerConfigObjectFound = true
 					for key, element := range mapLiteralEntries(literal) {
 						coveredFieldsPerConfigObject[key] = append(
 							coveredFieldsPerConfigObject[key], compositeLitStrings(element)...)
@@ -284,10 +304,8 @@ func parseRedactionLists(t *testing.T) (map[string][]string, map[string]struct{}
 	if len(fieldsThatAreRedactedEverywhere) == 0 {
 		t.Fatalf("no field names found in redactDocumentNodeRecursively in %s", redactionSourceFile)
 	}
-	for _, listName := range []string{"credentialFieldsPerConfigObject", "urlFieldsPerConfigObject"} {
-		if !slices.Contains(credentialFieldListsFound, listName) {
-			t.Fatalf("%s not found in %s", listName, redactionSourceFile)
-		}
+	if !credentialFieldsPerConfigObjectFound {
+		t.Fatalf("credentialFieldsPerConfigObject not found in %s", redactionSourceFile)
 	}
 	return coveredFieldsPerConfigObject, fieldsThatAreRedactedEverywhere
 }
