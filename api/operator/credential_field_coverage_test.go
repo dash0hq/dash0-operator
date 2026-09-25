@@ -7,7 +7,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -17,9 +16,9 @@ import (
 	"testing"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/yaml"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
+	openslov1 "github.com/dash0hq/dash0-operator/api/openslo/v1"
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	operatorv1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 )
@@ -33,12 +32,6 @@ import (
 // from the source code rather than imported.
 var redactionSourceFile = filepath.Join(
 	"..", "..", "images", "agent0-connector", "src", "kubectl", "redaction.go")
-
-// crdBaseManifestDir is the path to the custom resource definitions generated from the Go types of this package (via
-// "make manifests"). They declare the singular and the plural name of every resource type, which is what kubectl
-// accepts and therefore what dash0ResourceTypesWithSecrets has to list; deriving the plural form from the kind here
-// instead would only reproduce the guess a maintainer would make, which is exactly what needs checking.
-var crdBaseManifestDir = filepath.Join("..", "..", "config", "crd", "bases")
 
 // credentialNameFragments are the substrings that make a field name look like it holds a credential. The check is
 // deliberately broad, to increase the likelihood of flagging unredacted secrets. For a field not to be flagged it needs
@@ -54,10 +47,17 @@ var credentialNameFragments = []string{
 
 // knownUnredactedFields are the fields that credentialNameFragments flags, although they actually hold no credential.
 // The key is "<enclosing object>.<field>".
+//
+// Note: A field whose name isUrlField matches needs an entry here unless the URL as a whole is a credential and listed
+// in credentialFieldsPerConfigObject. For isUrlField matches, only the user information and the query parameters of the
+// URL are redacted, but that might not be sufficient for some URLs.
 var knownUnredactedFields = map[string]string{
 	// The endpoint a PagerDuty integration posts to. Unlike the webhook URLs of the other channel types it carries no
 	// token; the credential of this channel is pagerdutyConfig.key, which is redacted.
 	"pagerdutyConfig.url": "the public PagerDuty events endpoint, not an unguessable URL",
+	// The target of a synthetic check. isUrlField matches it, so the parts of it that can carry a credential (the
+	// user information and the query parameters) are redacted.
+	"request.url": "the target of a synthetic check, with its credential-bearing parts redacted via isUrlField",
 	// The name of the entry within a Kubernetes secret, not its value. The value never reaches the response: the
 	// operator resolves it into the workload, and the custom resource only ever holds the reference.
 	"secretKeyRef.key": "the name of an entry in a Kubernetes secret, not its value",
@@ -76,12 +76,14 @@ var knownUnredactedFields = map[string]string{
 // (images/agent0-connector/src/kubectl/redaction.go) against drift. The lists in redaction.go are a hand-maintained
 // copy of implicit knowledge about the custom resource types of this package. This test is a best-effort attempt to
 // bind the CRDs to the redaction lists.
+//
+// The connector keys its redaction on field names and on the name of the configuration object a field sits in, so that
+// is what this test uses: every credential-like field of a custom resource has to be covered by one of the lists, or to
+// be listed in knownUnredactedFields with the reason why it holds no credential.
 func TestAgent0ConnectorRedactsEveryCredentialField(t *testing.T) {
-	resourceTypesWithSecrets, coveredFieldsPerConfigObject, fieldsThatAreRedactedEverywhere :=
-		parseRedactionLists(t)
+	coveredFieldsPerConfigObject, fieldsThatAreRedactedEverywhere := parseRedactionLists(t)
 
 	var uncovered []string
-	credentialFieldsPerKind := map[string][]string{}
 
 	for _, field := range allPotentialCredentialFields(t) {
 		if _, allowed := knownUnredactedFields[field.enclosingObject+"."+field.name]; allowed {
@@ -91,10 +93,17 @@ func TestAgent0ConnectorRedactsEveryCredentialField(t *testing.T) {
 		_, handledAnywhere := fieldsThatAreRedactedEverywhere[field.name]
 		handledInObject := slices.Contains(coveredFieldsPerConfigObject[field.enclosingObject], field.name)
 		if !handledAnywhere && !handledInObject {
-			uncovered = append(uncovered, field.path+" (field "+field.name+" in "+field.enclosingObject+")")
-			continue
+			entry := field.path + " (field " + field.name + " in " + field.enclosingObject + ")"
+
+			// The contains("url") check is only used to word the message differently, never to decide whether a field is
+			// covered.
+			if strings.Contains(strings.ToLower(field.name), "url") {
+				entry += ": looks like a URL - if it is covered by redaction.go#isUrlField, user information and query " +
+					"parameters are redacted. Double check if it is covered by isUrlField, and/or decide whether the URL as a" +
+					"whole is a credential (e.g. webhook URL with secret in path)"
+			}
+			uncovered = append(uncovered, entry)
 		}
-		credentialFieldsPerKind[field.kind] = append(credentialFieldsPerKind[field.kind], field.path)
 	}
 
 	if len(uncovered) > 0 {
@@ -102,115 +111,20 @@ func TestAgent0ConnectorRedactsEveryCredentialField(t *testing.T) {
 		t.Errorf(
 			"%d credential-like field(s) of the custom resources are not redacted by the agent0-connector:\n  %s\n\n"+
 				"Either add them to %s - to credentialFieldsPerConfigObject when the field only holds a credential "+
-				"within that configuration object, to urlFieldsPerConfigObject when it holds a URL that is not itself "+
-				"a credential but can carry one, or to the field names handled in redactDocumentNodeRecursively when "+
+				"within that configuration object, or to the field names handled in redactDocumentNodeRecursively when "+
 				"it holds a credential wherever it occurs. Or, if the value is not a credential, add it to "+
-				"knownUnredactedFields in this test with the reason why it does not need redaction.",
+				"knownUnredactedFields in this test with the reason why it does not need redaction. Note that "+
+				"isUrlField is not a substitute for either: it redacts the credential-bearing parts of a URL, not the "+
+				"URL itself, so a field it matches still needs one of the decisions above.",
 			len(uncovered),
 			strings.Join(uncovered, "\n  "),
 			redactionSourceFile,
 		)
 	}
-
-	resourceNamesPerKind := resourceNamesFromCrdManifests(t)
-
-	for kind, credentialFields := range credentialFieldsPerKind {
-		// Every name kubectl accepts for the resource type has to be listed: normalizeResourceType in the connector's
-		// parser only lower-cases the resource type and strips the API group suffix, it never singularizes. So a missing
-		// plural form - the form most requests use - means the connector neither redacts the responses that render this
-		// resource type, nor rejects the output formats whose result it cannot redact.
-		acceptedNames := resourceNamesPerKind[kind]
-		if len(acceptedNames) == 0 {
-			// No CRD declares this kind, so the singular form derived from the kind is all that can be checked. kubectl
-			// also accepts the kind itself, which normalizes to exactly that.
-			acceptedNames = []string{strings.ToLower(kind)}
-		}
-
-		var missing []string
-		for _, name := range acceptedNames {
-			if _, covered := resourceTypesWithSecrets[name]; !covered {
-				missing = append(missing, name)
-			}
-		}
-		if len(missing) == 0 {
-			continue
-		}
-
-		sort.Strings(credentialFields)
-		sort.Strings(missing)
-		t.Errorf(
-			"%s contains potential credentials, but %d of the resource type names kubectl accepts for it are not "+
-				"listed in dash0ResourceTypesWithSecrets in %s: %s. Add every one of them (the singular and the plural "+
-				"form): without them the connector neither redacts the responses that render this resource type, nor "+
-				"rejects the output formats whose result it cannot redact. Or, if the values are not credentials, add "+
-				"them to knownUnredactedFields in this test with the reason why they do not need redaction. The "+
-				"field(s) that hold a potential credential are:\n  %s",
-			kind,
-			len(missing),
-			redactionSourceFile,
-			strings.Join(missing, ", "),
-			strings.Join(credentialFields, "\n  "),
-		)
-	}
-}
-
-// resourceNamesFromCrdManifests returns, per kind, the resource type names kubectl accepts for it: the singular and the
-// plural name declared by the generated custom resource definitions, plus the lower-cased kind, which is the form
-// kubectl's kind argument normalizes to. Short names are included as well, so that adding one to a credential-bearing
-// CRD without extending dash0ResourceTypesWithSecrets fails this test rather than silently opening a bypass.
-func resourceNamesFromCrdManifests(t *testing.T) map[string][]string {
-	t.Helper()
-
-	manifests, err := filepath.Glob(filepath.Join(crdBaseManifestDir, "*.yaml"))
-	if err != nil {
-		t.Fatalf("cannot list the CRD manifests in %s: %v", crdBaseManifestDir, err)
-	}
-	if len(manifests) == 0 {
-		t.Fatalf(
-			"no CRD manifests found in %s; this test derives the accepted resource type names from them, run "+
-				"\"make manifests generate\"",
-			crdBaseManifestDir,
-		)
-	}
-
-	namesPerKind := map[string][]string{}
-	for _, manifest := range manifests {
-		content, err := os.ReadFile(manifest)
-		if err != nil {
-			t.Fatalf("cannot read the CRD manifest %s: %v", manifest, err)
-		}
-		// sigs.k8s.io/yaml converts YAML to JSON before unmarshalling, so the JSON tags apply.
-		var crd struct {
-			Spec struct {
-				Names struct {
-					Kind       string   `json:"kind"`
-					Singular   string   `json:"singular"`
-					Plural     string   `json:"plural"`
-					ShortNames []string `json:"shortNames"`
-				} `json:"names"`
-			} `json:"spec"`
-		}
-		if err := yaml.Unmarshal(content, &crd); err != nil {
-			t.Fatalf("cannot parse the CRD manifest %s: %v", manifest, err)
-		}
-		names := crd.Spec.Names
-		if names.Kind == "" {
-			t.Fatalf("the CRD manifest %s declares no spec.names.kind", manifest)
-		}
-		accepted := []string{strings.ToLower(names.Kind)}
-		for _, name := range append([]string{names.Singular, names.Plural}, names.ShortNames...) {
-			if name != "" && !slices.Contains(accepted, name) {
-				accepted = append(accepted, name)
-			}
-		}
-		namesPerKind[names.Kind] = accepted
-	}
-	return namesPerKind
 }
 
 // potentialCredentialField is a field of a custom resource whose name indicates it might hold a credential.
 type potentialCredentialField struct {
-	kind            string
 	name            string
 	enclosingObject string
 	path            string
@@ -226,6 +140,7 @@ func allPotentialCredentialFields(t *testing.T) []potentialCredentialField {
 		operatorv1alpha1.AddToScheme,
 		operatorv1beta1.AddToScheme,
 		dash0v1alpha1.AddToScheme,
+		openslov1.AddToScheme,
 	} {
 		if err := addToScheme(scheme); err != nil {
 			t.Fatalf("cannot build the scheme: %v", err)
@@ -240,7 +155,6 @@ func allPotentialCredentialFields(t *testing.T) []potentialCredentialField {
 		collectPotentialCredentialFields(
 			resourceType,
 			groupVersionKind.Kind,
-			groupVersionKind.Kind,
 			"",
 			map[reflect.Type]struct{}{},
 			&fields,
@@ -254,7 +168,6 @@ func allPotentialCredentialFields(t *testing.T) []potentialCredentialField {
 
 func collectPotentialCredentialFields(
 	resourceType reflect.Type,
-	kind string,
 	path string,
 	enclosingObject string,
 	visited map[reflect.Type]struct{},
@@ -262,7 +175,7 @@ func collectPotentialCredentialFields(
 ) {
 	resourceType = elementTypeOf(resourceType)
 	if resourceType.Kind() == reflect.Map {
-		collectPotentialCredentialFields(resourceType.Elem(), kind, path+".*", enclosingObject, visited, fields)
+		collectPotentialCredentialFields(resourceType.Elem(), path+".*", enclosingObject, visited, fields)
 		return
 	}
 	if resourceType.Kind() != reflect.Struct {
@@ -292,7 +205,6 @@ func collectPotentialCredentialFields(
 		if fieldType.Kind() == reflect.String || isMapOfStrings(fieldType) {
 			if hasCredentialLikeName(name) {
 				*fields = append(*fields, potentialCredentialField{
-					kind:            kind,
 					name:            name,
 					enclosingObject: enclosingObject,
 					path:            fieldPath,
@@ -300,7 +212,7 @@ func collectPotentialCredentialFields(
 			}
 			continue
 		}
-		collectPotentialCredentialFields(fieldType, kind, fieldPath, name, visited, fields)
+		collectPotentialCredentialFields(fieldType, fieldPath, name, visited, fields)
 	}
 }
 
@@ -338,11 +250,15 @@ func hasCredentialLikeName(name string) bool {
 	return false
 }
 
-// parseRedactionLists reads the credential lists of the agent0-connector from its source: the field names that are
-// redacted wherever they occur (the case clauses of redactDocumentNodeRecursively), the fields that are only redacted
-// within a particular configuration object (credentialFieldsPerConfigObject and urlFieldsPerConfigObject, merged into
-// one map), and the resource types whose content can contain a credential (dash0ResourceTypesWithSecrets).
-func parseRedactionLists(t *testing.T) (map[string]struct{}, map[string][]string, map[string]struct{}) {
+// parseRedactionLists reads the credential lists of the agent0-connector from its source: the fields that are only
+// redacted within a particular configuration object (credentialFieldsPerConfigObject), and the field names that are
+// redacted wherever they occur (the case clauses of redactDocumentNodeRecursively).
+//
+// The URL fields of the connector (isUrlField) are deliberately not read as coverage: redactUrlParts replaces the user
+// information and the query parameter values of a URL and leaves its path alone, so a webhook URL whose path holds an
+// unguessable token passes through it unchanged. A field named "url" therefore still has to be decided per enclosing
+// object, either by listing it in credentialFieldsPerConfigObject or in knownUnredactedFields.
+func parseRedactionLists(t *testing.T) (map[string][]string, map[string]struct{}) {
 	t.Helper()
 
 	file, err := parser.ParseFile(token.NewFileSet(), redactionSourceFile, nil, 0)
@@ -350,10 +266,9 @@ func parseRedactionLists(t *testing.T) (map[string]struct{}, map[string][]string
 		t.Fatalf("cannot parse %s: %v", redactionSourceFile, err)
 	}
 
-	resourceTypesWithSecrets := map[string]struct{}{}
 	coveredFieldsPerConfigObject := map[string][]string{}
 	fieldsThatAreRedactedEverywhere := map[string]struct{}{}
-	var credentialFieldListsFound []string
+	credentialFieldsPerConfigObjectFound := false
 
 	ast.Inspect(file, func(node ast.Node) bool {
 		switch typedNode := node.(type) {
@@ -372,16 +287,11 @@ func parseRedactionLists(t *testing.T) (map[string]struct{}, map[string][]string
 				if !isComposite {
 					continue
 				}
-				switch name.Name {
-				case "credentialFieldsPerConfigObject", "urlFieldsPerConfigObject":
-					credentialFieldListsFound = append(credentialFieldListsFound, name.Name)
+				if name.Name == "credentialFieldsPerConfigObject" {
+					credentialFieldsPerConfigObjectFound = true
 					for key, element := range mapLiteralEntries(literal) {
 						coveredFieldsPerConfigObject[key] = append(
 							coveredFieldsPerConfigObject[key], compositeLitStrings(element)...)
-					}
-				case "dash0ResourceTypesWithSecrets":
-					for key := range mapLiteralEntries(literal) {
-						resourceTypesWithSecrets[key] = struct{}{}
 					}
 				}
 			}
@@ -394,15 +304,10 @@ func parseRedactionLists(t *testing.T) (map[string]struct{}, map[string][]string
 	if len(fieldsThatAreRedactedEverywhere) == 0 {
 		t.Fatalf("no field names found in redactDocumentNodeRecursively in %s", redactionSourceFile)
 	}
-	for _, listName := range []string{"credentialFieldsPerConfigObject", "urlFieldsPerConfigObject"} {
-		if !slices.Contains(credentialFieldListsFound, listName) {
-			t.Fatalf("%s not found in %s", listName, redactionSourceFile)
-		}
+	if !credentialFieldsPerConfigObjectFound {
+		t.Fatalf("credentialFieldsPerConfigObject not found in %s", redactionSourceFile)
 	}
-	if len(resourceTypesWithSecrets) == 0 {
-		t.Fatalf("dash0ResourceTypesWithSecrets not found in %s", redactionSourceFile)
-	}
-	return resourceTypesWithSecrets, coveredFieldsPerConfigObject, fieldsThatAreRedactedEverywhere
+	return coveredFieldsPerConfigObject, fieldsThatAreRedactedEverywhere
 }
 
 // caseClauseStrings returns the string literals of every case clause in the given function.

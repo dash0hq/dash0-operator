@@ -206,6 +206,26 @@ rules:
   - patch
   - update
 
+# Permissions required to watch SLO resources (openslo.com/v1):
+- apiGroups:
+  - openslo.com
+  resources:
+  - slos
+  verbs:
+  - get
+  - list
+  - watch
+
+# Permissions required to write to SLO resource status:
+- apiGroups:
+  - openslo.com
+  resources:
+  - slos/status
+  verbs:
+  - get
+  - patch
+  - update
+
 # Permissions required to watch Dash0 signal-to-metrics resources:
 - apiGroups:
   - operator.dash0.com
@@ -693,7 +713,8 @@ rules:
 {{/*
 The -manager-agent0-connector-ro cluster role holds the read-only permissions that the operator delegates to the
 agent0-connector deployment. The operator creates a dedicated cluster role/cluster role binding granting the
-agent0-connector service account "get" & "list" on the well-known resource types plus get on all non-resource URLs.
+agent0-connector service account "get" & "list" on the well-known resource types plus get on the non-resource URLs
+kubectl needs (the system:discovery list).
 Kubernetes' privilege-escalation prevention only allows the operator to grant permissions it holds itself, so it must
 hold these read permissions as well. This cluster role (and its binding) only exist when the agent0-connector feature
 is enabled (operator.agent0Connector.enabled).

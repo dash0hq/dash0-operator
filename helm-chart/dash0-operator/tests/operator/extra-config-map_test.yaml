@@ -622,6 +622,7 @@ tests:
                     - value-07
                     - value-08
             edgeProxyReplicas: 2
+            edgeProxyEnablePprof: false
             edgeProxyContainerResources:
               gomemlimit: 200MiB
               limits:

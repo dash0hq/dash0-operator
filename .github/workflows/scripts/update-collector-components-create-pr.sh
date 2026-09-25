@@ -35,13 +35,13 @@ fi
 
 echo "There are changes, creating a pull request."
 
-# Note: components_updated, new_stable_version etc. are sourced from $COLLECTOR_VERSIONS_OUTPUT, which is populated by
-# .github/workflows/scripts/update-collector-components-check-and-bump-versions.sh.
+# Note: components_updated, new_core_stable_version etc. are sourced from $COLLECTOR_VERSIONS_OUTPUT, which is populated
+# by .github/workflows/scripts/update-collector-components-check-and-bump-versions.sh.
 # shellcheck disable=SC2154
 if [[ "${components_updated:-false}" == "true" ]]; then
-  commit_message="chore(deps): bump Dash0 collector components (${new_stable_version}/${new_beta_version}/${new_contrib_version})"
-  pr_body=$(printf 'Update to:\n- core stable version: %s\n- core beta version: v%s\n- contrib version: v%s' \
-    "$new_stable_version" "$new_beta_version" "$new_contrib_version")
+  commit_message="chore(deps): bump Dash0 collector components (${new_core_stable_version}/${new_core_beta_version}/${new_contrib_stable_version}/${new_contrib_beta_version})"
+  pr_body=$(printf 'Update to:\n- core stable version: %s\n- core beta version: v%s\n- contrib stable version: v%s\n- contrib beta version: v%s' \
+    "$new_core_stable_version" "$new_core_beta_version" "$new_contrib_stable_version" "$new_contrib_beta_version")
   if ! git diff-files --quiet -- "${telemetry_module_files[@]}"; then
     pr_body="${pr_body}"$'\n\n'$(printf \
       'Also aligns the collector modules required by %s with these versions.' \

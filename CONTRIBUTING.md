@@ -197,6 +197,9 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       This defaults to `$TELEMETRY_COLLECTION_ENABLED`, which in turn defaults to "true".
     * `COLLECTOR_ENABLE_PPROF`: Set to "true" to enable the pprof extension in all containers of the collector pods.
       See [Creatig Heap Profiles](helm-chart/dash0-operator/docs/troubleshooting.md#create-heap-profiles) for instructions on creating heap profiles.
+    * `EDGE_PROXY_ENABLE_PPROF`: Set to "true" to enable pprof for the Edge Proxy pods (only relevant when Signal Control
+      is enabled).
+      See [Creatig Heap Profiles](helm-chart/dash0-operator/docs/troubleshooting.md#create-heap-profiles) for instructions on creating heap profiles.
     * `DASH0_API_ENDPOINT`: The endpoint for API requests (for synchronizing Perses dashboards, Prometheus check rules,
       synthetic checks and views). It is recommended to set this in `test-resources/.env`.
     * `DASH0_AUTHORIZATION_TOKEN`: The authorization token for sending telemetry to the Dash0 ingress endpoint and
@@ -226,6 +229,9 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       This defaults to "false".
     * `DEPLOY_SYNTHETIC_CHECK`: Set to "true" to deploy a synthetic check resource that will be synchronized to Dash0
       via the Dash0 API.
+      This defaults to "false".
+    * `DEPLOY_SLO`: Set to "true" to deploy an SLO resource (openslo.com/v1) that will be synchronized to Dash0 via the
+      Dash0 API.
       This defaults to "false".
     * `DEPLOY_VIEW`: Set to "true" to deploy a view resource that will be synchronized to Dash0 via the Dash0 API.
       This defaults to "false".

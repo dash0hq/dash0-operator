@@ -107,6 +107,7 @@ type ExtraConfig struct {
 	TargetAllocatorNodeAffinity             *corev1.NodeAffinity               `json:"targetAllocatorNodeAffinity,omitempty"`
 
 	EdgeProxyReplicas           int32                              `json:"edgeProxyReplicas,omitempty"`
+	EdgeProxyEnablePprof        bool                               `json:"edgeProxyEnablePprof,omitempty"`
 	EdgeProxyContainerResources ResourceRequirementsWithGoMemLimit `json:"edgeProxyContainerResources"`
 	EdgeProxyTolerations        []corev1.Toleration                `json:"edgeProxyTolerations,omitempty"`
 	EdgeProxyNodeAffinity       *corev1.NodeAffinity               `json:"edgeProxyNodeAffinity,omitempty"`

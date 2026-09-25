@@ -58,6 +58,14 @@ clusters:
   disabled, collecting these requires access to the `/pod` endpoint of the kubelet API which is not available in GKE
   autopilot due to the lack of the `nodes/proxy` permission
 
+GKE Autopilot [adjusts](https://cloud.google.com/kubernetes-engine/docs/concepts/autopilot-resource-requests) the
+resource requests and limits of all workloads, including the OpenTelemetry collectors and the other workloads managed by
+the operator.
+The adjustment is recorded in the `autopilot.gke.io/resource-adjustment` annotation of the workload.
+The operator accepts the adjusted values and does not revert them.
+When the resource settings in the Helm values are changed, the operator applies the new values, which GKE Autopilot then
+adjusts again.
+
 Refer to <https://cloud.google.com/kubernetes-engine/docs/how-to/run-autopilot-partner-workloads> for more information
 on `AllowlistSynchronizer`, `WorkloadAllowlist`, and related concepts.
 
