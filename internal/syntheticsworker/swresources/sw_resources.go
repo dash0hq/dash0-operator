@@ -132,7 +132,7 @@ func (m *SyntheticsWorkerResourceManager) createOrUpdateInstance(
 	}
 
 	for _, wrapper := range desiredState {
-		isNew, isChanged, err := m.createOrUpdateResource(ctx, wrapper.object, logger)
+		existingResource, isNew, isChanged, err := m.createOrUpdateResource(ctx, wrapper.object, logger)
 		if err != nil {
 			logger.Error(err, "error while creating/updating synthetics-worker resource")
 			result.Err = err
@@ -140,47 +140,44 @@ func (m *SyntheticsWorkerResourceManager) createOrUpdateInstance(
 		}
 		result.Created = result.Created || isNew
 		result.Updated = result.Updated || isChanged
-	}
 
-	var deployment appsv1.Deployment
-	deploymentKey := client.ObjectKey{
-		Namespace: m.syntheticsWorkerConfig.OperatorNamespace,
-		Name:      DeploymentName(m.syntheticsWorkerConfig.NamePrefix, instance.LocationID),
+		if desiredDeployment, ok := wrapper.object.(*appsv1.Deployment); ok {
+			result.DesiredReplicas = ptr.Deref(desiredDeployment.Spec.Replicas, defaultReplicas)
+			if existingDeployment, ok := existingResource.(*appsv1.Deployment); ok {
+				result.ReadyReplicas = existingDeployment.Status.ReadyReplicas
+			}
+		}
 	}
-	if err := m.Get(ctx, deploymentKey, &deployment); err != nil {
-		logger.Error(err, "cannot read back the synthetics-worker deployment to determine its readiness")
-		return result
-	}
-	result.ReadyReplicas = deployment.Status.ReadyReplicas
-	result.DesiredReplicas = ptr.Deref(deployment.Spec.Replicas, defaultReplicas)
 
 	return result
 }
 
+// createOrUpdateResource creates or updates desiredResource and returns the object as it existed before the update
+// (nil if it was just created), so a caller that needs its prior status does not have to re-fetch it.
 func (m *SyntheticsWorkerResourceManager) createOrUpdateResource(
 	ctx context.Context,
 	desiredResource client.Object,
 	logger logd.Logger,
-) (bool, bool, error) {
+) (client.Object, bool, bool, error) {
 	existingResource, err := resources.CreateEmptyReceiverFor(desiredResource)
 	if err != nil {
-		return false, false, err
+		return nil, false, false, err
 	}
 	err = m.Get(ctx, client.ObjectKeyFromObject(desiredResource), existingResource)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
-			return false, false, err
+			return nil, false, false, err
 		}
 		if err = m.createResource(ctx, desiredResource, logger); err != nil {
-			return false, false, err
+			return nil, false, false, err
 		}
-		return true, false, nil
+		return nil, true, false, nil
 	}
 	hasChanged, err := m.updateResource(ctx, existingResource, desiredResource, logger)
 	if err != nil {
-		return false, false, err
+		return nil, false, false, err
 	}
-	return false, hasChanged, nil
+	return existingResource, false, hasChanged, nil
 }
 
 func (m *SyntheticsWorkerResourceManager) createResource(

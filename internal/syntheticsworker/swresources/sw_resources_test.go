@@ -70,7 +70,7 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 
 	Context("when dealing with individual resources", func() {
 		It("should create a single resource", func() {
-			isNew, isChanged, err := manager.createOrUpdateResource(ctx, syntheticsWorkerTestResource.DeepCopy(), logger)
+			_, isNew, isChanged, err := manager.createOrUpdateResource(ctx, syntheticsWorkerTestResource.DeepCopy(), logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(isNew).To(BeTrue())
 			Expect(isChanged).To(BeFalse())
@@ -78,12 +78,12 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 		})
 
 		It("should update a single object", func() {
-			_, _, err := manager.createOrUpdateResource(ctx, syntheticsWorkerTestResource.DeepCopy(), logger)
+			_, _, _, err := manager.createOrUpdateResource(ctx, syntheticsWorkerTestResource.DeepCopy(), logger)
 			Expect(err).ToNot(HaveOccurred())
 
 			updated := syntheticsWorkerTestResource.DeepCopy()
 			updated.Data["key"] = "updated value"
-			isNew, isChanged, err := manager.createOrUpdateResource(ctx, updated, logger)
+			_, isNew, isChanged, err := manager.createOrUpdateResource(ctx, updated, logger)
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(isNew).To(BeFalse())
@@ -92,10 +92,10 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 		})
 
 		It("should report that nothing has changed for a single object", func() {
-			_, _, err := manager.createOrUpdateResource(ctx, syntheticsWorkerTestResource.DeepCopy(), logger)
+			_, _, _, err := manager.createOrUpdateResource(ctx, syntheticsWorkerTestResource.DeepCopy(), logger)
 			Expect(err).ToNot(HaveOccurred())
 
-			isNew, isChanged, err := manager.createOrUpdateResource(ctx, syntheticsWorkerTestResource.DeepCopy(), logger)
+			_, isNew, isChanged, err := manager.createOrUpdateResource(ctx, syntheticsWorkerTestResource.DeepCopy(), logger)
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(isNew).To(BeFalse())
