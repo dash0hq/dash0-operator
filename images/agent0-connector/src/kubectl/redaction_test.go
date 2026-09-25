@@ -576,6 +576,75 @@ func TestRedactNonStringCredentialValues(t *testing.T) {
 	}
 }
 
+// TestRedactMultiValuedHeaders covers a header or query parameter that holds a list of values rather than a single
+// one. Examples: Prometheus Operator CRDs, multivalued HTTP headers.
+func TestRedactMultiValuedHeaders(t *testing.T) {
+	document := `{
+        "kind": "SomeCustomResource",
+        "spec": {
+            "headers": {
+                "X-Api-Key": ["my-multi-header-secret", "my-second-header-secret"],
+                "Accept-Encoding": ["gzip", "identity"]
+            },
+            "queryParameters": {
+                "token": ["my-multi-query-secret"]
+            }
+        }
+    }`
+
+	rendered, replaced := redactDocument(t, document)
+
+	for _, secret := range []string{
+		"my-multi-header-secret",
+		"my-second-header-secret",
+		"my-multi-query-secret",
+	} {
+		if strings.Contains(rendered, secret) {
+			t.Errorf("expected %q to be redacted, got %q", secret, rendered)
+		}
+		if !slices.Contains(replaced, secret) {
+			t.Errorf("expected %q to be reported as replaced, got %q", secret, replaced)
+		}
+	}
+	// The well-known non-secret values keep their place, as they do for a single-valued header.
+	for _, preserved := range []string{"gzip", "identity", "X-Api-Key"} {
+		if !strings.Contains(rendered, preserved) {
+			t.Errorf("expected %q to be preserved, got %q", preserved, rendered)
+		}
+	}
+}
+
+// TestRedactHeaderListOfScalars covers the third list shape a header field takes: a list of literal values, as opposed
+// to the list of name/value pairs of the Dash0 custom resources and the map of a name to its values.
+func TestRedactHeaderListOfScalars(t *testing.T) {
+	document := `{
+        "kind": "SomeCustomResource",
+        "spec": {
+            "headers": ["Bearer my-scalar-header-secret", "application/json"],
+            "queryParameters": ["my-scalar-query-secret"]
+        }
+    }`
+
+	rendered, replaced := redactDocument(t, document)
+
+	// The whole element is replaced, since it has no key to redact it by, and the whole element is what has to be
+	// scrubbed from stderr.
+	for _, secret := range []string{
+		"Bearer my-scalar-header-secret",
+		"my-scalar-query-secret",
+	} {
+		if strings.Contains(rendered, secret) {
+			t.Errorf("expected %q to be redacted, got %q", secret, rendered)
+		}
+		if !slices.Contains(replaced, secret) {
+			t.Errorf("expected %q to be reported as replaced, got %q", secret, replaced)
+		}
+	}
+	if !strings.Contains(rendered, "application/json") {
+		t.Errorf("expected %q to be preserved, got %q", "application/json", rendered)
+	}
+}
+
 // TestRedactEnvAndCommandInOtherShapes covers the shapes "env", "command" and "args" take outside a pod spec. The walk
 // reaches documents no schema validates, where an environment is a map of name to value or a list of "NAME=value"
 // entries, and a command line is one string rather than a list of elements.
@@ -802,6 +871,19 @@ const (
 		}
 	}`
 
+	// The operator's extra config map carries the exports of the automatically created operator configuration resource
+	// (Helm value operator.exports). Their headers use the name/value shape of the custom resources, not the map shape
+	// of a collector configuration.
+	extraConfigMapJson = `{
+		"apiVersion": "v1",
+		"kind": "ConfigMap",
+		"metadata": {"name": "dash0-operator-extra-config", "namespace": "dash0-system"},
+		"data": {
+			"extra.yaml": "exports:\n  - grpc:\n      endpoint: otlp.example.com:4317\n      headers:\n` +
+		`      - name: authorization\n        value: Bearer extra-cm-token\n"
+		}
+	}`
+
 	rootCaConfigMapJson = `{
 		"apiVersion": "v1",
 		"kind": "ConfigMap",
@@ -851,6 +933,22 @@ func TestRedactConfigMapData(t *testing.T) {
 			}
 		}
 		if !slices.Contains(replaced, "Bearer collector-cm-token") {
+			t.Errorf("expected the header value to be scrubbed from stderr as well, got %q", replaced)
+		}
+	})
+
+	t.Run("redacts a header value of an export in the operator's extra config map", func(t *testing.T) {
+		rendered, replaced := redactDocument(t, extraConfigMapJson)
+
+		if strings.Contains(rendered, "extra-cm-token") {
+			t.Errorf("expected the export header value to be redacted, got %q", rendered)
+		}
+		for _, preserved := range []string{"otlp.example.com:4317", "authorization"} {
+			if !strings.Contains(rendered, preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, rendered)
+			}
+		}
+		if !slices.Contains(replaced, "Bearer extra-cm-token") {
 			t.Errorf("expected the header value to be scrubbed from stderr as well, got %q", replaced)
 		}
 	})
@@ -1332,6 +1430,63 @@ func TestRedactCredentialsInUrl(t *testing.T) {
 	}
 }
 
+// TestIsUrlField pins which field names the connector treats as a URL: the suffix has to start a word of the name, in
+// any of the spellings a resource type might use, so that a name that merely ends in those three letters is not run
+// through redactUrlParts.
+func TestIsUrlField(t *testing.T) {
+	for _, name := range []string{
+		"url", "URL", "proxyUrl", "proxyURL", "tokenUrl", "apiURL", "proxy_url", "proxy-url", "webhook.url",
+	} {
+		if !isUrlField(name) {
+			t.Errorf("expected %q to be recognized as a URL field", name)
+		}
+	}
+	for _, name := range []string{"curl", "urls", "u", "ur", "hurl", ""} {
+		if isUrlField(name) {
+			t.Errorf("expected %q not to be recognized as a URL field", name)
+		}
+	}
+}
+
+// TestWholeUrlCredentialWinsOverUrlFields pins the rule that lets "url" be recognized as a URL field without weakening
+// the notification channels: a URL that is a credential as a whole carries its secret in its path, where redactUrlParts
+// would leave it in place. The configuration object that holds it is redacted one level above, before the walk
+// descends to the "url" key itself, so the whole value is already the placeholder when the weaker rule sees it.
+func TestWholeUrlCredentialWinsOverUrlFields(t *testing.T) {
+	const secretInPath = "https://api.incident.io/v2/alert_events/http/whole-url-credential-secret"
+	document := `{
+        "kind": "Dash0NotificationChannel",
+        "spec": {
+            "incidentioConfig": {
+                "url": "` + secretInPath + `"
+            },
+            "plugin": {
+                "spec": {
+                    "request": {
+                        "url": "https://target.example.com/health?apiKey=request-url-secret"
+                    }
+                }
+            }
+        }
+    }`
+
+	rendered, replaced := redactDocument(t, document)
+
+	if strings.Contains(rendered, secretInPath) || strings.Contains(rendered, "alert_events") {
+		t.Errorf("expected the whole webhook URL to be redacted, got %q", rendered)
+	}
+	if !slices.Contains(replaced, secretInPath) {
+		t.Errorf("expected the whole webhook URL to be reported as replaced, got %q", replaced)
+	}
+	// The URL that is not a credential itself keeps everything but its query parameter value.
+	if !strings.Contains(rendered, "https://target.example.com/health?apiKey=") {
+		t.Errorf("expected the request URL to stay readable apart from its query, got %q", rendered)
+	}
+	if strings.Contains(rendered, "request-url-secret") {
+		t.Errorf("expected the query parameter value of the request URL to be redacted, got %q", rendered)
+	}
+}
+
 func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 	logger := discardLogger()
 
@@ -1474,28 +1629,6 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 		}
 	})
 
-	t.Run("redacts a credential of a resource type that is not known to hold one", func(t *testing.T) {
-		// A third-party custom resource the default RBAC grants can hold a credential just as well as a Dash0 one: the
-		// proxy of a Perses datasource carries the headers it sends verbatim.
-		fakeKubectlEchoing(t, persesDashboardJson)
-
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
-			RequestId: "req-perses-dashboard",
-			Command:   "kubectl",
-			Arguments: []string{"get", "persesdashboards", "-o", "json"},
-		})
-
-		if strings.Contains(resp.GetStdout(), persesProxyToken) {
-			t.Errorf("expected the proxy header value to be redacted, got %q", resp.GetStdout())
-		}
-		// The rest of the dashboard stays readable, which is what makes the response useful for diagnosing it.
-		for _, preserved := range []string{"my-dashboard", "https://prometheus.example.com"} {
-			if !strings.Contains(resp.GetStdout(), preserved) {
-				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
-			}
-		}
-	})
-
 	t.Run("preserves the content of a credential-free response of another resource type", func(t *testing.T) {
 		fakeKubectlEchoing(t, serviceJson)
 
@@ -1593,6 +1726,191 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRedactThirdPartyCustomResources covers the third-party custom resource types that the default RBAC rules of
+// agent0-connector grant access to, as well as an arbitrary one that only custom RBAC rules make reachable.
+func TestRedactThirdPartyCustomResources(t *testing.T) {
+	logger := discardLogger()
+
+	t.Run("redacts the proxy headers of a Perses dashboard", func(t *testing.T) {
+		fakeKubectlEchoing(t, persesDashboardJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-perses-dashboard",
+			Command:   "kubectl",
+			Arguments: []string{"get", "persesdashboards", "-o", "json"},
+		})
+
+		if strings.Contains(resp.GetStdout(), persesProxyToken) {
+			t.Errorf("expected the proxy header value to be redacted, got %q", resp.GetStdout())
+		}
+		for _, preserved := range []string{"my-dashboard", "https://prometheus.example.com"} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
+
+	t.Run("redacts the scrape parameters and the proxy URL of a service monitor", func(t *testing.T) {
+		fakeKubectlEchoing(t, serviceMonitorJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-service-monitor",
+			Command:   "kubectl",
+			Arguments: []string{"get", "servicemonitors", "-o", "json"},
+		})
+
+		for _, value := range []string{serviceMonitorScrapeApiKey, serviceMonitorProxyPassword} {
+			if strings.Contains(resp.GetStdout(), value) {
+				t.Errorf("expected %q to be redacted, got %q", value, resp.GetStdout())
+			}
+		}
+		// The parameter names, the well-known parameter value and the rest of the proxy URL stay readable.
+		for _, preserved := range []string{"api_key", "verbose", "true", "proxy-user", "proxy.example.com:3128"} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
+
+	t.Run("redacts the scrape parameters and the proxy URL of a pod monitor", func(t *testing.T) {
+		fakeKubectlEchoing(t, podMonitorJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-pod-monitor",
+			Command:   "kubectl",
+			Arguments: []string{"get", "podmonitors", "-o", "json"},
+		})
+
+		for _, value := range []string{podMonitorScrapeApiKey, podMonitorProxyPassword} {
+			if strings.Contains(resp.GetStdout(), value) {
+				t.Errorf("expected %q to be redacted, got %q", value, resp.GetStdout())
+			}
+		}
+		for _, preserved := range []string{"api_key", "verbose", "true", "proxy-user", "proxy.example.com:3128"} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
+
+	t.Run("redacts the scrape parameters and the proxy URL query of a scrape config", func(t *testing.T) {
+		fakeKubectlEchoing(t, scrapeConfigJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-scrape-config",
+			Command:   "kubectl",
+			Arguments: []string{"get", "scrapeconfigs", "-o", "json"},
+		})
+
+		for _, value := range []string{
+			scrapeConfigParamToken,
+			scrapeConfigProxyQueryApiKey,
+			scrapeConfigScalewayAccessKey,
+			scrapeConfigOvhcloudApplicationKey,
+		} {
+			if strings.Contains(resp.GetStdout(), value) {
+				t.Errorf("expected %q to be redacted, got %q", value, resp.GetStdout())
+			}
+		}
+		// The names of the referenced Kubernetes secrets are not credentials and stay readable, and so does everything
+		// that makes the service discovery configuration comprehensible.
+		for _, preserved := range []string{
+			"apiKey",
+			"proxy.example.com:3128",
+			"my-target.example.com:9100",
+			"my-project-id",
+			"my-scaleway-secret",
+			"my-ovhcloud-secret",
+			"VPS",
+		} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
+
+	t.Run("redacts the scrape parameters, the OAuth2 endpoint parameters and the query of the OAuth2 token URL of a "+
+		"probe", func(t *testing.T) {
+		fakeKubectlEchoing(t, probeJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-probe",
+			Command:   "kubectl",
+			Arguments: []string{"get", "probes", "-o", "json"},
+		})
+
+		for _, value := range []string{probeScrapeApiKey, probeOauth2ClientSecret, probeOauth2TokenUrlSecret} {
+			if strings.Contains(resp.GetStdout(), value) {
+				t.Errorf("expected %q to be redacted, got %q", value, resp.GetStdout())
+			}
+		}
+		for _, preserved := range []string{
+			"api_key",
+			"verbose",
+			"true",
+			"client_secret",
+			"https://oauth.example.com/token",
+			"blackbox.example.com:9115",
+		} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
+
+	t.Run("preserves a params field of a resource kind that does not hold query parameters", func(t *testing.T) {
+		fakeKubectlEchoing(t, configMapWithParamsJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-config-map-params",
+			Command:   "kubectl",
+			Arguments: []string{"get", "configmaps", "-o", "json"},
+		})
+
+		if !strings.Contains(resp.GetStdout(), unrelatedParamsValue) {
+			t.Errorf("expected %q to be preserved, got %q", unrelatedParamsValue, resp.GetStdout())
+		}
+	})
+
+	t.Run("redacts the credentials of a resource type that is not known at all", func(t *testing.T) {
+		// Fields like "token", "password" etc. are always redacted.
+		fakeKubectlEchoing(t, unknownCustomResourceJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-unknown-custom-resource",
+			Command:   "kubectl",
+			Arguments: []string{"get", "somecustomresources.example.com", "-o", "json"},
+		})
+
+		for _, value := range []string{
+			unknownResourceToken,
+			unknownResourcePassword,
+			unknownResourceHeaderValue,
+			unknownResourceProxyPassword,
+		} {
+			if strings.Contains(resp.GetStdout(), value) {
+				t.Errorf("expected %q to be redacted, got %q", value, resp.GetStdout())
+			}
+		}
+		// The rest of the resource stays readable, including the well-known non-secret header value, the readable parts
+		// of the proxy URL and a field that merely ends in those three letters without holding a URL.
+		for _, preserved := range []string{
+			"my-custom-resource",
+			"https://upstream.example.com",
+			"db.example.com",
+			"db-user",
+			"application/json",
+			"proxy-user",
+			"proxy.example.com:3128",
+			unrelatedCurlValue,
+		} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
 }
 
 func TestRedactDash0SecretsWithTruncatedStdout(t *testing.T) {
@@ -1826,6 +2144,201 @@ const persesDashboardJson = `{
     }
 }`
 
+// serviceMonitorJson is a third-party custom resource which is included in the default RBAC rules. The query
+// parameters of its scrape endpoints and the URL of the proxy they go through can both carry a credential.
+const serviceMonitorJson = `{
+    "apiVersion": "monitoring.coreos.com/v1",
+    "kind": "ServiceMonitor",
+    "metadata": {
+        "name": "my-service-monitor",
+        "namespace": "monitoring"
+    },
+    "spec": {
+        "endpoints": [
+            {
+                "path": "/metrics",
+                "port": "http",
+                "params": {
+                    "api_key": [
+                        "` + serviceMonitorScrapeApiKey + `"
+                    ],
+                    "verbose": [
+                        "true"
+                    ]
+                },
+                "proxyUrl": "http://proxy-user:` + serviceMonitorProxyPassword + `@proxy.example.com:3128"
+            }
+        ],
+        "selector": {
+            "matchLabels": {
+                "app": "my-app"
+            }
+        }
+    }
+}`
+
+// podMonitorJson holds its query parameters under a different path than a ServiceMonitor
+// (spec.podMetricsEndpoints rather than spec.endpoints), see queryParameterFieldsPerResourceKind.
+const podMonitorJson = `{
+    "apiVersion": "monitoring.coreos.com/v1",
+    "kind": "PodMonitor",
+    "metadata": {
+        "name": "my-pod-monitor",
+        "namespace": "monitoring"
+    },
+    "spec": {
+        "podMetricsEndpoints": [
+            {
+                "path": "/metrics",
+                "port": "http",
+                "params": {
+                    "api_key": [
+                        "` + podMonitorScrapeApiKey + `"
+                    ],
+                    "verbose": [
+                        "true"
+                    ]
+                },
+                "proxyUrl": "http://proxy-user:` + podMonitorProxyPassword + `@proxy.example.com:3128"
+            }
+        ],
+        "selector": {
+            "matchLabels": {
+                "app": "my-app"
+            }
+        }
+    }
+}`
+
+// scrapeConfigJson holds its query parameters at the root of its spec, unlike a ServiceMonitor, and carries the
+// credential in the query of its proxy URL rather than in its user information. Its service discovery configurations
+// are lists of configuration objects, and the two below hold a credential as a literal string rather than as a
+// reference to a Kubernetes secret.
+const scrapeConfigJson = `{
+    "apiVersion": "monitoring.coreos.com/v1alpha1",
+    "kind": "ScrapeConfig",
+    "metadata": {
+        "name": "my-scrape-config",
+        "namespace": "monitoring"
+    },
+    "spec": {
+        "params": {
+            "token": [
+                "` + scrapeConfigParamToken + `"
+            ]
+        },
+        "proxyUrl": "http://proxy.example.com:3128?apiKey=` + scrapeConfigProxyQueryApiKey + `",
+        "scalewaySDConfigs": [
+            {
+                "accessKey": "` + scrapeConfigScalewayAccessKey + `",
+                "projectID": "my-project-id",
+                "secretKey": {
+                    "name": "my-scaleway-secret",
+                    "key": "secret-key"
+                }
+            }
+        ],
+        "ovhcloudSDConfigs": [
+            {
+                "applicationKey": "` + scrapeConfigOvhcloudApplicationKey + `",
+                "service": "VPS",
+                "applicationSecret": {
+                    "name": "my-ovhcloud-secret",
+                    "key": "application-secret"
+                }
+            }
+        ],
+        "staticConfigs": [
+            {
+                "targets": [
+                    "my-target.example.com:9100"
+                ]
+            }
+        ]
+    }
+}`
+
+// probeJson holds its query parameters as a list of name/values pairs, unlike the other Prometheus Operator resources,
+// which hold them as a map. It also carries the parameters of an OAuth2 token request, which are redacted wherever they
+// occur rather than per resource kind, and the token endpoint of that OAuth2 configuration, whose field name ends in
+// "url" without being named "url".
+const probeJson = `{
+    "apiVersion": "monitoring.coreos.com/v1",
+    "kind": "Probe",
+    "metadata": {
+        "name": "my-probe",
+        "namespace": "monitoring"
+    },
+    "spec": {
+        "params": [
+            {
+                "name": "api_key",
+                "values": [
+                    "` + probeScrapeApiKey + `"
+                ]
+            },
+            {
+                "name": "verbose",
+                "values": [
+                    "true"
+                ]
+            }
+        ],
+        "oauth2": {
+            "tokenUrl": "https://oauth.example.com/token?client_secret=` + probeOauth2TokenUrlSecret + `",
+            "endpointParams": {
+                "client_secret": "` + probeOauth2ClientSecret + `"
+            }
+        },
+        "prober": {
+            "url": "blackbox.example.com:9115"
+        }
+    }
+}`
+
+// configMapWithParamsJson has a field named "params", but is not a resource kind whose query parameters are known, so
+// its values stay readable, see queryParameterFieldsPerResourceKind.
+const configMapWithParamsJson = `{
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+        "name": "my-config-map",
+        "namespace": "my-namespace"
+    },
+    "data": {
+        "params": "` + unrelatedParamsValue + `"
+    }
+}`
+
+// unknownCustomResourceJson is a custom resource of a type the connector knows nothing about: it is neither a Dash0
+// resource type nor one the default RBAC rules grant, so it is only reachable with custom RBAC rules.
+const unknownCustomResourceJson = `{
+    "apiVersion": "example.com/v1",
+    "kind": "SomeCustomResource",
+    "metadata": {
+        "name": "my-custom-resource",
+        "namespace": "my-namespace"
+    },
+    "spec": {
+        "replicas": 3,
+        "upstream": {
+            "endpoint": "https://upstream.example.com",
+            "token": "` + unknownResourceToken + `",
+            "headers": {
+                "Authorization": "` + unknownResourceHeaderValue + `",
+                "Content-Type": "application/json"
+            }
+        },
+        "database": {
+            "host": "db.example.com",
+            "user": "db-user",
+            "password": "` + unknownResourcePassword + `"
+        },
+        "proxyURL": "http://proxy-user:` + unknownResourceProxyPassword + `@proxy.example.com:3128",
+        "curl": "` + unrelatedCurlValue + `"
+    }
+}`
+
 // serviceJson is an example for a resource that holds no credential at all.
 const serviceJson = `{
     "apiVersion": "v1",
@@ -1849,6 +2362,27 @@ const serviceJson = `{
 
 const (
 	persesProxyToken = "Bearer my-perses-proxy-secret"
+
+	unknownResourceToken       = "my-unknown-resource-token"
+	unknownResourcePassword    = "my-unknown-resource-password"
+	unknownResourceHeaderValue = "Bearer my-unknown-resource-header-secret"
+
+	unknownResourceProxyPassword = "my-unknown-resource-proxy-password"
+	unrelatedCurlValue           = "curl -sS https://upstream.example.com/health"
+
+	serviceMonitorScrapeApiKey   = "my-service-monitor-scrape-api-key"
+	serviceMonitorProxyPassword  = "my-service-monitor-proxy-password"
+	podMonitorScrapeApiKey       = "my-pod-monitor-scrape-api-key"
+	podMonitorProxyPassword      = "my-pod-monitor-proxy-password"
+	scrapeConfigParamToken       = "my-scrape-config-param-token"
+	scrapeConfigProxyQueryApiKey = "my-scrape-config-proxy-query-api-key"
+	probeScrapeApiKey            = "my-probe-scrape-api-key"
+	probeOauth2ClientSecret      = "my-probe-oauth2-client-secret"
+	probeOauth2TokenUrlSecret    = "my-probe-oauth2-token-url-secret"
+	unrelatedParamsValue         = "not-a-credential"
+
+	scrapeConfigScalewayAccessKey      = "my-scrape-config-scaleway-access-key"
+	scrapeConfigOvhcloudApplicationKey = "my-scrape-config-ovhcloud-application-key"
 
 	operatorConfigurationToken = "auth_operator-configuration-token"
 	monitoringToken            = "auth_monitoring-token"

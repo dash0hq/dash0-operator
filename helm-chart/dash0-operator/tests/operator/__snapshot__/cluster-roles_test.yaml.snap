@@ -167,6 +167,22 @@ cluster roles should match snapshot:
           - patch
           - update
       - apiGroups:
+          - openslo.com
+        resources:
+          - slos
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - openslo.com
+        resources:
+          - slos/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
           - operator.dash0.com
         resources:
           - dash0signaltometrics
@@ -743,6 +759,22 @@ cluster roles should match snapshot with agent0-connector enabled:
           - operator.dash0.com
         resources:
           - dash0syntheticchecks/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
+          - openslo.com
+        resources:
+          - slos
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - openslo.com
+        resources:
+          - slos/status
         verbs:
           - get
           - patch
@@ -1386,6 +1418,13 @@ cluster roles should match snapshot with agent0-connector enabled:
           - get
           - list
       - apiGroups:
+          - openslo.com
+        resources:
+          - slos
+        verbs:
+          - get
+          - list
+      - apiGroups:
           - monitoring.coreos.com
         resources:
           - podmonitors
@@ -1404,7 +1443,17 @@ cluster roles should match snapshot with agent0-connector enabled:
           - get
           - list
       - nonResourceURLs:
-          - '*'
+          - /api
+          - /api/*
+          - /apis
+          - /apis/*
+          - /healthz
+          - /livez
+          - /openapi
+          - /openapi/*
+          - /readyz
+          - /version
+          - /version/
         verbs:
           - get
   6: |

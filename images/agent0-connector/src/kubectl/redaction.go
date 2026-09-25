@@ -113,18 +113,14 @@ var wellKnownNonSecretValues = map[string]struct{}{
 	"application/x-protobuf": {},
 }
 
-// credentialFieldsPerConfigObject maps the name of an object in a Dash0 custom resource to the fields
-// within it that hold a credential. Keying on the enclosing object rather than on the field name alone keeps the
-// generic field names ("url", "key") from matching unrelated values, e.g. the attribute keys of the notification
-// routing filters. The webhook URLs are credentials themselves: they contain an unguessable token that grants the
-// right to post to the channel.
+// credentialFieldsPerConfigObject maps the name of an object in a resource to the fields within it that hold a
+// credential. Keying on the enclosing object rather than on the field name alone keeps the generic field names
+// ("url", "key") from matching unrelated values, e.g. the attribute keys of the notification routing filters.
+// Webhook URLs are credentials themselves: they contain an unguessable token that grants the right to post to the
+// channel.
 //
 // A field may be given as a path of keys separated by ".", for a credential that sits in a nested object whose own
 // name is too generic to key on.
-//
-// Note that while credentialFieldsPerConfigObject primarily targets known Dash0 resource types, it is used on every
-// resource type when redacting. For example, a non-Dash0 resource type that has the path slackConfig.webhookURL
-// in its spec gets redacted in the same way as Dash0NotificationChannel.
 var credentialFieldsPerConfigObject = map[string][]string{
 	// Dash0NotificationChannel, spec.<type>Config
 	"slackConfig":             {"webhookURL"},
@@ -138,21 +134,40 @@ var credentialFieldsPerConfigObject = map[string][]string{
 	"ilertConfig":             {"url"},
 	"allQuietConfig":          {"url"},
 	"body":                    {"spec.content"},
+
+	// Prometheus Operator ScrapeConfig, spec.<provider>SDConfigs, both allow providing credentials as literal
+	// strings.
+	"scalewaySDConfigs": {"accessKey"},
+	"ovhcloudSDConfigs": {"applicationKey"},
 }
 
-// urlFieldsPerConfigObject maps the name of a configuration object in a Dash0 custom resource to the fields within it
-// that hold a URL whose credential-bearing parts have to be redacted, while the rest of the URL stays readable, see
-// redactUrlParts. This is the treatment for a URL that is not a credential itself: the URL of a synthetic
-// check is the target of the check and is what makes the resource comprehensible, but it can carry a password in its
-// user information and an API key in its query. The webhook URLs of the notification channels are the opposite case -
-// the URL as a whole is the credential - and are listed in credentialFieldsPerConfigObject instead.
+// urlFieldNameSuffix marks a field name as holding a URL whose credential-bearing parts have to be redacted, while the
+// rest of the URL stays readable, see redactUrlParts. This is the treatment for a URL that is not a credential itself:
+// the URL of a synthetic check is the target of the check and is what makes the resource comprehensible, but it can
+// carry a password in its user information and an API key in its query; the URL of an HTTP proxy and the token endpoint
+// of an OAuth2 configuration are the same case.
 //
-// Note that while urlFieldsPerConfigObject primarily targets known Dash0 resource types, it is used on every resource
-// type when redacting. A non-Dash0 resource type that has the path request.url in its spec gets redacted in the same
-// way as Dash0SyntheticCheck.
-var urlFieldsPerConfigObject = map[string][]string{
-	// Dash0SyntheticCheck, spec.plugin.spec.request
-	"request": {"url"},
+// This matches on the suffix rather than on a list of exact names, so this matches "url", "proxyUrl", "proxyURL",
+// "tokenUrl", "apiURL" etc.
+const urlFieldNameSuffix = "url"
+
+// queryParameterFieldsPerResourceKind maps a resource kind to the paths within it that hold the query parameters of a
+// request the resource configures, as a map of a parameter name to its values. A scrape query string carrying an API
+// key is a common pattern, so these values are redacted exactly like header values (see redactHeaderValues).
+//
+// The scope is bound to the kind rather than to the key name: "params" is a generic field that other resource types
+// carry with an unrelated meaning. The consequence is that a credential-bearing "params" of a resource type that is not
+// listed here is not redacted.
+//
+// A path segment that resolves to a list is applied to every element of that list, see resolveFieldPath.
+var queryParameterFieldsPerResourceKind = map[string][]string{
+	// Prometheus Operator (monitoring.coreos.com), which the default RBAC rules of the agent0-connector grant read
+	// access to.
+	"ServiceMonitor": {"spec.endpoints.params"},
+	"PodMonitor":     {"spec.podMetricsEndpoints.params"},
+	"ScrapeConfig":   {"spec.params"},
+	// Unlike the other three, a Probe holds its parameters as a list of name/values pairs rather than as a map.
+	"Probe": {"spec.params"},
 }
 
 // parseableOutputFormats are the output formats whose response the connector can parse itself.
@@ -599,7 +614,10 @@ func isWalkableNode(node any) bool {
 //     of a synthetic check, as well as its query parameter values,
 //   - the credentials of the third-party integration of a notification channel and the request body of a synthetic
 //     check (see credentialFieldsPerConfigObject),
-//   - the credential-bearing parts of the URL a synthetic check requests (see urlFieldsPerConfigObject),
+//   - the credential-bearing parts of every field that holds a URL, e.g. the target of a synthetic check, the URL of an
+//     HTTP proxy or an OAuth2 token endpoint (see isUrlField),
+//   - the query parameter values of the requests that a scrape configuration configures (see
+//     queryParameterFieldsPerResourceKind), and the parameters its OAuth2 token request appends (endpointParams),
 //   - the literal values of the environment variables of every container of a pod spec (see redactEnvVarValues), and
 //     the elements of its command line (see redactArgumentValues),
 //   - the header values of the HTTP probes and lifecycle hooks of a pod spec, which have the same shape as the header
@@ -619,13 +637,14 @@ func redactDocumentNodeRecursively(node any, redacted *redactor) {
 	switch typedNode := node.(type) {
 	case map[string]any:
 		redactConfigMapData(typedNode, redacted)
+		redactQueryParameterFields(typedNode, redacted)
 		// Only the values of existing keys are replaced, never new ones added, so the map may be modified while it is
 		// ranged over.
 		for key, value := range typedNode {
 			switch key {
 			case "token", "password":
 				redactValueOf(typedNode, key, redacted)
-			case "headers", "queryParameters", "httpHeaders":
+			case "headers", "queryParameters", "httpHeaders", "endpointParams":
 				redactHeaderValues(typedNode, key, redacted)
 			case "env":
 				redactEnvVarValues(typedNode, key, redacted)
@@ -634,11 +653,11 @@ func redactDocumentNodeRecursively(node any, redacted *redactor) {
 			case "annotations":
 				redactAnnotationValues(value, redacted)
 			default:
+				if isUrlField(key) {
+					redactUrlParts(typedNode, key, redacted)
+				}
 				if credentialFields, hasCredentials := credentialFieldsPerConfigObject[key]; hasCredentials {
 					redactCredentialFields(value, credentialFields, redacted)
-				}
-				if urlFields, hasUrls := urlFieldsPerConfigObject[key]; hasUrls {
-					redactUrlFields(value, urlFields, redacted)
 				}
 			}
 			redactDocumentNodeRecursively(value, redacted)
@@ -750,27 +769,32 @@ func redactArgumentValues(node map[string]any, key string, redacted *redactor) {
 	}
 }
 
-// redactHeaderValues redacts the literal header or query parameter values held by the given key of node. Three shapes
-// occur in the Dash0 custom resources: the list of name/value pairs of the exports and of the request of a synthetic
-// check, the map of the generic webhook notification channel, and the single header value of the Incident.io
-// notification channel, which is why the enclosing node is passed rather than the value itself.
+// redactHeaderValues redacts the literal header or query parameter values held by the given key of node.
 func redactHeaderValues(node map[string]any, key string, redacted *redactor) {
 	switch typedValue := node[key].(type) {
 	case []any:
-		for _, header := range typedValue {
-			headerMap, isMap := header.(map[string]any)
-			if !isMap {
+		// Examples:
+		// - "headers": [{"name": "Authorization", "value": "Bearer secret"}] - list of key-value pairs
+		// - "params": [{"name": "api_key", "values": ["secret"]}] - a list of values per pair (Probe)
+		// - "headers": ["Authorization: Bearer secret"] - list of strings
+		for i, header := range typedValue {
+			if headerMap, isMap := header.(map[string]any); isMap {
+				redactHeaderValueIfPlausible(headerMap, "value", redacted)
+				redactHeaderValueIfPlausible(headerMap, "values", redacted)
 				continue
 			}
-			redactHeaderValueIfPlausible(headerMap, "value", redacted)
+			redactListElementIfPlausible(typedValue, i, redacted)
 		}
 	case map[string]any:
+		// Example:
+		// - "headers": {"Authorization": "Bearer secret"} - single key-value pair
+		// - "params": {"foobar": ["secret"]} - a list of values per name (the name itself is not inspected)
 		for name := range typedValue {
 			redactHeaderValueIfPlausible(typedValue, name, redacted)
 		}
 	default:
-		// A single header value, which redactHeaderValueIfPlausible replaces if it is a scalar and leaves alone
-		// otherwise.
+		// Examples:
+		// - "headers": "Bearer secret" - a single header value
 		redactHeaderValueIfPlausible(node, key, redacted)
 	}
 }
@@ -778,49 +802,128 @@ func redactHeaderValues(node map[string]any, key string, redacted *redactor) {
 // redactHeaderValueIfPlausible redacts a header or query parameter value, unless it is a well-known non-secret value.
 // Unlike the fields that are credentials by definition (a token, a password, the credential of a notification
 // channel), a header is a position that also carries values which are not credentials at all - a content type, an
-// encoding - and rendering those as the placeholder would hide harmless information from the reader without protecting
+// encoding. Rendering those as the placeholder would hide harmless information from the reader without protecting
 // anything.
+//
+// A header or query parameter that holds a list of values (e.g. params of the Prometheus Operator CRDs, or a
+// multivalued HTTP header) is redacted element by element.
 func redactHeaderValueIfPlausible(node map[string]any, key string, redacted *redactor) {
+	if values, isList := node[key].([]any); isList {
+		for i := range values {
+			redactListElementIfPlausible(values, i, redacted)
+		}
+		return
+	}
 	value, isScalar := scalarValue(node[key])
 	if !isScalar {
 		return
 	}
-	if _, isWellKnown := wellKnownNonSecretValues[strings.ToLower(value)]; isWellKnown {
+	if isWellKnownNonSecretValue(value) {
 		return
 	}
 	redactValueOf(node, key, redacted)
 }
 
-// redactCredentialFields redacts the given fields of a configuration object, see credentialFieldsPerConfigObject. A
-// field given as a path of keys separated by "." is resolved through the nested objects it names; a path that does not
-// resolve to an object is skipped.
-func redactCredentialFields(node any, credentialFields []string, redacted *redactor) {
-	for _, field := range credentialFields {
+// redactListElementIfPlausible redacts the element at the given index of a list of header or query parameter values,
+// unless it is a well-known non-secret value. A list element is replaced in place, since it has no key to redact it by.
+func redactListElementIfPlausible(values []any, index int, redacted *redactor) {
+	value, isScalar := scalarValue(values[index])
+	if !isScalar {
+		return
+	}
+	if isWellKnownNonSecretValue(value) {
+		return
+	}
+	values[index] = redactedValue
+	redacted.add(value)
+}
+
+// redactQueryParameterFields redacts the query parameters of the requests a resource configures, for Prometheus
+// ServiceMonitors, PodMonitors and ScrapeConfigs, see queryParameterFieldsPerResourceKind.
+func redactQueryParameterFields(resource map[string]any, redacted *redactor) {
+	kind, isString := resource["kind"].(string)
+	if !isString {
+		return
+	}
+	for _, field := range queryParameterFieldsPerResourceKind[kind] {
 		path := strings.Split(field, ".")
-		enclosingObject, isMap := node.(map[string]any)
-		for _, key := range path[:len(path)-1] {
-			if !isMap {
-				break
-			}
-			enclosingObject, isMap = enclosingObject[key].(map[string]any)
-		}
-		if !isMap {
-			continue
-		}
-		redactValueOf(enclosingObject, path[len(path)-1], redacted)
+		resolveFieldPath(resource, path[:len(path)-1], func(enclosingObject map[string]any) {
+			redactHeaderValues(enclosingObject, path[len(path)-1], redacted)
+		})
 	}
 }
 
-// redactUrlFields redacts the credential-bearing parts of the URLs held by the given fields of a configuration object,
-// see urlFieldsPerConfigObject.
-func redactUrlFields(node any, urlFields []string, redacted *redactor) {
-	configObject, isMap := node.(map[string]any)
+// resolveFieldPath calls onEnclosingObject for every object the given path of keys resolves to within node. A key that
+// holds a list is followed into every element of that list, so that a path can address a field of each element (e.g.
+// spec.endpoints.params of a ServiceMonitor). A path that does not resolve to an object is skipped.
+func resolveFieldPath(node any, path []string, onEnclosingObject func(map[string]any)) {
+	if items, isList := node.([]any); isList {
+		for _, item := range items {
+			resolveFieldPath(item, path, onEnclosingObject)
+		}
+		return
+	}
+	object, isMap := node.(map[string]any)
 	if !isMap {
 		return
 	}
-	for _, field := range urlFields {
-		redactUrlParts(configObject, field, redacted)
+	if len(path) == 0 {
+		onEnclosingObject(object)
+		return
 	}
+	resolveFieldPath(object[path[0]], path[1:], onEnclosingObject)
+}
+
+// redactCredentialFields redacts the given fields of a configuration object, see credentialFieldsPerConfigObject. A
+// field given as a path of keys separated by "." is resolved through the nested objects it names; a path that does not
+// resolve to an object is skipped. A configuration object that is a list is redacted element by element (relevant for
+// the service discovery configurations of a ScrapeConfig, e.g. scalewaySDConfigs.accessKey etc.)
+func redactCredentialFields(node any, credentialFields []string, redacted *redactor) {
+	for _, field := range credentialFields {
+		path := strings.Split(field, ".")
+		// Resolve all segments but the last of the path to the object(s) holding the credential, following lists into every
+		// element. Then redact the value of the last segment in each of them. For "spec.content", that is the key
+		// "content" in the object at "spec"; for a single-segment field like "accessKey", the parent path is empty, so
+		// the configuration object itself (or, if it is a list, each of its elements) holds the credential.
+		resolveFieldPath(node, path[:len(path)-1], func(enclosingObject map[string]any) {
+			redactValueOf(enclosingObject, path[len(path)-1], redacted)
+		})
+	}
+}
+
+// isUrlField reports whether a field of the given name holds a URL whose credential-bearing parts are redacted. Unlike
+// the generic names of credentialFieldsPerConfigObject, such a field is probably a URL no matter where it occurs in
+// the document.
+//
+// The webhook URLs of the notification channels is a different case - the URL as a whole is the credential, since its
+// path holds an unguessable token. Therefore, it is listed in credentialFieldsPerConfigObject instead. Those cases are
+// reached from their configuration object one level above and are already replaced by the time the walk descends to the
+// "url" key itself, where redactUrlParts leaves the placeholder alone. The stronger rule therefore keeps winning over
+// this one.
+func isUrlField(key string) bool {
+	if len(key) < len(urlFieldNameSuffix) {
+		return false
+	}
+	suffix := key[len(key)-len(urlFieldNameSuffix):]
+	if !strings.EqualFold(suffix, urlFieldNameSuffix) {
+		return false
+	}
+	if len(key) == len(urlFieldNameSuffix) {
+		return true
+	}
+	// The suffix has to start a word of the name, so that "proxyUrl", "proxyURL" and "proxy_url" are URL fields while
+	// a name that merely ends in those three letters, e.g. "curl", is not.
+	if suffix[0] == 'U' {
+		return true
+	}
+	precedingCharacter := key[len(key)-len(urlFieldNameSuffix)-1]
+	return !isAsciiLetterOrDigit(precedingCharacter)
+}
+
+func isAsciiLetterOrDigit(character byte) bool {
+	return character >= 'a' && character <= 'z' ||
+		character >= 'A' && character <= 'Z' ||
+		character >= '0' && character <= '9'
 }
 
 // redactUrlParts redacts the potential credential-bearing parts of the URL the given key holds in node (user
@@ -922,7 +1025,7 @@ func redactQueryParameterValues(rawQuery string, redacted *redactor) string {
 		if err != nil {
 			decodedValue = rawValue
 		}
-		if _, isWellKnown := wellKnownNonSecretValues[strings.ToLower(decodedValue)]; isWellKnown {
+		if isWellKnownNonSecretValue(decodedValue) {
 			continue
 		}
 		parameters[i] = parameter[:separator+1] + redactUrlPart(rawValue, decodedValue, redacted)
@@ -993,6 +1096,13 @@ func redactAllSecrets(text string, secrets []string) string {
 		text = strings.ReplaceAll(text, secret, redactedValue)
 	}
 	return text
+}
+
+// isWellKnownNonSecretValue returns true for values that are very unlikely to be a credential ("true", "false",
+// "default", etc.), see wellKnownNonSecretValues.
+func isWellKnownNonSecretValue(value string) bool {
+	_, isWellKnown := wellKnownNonSecretValues[strings.ToLower(value)]
+	return isWellKnown
 }
 
 // scalarValue checks whether the gives part of a document is a scalar (string, number, bool) and returns its value

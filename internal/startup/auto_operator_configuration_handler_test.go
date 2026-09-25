@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -71,7 +73,7 @@ var _ = Describe(
 		)
 
 		It(
-			"should fail validation if no endpoint has been provided", func() {
+			"should fail validation if neither an endpoint nor exports have been provided", func() {
 				handler := NewAutoOperatorConfigurationResourceHandler(
 					k8sClient,
 					readyCheckExecuter,
@@ -85,7 +87,9 @@ var _ = Describe(
 				Expect(err).To(
 					MatchError(
 						ContainSubstring(
-							"invalid operator configuration: --operator-configuration-endpoint has not been provided",
+							"invalid operator configuration: the operator configuration resource is managed via Helm, but " +
+								"neither --operator-configuration-endpoint (Helm value operator.dash0Export.endpoint) nor " +
+								"any export (Helm value operator.exports) has been provided",
 						),
 					),
 				)
@@ -168,9 +172,10 @@ var _ = Describe(
 						g.Expect(operatorConfiguration.Annotations[managedByHelmAnnotationKey]).To(
 							Equal(
 								"DO NOT EDIT THIS RESOURCE. This operator configuration resource is managed by the operator Helm " +
-									"chart (Helm values operator.dash0Export.*), manual modifications to this resource (i.e. via " +
-									"kubectl or k9s) will be overwritten when the operator manager is restarted or the operator is " +
-									"updated to a new version. See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/" +
+									"chart (Helm values operator.dash0Export.* and operator.exports), manual modifications to this " +
+									"resource (i.e. via kubectl or k9s) will be overwritten when the operator manager is restarted " +
+									"or the operator is updated to a new version. See " +
+									"https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/" +
 									"dash0-operator/docs/configuration.md#" +
 									"notes-on-creating-the-operator-configuration-resource-via-helm.",
 							),
@@ -1118,6 +1123,181 @@ var _ = Describe(
 						g.Expect(*operatorConfiguration.Spec.PrometheusCrdSupport.Enabled).To(BeTrue())
 						g.Expect(operatorConfiguration.Spec.Profiling).ToNot(BeNil())
 						g.Expect(*operatorConfiguration.Spec.Profiling.Enabled).To(BeTrue())
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		It(
+			"should create a new operator configuration resource with exports only", func() {
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{},
+					util.ExtraConfig{Exports: []dash0common.Export{
+						{
+							Grpc: &dash0common.GrpcConfiguration{
+								Endpoint: "otel-collector.other-namespace.svc.cluster.local:4317",
+								Insecure: ptr.To(true),
+								Headers: []dash0common.Header{{
+									Name:  "x-tenant",
+									Value: "tenant-1",
+								}},
+							},
+						},
+					}},
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						g.Expect(
+							k8sClient.Get(
+								ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+								&operatorConfiguration,
+							),
+						).To(Succeed())
+
+						exports := operatorConfiguration.Spec.Exports
+						g.Expect(exports).To(HaveLen(1))
+						g.Expect(exports[0].Dash0).To(BeNil())
+						g.Expect(exports[0].Http).To(BeNil())
+						grpcExport := exports[0].Grpc
+						g.Expect(grpcExport).ToNot(BeNil())
+						g.Expect(grpcExport.Endpoint).To(Equal("otel-collector.other-namespace.svc.cluster.local:4317"))
+						g.Expect(*grpcExport.Insecure).To(BeTrue())
+						g.Expect(grpcExport.Headers).To(HaveLen(1))
+						g.Expect(grpcExport.Headers[0].Name).To(Equal("x-tenant"))
+						g.Expect(grpcExport.Headers[0].Value).To(Equal("tenant-1"))
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		It(
+			"should put the Dash0 export first and default the encoding of an http export", func() {
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithToken,
+					util.ExtraConfig{Exports: []dash0common.Export{
+						{Http: &dash0common.HttpConfiguration{Endpoint: "https://otlp.example.com"}},
+						{Grpc: &dash0common.GrpcConfiguration{Endpoint: "otelcol:4317"}},
+					}},
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						g.Expect(
+							k8sClient.Get(
+								ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+								&operatorConfiguration,
+							),
+						).To(Succeed())
+
+						exports := operatorConfiguration.Spec.Exports
+						g.Expect(exports).To(HaveLen(3))
+						g.Expect(exports[0].Dash0).ToNot(BeNil())
+						g.Expect(exports[0].Dash0.Endpoint).To(Equal(EndpointDash0Test))
+						g.Expect(exports[1].Http).ToNot(BeNil())
+						g.Expect(exports[1].Http.Encoding).To(Equal(dash0common.Proto))
+						g.Expect(exports[2].Grpc).ToNot(BeNil())
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		DescribeTable(
+			"should fail validation for an invalid export",
+			func(export dash0common.Export, expectedErrorMessage string) {
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{},
+					util.ExtraConfig{Exports: []dash0common.Export{export}},
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).To(MatchError(ContainSubstring(expectedErrorMessage)))
+			},
+			Entry(
+				"no exporter at all",
+				dash0common.Export{},
+				"operator.exports[0] has none of dash0, grpc or http set",
+			),
+			Entry(
+				"dash0 without endpoint",
+				dash0common.Export{Dash0: &dash0common.Dash0Configuration{}},
+				"operator.exports[0].dash0 has no endpoint",
+			),
+			Entry(
+				"grpc without endpoint",
+				dash0common.Export{Grpc: &dash0common.GrpcConfiguration{}},
+				"operator.exports[0].grpc has no endpoint",
+			),
+			Entry(
+				"http without endpoint",
+				dash0common.Export{Http: &dash0common.HttpConfiguration{}},
+				"operator.exports[0].http has no endpoint",
+			),
+		)
+
+		It(
+			"should update the existing resource when UpdateExtraConfig is called with new exports", func() {
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithToken,
+					util.ExtraConfig{},
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						g.Expect(
+							k8sClient.Get(
+								ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+								&operatorConfiguration,
+							),
+						).To(Succeed())
+						g.Expect(operatorConfiguration.Spec.Exports).To(HaveLen(1))
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+
+				handler.UpdateExtraConfig(
+					ctx,
+					util.ExtraConfig{
+						Exports: []dash0common.Export{
+							{Grpc: &dash0common.GrpcConfiguration{Endpoint: "otelcol:4317"}},
+						},
+					},
+					logger,
+				)
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						g.Expect(
+							k8sClient.Get(
+								ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+								&operatorConfiguration,
+							),
+						).To(Succeed())
+						exports := operatorConfiguration.Spec.Exports
+						g.Expect(exports).To(HaveLen(2))
+						g.Expect(exports[0].Dash0).ToNot(BeNil())
+						g.Expect(exports[1].Grpc).ToNot(BeNil())
+						g.Expect(exports[1].Grpc.Endpoint).To(Equal("otelcol:4317"))
 					}, 5*time.Second, 100*time.Millisecond,
 				).Should(Succeed())
 			},

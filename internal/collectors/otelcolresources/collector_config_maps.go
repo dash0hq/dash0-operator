@@ -321,6 +321,56 @@ func assembleCollectorConfigMap(
 		return &configMap, nil
 	}
 
+	collectorConfiguration, err := renderCollectorConfiguration(template,
+		newCollectorConfigurationTemplateValues(
+			config,
+			monitoredNamespaces,
+			namespacesWithLogCollection,
+			namespacesWithEventCollection,
+			namespacesWithPrometheusScraping,
+			filters,
+			transforms,
+			collectorMemoryLimit,
+			targetAllocatorMtlsConfig,
+		))
+	if err != nil {
+		return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)
+	}
+
+	if !config.CompressConfigMap {
+		// config map compression is not enabled, return plain text config map
+		configMap.Data = map[string]string{
+			collectorConfigurationYaml: collectorConfiguration,
+		}
+		return &configMap, nil
+	}
+
+	// config map compression is enabled, compress the configuration with gzip
+	compressedConfiguration, err := compressContent(collectorConfiguration)
+	if err != nil {
+		return nil, err
+	}
+	configMap.Data = nil
+	configMap.BinaryData = map[string][]byte{
+		collectorConfigurationYaml: compressedConfiguration.Bytes(),
+	}
+	return &configMap, nil
+}
+
+// newCollectorConfigurationTemplateValues derives the values for one collector configuration template from the
+// operator's collector configuration. It is the single place where the template's view of the configuration is
+// assembled, which allows tests to inspect the exact values a template is rendered with.
+func newCollectorConfigurationTemplateValues(
+	config *oTelColConfig,
+	monitoredNamespaces []string,
+	namespacesWithLogCollection []string,
+	namespacesWithEventCollection []string,
+	namespacesWithPrometheusScraping []string,
+	filters []NamespacedFilter,
+	transforms []NamespacedTransform,
+	collectorMemoryLimit resource.Quantity,
+	targetAllocatorMtlsConfig TargetAllocatorMtlsConfig,
+) *collectorConfigurationTemplateValues {
 	selfIpReference := "${env:K8S_POD_IP}"
 	if config.IsIPv6Cluster {
 		selfIpReference = "[${env:K8S_POD_IP}]"
@@ -349,79 +399,56 @@ func assembleCollectorConfigMap(
 		memoryLimiterSpikeMiB = settings.SpikeMiB
 	}
 
-	collectorConfiguration, err := renderCollectorConfiguration(template,
-		&collectorConfigurationTemplateValues{
-			OperatorNamespace:           config.OperatorNamespace,
-			OperatorResourcesNamePrefix: config.NamePrefix,
-			Exporters:                   config.Exporters,
-			SendBatchSize:               config.SendBatchSize,
-			SendBatchMaxSize:            config.SendBatchMaxSize,
-			KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
-			CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
-			CollectNamespaceLabelsAndAnnotationsEnabled:      config.CollectNamespaceLabelsAndAnnotationsEnabled,
-			CollectNodeLabelsAndAnnotationsEnabled:           config.CollectNodeLabelsAndAnnotationsEnabled,
-			LabelAndAnnotationExclusionPatterns:              labelAndAnnotationExclusionPatterns(),
-			K8sAttributesDisableReplicasetInformer:           config.K8sAttributesDisableReplicasetInformer,
-			K8sAttributesWaitForMetadata:                     config.K8sAttributesWaitForMetadata,
-			K8sAttributesWaitForMetadataTimeout:              config.K8sAttributesWaitForMetadataTimeout,
-			PrometheusCrdSupportEnabled:                      config.PrometheusCrdSupportEnabled,
-			TargetAllocatorAppKubernetesIoName:               taresources.AppKubernetesIoNameValue,
-			TargetAllocatorAppKubernetesIoInstance:           taresources.AppKubernetesIoInstanceValue,
-			TargetAllocatorServiceName:                       targetAllocatorServiceName,
-			TargetAllocatorMtlsEnabled:                       targetAllocatorMtlsConfig.Enabled,
-			TargetAllocatorMtlsClientCertsDir:                targetAllocatorCertsVolumeDir,
-			Agent0ConnectorEnabled:                           config.Agent0ConnectorEnabled,
-			Agent0ConnectorDeploymentName:                    config.Agent0ConnectorDeploymentName,
-			KubeletStatsReceiverConfig:                       config.KubeletStatsReceiverConfig,
-			UseHostMetricsReceiver:                           config.UseHostMetricsReceiver,
-			IsGkeAutopilot:                                   config.IsGkeAutopilot,
-			PseudoClusterUid:                                 string(config.PseudoClusterUid),
-			ClusterName:                                      config.ClusterName,
-			OperatorVersion:                                  config.Images.GetOperatorVersion(),
-			NamespacesWithLogCollection:                      namespacesWithLogCollection,
-			NamespacesWithEventCollection:                    namespacesWithEventCollection,
-			NamespaceOttlFilter:                              namespaceOttlFilter,
-			NamespacesWithPrometheusScraping:                 namespacesWithPrometheusScraping,
-			CustomFilters:                                    customTelemetryFilters,
-			CustomTransforms:                                 customTelemetryTransforms,
-			SelfIpReference:                                  selfIpReference,
-			InternalTelemetryEnabled:                         selfMonitoringMetricsConfig != "" || selfMonitoringLogsConfig != "",
-			SelfMonitoringEnabled:                            config.SelfMonitoringConfiguration.SelfMonitoringEnabled,
-			SelfMonitoringMetricsConfig:                      selfMonitoringMetricsConfig,
-			SelfMonitoringLogsConfig:                         selfMonitoringLogsConfig,
-			DevelopmentMode:                                  config.DevelopmentMode,
-			DebugVerbosityDetailed:                           config.DebugVerbosityDetailed,
-			EnableProfExtension:                              config.EnableProfExtension,
-			ProfilingEnabled:                                 config.ProfilingEnabled,
-			SignalControl:                                    config.SignalControl,
-			SignalControlGatewayActive:                       config.signalControlGatewayActive(),
-			SignalControlCollectorServiceName:                SignalControlCollectorServiceName(config.NamePrefix),
-			SignalControlCollectorDeploymentName:             SignalControlCollectorDeploymentName(config.NamePrefix),
-			MemoryLimiterLimitMiB:                            memoryLimiterLimitMiB,
-			MemoryLimiterSpikeLimitMiB:                       memoryLimiterSpikeMiB,
-		})
-	if err != nil {
-		return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)
+	return &collectorConfigurationTemplateValues{
+		OperatorNamespace:           config.OperatorNamespace,
+		OperatorResourcesNamePrefix: config.NamePrefix,
+		Exporters:                   config.Exporters,
+		SendBatchSize:               config.SendBatchSize,
+		SendBatchMaxSize:            config.SendBatchMaxSize,
+		KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
+		CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
+		CollectNamespaceLabelsAndAnnotationsEnabled:      config.CollectNamespaceLabelsAndAnnotationsEnabled,
+		CollectNodeLabelsAndAnnotationsEnabled:           config.CollectNodeLabelsAndAnnotationsEnabled,
+		LabelAndAnnotationExclusionPatterns:              labelAndAnnotationExclusionPatterns(),
+		K8sAttributesDisableReplicasetInformer:           config.K8sAttributesDisableReplicasetInformer,
+		K8sAttributesWaitForMetadata:                     config.K8sAttributesWaitForMetadata,
+		K8sAttributesWaitForMetadataTimeout:              config.K8sAttributesWaitForMetadataTimeout,
+		PrometheusCrdSupportEnabled:                      config.PrometheusCrdSupportEnabled,
+		TargetAllocatorAppKubernetesIoName:               taresources.AppKubernetesIoNameValue,
+		TargetAllocatorAppKubernetesIoInstance:           taresources.AppKubernetesIoInstanceValue,
+		TargetAllocatorServiceName:                       targetAllocatorServiceName,
+		TargetAllocatorMtlsEnabled:                       targetAllocatorMtlsConfig.Enabled,
+		TargetAllocatorMtlsClientCertsDir:                targetAllocatorCertsVolumeDir,
+		Agent0ConnectorEnabled:                           config.Agent0ConnectorEnabled,
+		Agent0ConnectorDeploymentName:                    config.Agent0ConnectorDeploymentName,
+		KubeletStatsReceiverConfig:                       config.KubeletStatsReceiverConfig,
+		UseHostMetricsReceiver:                           config.UseHostMetricsReceiver,
+		IsGkeAutopilot:                                   config.IsGkeAutopilot,
+		PseudoClusterUid:                                 string(config.PseudoClusterUid),
+		ClusterName:                                      config.ClusterName,
+		OperatorVersion:                                  config.Images.GetOperatorVersion(),
+		NamespacesWithLogCollection:                      namespacesWithLogCollection,
+		NamespacesWithEventCollection:                    namespacesWithEventCollection,
+		NamespaceOttlFilter:                              namespaceOttlFilter,
+		NamespacesWithPrometheusScraping:                 namespacesWithPrometheusScraping,
+		CustomFilters:                                    customTelemetryFilters,
+		CustomTransforms:                                 customTelemetryTransforms,
+		SelfIpReference:                                  selfIpReference,
+		InternalTelemetryEnabled:                         selfMonitoringMetricsConfig != "" || selfMonitoringLogsConfig != "",
+		SelfMonitoringEnabled:                            config.SelfMonitoringConfiguration.SelfMonitoringEnabled,
+		SelfMonitoringMetricsConfig:                      selfMonitoringMetricsConfig,
+		SelfMonitoringLogsConfig:                         selfMonitoringLogsConfig,
+		DevelopmentMode:                                  config.DevelopmentMode,
+		DebugVerbosityDetailed:                           config.DebugVerbosityDetailed,
+		EnableProfExtension:                              config.EnableProfExtension,
+		ProfilingEnabled:                                 config.ProfilingEnabled,
+		SignalControl:                                    config.SignalControl,
+		SignalControlGatewayActive:                       config.signalControlGatewayActive(),
+		SignalControlCollectorServiceName:                SignalControlCollectorServiceName(config.NamePrefix),
+		SignalControlCollectorDeploymentName:             SignalControlCollectorDeploymentName(config.NamePrefix),
+		MemoryLimiterLimitMiB:                            memoryLimiterLimitMiB,
+		MemoryLimiterSpikeLimitMiB:                       memoryLimiterSpikeMiB,
 	}
-
-	if !config.CompressConfigMap {
-		// config map compression is not enabled, return plain text config map
-		configMap.Data = map[string]string{
-			collectorConfigurationYaml: collectorConfiguration,
-		}
-		return &configMap, nil
-	}
-
-	// config map compression is enabled, compress the configuration with gzip
-	compressedConfiguration, err := compressContent(collectorConfiguration)
-	if err != nil {
-		return nil, err
-	}
-	configMap.Data = nil
-	configMap.BinaryData = map[string][]byte{
-		collectorConfigurationYaml: compressedConfiguration.Bytes(),
-	}
-	return &configMap, nil
 }
 
 func compressContent(collectorConfiguration string) (bytes.Buffer, error) {

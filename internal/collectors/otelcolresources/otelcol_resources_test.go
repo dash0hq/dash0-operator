@@ -491,6 +491,63 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 		})
 	})
 
+	Context("when GKE Autopilot has adjusted the resources of the collector workloads", func() {
+		It("should not revert the adjustments, but still apply changed resource settings", func() {
+			operatorConfiguration := DefaultOperatorConfigurationResource()
+			createOrUpdate := func(extraConfig util.ExtraConfig) bool {
+				resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
+					oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+						ctx,
+						extraConfig,
+						operatorConfiguration,
+						nil,
+						nil,
+						logger,
+					)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(resourcesHaveBeenCreated).To(BeFalse())
+				return resourcesHaveBeenUpdated
+			}
+
+			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx,
+				util.ExtraConfigDefaults,
+				operatorConfiguration,
+				nil,
+				nil,
+				logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			// adds the self-reference UID env vars
+			Expect(createOrUpdate(util.ExtraConfigDefaults)).To(BeTrue())
+
+			daemonSet := GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace)
+			SimulateGkeAutopilotResourceAdjustment(daemonSet, &daemonSet.Spec.Template.Spec)
+			Expect(k8sClient.Update(ctx, daemonSet)).To(Succeed())
+			deployment := GetOTelColDeployment(ctx, k8sClient, OperatorNamespace)
+			SimulateGkeAutopilotResourceAdjustment(deployment, &deployment.Spec.Template.Spec)
+			Expect(k8sClient.Update(ctx, deployment)).To(Succeed())
+
+			Expect(createOrUpdate(util.ExtraConfigDefaults)).To(BeFalse())
+			Expect(GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace).Spec.Template.Spec).To(
+				Equal(daemonSet.Spec.Template.Spec))
+			Expect(GetOTelColDeployment(ctx, k8sClient, OperatorNamespace).Spec.Template.Spec).To(
+				Equal(deployment.Spec.Template.Spec))
+
+			changedMemory := resource.MustParse("1Gi")
+			extraConfig := util.ExtraConfigDefaults
+			extraConfig.CollectorDaemonSetCollectorContainerResources = util.ResourceRequirementsWithGoMemLimit{
+				Limits:   corev1.ResourceList{corev1.ResourceMemory: changedMemory},
+				Requests: corev1.ResourceList{corev1.ResourceMemory: changedMemory},
+			}
+			Expect(createOrUpdate(extraConfig)).To(BeTrue())
+			collectorContainerResources :=
+				GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace).Spec.Template.Spec.Containers[0].Resources
+			Expect(collectorContainerResources.Limits.Memory().Equal(changedMemory)).To(BeTrue())
+			Expect(collectorContainerResources.Requests.Memory().Equal(changedMemory)).To(BeTrue())
+		})
+	})
+
 	Context("when OpenTelemetry collector resources have been deleted externally", func() {
 		It("should re-created the resources", func() {
 			operatorConfiguration := DefaultOperatorConfigurationResource()

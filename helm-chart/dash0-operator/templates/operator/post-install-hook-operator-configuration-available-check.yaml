@@ -61,7 +61,7 @@ spec:
           command:
             - /manager
           args:
-            {{- if .Values.operator.dash0Export.enabled }}
+            {{- if include "dash0-operator.createOperatorConfigurationResource" . }}
             - "--auto-operator-configuration-resource-available-check"
             {{- else }}
             - "--dash0-webhook-endpoint-ready-check"

@@ -197,6 +197,9 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       This defaults to `$TELEMETRY_COLLECTION_ENABLED`, which in turn defaults to "true".
     * `COLLECTOR_ENABLE_PPROF`: Set to "true" to enable the pprof extension in all containers of the collector pods.
       See [Creatig Heap Profiles](helm-chart/dash0-operator/docs/troubleshooting.md#create-heap-profiles) for instructions on creating heap profiles.
+    * `EDGE_PROXY_ENABLE_PPROF`: Set to "true" to enable pprof for the Edge Proxy pods (only relevant when Signal Control
+      is enabled).
+      See [Creatig Heap Profiles](helm-chart/dash0-operator/docs/troubleshooting.md#create-heap-profiles) for instructions on creating heap profiles.
     * `DASH0_API_ENDPOINT`: The endpoint for API requests (for synchronizing Perses dashboards, Prometheus check rules,
       synthetic checks and views). It is recommended to set this in `test-resources/.env`.
     * `DASH0_AUTHORIZATION_TOKEN`: The authorization token for sending telemetry to the Dash0 ingress endpoint and
@@ -226,6 +229,9 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       This defaults to "false".
     * `DEPLOY_SYNTHETIC_CHECK`: Set to "true" to deploy a synthetic check resource that will be synchronized to Dash0
       via the Dash0 API.
+      This defaults to "false".
+    * `DEPLOY_SLO`: Set to "true" to deploy an SLO resource (openslo.com/v1) that will be synchronized to Dash0 via the
+      Dash0 API.
       This defaults to "false".
     * `DEPLOY_VIEW`: Set to "true" to deploy a view resource that will be synchronized to Dash0 via the Dash0 API.
       This defaults to "false".
@@ -271,6 +277,14 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       This defaults to `$TELEMETRY_COLLECTION_ENABLED`, which in turn defaults to "true".
     * `OPERATOR_CONFIGURATION_VIA_HELM_DATASET`: Use this to set a custom dataset in the auto operator configuration
       resource.
+    * `OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_ENDPOINT`: Set this to an OTLP/gRPC endpoint to configure a gRPC
+      export via the Helm value `operator.exports` instead of a Dash0 export via `operator.dash0Export.*`. Prefix the
+      endpoint with `http://` for an insecure connection.
+      Test scenario 11 defaults this to the OTLP sink (and sets `USE_OTLP_SINK=true`) if it is not set.
+      This defaults to being empty, which means a Dash0 export is configured.
+    * `OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_HEADERS`: A comma-separated list of `name=value` pairs, which are
+      added as headers to the gRPC export configured via `OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_ENDPOINT`, e.g.
+      `authorization=Bearer my-token,X-My-Header=my-value`. Header values must not contain commas.
     * `OPERATOR_HELM_CHART_VERSION`: Set this to use a specific version of the Helm chart. This is meant to be used
       together with `OPERATOR_HELM_CHART=dash0-operator/dash0-operator` or similar, where `OPERATOR_HELM_CHART` refers
       to an already installed remote Helm repository (e.g. https://dash0hq.github.io/dash0-operator) that contains the

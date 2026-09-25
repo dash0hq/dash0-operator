@@ -87,6 +87,49 @@ operator:
       # Allow keepalive pings when there are no active streams.
       permit_without_stream:
 
+  # Additional exports for the automatically created Dash0OperatorConfiguration resource. Use this to send telemetry to
+  # an arbitrary OTLP-compatible backend via gRPC or HTTP, either instead of or in addition to Dash0. The value is a
+  # list with exactly the structure of the spec.exports list of the Dash0OperatorConfiguration resource, see
+  # https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/advanced-configuration.md#exporting-data-to-other-observability-backends
+  #
+  # Setting this to a non-empty list makes the operator manager create the Dash0OperatorConfiguration resource at
+  # startup, exactly like setting operator.dash0Export.enabled to true does. For any setup with more than one export,
+  # we recommend configuring all exports here, including the dash0 export(s), instead of spreading them over
+  # operator.dash0Export.* and operator.exports. Combining both is possible nonetheless; the Dash0 export configured via
+  # operator.dash0Export.* then always comes first, followed by the entries listed here. It is an error to configure a
+  # dash0 export here while operator.dash0Export.enabled is true.
+  #
+  # Note that the order matters for self-monitoring: the operator's own telemetry is sent to the first export only.
+  # Self-monitoring is not supported for an HTTP export with encoding "json"; it is silently disabled in that case.
+  #
+  # Note that the values listed here are rendered verbatim into a Kubernetes ConfigMap. For header values that contain
+  # sensitive data, use valueFrom.secretKeyRef instead of a literal value; the referenced secret has to exist in the
+  # namespace the operator is installed in.
+  #
+  # Example:
+  # exports:
+  #   - dash0:
+  #       endpoint: ingress... # the OTLP/gRPC endpoint of your Dash0 organization
+  #       authorization:
+  #         secretRef:
+  #           name: dash0-authorization-secret
+  #           key: token
+  #       dataset: default
+  #       apiEndpoint: https://api... # the API endpoint of your Dash0 organization
+  #   - grpc:
+  #       endpoint: otel-collector.other-namespace.svc.cluster.local:4317
+  #       insecure: true
+  #   - http:
+  #       endpoint: https://otlp.example.com
+  #       encoding: proto
+  #       headers:
+  #         - name: authorization
+  #           valueFrom:
+  #             secretKeyRef:
+  #               name: my-backend-secret
+  #               key: token
+  exports: []
+
   # An opt-out for operator self-monitoring. If set to false, self monitoring for the operator will be disabled, that
   # is, the operator will not send self-monitoring telemetry to the configured Dash0 backend. This setting is optional,
   # it defaults to true.
@@ -498,7 +541,7 @@ operator:
     repository: "ghcr.io/dash0hq/signal-control-collector"
     # The Signal Control collector is versioned independently of the operator, so this tag is pinned to that component
     # version; it does not track the chart appVersion.
-    tag: "1.2.0"
+    tag: "1.2.1"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -509,7 +552,7 @@ operator:
     repository: "ghcr.io/dash0hq/edge-proxy"
     # The Edge Proxy is versioned independently of the operator, so this tag is pinned to that component version; it
     # does not track the chart appVersion.
-    tag: "1.2.0"
+    tag: "1.2.1"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -1314,6 +1357,13 @@ operator:
       # cross zones.
       replicas: 2
 
+      # If set to true, pprof will be enabled for the Edge Proxy pods. Each container serves pprof on the loopback
+      # address 127.0.0.1:8012, reachable via kubectl port-forward, see
+      # https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/troubleshooting#edge-proxy-heap-profile.
+      # The default is false, do not override this unless explicitly instructed by Dash0 support. Remove the override
+      # after the Edge Proxy troubleshooting is finished. Changing the flag will restart the Edge Proxy pods.
+      enablePprof: false
+
       # Resource settings for the Edge Proxy container of the Edge Proxy deployment managed by the operator.
       containerResources:
         limits:
@@ -1553,9 +1603,11 @@ operator:
       #
       # By default, Kubernetes grants the verb "get" for the API discovery URLs (/api, /apis, /openapi/v3, ..., all of
       # which are required for this component) to the group system:authenticated via the system:discovery cluster role
-      # binding. On a cluster where system:authenticated has been removed from that binding (e.g. for hardening etc.),
-      # add a rule with nonResourceURLs: ["*"] and verbs: ["get"], otherwise kubectl's API discovery fails and no
-      # kubectl command works.
+      # binding. The default rules grant the same URLs explicitly, so that the agent0-connector also works on a cluster
+      # where system:authenticated has been removed from that binding (e.g. for hardening etc.). Custom rules replace
+      # the default rules, so they need to list this nonResourceURLs rule as well for clusters where that default
+      # binding has been revoked. Without it, kubectl's API discovery fails on such a cluster and no kubectl command
+      # works.
       #
       # Example:
       # rules:
@@ -1568,4 +1620,8 @@ operator:
       #   - apiGroups: ["authorization.k8s.io"]
       #     resources: ["selfsubjectaccessreviews", "selfsubjectrulesreviews"]
       #     verbs: ["create"]
+      #   - nonResourceURLs:
+      #       ["/api", "/api/*", "/apis", "/apis/*", "/healthz", "/livez", "/openapi", "/openapi/*", "/readyz",
+      #        "/version", "/version/"]
+      #     verbs: ["get"]
       rules: []

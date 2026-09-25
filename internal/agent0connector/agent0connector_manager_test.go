@@ -327,7 +327,7 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 					manager.ReconcileAgent0Connector(ctx, TriggeredByWatchEvent)
 			}
 			return true, nil
-		}, nil)
+		}, nil, nil)
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(skippedErr).ToNot(HaveOccurred())

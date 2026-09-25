@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"sigs.k8s.io/yaml"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
@@ -106,6 +107,7 @@ type ExtraConfig struct {
 	TargetAllocatorNodeAffinity             *corev1.NodeAffinity               `json:"targetAllocatorNodeAffinity,omitempty"`
 
 	EdgeProxyReplicas           int32                              `json:"edgeProxyReplicas,omitempty"`
+	EdgeProxyEnablePprof        bool                               `json:"edgeProxyEnablePprof,omitempty"`
 	EdgeProxyContainerResources ResourceRequirementsWithGoMemLimit `json:"edgeProxyContainerResources"`
 	EdgeProxyTolerations        []corev1.Toleration                `json:"edgeProxyTolerations,omitempty"`
 	EdgeProxyNodeAffinity       *corev1.NodeAffinity               `json:"edgeProxyNodeAffinity,omitempty"`
@@ -131,6 +133,11 @@ type ExtraConfig struct {
 	MonitoringTemplateRaw *json.RawMessage `json:"monitoringTemplate,omitempty"`
 	FilterRaw             *json.RawMessage `json:"filter,omitempty"`
 	TransformRaw          *json.RawMessage `json:"transform,omitempty"`
+
+	// Exports are the exports for the automatically created operator configuration resource, provided via the Helm
+	// value operator.exports. They are appended to the Dash0 export that is derived from the operator.dash0Export.*
+	// Helm values (if any).
+	Exports []dash0common.Export `json:"exports,omitempty"`
 }
 
 type ExtraConfigClient interface {
