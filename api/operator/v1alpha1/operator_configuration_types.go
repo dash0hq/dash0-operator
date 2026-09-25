@@ -954,6 +954,14 @@ func (d *Dash0OperatorConfiguration) SetSyntheticsWorkerStatus(instances []Synth
 	return changed
 }
 
+// outcomeChanged reports whether an outcome (Deployed/Ready) or, while not ok, its reason changed.
+func outcomeChanged(previousOK bool, ok bool, previousReason string, reason string) bool {
+	if previousOK != ok {
+		return true
+	}
+	return !ok && previousReason != reason
+}
+
 // mergeSyntheticsWorkerInstanceStatus carries LastTransitionTime forward from the previous status of the same
 // instance (matched by LocationID) and reports whether anything about the instance changed.
 func mergeSyntheticsWorkerInstanceStatus(
@@ -967,19 +975,36 @@ func mergeSyntheticsWorkerInstanceStatus(
 		return instance, true
 	}
 
-	changed := false
 	if previousInstance.Deployed == instance.Deployed {
 		instance.LastTransitionTime = previousInstance.LastTransitionTime
-	} else {
-		changed = true
 	}
-	if !instance.Deployed && previousInstance.Reason != instance.Reason {
-		changed = true
-	}
-	if previousInstance.Ready != instance.Ready || previousInstance.ReadyReason != instance.ReadyReason {
-		changed = true
-	}
+	changed := outcomeChanged(previousInstance.Deployed, instance.Deployed, previousInstance.Reason, instance.Reason) ||
+		outcomeChanged(previousInstance.Ready, instance.Ready, previousInstance.ReadyReason, instance.ReadyReason)
 	return instance, changed
+}
+
+// aggregateSyntheticsWorkerOutcome walks instances and reports whether every one of them satisfies ok. Otherwise it
+// reports the reason they disagree on, or partialReason/partialMessage when they disagree for different reasons.
+func aggregateSyntheticsWorkerOutcome(
+	instances []SyntheticsWorkerInstanceStatus,
+	ok func(SyntheticsWorkerInstanceStatus) bool,
+	reasonOf func(SyntheticsWorkerInstanceStatus) (reason string, message string),
+	partialReason string,
+	partialMessage string,
+) (bool, string, string) {
+	reason, message := "", ""
+	for _, instance := range instances {
+		if ok(instance) {
+			continue
+		}
+		instanceReason, instanceMessage := reasonOf(instance)
+		if reason == "" {
+			reason, message = instanceReason, instanceMessage
+		} else if reason != instanceReason {
+			reason, message = partialReason, partialMessage
+		}
+	}
+	return reason == "", reason, message
 }
 
 // aggregateSyntheticsWorkerDeployment reports Deployed/Reason/Message for the whole feature: true only if every
@@ -988,19 +1013,13 @@ func aggregateSyntheticsWorkerDeployment(instances []SyntheticsWorkerInstanceSta
 	if len(instances) == 0 {
 		return false, "NoInstancesConfigured", "The synthetics-worker is enabled but spec.syntheticsWorker.instances is empty."
 	}
-	reason, message := "", ""
-	for _, instance := range instances {
-		if instance.Deployed {
-			continue
-		}
-		if reason == "" {
-			reason, message = instance.Reason, instance.Message
-		} else if reason != instance.Reason {
-			reason = "PartiallyDeployed"
-			message = "some synthetics-worker instances failed to deploy for different reasons"
-		}
-	}
-	if reason != "" {
+	if ok, reason, message := aggregateSyntheticsWorkerOutcome(
+		instances,
+		func(i SyntheticsWorkerInstanceStatus) bool { return i.Deployed },
+		func(i SyntheticsWorkerInstanceStatus) (string, string) { return i.Reason, i.Message },
+		"PartiallyDeployed",
+		"some synthetics-worker instances failed to deploy for different reasons",
+	); !ok {
 		return false, reason, message
 	}
 	return true, "Deployed", "The operator has deployed the synthetics-worker."
@@ -1012,18 +1031,13 @@ func aggregateSyntheticsWorkerReadiness(instances []SyntheticsWorkerInstanceStat
 	if len(instances) == 0 {
 		return false, "NoInstancesConfigured"
 	}
-	reason := ""
-	for _, instance := range instances {
-		if instance.Ready {
-			continue
-		}
-		if reason == "" {
-			reason = instance.ReadyReason
-		} else if reason != instance.ReadyReason {
-			reason = "PartiallyReady"
-		}
-	}
-	if reason != "" {
+	if ok, reason, _ := aggregateSyntheticsWorkerOutcome(
+		instances,
+		func(i SyntheticsWorkerInstanceStatus) bool { return i.Ready },
+		func(i SyntheticsWorkerInstanceStatus) (string, string) { return i.ReadyReason, "" },
+		"PartiallyReady",
+		"",
+	); !ok {
 		return false, reason
 	}
 	return true, "Ready"
