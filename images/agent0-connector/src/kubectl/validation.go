@@ -9,7 +9,6 @@ package kubectl
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -17,21 +16,30 @@ import (
 	pb "github.com/dash0hq/dash0-operator/images/agent0-connector/proto"
 )
 
-// allowedKubectlCommands is the allowlist of kubectl commands the executor is allowed to run. Everything else
-// is rejected. The list deliberately contains only kubectl commands that read cluster state and never mutate it. This
-// is additional defense-in-depth on top of the read-only RBAC (get & list only) granted to the agent0-connector service
-// account.
+// supportedKubectlCommands is the allowlist of kubectl commands the executor can run at all. Everything else is
+// rejected, independent of the command allowlist that has been configured. The list deliberately contains only kubectl
+// commands that read cluster state and never mutate it. This is additional defense-in-depth on top of the read-only
+// RBAC (get & list only) granted to the agent0-connector service account.
+//
+// The configuration can restrict this list further (see AllowedKubectlCommands). The default configuration blocks
+// the "logs" and "events" command, these restrictions can be lifted by the user.
 //
 // It also (despite the name) lists rejected kubectl commands that need a more specific rejection message
 // (e.g. kubectl describe)
 //
-// Allowed kubectl commands can be further restricted via allowedSubcommandsPerKubectlCommand.
-var allowedKubectlCommands = map[string]struct{}{
+// The exact shape of supported kubectl commands can be further restricted via allowedSubcommandsPerKubectlCommand
+// (e.g. allowing "kubectl auth can-i", but not other "kubectl auth" subcommands).
+//
+// Maintenance note: The list of supported commands is duplicated in the template
+// dash0-operator.agent0ConnectorAllowedKubectlCommands in helm-chart/dash0-operator/templates/_helpers.tpl and in
+// operator.agent0Connector.allowedKubectlCommands in helm-chart/dash0-operator/values.yaml, see
+// TestHelmChartListsEverySupportedKubectlCommand.
+var supportedKubectlCommands = map[string]struct{}{
 	"api-resources": {},
 	"auth":          {},
 	"api-versions":  {},
 	"cluster-info":  {},
-	"describe":      {}, // describe is not actually allowed, see unconditionallyRejectedKubectlCommands
+	"describe":      {}, // describe is not actually supported, see unconditionallyRejectedKubectlCommands
 	"events":        {},
 	"explain":       {},
 	"get":           {},
@@ -40,33 +48,14 @@ var allowedKubectlCommands = map[string]struct{}{
 	"version":       {},
 }
 
-// unconditionallyRejectedKubectlCommands are kubectl commands that are listed in allowedKubectlCommands so that a later
-// check can reject them with a more specific reason rather than with the generic "not an allowed read-only command".
-// They are left out of allowedKubectlCommandsHumanReadable so that no rejection message advertises a command the
-// connector never runs.
-var unconditionallyRejectedKubectlCommands = map[string]struct{}{
-	// see describeRequested
-	"describe": {},
+// unconditionallyRejectedKubectlCommands are kubectl commands that are listed in supportedKubectlCommands so that a
+// later check can reject them with a more specific reason rather than with the generic "not an allowed read-only
+// command". They can never be enabled via the configuration (see AllowedKubectlCommands). They are also not included in
+// the list of allowed commands that rejection messages advertise. The map value is the rejection message.
+var unconditionallyRejectedKubectlCommands = map[string]string{
+	"describe": "\"kubectl describe\" is not supported, because its output cannot be redacted reliably; read the " +
+		"resource with \"kubectl get ... -o yaml\" or \"-o json\" instead",
 }
-
-var allowedKubectlCommandsHumanReadable = func() string {
-	allCmds := slices.DeleteFunc(
-		slices.Sorted(maps.Keys(allowedKubectlCommands)),
-		func(kubectlCmd string) bool {
-			_, rejected := unconditionallyRejectedKubectlCommands[kubectlCmd]
-			return rejected
-		},
-	)
-	allowedCmdsString := fmt.Sprintf("%q", allCmds[0])
-	for idx, kubectlCmd := range allCmds {
-		if idx > 0 && idx < len(allCmds)-1 {
-			allowedCmdsString += fmt.Sprintf(", %q", kubectlCmd)
-		} else if idx == len(allCmds)-1 {
-			allowedCmdsString += fmt.Sprintf(" and %q", kubectlCmd)
-		}
-	}
-	return allowedCmdsString
-}()
 
 // allowedSubcommandsPerKubectlCommand lists the allowed kubectl commands that may only be invoked with one of the
 // listed subcommands. Every other subcommand is rejected for that kubectl command. This way a future kubectl release
@@ -182,12 +171,28 @@ var sensitiveResourceTypes = map[string]sensitiveResource{
 	"secrets": secretResource,
 }
 
+const (
+	kubectlCommandGet    = "get"
+	kubectlCommandEvents = "events"
+)
+
+// eventResourceTypes are the normalized resource types under which "kubectl get" reads Kubernetes events, from the core
+// API group as well as from events.k8s.io, in singular, plural and short form.
+var eventResourceTypes = map[string]struct{}{
+	"event":  {},
+	"events": {},
+	"ev":     {},
+}
+
 // validateCommandAndParseArguments parses the request's argument list and ensures the request invokes an allowed
 // read-only kubectl command, and only uses allowed flags. It returns the parsed argument list, which the caller may
 // reuse for further processing (e.g. redacting the response). If the request is allowed, the returned error is nil.
 // If an error is returned, the error describes why the request is rejected. The returned argument list must not be
 // used when the error is non-nil.
-func validateCommandAndParseArguments(req *pb.CommandRequest) (kubectlArguments, error) {
+func validateCommandAndParseArguments(
+	req *pb.CommandRequest,
+	allowedKubectlCommands AllowedKubectlCommands,
+) (kubectlArguments, error) {
 	if reason, blocked := disallowedExecutableRequested(req); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
@@ -201,11 +206,15 @@ func validateCommandAndParseArguments(req *pb.CommandRequest) (kubectlArguments,
 		return kubectlArguments{}, fmt.Errorf("the kubectl flag %q is not allowed", arguments.disallowedFlags[0])
 	}
 
-	// Check the kubectl command first, reject any kubectl command that is not on the allowlist (allowedKubectlCommands).
-	if reason, blocked := disallowedKubectlCommandRequested(arguments); blocked {
+	// Check the kubectl command first, reject any kubectl command that is not on the allowlist (supportedKubectlCommands)
+	// or that has not been enabled via the configuration (allowedKubectlCommands).
+	if reason, blocked := disallowedKubectlCommandRequested(arguments, allowedKubectlCommands); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
 	if reason, blocked := disallowedSubcommandRequested(arguments); blocked {
+		return kubectlArguments{}, errors.New(reason)
+	}
+	if reason, blocked := eventsReadViaGetRequested(arguments, allowedKubectlCommands); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
 	// Checked before the output format, so that a request reading a secret is rejected with the reason that names what
@@ -217,14 +226,6 @@ func validateCommandAndParseArguments(req *pb.CommandRequest) (kubectlArguments,
 		return kubectlArguments{}, errors.New(reason)
 	}
 	if reason, blocked := unsafeSortByRequested(arguments); blocked {
-		return kubectlArguments{}, errors.New(reason)
-	}
-	// Checked before describeRequested, so that describing a secret is rejected with the reason that names what makes
-	// it worse than describing any other resource.
-	if reason, blocked := describeOfSensitiveResourceRequested(arguments); blocked {
-		return kubectlArguments{}, errors.New(reason)
-	}
-	if reason, blocked := describeRequested(arguments); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
 	return arguments, nil
@@ -247,17 +248,31 @@ func disallowedExecutableRequested(req *pb.CommandRequest) (string, bool) {
 	return "", false
 }
 
-func disallowedKubectlCommandRequested(parsed kubectlArguments) (string, bool) {
+func disallowedKubectlCommandRequested(
+	parsed kubectlArguments,
+	allowedKubectlCommands AllowedKubectlCommands,
+) (string, bool) {
 	if parsed.kubectlCommand == "" {
 		// Invoking kubectl with no command at all - bare `kubectl`, or only global flags such as `kubectl --help` - is
 		// allowed.
 		return "", false
 	}
-	if _, allowed := allowedKubectlCommands[parsed.kubectlCommand]; !allowed {
+	if _, supported := supportedKubectlCommands[parsed.kubectlCommand]; !supported {
 		return fmt.Sprintf(
-			"the kubectl command %q is not an allowed read-only command, the only allowed kubectl commands are %s",
+			"the kubectl command %q is not an allowed read-only command, %s",
 			parsed.kubectlCommand,
-			allowedKubectlCommandsHumanReadable,
+			allowedKubectlCommands.humanReadable,
+		), true
+	}
+	if rejectionMessage, rejected := unconditionallyRejectedKubectlCommands[parsed.kubectlCommand]; rejected {
+		return rejectionMessage, true
+	}
+	if !allowedKubectlCommands.Allows(parsed.kubectlCommand) {
+		return fmt.Sprintf(
+			"the kubectl command %q has been disabled in the configuration of the agent0-connector (via the Helm value "+
+				"operator.agent0Connector.allowedKubectlCommands), %s",
+			parsed.kubectlCommand,
+			allowedKubectlCommands.humanReadable,
 		), true
 	}
 	return "", false
@@ -300,43 +315,21 @@ func disallowedSubcommandRequested(parsed kubectlArguments) (string, bool) {
 	), true
 }
 
-// describeRequested reports whether the kubectl arguments describe a resource, returning a human-readable reason when
-// they do. The describer renders a resource in a text format that is not meant to be parsed and for which no parser is
-// available, so the connector cannot locate the credentials in its output in order to redact them.
-//
-// This holds for every resource type, not only for the ones whose schema is known to have a credential field: a
-// third-party custom resource can carry a credential just as well, and "kubectl describe" prints the annotations of any
-// resource, including the verbatim copy of the applied manifest that "kubectl apply" leaves in
-// "kubectl.kubernetes.io/last-applied-configuration".
-func describeRequested(parsed kubectlArguments) (string, bool) {
-	if parsed.kubectlCommand != "describe" {
+// eventsReadViaGetRequested reports whether the kubectl arguments read events via "kubectl get" while the kubectl
+// command "events" has been disabled in the configuration, returning a human-readable reason when they do. Disabling
+// "kubectl events" would be pointless otherwise, since "kubectl get events" hands out the same content.
+func eventsReadViaGetRequested(parsed kubectlArguments, allowedKubectlCommands AllowedKubectlCommands) (string, bool) {
+	if parsed.kubectlCommand != kubectlCommandGet || allowedKubectlCommands.Allows(kubectlCommandEvents) {
 		return "", false
 	}
-	return "\"kubectl describe\" is not supported, because it renders a resource in a text format the connector " +
-		"cannot parse, so the credentials a resource may contain cannot be redacted from its output; read the " +
-		"resource with \"kubectl get ... -o yaml\" or \"-o json\" instead", true
-}
-
-// describeOfSensitiveResourceRequested reports whether the kubectl arguments describe a sensitive resource, returning a
-// human-readable reason when they do. Listing a secret and checking for the presence of a particular one are allowed
-// (see sensitiveContentRequested), but describing one potentially exposes its content over:
-// 1. kubectl describe secret prints the token of a "kubernetes.io/service-account-token" secret verbatim
-// 2. kubectl describe secret prints the exact size of every other value, which is a length oracle over the value.
-func describeOfSensitiveResourceRequested(parsed kubectlArguments) (string, bool) {
-	if parsed.kubectlCommand != "describe" {
-		return "", false
+	for _, resourceType := range parsed.resourceTypes {
+		if _, isEvent := eventResourceTypes[resourceType]; isEvent {
+			return "reading events via \"kubectl get\" is not allowed, because the kubectl command \"events\" has " +
+				"been disabled in the configuration of the agent0-connector (via the Helm value " +
+				"operator.agent0Connector.allowedKubectlCommands)", true
+		}
 	}
-	resource, targeted := targetedSensitiveResource(parsed)
-	if !targeted {
-		return "", false
-	}
-	return fmt.Sprintf(
-		"describing a %s is not allowed, because \"kubectl describe\" prints the exact length of every value; "+
-			"listing %ss or checking for the presence of a particular one with \"kubectl get %s <name>\" is supported",
-		resource.displayName,
-		resource.displayName,
-		resource.displayName,
-	), true
+	return "", false
 }
 
 // sensitiveContentRequested reports whether the kubectl arguments would read the contents of a sensitive resource,

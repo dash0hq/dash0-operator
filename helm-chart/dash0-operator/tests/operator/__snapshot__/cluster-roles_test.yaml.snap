@@ -1211,7 +1211,6 @@ cluster roles should match snapshot with agent0-connector enabled:
         resources:
           - componentstatuses
           - endpoints
-          - events
           - limitranges
           - namespaces
           - nodes
@@ -1219,7 +1218,6 @@ cluster roles should match snapshot with agent0-connector enabled:
           - persistentvolumes
           - podtemplates
           - pods
-          - pods/log
           - replicationcontrollers
           - resourcequotas
           - serviceaccounts
@@ -1333,13 +1331,6 @@ cluster roles should match snapshot with agent0-connector enabled:
           - resourceclaims
           - resourceclaimtemplates
           - resourceslices
-        verbs:
-          - get
-          - list
-      - apiGroups:
-          - events.k8s.io
-        resources:
-          - events
         verbs:
           - get
           - list

@@ -1472,7 +1472,7 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 		t.Run("redacts the secrets of a "+tt.name+" response", func(t *testing.T) {
 			fakeKubectlEchoing(t, tt.response)
 
-			resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 				RequestId: "req-redact-" + tt.name,
 				Command:   "kubectl",
 				Arguments: []string{"get", "dash0monitorings", "-A", "-o", tt.outputFormat},
@@ -1517,7 +1517,7 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 }`
 		fakeKubectlEchoing(t, response)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-render-fidelity",
 			Command:   "kubectl",
 			Arguments: []string{"get", "dash0monitorings", "-o", "json"},
@@ -1531,7 +1531,7 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 	t.Run("redacts the third-party credentials of notification channels and synthetic checks", func(t *testing.T) {
 		fakeKubectlEchoing(t, dash0ApiResourcesJson)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-redact-api-resources",
 			Command:   "kubectl",
 			Arguments: []string{"get", "dash0notificationchannels,dash0syntheticchecks", "-A", "-o", "json"},
@@ -1570,7 +1570,7 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 	t.Run("redacts the environment variable values of a workload response", func(t *testing.T) {
 		fakeKubectlEchoing(t, workloadResourcesJson)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-redact-workloads",
 			Command:   "kubectl",
 			Arguments: []string{"get", "deployments,daemonsets,cronjobs,controllerrevisions,pods", "-A", "-o", "json"},
@@ -1603,7 +1603,7 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 	t.Run("preserves the content of a credential-free response of another resource type", func(t *testing.T) {
 		fakeKubectlEchoing(t, serviceJson)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-other-resource",
 			Command:   "kubectl",
 			Arguments: []string{"get", "services", "-o", "json"},
@@ -1622,7 +1622,7 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 	t.Run("leaves a response that cannot contain resource content untouched", func(t *testing.T) {
 		fakeKubectlEchoing(t, monitoringToken)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-content-free",
 			Command:   "kubectl",
 			Arguments: []string{"get", "dash0monitorings", "-o", "name"},
@@ -1677,7 +1677,7 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 		t.Run("withholds the response when "+tt.name, func(t *testing.T) {
 			fakeKubectlEchoing(t, tt.response)
 
-			resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 				RequestId: "req-unparseable",
 				Command:   "kubectl",
 				Arguments: tt.arguments,
@@ -1707,7 +1707,7 @@ func TestRedactThirdPartyCustomResources(t *testing.T) {
 	t.Run("redacts the proxy headers of a Perses dashboard", func(t *testing.T) {
 		fakeKubectlEchoing(t, persesDashboardJson)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-perses-dashboard",
 			Command:   "kubectl",
 			Arguments: []string{"get", "persesdashboards", "-o", "json"},
@@ -1726,7 +1726,7 @@ func TestRedactThirdPartyCustomResources(t *testing.T) {
 	t.Run("redacts the scrape parameters and the proxy URL of a service monitor", func(t *testing.T) {
 		fakeKubectlEchoing(t, serviceMonitorJson)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-service-monitor",
 			Command:   "kubectl",
 			Arguments: []string{"get", "servicemonitors", "-o", "json"},
@@ -1748,7 +1748,7 @@ func TestRedactThirdPartyCustomResources(t *testing.T) {
 	t.Run("redacts the scrape parameters and the proxy URL of a pod monitor", func(t *testing.T) {
 		fakeKubectlEchoing(t, podMonitorJson)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-pod-monitor",
 			Command:   "kubectl",
 			Arguments: []string{"get", "podmonitors", "-o", "json"},
@@ -1769,7 +1769,7 @@ func TestRedactThirdPartyCustomResources(t *testing.T) {
 	t.Run("redacts the scrape parameters and the proxy URL query of a scrape config", func(t *testing.T) {
 		fakeKubectlEchoing(t, scrapeConfigJson)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-scrape-config",
 			Command:   "kubectl",
 			Arguments: []string{"get", "scrapeconfigs", "-o", "json"},
@@ -1806,7 +1806,7 @@ func TestRedactThirdPartyCustomResources(t *testing.T) {
 		"probe", func(t *testing.T) {
 		fakeKubectlEchoing(t, probeJson)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-probe",
 			Command:   "kubectl",
 			Arguments: []string{"get", "probes", "-o", "json"},
@@ -1834,7 +1834,7 @@ func TestRedactThirdPartyCustomResources(t *testing.T) {
 	t.Run("preserves a params field of a resource kind that does not hold query parameters", func(t *testing.T) {
 		fakeKubectlEchoing(t, configMapWithParamsJson)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-config-map-params",
 			Command:   "kubectl",
 			Arguments: []string{"get", "configmaps", "-o", "json"},
@@ -1849,7 +1849,7 @@ func TestRedactThirdPartyCustomResources(t *testing.T) {
 		// Fields like "token", "password" etc. are always redacted.
 		fakeKubectlEchoing(t, unknownCustomResourceJson)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-unknown-custom-resource",
 			Command:   "kubectl",
 			Arguments: []string{"get", "somecustomresources.example.com", "-o", "json"},
@@ -1909,7 +1909,7 @@ done
 printf '" }\n'
 `)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-truncated-stdout",
 			Command:   "kubectl",
 			Arguments: []string{"get", "dash0monitorings", "-o", "json"},
@@ -1949,7 +1949,7 @@ while [ $i -lt 200 ]; do
 done
 `)
 
-			resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 				RequestId: "req-truncated-" + format,
 				Command:   "kubectl",
 				Arguments: []string{"get", "dash0monitorings", "-o", format},
@@ -1980,7 +1980,7 @@ while [ $i -lt 200 ]; do
 done
 `)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-truncated-services",
 			Command:   "kubectl",
 			Arguments: []string{"get", "services", "-o", "json"},
@@ -2012,7 +2012,7 @@ echo 'Error from server (NotFound): dash0monitorings.operator.dash0.com "my-reso
 exit 1
 `)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-error-on-stderr",
 			Command:   "kubectl",
 			Arguments: []string{"get", "dash0monitorings", "my-resource", "-o", "yaml"},
@@ -2032,7 +2032,7 @@ exit 1
 	t.Run("passes a response through that has no content at all", func(t *testing.T) {
 		fakeKubectlOnPath(t, "#!/bin/sh\nexit 0\n")
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-empty-response",
 			Command:   "kubectl",
 			Arguments: []string{"get", "dash0monitorings", "-o", "yaml"},
@@ -2056,7 +2056,7 @@ OUTPUT
 echo "warning: could not reach the endpoint with `+grpcHeaderValue+`" >&2
 `)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-stderr-scrub",
 			Command:   "kubectl",
 			Arguments: []string{"get", "dash0monitorings", "-o", "yaml"},

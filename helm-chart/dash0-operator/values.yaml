@@ -1540,3 +1540,38 @@ operator:
       #        "/version", "/version/"]
       #     verbs: ["get"]
       rules: []
+
+    # The kubectl commands the agent0-connector may execute on behalf of Agent0. A command set to false is rejected by
+    # the agent0-connector. Note that Helm merges the map you provide with the defaults below, so this is not an
+    # exclusive list: to disable a command that is enabled by default, you need to set it to false explicitly. Commands
+    # that you do not list keep their default value, and an empty map ({}) leaves all defaults in place. This setting
+    # can only restrict the set of commands the agent0-connector supports, it cannot add new ones: kubectl commands that
+    # the agent0-connector always rejects (e.g. "kubectl describe", or any command that modifies the cluster state)
+    # cannot be enabled here. Listing any other key than the ones below fails the installation. Disabling all commands
+    # also fails the installation - set operator.agent0Connector.enabled=false instead. Allowing a command does not
+    # automatically grant the RBAC permissions it needs, see operator.agent0Connector.clusterRole.rules.
+    allowedKubectlCommands:
+      api-resources: true
+      auth: true
+      api-versions: true
+      cluster-info: true
+      # kubectl events are not redacted. Only enable it if you are sure that no sensitive information like
+      # credentials, API tokens, secrets or customer PII is leaked into event bodies. If in doubt, leave it disabled.
+      # Kubernetes events can also be collected as normal telemetry via the operator, which is also available to
+      # Agent0 then. If you want to allow access to events, you also need to allow RBAC access to events (core API
+      # group) and events.events.k8s.io via operator.agent0Connector.clusterRole.rules. While events is disabled, reading
+      # events via "kubectl get events" is rejected as well.
+      events: false
+      explain: true
+      # kubectl get is the main kubectl command that Agent0 uses. Disabling it will likely render the agent0-connector
+      # more or less useless and is not recommended. (If you do not want to allow "kubectl get", consider leaving
+      # operator.agent0Connector.enabled=false instead, to disable the entire feature.)
+      get: true
+      # kubectl logs cannot be redacted reliably. Only enable it if you are sure that you do not leak sensitive
+      # information like credentials, API tokens, secrets or customer PII into logs in the cluster. If in doubt,
+      # leave it disabled. Pod logs can also be collected via OTLP, and are then also available to Agent0.
+      # If you want to allow access to logs, you also need to allow RBAC access to pods/log (core API group) via
+      # operator.agent0Connector.clusterRole.rules.
+      logs: false
+      top: true
+      version: true

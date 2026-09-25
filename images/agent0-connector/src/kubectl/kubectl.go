@@ -168,6 +168,7 @@ func ExecuteCommandRequest(
 	ctx context.Context,
 	logger *slog.Logger,
 	kubectlTmpDir string,
+	allowedKubectlCommands AllowedKubectlCommands,
 	req *pb.CommandRequest,
 ) *pb.CommandResponse {
 	// Note: trace context has been in extracted in grpcclient.go#receiveCommandRequests already, but
@@ -177,7 +178,7 @@ func ExecuteCommandRequest(
 		logger = logger.With("traceID", tc.TraceID, "spanID", tc.SpanID)
 	}
 
-	parsed, validationErr := validateCommandAndParseArguments(req)
+	parsed, validationErr := validateCommandAndParseArguments(req, allowedKubectlCommands)
 	if validationErr != nil {
 		selfmonitoring.RecordCommandRequest(ctx, selfmonitoring.CommandUnknown)
 		selfmonitoring.RecordCommandError(ctx, selfmonitoring.CommandUnknown, selfmonitoring.ErrorTypeRejected)

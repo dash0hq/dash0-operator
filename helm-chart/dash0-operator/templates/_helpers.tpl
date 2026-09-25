@@ -222,6 +222,43 @@ rules the operator reads from the extra config map. Both need to be changed toge
 {{- toYaml $rules }}
 {{- end }}
 
+{{/*
+Validates operator.agent0Connector.allowedKubectlCommands and renders it as yaml. The setting can only restrict the
+kubectl commands the agent0-connector supports, hence every key has to be one of these commands, and every value has to
+be a boolean. At least one kubectl command has to be enabled, the agent0-connector would terminate on startup otherwise.
+The list of supported commands mirrors supportedKubectlCommands in images/agent0-connector/src/kubectl/validation.go,
+minus the commands that are rejected unconditionally (like "describe"). Both need to be changed together, a command
+that the Helm chart accepts but the agent0-connector does not support makes the agent0-connector terminate on startup.
+TestHelmChartListsEverySupportedKubectlCommand in images/agent0-connector/src/kubectl/allowed_commands_test.go checks
+that they are in sync.
+*/}}
+{{- define "dash0-operator.agent0ConnectorAllowedKubectlCommands" -}}
+{{- $supportedCommands := list "api-resources" "api-versions" "auth" "cluster-info" "events" "explain" "get" "logs" "top" "version" }}
+{{- $allowedKubectlCommands := .Values.operator.agent0Connector.allowedKubectlCommands }}
+{{- if not $allowedKubectlCommands }}
+{{- fail "Error: operator.agent0Connector.allowedKubectlCommands must not be empty, at least one kubectl command needs to be enabled. If you do not want Agent0 to execute any kubectl command, set operator.agent0Connector.enabled=false instead." }}
+{{- end }}
+{{- $atLeastOneEnabled := false }}
+{{- range $kubectlCommand, $allowed := $allowedKubectlCommands }}
+{{- if eq $kubectlCommand "describe" }}
+{{- fail "Error: operator.agent0Connector.allowedKubectlCommands.describe: \"kubectl describe\" cannot be enabled, because the agent0-connector cannot redact credentials from its output. Agent0 reads resources via \"kubectl get ... -o yaml\" or \"-o json\" instead." }}
+{{- end }}
+{{- if not (has $kubectlCommand $supportedCommands) }}
+{{- fail (printf "Error: operator.agent0Connector.allowedKubectlCommands.%s: \"%s\" is not a kubectl command supported by the agent0-connector. Supported kubectl commands are: %s." $kubectlCommand $kubectlCommand (join ", " $supportedCommands)) }}
+{{- end }}
+{{- if not (kindIs "bool" $allowed) }}
+{{- fail (printf "Error: operator.agent0Connector.allowedKubectlCommands.%s: the value must be true or false, but it is \"%v\"." $kubectlCommand $allowed) }}
+{{- end }}
+{{- if $allowed }}
+{{- $atLeastOneEnabled = true }}
+{{- end }}
+{{- end }}
+{{- if not $atLeastOneEnabled }}
+{{- fail "Error: operator.agent0Connector.allowedKubectlCommands does not enable any kubectl command, at least one kubectl command needs to be set to true. If you do not want Agent0 to execute any kubectl command, set operator.agent0Connector.enabled=false instead." }}
+{{- end }}
+{{- toYaml $allowedKubectlCommands }}
+{{- end }}
+
 {{- define "dash0-operator.restrictiveContainerSecurityContext" -}}
 securityContext:
   allowPrivilegeEscalation: false
