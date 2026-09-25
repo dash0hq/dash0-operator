@@ -5,6 +5,8 @@ package util
 
 import "sync"
 
+const maxReconcileRepetitions = 5
+
 // ReconcileGuard serializes the reconciliations of one component and makes sure that a trigger which arrives while a
 // reconciliation is in progress is not lost.
 //
@@ -19,8 +21,10 @@ import "sync"
 // SignalControlManager.ReconcileSignalControl.
 //
 // A reconciliation which triggers itself on every run keeps the guard repeating it. The operator's reconciliations are
-// idempotent - an unchanged resource is not written, hence produces no watch event - so they settle, but a
-// reconciliation which writes on every run would turn a dropped trigger into a busy loop.
+// meant to be idempotent - an unchanged resource is not written, hence produces no watch event - so they settle. A
+// reconciliation which writes on every run (e.g. because something else mutates the written resource each time) would
+// turn this into a busy loop, which is why the guard stops repeating after maxReconcileRepetitions. The trigger which
+// is pending at that point is dropped and only takes effect with the next event.
 //
 // The zero value is ready to use. A ReconcileGuard must not be copied after first use.
 type ReconcileGuard struct {
@@ -38,7 +42,14 @@ type ReconcileGuard struct {
 // A reconciliation which returns an error is not repeated: its caller requeues the reconcile request for that, and
 // repeating immediately would busy-loop on a permanent failure. The remembered trigger survives and is picked up by
 // the next reconciliation.
-func (g *ReconcileGuard) Run(reconcile func() (bool, error), onSkipped func()) (bool, error) {
+//
+// A reconciliation is repeated at most maxReconcileRepetitions times. When a trigger is still pending after the last
+// repetition, it is dropped and onRepetitionLimitReached (if it is not nil) is called.
+func (g *ReconcileGuard) Run(
+	reconcile func() (bool, error),
+	onSkipped func(),
+	onRepetitionLimitReached func(),
+) (bool, error) {
 	if !g.acquire() {
 		if onSkipped != nil {
 			onSkipped()
@@ -46,12 +57,16 @@ func (g *ReconcileGuard) Run(reconcile func() (bool, error), onSkipped func()) (
 		return false, nil
 	}
 
-	for {
+	for repetitions := 0; ; repetitions++ {
 		g.clearPending()
 
 		hasBeenReconciled, err := reconcile()
 
-		if g.releaseUnlessPending(err != nil) {
+		released, triggerDropped := g.releaseUnlessPending(err != nil, repetitions >= maxReconcileRepetitions)
+		if released {
+			if triggerDropped && onRepetitionLimitReached != nil {
+				onRepetitionLimitReached()
+			}
 			return hasBeenReconciled, err
 		}
 	}
@@ -76,16 +91,22 @@ func (g *ReconcileGuard) clearPending() {
 	g.pending = false
 }
 
-// releaseUnlessPending ends the reconciliation and reports true, unless a trigger arrived while it was running and it
-// did not fail, in which case it reports false and the reconciliation has to run again. Checking the flag and ending
-// the reconciliation happen under the same lock, otherwise a trigger arriving between the two would be recorded and
-// then never acted upon.
-func (g *ReconcileGuard) releaseUnlessPending(failed bool) bool {
+// releaseUnlessPending ends the reconciliation and reports true, unless a trigger arrived while it was running, it did
+// not fail and the repetition limit has not been reached, in which case it reports false and the reconciliation has to
+// run again. The second return value reports whether a pending trigger has been dropped because the repetition limit
+// has been reached. Checking the flag and ending the reconciliation happen under the same lock, otherwise a trigger
+// arriving between the two would be recorded and then never acted upon.
+func (g *ReconcileGuard) releaseUnlessPending(failed bool, repetitionLimitReached bool) (bool, bool) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 	if !failed && g.pending {
-		return false
+		if !repetitionLimitReached {
+			return false, false
+		}
+		g.pending = false
+		g.running = false
+		return true, true
 	}
 	g.running = false
-	return true
+	return true, false
 }
