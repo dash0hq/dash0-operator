@@ -55,6 +55,8 @@ type ExtraConfig struct {
 
 	DaemonSetSysctls []corev1.Sysctl `json:"daemonSetSysctls,omitempty"`
 
+	DaemonSetSeLinuxOptions *corev1.SELinuxOptions `json:"daemonSetSeLinuxOptions,omitempty"`
+
 	CollectorDaemonSetPriorityClassName string `json:"collectorDaemonSetPriorityClassName,omitempty"`
 
 	DaemonSetProbes CollectorProbes `json:"daemonSetProbes"`

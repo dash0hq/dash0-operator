@@ -8,6 +8,7 @@ This document provides platform-specific guidance, compatibility notes, and work
 - [GKE Autopilot](#notes-on-gke-autopilot)
   - [Managing the AllowlistSynchronizer Manually](#managing-the-allowlistsynchronizer-manually)
 - [OpenShift](#notes-on-openshift)
+- [SELinux-Enforcing Clusters (RKE2, Rocky/RHEL)](#notes-on-selinux-enforcing-clusters)
 - [Azure AKS](#notes-on-azure-aks)
 - [Open Policy Agent (OPA Gatekeeper)](#notes-on-the-open-policy-agent)
 - [Kyverno Admission Controller](#notes-on-kyverno-admission-controller)
@@ -125,6 +126,12 @@ set to `true`, the Dash0 operator Helm chart and operator:
 - drop the hard-coded pod-level `runAsUser`/`runAsGroup` from the operator-managed workloads (the agent0-connector, the
   target-allocator, and the Signal Control edge-proxy) and from the injected instrumentation init container, so that the
   namespace's SCC assigns an in-range UID instead of a pinned one that `restricted-v2` would reject.
+
+## Notes on SELinux-Enforcing Clusters
+
+In clusters that enforce SELinux and are not OpenShift (for example RKE2 on Rocky Linux/RHEL), it is required to [configure SELinux options for the collector DaemonSet](advanced-configuration.md#configuring-selinux-options-for-the-collector-daemonset).
+
+Without them, the collector cannot read the pod log files and log collection produces no logs, while the collector stays healthy.
 
 ## Notes on Azure AKS
 

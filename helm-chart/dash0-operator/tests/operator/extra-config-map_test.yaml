@@ -783,6 +783,25 @@ tests:
           path: data['extra.yaml']
           pattern: deploymentSysctls
 
+  - it: should render collector daemonSet seLinuxOptions when set
+    set:
+      operator:
+        collectors:
+          daemonSetSeLinuxOptions:
+            type: spc_t
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            daemonSetSeLinuxOptions:
+              type: spc_t
+
+  - it: should not render collector daemonSet seLinuxOptions by default
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: daemonSetSeLinuxOptions
+
   - it: should render collector labels and annotations when set
     set:
       operator:

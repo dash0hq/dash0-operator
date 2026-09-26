@@ -1634,6 +1634,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				{Name: "net.ipv4.tcp_keepalive_time", Value: "200"},
 				{Name: "net.ipv4.tcp_keepalive_intvl", Value: "30"},
 			},
+			DaemonSetSeLinuxOptions: &corev1.SELinuxOptions{Type: "spc_t"},
 			DeploymentTolerations: []corev1.Toleration{
 				{
 					Key:      "key3",
@@ -1713,6 +1714,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			{Name: "net.ipv4.tcp_keepalive_time", Value: "200"},
 			{Name: "net.ipv4.tcp_keepalive_intvl", Value: "30"},
 		}))
+		Expect(daemonSetPodSpec.SecurityContext.SELinuxOptions).To(Equal(&corev1.SELinuxOptions{Type: "spc_t"}))
 
 		deploymentPodSpec := getDeployment(desiredState).Spec.Template.Spec
 		Expect(deploymentPodSpec.Tolerations).To(HaveLen(2))
@@ -1762,6 +1764,20 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		Expect(getDaemonSet(desiredState).Spec.Template.Spec.SecurityContext.Sysctls).To(BeNil())
 		Expect(getDeployment(desiredState).Spec.Template.Spec.SecurityContext.Sysctls).To(BeNil())
+	})
+
+	It("should not set pod seLinuxOptions on the daemonset collector by default", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			Images:                                           TestImages,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(getDaemonSet(desiredState).Spec.Template.Spec.SecurityContext.SELinuxOptions).To(BeNil())
 	})
 
 	It("should render additional collector labels and annotations", func() {

@@ -14,6 +14,7 @@ This guide covers advanced configuration topics for the Dash0 operator, includin
   - [Adding Custom Labels and Annotations to the Collector Resources](#adding-custom-labels-and-annotations-to-the-collector-resources)
 - [Configuring Collector Host Ports](#configuring-collector-host-ports)
 - [Configuring Pod-Level sysctls for the Collector Pods (TCP Keepalive)](#configuring-pod-level-sysctls-for-the-collector-pods-tcp-keepalive)
+- [Configuring SELinux Options for the Collector DaemonSet](#configuring-selinux-options-for-the-collector-daemonset)
 - [Disable Self-Monitoring](#disable-self-monitoring)
 - [Exporting Data to Other Observability Backends](#exporting-data-to-other-observability-backends)
   - [Note regarding TLS when using arbitrary OTLP-compatible backends](#note-regarding-tls-when-using-arbitrary-otlp-compatible-backends)
@@ -524,6 +525,39 @@ This setting is opt-in for two reasons:
 * It changes the collector pod spec, which triggers a rollout of the collector pods.
 
 Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or similar to take effect.
+
+## Configuring SELinux Options for the Collector DaemonSet
+
+On SELinux-enforcing clusters (for example RKE2 on Rocky Linux/RHEL), the OpenTelemetry collector DaemonSet can list
+`/var/log/pods` but its reads of the individual pod log files fail with "permission denied", so log collection silently
+produces no logs while the collector stays healthy. The cause is SELinux type enforcement: the collector container runs
+with the default SELinux type `container_t`, which is not permitted to read the `container_log_t`-labelled pod log files.
+
+Pod-level [SELinux options](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/) can be applied
+to the daemonset collector pods via `operator.collectors.daemonSetSeLinuxOptions`, which maps directly to the pod's
+`spec.securityContext.seLinuxOptions`. It defaults to being unset. Setting the type to `spc_t` makes the collector
+SELinux-unconfined so it can read the pod logs:
+
+```yaml
+operator:
+  collectors:
+    daemonSetSeLinuxOptions:
+      type: spc_t
+```
+
+Note the trade-off: `spc_t` removes SELinux confinement for the collector container. Only `spc_t` is verified for this
+use case; a more confined type such as `container_logreader_t` may read the pod logs but can prevent the collector from
+writing its filelog offset volume, so it is not recommended without testing.
+
+This is not needed on OpenShift, where `operator.openShift.enabled` already grants the collector the required SELinux
+latitude via a custom SCC (see [Platform-Specific Notes](platform-specific.md#notes-on-openshift)). It is a no-op on
+clusters that do not enforce SELinux.
+
+The collector logs a prominent error at startup when reading pod logs fails with "permission denied". If the collector
+runs with an SELinux context, the error names this setting as the remedy.
+
+Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or
+similar to take effect.
 
 ## Disable Self-Monitoring
 

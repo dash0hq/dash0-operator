@@ -80,6 +80,10 @@ data:
     daemonSetSysctls:
       {{- toYaml .Values.operator.collectors.daemonSetSysctls | nindent 6 }}
 {{- end }}
+{{- if .Values.operator.collectors.daemonSetSeLinuxOptions }}
+    daemonSetSeLinuxOptions:
+      {{- toYaml .Values.operator.collectors.daemonSetSeLinuxOptions | nindent 6 }}
+{{- end }}
     collectorDeploymentCollectorContainerResources:
       {{- toYaml (
             default
