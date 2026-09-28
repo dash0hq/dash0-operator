@@ -893,7 +893,8 @@ type SyntheticsWorkerStatus struct {
 	// instances or any single instance is not fully ready; see Instances for the per-instance state.
 	Ready bool `json:"ready"`
 
-	// ReadyReason is a programmatic identifier for the aggregate readiness outcome, e.g. "PartiallyReady"; see
+	// ReadyReason is a programmatic identifier for the aggregate readiness outcome, e.g. "PartiallyReady". As with
+	// Deployed/Reason, "PartiallyReady" means the not-ready instances disagree on why, not that some are ready; see
 	// Instances for the per-instance reasons.
 	//
 	// +kubebuilder:validation:Optional
@@ -1085,6 +1086,7 @@ func (d *Dash0OperatorConfiguration) SetSyntheticsWorkerDisabledStatus(reason st
 		Reason:             reason,
 		Message:            message,
 		LastTransitionTime: lastTransitionTime,
+		ReadyReason:        reason,
 	}
 	return changed
 }

@@ -279,11 +279,14 @@ func syntheticsWorkerFailureReason(err error) string {
 	}
 }
 
-// syntheticsWorkerInstanceReadiness derives an instance's Ready/ReadyReason from its Deployment's ready-replica count.
-// An instance that failed to deploy has no replicas of its own, and is reported as StatusReasonNoReadyReplicas.
+// syntheticsWorkerInstanceReadiness derives an instance's Ready/ReadyReason from its Deployment's rollout status. An
+// instance that failed to deploy has no replicas of its own, and is reported as StatusReasonNoReadyReplicas.
+// ReadyReplicas alone is not enough: during a stuck rollout it still counts pods from the previous ReplicaSet, so the
+// rollout must also have completed (every replica updated, none missing) before ReadyReplicas is trusted.
 func syntheticsWorkerInstanceReadiness(result swresources.InstanceResult) (bool, string) {
+	rolloutComplete := result.UpdatedReplicas == result.DesiredReplicas && result.Replicas == result.DesiredReplicas
 	switch {
-	case result.DesiredReplicas > 0 && result.ReadyReplicas >= result.DesiredReplicas:
+	case result.DesiredReplicas > 0 && rolloutComplete && result.ReadyReplicas >= result.DesiredReplicas:
 		return true, StatusReasonReady
 	case result.ReadyReplicas == 0:
 		return false, StatusReasonNoReadyReplicas

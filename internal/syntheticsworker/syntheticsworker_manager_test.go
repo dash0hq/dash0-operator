@@ -106,20 +106,27 @@ var _ = Describe("The synthetics-worker failure reason", func() {
 	})
 
 	DescribeTable(
-		"derives the per-instance readiness from its Deployment's ready-replica count",
+		"derives the per-instance readiness from its Deployment's rollout status",
 		func(result swresources.InstanceResult, expectedReady bool, expectedReason string) {
 			ready, reason := syntheticsWorkerInstanceReadiness(result)
 			Expect(ready).To(Equal(expectedReady))
 			Expect(reason).To(Equal(expectedReason))
 		},
-		Entry("every desired replica ready",
-			swresources.InstanceResult{DesiredReplicas: 2, ReadyReplicas: 2}, true, StatusReasonReady),
+		Entry("every desired replica ready and the rollout has completed",
+			swresources.InstanceResult{DesiredReplicas: 2, ReadyReplicas: 2, UpdatedReplicas: 2, Replicas: 2},
+			true, StatusReasonReady),
 		Entry("no ready replicas",
-			swresources.InstanceResult{DesiredReplicas: 2, ReadyReplicas: 0}, false, StatusReasonNoReadyReplicas),
+			swresources.InstanceResult{DesiredReplicas: 2, ReadyReplicas: 0, UpdatedReplicas: 0, Replicas: 2},
+			false, StatusReasonNoReadyReplicas),
 		Entry("a failed instance never reads back replica counts",
 			swresources.InstanceResult{DesiredReplicas: 0, ReadyReplicas: 0}, false, StatusReasonNoReadyReplicas),
 		Entry("fewer ready replicas than desired",
-			swresources.InstanceResult{DesiredReplicas: 3, ReadyReplicas: 1}, false, StatusReasonPartiallyReady),
+			swresources.InstanceResult{DesiredReplicas: 3, ReadyReplicas: 1, UpdatedReplicas: 1, Replicas: 3},
+			false, StatusReasonPartiallyReady),
+		Entry("stuck rollout: ready replicas still come from the previous ReplicaSet "+
+			"(desired=1 ready=1 updated=1 replicas=2)",
+			swresources.InstanceResult{DesiredReplicas: 1, ReadyReplicas: 1, UpdatedReplicas: 1, Replicas: 2},
+			false, StatusReasonPartiallyReady),
 	)
 
 })
@@ -166,6 +173,7 @@ var _ = Describe("The synthetics-worker manager", Ordered, func() {
 		Expect(status.Deployed).To(BeFalse())
 		Expect(status.Reason).To(Equal(StatusReasonDisabled))
 		Expect(status.Message).To(ContainSubstring("disabled in the Dash0 operator configuration resource"))
+		Expect(status.ReadyReason).To(Equal(StatusReasonDisabled))
 		Expect(recordedEvents()).To(ContainElement(ContainSubstring("SyntheticsWorkerDisabled")))
 	})
 

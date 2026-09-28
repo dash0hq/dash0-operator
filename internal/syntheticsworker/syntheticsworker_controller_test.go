@@ -24,6 +24,10 @@ func deploymentWithReadyReplicas(readyReplicas int32) *appsv1.Deployment {
 	return &appsv1.Deployment{Status: appsv1.DeploymentStatus{ReadyReplicas: readyReplicas}}
 }
 
+func deploymentWithStatus(status appsv1.DeploymentStatus) *appsv1.Deployment {
+	return &appsv1.Deployment{Status: status}
+}
+
 var _ = Describe("The synthetics-worker controller", func() {
 	featureLabels := swresources.FeatureLabelSelector()
 	unrelatedLabels := map[string]string{"app.kubernetes.io/name": "something-else"}
@@ -72,15 +76,15 @@ var _ = Describe("The synthetics-worker controller", func() {
 		})
 	})
 
-	Describe("deploymentReadyReplicasChangedPredicate", func() {
+	Describe("deploymentRolloutStatusChangedPredicate", func() {
 		It("accepts an update event when the ready-replica count changed", func() {
 			update := event.UpdateEvent{ObjectOld: deploymentWithReadyReplicas(0), ObjectNew: deploymentWithReadyReplicas(1)}
-			Expect(deploymentReadyReplicasChangedPredicate.Update(update)).To(BeTrue())
+			Expect(deploymentRolloutStatusChangedPredicate.Update(update)).To(BeTrue())
 		})
 
-		It("rejects an update event when the ready-replica count is unchanged", func() {
+		It("rejects an update event when the rollout status is unchanged", func() {
 			update := event.UpdateEvent{ObjectOld: deploymentWithReadyReplicas(1), ObjectNew: deploymentWithReadyReplicas(1)}
-			Expect(deploymentReadyReplicasChangedPredicate.Update(update)).To(BeFalse())
+			Expect(deploymentRolloutStatusChangedPredicate.Update(update)).To(BeFalse())
 		})
 
 		It("rejects an update event for a non-Deployment object", func() {
@@ -88,7 +92,24 @@ var _ = Describe("The synthetics-worker controller", func() {
 				ObjectOld: serviceAccount(OperatorNamespace, "a", featureLabels),
 				ObjectNew: serviceAccount(OperatorNamespace, "a", featureLabels),
 			}
-			Expect(deploymentReadyReplicasChangedPredicate.Update(update)).To(BeFalse())
+			Expect(deploymentRolloutStatusChangedPredicate.Update(update)).To(BeFalse())
+		})
+
+		It("accepts an update event when only updatedReplicas changed, a stuck rollout otherwise leaves unnoticed",
+			func() {
+				update := event.UpdateEvent{
+					ObjectOld: deploymentWithStatus(appsv1.DeploymentStatus{ReadyReplicas: 1, UpdatedReplicas: 1, Replicas: 1}),
+					ObjectNew: deploymentWithStatus(appsv1.DeploymentStatus{ReadyReplicas: 1, UpdatedReplicas: 0, Replicas: 2}),
+				}
+				Expect(deploymentRolloutStatusChangedPredicate.Update(update)).To(BeTrue())
+			})
+
+		It("accepts an update event when only observedGeneration changed", func() {
+			update := event.UpdateEvent{
+				ObjectOld: deploymentWithStatus(appsv1.DeploymentStatus{ObservedGeneration: 1}),
+				ObjectNew: deploymentWithStatus(appsv1.DeploymentStatus{ObservedGeneration: 2}),
+			}
+			Expect(deploymentRolloutStatusChangedPredicate.Update(update)).To(BeTrue())
 		})
 	})
 })

@@ -50,9 +50,13 @@ type InstanceResult struct {
 	Updated    bool
 	Err        error
 
-	// ReadyReplicas and DesiredReplicas are read back from the instance's Deployment after it has been created or
-	// updated; both are zero when Err is set.
+	// ReadyReplicas, UpdatedReplicas, Replicas and DesiredReplicas are read back from the instance's Deployment after
+	// it has been created or updated, and all are zero when Err is set. Readiness must not rely on ReadyReplicas
+	// alone: during a stuck rollout it still counts pods from the previous ReplicaSet, so Replicas/UpdatedReplicas are
+	// needed to tell whether the rollout has actually completed.
 	ReadyReplicas   int32
+	UpdatedReplicas int32
+	Replicas        int32
 	DesiredReplicas int32
 }
 
@@ -145,7 +149,7 @@ func (m *SyntheticsWorkerResourceManager) createOrUpdateInstance(
 	}
 
 	for _, wrapper := range desiredState {
-		existingResource, isNew, isChanged, err := m.createOrUpdateResource(ctx, wrapper.object, logger)
+		isNew, isChanged, err := m.createOrUpdateResource(ctx, wrapper.object, logger)
 		if err != nil {
 			logger.Error(err, "error while creating/updating synthetics-worker resource")
 			result.Err = err
@@ -156,41 +160,48 @@ func (m *SyntheticsWorkerResourceManager) createOrUpdateInstance(
 
 		if desiredDeployment, ok := wrapper.object.(*appsv1.Deployment); ok {
 			result.DesiredReplicas = ptr.Deref(desiredDeployment.Spec.Replicas, defaultReplicas)
-			if existingDeployment, ok := existingResource.(*appsv1.Deployment); ok {
-				result.ReadyReplicas = existingDeployment.Status.ReadyReplicas
+			// createOrUpdateResource's returned object reflects the Deployment as it was BEFORE the update, so its
+			// status can never show the rollout that was just applied; re-read it instead. A transient failure here
+			// is not this instance's failure to deploy - it is left not-ready (the safe default) rather than erroring.
+			deployment := &appsv1.Deployment{}
+			if err := m.Get(ctx, client.ObjectKeyFromObject(desiredDeployment), deployment); err != nil {
+				logger.Error(err, "cannot read back the synthetics-worker deployment's status")
+				continue
 			}
+			result.ReadyReplicas = deployment.Status.ReadyReplicas
+			result.UpdatedReplicas = deployment.Status.UpdatedReplicas
+			result.Replicas = deployment.Status.Replicas
 		}
 	}
 
 	return result
 }
 
-// createOrUpdateResource creates or updates desiredResource and returns the object as it existed before the update
-// (nil if it was just created), so a caller that needs its prior status does not have to re-fetch it.
+// createOrUpdateResource creates or updates desiredResource.
 func (m *SyntheticsWorkerResourceManager) createOrUpdateResource(
 	ctx context.Context,
 	desiredResource client.Object,
 	logger logd.Logger,
-) (client.Object, bool, bool, error) {
+) (bool, bool, error) {
 	existingResource, err := resources.CreateEmptyReceiverFor(desiredResource)
 	if err != nil {
-		return nil, false, false, err
+		return false, false, err
 	}
 	err = m.Get(ctx, client.ObjectKeyFromObject(desiredResource), existingResource)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
-			return nil, false, false, err
+			return false, false, err
 		}
 		if err = m.createResource(ctx, desiredResource, logger); err != nil {
-			return nil, false, false, err
+			return false, false, err
 		}
-		return nil, true, false, nil
+		return true, false, nil
 	}
 	hasChanged, err := m.updateResource(ctx, existingResource, desiredResource, logger)
 	if err != nil {
-		return nil, false, false, err
+		return false, false, err
 	}
-	return existingResource, false, hasChanged, nil
+	return false, hasChanged, nil
 }
 
 func (m *SyntheticsWorkerResourceManager) createResource(

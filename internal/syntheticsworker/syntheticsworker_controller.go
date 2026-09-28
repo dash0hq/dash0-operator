@@ -53,17 +53,18 @@ func (r *SyntheticsWorkerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&handler.EnqueueRequestForObject{},
 			builder.WithPredicates(
 				r.createFeatureFilterPredicate(),
-				predicate.Or(generationOrLabelChangePredicate, deploymentReadyReplicasChangedPredicate),
+				predicate.Or(generationOrLabelChangePredicate, deploymentRolloutStatusChangedPredicate),
 			)).
 		Complete(r)
 }
 
 var generationOrLabelChangePredicate = predicate.Or(predicate.GenerationChangedPredicate{}, predicate.LabelChangedPredicate{})
 
-// deploymentReadyReplicasChangedPredicate reacts to a Deployment's ready-replica count changing. Generation only
-// bumps on a spec change, so without this, the worker's readiness (status.syntheticsWorker.instances[].ready) would
-// only refresh on the next unrelated reconcile of the Dash0OperatorConfiguration resource.
-var deploymentReadyReplicasChangedPredicate = predicate.Funcs{
+// deploymentRolloutStatusChangedPredicate reacts to a Deployment's rollout status changing, so readiness
+// (status.syntheticsWorker.instances[].ready) refreshes promptly. ReadyReplicas alone is not enough: a stuck rollout
+// can leave it unchanged while UpdatedReplicas/Replicas move, and readiness depends on those too (see
+// syntheticsWorkerInstanceReadiness).
+var deploymentRolloutStatusChangedPredicate = predicate.Funcs{
 	UpdateFunc: func(e event.UpdateEvent) bool {
 		oldDeployment, ok := e.ObjectOld.(*appsv1.Deployment)
 		if !ok {
@@ -73,7 +74,11 @@ var deploymentReadyReplicasChangedPredicate = predicate.Funcs{
 		if !ok {
 			return false
 		}
-		return oldDeployment.Status.ReadyReplicas != newDeployment.Status.ReadyReplicas
+		oldStatus, newStatus := oldDeployment.Status, newDeployment.Status
+		return oldStatus.ReadyReplicas != newStatus.ReadyReplicas ||
+			oldStatus.UpdatedReplicas != newStatus.UpdatedReplicas ||
+			oldStatus.Replicas != newStatus.Replicas ||
+			oldStatus.ObservedGeneration != newStatus.ObservedGeneration
 	},
 }
 
