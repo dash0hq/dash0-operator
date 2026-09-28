@@ -25,7 +25,7 @@ Auto-instrumentation is supported for the following runtimes:
 * Node.js 16+, using
   [Dash0 Node.js OpenTelemetry distribution](https://github.com/dash0hq/opentelemetry-js-distribution)
 * Java 8+, using the [OpenTelemetry Java agent](https://github.com/open-telemetry/opentelemetry-java-instrumentation)
-* .NET, using the
+* .NET 8+, using the
   [Dash0 .NET OpenTelemetry distribution](https://github.com/dash0hq/opentelemetry-dotnet-distribution)
 * Python 3.10+ (opt-in), using the
   [Dash0 Python OpenTelemetry distribution](https://github.com/dash0hq/opentelemetry-python-distribution)

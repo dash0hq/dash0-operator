@@ -22,7 +22,7 @@ Supported runtimes for automatic workload instrumentation:
 
 * Java 8+
 * Node.js 16+
-* .NET
+* .NET 8+
 * Python ([opt-in](https://github.com/dash0hq/dash0-operator/blob/0.100.0/helm-chart/dash0-operator/values.yaml#L408-L409))
 * Ruby 3.3+ ([opt-in](docs/configuration.md#ruby-auto-instrumentation))
 
