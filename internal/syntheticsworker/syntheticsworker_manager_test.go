@@ -296,7 +296,7 @@ var _ = Describe("The synthetics-worker manager", Ordered, func() {
 					manager.ReconcileSyntheticsWorker(ctx, TriggeredByWatchEvent)
 			}
 			return true, nil
-		}, nil)
+		}, nil, nil)
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(skippedErr).ToNot(HaveOccurred())

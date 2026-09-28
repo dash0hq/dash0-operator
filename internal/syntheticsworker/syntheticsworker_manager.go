@@ -87,6 +87,10 @@ func (m *SyntheticsWorkerManager) ReconcileSyntheticsWorker(
 					"additional reconciliation request will be served by the reconciliation which is in progress.")
 			}
 		},
+		func() {
+			logger.Warn("the reconciliation of the synthetics-worker resources kept being triggered while it was " +
+				"running, stopped repeating it, the pending reconciliation request is dropped.")
+		},
 	)
 }
 
