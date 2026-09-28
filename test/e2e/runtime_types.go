@@ -17,6 +17,12 @@ var (
 		helmChartPath:     chartPathDotnet,
 		helmReleasePrefix: releaseNameDotnetPrefix,
 	}
+	runtimeTypeDotnet8 = runtimeType{
+		runtimeTypeLabel:  runtimeTypeLabelDotnet,
+		workloadName:      workloadNameDotnet,
+		helmChartPath:     chartPathDotnet,
+		helmReleasePrefix: releaseNameDotnet8Prefix,
+	}
 	runtimeTypeJvm = runtimeType{
 		runtimeTypeLabel:  runtimeTypeLabelJvm,
 		workloadName:      workloadNameJvm,
