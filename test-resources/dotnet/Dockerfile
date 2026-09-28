@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM mcr.microsoft.com/dotnet/sdk:9.0-bookworm-slim AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-resolute AS build
 
 RUN mkdir /App
 WORKDIR /App
@@ -13,7 +13,7 @@ RUN dotnet restore
 RUN dotnet publish -o .
 
 # build the final image
-FROM mcr.microsoft.com/dotnet/aspnet:9.0-bookworm-slim
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-resolute
 
 COPY --from=build /App /App
 WORKDIR /App/
