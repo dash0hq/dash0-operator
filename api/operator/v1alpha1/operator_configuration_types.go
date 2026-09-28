@@ -5,6 +5,7 @@ package v1alpha1
 
 import (
 	"encoding/json"
+	"reflect"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -799,6 +800,11 @@ func (d *Dash0OperatorConfiguration) cloneAndRedact() Dash0OperatorConfiguration
 	for _, export := range redactedResource.EffectiveExports() {
 		export.Redact()
 	}
+	for _, instance := range redactedResource.Spec.SyntheticsWorker.Instances {
+		if instance.Authorization != nil && instance.Authorization.Token != nil && len(*instance.Authorization.Token) > 0 {
+			instance.Authorization.Token = new(dash0common.RedactedValue)
+		}
+	}
 	return redactedResource
 }
 
@@ -944,14 +950,9 @@ type SyntheticsWorkerInstanceStatus struct {
 }
 
 // SetSyntheticsWorkerStatus records the outcome of the last attempt to create or update every synthetics-worker
-// instance. It reports whether the recorded state changed, so that the caller only queues a Kubernetes event on a
-// transition instead of on every reconciliation.
-//
-// The aggregate Deployed is true only if every instance deployed. A change is the aggregate Deployed flipping, the
-// status appearing for the first time, the aggregate reason changing while not deployed, or any single instance's
-// Deployed/Reason changing - an operator who fixes one misconfiguration and runs into the next one has to learn about
-// the second one as well. LastTransitionTime (aggregate and per-instance) only advances when that entry's Deployed
-// flips, mirroring the semantics of a status condition.
+// instance. It reports whether anything in the recorded status changed (including e.g. readyReplicas alone), so the
+// resource is only written to the API server when there is something new to persist. The aggregate Deployed is true
+// only if every instance deployed; LastTransitionTime only advances when Deployed flips, condition-style.
 func (d *Dash0OperatorConfiguration) SetSyntheticsWorkerStatus(instances []SyntheticsWorkerInstanceStatus) bool {
 	previous := d.Status.SyntheticsWorker
 
@@ -963,32 +964,19 @@ func (d *Dash0OperatorConfiguration) SetSyntheticsWorkerStatus(instances []Synth
 		}
 	}
 
-	changed := previous == nil || len(previous.Instances) != len(instances)
 	for i, instance := range instances {
-		merged, instanceChanged := mergeSyntheticsWorkerInstanceStatus(previousByLocationID, now, instance)
-		instances[i] = merged
-		changed = changed || instanceChanged
+		instances[i] = mergeSyntheticsWorkerInstanceStatus(previousByLocationID, now, instance)
 	}
 
 	aggregateDeployed, aggregateReason, aggregateMessage := aggregateSyntheticsWorkerDeployment(instances)
 	aggregateReady, aggregateReadyReason := aggregateSyntheticsWorkerReadiness(instances)
 
 	previousDeployed := previous != nil && previous.Deployed
-	if previousDeployed != aggregateDeployed {
-		changed = true
-	}
-	if previous != nil && !aggregateDeployed && previous.Reason != aggregateReason {
-		changed = true
-	}
-	if previous != nil && (previous.Ready != aggregateReady || previous.ReadyReason != aggregateReadyReason) {
-		changed = true
-	}
-
 	lastTransitionTime := now
 	if previous != nil && previousDeployed == aggregateDeployed {
 		lastTransitionTime = previous.LastTransitionTime
 	}
-	d.Status.SyntheticsWorker = &SyntheticsWorkerStatus{
+	newStatus := &SyntheticsWorkerStatus{
 		Deployed:           aggregateDeployed,
 		Reason:             aggregateReason,
 		Message:            aggregateMessage,
@@ -997,36 +985,27 @@ func (d *Dash0OperatorConfiguration) SetSyntheticsWorkerStatus(instances []Synth
 		ReadyReason:        aggregateReadyReason,
 		Instances:          instances,
 	}
+	changed := !reflect.DeepEqual(previous, newStatus)
+	d.Status.SyntheticsWorker = newStatus
 	return changed
 }
 
-// outcomeChanged reports whether an outcome (Deployed/Ready) or, while not ok, its reason changed.
-func outcomeChanged(previousOK bool, ok bool, previousReason string, reason string) bool {
-	if previousOK != ok {
-		return true
-	}
-	return !ok && previousReason != reason
-}
-
 // mergeSyntheticsWorkerInstanceStatus carries LastTransitionTime forward from the previous status of the same
-// instance (matched by LocationID) and reports whether anything about the instance changed.
+// instance (matched by LocationID), unless Deployed just flipped.
 func mergeSyntheticsWorkerInstanceStatus(
 	previousByLocationID map[string]SyntheticsWorkerInstanceStatus,
 	now metav1.Time,
 	instance SyntheticsWorkerInstanceStatus,
-) (SyntheticsWorkerInstanceStatus, bool) {
+) SyntheticsWorkerInstanceStatus {
 	previousInstance, ok := previousByLocationID[instance.LocationID]
 	if !ok {
 		instance.LastTransitionTime = now
-		return instance, true
+		return instance
 	}
-
 	if previousInstance.Deployed == instance.Deployed {
 		instance.LastTransitionTime = previousInstance.LastTransitionTime
 	}
-	changed := outcomeChanged(previousInstance.Deployed, instance.Deployed, previousInstance.Reason, instance.Reason) ||
-		outcomeChanged(previousInstance.Ready, instance.Ready, previousInstance.ReadyReason, instance.ReadyReason)
-	return instance, changed
+	return instance
 }
 
 // aggregateSyntheticsWorkerOutcome walks instances and reports whether every one of them satisfies ok. Otherwise it

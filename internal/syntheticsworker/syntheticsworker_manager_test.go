@@ -237,6 +237,24 @@ var _ = Describe("The synthetics-worker manager", Ordered, func() {
 		Expect(recordedEvents()).To(ConsistOf(ContainSubstring("SyntheticsWorkerNotDeployed")))
 	})
 
+	It("retries the status update on a conflict instead of giving up", func() {
+		CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, operatorConfigurationSpecWithMissingAuthorization())
+		eventRecorder = events.NewFakeRecorder(10)
+		manager := NewSyntheticsWorkerManager(
+			&conflictThenSucceedClient{Client: k8sClient, remainingConflicts: 2},
+			false,
+			newResourceManager(),
+			eventRecorder,
+		)
+
+		_, err := manager.ReconcileSyntheticsWorker(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
+		Expect(err).ToNot(HaveOccurred())
+
+		status := expectSyntheticsWorkerStatus(ctx)
+		Expect(status.Deployed).To(BeFalse())
+		Expect(status.Reason).To(Equal(StatusReasonNoAuthorizationToken))
+	})
+
 	It("keeps the operator configuration resource available while the synthetics-worker is misconfigured", func() {
 		CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, operatorConfigurationSpecWithMissingAuthorization())
 		operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
@@ -362,4 +380,34 @@ func expectSyntheticsWorkerResourcesToNotExist(ctx context.Context) {
 	Expect(apierrors.IsNotFound(k8sClient.Get(ctx,
 		client.ObjectKey{Namespace: OperatorNamespace, Name: swresources.DeploymentName(syntheticsWorkerTestNamePrefix, syntheticsWorkerTestLocationID)},
 		&appsv1.Deployment{}))).To(BeTrue())
+}
+
+// conflictThenSucceedClient fails the first remainingConflicts status updates with a Conflict error, to verify that
+// updateSyntheticsWorkerStatus's RetryOnConflict actually retries instead of giving up on the first attempt.
+type conflictThenSucceedClient struct {
+	client.Client
+	remainingConflicts int
+}
+
+func (c *conflictThenSucceedClient) Status() client.SubResourceWriter {
+	return &conflictingStatusWriter{SubResourceWriter: c.Client.Status(), client: c}
+}
+
+type conflictingStatusWriter struct {
+	client.SubResourceWriter
+	client *conflictThenSucceedClient
+}
+
+func (w *conflictingStatusWriter) Update(
+	ctx context.Context, obj client.Object, opts ...client.SubResourceUpdateOption,
+) error {
+	if w.client.remainingConflicts > 0 {
+		w.client.remainingConflicts--
+		return apierrors.NewConflict(
+			schema.GroupResource{Group: "operator.dash0.com", Resource: "dash0operatorconfigurations"},
+			obj.GetName(),
+			errors.New("simulated conflict"),
+		)
+	}
+	return w.SubResourceWriter.Update(ctx, obj, opts...)
 }

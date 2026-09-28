@@ -144,9 +144,9 @@ func (m *SyntheticsWorkerManager) syntheticsWorkerEnabled(
 }
 
 // reportSyntheticsWorkerStatus records the outcome of the last attempt to create or update every synthetics-worker
-// instance in the status of the Dash0OperatorConfiguration resource and queues a Kubernetes event when the aggregate
-// outcome changed. A per-instance failure is reflected in the corresponding InstanceResult; the caller has already
-// logged a feature-wide reconcileErr, if any.
+// instance in the status of the Dash0OperatorConfiguration resource. A Kubernetes event is only queued when the
+// aggregate Deployed outcome transitions, not on every status write (e.g. a readyReplicas-only change). A per-instance
+// failure is reflected in the corresponding InstanceResult; the caller has already logged a feature-wide reconcileErr.
 func (m *SyntheticsWorkerManager) reportSyntheticsWorkerStatus(
 	ctx context.Context,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
@@ -177,13 +177,16 @@ func (m *SyntheticsWorkerManager) reportSyntheticsWorkerStatus(
 
 	var aggregateDeployed bool
 	var aggregateMessage string
+	var deployedTransitioned bool
 	changed, err := m.updateSyntheticsWorkerStatus(
 		ctx,
 		operatorConfigurationResource,
 		func(resource *dash0v1alpha1.Dash0OperatorConfiguration) bool {
+			previousStatus := resource.Status.SyntheticsWorker
 			changed := resource.SetSyntheticsWorkerStatus(instanceStatuses)
 			aggregateDeployed = resource.Status.SyntheticsWorker.Deployed
 			aggregateMessage = resource.Status.SyntheticsWorker.Message
+			deployedTransitioned = previousStatus == nil || previousStatus.Deployed != aggregateDeployed
 			return changed
 		},
 	)
@@ -191,7 +194,7 @@ func (m *SyntheticsWorkerManager) reportSyntheticsWorkerStatus(
 		logger.Error(err, "cannot record the synthetics-worker status in the Dash0OperatorConfiguration resource")
 		return
 	}
-	if !changed {
+	if !changed || !deployedTransitioned {
 		return
 	}
 	if aggregateDeployed {

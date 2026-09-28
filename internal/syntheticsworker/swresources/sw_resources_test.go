@@ -10,6 +10,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -343,6 +344,45 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 		})
 	})
 
+	Context("when GKE Autopilot has adjusted a synthetics-worker deployment's resources", func() {
+		It("should not revert the adjustment, but still apply changed resource settings", func() {
+			results, err := manager.CreateOrUpdateSyntheticsWorkerResources(
+				ctx,
+				operatorConfigurationResourceWithSyntheticsWorker(syntheticsWorkerAuthToken),
+				logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			created, _ := aggregateResults(results)
+			Expect(created).To(BeTrue())
+
+			deployment := &appsv1.Deployment{}
+			Expect(k8sClient.Get(
+				ctx,
+				client.ObjectKey{Name: DeploymentName(testNamePrefix, testLocationID), Namespace: OperatorNamespace},
+				deployment,
+			)).To(Succeed())
+			SimulateGkeAutopilotResourceAdjustment(deployment, &deployment.Spec.Template.Spec)
+			Expect(k8sClient.Update(ctx, deployment)).To(Succeed())
+
+			results, err = manager.CreateOrUpdateSyntheticsWorkerResources(
+				ctx,
+				operatorConfigurationResourceWithSyntheticsWorker(syntheticsWorkerAuthToken),
+				logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			_, updated := aggregateResults(results)
+			Expect(updated).To(BeFalse())
+
+			reconciled := &appsv1.Deployment{}
+			Expect(k8sClient.Get(
+				ctx,
+				client.ObjectKey{Name: DeploymentName(testNamePrefix, testLocationID), Namespace: OperatorNamespace},
+				reconciled,
+			)).To(Succeed())
+			Expect(reconciled.Spec.Template.Spec).To(Equal(deployment.Spec.Template.Spec))
+		})
+	})
+
 	Context("when all synthetics-worker resources are up to date", func() {
 		It("should report that nothing has changed", func() {
 			results, err := manager.CreateOrUpdateSyntheticsWorkerResources(
@@ -367,6 +407,98 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 
 			verifySyntheticsWorkerResourcesExist(ctx, testLocationID)
 		})
+	})
+
+	Context("when deleting orphaned resources partially fails", func() {
+		It("still deletes the resources it can, and joins the failures into the returned error", func() {
+			resource := DefaultOperatorConfigurationResource()
+			resource.Spec.SyntheticsWorker = dash0v1alpha1.SyntheticsWorker{
+				Instances: []dash0v1alpha1.SyntheticsWorkerInstance{
+					{LocationID: "location-a", Authorization: &dash0common.Authorization{Token: &syntheticsWorkerAuthToken}},
+					{LocationID: "location-b", Authorization: &dash0common.Authorization{Token: &syntheticsWorkerAuthToken}},
+				},
+			}
+			_, err := manager.CreateOrUpdateSyntheticsWorkerResources(ctx, resource, logger)
+			Expect(err).ToNot(HaveOccurred())
+
+			failingManager := NewSyntheticsWorkerResourceManager(
+				&deleteErrInjectingClient{
+					Client:         k8sClient,
+					failDeleteName: DeploymentName(testNamePrefix, "location-b"),
+				},
+				k8sClient.Scheme(),
+				OperatorManagerDeployment,
+				manager.syntheticsWorkerConfig,
+			)
+			resource.Spec.SyntheticsWorker.Instances = nil
+
+			_, err = failingManager.CreateOrUpdateSyntheticsWorkerResources(ctx, resource, logger)
+
+			Expect(err).To(HaveOccurred())
+			Expect(k8sClient.Get(
+				ctx,
+				client.ObjectKey{Name: ServiceAccountName(testNamePrefix, "location-a"), Namespace: OperatorNamespace},
+				&corev1.ServiceAccount{},
+			)).To(MatchError(ContainSubstring("not found")))
+			VerifyResourceExists(
+				ctx, k8sClient, OperatorNamespace, DeploymentName(testNamePrefix, "location-b"), &appsv1.Deployment{})
+
+			resource.Spec.SyntheticsWorker.Instances = nil
+			_, err = manager.CreateOrUpdateSyntheticsWorkerResources(ctx, resource, logger)
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("when a per-instance error is transient", func() {
+		It("propagates it as the feature-wide error so the reconcile is retried, without blocking other instances",
+			func() {
+				failingManager := NewSyntheticsWorkerResourceManager(
+					&createErrInjectingClient{
+						Client:         k8sClient,
+						failCreateName: DeploymentName(testNamePrefix, "location-b"),
+					},
+					k8sClient.Scheme(),
+					OperatorManagerDeployment,
+					util.SyntheticsWorkerConfig{
+						Images: util.Images{
+							SyntheticsWorkerImage:           testImage,
+							SyntheticsWorkerImagePullPolicy: corev1.PullAlways,
+						},
+						OperatorNamespace: OperatorNamespace,
+						NamePrefix:        testNamePrefix,
+						ServerAddress:     SyntheticsWorkerServerAddress,
+						DevelopmentMode:   true,
+					},
+				)
+
+				resource := DefaultOperatorConfigurationResource()
+				resource.Spec.SyntheticsWorker = dash0v1alpha1.SyntheticsWorker{
+					Instances: []dash0v1alpha1.SyntheticsWorkerInstance{
+						{LocationID: "location-a", Authorization: &dash0common.Authorization{Token: &syntheticsWorkerAuthToken}},
+						{LocationID: "location-b", Authorization: &dash0common.Authorization{Token: &syntheticsWorkerAuthToken}},
+					},
+				}
+
+				results, err := failingManager.CreateOrUpdateSyntheticsWorkerResources(ctx, resource, logger)
+
+				Expect(err).To(HaveOccurred())
+				Expect(errors.Is(err, ErrMisconfigured)).To(BeFalse())
+
+				var okResult, brokenResult InstanceResult
+				for _, result := range results {
+					switch result.LocationID {
+					case "location-a":
+						okResult = result
+					case "location-b":
+						brokenResult = result
+					}
+				}
+				Expect(okResult.Err).ToNot(HaveOccurred())
+				Expect(okResult.Created).To(BeTrue())
+				Expect(brokenResult.Err).To(HaveOccurred())
+				VerifyResourceExists(
+					ctx, k8sClient, OperatorNamespace, DeploymentName(testNamePrefix, "location-a"), &appsv1.Deployment{})
+			})
 	})
 
 	Context("when deleting all synthetics-worker resources", func() {
@@ -477,6 +609,34 @@ func verifyNoSyntheticsWorkerResourcesExist(ctx context.Context, g Gomega) {
 	var serviceAccounts corev1.ServiceAccountList
 	g.Expect(k8sClient.List(ctx, &serviceAccounts, client.InNamespace(OperatorNamespace), client.MatchingLabels(FeatureLabelSelector()))).To(Succeed())
 	g.Expect(serviceAccounts.Items).To(BeEmpty())
+}
+
+// createErrInjectingClient fails the Create call for one specific object name, to simulate a transient API error
+// (e.g. a timeout or conflict) for a single synthetics-worker instance.
+type createErrInjectingClient struct {
+	client.Client
+	failCreateName string
+}
+
+func (c *createErrInjectingClient) Create(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
+	if obj.GetName() == c.failCreateName {
+		return apierrors.NewServiceUnavailable("simulated transient failure")
+	}
+	return c.Client.Create(ctx, obj, opts...)
+}
+
+// deleteErrInjectingClient fails the Delete call for one specific object name, to simulate one orphaned resource
+// failing to delete while the others still succeed.
+type deleteErrInjectingClient struct {
+	client.Client
+	failDeleteName string
+}
+
+func (c *deleteErrInjectingClient) Delete(ctx context.Context, obj client.Object, opts ...client.DeleteOption) error {
+	if obj.GetName() == c.failDeleteName {
+		return apierrors.NewServiceUnavailable("simulated transient failure")
+	}
+	return c.Client.Delete(ctx, obj, opts...)
 }
 
 func verifyConfigMap(ctx context.Context, testObject *corev1.ConfigMap) {

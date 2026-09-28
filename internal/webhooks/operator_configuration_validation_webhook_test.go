@@ -930,6 +930,55 @@ var _ = Describe("The validation webhook for the operator configuration resource
 					})
 				Expect(err).ToNot(HaveOccurred())
 			})
+
+			It("should reject enabling the synthetics-worker without any instances", func() {
+				_, err := CreateOperatorConfigurationResource(
+					ctx,
+					k8sClient,
+					&dash0v1alpha1.Dash0OperatorConfiguration{
+						ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+						Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+							Exports:          []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+							SyntheticsWorker: dash0v1alpha1.SyntheticsWorker{Enabled: new(true)},
+						},
+					})
+				Expect(err).To(MatchError(ContainSubstring(ErrorMessageSyntheticsWorkerEnabledWithoutInstances)))
+			})
+
+			It("should reject a resource with an unset enabled flag and no instances, since it defaults to enabled", func() {
+				_, err := CreateOperatorConfigurationResource(
+					ctx,
+					k8sClient,
+					&dash0v1alpha1.Dash0OperatorConfiguration{
+						ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+						Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+							Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						},
+					})
+				Expect(err).To(MatchError(ContainSubstring(ErrorMessageSyntheticsWorkerEnabledWithoutInstances)))
+			})
+
+			It("should allow an unrelated update to a pre-existing enabled-without-instances resource", func() {
+				// Simulates the operator's own auto-created configuration resource, which never sets
+				// syntheticsWorker.instances; only the request that first creates this state is rejected.
+				operatorConfigurationValidationWebhookHandler.syntheticsWorkerEnabledViaHelm = false
+				_, err := CreateOperatorConfigurationResource(
+					ctx,
+					k8sClient,
+					&dash0v1alpha1.Dash0OperatorConfiguration{
+						ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+						Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+							Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						},
+					})
+				Expect(err).ToNot(HaveOccurred())
+				operatorConfigurationValidationWebhookHandler.syntheticsWorkerEnabledViaHelm = true
+
+				operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+				operatorConfigurationResource.Spec.ClusterName = "cluster-name-set-after-the-fact"
+
+				Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
+			})
 		})
 	})
 })

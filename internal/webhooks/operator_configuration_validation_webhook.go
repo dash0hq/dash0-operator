@@ -138,7 +138,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		return response
 	}
 
-	if response, denied := validateSyntheticsWorkerHasInstances(spec, h.syntheticsWorkerEnabledViaHelm, logger); denied {
+	if response, denied := h.validateSyntheticsWorkerHasInstances(spec, request, logger); denied {
 		return response
 	}
 
@@ -287,14 +287,27 @@ func (h *OperatorConfigurationValidationWebhookHandler) validateSyntheticsWorker
 	return admission.Denied(ErrorMessageSyntheticsWorkerDisabledViaHelm), true
 }
 
-// validateSyntheticsWorkerHasInstances rejects an enabled synthetics-worker with no configured instances: enabling
-// the feature without at least one instance would otherwise only fail later, at reconcile time.
-func validateSyntheticsWorkerHasInstances(
+// validateSyntheticsWorkerHasInstances rejects a request that newly enables the synthetics-worker, or newly clears
+// its instances, without configuring at least one instance. It does not reject a request that merely carries over an
+// already-enabled, instance-less configuration (e.g. the operator's auto-created resource), since that state already
+// surfaces as NoInstancesConfigured in the resource's status.
+func (h *OperatorConfigurationValidationWebhookHandler) validateSyntheticsWorkerHasInstances(
 	spec dash0v1alpha1.Dash0OperatorConfigurationSpec,
-	syntheticsWorkerEnabledViaHelm bool,
+	request admission.Request,
 	logger logd.Logger,
 ) (admission.Response, bool) {
-	if !spec.SyntheticsWorker.IsEnabled(syntheticsWorkerEnabledViaHelm) || len(spec.SyntheticsWorker.Instances) > 0 {
+	if !spec.SyntheticsWorker.IsEnabled(h.syntheticsWorkerEnabledViaHelm) || len(spec.SyntheticsWorker.Instances) > 0 {
+		return admission.Response{}, false
+	}
+	newlyEnabledWithoutInstances, errorResponse := isFeatureNewlyEnabled(request, logger, "synthetics-worker",
+		func(r *dash0v1alpha1.Dash0OperatorConfiguration) bool {
+			return r.Spec.SyntheticsWorker.IsEnabled(h.syntheticsWorkerEnabledViaHelm) &&
+				len(r.Spec.SyntheticsWorker.Instances) == 0
+		})
+	if errorResponse != nil {
+		return *errorResponse, true
+	}
+	if !newlyEnabledWithoutInstances {
 		return admission.Response{}, false
 	}
 	logger.Warn(ErrorMessageSyntheticsWorkerEnabledWithoutInstances)

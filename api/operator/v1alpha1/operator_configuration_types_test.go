@@ -67,6 +67,41 @@ var _ = Describe("v1alpha1 Dash0 operator configuration CRD", func() {
 			Expect(*original.Spec.Exports[0].Dash0.Authorization.Token).To(Equal("my-secret-token"))
 		})
 
+		It("should redact a synthetics-worker instance's literal authorization token", func() {
+			token := "my-secret-token"
+			original := Dash0OperatorConfiguration{
+				Spec: Dash0OperatorConfigurationSpec{
+					SyntheticsWorker: SyntheticsWorker{
+						Instances: []SyntheticsWorkerInstance{
+							{LocationID: "a", Authorization: &dash0common.Authorization{Token: &token}},
+						},
+					},
+				},
+			}
+
+			redacted := original.cloneAndRedact()
+
+			Expect(*redacted.Spec.SyntheticsWorker.Instances[0].Authorization.Token).To(Equal("<redacted>"))
+			Expect(*original.Spec.SyntheticsWorker.Instances[0].Authorization.Token).To(Equal("my-secret-token"))
+		})
+
+		It("should not redact a synthetics-worker instance that uses a SecretRef instead of a token", func() {
+			original := Dash0OperatorConfiguration{
+				Spec: Dash0OperatorConfigurationSpec{
+					SyntheticsWorker: SyntheticsWorker{
+						Instances: []SyntheticsWorkerInstance{
+							{LocationID: "a", Authorization: &dash0common.Authorization{SecretRef: new(SecretRefTest)}},
+						},
+					},
+				},
+			}
+
+			redacted := original.cloneAndRedact()
+
+			Expect(redacted.Spec.SyntheticsWorker.Instances[0].Authorization.Token).To(BeNil())
+			Expect(redacted.Spec.SyntheticsWorker.Instances[0].Authorization.SecretRef).ToNot(BeNil())
+		})
+
 		It("should drop the kubectl last-applied-configuration annotation, which may embed a plaintext token", func() {
 			lastApplied := `{"spec":{"exports":[{"dash0":{"authorization":{"token":"my-secret-token"}}}]}}`
 			original := Dash0OperatorConfiguration{
@@ -259,6 +294,41 @@ var _ = Describe("v1alpha1 Dash0 operator configuration CRD", func() {
 			Expect(resource.SetSyntheticsWorkerStatus([]SyntheticsWorkerInstanceStatus{
 				instance("a", true, "Ready"),
 			})).To(BeTrue())
+		})
+
+		It("reports changed when only readyReplicas/desiredReplicas/message differ, without any outcome transition",
+			func() {
+				Expect(resource.SetSyntheticsWorkerStatus([]SyntheticsWorkerInstanceStatus{
+					{LocationID: "a", Deployed: true, Ready: false, ReadyReason: "NoReadyReplicas", ReadyReplicas: 1, DesiredReplicas: 3},
+				})).To(BeTrue())
+
+				Expect(resource.SetSyntheticsWorkerStatus([]SyntheticsWorkerInstanceStatus{
+					{LocationID: "a", Deployed: true, Ready: false, ReadyReason: "NoReadyReplicas", ReadyReplicas: 2, DesiredReplicas: 3},
+				})).To(BeTrue())
+			})
+	})
+
+	Describe("aggregateSyntheticsWorkerDeployment", func() {
+		instance := func(locationID string, deployed bool, reason string) SyntheticsWorkerInstanceStatus {
+			return SyntheticsWorkerInstanceStatus{LocationID: locationID, Deployed: deployed, Reason: reason}
+		}
+
+		It("reports the single failing instance's reason when only that instance fails to deploy", func() {
+			deployed, reason, _ := aggregateSyntheticsWorkerDeployment([]SyntheticsWorkerInstanceStatus{
+				instance("a", true, "Deployed"),
+				instance("b", false, "NoAuthorizationToken"),
+			})
+			Expect(deployed).To(BeFalse())
+			Expect(reason).To(Equal("NoAuthorizationToken"))
+		})
+
+		It("reports PartiallyDeployed when instances fail to deploy for different reasons", func() {
+			deployed, reason, _ := aggregateSyntheticsWorkerDeployment([]SyntheticsWorkerInstanceStatus{
+				instance("a", false, "NoAuthorizationToken"),
+				instance("b", false, "OperatorMissingPermissions"),
+			})
+			Expect(deployed).To(BeFalse())
+			Expect(reason).To(Equal("PartiallyDeployed"))
 		})
 	})
 })

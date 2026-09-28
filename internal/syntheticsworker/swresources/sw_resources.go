@@ -91,15 +91,22 @@ func (m *SyntheticsWorkerResourceManager) CreateOrUpdateSyntheticsWorkerResource
 	selfMonitoring := m.createSelfMonitoringInput(ctx, operatorConfigurationResource, logger)
 
 	results := make([]InstanceResult, 0, len(instances))
+	var transientErrs []error
 	for _, instance := range instances {
-		results = append(results, m.createOrUpdateInstance(ctx, instance, selfMonitoring, logger))
+		result := m.createOrUpdateInstance(ctx, instance, selfMonitoring, logger)
+		results = append(results, result)
+		// A misconfiguration or a permission the operator lacks cannot be fixed by requeuing; every other per-instance
+		// error can, so it must reach the feature-wide error or the instance is silently never retried.
+		if result.Err != nil && !errors.Is(result.Err, ErrMisconfigured) && !apierrors.IsForbidden(result.Err) {
+			transientErrs = append(transientErrs, result.Err)
+		}
 	}
 
 	if err := m.deleteOrphanedResources(ctx, instances, logger); err != nil {
-		return results, err
+		transientErrs = append(transientErrs, err)
 	}
 
-	return results, nil
+	return results, errors.Join(transientErrs...)
 }
 
 func (m *SyntheticsWorkerResourceManager) createOrUpdateInstance(
@@ -212,9 +219,11 @@ func (m *SyntheticsWorkerResourceManager) updateResource(
 		return false, err
 	}
 
+	desiredResourceForComparison := desiredResource.DeepCopyObject().(client.Object)
+	resources.AdoptGkeAutopilotResourceAdjustments(existingResource, desiredResourceForComparison, logger)
 	patchResult, err := patch.DefaultPatchMaker.Calculate(
 		existingResource,
-		desiredResource,
+		desiredResourceForComparison,
 		patch.IgnoreField("kind"),
 		patch.IgnoreField("apiVersion"),
 	)

@@ -76,7 +76,29 @@ var _ = Describe("The desired state of the synthetics-worker resources", func() 
 		}
 	})
 
+	It("excludes the managed-by label from the deployment's selector, since selector labels must never change", func() {
+		deployment := getDeployment(assembleDesiredStateOrFail(testConfig(), testSpec, testAuthTokenEnvVar))
+		Expect(deployment.Spec.Selector.MatchLabels).ToNot(HaveKey(util.AppKubernetesIoManagedByLabel))
+		Expect(deployment.Spec.Template.Labels).To(HaveKey(util.AppKubernetesIoManagedByLabel))
+	})
+
 	Describe("the deployment", func() {
+		It("passes the configured priority class name through to the pod spec", func() {
+			config := testConfig()
+			config.PriorityClassName = "test-priority-class"
+			podSpec := getDeployment(
+				assembleDesiredStateOrFail(config, testSpec, testAuthTokenEnvVar),
+			).Spec.Template.Spec
+			Expect(podSpec.PriorityClassName).To(Equal("test-priority-class"))
+		})
+
+		It("leaves the pod spec's priority class name unset when not configured", func() {
+			podSpec := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), testSpec, testAuthTokenEnvVar),
+			).Spec.Template.Spec
+			Expect(podSpec.PriorityClassName).To(BeEmpty())
+		})
+
 		It("uses the configured image, pull policy, and service account", func() {
 			desiredState := assembleDesiredStateOrFail(testConfig(), testSpec, testAuthTokenEnvVar)
 			deployment := getDeployment(desiredState)
@@ -259,6 +281,14 @@ var _ = Describe("The desired state of the synthetics-worker resources", func() 
 			Expect(*sc.RunAsNonRoot).To(BeTrue())
 			Expect(sc.RunAsUser).To(BeNil())
 			Expect(sc.RunAsGroup).To(BeNil())
+		})
+
+		It("does not automount the service account token, since the worker has no RBAC and never calls the API", func() {
+			podSpec := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), testSpec, testAuthTokenEnvVar),
+			).Spec.Template.Spec
+			Expect(podSpec.AutomountServiceAccountToken).ToNot(BeNil())
+			Expect(*podSpec.AutomountServiceAccountToken).To(BeFalse())
 		})
 
 		It("does not mount any volume", func() {

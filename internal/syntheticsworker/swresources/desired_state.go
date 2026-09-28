@@ -199,7 +199,8 @@ func assembleDeployment(
 	}
 
 	podSpec := corev1.PodSpec{
-		ServiceAccountName: ServiceAccountName(c.NamePrefix, spec.LocationID),
+		ServiceAccountName:           ServiceAccountName(c.NamePrefix, spec.LocationID),
+		AutomountServiceAccountToken: ptr.To(false),
 		Containers: []corev1.Container{
 			container,
 		},
