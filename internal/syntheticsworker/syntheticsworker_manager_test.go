@@ -122,17 +122,6 @@ var _ = Describe("The synthetics-worker failure reason", func() {
 			swresources.InstanceResult{DesiredReplicas: 3, ReadyReplicas: 1}, false, StatusReasonPartiallyReady),
 	)
 
-	DescribeTable(
-		"reports whether a reconcile error must not cause a reconcile retry",
-		func(err error, expectedNonBlocking bool) {
-			Expect(isNonBlockingSyntheticsWorkerError(err)).To(Equal(expectedNonBlocking))
-		},
-		Entry("a misconfiguration", swresources.ErrNoAuthorizationToken, true),
-		Entry("the API server rejecting the deployment", forbidden, true),
-		// The error travels through the resource manager, so the check has to survive wrapping.
-		Entry("a wrapped rejection", fmt.Errorf("cannot create the deployment: %w", forbidden), true),
-		Entry("any other error", errors.New("connection refused"), false),
-	)
 })
 
 var _ = Describe("The synthetics-worker manager", Ordered, func() {

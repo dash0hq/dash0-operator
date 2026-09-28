@@ -119,18 +119,12 @@ func (m *SyntheticsWorkerManager) reconcileSyntheticsWorker(ctx context.Context,
 
 	results, hasBeenReconciled, err := m.createOrUpdateSyntheticsWorker(ctx, operatorConfigurationResource, logger)
 	m.reportSyntheticsWorkerStatus(ctx, operatorConfigurationResource, results, logger)
-	if isNonBlockingSyntheticsWorkerError(err) {
+	// A non-blocking error must not block the remaining reconciliation steps for the Dash0OperatorConfiguration
+	// resource; the status and a Kubernetes event report it instead.
+	if swresources.IsNonBlockingError(err) {
 		return false, nil
 	}
 	return hasBeenReconciled, err
-}
-
-// isNonBlockingSyntheticsWorkerError reports whether a reconcile error must not cause a reconcile retry. Requeuing
-// cannot fix a misconfiguration of the CRD resource (it requires a user to edit the resource) or a permission the
-// operator itself does not hold (it requires a Helm upgrade), and either must not block the remaining reconciliation
-// steps for the Dash0OperatorConfiguration resource. The status and a Kubernetes event report it instead.
-func isNonBlockingSyntheticsWorkerError(err error) bool {
-	return errors.Is(err, swresources.ErrMisconfigured) || apierrors.IsForbidden(err)
 }
 
 // syntheticsWorkerEnabled reports whether the optional synthetics-worker deployment should be managed. The

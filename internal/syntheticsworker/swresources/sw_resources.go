@@ -35,6 +35,12 @@ var ErrMisconfigured = errors.New("the synthetics-worker is misconfigured")
 // errors.Is(err, ErrMisconfigured) matches it.
 var ErrNoAuthorizationToken = fmt.Errorf("%w: no Dash0 authorization token is available", ErrMisconfigured)
 
+// IsNonBlockingError reports whether err must not cause a reconcile retry: a misconfiguration requires editing the
+// CRD resource, and a permission the operator lacks requires a Helm upgrade; requeuing cannot fix either.
+func IsNonBlockingError(err error) bool {
+	return errors.Is(err, ErrMisconfigured) || apierrors.IsForbidden(err)
+}
+
 // InstanceResult reports the outcome of creating or updating one synthetics-worker instance's resources. Err is set
 // when this particular instance is misconfigured or failed to reconcile; it does not prevent other instances from
 // being reconciled.
@@ -95,9 +101,9 @@ func (m *SyntheticsWorkerResourceManager) CreateOrUpdateSyntheticsWorkerResource
 	for _, instance := range instances {
 		result := m.createOrUpdateInstance(ctx, instance, selfMonitoring, logger)
 		results = append(results, result)
-		// A misconfiguration or a permission the operator lacks cannot be fixed by requeuing; every other per-instance
-		// error can, so it must reach the feature-wide error or the instance is silently never retried.
-		if result.Err != nil && !errors.Is(result.Err, ErrMisconfigured) && !apierrors.IsForbidden(result.Err) {
+		// A non-blocking per-instance error is already reflected in its InstanceResult; every other one must reach the
+		// feature-wide error too, or the instance is silently never retried.
+		if result.Err != nil && !IsNonBlockingError(result.Err) {
 			transientErrs = append(transientErrs, result.Err)
 		}
 	}

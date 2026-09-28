@@ -801,8 +801,8 @@ func (d *Dash0OperatorConfiguration) cloneAndRedact() Dash0OperatorConfiguration
 		export.Redact()
 	}
 	for _, instance := range redactedResource.Spec.SyntheticsWorker.Instances {
-		if instance.Authorization != nil && instance.Authorization.Token != nil && len(*instance.Authorization.Token) > 0 {
-			instance.Authorization.Token = new(dash0common.RedactedValue)
+		if instance.Authorization != nil {
+			instance.Authorization.Redact()
 		}
 	}
 	return redactedResource

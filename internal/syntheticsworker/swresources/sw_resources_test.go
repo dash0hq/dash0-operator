@@ -6,12 +6,14 @@ package swresources
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -45,6 +47,26 @@ var (
 		},
 	}
 )
+
+var _ = Describe("IsNonBlockingError", func() {
+	forbidden := apierrors.NewForbidden(
+		schema.GroupResource{Group: "apps", Resource: "deployments"},
+		"dash0-operator-synthetics-worker",
+		errors.New("deployments.apps is forbidden"),
+	)
+
+	DescribeTable(
+		"reports whether a reconcile error must not cause a reconcile retry",
+		func(err error, expectedNonBlocking bool) {
+			Expect(IsNonBlockingError(err)).To(Equal(expectedNonBlocking))
+		},
+		Entry("a misconfiguration", ErrNoAuthorizationToken, true),
+		Entry("the API server rejecting the deployment", forbidden, true),
+		// The error travels through the resource manager, so the check has to survive wrapping.
+		Entry("a wrapped rejection", fmt.Errorf("cannot create the deployment: %w", forbidden), true),
+		Entry("any other error", errors.New("connection refused"), false),
+	)
+})
 
 var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 	ctx := context.Background()
