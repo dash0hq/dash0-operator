@@ -4,6 +4,8 @@
 package util
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"maps"
 	"regexp"
 	"strings"
@@ -37,6 +39,13 @@ const (
 	webhookIgnoreOnceLabelKey            = "dash0.com/webhook-ignore-once"
 	// TODO move operator-image, instrumentation-image and instrumented-by to annotations (later)
 )
+
+const (
+	maxLabelValueLength = 63
+	imageRefHashLength  = 16
+)
+
+var invalidLabelValueCharacters = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
 
 type instrumentedState string
 
@@ -190,31 +199,39 @@ func CheckAndDeleteIgnoreOnceLabel(objectMeta *metav1.ObjectMeta) bool {
 
 // ImageRefToLabel takes an image ref as input and returns a string that conforms to the spec of k8s labels:
 // https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set
-// If the image ref is longer than 63 characters, the registry part is dropped and the remaining part is truncated
-// to 63 characters and it is ensured that the string ends with an alphanumeric character.
 // Characters not supported in k8s labels are converted to underscores.
+// If the image ref is longer than 63 characters, the label consists of the last path segment of the image ref
+// (truncated if necessary), followed by an underscore and a hex-encoded prefix of the SHA-256 hash of the full image
+// ref. That way, two image refs that only differ in their registry or organization still yield different labels.
 func ImageRefToLabel(imageRef string) string {
 	if imageRef == "" {
 		return imageRef
 	}
-
-	const maxLen = 63
-	if len(imageRef) > maxLen {
-		lastSlash := strings.LastIndex(imageRef, "/")
-		if lastSlash != -1 {
-			imageRef = imageRef[lastSlash+1:]
-		}
-	}
-	if len(imageRef) > maxLen {
-		imageRef = imageRef[:maxLen]
+	if len(imageRef) <= maxLabelValueLength {
+		return sanitizeLabelValue(imageRef)
 	}
 
-	regex := regexp.MustCompile(`[^a-zA-Z0-9._-]`)
-	imageRef = regex.ReplaceAllString(imageRef, "_")
+	hash := sha256.Sum256([]byte(imageRef))
+	hashSuffix := hex.EncodeToString(hash[:])[:imageRefHashLength]
 
-	imageRef = strings.TrimRight(imageRef, "-._")
+	readablePart := imageRef
+	if lastSlash := strings.LastIndex(readablePart, "/"); lastSlash != -1 {
+		readablePart = readablePart[lastSlash+1:]
+	}
+	maxReadablePartLength := maxLabelValueLength - imageRefHashLength - 1
+	if len(readablePart) > maxReadablePartLength {
+		readablePart = readablePart[:maxReadablePartLength]
+	}
+	readablePart = sanitizeLabelValue(readablePart)
+	if readablePart == "" {
+		return hashSuffix
+	}
+	return readablePart + "_" + hashSuffix
+}
 
-	return imageRef
+func sanitizeLabelValue(value string) string {
+	value = invalidLabelValueCharacters.ReplaceAllString(value, "_")
+	return strings.Trim(value, "-._")
 }
 
 func readLabel(objectMeta *metav1.ObjectMeta, key string) (string, bool) {
