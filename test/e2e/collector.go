@@ -233,6 +233,22 @@ func verifyConfigMapContainsString(operatorNamespace string, configMapNameQualif
 	)
 }
 
+func verifyCollectorContainerArgsContainString(operatorNamespace string, workloadNameQualified string, s string) {
+	verifyCommandOutputContainsStrings(
+		exec.Command(
+			"kubectl",
+			"get",
+			"-n",
+			operatorNamespace,
+			workloadNameQualified,
+			"-o",
+			`jsonpath={.spec.template.spec.containers[?(@.name=="opentelemetry-collector")].args}`,
+		),
+		60*time.Second,
+		s,
+	)
+}
+
 func verifyCollectorConfigMapsAreCompressed(operatorNamespace string) {
 	verifyConfigMapIsCompressed(operatorNamespace, collectorDaemonSetConfigMapNameQualified)
 	verifyConfigMapIsCompressed(operatorNamespace, collectorDeploymentConfigMapNameQualified)

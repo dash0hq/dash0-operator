@@ -112,6 +112,7 @@ type environmentVariables struct {
 	k8sAttributesDisableReplicasetInformer      bool
 	k8sAttributesWaitForMetadata                bool
 	k8sAttributesWaitForMetadataTimeout         string
+	k8sAttributesShareProcessor                 bool
 	kubeletStatsAutoDetectEndpoint              bool
 	kubeletStatsReceiverConfig                  *util.KubeletStatsReceiverConfig
 	instrumentationDebug                        bool
@@ -236,6 +237,7 @@ const (
 	k8sAttributesDisableReplicasetInformerEnvVarName = "OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER"
 	k8sAttributesWaitForMetadataEnvVarName           = "OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA"
 	k8sAttributesWaitForMetadataTimeoutEnvVarName    = "OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA_TIMEOUT"
+	k8sAttributesShareProcessorEnvVarName            = "OTEL_COLLECTOR_K8SATTRIBUTES_SHARE_PROCESSOR_BETWEEN_PIPELINES"
 	enablePprofExtensionEnvVarName                   = "OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION"
 	compressConfigMapsEnvVarName                     = "OTEL_COLLECTOR_COMPRESS_CONFIG_MAPS"
 	kubeletStatsAutoDetectEndpointEnvVarName         = "OTEL_COLLECTOR_KUBELETSTATS_AUTO_DETECT_ENDPOINT"
@@ -996,6 +998,8 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	k8sAttributesWaitForMetadata := readBooleanEnvVar(k8sAttributesWaitForMetadataEnvVarName)
 	k8sAttributesWaitForMetadataTimeout, _ := os.LookupEnv(k8sAttributesWaitForMetadataTimeoutEnvVarName)
 
+	k8sAttributesShareProcessor := readBooleanEnvVar(k8sAttributesShareProcessorEnvVarName)
+
 	kubeletStatsAutoDetectEndpoint, kubeletStatsReceiverConfig := readKubeletStatsReceiverConfigFromEnv()
 
 	enablePprofExtension := readBooleanEnvVar(enablePprofExtensionEnvVarName)
@@ -1045,6 +1049,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		k8sAttributesDisableReplicasetInformer:      k8sAttributesDisableReplicasetInformer,
 		k8sAttributesWaitForMetadata:                k8sAttributesWaitForMetadata,
 		k8sAttributesWaitForMetadataTimeout:         k8sAttributesWaitForMetadataTimeout,
+		k8sAttributesShareProcessor:                 k8sAttributesShareProcessor,
 		kubeletStatsAutoDetectEndpoint:              kubeletStatsAutoDetectEndpoint,
 		kubeletStatsReceiverConfig:                  kubeletStatsReceiverConfig,
 		instrumentationDebug:                        instrumentationDebug,
@@ -1800,6 +1805,7 @@ func startDash0Controllers(
 			K8sAttributesDisableReplicasetInformer: envVars.k8sAttributesDisableReplicasetInformer,
 			K8sAttributesWaitForMetadata:           envVars.k8sAttributesWaitForMetadata,
 			K8sAttributesWaitForMetadataTimeout:    envVars.k8sAttributesWaitForMetadataTimeout,
+			K8sAttributesShareProcessor:            envVars.k8sAttributesShareProcessor,
 			NodeIp:                                 envVars.nodeIp,
 			NodeName:                               envVars.nodeName,
 			KubeletStatsAutoDetectEndpoint:         envVars.kubeletStatsAutoDetectEndpoint,

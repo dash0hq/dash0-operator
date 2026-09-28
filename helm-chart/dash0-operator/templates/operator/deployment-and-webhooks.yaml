@@ -362,6 +362,10 @@ spec:
         - name: OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA_TIMEOUT
           value: {{ .Values.operator.collectors.k8s_attributes.wait_for_metadata_timeout | toString | quote }}
         {{- end }}
+        {{- if .Values.operator.collectors.k8s_attributes.shareProcessorBetweenPipelines }}
+        - name: OTEL_COLLECTOR_K8SATTRIBUTES_SHARE_PROCESSOR_BETWEEN_PIPELINES
+          value: "true"
+        {{- end }}
         {{- if or .Values.operator.collectors.enablePprof .Values.operator.collectors.enablePprofExtension }}
         - name: OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION
           value: "true"

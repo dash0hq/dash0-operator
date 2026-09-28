@@ -1131,6 +1131,13 @@ operator:
       wait_for_metadata: false
       wait_for_metadata_timeout: 15s
 
+      # Share one k8s_attributes processor instance between the traces, metrics and logs pipelines of a collector,
+      # instead of running one instance (with its own Kubernetes API watches and metadata cache) per pipeline. This can
+      # reduce the memory usage of the collectors considerably, in particular in large clusters.
+      # This enables the collector feature gate processor.k8sattributes.ShareProcessorBetweenPipelines, which is
+      # currently in alpha stage. The default is false.
+      shareProcessorBetweenPipelines: false
+
     # Settings for the kubeletstats receiver in the DaemonSet collector, which scrapes the local kubelet for Kubernetes
     # infrastructure metrics.
     #

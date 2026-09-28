@@ -104,6 +104,7 @@ type oTelColConfig struct {
 	K8sAttributesDisableReplicasetInformer           bool
 	K8sAttributesWaitForMetadata                     bool
 	K8sAttributesWaitForMetadataTimeout              string
+	K8sAttributesShareProcessor                      bool
 	PrometheusCrdSupportEnabled                      bool
 	TargetAllocatorNamePrefix                        string
 	Agent0ConnectorEnabled                           bool
@@ -253,6 +254,10 @@ const (
 	collectorConfigurationFilePath    = collectorConfigDirPath + "/" + collectorConfigurationYaml
 	collectorConfigCompressedDirPath  = "/etc/otelcol/conf-compressed"
 	collectorConfigCompressedFilePath = collectorConfigCompressedDirPath + "/" + collectorConfigurationYaml
+
+	// collector feature gates
+	profilesSupportFeatureGate             = "service.profilesSupport"
+	k8sAttributesShareProcessorFeatureGate = "processor.k8sattributes.ShareProcessorBetweenPipelines"
 
 	// config volume names -- the collectors will either use only the collectorConfigMapVolumeNamePlainText (when config
 	// map compression is disabled), or collectorConfigMapCompressedVolumeName + collectorConfigMapDecompressedVolumeName
@@ -1223,6 +1228,16 @@ func createVolumeMountForUserProvidedFileLogOffsetVolume(filelogOffsetsVolume co
 // assembleCollectorEnvVars builds the environment for a collector container. withSignalControlAuthToken must only be
 // set for the Signal Control collector: it is the only workload whose configuration references
 // DASH0_SIGNAL_CONTROL_AUTH_TOKEN, and the token should not be spread to workloads that do not need it.
+func assembleCollectorArgs(featureGates []string) []string {
+	collectorArgs := []string{
+		"--config=file:" + collectorConfigurationFilePath,
+	}
+	if len(featureGates) > 0 {
+		collectorArgs = append(collectorArgs, "--feature-gates="+strings.Join(featureGates, ","))
+	}
+	return collectorArgs
+}
+
 func assembleCollectorEnvVars(
 	config *oTelColConfig,
 	workloadNameEnvVar corev1.EnvVar,
@@ -1325,12 +1340,14 @@ func assembleDaemonSetCollectorContainer(
 		httpPort.HostPort = config.OtlpHttpHostPort
 	}
 
-	collectorArgs := []string{
-		"--config=file:" + collectorConfigurationFilePath,
-	}
+	var featureGates []string
 	if config.ProfilingEnabled {
-		collectorArgs = append(collectorArgs, "--feature-gates=service.profilesSupport")
+		featureGates = append(featureGates, profilesSupportFeatureGate)
 	}
+	if config.K8sAttributesShareProcessor {
+		featureGates = append(featureGates, k8sAttributesShareProcessorFeatureGate)
+	}
+	collectorArgs := assembleCollectorArgs(featureGates)
 
 	collectorContainer := corev1.Container{
 		Name: openTelemetryCollector,
@@ -1867,9 +1884,11 @@ func assembleDeploymentCollectorContainer(
 		return corev1.Container{}, err
 	}
 
-	collectorArgs := []string{
-		"--config=file:" + collectorConfigurationFilePath,
+	var featureGates []string
+	if config.K8sAttributesShareProcessor {
+		featureGates = append(featureGates, k8sAttributesShareProcessorFeatureGate)
 	}
+	collectorArgs := assembleCollectorArgs(featureGates)
 
 	collectorContainer := corev1.Container{
 		Name: openTelemetryCollector,

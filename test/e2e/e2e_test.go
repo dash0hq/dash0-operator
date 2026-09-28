@@ -3580,6 +3580,83 @@ spec:
 			})
 		})
 
+		Describe("with shared k8s_attributes processor", func() {
+			BeforeAll(func() {
+				By("deploying the Dash0 operator with the shared k8s_attributes processor enabled")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					true,
+					map[string]string{
+						"operator.collectors.k8s_attributes.shareProcessorBetweenPipelines": "true",
+					},
+				)
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+			})
+
+			AfterAll(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should enable the feature gate for the daemonset and deployment collectors", func() {
+				featureGateArg := "--feature-gates=processor.k8sattributes.ShareProcessorBetweenPipelines"
+				verifyCollectorContainerArgsContainString(operatorNamespace, collectorDaemonSetNameQualified, featureGateArg)
+				verifyCollectorContainerArgsContainString(
+					operatorNamespace,
+					collectorDeploymentNameQualified,
+					featureGateArg,
+				)
+			})
+
+			It("should enrich spans, logs and metrics with Kubernetes metadata", func() {
+				timestampLowerBound := time.Now()
+				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+
+				By("installing the Node.js deployment")
+				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+
+				By("verifying that spans carry Kubernetes metadata")
+				verifyThatWorkloadHasBeenInstrumented(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					testId,
+					images,
+					"webhook",
+				)
+
+				By("verifying that log records carry Kubernetes metadata")
+				Eventually(func(g Gomega) {
+					verifyWorkloadLogRecords(
+						g,
+						runtimeTypeNodeJs,
+						workloadTypeDeployment,
+						testEndpoint,
+						fmt.Sprintf("id=%s", testId),
+						timestampLowerBound,
+						"",
+						fmt.Sprintf("processing request %s", testId),
+					)
+				}, 30*time.Second, 300*time.Millisecond).Should(Succeed())
+
+				By("verifying that metrics carry Kubernetes metadata")
+				Eventually(func(g Gomega) {
+					verifyKubeletStatsMetrics(g, timestampLowerBound)
+				}, 120*time.Second, time.Second).Should(Succeed())
+				Eventually(func(g Gomega) {
+					verifyK8skClusterReceiverMetrics(g, timestampLowerBound)
+				}, 120*time.Second, time.Second).Should(Succeed())
+			})
+		})
+
 		Describe("operator upgrade", func() {
 			AfterAll(func() {
 				undeployOperator(operatorNamespace)
