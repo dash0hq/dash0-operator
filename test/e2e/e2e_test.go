@@ -3634,6 +3634,8 @@ spec:
 				)
 
 				By("verifying that log records carry Kubernetes metadata")
+				// The collector only starts collecting logs from the test namespace once kubelet has synced the updated
+				// collector config map to the node and the collector has reloaded it, which can take up to a minute.
 				Eventually(func(g Gomega) {
 					verifyWorkloadLogRecords(
 						g,
@@ -3645,7 +3647,7 @@ spec:
 						"",
 						fmt.Sprintf("processing request %s", testId),
 					)
-				}, 30*time.Second, 300*time.Millisecond).Should(Succeed())
+				}, 120*time.Second, time.Second).Should(Succeed())
 
 				By("verifying that metrics carry Kubernetes metadata")
 				Eventually(func(g Gomega) {
