@@ -64,8 +64,6 @@ class App
             VerifyEnvVar("CORECLR_ENABLE_PROFILING", "1");
             VerifyEnvVar("CORECLR_PROFILER", "{918728DD-259F-4A6A-AC2B-B85E1B658318}");
             VerifyEnvVar("CORECLR_PROFILER_PATH", prefixLibcArch + "/OpenTelemetry.AutoInstrumentation.Native.so");
-            VerifyEnvVar("DOTNET_ADDITIONAL_DEPS", prefixLibc + "/AdditionalDeps");
-            VerifyEnvVar("DOTNET_SHARED_STORE", prefixLibc + "/store");
             VerifyEnvVar("DOTNET_STARTUP_HOOKS", prefixLibc + "/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll");
             VerifyEnvVar("OTEL_DOTNET_AUTO_HOME", prefixLibc);
             return 0;
