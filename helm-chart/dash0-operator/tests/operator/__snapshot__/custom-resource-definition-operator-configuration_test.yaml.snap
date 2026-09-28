@@ -3661,7 +3661,8 @@ custom resource definition for operator configuration should match snapshot:
                           type: boolean
                         readyReason:
                           description: |-
-                            ReadyReason is a programmatic identifier for the aggregate readiness outcome, e.g. "PartiallyReady"; see
+                            ReadyReason is a programmatic identifier for the aggregate readiness outcome, e.g. "PartiallyReady". As with
+                            Deployed/Reason, "PartiallyReady" means the not-ready instances disagree on why, not that some are ready; see
                             Instances for the per-instance reasons.
                           type: string
                         reason:
