@@ -1360,5 +1360,64 @@ var _ = Describe(
 				).Should(Succeed())
 			},
 		)
+
+		It(
+			"should not update the resource when UpdateExtraConfig is called with the same exports", func() {
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithToken,
+					util.ExtraConfig{
+						Exports: []dash0common.Export{
+							{Grpc: &dash0common.GrpcConfiguration{Endpoint: "otelcol:4317"}},
+						},
+					},
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Modify the resource directly, an unwanted update by the handler would revert this change.
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						g.Expect(
+							k8sClient.Get(
+								ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+								&operatorConfiguration,
+							),
+						).To(Succeed())
+						g.Expect(operatorConfiguration.Spec.Exports).To(HaveLen(2))
+						operatorConfiguration.Spec.Exports = operatorConfiguration.Spec.Exports[:1]
+						g.Expect(k8sClient.Update(ctx, &operatorConfiguration)).To(Succeed())
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+
+				handler.UpdateExtraConfig(
+					ctx,
+					util.ExtraConfig{
+						Exports: []dash0common.Export{
+							{Grpc: &dash0common.GrpcConfiguration{Endpoint: "otelcol:4317"}},
+						},
+					},
+					logger,
+				)
+
+				Consistently(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						g.Expect(
+							k8sClient.Get(
+								ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+								&operatorConfiguration,
+							),
+						).To(Succeed())
+						exports := operatorConfiguration.Spec.Exports
+						g.Expect(exports).To(HaveLen(1))
+						g.Expect(exports[0].Dash0).ToNot(BeNil())
+					}, 1*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
 	},
 )
