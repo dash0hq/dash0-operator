@@ -8,10 +8,11 @@ import "fmt"
 const (
 	applicationUnderTestNamespace = "e2e-test-ns"
 
-	runtimeTypeLabelDotnet  = ".NET"
-	applicationPathDotnet   = "test-resources/dotnet"
-	workloadNameDotnet      = "dash0-operator-dotnet-test"
-	releaseNameDotnetPrefix = "dotnet"
+	runtimeTypeLabelDotnet   = ".NET"
+	applicationPathDotnet    = "test-resources/dotnet"
+	workloadNameDotnet       = "dash0-operator-dotnet-test"
+	releaseNameDotnetPrefix  = "dotnet"
+	releaseNameDotnet8Prefix = "dotnet8"
 
 	runtimeTypeLabelJvm  = "JVM"
 	applicationPathJvm   = "test-resources/jvm/spring-boot"

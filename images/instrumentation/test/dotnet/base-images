@@ -7,5 +7,9 @@
 # https://mcr.microsoft.com/en-us/artifact/mar/dotnet/aspnet/tags to find tags for the run image.
 
 # one pair of build and run base images per line
+mcr.microsoft.com/dotnet/sdk:8.0-alpine,mcr.microsoft.com/dotnet/aspnet:8.0-alpine
+mcr.microsoft.com/dotnet/sdk:8.0-bookworm-slim,mcr.microsoft.com/dotnet/aspnet:8.0-bookworm-slim
 mcr.microsoft.com/dotnet/sdk:9.0-alpine,mcr.microsoft.com/dotnet/aspnet:9.0-alpine
 mcr.microsoft.com/dotnet/sdk:9.0-bookworm-slim,mcr.microsoft.com/dotnet/aspnet:9.0-bookworm-slim
+mcr.microsoft.com/dotnet/sdk:10.0-alpine,mcr.microsoft.com/dotnet/aspnet:10.0-alpine
+mcr.microsoft.com/dotnet/sdk:10.0-resolute,mcr.microsoft.com/dotnet/aspnet:10.0-resolute
