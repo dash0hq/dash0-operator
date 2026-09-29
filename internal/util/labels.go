@@ -231,7 +231,7 @@ func ImageRefToLabel(imageRef string) string {
 
 func sanitizeLabelValue(value string) string {
 	value = invalidLabelValueCharacters.ReplaceAllString(value, "_")
-	return strings.Trim(value, "-._")
+	return strings.TrimRight(value, "-._")
 }
 
 func readLabel(objectMeta *metav1.ObjectMeta, key string) (string, bool) {
