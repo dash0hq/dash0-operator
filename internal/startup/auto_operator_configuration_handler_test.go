@@ -1017,6 +1017,64 @@ var _ = Describe(
 		)
 
 		It(
+			"should not update the resource when UpdateExtraConfig is called with the same filter and transform", func() {
+				filterJSON := json.RawMessage(
+					`{"traces":{"span":["attributes[\"http.route\"] == \"/ready\""]}}`)
+				transformJSON := json.RawMessage(
+					`{"trace_statements":["truncate_all(span.attributes, 128)"]}`)
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithTokenAndTelemetryCollection,
+					util.ExtraConfig{FilterRaw: &filterJSON, TransformRaw: &transformJSON},
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Modify the resource directly, an unwanted update by the handler would revert this change.
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+							&operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+						g.Expect(operatorConfiguration.Spec.Filter).ToNot(BeNil())
+						g.Expect(operatorConfiguration.Spec.Transform).ToNot(BeNil())
+						operatorConfiguration.Spec.Filter = nil
+						operatorConfiguration.Spec.Transform = nil
+						g.Expect(k8sClient.Update(ctx, &operatorConfiguration)).To(Succeed())
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+
+				sameFilterJSON := json.RawMessage(
+					`{"traces":{"span":["attributes[\"http.route\"] == \"/ready\""]}}`)
+				sameTransformJSON := json.RawMessage(
+					`{"trace_statements":["truncate_all(span.attributes, 128)"]}`)
+				handler.UpdateExtraConfig(
+					ctx,
+					util.ExtraConfig{FilterRaw: &sameFilterJSON, TransformRaw: &sameTransformJSON},
+					logger,
+				)
+
+				Consistently(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+							&operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+						g.Expect(operatorConfiguration.Spec.Filter).To(BeNil())
+						g.Expect(operatorConfiguration.Spec.Transform).To(BeNil())
+					}, 1*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		It(
 			"should update the existing resource if there already is an auto-operator-configuration-resource", func() {
 				handler1 := NewAutoOperatorConfigurationResourceHandler(
 					k8sClient,
