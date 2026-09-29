@@ -514,6 +514,26 @@ var _ = Describe(
 						},
 					),
 					Entry(
+						"should send the default dataset if it has been set explicitly",
+						exportToEnvVarsTestConfig{
+							export: *Dash0ExportWithEndpointTokenAndExplicitDefaultDataset(),
+							expectedEndpointAndHeaders: EndpointAndHeaders{
+								Endpoint: EndpointDash0WithProtocolTest,
+								Protocol: common.ProtocolGrpc,
+								Headers: []dash0common.Header{
+									{
+										Name:  util.AuthorizationHeaderName,
+										Value: "Bearer $(SELF_MONITORING_AUTH_TOKEN)",
+									},
+									{
+										Name:  util.Dash0DatasetHeaderName,
+										Value: util.DatasetDefault,
+									},
+								},
+							},
+						},
+					),
+					Entry(
 						"should ignore grpc and http exports if a Dash0 export is present",
 						exportToEnvVarsTestConfig{
 							export: dash0common.Export{
@@ -837,6 +857,16 @@ var _ = Describe(
                   - name: Dash0-Dataset
                     value: "test-dataset"
 `)
+
+					dash0ExportWithExplicitDefaultDatasetExpectedMetricsPipelineString = expectedMetricsPipeline(`
+                protocol: grpc
+                endpoint: https://endpoint.dash0.com:4317
+                headers:
+                  - name: Authorization
+                    value: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"
+                  - name: Dash0-Dataset
+                    value: "default"
+`)
 				)
 
 				DescribeTable(
@@ -878,6 +908,15 @@ var _ = Describe(
 						exportToCollectorMetricsSelfMonitoringPipelineTestConfig{
 							selfMonitoringConfiguration:   createSelfMonitoringConfiguration(Dash0ExportWithEndpointTokenAndCustomDataset()),
 							expectedMetricsPipelineString: dash0ExportWithCustomDatasetExpectedMetricsPipelineString,
+						},
+					),
+					Entry(
+						"should send the default dataset if it has been set explicitly",
+						exportToCollectorMetricsSelfMonitoringPipelineTestConfig{
+							selfMonitoringConfiguration: createSelfMonitoringConfiguration(
+								Dash0ExportWithEndpointTokenAndExplicitDefaultDataset(),
+							),
+							expectedMetricsPipelineString: dash0ExportWithExplicitDefaultDatasetExpectedMetricsPipelineString,
 						},
 					),
 					Entry(

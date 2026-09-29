@@ -47,10 +47,9 @@ type Dash0Configuration struct {
 	// +kubebuilder:validation:MinLength=1
 	Endpoint string `json:"endpoint"`
 
-	// The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-	// dataset "default" will be used.
-	//
-	// +kubebuilder:default=default
+	// The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, no
+	// dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token.
+	// API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
 	Dataset string `json:"dataset,omitempty"`
 
 	// Mandatory authorization settings for sending data to Dash0.

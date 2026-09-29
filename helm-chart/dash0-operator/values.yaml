@@ -39,7 +39,8 @@ operator:
     # `dash0.com:4317`.
     endpoint:
 
-    # The dataset to be used for reported telemetry and API access. This property is optional, it defaults to "default".
+    # The dataset to be used for reported telemetry and API access. This property is optional. If omitted, no dataset is
+    # sent along with the telemetry and Dash0 selects the dataset based on the auth token; API access uses "default".
     # See https://www.dash0.com/docs/dash0/miscellaneous/glossary/datasets.
     dataset:
 
