@@ -674,7 +674,8 @@ header values provided via a Dash0 monitoring resource.
 
 Export to multiple backends is also supported.
 The supplied backends can be either of the same type or of different types.
-In the following example the telemetry would be sent to two different datasets in Dash0 and in addition to a gRPC endpoint:
+In the following example the telemetry would be sent to two different datasets in Dash0 (referenced by their dataset
+identifiers) and in addition to a gRPC endpoint:
 
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1

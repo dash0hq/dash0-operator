@@ -1095,6 +1095,9 @@ See https://kubernetes.io/docs/concepts/configuration/secret/ for more informati
 ### Dash0 Dataset Configuration
 
 Use the `spec.exports[].dash0.dataset` property to configure the dataset that should be used for the telemetry data.
+The value is the dataset's identifier, not its display name.
+For example, a dataset named `prod` can have the identifier `default`; in that case, use `dataset: default`.
+The identifier can be looked up in [Dash0](https://app.dash0.com) -> organization settings -> "Datasets".
 If the property is omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
 authorization token: a token that is limited to a single dataset writes to that dataset, any other token writes to its
 default ingestion dataset. If a dataset is set (including `default`), it is always sent, and the token needs to have
@@ -1111,7 +1114,7 @@ spec:
     - dash0:
         endpoint: ingress... # see above
 
-        dataset: my-custom-dataset # This optional setting determines the Dash0 dataset to which telemetry will be sent.
+        dataset: my-custom-dataset # This optional setting determines the identifier of the Dash0 dataset to which telemetry will be sent.
 
         authorization: # see above
           ...
