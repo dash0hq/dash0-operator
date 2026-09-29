@@ -1225,9 +1225,6 @@ func createVolumeMountForUserProvidedFileLogOffsetVolume(filelogOffsetsVolume co
 	}
 }
 
-// assembleCollectorEnvVars builds the environment for a collector container. withSignalControlAuthToken must only be
-// set for the Signal Control collector: it is the only workload whose configuration references
-// DASH0_SIGNAL_CONTROL_AUTH_TOKEN, and the token should not be spread to workloads that do not need it.
 func assembleCollectorArgs(featureGates []string) []string {
 	collectorArgs := []string{
 		"--config=file:" + collectorConfigurationFilePath,
@@ -1238,6 +1235,9 @@ func assembleCollectorArgs(featureGates []string) []string {
 	return collectorArgs
 }
 
+// assembleCollectorEnvVars builds the environment for a collector container. withSignalControlAuthToken must only be
+// set for the Signal Control collector: it is the only workload whose configuration references
+// DASH0_SIGNAL_CONTROL_AUTH_TOKEN, and the token should not be spread to workloads that do not need it.
 func assembleCollectorEnvVars(
 	config *oTelColConfig,
 	workloadNameEnvVar corev1.EnvVar,
