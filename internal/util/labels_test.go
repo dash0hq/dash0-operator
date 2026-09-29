@@ -6,6 +6,8 @@ package util
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 var _ = Describe("labels", func() {
@@ -35,55 +37,75 @@ var _ = Describe("labels", func() {
 			)
 		})
 
-		It("should truncate long image names", func() {
+		It("should leave image refs with exactly 63 characters unchanged apart from character conversion", func() {
+			imageRef := "registry.example.com/dash0hq/operator-controller:0.155.1-abcdef"
+			Expect(imageRef).To(HaveLen(63))
+			Expect(ImageRefToLabel(imageRef)).To(Equal("registry.example.com_dash0hq_operator-controller_0.155.1-abcdef"))
+		})
+
+		It("should replace the registry and organization of long image refs with a hash", func() {
+			labelFromLongImageName := ImageRefToLabel(
+				"europe-docker.pkg.dev/dash0-deployment/dash0-europe-remote-ghcr-io/dash0hq/instrumentation:0.155.1",
+			)
+			Expect(labelFromLongImageName).To(Equal("instrumentation_0.155.1_b064cbcb42e788ec"))
+			expectValidLabelValue(labelFromLongImageName)
+		})
+
+		It("should truncate the readable part of long image refs with a digest", func() {
 			labelFromLongImageName := ImageRefToLabel(
 				"ghcr.io/dash0hq/operator-controller@sha256:68d83fa12931ba8c085d8804f5a60d0b3df68494903a7a5b6506928e0bcd3c6b",
 			)
-			Expect(labelFromLongImageName).To(
-				Equal(
-					"operator-controller_sha256_68d83fa12931ba8c085d8804f5a60d0b3df6",
-				),
-			)
+			Expect(labelFromLongImageName).To(Equal("operator-controller_sha256_68d83fa12931ba8c085_e28edaf62d1d30fd"))
 			Expect(labelFromLongImageName).To(HaveLen(63))
+			expectValidLabelValue(labelFromLongImageName)
 		})
 
-		It("should truncate long image names when registry part contains port", func() {
+		It("should not end the readable part of long image refs with an invalid character", func() {
 			labelFromLongImageName := ImageRefToLabel(
-				"ghcr.io:8080/dash0hq/operator-controller@sha256:68d83fa12931ba8c085d8804f5a60d0b3df68494903a7a5b6506928e0bc",
+				"ghcr.io/dash0hq/operator-controller@sha256:68d83fa12931ba8c08-5d8804f5a60d0b3df68494903a7a5b6506928e0bc",
 			)
-			Expect(labelFromLongImageName).To(
-				Equal(
-					"operator-controller_sha256_68d83fa12931ba8c085d8804f5a60d0b3df6",
-				),
-			)
-			Expect(labelFromLongImageName).To(HaveLen(63))
+			Expect(labelFromLongImageName).To(Equal("operator-controller_sha256_68d83fa12931ba8c08_c0ec845b478e8ee0"))
+			expectValidLabelValue(labelFromLongImageName)
 		})
 
-		It("should truncate long image names and ensure the label value does not end with an invalid character", func() {
-			labelFromLongImageName := ImageRefToLabel(
-				"ghcr.io/dash0hq/operator-controller@sha256:68d83fa12931ba8c085d8804f5a60d0b3df-68494903a7a5b6506928e0bcd3c6b",
-			)
-			Expect(labelFromLongImageName).To(
-				Equal(
-					"operator-controller_sha256_68d83fa12931ba8c085d8804f5a60d0b3df",
-				),
-			)
-			Expect(labelFromLongImageName).To(HaveLen(62))
+		It("should distinguish long image refs that only differ in the registry", func() {
+			Expect(ImageRefToLabel(
+				"some.very.long.registry.that.needs.to.be.truncated.io/dash0hq/instrumentation:0.155.1",
+			)).NotTo(Equal(ImageRefToLabel(
+				"another.very.long.registry.that.needs.to.be.truncated.io/dash0hq/instrumentation:0.155.1",
+			)))
 		})
 
-		It("should truncate long image names and leave the repo and tag unchanged if those parts are < 63 chars", func() {
+		It("should distinguish long image refs that only differ in the organization", func() {
+			Expect(ImageRefToLabel(
+				"some.very.long.registry.that.needs.to.be.truncated.io/dash0hq/instrumentation:0.155.1",
+			)).NotTo(Equal(ImageRefToLabel(
+				"some.very.long.registry.that.needs.to.be.truncated.io/otherorg/instrumentation:0.155.1",
+			)))
+		})
+
+		It("should distinguish long image refs that only differ after the truncated part of the last path segment", func() {
+			Expect(ImageRefToLabel(
+				"ghcr.io/dash0hq/operator-controller@sha256:68d83fa12931ba8c085d8804f5a60d0b3df68494903a7a5b6506928e0bcd3c6b",
+			)).NotTo(Equal(ImageRefToLabel(
+				"ghcr.io/dash0hq/operator-controller@sha256:68d83fa12931ba8c085d8804f5a60d0b3df68494903a7a5b6506928e0bcd3c6c",
+			)))
+		})
+
+		It("should only use the hash if the last path segment of a long image ref has no valid characters", func() {
 			labelFromLongImageName := ImageRefToLabel(
-				"some.very.long.registry.that.needs.to.be.truncated.io/dash0hq/operator-controller@latest",
+				"some.very.long.registry.that.needs.to.be.truncated.io/dash0hq/instrumentation/___",
 			)
-			Expect(labelFromLongImageName).To(
-				Equal(
-					"operator-controller_latest",
-				),
-			)
-			Expect(len(labelFromLongImageName)).To(BeNumerically("<", 63))
+			Expect(labelFromLongImageName).To(Equal("1fa12217110fa8af"))
+			expectValidLabelValue(labelFromLongImageName)
 		})
 	})
 })
+
+func expectValidLabelValue(value string) {
+	GinkgoHelper()
+	Expect(validation.IsValidLabelValue(value)).To(BeEmpty())
+}
 
 var _ = Describe("MergeMaps", func() {
 	It("should return nil when both maps are empty", func() {

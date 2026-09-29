@@ -310,7 +310,7 @@ Regardless of the instrumentation delivery:
 * Add the following labels to the workload metadata:
     * `dash0.com/instrumented`: `true` or `false` depending on whether the workload has been successfully instrumented or not
     * `dash0.com/operator-image`: the fully qualified name of the Dash0 operator image that has instrumented this workload
-    * `dash0.com/instrumentation-image`: the fully qualified name of the image that has been used to deliver instrumentation files to the workload
+* `dash0.com/instrumentation-image`: the fully qualified name of the image that has been used to deliver instrumentation files to the workload. Characters that are not valid in label values are replaced by `_`. Image names longer than 63 characters are stored as the last path segment of the image name (truncated if necessary), followed by `_` and a 16-character hex prefix of the SHA-256 hash of the full image name.
     * `dash0.com/instrumented-by`: either `controller` or `webhook`, depending on which component has instrumented this workload. The controller is responsible for instrumenting existing workloads while the webhook is responsible for instrumenting new workloads at deploy time.
 * Add the following annotations to the workload metadata:
     * `dash0.com/instrumented-by`: either `controller` or `webhook`, depending on which component has instrumented this workload. The controller is responsible for instrumenting existing workloads while the webhook is responsible for instrumenting new workloads at deploy time.
