@@ -36,6 +36,9 @@ download_and_extract() {
   curl -sSfL "$archive_url" -O
   mkdir "$libc_flavor"
   tar -xzf "$archive_name" -C "$libc_flavor"
+  # remove unnecessary debug symbols files
+  find "$libc_flavor" -type f \( -name '*.debug' -o -name '*.pdb' \) -delete
+  rm -f "$libc_flavor/instrument.sh"
 }
 
 download_and_extract musl "$OS_NAME-musl"
