@@ -177,6 +177,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		K8sAttributesDisableReplicasetInformer:           m.collectorConfig.K8sAttributesDisableReplicasetInformer,
 		K8sAttributesWaitForMetadata:                     m.collectorConfig.K8sAttributesWaitForMetadata,
 		K8sAttributesWaitForMetadataTimeout:              m.collectorConfig.K8sAttributesWaitForMetadataTimeout,
+		K8sAttributesShareProcessor:                      m.collectorConfig.K8sAttributesShareProcessor,
 		PrometheusCrdSupportEnabled:                      prometheusCrdSupportEnabled,
 		TargetAllocatorNamePrefix:                        m.collectorConfig.TargetAllocatorNamePrefix,
 		Agent0ConnectorEnabled:                           agent0ConnectorEnabled,

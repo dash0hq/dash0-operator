@@ -105,6 +105,7 @@ func maximalMatrixBaseline() collectorConfigMatrixEntry {
 			K8sAttributesDisableReplicasetInformer:           true,
 			K8sAttributesWaitForMetadata:                     true,
 			K8sAttributesWaitForMetadataTimeout:              "10s",
+			K8sAttributesShareProcessor:                      true,
 			PrometheusCrdSupportEnabled:                      true,
 			TargetAllocatorNamePrefix:                        namePrefix,
 			Agent0ConnectorEnabled:                           true,
@@ -291,6 +292,12 @@ func matrixSettings() []matrixSetting {
 			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
 				e.config.K8sAttributesWaitForMetadata = enabled
 				e.config.K8sAttributesWaitForMetadataTimeout = ""
+			},
+		},
+		{
+			name: "k8s-attributes-share-processor",
+			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				e.config.K8sAttributesShareProcessor = enabled
 			},
 		},
 		{
@@ -777,10 +784,16 @@ func (e *collectorConfigMatrixEntry) render() ([]renderedCollectorConfig, error)
 	if err != nil {
 		return nil, fmt.Errorf("cannot render the daemonset collector configuration for %s: %w", e.name, err)
 	}
-	// The feature gates have to match the ones assembleDaemonSetCollectorContainer passes to the collector.
+	// The feature gates have to match the ones assembleDaemonSetCollectorContainer and
+	// assembleDeploymentCollectorContainer pass to the collector.
 	var daemonSetFeatureGates []string
+	var deploymentFeatureGates []string
 	if config.ProfilingEnabled {
-		daemonSetFeatureGates = append(daemonSetFeatureGates, "service.profilesSupport")
+		daemonSetFeatureGates = append(daemonSetFeatureGates, profilesSupportFeatureGate)
+	}
+	if config.K8sAttributesShareProcessor {
+		daemonSetFeatureGates = append(daemonSetFeatureGates, k8sAttributesShareProcessorFeatureGate)
+		deploymentFeatureGates = append(deploymentFeatureGates, k8sAttributesShareProcessorFeatureGate)
 	}
 
 	rendered := []renderedCollectorConfig{
@@ -807,8 +820,9 @@ func (e *collectorConfigMatrixEntry) render() ([]renderedCollectorConfig, error)
 			return nil, fmt.Errorf("cannot render the deployment collector configuration for %s: %w", e.name, err)
 		}
 		rendered = append(rendered, renderedCollectorConfig{
-			name:    e.name + "__deployment",
-			content: deploymentConfigMap.Data[collectorConfigurationYaml],
+			name:         e.name + "__deployment",
+			content:      deploymentConfigMap.Data[collectorConfigurationYaml],
+			featureGates: deploymentFeatureGates,
 		})
 	}
 

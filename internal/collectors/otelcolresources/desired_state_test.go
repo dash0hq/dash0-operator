@@ -881,6 +881,62 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSetCollectorContainer.Args[1]).To(Equal("--feature-gates=service.profilesSupport"))
 	})
 
+	It("should not add the k8s_attributes ShareProcessorBetweenPipelines feature gate by default", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			Images: TestImages,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(getDaemonSet(desiredState).Spec.Template.Spec.Containers[0].Args).
+			To(Equal([]string{"--config=file:/etc/otelcol/conf/config.yaml"}))
+		Expect(getDeployment(desiredState).Spec.Template.Spec.Containers[0].Args).
+			To(Equal([]string{"--config=file:/etc/otelcol/conf/config.yaml"}))
+	})
+
+	It("should add the k8s_attributes ShareProcessorBetweenPipelines feature gate to the daemonset and deployment "+
+		"collector args when enabled", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			K8sAttributesShareProcessor:                      true,
+			Images:                                           TestImages,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		expectedArgs := []string{
+			"--config=file:/etc/otelcol/conf/config.yaml",
+			"--feature-gates=processor.k8sattributes.ShareProcessorBetweenPipelines",
+		}
+		Expect(getDaemonSet(desiredState).Spec.Template.Spec.Containers[0].Args).To(Equal(expectedArgs))
+		Expect(getDeployment(desiredState).Spec.Template.Spec.Containers[0].Args).To(Equal(expectedArgs))
+	})
+
+	It("should combine the profilesSupport and the k8s_attributes ShareProcessorBetweenPipelines feature gates in "+
+		"the daemonset collector args", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			ProfilingEnabled:                                 true,
+			K8sAttributesShareProcessor:                      true,
+			Images:                                           TestImages,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(getDaemonSet(desiredState).Spec.Template.Spec.Containers[0].Args).To(Equal([]string{
+			"--config=file:/etc/otelcol/conf/config.yaml",
+			"--feature-gates=service.profilesSupport,processor.k8sattributes.ShareProcessorBetweenPipelines",
+		}))
+	})
+
 	It("should not add the -processor.resourcedetection.propagateerrors feature gate to the collector args when Signal Control is disabled", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
