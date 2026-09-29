@@ -32,6 +32,9 @@ When making changes, never add comments regarding the state before your changes 
 history lessons.
 The motiviation for a specific change can be part of the commit comment (if you have been asked to commit).
 Add godoc comments for public functions.
+When inserting a new declaration directly before an existing function, type or variable, insert it above that
+declaration's godoc comment, not between the comment and the declaration; otherwise the comment silently becomes the
+godoc of the new declaration. Check the surrounding lines of every inserted declaration for this.
 Adding implementation comments in function bodies should be used very sparingly: If the code is understandable without a
 comment, prefer to not add implementation comments at all.
 You may use implementation comments to explain non-obvious aspects, but keep it as short as possible.
