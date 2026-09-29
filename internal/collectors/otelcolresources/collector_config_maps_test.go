@@ -64,8 +64,10 @@ type configMapTypeDefinition struct {
 type conditionExpectationsPerObjectType map[signalType]map[objectType][]string
 
 type filterExpectations struct {
-	signalsWithFilters    []signalType
-	conditions            conditionExpectationsPerObjectType
+	signalsWithFilters []signalType
+	conditions         conditionExpectationsPerObjectType
+	// errorMode is the error mode expected on the rendered filter processors, defaults to "ignore" when empty.
+	errorMode             dash0common.FilterTransformErrorMode
 	signalsWithoutFilters []signalType
 }
 
@@ -77,6 +79,7 @@ type filterTestConfigExpectations struct {
 type filterTestConfig struct {
 	configMapTypeDefinition
 	filters          []NamespacedFilter
+	globalFilter     *dash0common.Filter
 	profilingEnabled bool
 	expectations     filterTestConfigExpectations
 }
@@ -102,6 +105,7 @@ type transformTestConfigExpectations struct {
 type transformTestConfig struct {
 	configMapTypeDefinition
 	transforms       []NamespacedTransform
+	globalTransform  *dash0common.NormalizedTransformSpec
 	profilingEnabled bool
 	expectations     transformTestConfigExpectations
 }
@@ -6310,6 +6314,207 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						},
 					}),
 
+				Entry(fmt.Sprintf("[config map type: %s]: should render cluster-wide filters without a namespace check",
+					cmTypeDef.cmType),
+					filterTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						profilingEnabled:        true,
+						globalFilter: &dash0common.Filter{
+							ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+							Traces: &dash0common.TraceFilter{
+								SpanFilter:      []string{"global span condition"},
+								SpanEventFilter: []string{"global span event condition"},
+							},
+							Metrics: &dash0common.MetricFilter{
+								MetricFilter:    []string{"global metric condition"},
+								DataPointFilter: []string{"global data point condition"},
+							},
+							Logs: &dash0common.LogFilter{
+								LogRecordFilter: []string{"global log record condition"},
+							},
+							Profiles: &dash0common.ProfileFilter{
+								ProfileFilter: []string{"global profile condition"},
+							},
+						},
+						expectations: filterTestConfigExpectations{
+							daemonset: filterExpectations{
+								signalsWithFilters: allSignals(),
+								conditions: conditionExpectationsPerObjectType{
+									signalTypeTraces: {
+										objectTypeSpan:      []string{"global span condition"},
+										objectTypeSpanEvent: []string{"global span event condition"},
+									},
+									signalTypeMetrics: {
+										objectTypeMetric:    []string{"global metric condition"},
+										objectTypeDataPoint: []string{"global data point condition"},
+									},
+									signalTypeLogs: {
+										objectTypeLogRecord: []string{"global log record condition"},
+									},
+									signalTypeProfiles: {
+										objectTypeProfile: []string{"global profile condition"},
+									},
+								},
+							},
+							deployment: filterExpectations{
+								signalsWithFilters:    []signalType{signalTypeMetrics},
+								signalsWithoutFilters: []signalType{signalTypeTraces, signalTypeLogs, signalTypeProfiles},
+								conditions: conditionExpectationsPerObjectType{
+									signalTypeMetrics: {
+										objectTypeMetric:    []string{"global metric condition"},
+										objectTypeDataPoint: []string{"global data point condition"},
+									},
+								},
+							},
+						},
+					}),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should render cluster-wide filters after namespaced filters",
+					cmTypeDef.cmType),
+					filterTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						filters: []NamespacedFilter{
+							{
+								Namespace: namespace1,
+								Filter: dash0common.Filter{
+									ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+									Metrics: &dash0common.MetricFilter{
+										MetricFilter: []string{"metric condition 1"},
+									},
+								},
+							},
+							{
+								Namespace: namespace2,
+								Filter: dash0common.Filter{
+									ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+									Metrics: &dash0common.MetricFilter{
+										MetricFilter: []string{"metric condition 2"},
+									},
+								},
+							},
+						},
+						globalFilter: &dash0common.Filter{
+							ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+							Metrics: &dash0common.MetricFilter{
+								MetricFilter: []string{"global metric condition"},
+							},
+						},
+						expectations: filterTestConfigExpectations{
+							daemonset: filterExpectations{
+								signalsWithFilters: []signalType{signalTypeMetrics},
+								signalsWithoutFilters: []signalType{
+									signalTypeTraces,
+									signalTypeLogs,
+									signalTypeProfiles,
+								},
+								conditions: conditionExpectationsPerObjectType{
+									signalTypeMetrics: {
+										objectTypeMetric: []string{
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (metric condition 1)`,
+											`resource.attributes["k8s.namespace.name"] == "namespace-2" and (metric condition 2)`,
+											"global metric condition",
+										},
+									},
+								},
+							},
+							deployment: filterExpectations{
+								signalsWithFilters: []signalType{signalTypeMetrics},
+								signalsWithoutFilters: []signalType{
+									signalTypeTraces,
+									signalTypeLogs,
+									signalTypeProfiles,
+								},
+								conditions: conditionExpectationsPerObjectType{
+									signalTypeMetrics: {
+										objectTypeMetric: []string{
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (metric condition 1)`,
+											`resource.attributes["k8s.namespace.name"] == "namespace-2" and (metric condition 2)`,
+											"global metric condition",
+										},
+									},
+								},
+							},
+						},
+					}),
+
+				Entry(fmt.Sprintf(
+					"[config map type: %s]: should render no cluster-wide profile filters if profiling is disabled",
+					cmTypeDef.cmType),
+					filterTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						profilingEnabled:        false,
+						globalFilter: &dash0common.Filter{
+							ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+							Profiles: &dash0common.ProfileFilter{
+								ProfileFilter: []string{"global profile condition"},
+							},
+						},
+						expectations: filterTestConfigExpectations{
+							daemonset:  emptyFilterExpectations(),
+							deployment: emptyFilterExpectations(),
+						},
+					}),
+
+				Entry(fmt.Sprintf(
+					"[config map type: %s]: should render the most severe error mode on the filter processors",
+					cmTypeDef.cmType),
+					filterTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						filters: []NamespacedFilter{
+							{
+								Namespace: namespace1,
+								Filter: dash0common.Filter{
+									ErrorMode: dash0common.FilterTransformErrorModeSilent,
+									Metrics: &dash0common.MetricFilter{
+										MetricFilter: []string{"metric condition 1"},
+									},
+								},
+							},
+						},
+						globalFilter: &dash0common.Filter{
+							ErrorMode: dash0common.FilterTransformErrorModePropagate,
+							Metrics: &dash0common.MetricFilter{
+								MetricFilter: []string{"global metric condition"},
+							},
+						},
+						expectations: filterTestConfigExpectations{
+							daemonset: filterExpectations{
+								signalsWithFilters: []signalType{signalTypeMetrics},
+								signalsWithoutFilters: []signalType{
+									signalTypeTraces,
+									signalTypeLogs,
+									signalTypeProfiles,
+								},
+								errorMode: dash0common.FilterTransformErrorModePropagate,
+								conditions: conditionExpectationsPerObjectType{
+									signalTypeMetrics: {
+										objectTypeMetric: []string{
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (metric condition 1)`,
+											"global metric condition",
+										},
+									},
+								},
+							},
+							deployment: filterExpectations{
+								signalsWithFilters: []signalType{signalTypeMetrics},
+								signalsWithoutFilters: []signalType{
+									signalTypeTraces,
+									signalTypeLogs,
+									signalTypeProfiles,
+								},
+								errorMode: dash0common.FilterTransformErrorModePropagate,
+								conditions: conditionExpectationsPerObjectType{
+									signalTypeMetrics: {
+										objectTypeMetric: []string{
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (metric condition 1)`,
+											"global metric condition",
+										},
+									},
+								},
+							},
+						},
+					}),
+
 				//
 			})
 		}
@@ -6322,6 +6527,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Exporters:         cmTestSingleDefaultOtlpExporter(),
 					KubernetesInfrastructureMetricsCollectionEnabled: true,
 					ProfilingEnabled: testConfig.profilingEnabled,
+					GlobalFilter:     testConfig.globalFilter,
 				},
 				monitoredNamespaces,
 				testConfig.filters,
@@ -6349,7 +6555,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Expect(filterProcessorRaw).ToNot(BeNil(),
 					fmt.Sprintf("expected filter processor %s to exist, but it didn't", filterProcessorName))
 				filterProcessor := filterProcessorRaw.(map[string]any)
-				Expect(filterProcessor["error_mode"]).To(Equal("ignore"))
+				expectedErrorMode := expectations.errorMode
+				if expectedErrorMode == "" {
+					expectedErrorMode = dash0common.FilterTransformErrorModeIgnore
+				}
+				Expect(filterProcessor["error_mode"]).To(BeEquivalentTo(expectedErrorMode))
 
 				for objectType, expectedConditionsForObjectType := range expectations.conditions[signal] {
 					hasExpectedConditions := false
@@ -6398,8 +6608,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}, filterTestConfigs)
 
 		type filterErrorModeTestConfig struct {
-			errorModes []dash0common.FilterTransformErrorMode
-			expected   dash0common.FilterTransformErrorMode
+			errorModes      []dash0common.FilterTransformErrorMode
+			globalErrorMode *dash0common.FilterTransformErrorMode
+			expected        dash0common.FilterTransformErrorMode
 		}
 
 		DescribeTable("filter processor should use the most severe error mode", func(testConfig filterErrorModeTestConfig) {
@@ -6417,7 +6628,18 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					},
 				})
 			}
-			result := aggregateCustomFilters(filters)
+			var globalFilter *dash0common.Filter
+			if testConfig.globalErrorMode != nil {
+				globalFilter = &dash0common.Filter{
+					ErrorMode: *testConfig.globalErrorMode,
+					Traces: &dash0common.TraceFilter{
+						SpanFilter: []string{
+							"global condition",
+						},
+					},
+				}
+			}
+			result := aggregateCustomFilters(filters, globalFilter)
 			Expect(result.ErrorMode).To(Equal(testConfig.expected))
 
 		},
@@ -6436,6 +6658,25 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					dash0common.FilterTransformErrorModePropagate,
 				},
 				expected: dash0common.FilterTransformErrorModePropagate,
+			}),
+			Entry("error mode of the global filter is used", filterErrorModeTestConfig{
+				errorModes:      nil,
+				globalErrorMode: new(dash0common.FilterTransformErrorModeSilent),
+				expected:        dash0common.FilterTransformErrorModeSilent,
+			}),
+			Entry("most severe error mode of namespaced and global filters is used", filterErrorModeTestConfig{
+				errorModes: []dash0common.FilterTransformErrorMode{
+					dash0common.FilterTransformErrorModeSilent,
+				},
+				globalErrorMode: new(dash0common.FilterTransformErrorModePropagate),
+				expected:        dash0common.FilterTransformErrorModePropagate,
+			}),
+			Entry("most severe error mode is used when the namespaced filter is more severe", filterErrorModeTestConfig{
+				errorModes: []dash0common.FilterTransformErrorMode{
+					dash0common.FilterTransformErrorModePropagate,
+				},
+				globalErrorMode: new(dash0common.FilterTransformErrorModeSilent),
+				expected:        dash0common.FilterTransformErrorModePropagate,
 			}),
 		)
 	})
@@ -7021,6 +7262,152 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						},
 					}),
 
+				Entry(fmt.Sprintf(
+					"[config map type: %s]: should render cluster-wide transforms without a namespace condition",
+					cmTypeDef.cmType),
+					transformTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						profilingEnabled:        true,
+						globalTransform: &dash0common.NormalizedTransformSpec{
+							ErrorMode: new(dash0common.FilterTransformErrorModeIgnore),
+							Traces: []dash0common.NormalizedTransformGroup{
+								{Statements: []string{"global span statement"}},
+							},
+							Metrics: []dash0common.NormalizedTransformGroup{
+								{Statements: []string{"global metric statement"}},
+							},
+							Logs: []dash0common.NormalizedTransformGroup{
+								{Statements: []string{"global log statement"}},
+							},
+							Profiles: []dash0common.NormalizedTransformGroup{
+								{Statements: []string{"global profile statement"}},
+							},
+						},
+						expectations: transformTestConfigExpectations{
+							daemonset: transformExpectations{
+								signalsWithTransforms: allSignals(),
+								groups: groupExpectationsPerSignalType{
+									signalTypeTraces: {
+										{statements: []string{"global span statement"}},
+									},
+									signalTypeMetrics: {
+										{statements: []string{"global metric statement"}},
+									},
+									signalTypeLogs: {
+										{statements: []string{"global log statement"}},
+									},
+									signalTypeProfiles: {
+										{statements: []string{"global profile statement"}},
+									},
+								},
+							},
+							deployment: transformExpectations{
+								signalsWithTransforms: []signalType{signalTypeMetrics},
+								signalsWithoutTransforms: []signalType{
+									signalTypeTraces,
+									signalTypeLogs,
+									signalTypeProfiles,
+								},
+								groups: groupExpectationsPerSignalType{
+									signalTypeMetrics: {
+										{statements: []string{"global metric statement"}},
+									},
+								},
+							},
+						},
+					}),
+
+				Entry(fmt.Sprintf(
+					"[config map type: %s]: should render cluster-wide transforms after namespaced transforms",
+					cmTypeDef.cmType),
+					transformTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						transforms: []NamespacedTransform{
+							{
+								Namespace: namespace1,
+								Transform: dash0common.NormalizedTransformSpec{
+									ErrorMode: new(dash0common.FilterTransformErrorModeIgnore),
+									Metrics: []dash0common.NormalizedTransformGroup{
+										{Statements: []string{"metric statement 1"}},
+									},
+								},
+							},
+						},
+						globalTransform: &dash0common.NormalizedTransformSpec{
+							ErrorMode: new(dash0common.FilterTransformErrorModeIgnore),
+							Metrics: []dash0common.NormalizedTransformGroup{
+								{
+									Conditions: []string{`name == "http.server.duration"`},
+									Statements: []string{"global metric statement"},
+								},
+							},
+						},
+						expectations: transformTestConfigExpectations{
+							daemonset: transformExpectations{
+								signalsWithTransforms: []signalType{signalTypeMetrics},
+								signalsWithoutTransforms: []signalType{
+									signalTypeTraces,
+									signalTypeLogs,
+									signalTypeProfiles,
+								},
+								groups: groupExpectationsPerSignalType{
+									signalTypeMetrics: {
+										{
+											statements: []string{"metric statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+										{
+											statements: []string{"global metric statement"},
+											conditions: []string{`name == "http.server.duration"`},
+										},
+									},
+								},
+							},
+							deployment: transformExpectations{
+								signalsWithTransforms: []signalType{signalTypeMetrics},
+								signalsWithoutTransforms: []signalType{
+									signalTypeTraces,
+									signalTypeLogs,
+									signalTypeProfiles,
+								},
+								groups: groupExpectationsPerSignalType{
+									signalTypeMetrics: {
+										{
+											statements: []string{"metric statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+										{
+											statements: []string{"global metric statement"},
+											conditions: []string{`name == "http.server.duration"`},
+										},
+									},
+								},
+							},
+						},
+					}),
+
+				Entry(fmt.Sprintf(
+					"[config map type: %s]: should render no cluster-wide profile transforms if profiling is disabled",
+					cmTypeDef.cmType),
+					transformTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						profilingEnabled:        false,
+						globalTransform: &dash0common.NormalizedTransformSpec{
+							ErrorMode: new(dash0common.FilterTransformErrorModeIgnore),
+							Profiles: []dash0common.NormalizedTransformGroup{
+								{Statements: []string{"global profile statement"}},
+							},
+						},
+						expectations: transformTestConfigExpectations{
+							daemonset:  emptyTransformExpectations(),
+							deployment: emptyTransformExpectations(),
+						},
+					}),
+
 				//
 			})
 		}
@@ -7032,7 +7419,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					NamePrefix:        namePrefix,
 					Exporters:         cmTestSingleDefaultOtlpExporter(),
 					KubernetesInfrastructureMetricsCollectionEnabled: true,
-					ProfilingEnabled: testConfig.profilingEnabled,
+					ProfilingEnabled:          testConfig.profilingEnabled,
+					GlobalNormalizedTransform: testConfig.globalTransform,
 				},
 				monitoredNamespaces,
 				nil,
@@ -7098,13 +7486,18 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 					expectedConditions := expectedGroup.conditions
 					actualConditionsRaw := ReadFromMap(groups[i], []string{"conditions"})
-					Expect(actualConditionsRaw).ToNot(BeNil(),
-						"expected %d transform condition(s) but there were none for signal \"%s\"",
-						len(expectedConditions), signal)
-					actualTransformConditions := actualConditionsRaw.([]any)
-					Expect(actualTransformConditions).To(HaveLen(len(expectedConditions)))
-					for i, expectedCondition := range expectedConditions {
-						Expect(actualTransformConditions[i]).To(Equal(expectedCondition))
+					if len(expectedConditions) == 0 {
+						Expect(actualConditionsRaw).To(BeNil(),
+							"expected no transform conditions but there were some for signal \"%s\"", signal)
+					} else {
+						Expect(actualConditionsRaw).ToNot(BeNil(),
+							"expected %d transform condition(s) but there were none for signal \"%s\"",
+							len(expectedConditions), signal)
+						actualTransformConditions := actualConditionsRaw.([]any)
+						Expect(actualTransformConditions).To(HaveLen(len(expectedConditions)))
+						for i, expectedCondition := range expectedConditions {
+							Expect(actualTransformConditions[i]).To(Equal(expectedCondition))
+						}
 					}
 				}
 
@@ -7129,8 +7522,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}, transformTestConfigs)
 
 		type transformErrorModeTestConfig struct {
-			errorModes []dash0common.FilterTransformErrorMode
-			expected   dash0common.FilterTransformErrorMode
+			errorModes      []dash0common.FilterTransformErrorMode
+			globalErrorMode *dash0common.FilterTransformErrorMode
+			expected        dash0common.FilterTransformErrorMode
 		}
 
 		DescribeTable("transform processor should use the most severe error mode", func(testConfig transformErrorModeTestConfig) {
@@ -7146,7 +7540,16 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					},
 				})
 			}
-			result := aggregateCustomTransforms(transforms)
+			var globalTransform *dash0common.NormalizedTransformSpec
+			if testConfig.globalErrorMode != nil {
+				globalTransform = &dash0common.NormalizedTransformSpec{
+					ErrorMode: testConfig.globalErrorMode,
+					Traces: []dash0common.NormalizedTransformGroup{
+						{Statements: []string{"global statement"}},
+					},
+				}
+			}
+			result := aggregateCustomTransforms(transforms, globalTransform)
 			Expect(result.GlobalErrorMode).To(Equal(testConfig.expected))
 
 		},
@@ -7166,6 +7569,26 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				},
 				expected: dash0common.FilterTransformErrorModePropagate,
 			}),
+			Entry("error mode of the global transform is used", transformErrorModeTestConfig{
+				errorModes:      nil,
+				globalErrorMode: new(dash0common.FilterTransformErrorModeSilent),
+				expected:        dash0common.FilterTransformErrorModeSilent,
+			}),
+			Entry("most severe error mode of namespaced and global transforms is used", transformErrorModeTestConfig{
+				errorModes: []dash0common.FilterTransformErrorMode{
+					dash0common.FilterTransformErrorModeSilent,
+				},
+				globalErrorMode: new(dash0common.FilterTransformErrorModePropagate),
+				expected:        dash0common.FilterTransformErrorModePropagate,
+			}),
+			Entry("most severe error mode is used when the namespaced transform is more severe",
+				transformErrorModeTestConfig{
+					errorModes: []dash0common.FilterTransformErrorMode{
+						dash0common.FilterTransformErrorModePropagate,
+					},
+					globalErrorMode: new(dash0common.FilterTransformErrorModeSilent),
+					expected:        dash0common.FilterTransformErrorModePropagate,
+				}),
 		)
 	})
 

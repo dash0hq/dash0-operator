@@ -181,6 +181,22 @@ func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigura
 	patchRequiredForMonitoringTemplate := h.setMonitoringTemplateDefaults(spec)
 	patchRequired = patchRequired || patchRequiredForMonitoringTemplate
 
+	// Normalize spec.transform to the transform processors "advanced" config format.
+	if spec.Transform != nil {
+		normalizedTransformSpec, responseStatus, err := normalizeTransform(spec.Transform, logger)
+		if err != nil {
+			errorResponse := admission.Errored(responseStatus, err)
+			return false, &errorResponse
+		}
+		spec.NormalizedTransformSpec = normalizedTransformSpec
+		patchRequired = true
+	} else if spec.NormalizedTransformSpec != nil {
+		// The normalized spec is derived from spec.transform; a merge-style update that removes spec.transform leaves
+		// it behind, so it has to be cleared explicitly.
+		spec.NormalizedTransformSpec = nil
+		patchRequired = true
+	}
+
 	return patchRequired, nil
 }
 

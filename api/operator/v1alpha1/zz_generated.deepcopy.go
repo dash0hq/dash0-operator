@@ -391,6 +391,21 @@ func (in *Dash0OperatorConfigurationSpec) DeepCopyInto(out *Dash0OperatorConfigu
 	in.CollectNamespaceLabelsAndAnnotations.DeepCopyInto(&out.CollectNamespaceLabelsAndAnnotations)
 	in.CollectNodeLabelsAndAnnotations.DeepCopyInto(&out.CollectNodeLabelsAndAnnotations)
 	in.PrometheusCrdSupport.DeepCopyInto(&out.PrometheusCrdSupport)
+	if in.Filter != nil {
+		in, out := &in.Filter, &out.Filter
+		*out = new(common.Filter)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.Transform != nil {
+		in, out := &in.Transform, &out.Transform
+		*out = new(common.Transform)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.NormalizedTransformSpec != nil {
+		in, out := &in.NormalizedTransformSpec, &out.NormalizedTransformSpec
+		*out = new(common.NormalizedTransformSpec)
+		(*in).DeepCopyInto(*out)
+	}
 	out.InstrumentWorkloads = in.InstrumentWorkloads
 	in.TelemetryCollection.DeepCopyInto(&out.TelemetryCollection)
 	in.AutoMonitorNamespaces.DeepCopyInto(&out.AutoMonitorNamespaces)

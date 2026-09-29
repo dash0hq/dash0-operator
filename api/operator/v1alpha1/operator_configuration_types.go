@@ -133,6 +133,52 @@ type Dash0OperatorConfigurationSpec struct {
 	// +kubebuilder:validation:Optional
 	ClusterName string `json:"clusterName,omitempty"`
 
+	// Optional filters for telemetry data that is collected in this cluster. This can be used to drop entire spans,
+	// span events, metrics, metric data points, or log records. See "Transform" for advanced transformations (e.g.
+	// removing span attributes, metric data point attributes, log record attributes etc.).
+	//
+	// In contrast to the filters in a Dash0 monitoring resource, which only apply to the telemetry collected in the
+	// namespace of that monitoring resource, these filters apply to all telemetry collected in the cluster, including
+	// telemetry that is not associated with a namespace, like node metrics or cluster-level metrics.
+	//
+	// The filters of monitoring resources and the filters configured here are evaluated by the same filter processor;
+	// telemetry is dropped if at least one condition of either matches.
+	//
+	// This setting is optional, by default, no filters are applied. It is a validation error to set
+	// `telemetryCollection.enabled=false` and set filters at the same time.
+	//
+	// +kubebuilder:validation:Optional
+	Filter *dash0common.Filter `json:"filter,omitempty"`
+
+	// Optional custom transformations for telemetry data that is collected in this cluster. This can be used to remove
+	// span attributes, metric data point attributes, log record attributes etc. See "Filter" for basic filters that can
+	// be used to drop entire spans, span events, metrics, metric data points, or log records.
+	//
+	// In contrast to the transformations in a Dash0 monitoring resource, which only apply to the telemetry collected in
+	// the namespace of that monitoring resource, these transformations apply to all telemetry collected in the cluster,
+	// including telemetry that is not associated with a namespace, like node metrics or cluster-level metrics.
+	//
+	// For each signal type (traces, metrics, logs, profiles), a list of OTTL statements can be defined. These will be
+	// applied to all telemetry collected in the cluster, following the order specified in the configuration. Each
+	// statement can access and transform telemetry using OTTL functions.
+	// See https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/transformprocessor
+	// for details and examples. Both the
+	// [basic config style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#basic-config)
+	// and the
+	// [advanced config style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#advanced-config)
+	// of the transform processor are supported.
+	//
+	// The transformations of monitoring resources are applied before the transformations configured here.
+	//
+	// This setting is optional, by default, no transformations are applied. It is a validation error to set
+	// `telemetryCollection.enabled=false` and set transformations at the same time.
+	//
+	// +kubebuilder:validation:Optional
+	Transform *dash0common.Transform `json:"transform,omitempty"`
+
+	// Only used internally, this field must not be specified by users.
+	NormalizedTransformSpec *dash0common.NormalizedTransformSpec `json:"__dash0_internal__normalizedTransform,omitempty"`
+
 	// InstrumentWorkloads contains cluster-wide settings that govern how the operator auto-instruments workloads.
 	//
 	// Note: There are also instrumentWorkloads settings in the Dash0 monitoring resource, for per-namespace settings for

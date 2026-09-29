@@ -1394,6 +1394,55 @@ tests:
                 memory: 406Mi
             .*
 
+  - it: should render cluster-wide filters and transformations
+    set:
+      operator:
+        filter:
+          error_mode: propagate
+          traces:
+            span:
+              - 'attributes["http.route"] == "/ready"'
+          metrics:
+            metric:
+              - 'name == "k8s.replicaset.available"'
+        transform:
+          error_mode: silent
+          trace_statements:
+            - truncate_all(span.attributes, 128)
+          metric_statements:
+            - context: datapoint
+              statements:
+                - truncate_all(attributes, 128)
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            filter:
+              error_mode: propagate
+              metrics:
+                metric:
+                - name == "k8s.replicaset.available"
+              traces:
+                span:
+                - attributes\["http.route"\] == "/ready"
+            transform:
+              error_mode: silent
+              metric_statements:
+              - context: datapoint
+                statements:
+                - truncate_all\(attributes, 128\)
+              trace_statements:
+              - truncate_all\(span.attributes, 128\)
+
+  - it: should not render cluster-wide filters and transformations by default
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: "^filter:"
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: "^transform:"
+
   - it: should disallow export in the monitoring template
     set:
       operator:

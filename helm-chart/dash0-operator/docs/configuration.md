@@ -123,6 +123,49 @@ Here is a list of configuration options for this resource:
   This setting is optional.
   By default, `k8s.cluster.name` will not be added to telemetry.
 
+* <a href="#operatorconfigurationresource.spec.filter"><span id="operatorconfigurationresource.spec.filter">**`spec.filter`**</span></a>:
+  An optional cluster-wide filter configuration to drop some of the collected telemetry before sending it to the
+  configured telemetry backend.
+  The structure is identical to the [filter configuration of a monitoring resource](#monitoringresource.spec.filter),
+  see there for the list of available settings.
+  In contrast to the filters of a monitoring resource, which only apply to the telemetry collected in the namespace of
+  that monitoring resource, these filters apply to all telemetry collected in the cluster.
+  That includes telemetry which is not associated with a namespace, like node metrics or cluster-level metrics.
+  This setting is optional, by default, no filters are applied.
+  It is a validation error to set `telemetryCollection.enabled=false` and set filters at the same time.
+
+  If your goal is to reduce the volume of data sent to Dash0, consider using
+  [spam filters](managing-dash0-resources.md#managing-spam-filters) instead, which are authored in Dash0 rather than
+  in the cluster.
+
+  The filters of monitoring resources and the filters configured here are evaluated by the same filter processor;
+  telemetry is dropped if at least one condition of either matches.
+  The error mode is aggregated across all monitoring resources and this setting, the "most severe" error mode is used
+  (`propagate` > `ignore` > `silent`).
+
+* <a href="#operatorconfigurationresource.spec.transform"><span id="operatorconfigurationresource.spec.transform">**`spec.transform`**</span></a>:
+  An optional cluster-wide transformation configuration that will be applied to the collected telemetry before sending
+  it to the configured telemetry backend.
+  The structure is identical to the
+  [transform configuration of a monitoring resource](#monitoringresource.spec.transform), see there for the list of
+  available settings.
+  In contrast to the transformations of a monitoring resource, which only apply to the telemetry collected in the
+  namespace of that monitoring resource, these transformations apply to all telemetry collected in the cluster.
+  That includes telemetry which is not associated with a namespace, like node metrics or cluster-level metrics.
+  This setting is optional, by default, no transformations are applied.
+  It is a validation error to set `telemetryCollection.enabled=false` and set transformations at the same time.
+
+  The order in which filters and transformations are applied is:
+  1. the filters of the monitoring resource of the namespace the telemetry originates from,
+  2. the filters configured here,
+  3. the transformations of the monitoring resource of the namespace the telemetry originates from,
+  4. the transformations configured here.
+
+  That is, you cannot assume that transformations have already been applied when writing filter conditions, and the
+  cluster-wide transformations see the result of the transformations of the monitoring resource.
+  The error mode is aggregated across all monitoring resources and this setting, the "most severe" error mode is used
+  (`propagate` > `ignore` > `silent`).
+
 * <a href="#operatorconfigurationresource.spec.telemetryCollection.enabled"><span id="operatorconfigurationresource.spec.telemetryCollection.enabled">**`spec.telemetryCollection.enabled`**</span></a>:
   An opt-out switch for all telemetry collection, and to avoid having the operator deploy OpenTelemetry collectors in
   the cluster.
@@ -457,6 +500,8 @@ The Dash0 monitoring resource supports additional configuration settings:
   One difference to the filter processor is that the filter rules configured in a Dash0 monitoring resource will only be
   applied to the telemetry collected in the namespace the monitoring resource is installed in.
   Telemetry from other namespaces is not affected.
+  Use [`spec.filter` of the operator configuration resource](#operatorconfigurationresource.spec.filter) for filters
+  that apply to the whole cluster.
   Existing configurations for the filter processor can be copied and pasted without syntactical changes.
     * **`spec.filter.traces.span`**:
       A list of OTTL conditions for filtering spans.
@@ -485,7 +530,8 @@ The Dash0 monitoring resource supports additional configuration settings:
 
   Note that although `error_mode` can be specified per namespace, the filter conditions will be aggregated into one
   single filter processor in the resulting OpenTelemetry collector configuration; if different error modes are
-  specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+  specified in different namespaces, or in the operator configuration resource, the "most severe" error mode will be
+  used (propagate > ignore > silent).
 
 * <a href="#monitoringresource.spec.transform"><span id="monitoringresource.spec.transform">**`spec.transform`**</span></a>:
   An optional custom transformation configuration that will be applied to the collected telemetry before sending it to
@@ -504,6 +550,8 @@ The Dash0 monitoring resource supports additional configuration settings:
   One difference to the transform processor is that the transform rules configured in a Dash0 monitoring resource will
   only be applied to the telemetry collected in the namespace the monitoring resource is installed in.
   Telemetry from other namespaces is not affected.
+  Use [`spec.transform` of the operator configuration resource](#operatorconfigurationresource.spec.transform) for
+  transformations that apply to the whole cluster.
   If both `spec.filter` and `spec.transform` are configured, the filtering for a given signal (traces, metrics, logs, profiles)
   will be executed before the transform processor.
   (That is, you cannot assume that transformations have already been applied when writing filter rules.)
@@ -522,7 +570,8 @@ The Dash0 monitoring resource supports additional configuration settings:
 
   Note that although `error_mode` can be specified per namespace, the transform statements will be aggregated into one
   single transform processor in the resulting OpenTelemetry collector configuration; if different error modes are
-  specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+  specified in different namespaces, or in the operator configuration resource, the "most severe" error mode will be
+  used (propagate > ignore > silent).
 
 * <a href="#monitoringresource.spec.synchronizePersesDashboards"><span id="monitoringresource.spec.synchronizePersesDashboards">**`spec.synchronizePersesDashboards`**</span></a>:
   A namespace-wide opt-out for synchronizing Perses dashboard resources found in the target namespace.

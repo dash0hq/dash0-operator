@@ -63,6 +63,116 @@ spec:
             description: Dash0OperatorConfigurationSpec describes cluster-wide configuration
               settings for the Dash0 operator.
             properties:
+              __dash0_internal__normalizedTransform:
+                description: Only used internally, this field must not be specified
+                  by users.
+                properties:
+                  error_mode:
+                    description: |-
+                      FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
+                      processing a condition.
+                    enum:
+                    - ignore
+                    - silent
+                    - propagate
+                    type: string
+                  log_statements:
+                    items:
+                      properties:
+                        conditions:
+                          items:
+                            type: string
+                          type: array
+                        context:
+                          type: string
+                        error_mode:
+                          description: |-
+                            FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
+                            processing a condition.
+                          enum:
+                          - ignore
+                          - silent
+                          - propagate
+                          type: string
+                        statements:
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                    type: array
+                  metric_statements:
+                    items:
+                      properties:
+                        conditions:
+                          items:
+                            type: string
+                          type: array
+                        context:
+                          type: string
+                        error_mode:
+                          description: |-
+                            FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
+                            processing a condition.
+                          enum:
+                          - ignore
+                          - silent
+                          - propagate
+                          type: string
+                        statements:
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                    type: array
+                  profile_statements:
+                    items:
+                      properties:
+                        conditions:
+                          items:
+                            type: string
+                          type: array
+                        context:
+                          type: string
+                        error_mode:
+                          description: |-
+                            FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
+                            processing a condition.
+                          enum:
+                          - ignore
+                          - silent
+                          - propagate
+                          type: string
+                        statements:
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                    type: array
+                  trace_statements:
+                    items:
+                      properties:
+                        conditions:
+                          items:
+                            type: string
+                          type: array
+                        context:
+                          type: string
+                        error_mode:
+                          description: |-
+                            FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
+                            processing a condition.
+                          enum:
+                          - ignore
+                          - silent
+                          - propagate
+                          type: string
+                        statements:
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                    type: array
+                type: object
               agent0Connector:
                 description: Settings for the agent0-connector.
                 properties:
@@ -738,6 +848,138 @@ spec:
                       type: object
                   type: object
                 type: array
+              filter:
+                description: |-
+                  Optional filters for telemetry data that is collected in this cluster. This can be used to drop entire spans,
+                  span events, metrics, metric data points, or log records. See "Transform" for advanced transformations (e.g.
+                  removing span attributes, metric data point attributes, log record attributes etc.).
+
+                  In contrast to the filters in a Dash0 monitoring resource, which only apply to the telemetry collected in the
+                  namespace of that monitoring resource, these filters apply to all telemetry collected in the cluster, including
+                  telemetry that is not associated with a namespace, like node metrics or cluster-level metrics.
+
+                  The filters of monitoring resources and the filters configured here are evaluated by the same filter processor;
+                  telemetry is dropped if at least one condition of either matches.
+
+                  This setting is optional, by default, no filters are applied. It is a validation error to set
+                  `telemetryCollection.enabled=false` and set filters at the same time.
+                properties:
+                  error_mode:
+                    default: ignore
+                    description: |-
+                      An optional field which will determine how the filter processor reacts to errors that occur while processing a
+                      condition. Possible values:
+                      - ignore: ignore errors returned by conditions, log them, continue with to the next condition.
+                                This is the recommended mode and also the default mode if this property is omitted.
+                      - silent: ignore errors returned by conditions, do not log them, continue with to the next condition.
+                      - propagate: return the error up the processing pipeline. This will result in the payload being dropped from the
+                                collector. Not recommended.
+
+                      This is optional, default to "ignore", there is usually no reason to change this.
+
+                      Note that although this can be specified per namespace and cluster-wide, the filter conditions will be aggregated
+                      into one single filter processor in the resulting OpenTelemetry collector configuration; if different error modes
+                      are specified in different namespaces, or cluster-wide in the operator configuration resource, the "most severe"
+                      error mode will be used (propagate > ignore > silent).
+                    enum:
+                    - ignore
+                    - silent
+                    - propagate
+                    type: string
+                  logs:
+                    description: |-
+                      Filters for the logs signal.
+                      This can be used to drop _log records_.
+                    properties:
+                      log_records:
+                        description: |-
+                          A list of conditions for filtering log records.
+                          This is a list of OTTL conditions.
+                          All log records where at least one condition evaluates to true will be dropped.
+                          (That is, the conditions are implicitly connected by a logical OR.)
+                          Example:
+                          - 'IsMatch(body, ".*password.*")'
+                          - 'severity_number < SEVERITY_NUMBER_WARN'
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                  metrics:
+                    description: |-
+                      Filters for the metrics signal.
+                      This can be used to drop entire _metrics_, or individual _data points_.
+                    properties:
+                      datapoint:
+                        description: |-
+                          A list of conditions for filtering metrics data points.
+                          This is a list of OTTL conditions.
+                          All data points where at least one condition evaluates to true will be dropped.
+                          (That is, the conditions are implicitly connected by a logical OR.)
+                          Note: If all datapoints for a metric are dropped, the metric will also be dropped.
+                          Example:
+                          - 'metric.name == "a.noisy.metric.with.many.datapoints" and value_int == 0' # filter metrics by value
+                          - 'resource.attributes["service.name"] == "my_service_name"' # filter data points by resource attributes
+                        items:
+                          type: string
+                        type: array
+                      metric:
+                        description: |-
+                          A list of conditions for filtering metrics.
+                          This is a list of OTTL conditions.
+                          All metrics where at least one condition evaluates to true will be dropped.
+                          (That is, the conditions are implicitly connected by a logical OR.)
+                          Example:
+                          - 'name == "k8s.replicaset.available"'
+                          - 'name == "k8s.replicaset.desired"'
+                          - 'type == METRIC_DATA_TYPE_HISTOGRAM'
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                  profiles:
+                    description: |-
+                      Filters for the profiles signal.
+                      This can be used to drop _profiles_.
+                    properties:
+                      profile:
+                        description: |-
+                          A list of conditions for filtering profiles.
+                          This is a list of OTTL conditions.
+                          All profiles where at least one condition evaluates to true will be dropped.
+                          (That is, the conditions are implicitly connected by a logical OR.)
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                  traces:
+                    description: |-
+                      Filters for the traces signal.
+                      This can be used to drop _spans_ or _span events_.
+                    properties:
+                      span:
+                        description: |-
+                          A list of conditions for filtering spans.
+                          This is a list of OTTL conditions.
+                          All spans where at least one condition evaluates to true will be dropped.
+                          (That is, the conditions are implicitly connected by a logical OR.)
+                          Example:
+                          - 'attributes["http.route"] == "/ready"'
+                          - 'attributes["http.route"] == "/metrics"'
+                        items:
+                          type: string
+                        type: array
+                      spanevent:
+                        description: |-
+                          A list of conditions for filtering span events.
+                          This is a list of OTTL conditions.
+                          All span events where at least one condition evaluates to true will be dropped.
+                          (That is, the conditions are implicitly connected by a logical OR.)
+                          If all span events for a span are dropped, the span will be left intact.
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                type: object
               instrumentWorkloads:
                 default:
                   instrumentationDelivery: init-container
@@ -1540,9 +1782,10 @@ spec:
 
                               This is optional, default to "ignore", there is usually no reason to change this.
 
-                              Note that although this can be specified per namespace, the filter conditions will be aggregated into one
-                              single filter processor in the resulting OpenTelemetry collector configuration; if different error modes are
-                              specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+                              Note that although this can be specified per namespace and cluster-wide, the filter conditions will be aggregated
+                              into one single filter processor in the resulting OpenTelemetry collector configuration; if different error modes
+                              are specified in different namespaces, or cluster-wide in the operator configuration resource, the "most severe"
+                              error mode will be used (propagate > ignore > silent).
                             enum:
                             - ignore
                             - silent
@@ -1855,9 +2098,10 @@ spec:
 
                               This is optional, default to "ignore".
 
-                              Note that although this can be specified per namespace, the transform statements will be aggregated into one
-                              single transform processor in the resulting OpenTelemetry collector configuration; if different error modes are
-                              specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+                              Note that although this can be specified per namespace and cluster-wide, the transform statements will be
+                              aggregated into one single transform processor in the resulting OpenTelemetry collector configuration; if
+                              different error modes are specified in different namespaces, or cluster-wide in the operator configuration
+                              resource, the "most severe" error mode will be used (propagate > ignore > silent).
                             enum:
                             - ignore
                             - silent
@@ -1946,6 +2190,69 @@ spec:
                     type: boolean
                 required:
                 - enabled
+                type: object
+              transform:
+                description: |-
+                  Optional custom transformations for telemetry data that is collected in this cluster. This can be used to remove
+                  span attributes, metric data point attributes, log record attributes etc. See "Filter" for basic filters that can
+                  be used to drop entire spans, span events, metrics, metric data points, or log records.
+
+                  In contrast to the transformations in a Dash0 monitoring resource, which only apply to the telemetry collected in
+                  the namespace of that monitoring resource, these transformations apply to all telemetry collected in the cluster,
+                  including telemetry that is not associated with a namespace, like node metrics or cluster-level metrics.
+
+                  For each signal type (traces, metrics, logs, profiles), a list of OTTL statements can be defined. These will be
+                  applied to all telemetry collected in the cluster, following the order specified in the configuration. Each
+                  statement can access and transform telemetry using OTTL functions.
+                  See https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/transformprocessor
+                  for details and examples. Both the
+                  [basic config style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#basic-config)
+                  and the
+                  [advanced config style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#advanced-config)
+                  of the transform processor are supported.
+
+                  The transformations of monitoring resources are applied before the transformations configured here.
+
+                  This setting is optional, by default, no transformations are applied. It is a validation error to set
+                  `telemetryCollection.enabled=false` and set transformations at the same time.
+                properties:
+                  error_mode:
+                    default: ignore
+                    description: |-
+                      An optional field which will determine how the transform processor reacts to errors that occur while processing a
+                      statement. Possible values:
+                      - ignore: ignore errors returned by statements, log them, continue with to the next statement.
+                      - silent: ignore errors returned by statements, do not log them, continue with to the next statement.
+                      - propagate: return the error up the processing pipeline. This will result in the payload being dropped from the
+                        collector.
+
+                      This is optional, default to "ignore".
+
+                      Note that although this can be specified per namespace and cluster-wide, the transform statements will be
+                      aggregated into one single transform processor in the resulting OpenTelemetry collector configuration; if
+                      different error modes are specified in different namespaces, or cluster-wide in the operator configuration
+                      resource, the "most severe" error mode will be used (propagate > ignore > silent).
+                    enum:
+                    - ignore
+                    - silent
+                    - propagate
+                    type: string
+                  log_statements:
+                    description: Transform statements (or groups) for the log signal
+                      type.
+                    x-kubernetes-preserve-unknown-fields: true
+                  metric_statements:
+                    description: Transform statements (or groups) for the metric signal
+                      type.
+                    x-kubernetes-preserve-unknown-fields: true
+                  profile_statements:
+                    description: Transform statements (or groups) for the profile
+                      signal type.
+                    x-kubernetes-preserve-unknown-fields: true
+                  trace_statements:
+                    description: Transform statements (or groups) for the trace signal
+                      type.
+                    x-kubernetes-preserve-unknown-fields: true
                 type: object
             type: object
           status:
@@ -2778,9 +3085,10 @@ spec:
 
                               This is optional, default to "ignore", there is usually no reason to change this.
 
-                              Note that although this can be specified per namespace, the filter conditions will be aggregated into one
-                              single filter processor in the resulting OpenTelemetry collector configuration; if different error modes are
-                              specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+                              Note that although this can be specified per namespace and cluster-wide, the filter conditions will be aggregated
+                              into one single filter processor in the resulting OpenTelemetry collector configuration; if different error modes
+                              are specified in different namespaces, or cluster-wide in the operator configuration resource, the "most severe"
+                              error mode will be used (propagate > ignore > silent).
                             enum:
                             - ignore
                             - silent
@@ -3093,9 +3401,10 @@ spec:
 
                               This is optional, default to "ignore".
 
-                              Note that although this can be specified per namespace, the transform statements will be aggregated into one
-                              single transform processor in the resulting OpenTelemetry collector configuration; if different error modes are
-                              specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+                              Note that although this can be specified per namespace and cluster-wide, the transform statements will be
+                              aggregated into one single transform processor in the resulting OpenTelemetry collector configuration; if
+                              different error modes are specified in different namespaces, or cluster-wide in the operator configuration
+                              resource, the "most severe" error mode will be used (propagate > ignore > silent).
                             enum:
                             - ignore
                             - silent

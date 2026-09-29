@@ -1299,6 +1299,48 @@ operator:
   #    synchronizePersesDashboards: true
   #    synchronizePrometheusRules: true
 
+  # Optional cluster-wide filters for telemetry, to drop entire spans, span events, metrics, metric data points, log
+  # records or profiles. In contrast to the filters of a Dash0 monitoring resource, which only apply to the telemetry
+  # collected in the namespace of that monitoring resource, these filters apply to all telemetry collected in the
+  # cluster, including telemetry that is not associated with a namespace, like node metrics or cluster-level metrics.
+  #
+  # The conditions are OTTL expressions, the structure is identical to the configuration of the OpenTelemetry
+  # collector's filter processor, see
+  # https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/filterprocessor/README.md.
+  #
+  # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration resource will
+  # be created by the Helm chart then.
+  #filter:
+  #  error_mode: ignore
+  #  traces:
+  #    span:
+  #      - 'attributes["http.route"] == "/ready"'
+  #  metrics:
+  #    metric:
+  #      - 'name == "k8s.replicaset.available"'
+
+  # Optional cluster-wide transformations for telemetry, to modify collected telemetry before it is sent to the
+  # backend. In contrast to the transformations of a Dash0 monitoring resource, which only apply to the telemetry
+  # collected in the namespace of that monitoring resource, these transformations apply to all telemetry collected in
+  # the cluster, including telemetry that is not associated with a namespace, like node metrics or cluster-level
+  # metrics.
+  #
+  # The statements are OTTL statements, the structure is identical to the configuration of the OpenTelemetry
+  # collector's transform processor, see
+  # https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md.
+  # Both the basic and the advanced config style of the transform processor are supported.
+  #
+  # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration resource will
+  # be created by the Helm chart then.
+  #transform:
+  #  error_mode: ignore
+  #  trace_statements:
+  #    - truncate_all(span.attributes, 128)
+  #  metric_statements:
+  #    - context: datapoint
+  #      statements:
+  #        - truncate_all(attributes, 128)
+
   # Settings related to Signal Control.
   signalControl:
     # Whether to enable Signal Control features for this operator install.
