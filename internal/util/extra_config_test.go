@@ -393,6 +393,7 @@ var _ = Describe("extra config map", func() {
 
 					Expect(extraConfig.DaemonSetTolerations).To(HaveLen(0))
 					Expect(extraConfig.DaemonSetNodeAffinity).To(BeNil())
+					Expect(extraConfig.DaemonSetSELinuxOptions).To(BeNil())
 
 					Expect(extraConfig.CollectorDaemonSetPriorityClassName).To(Equal(""))
 
@@ -576,6 +577,9 @@ daemonSetNodeAffinity:
         operator: In
         values:
         - linux
+daemonSetSeLinuxOptions:
+  type: container_t
+  level: s0:c1,c2
 collectorDeploymentPriorityClassName: deployment-priority
 deploymentProbes:
   liveness:
@@ -753,6 +757,11 @@ monitoringTemplate:
 					Expect(daemonSetAffinityNodeSelectorReqTerms[0].MatchExpressions[1].Operator).To(Equal(corev1.NodeSelectorOpIn))
 					Expect(daemonSetAffinityNodeSelectorReqTerms[0].MatchExpressions[1].Values).To(HaveLen(1))
 					Expect(daemonSetAffinityNodeSelectorReqTerms[0].MatchExpressions[1].Values[0]).To(Equal("linux"))
+
+					Expect(extraConfig.DaemonSetSELinuxOptions).To(Equal(&corev1.SELinuxOptions{
+						Type:  "container_t",
+						Level: "s0:c1,c2",
+					}))
 
 					Expect(extraConfig.CollectorDeploymentPriorityClassName).To(Equal("deployment-priority"))
 

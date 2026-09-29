@@ -123,7 +123,7 @@ files:
   - source: docs/advanced-configuration.md
     target: dash0-operator/advanced-configuration.md
     title: Advanced Configuration
-    description: Advanced Dash0 operator configuration, including cert-manager, collector pod scheduling, sysctls, and filelog offset volumes.
+    description: Advanced Dash0 operator configuration, including cert-manager, collector pod scheduling, sysctls, SELinux options, and filelog offset volumes.
 
   - source: docs/platform-specific.md
     target: dash0-operator/platform-specific.md

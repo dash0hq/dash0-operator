@@ -8,6 +8,7 @@ This document provides platform-specific guidance, compatibility notes, and work
 - [GKE Autopilot](#notes-on-gke-autopilot)
   - [Managing the AllowlistSynchronizer Manually](#managing-the-allowlistsynchronizer-manually)
 - [OpenShift](#notes-on-openshift)
+- [SELinux-Enforcing Clusters](#notes-on-selinux-enforcing-clusters)
 - [Azure AKS](#notes-on-azure-aks)
 - [Open Policy Agent (OPA Gatekeeper)](#notes-on-the-open-policy-agent)
 - [Kyverno Admission Controller](#notes-on-kyverno-admission-controller)
@@ -125,6 +126,11 @@ set to `true`, the Dash0 operator Helm chart and operator:
 - drop the hard-coded pod-level `runAsUser`/`runAsGroup` from the operator-managed workloads (the agent0-connector, the
   target-allocator, and the Signal Control edge-proxy) and from the injected instrumentation init container, so that the
   namespace's SCC assigns an in-range UID instead of a pinned one that `restricted-v2` would reject.
+
+## Notes on SELinux-Enforcing Clusters
+
+For clusters that enforce SELinux, the SELinux options of the collector DaemonSet pods can be configured (see
+[Configuring SELinux Options for the Collector DaemonSet](advanced-configuration.md#configuring-selinux-options-for-the-collector-daemonset)).
 
 ## Notes on Azure AKS
 

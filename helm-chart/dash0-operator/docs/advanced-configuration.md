@@ -14,6 +14,7 @@ This guide covers advanced configuration topics for the Dash0 operator, includin
   - [Adding Custom Labels and Annotations to the Collector Resources](#adding-custom-labels-and-annotations-to-the-collector-resources)
 - [Configuring Collector Host Ports](#configuring-collector-host-ports)
 - [Configuring Pod-Level sysctls for the Collector Pods (TCP Keepalive)](#configuring-pod-level-sysctls-for-the-collector-pods-tcp-keepalive)
+- [Configuring SELinux Options for the Collector DaemonSet](#configuring-selinux-options-for-the-collector-daemonset)
 - [Disable Self-Monitoring](#disable-self-monitoring)
 - [Exporting Data to Other Observability Backends](#exporting-data-to-other-observability-backends)
   - [Note regarding TLS when using arbitrary OTLP-compatible backends](#note-regarding-tls-when-using-arbitrary-otlp-compatible-backends)
@@ -524,6 +525,23 @@ This setting is opt-in for two reasons:
 * It changes the collector pod spec, which triggers a rollout of the collector pods.
 
 Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or similar to take effect.
+
+## Configuring SELinux Options for the Collector DaemonSet
+
+Pod-level [SELinux options](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/) for the
+collector DaemonSet pods can be set via `operator.collectors.daemonSetSeLinuxOptions`. The value is used as is for the
+pod's `spec.securityContext.seLinuxOptions`. It is unset by default. Changing it changes the collector pod spec, which
+triggers a rollout of the collector DaemonSet pods.
+
+```yaml
+operator:
+  collectors:
+    daemonSetSeLinuxOptions:
+      type: <selinux-type>
+```
+
+Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or
+similar to take effect.
 
 ## Disable Self-Monitoring
 

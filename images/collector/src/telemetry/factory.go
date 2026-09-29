@@ -3,7 +3,8 @@
 
 // Package dash0telemetry provides a drop-in replacement for the collector's default internal telemetry factory
 // (go.opentelemetry.io/collector/service/telemetry/otelconftelemetry). It behaves identically to that factory, except
-// that it enriches the resource used for the collector's own self-monitoring telemetry with the k8s.node.uid attribute.
+// that it enriches the resource used for the collector's own self-monitoring telemetry with the k8s.node.uid attribute,
+// and that it logs a warning when the mounted pod log directory contains no log files (see logger.go).
 //
 // The node UID is not available via the Kubernetes downward API, so it cannot be injected as an environment variable
 // (unlike k8s.node.name, which comes from spec.nodeName). It also cannot be added by the k8sattributes or
@@ -28,9 +29,9 @@ import (
 	"go.opentelemetry.io/collector/service/telemetry/otelconftelemetry"
 )
 
-// NewFactory returns a telemetry.Factory that wraps the default otelconftelemetry factory and additionally attaches the
-// k8s.node.uid resource attribute to the collector's self-monitoring telemetry. All other behavior is delegated
-// unchanged to the wrapped factory.
+// NewFactory returns a telemetry.Factory that wraps the default otelconftelemetry factory, additionally attaches the
+// k8s.node.uid resource attribute to the collector's self-monitoring telemetry, and checks the pod log directory once
+// the logger has been created. All other behavior is delegated unchanged to the wrapped factory.
 func NewFactory() telemetry.Factory {
 	base := otelconftelemetry.NewFactory()
 	// Kick off the node UID lookup right away so it runs concurrently with the remaining startup work and is usually
@@ -40,7 +41,7 @@ func NewFactory() telemetry.Factory {
 	return telemetry.NewFactory(
 		base.CreateDefaultConfig,
 		telemetry.WithCreateResource(createResourceWithNodeUID(base)),
-		telemetry.WithCreateLogger(base.CreateLogger),
+		telemetry.WithCreateLogger(createLoggerWithPodLogsCheck(base)),
 		telemetry.WithCreateMeterProvider(base.CreateMeterProvider),
 		telemetry.WithCreateTracerProvider(base.CreateTracerProvider),
 	)

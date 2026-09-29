@@ -1690,6 +1690,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				{Name: "net.ipv4.tcp_keepalive_time", Value: "200"},
 				{Name: "net.ipv4.tcp_keepalive_intvl", Value: "30"},
 			},
+			DaemonSetSELinuxOptions: &corev1.SELinuxOptions{Type: "spc_t"},
 			DeploymentTolerations: []corev1.Toleration{
 				{
 					Key:      "key3",
@@ -1769,6 +1770,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			{Name: "net.ipv4.tcp_keepalive_time", Value: "200"},
 			{Name: "net.ipv4.tcp_keepalive_intvl", Value: "30"},
 		}))
+		Expect(daemonSetPodSpec.SecurityContext.SELinuxOptions).To(Equal(&corev1.SELinuxOptions{Type: "spc_t"}))
 
 		deploymentPodSpec := getDeployment(desiredState).Spec.Template.Spec
 		Expect(deploymentPodSpec.Tolerations).To(HaveLen(2))
@@ -1803,9 +1805,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(deploymentPodSpec.SecurityContext.Sysctls).To(Equal([]corev1.Sysctl{
 			{Name: "net.ipv4.tcp_keepalive_time", Value: "200"},
 		}))
+		Expect(deploymentPodSpec.SecurityContext.SELinuxOptions).To(BeNil())
 	})
 
-	It("should not set pod sysctls on the collectors by default", func() {
+	It("should not set pod sysctls or seLinuxOptions on the collectors by default", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
@@ -1818,6 +1821,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		Expect(getDaemonSet(desiredState).Spec.Template.Spec.SecurityContext.Sysctls).To(BeNil())
 		Expect(getDeployment(desiredState).Spec.Template.Spec.SecurityContext.Sysctls).To(BeNil())
+		Expect(getDaemonSet(desiredState).Spec.Template.Spec.SecurityContext.SELinuxOptions).To(BeNil())
 	})
 
 	It("should render additional collector labels and annotations", func() {
