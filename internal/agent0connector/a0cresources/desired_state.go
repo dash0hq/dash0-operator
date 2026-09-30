@@ -35,6 +35,13 @@ const (
 	// how many command requests it may execute at the same time.
 	maxConcurrentCommandsEnvVarName = "DASH0_AGENT0_CONNECTOR_MAX_CONCURRENT_COMMANDS"
 
+	// allowedKubectlCommandsEnvVarName is the environment variable through which the agent0-connector workload
+	// receives the comma-separated list of kubectl commands it may execute (see the Helm value
+	// operator.agent0Connector.allowedKubectlCommands). The variable is required, the agent0-connector terminates with
+	// an error if it is absent, empty, cannot be parsed, or contains a kubectl command the agent0-connector does not
+	// support.
+	allowedKubectlCommandsEnvVarName = "DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS"
+
 	// defaultMaxConcurrentCommands is the number of command requests the agent0-connector executes at the same time when
 	// the extra config does not specify a value (e.g. an older config map). It is bounded by memory: a request that
 	// returns the maximum output size costs about 90 MiB, most of it in the kubectl child process and in parsing the
@@ -162,7 +169,6 @@ var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 		Resources: []string{
 			"componentstatuses",
 			"endpoints",
-			"events",
 			"limitranges",
 			"namespaces",
 			"nodes",
@@ -170,8 +176,6 @@ var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 			"persistentvolumes",
 			"podtemplates",
 			"pods",
-			// required by "kubectl logs"
-			"pods/log",
 			"replicationcontrollers",
 			"resourcequotas",
 			"serviceaccounts",
@@ -274,11 +278,6 @@ var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 			"resourceslices",
 		},
 		Verbs: allowedVerbs,
-	},
-	{
-		APIGroups: []string{"events.k8s.io"},
-		Resources: []string{"events"},
-		Verbs:     allowedVerbs,
 	},
 	{
 		// required by "kubectl top"
@@ -580,6 +579,18 @@ func assembleClusterRoleBinding(c *util.Agent0ConnectorConfig) *rbacv1.ClusterRo
 	}
 }
 
+// joinAllowedKubectlCommands renders the enabled kubectl commands as a sorted, comma-separated list.
+func joinAllowedKubectlCommands(allowedKubectlCommands map[string]bool) string {
+	enabled := make([]string, 0, len(allowedKubectlCommands))
+	for kubectlCommand, allowed := range allowedKubectlCommands {
+		if allowed {
+			enabled = append(enabled, kubectlCommand)
+		}
+	}
+	slices.Sort(enabled)
+	return strings.Join(enabled, ",")
+}
+
 func assembleDeployment(
 	c *util.Agent0ConnectorConfig,
 	authTokenEnvVar *corev1.EnvVar,
@@ -662,6 +673,11 @@ func assembleDeployment(
 		// (where the token is irrelevant).
 		container.Env = append(container.Env, *authTokenEnvVar)
 	}
+
+	container.Env = append(container.Env, corev1.EnvVar{
+		Name:  allowedKubectlCommandsEnvVarName,
+		Value: joinAllowedKubectlCommands(extraConfig.Agent0ConnectorAllowedKubectlCommands),
+	})
 
 	if c.Insecure {
 		container.Env = append(container.Env, corev1.EnvVar{

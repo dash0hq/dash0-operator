@@ -94,13 +94,8 @@ func sortByNotAllowed(expression string) string {
 	)
 }
 
-const describeNotSupported = "\"kubectl describe\" is not supported, because it renders a resource in a text format " +
-	"the connector cannot parse, so the credentials a resource may contain cannot be redacted from its output; read " +
-	"the resource with \"kubectl get ... -o yaml\" or \"-o json\" instead"
-
-const describeOfSecretNotSupported = "describing a secret is not allowed, because \"kubectl describe\" prints the " +
-	"exact length of every value; listing secrets or checking for the presence of a particular one with " +
-	"\"kubectl get secret <name>\" is supported"
+const describeNotSupported = "\"kubectl describe\" is not supported, because its output cannot be redacted reliably; " +
+	"read the resource with \"kubectl get ... -o yaml\" or \"-o json\" instead"
 
 //nolint:lll
 func TestValidateCommandRequest(t *testing.T) {
@@ -384,9 +379,6 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "synthetic checks are covered",
 			command: "kubectl", arguments: []string{"get", "dash0syntheticchecks", "-o", "custom-columns=T:.spec"}, allowed: false,
 			rejectionReason: outputFormatNotRedactable("custom-columns")},
-		{name: "describe of a Dash0 resource with --template is rejected",
-			command: "kubectl", arguments: []string{"describe", "dash0monitorings", "--template={{.spec}}"}, allowed: false,
-			rejectionReason: outputFormatNotRedactable("go-template")},
 
 		// The formats the connector can redact stay available for Dash0 resources.
 		{name: "a Dash0 resource with -o yaml is allowed",
@@ -603,37 +595,35 @@ func TestValidateCommandRequest(t *testing.T) {
 			command: "kubectl", arguments: []string{"get", "secret", "-o", "jsonpath-file=/etc/passwd"}, allowed: false,
 			rejectionReason: contentsNotReadable},
 
-		// "kubectl describe" prints the token of a service account token secret verbatim, and the size of every other
-		// value, and its output cannot be redacted.
 		{name: "describe of a secret is rejected",
 			command: "kubectl", arguments: []string{"describe", "secret", "my-secret"}, allowed: false,
-			rejectionReason: describeOfSecretNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "describe of secrets in all namespaces is rejected",
 			command: "kubectl", arguments: []string{"describe", "secrets", "-A"}, allowed: false,
-			rejectionReason: describeOfSecretNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "describe of a secret via type/name is rejected",
 			command: "kubectl", arguments: []string{"describe", "secret/my-secret"}, allowed: false,
-			rejectionReason: describeOfSecretNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "the secret kind form is covered by describe",
 			command: "kubectl", arguments: []string{"describe", "Secret", "my-secret"}, allowed: false,
-			rejectionReason: describeOfSecretNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "the fully qualified secret resource type is covered by describe",
 			command: "kubectl", arguments: []string{"describe", "secrets.v1."}, allowed: false,
-			rejectionReason: describeOfSecretNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "describe of a secret with a leading flag is rejected",
 			command: "kubectl", arguments: []string{"-n", "x", "describe", "secret", "my-secret"}, allowed: false,
-			rejectionReason: describeOfSecretNotSupported},
+			rejectionReason: describeNotSupported},
 		// The secret restriction takes precedence over the one for resource types that can contain secrets, so that the
 		// rejection names the stronger of the two.
 		{name: "describe of a secret in a later slot is rejected as a secret",
 			command: "kubectl", arguments: []string{"describe", "pod/a", "secret/b"}, allowed: false,
-			rejectionReason: describeOfSecretNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "describe of a multi-resource list including secrets is rejected as a secret",
 			command: "kubectl", arguments: []string{"describe", "configmap,secret"}, allowed: false,
-			rejectionReason: describeOfSecretNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "describe of a padded secret resource type is rejected",
 			command: "kubectl", arguments: []string{"describe", " secret ", "my-secret"}, allowed: false,
-			rejectionReason: describeOfSecretNotSupported},
+			rejectionReason: describeNotSupported},
 
 		// Config maps: whether they can be read at all is decided by RBAC alone, but the connector walks their content
 		// for credentials (see redactConfigMapData), so they are restricted to the output formats it can redact,
@@ -768,7 +758,7 @@ func TestValidateCommandRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := &pb.CommandRequest{Command: tt.command, Arguments: tt.arguments}
-			_, err := validateCommandAndParseArguments(req)
+			_, err := validateCommandAndParseArguments(req, everySupportedKubectlCommandAllowed())
 
 			if tt.allowed {
 				if tt.rejectionReason != "" {
@@ -802,7 +792,95 @@ func TestValidateCommandRequest(t *testing.T) {
 	}
 }
 
-// kubectlCommandRedactionRationale records, for every kubectl command in allowedKubectlCommands, why its response
+// getEventsDisabled is the reason with which "kubectl get events" is rejected while "kubectl events" is disabled.
+const getEventsDisabled = `reading events via "kubectl get" is not allowed, because the kubectl command "events" has ` +
+	`been disabled in the configuration of the agent0-connector (via the Helm value ` +
+	`operator.agent0Connector.allowedKubectlCommands)`
+
+func TestValidationHonorsTheAllowedKubectlCommands(t *testing.T) {
+	defaults := defaultKubectlCommands
+	onlyGet := mustParseAllowedKubectlCommands("get")
+	logsAndEvents := mustParseAllowedKubectlCommands("logs,events")
+
+	tests := []struct {
+		name            string
+		allowed         AllowedKubectlCommands
+		arguments       []string
+		rejectionReason string
+	}{
+		{name: "logs is rejected by default", allowed: defaults, arguments: []string{"logs", "my-pod"},
+			rejectionReason: `the kubectl command "logs" has been disabled in the configuration of the ` +
+				`agent0-connector (via the Helm value operator.agent0Connector.allowedKubectlCommands), the only ` +
+				`allowed kubectl commands are "api-resources", "api-versions", "auth", "cluster-info", "explain", ` +
+				`"get", "top" and "version"`},
+		{name: "events is rejected by default", allowed: defaults, arguments: []string{"events"},
+			rejectionReason: `the kubectl command "events" has been disabled in the configuration of the ` +
+				`agent0-connector (via the Helm value operator.agent0Connector.allowedKubectlCommands), the only ` +
+				`allowed kubectl commands are "api-resources", "api-versions", "auth", "cluster-info", "explain", ` +
+				`"get", "top" and "version"`},
+		{name: "get is allowed by default", allowed: defaults, arguments: []string{"get", "pods"}},
+		{name: "logs is allowed when enabled", allowed: logsAndEvents, arguments: []string{"logs", "my-pod"}},
+		{name: "events is allowed when enabled", allowed: logsAndEvents, arguments: []string{"events"}},
+		{name: "get is rejected when disabled", allowed: logsAndEvents, arguments: []string{"get", "pods"},
+			rejectionReason: `the kubectl command "get" has been disabled in the configuration of the ` +
+				`agent0-connector (via the Helm value operator.agent0Connector.allowedKubectlCommands), the only ` +
+				`allowed kubectl commands are "events" and "logs"`},
+		{name: "a restricted configuration only advertises the allowed commands", allowed: onlyGet,
+			arguments: []string{"delete", "pod", "x"},
+			rejectionReason: `the kubectl command "delete" is not an allowed read-only command, the only allowed ` +
+				`kubectl command is "get"`},
+		{name: "bare kubectl is allowed with a restricted configuration", allowed: onlyGet,
+			arguments: []string{"--help"}},
+		{name: "describe keeps its specific rejection reason", allowed: onlyGet, arguments: []string{"describe", "pods"},
+			rejectionReason: describeNotSupported},
+		{name: "enabling a command keeps the checks of its flags", allowed: logsAndEvents,
+			arguments: []string{"logs", "my-pod", "-f"}, rejectionReason: flagNotAllowed("-f")},
+		{name: "get events is rejected by default", allowed: defaults, arguments: []string{"get", "events"},
+			rejectionReason: getEventsDisabled},
+		{name: "get event is rejected by default", allowed: defaults, arguments: []string{"get", "event", "x"},
+			rejectionReason: getEventsDisabled},
+		{name: "get ev is rejected by default", allowed: defaults, arguments: []string{"get", "ev", "-A"},
+			rejectionReason: getEventsDisabled},
+		{name: "get events with -o name is rejected by default", allowed: defaults,
+			arguments: []string{"get", "events", "-o", "name"}, rejectionReason: getEventsDisabled},
+		{name: "get events.events.k8s.io is rejected by default", allowed: defaults,
+			arguments: []string{"get", "events.events.k8s.io", "-o", "yaml"}, rejectionReason: getEventsDisabled},
+		{name: "get events.v1.events.k8s.io is rejected by default", allowed: defaults,
+			arguments: []string{"get", "Events.v1.events.k8s.io"}, rejectionReason: getEventsDisabled},
+		{name: "get events in a list of resource types is rejected by default", allowed: defaults,
+			arguments: []string{"get", "pods,events"}, rejectionReason: getEventsDisabled},
+		{name: "get events in a type/name pair is rejected by default", allowed: defaults,
+			arguments: []string{"get", "pod/a", "event/b"}, rejectionReason: getEventsDisabled},
+		{name: "get of a resource named events is allowed by default", allowed: defaults,
+			arguments: []string{"get", "configmap", "events"}},
+		{name: "get events is allowed when events is enabled", allowed: everySupportedKubectlCommandAllowed(),
+			arguments: []string{"get", "events", "-o", "yaml"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := &pb.CommandRequest{Command: "kubectl", Arguments: tt.arguments}
+			_, err := validateCommandAndParseArguments(req, tt.allowed)
+			if tt.rejectionReason == "" {
+				if err != nil {
+					t.Errorf("expected request to be allowed, but it was rejected: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("expected request to be rejected, but it was allowed")
+			}
+			if err.Error() != tt.rejectionReason {
+				t.Errorf(
+					"expected the request to be rejected with\n\t%s\nbut it was rejected with\n\t%s",
+					tt.rejectionReason,
+					err,
+				)
+			}
+		})
+	}
+}
+
+// kubectlCommandRedactionRationale records, for every kubectl command in supportedKubectlCommands, why its response
 // cannot be used to exfiltrate secrets. Only "get" is routed through redaction (see responseHasToBeRedacted, which
 // returns false for every other kubectl command). Therefor every other entry has to justify itself by not rendering the
 // content of a resource at all. Adding a kubectl command to the allowlist without recording a rationale here fails
@@ -810,51 +888,32 @@ func TestValidateCommandRequest(t *testing.T) {
 var kubectlCommandRedactionRationale = map[string]string{
 	"get": "the only kubectl command whose response is redacted, see redactSecretsInResponse",
 	"describe": "renders resource content in a text format that cannot be parsed, and is therefore rejected for " +
-		"every resource type, see describeRequested and describeOfSensitiveResourceRequested",
+		"every resource type, see unconditionallyRejectedKubectlCommands",
 	"cluster-info": "the bare form only prints the addresses of the control plane and of the cluster's services; its " +
 		"subcommands are rejected, see allowedSubcommandsPerKubectlCommand",
 	"api-resources": "prints the known resource types and their metadata, never the content of an instance",
 	"api-versions":  "prints the available API group/versions only",
 	"explain":       "prints the schema of a resource type, not the content of an instance",
-	"events": "renders Event objects, whose messages are emitted by the kubelet and by controllers rather than " +
-		"copied from the content of a resource. This is the one entry that is a judgement call rather than a " +
-		"guarantee: an admission webhook is free to quote what was submitted to it into a rejection message, which " +
-		"the connector cannot redact. Events are kept allowed because they are what makes a failing reconciliation " +
-		"diagnosable, and because the content a webhook echoes is content the submitter already had",
+	"events": "Renders Event objects, whose messages are emitted by the kubelet and by controllers rather than " +
+		"copied from the content of a resource. Allowing access to events is a judgement: an admission webhook is free " +
+		"to quote what was submitted to it into a rejection message, which the connector cannot reliably redact. Events " +
+		"are supported, but disabled by default (see operator.agent0Connector.allowedKubectlCommands in the Helm " +
+		"chart's values.yaml). Users have to explicitly opt-in.",
 	"top": "prints a CPU/memory usage table only",
 	"auth": "restricted to \"can-i\", see allowedSubcommandsPerKubectlCommand; it answers with yes/no or with the rule " +
 		"list of the agent0-connector's own service account, never with the content of a resource",
 	"version": "prints the client and server version only",
-	"logs": "streams the raw log output of a container, which is not resource content; a credential a workload " +
-		"logs itself is out of reach of response redaction",
+	"logs": "Streams the raw log output of a container. Logs cannot be reliably redacted. Logs are supported, but " +
+		"disabled by default (see operator.agent0Connector.allowedKubectlCommands in the Helm chart's values.yaml). " +
+		"Users have to explicitly opt-in.",
 }
 
 // TestEveryAllowedKubectlCommandHasARedactionRationale guards against the drift that would for example let
 // "kubectl cluster-info dump" hand out pod specs etc. unredacted. This checks for the kubectl command that are on the
-// allowlist without their response being redacted. Whenever allowedKubectlCommands grows, the new command has to be
+// allowlist without their response being redacted. Whenever supportedKubectlCommands grows, the new command has to be
 // classified deliberately.
-// TestAdvertisedKubectlCommandsAreNotRejectedUnconditionally pins that allowedKubectlCommandsHumanReadable, which
-// rejection messages hand to the calling agent as the list of commands it may use, names no command that a later check
-// rejects for every invocation. Advertising such a command sends the agent into a retry that cannot succeed.
-func TestAdvertisedKubectlCommandsAreNotRejectedUnconditionally(t *testing.T) {
-	for kubectlCmd := range unconditionallyRejectedKubectlCommands {
-		if _, allowed := allowedKubectlCommands[kubectlCmd]; !allowed {
-			t.Errorf(
-				"unconditionallyRejectedKubectlCommands has a stale entry for %q, which is not on the allowlist any more",
-				kubectlCmd,
-			)
-		}
-		if strings.Contains(allowedKubectlCommandsHumanReadable, fmt.Sprintf("%q", kubectlCmd)) {
-			t.Errorf(
-				"the kubectl command %q is rejected for every invocation, but rejection messages advertise it as allowed",
-				kubectlCmd,
-			)
-		}
-	}
-}
-
 func TestEveryAllowedKubectlCommandHasARedactionRationale(t *testing.T) {
-	for kubectlCmd := range allowedKubectlCommands {
+	for kubectlCmd := range supportedKubectlCommands {
 		if _, hasRationale := kubectlCommandRedactionRationale[kubectlCmd]; !hasRationale {
 			t.Errorf(
 				"the kubectl command %q is allowed, but no rationale records why its response cannot expose a credential; "+
@@ -866,9 +925,34 @@ func TestEveryAllowedKubectlCommandHasARedactionRationale(t *testing.T) {
 		}
 	}
 	for kubectlCmd := range kubectlCommandRedactionRationale {
-		if _, allowed := allowedKubectlCommands[kubectlCmd]; !allowed {
+		if _, supported := supportedKubectlCommands[kubectlCmd]; !supported {
 			t.Errorf(
 				"kubectlCommandRedactionRationale has a stale entry for %q, which is not an allowed kubectl command any more",
+				kubectlCmd,
+			)
+		}
+	}
+}
+
+// TestAdvertisedKubectlCommandsAreNotRejectedUnconditionally pins that the list of allowed kubectl commands, which
+// rejection messages hand to the calling agent as the list of commands it may use, names no command that a later check
+// rejects for every invocation, even when the configuration lists it. Advertising such a command sends the agent into
+// a retry that cannot succeed.
+func TestAdvertisedKubectlCommandsAreNotRejectedUnconditionally(t *testing.T) {
+	allowed := everySupportedKubectlCommandAllowed()
+	for kubectlCmd := range unconditionallyRejectedKubectlCommands {
+		if _, supported := supportedKubectlCommands[kubectlCmd]; !supported {
+			t.Errorf(
+				"unconditionallyRejectedKubectlCommands has a stale entry for %q, which is not on the allowlist any more",
+				kubectlCmd,
+			)
+		}
+		if allowed.Allows(kubectlCmd) {
+			t.Errorf("the kubectl command %q is rejected for every invocation, but the configuration can enable it", kubectlCmd)
+		}
+		if strings.Contains(allowed.humanReadable, fmt.Sprintf("%q", kubectlCmd)) {
+			t.Errorf(
+				"the kubectl command %q is rejected for every invocation, but rejection messages advertise it as allowed",
 				kubectlCmd,
 			)
 		}
@@ -878,7 +962,7 @@ func TestEveryAllowedKubectlCommandHasARedactionRationale(t *testing.T) {
 // TestOnlyGetIsRoutedThroughRedaction pins the invariant the rationales above rely on: responseHasToBeRedacted
 // redacts the response of "get" only.
 func TestOnlyGetIsRoutedThroughRedaction(t *testing.T) {
-	for kubectlCmd := range allowedKubectlCommands {
+	for kubectlCmd := range supportedKubectlCommands {
 		parsed := parseKubectlArguments([]string{kubectlCmd, "dash0monitorings", "-o", "yaml"})
 		canContainSecrets := responseHasToBeRedacted(parsed)
 		if kubectlCmd == "get" && !canContainSecrets {

@@ -161,15 +161,16 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 
 			Expect(resourcesPerApiGroup[""]).To(ContainElements(
 				"endpoints",
-				"events",
 				"namespaces",
 				"nodes",
 				"persistentvolumeclaims",
 				"persistentvolumes",
 				"pods",
-				"pods/log",
 				"services",
 			))
+			Expect(resourcesPerApiGroup[""]).ToNot(ContainElement("events"))
+			Expect(resourcesPerApiGroup[""]).ToNot(ContainElement("pods/log"))
+			Expect(resourcesPerApiGroup).ToNot(HaveKey("events.k8s.io"))
 			Expect(resourcesPerApiGroup["apps"]).To(ContainElements("daemonsets", "deployments", "replicasets", "statefulsets"))
 			Expect(resourcesPerApiGroup["batch"]).To(ContainElements("cronjobs", "jobs"))
 			Expect(resourcesPerApiGroup["metrics.k8s.io"]).To(ContainElements("nodes", "pods"))
@@ -545,6 +546,40 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 			).Spec.Template.Spec.Containers[0]
 			Expect(container.Env).To(ContainElement(
 				corev1.EnvVar{Name: "DASH0_AGENT0_CONNECTOR_MAX_CONCURRENT_COMMANDS", Value: "6"}))
+		})
+
+		It("passes the enabled kubectl commands from the extra config as a sorted list", func() {
+			extraConfig := util.ExtraConfig{Agent0ConnectorAllowedKubectlCommands: map[string]bool{
+				"version": true,
+				"get":     true,
+				"logs":    false,
+				"events":  true,
+			}}
+			container := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, extraConfig),
+			).Spec.Template.Spec.Containers[0]
+			Expect(container.Env).To(ContainElement(
+				corev1.EnvVar{Name: "DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS", Value: "events,get,version"}))
+		})
+
+		It("passes an empty list when the extra config has no value", func() {
+			container := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}),
+			).Spec.Template.Spec.Containers[0]
+			Expect(container.Env).To(ContainElement(
+				corev1.EnvVar{Name: "DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS", Value: ""}))
+		})
+
+		It("passes an empty list when every kubectl command is disabled", func() {
+			extraConfig := util.ExtraConfig{Agent0ConnectorAllowedKubectlCommands: map[string]bool{
+				"get":  false,
+				"logs": false,
+			}}
+			container := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, extraConfig),
+			).Spec.Template.Spec.Containers[0]
+			Expect(container.Env).To(ContainElement(
+				corev1.EnvVar{Name: "DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS", Value: ""}))
 		})
 
 		It("mounts a writable tmp volume for kubectl's cache", func() {
