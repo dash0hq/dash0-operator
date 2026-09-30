@@ -69,15 +69,19 @@ func TestResponseHasToBeRedacted(t *testing.T) {
 		{name: "Dash0 resource types without credential fields", arguments: []string{"get", "dash0views,dash0teams,dash0samplingrules", "-o", "yaml"}, expected: true},
 		{name: "a resource named like a Dash0 resource", arguments: []string{"get", "services", "dash0monitorings", "-o", "yaml"}, expected: true},
 
-		// A format that reshapes the response is rejected by validation for every resource type, so it never reaches
-		// redaction. Should one ever get here, it counts as content that has to be redacted and is withheld, since
-		// parseableOutputFormat cannot resolve it - the same outcome a repeated output format gets.
-		{name: "repeated output format", arguments: []string{"get", "dash0monitorings", "-o", "yaml", "-o", "yaml"}, expected: true},
+		// kubectl applies the last occurrence of a repeated output format.
+		{name: "repeated output format (identical)", arguments: []string{"get", "dash0monitorings", "-o", "yaml", "-o", "yaml"}, expected: true},
+		{name: "repeated output format (different, needs redaction)", arguments: []string{"get", "dash0monitorings", "-o", "wide", "-o", "yaml"}, expected: true},
+		{name: "repeated output format (different, needs no redaction)", arguments: []string{"get", "dash0monitorings", "-o", "yaml", "-o", "wide"}, expected: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := responseHasToBeRedacted(parseKubectlArguments(tt.arguments)); got != tt.expected {
+			parsed, err := parseKubectlArguments(tt.arguments)
+			if err != nil {
+				t.Fatalf("expected the arguments to be parsed, but got an error: %v", err)
+			}
+			if got := responseHasToBeRedacted(parsed); got != tt.expected {
 				t.Errorf("expected responseHasToBeRedacted=%t, got %t", tt.expected, got)
 			}
 		})

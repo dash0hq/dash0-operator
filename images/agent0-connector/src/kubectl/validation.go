@@ -197,13 +197,16 @@ func validateCommandAndParseArguments(
 		return kubectlArguments{}, errors.New(reason)
 	}
 
-	arguments := parseKubectlArguments(req.GetArguments())
+	arguments, err := parseKubectlArguments(req.GetArguments())
+	if err != nil {
+		if errors.Is(err, errUnknownKubectlCommand) {
+			return kubectlArguments{}, fmt.Errorf("%w, %s", err, allowedKubectlCommands.humanReadable)
+		}
+		return kubectlArguments{}, fmt.Errorf("the kubectl arguments cannot be parsed: %w", err)
+	}
 
-	// The flags are checked first: which token is the kubctl command and which tokens reference resources depends on
-	// knowing which flags consume the following argument as their value, which is only known for flags from the
-	// allowlist.
-	if len(arguments.disallowedFlags) > 0 {
-		return kubectlArguments{}, fmt.Errorf("the kubectl flag %q is not allowed", arguments.disallowedFlags[0])
+	if reason, blocked := disallowedFlagRequested(arguments); blocked {
+		return kubectlArguments{}, errors.New(reason)
 	}
 
 	// Check the kubectl command first, reject any kubectl command that is not on the allowlist (supportedKubectlCommands)
@@ -248,6 +251,25 @@ func disallowedExecutableRequested(req *pb.CommandRequest) (string, bool) {
 	return "", false
 }
 
+// disallowedFlagRequested reports whether the kubectl arguments set a flag that is not in the allowedFlags allowlist.
+// It also returns true (i.e. disallowed) if the end-of-flags separator "--" is used.
+// It returns a human-readable reason if the result is true, i.e. if this command request must be disallowed.
+func disallowedFlagRequested(parsed kubectlArguments) (string, bool) {
+	if parsed.hasEndOfFlagsSeparator {
+		return "the kubectl flag \"--\" is not allowed", true
+	}
+	for _, flag := range parsed.flags {
+		if _, allowed := allowedFlags[flag.longName]; allowed {
+			continue
+		}
+		if flag.shorthand != "" {
+			return fmt.Sprintf("the kubectl flag %q (%q) is not allowed", "--"+flag.longName, "-"+flag.shorthand), true
+		}
+		return fmt.Sprintf("the kubectl flag %q is not allowed", "--"+flag.longName), true
+	}
+	return "", false
+}
+
 func disallowedKubectlCommandRequested(
 	parsed kubectlArguments,
 	allowedKubectlCommands AllowedKubectlCommands,
@@ -286,8 +308,12 @@ func disallowedSubcommandRequested(parsed kubectlArguments) (string, bool) {
 	if !restricted {
 		return "", false
 	}
-	requestedSubcommand := ""
-	if len(parsed.positionalArguments) > 0 {
+	requestedSubcommand := parsed.subcommand
+	if requestedSubcommand == "" && len(parsed.positionalArguments) > 0 {
+		// For kubectl commands where we restrict the allowed subcommands, we also disallow any positional argument
+		// that were not detected as subcommands by kubectl. This enforces a stricter rule than only rejecting subcommands
+		// based on the allowlist. E.g. we do not only reject "kubectl cluster-info dump" but also "kubectl cluster-info
+		// foobar".
 		requestedSubcommand = parsed.positionalArguments[0]
 	}
 	if slices.Contains(allowedSubcommands, requestedSubcommand) {
@@ -342,7 +368,7 @@ func eventsReadViaGetRequested(parsed kubectlArguments, allowedKubectlCommands A
 // (`kubectl get secret <name>`) are allowed (if the corresponding RBAC permissions are granted); serializing the data
 // via an output format such as -o yaml/json/jsonpath/go-template/custom-columns (or --template) is not. This is a
 // fail-closed check: output formats that could expose the data are rejected even if a particular invocation would only
-// read metadata, and a repeated output flag is rejected if any of its occurrences would expose the data.
+// read metadata.
 func sensitiveContentRequested(parsed kubectlArguments) (string, bool) {
 	resource, targeted := targetedSensitiveResource(parsed)
 	if !targeted {
@@ -379,11 +405,13 @@ func lookupSensitiveResourceType(resourceType string) (sensitiveResource, bool) 
 
 // unsupportedOutputFormatRequested reports whether the kubectl arguments would render a resource in an output format
 // the connector cannot hand out, returning a human-readable reason when they do: a format it does not know, or one
-// whose result it cannot redact reliably. Every occurrence of -o/--output is checked, not just the effective (last)
-// one, so that an argument list in which any occurrence is unsupported is rejected without replicating kubectl's
-// precedence rules. The --template flag counts as go-template output even without -o, mirroring outputIsContentFree.
+// whose result it cannot redact reliably. The --template flag counts as go-template output even without -o, mirroring
+// outputIsContentFree.
 func unsupportedOutputFormatRequested(parsed kubectlArguments) (string, bool) {
-	formats := parsed.outputFormats()
+	var formats []string
+	if format, isSet := parsed.outputFormat(); isSet {
+		formats = append(formats, format)
+	}
 	if parsed.hasTemplateFlag() {
 		// Appended, not prepended, so that an explicit -o is named in the rejection rather than the format --template
 		// implies.
@@ -413,29 +441,25 @@ func unsupportedOutputFormatRequested(parsed kubectlArguments) (string, bool) {
 // against the unredacted resources, so the connector cannot redact what the expression exposes: sorting by a redacted
 // field leaks its order, and a filter expression such as {.spec.containers[0].env[?(@.value>"S")].name} turns the
 // presence of a match into a comparison oracle that reveals the value character by character over several requests.
-// Every occurrence of the flag is checked, not just the effective (last) one, mirroring
-// unsupportedOutputFormatRequested. The check only applies to kubectl subcommand whose response is redacted
-// (i.e. kubectl get).
+// The check only applies to the kubectl command whose response is redacted (i.e. kubectl get).
 func unsafeSortByRequested(parsed kubectlArguments) (string, bool) {
 	if parsed.kubectlCommand != "get" {
 		// "get" is the only command whose response is redacted, so it is the only one where the --sort-by length oracle
 		// matters.
 		return "", false
 	}
-	for _, expression := range parsed.valuesOf("sort-by") {
-		if sortByExpressionIsSafe(expression) {
-			continue
-		}
-		return fmt.Sprintf(
-			"the --sort-by expression %q is not allowed; kubectl evaluates the expression against the resources "+
-				"before the connector redacts them, so only a plain path below %s may be sorted by, except %q "+
-				"(e.g. --sort-by=.metadata.name or --sort-by=.status.startTime)",
-			expression,
-			safeSortByPathPrefixesHumanReadable,
-			unsafeSortByPathPrefix,
-		), true
+	expression, isSet := parsed.valueOf("sort-by")
+	if !isSet || sortByExpressionIsSafe(expression) {
+		return "", false
 	}
-	return "", false
+	return fmt.Sprintf(
+		"the --sort-by expression %q is not allowed; kubectl evaluates the expression against the resources "+
+			"before the connector redacts them, so only a plain path below %s may be sorted by, except %q "+
+			"(e.g. --sort-by=.metadata.name or --sort-by=.status.startTime)",
+		expression,
+		safeSortByPathPrefixesHumanReadable,
+		unsafeSortByPathPrefix,
+	), true
 }
 
 // sortByExpressionIsSafe reports whether a --sort-by JSONPath expression addresses only fields that cannot hold a

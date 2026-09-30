@@ -203,8 +203,8 @@ func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, 
 	format, parseable := parsed.parseableOutputFormat()
 	if !parseable {
 		// Validation leaves only the parseable and the content-free formats, and responseHasToBeRedacted already ruled
-		// out the content-free ones, so what remains here is an invocation that sets the output format more than once,
-		// which parseableOutputFormat refuses to resolve. Withhold response.
+		// out the content-free ones, so nothing should remain here. Should an invocation get here nonetheless, its
+		// response is withheld.
 		return fmt.Errorf("the output format of this command cannot be parsed for redaction")
 	}
 	if stdoutTruncated {

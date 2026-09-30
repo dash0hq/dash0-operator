@@ -3,45 +3,130 @@
 
 package kubectl
 
-import "strings"
+import (
+	"errors"
+	"fmt"
+	"io"
+	"slices"
+	"strings"
+	"sync"
 
-// parseKubectlArguments resolves the argument list of a kubectl invocation into its kubectl command, subcommand, flags
-// and the resource types it references. This is the only place that walks the raw argument list.
-func parseKubectlArguments(arguments []string) kubectlArguments {
-	parsed := kubectlArguments{}
-	// positionalIndex counts the positional arguments that follow the kubectl command (get, describe, ...); it stays
-	// negative until the kubectl command itself has been found.
-	positionalIndex := -1
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+	"k8s.io/cli-runtime/pkg/genericiooptions"
+	"k8s.io/component-base/logs"
+	kubectlcmd "k8s.io/kubectl/pkg/cmd"
+)
 
-	for i := 0; i < len(arguments); i++ {
-		argument := arguments[i]
+var (
+	// errUnknownKubectlCommand is wrapped by the error parseKubectlArguments returns when the argument list does not
+	// resolve to a command of kubectl's command tree.
+	errUnknownKubectlCommand = errors.New("the arguments do not resolve to a kubectl command")
 
-		if !strings.HasPrefix(argument, "-") {
-			if positionalIndex < 0 {
-				parsed.kubectlCommand = argument
-				positionalIndex = 0
-				continue
-			}
-			parsed.positionalArguments = append(parsed.positionalArguments, argument)
-			parsed.resourceTypes =
-				append(parsed.resourceTypes, extractNormalizedResourceTypes(argument, positionalIndex == 0)...)
-			positionalIndex++
-			continue
-		}
+	// commandTreeMutex serializes building and using kubectl's command tree: kubectl.NewKubectlCommand writes to
+	// package-level variables (e.g. the profiling flags), so building two command trees concurrently is a data race.
+	commandTreeMutex sync.Mutex
+)
 
-		flag, consumesNextArg, allowed := inspectFlagToken(argument)
-		if !allowed {
-			parsed.disallowedFlags = append(parsed.disallowedFlags, argument)
-			continue
-		}
-		if consumesNextArg && i+1 < len(arguments) {
-			flag.value = arguments[i+1]
-			i++ // the flag's value is neither a positional argument nor a flag of its own
-		}
-		parsed.flags = append(parsed.flags, flag)
+// parseKubectlArguments resolves the argument list of a kubectl invocation into its kubectl command, subcommand,
+// flags, positional arguments and the resource types it references. It uses kubectl's own command tree
+// (from k8s.io/kubectl), so the result is exactly what kubectl executes.
+//
+// It returns an error if kubectl would reject the argument list itself, i.e. if it references a command that does not
+// exist (wrapping errUnknownKubectlCommand) or a flag that the resolved command does not define.
+func parseKubectlArguments(arguments []string) (kubectlArguments, error) {
+	// The command parsing machinery from k8s.io/kubectl/pkg/cmd is not meant to be used multiple times, let alone
+	// concurrently. For this reason command parsing requires acquiring a lock.
+	commandTreeMutex.Lock()
+	defer commandTreeMutex.Unlock()
+
+	// The command tree is built from scratch for every incoming command request. (Parsing the flags stores their values
+	// in the tree, hence we cannot re-use a parsed command tree.)
+
+	// First, build an "empty" kubectl command struct without passing the argument list. The argument list is not passed
+	// here to NewKubectlCommand, but passed below via root.Find. Reason: kubectl only applies the user preferences of a
+	// kuberc file (aliases and default flag values) when it is. The kubectl subprocess has user preferences and kuberc
+	// disabled as well (see kubectlEnv).
+	root := kubectlcmd.NewKubectlCommand(kubectlcmd.KubectlOptions{
+		Arguments: []string{kubectlCommand},
+		IOStreams: genericiooptions.IOStreams{In: strings.NewReader(""), Out: io.Discard, ErrOut: io.Discard},
+	})
+	// kubectl's main function runs the command tree via component-base's cli.RunNoErrOutput, which adds the klog flags
+	// (-v, --vmodule, ...) to the root command.
+	logs.AddFlags(root.PersistentFlags())
+	root.DisableSuggestions = true
+
+	// This is where we actually hand over the arguments from the command request to kubectl's command line parsing
+	// machinery. The following lines mirror cobra's Command.ExecuteC, which kubectl's main function invokes. That is:
+	// - resolve the command via Find,
+	// - register the help flag,
+	// - then parse the remaining arguments with the flags of the resolved command.
+	resolved, remainingArguments, err := findCommand(root, arguments)
+	if err != nil {
+		return kubectlArguments{}, err
+	}
+	if resolved.DisableFlagParsing {
+		// No allowed kubectl command disables flag parsing. A command that does that is therefore implicitly disallowed.
+		// Allowing commands which use DisableFlagParsing would receive its flags as positional arguments, which invalidates
+		// assumptions that validation.go makes.
+		return kubectlArguments{}, fmt.Errorf("the kubectl command %q does not support flag parsing", resolved.CommandPath())
+	}
+	// Required so ParseFlags does not reject --help and -h as unknown flags.
+	resolved.InitDefaultHelpFlag()
+	if err = resolved.ParseFlags(remainingArguments); err != nil {
+		return kubectlArguments{}, err
 	}
 
-	return parsed
+	parsed := kubectlArguments{
+		positionalArguments:    resolved.Flags().Args(),
+		hasEndOfFlagsSeparator: resolved.Flags().ArgsLenAtDash() >= 0,
+	}
+	commandPath := commandPathBelowRoot(resolved)
+	if len(commandPath) > 0 {
+		parsed.kubectlCommand = commandPath[0]
+		parsed.subcommand = strings.Join(commandPath[1:], " ")
+	}
+	resolved.Flags().Visit(func(flag *pflag.Flag) {
+		parsed.flags = append(parsed.flags, parsedFlag{
+			longName:  flag.Name,
+			shorthand: flag.Shorthand,
+			value:     flag.Value.String(),
+		})
+	})
+	for positionalIndex, argument := range parsed.positionalArguments {
+		parsed.resourceTypes =
+			append(parsed.resourceTypes, extractNormalizedResourceTypes(argument, positionalIndex == 0)...)
+	}
+	return parsed, nil
+}
+
+// findCommand resolves the argument list to a command of the given command tree the way cobra's Command.ExecuteC does.
+func findCommand(root *cobra.Command, arguments []string) (*cobra.Command, []string, error) {
+	// If kubectl ever starts setting TraverseChildren we will need to handle this differently. Currently kubectl does not
+	// use TraverseChildren.
+	if root.TraverseChildren {
+		return nil, nil, fmt.Errorf(
+			"the root command %q sets TraverseChildren, which parseKubectlArguments does not support",
+			root.Name(),
+		)
+	}
+	resolved, remainingArguments, err := root.Find(arguments)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %w", errUnknownKubectlCommand, err)
+	}
+	return resolved, remainingArguments, nil
+}
+
+// commandPathBelowRoot returns the canonical names of the given command and its ancestors, without the root command
+// ("kubectl") itself, e.g. ["auth", "can-i"] for "kubectl auth can-i". An alias used in the argument list resolves to
+// the canonical name. The result is empty for the root command (e.g. a bare kubectl invocation).
+func commandPathBelowRoot(command *cobra.Command) []string {
+	var path []string
+	for current := command; current.HasParent(); current = current.Parent() {
+		path = append(path, current.Name())
+	}
+	slices.Reverse(path)
+	return path
 }
 
 // extractNormalizedResourceTypes returns the normalized resource types a single positional argument references. The
@@ -71,55 +156,4 @@ func normalizeResourceType(resourceType string) string {
 		resourceType = resourceType[:idx]
 	}
 	return resourceType
-}
-
-// inspectFlagToken resolves a token starting with "-" against the allowedFlags allowlist. A "--flag" token references
-// one flag, while a "-abc" token may group several shorthands (pflag accepts "-Aw"), where a value-taking shorthand
-// takes the rest of the token as its value, or the following argument when nothing follows it. A bare "--" or "-"
-// references no flag at all and is not allowed.
-//
-// It reports consumesNextArg when the token's value-taking flag expects the following argument as its value, and
-// allowed when every flag the token references is in the allowlist. The returned flag is only meaningful when the token
-// is allowed.
-func inspectFlagToken(token string) (flag parsedFlag, consumesNextArg bool, allowed bool) {
-	if nameAndValue, isLongFlag := strings.CutPrefix(token, "--"); isLongFlag {
-		name, inlineValue, hasInlineValue := strings.Cut(nameAndValue, "=")
-		takesValue, isAllowed := allowedFlags[name]
-		if !isAllowed {
-			return parsedFlag{}, false, false
-		}
-		flag = parsedFlag{token: token}
-		if takesValue {
-			flag.valueTakingName = name
-			flag.value = inlineValue
-		} else {
-			// The value of a boolean flag is not tracked, the flag counts as referenced either way.
-			flag.booleanNames = []string{name}
-		}
-		return flag, takesValue && !hasInlineValue, true
-	}
-
-	shorthands := strings.TrimPrefix(token, "-")
-	if shorthands == "" {
-		return parsedFlag{}, false, false
-	}
-	flag = parsedFlag{token: token}
-	for i, shorthand := range []byte(shorthands) {
-		name := string(shorthand)
-		takesValue, isAllowed := allowedFlags[name]
-		if !isAllowed {
-			return parsedFlag{}, false, false
-		}
-		if !takesValue {
-			flag.booleanNames = append(flag.booleanNames, name)
-			continue
-		}
-		// Whatever follows the shorthand is its value, written as "-nx" or "-n=x"; an empty remainder means the value is
-		// the following argument.
-		inlineValue, hasEqualsSign := strings.CutPrefix(shorthands[i+1:], "=")
-		flag.valueTakingName = name
-		flag.value = inlineValue
-		return flag, inlineValue == "" && !hasEqualsSign, true
-	}
-	return flag, false, true
 }
