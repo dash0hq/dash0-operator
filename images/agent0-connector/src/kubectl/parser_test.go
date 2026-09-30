@@ -60,6 +60,24 @@ func TestParseArguments(t *testing.T) {
 			},
 			resourceTypes: []string{"pods"}},
 
+		// Regression tests for inconsistencies between kubectl's cobra based parsing and agent0-connector's parsing.
+		{name: "a subcommand flag before the kubectl command", arguments: []string{"-A", "version", "cluster-info", "dump"},
+			kubectlCommand: "cluster-info", flags: []parsedFlag{{token: "-A", booleanNames: []string{"A"}}}, resourceTypes: []string{"dump"}},
+		{name: "a grouped shorthand with a value-taking flag before describe", arguments: []string{"-An", "describe", "version", "configmaps"},
+			kubectlCommand: "describe",
+			flags:          []parsedFlag{{token: "-An", valueTakingName: "n", value: "version", booleanNames: []string{"A"}}},
+			resourceTypes:  []string{"configmaps"}},
+		{name: "a grouped shorthand with a value-taking flag before get", arguments: []string{"-An", "get", "version", "configmaps", "-o", "yaml"},
+			kubectlCommand: "get",
+			flags: []parsedFlag{
+				{token: "-An", valueTakingName: "n", value: "version", booleanNames: []string{"A"}},
+				{token: "-o", valueTakingName: "o", value: "yaml"},
+			},
+			resourceTypes: []string{"configmaps"}},
+		{name: "a grouped shorthand with a value-taking flag before events", arguments: []string{"-An", "events", "version"},
+			kubectlCommand: "events",
+			flags:          []parsedFlag{{token: "-An", valueTakingName: "n", value: "version", booleanNames: []string{"A"}}}},
+
 		// Resource references: a bare type only counts in the resource type slot, a type/name pair in any slot.
 		{name: "a bare type in a later slot is a resource name", arguments: []string{"get", "pods", "cm"},
 			kubectlCommand: "get", resourceTypes: []string{"pods"}},

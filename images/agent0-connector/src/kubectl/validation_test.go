@@ -802,6 +802,15 @@ func TestValidationHonorsTheAllowedKubectlCommands(t *testing.T) {
 	onlyGet := mustParseAllowedKubectlCommands("get")
 	logsAndEvents := mustParseAllowedKubectlCommands("logs,events")
 
+	withoutClusterInfo := mustParseAllowedKubectlCommands("api-resources,api-versions,auth,explain,get,logs,top,version")
+	clusterInfoDisabled := `the kubectl command "cluster-info" has been disabled in the configuration of the ` +
+		`agent0-connector (via the Helm value operator.agent0Connector.allowedKubectlCommands), the only allowed ` +
+		`kubectl commands are "api-resources", "api-versions", "auth", "explain", "get", "logs", "top" and "version"`
+	eventsDisabled := `the kubectl command "events" has been disabled in the configuration of the ` +
+		`agent0-connector (via the Helm value operator.agent0Connector.allowedKubectlCommands), the only allowed ` +
+		`kubectl commands are "api-resources", "api-versions", "auth", "cluster-info", "explain", "get", "top" and ` +
+		`"version"`
+
 	tests := []struct {
 		name            string
 		allowed         AllowedKubectlCommands
@@ -855,6 +864,22 @@ func TestValidationHonorsTheAllowedKubectlCommands(t *testing.T) {
 			arguments: []string{"get", "configmap", "events"}},
 		{name: "get events is allowed when events is enabled", allowed: everySupportedKubectlCommandAllowed(),
 			arguments: []string{"get", "events", "-o", "yaml"}},
+
+		// Regression tests for inconsistencies between kubectl's cobra based parsing and our parsing.
+		{name: "a disabled command hidden behind -A and an allowed command is rejected", allowed: withoutClusterInfo,
+			arguments: []string{"-A", "version", "cluster-info", "dump"}, rejectionReason: clusterInfoDisabled},
+		{name: "a disabled command hidden behind --all-namespaces and an allowed command is rejected",
+			allowed:   withoutClusterInfo,
+			arguments: []string{"--all-namespaces", "version", "cluster-info", "dump"}, rejectionReason: clusterInfoDisabled},
+		{name: "a disallowed subcommand hidden behind -A and an allowed command is rejected", allowed: defaults,
+			arguments:       []string{"-A", "version", "cluster-info", "dump"},
+			rejectionReason: kubectlCommandAllowedBareOnly("cluster-info", "dump")},
+		{name: "events hidden behind -A and an allowed command is rejected by default", allowed: defaults,
+			arguments: []string{"-A", "version", "events"}, rejectionReason: eventsDisabled},
+		{name: "describe hidden behind a grouped shorthand is rejected", allowed: defaults,
+			arguments: []string{"-An", "describe", "version", "configmaps"}, rejectionReason: describeNotSupported},
+		{name: "events hidden behind a grouped shorthand is rejected by default", allowed: defaults,
+			arguments: []string{"-An", "events", "version"}, rejectionReason: eventsDisabled},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -877,6 +902,26 @@ func TestValidationHonorsTheAllowedKubectlCommands(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+// TestHiddenGetIsRedacted covers a "kubectl get" hidden behind a grouped shorthand ending in a value-taking flag
+// ("-An"). kubectl executes "get configmaps -A -n version -o yaml", which validation may either reject or allow, but
+// if it allows the request, the response has to be routed through redaction.
+func TestHiddenGetIsRedacted(t *testing.T) {
+	req := &pb.CommandRequest{
+		Command:   "kubectl",
+		Arguments: []string{"-An", "get", "version", "configmaps", "-o", "yaml"},
+	}
+	parsed, err := validateCommandAndParseArguments(req, defaultKubectlCommands)
+	if err != nil {
+		return
+	}
+	if !responseHasToBeRedacted(parsed) {
+		t.Errorf(
+			"the request was allowed, but its response would not be redacted (kubectl command: %q)",
+			parsed.kubectlCommand,
+		)
 	}
 }
 
