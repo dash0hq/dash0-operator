@@ -251,7 +251,7 @@ func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, 
 // validation rejects "kubectl describe" and every output format that could reshape a response before it gets here.
 func responseHasToBeRedacted(parsed kubectlArguments) bool {
 	//nolint:goconst
-	if parsed.kubectlCommand != "get" {
+	if parsed.kubectlCommand != kubectlCommandGet {
 		// No other allowed kubectl command renders resource content: "describe" is rejected outright (see
 		// unconditionallyRejectedKubectlCommands), "explain" only prints the schema.
 		return false

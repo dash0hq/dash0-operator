@@ -37,17 +37,17 @@ import (
 // operator.agent0Connector.allowedKubectlCommands in helm-chart/dash0-operator/values.yaml, see
 // TestHelmChartListsEverySupportedKubectlCommand.
 var supportedKubectlCommands = map[string]struct{}{
-	"api-resources": {},
-	"auth":          {},
-	"api-versions":  {},
-	"cluster-info":  {},
-	"describe":      {}, // describe is not actually supported, see unconditionallyRejectedKubectlCommands
-	"events":        {},
-	"explain":       {},
-	"get":           {},
-	"logs":          {},
-	"top":           {},
-	"version":       {},
+	"api-resources":   {},
+	"auth":            {},
+	"api-versions":    {},
+	"cluster-info":    {},
+	"describe":        {}, // describe is not actually supported, see unconditionallyRejectedKubectlCommands
+	"events":          {},
+	"explain":         {},
+	kubectlCommandGet: {},
+	"logs":            {},
+	"top":             {},
+	"version":         {},
 }
 
 // unconditionallyRejectedKubectlCommands are kubectl commands that are listed in supportedKubectlCommands so that a
@@ -459,7 +459,7 @@ func unsupportedOutputFormatRequested(parsed kubectlArguments) (string, bool) {
 // presence of a match into a comparison oracle that reveals the value character by character over several requests.
 // The check only applies to the kubectl command whose response is redacted (i.e. kubectl get).
 func unsafeSortByRequested(parsed kubectlArguments) (string, bool) {
-	if parsed.kubectlCommand != "get" {
+	if parsed.kubectlCommand != kubectlCommandGet {
 		// "get" is the only command whose response is redacted, so it is the only one where the --sort-by length oracle
 		// matters.
 		return "", false
