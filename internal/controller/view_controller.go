@@ -4,9 +4,9 @@
 package controller
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -24,6 +24,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	dash0 "github.com/dash0hq/dash0-api-client-go"
+
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
@@ -36,7 +38,7 @@ type ViewReconciler struct {
 	client.Client
 	pseudoClusterUid      types.UID
 	leaderElectionAware   util.LeaderElectionAware
-	httpClient            *http.Client
+	apiClientPool         *ApiClientPool
 	defaultApiConfigs     selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs  selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	initialSyncMutex      sync.Mutex
@@ -53,13 +55,13 @@ func NewViewReconciler(
 	k8sClient client.Client,
 	pseudoClusterUid types.UID,
 	leaderElectionAware util.LeaderElectionAware,
-	httpClient *http.Client,
+	apiClientPool *ApiClientPool,
 ) *ViewReconciler {
 	return &ViewReconciler{
 		Client:               k8sClient,
 		pseudoClusterUid:     pseudoClusterUid,
 		leaderElectionAware:  leaderElectionAware,
-		httpClient:           httpClient,
+		apiClientPool:        apiClientPool,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
 		namespacedSyncMutex:  *selfmonitoringapiaccess.NewNamespaceMutex(),
@@ -114,8 +116,9 @@ func (r *ViewReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
+// HttpClient returns nil, the view reconciler talks to the Dash0 API via the API client pool.
 func (r *ViewReconciler) HttpClient() *http.Client {
-	return r.httpClient
+	return nil
 }
 
 func (r *ViewReconciler) SetDefaultApiConfigs(ctx context.Context, apiConfigs []ApiConfig, logger logd.Logger) {
@@ -340,57 +343,79 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 	itemName := preconditionChecksResult.k8sName
 
 	viewUrl, viewOrigin := r.renderViewUrl(preconditionChecksResult, apiConfig.Endpoint, apiConfig.Dataset)
+	dataset := apiConfig.Dataset
+	// The origin contains the query-escaped dataset, and the API client path-escapes the origin again.
+	originForApiClient, err := url.PathUnescape(viewOrigin)
+	if err != nil {
+		originForApiClient = viewOrigin
+	}
 
-	var req *http.Request
-	var method string
-	var err error
-
+	var apiClientCall *ApiClientCall
 	switch action {
 	case upsertAction:
-		view := preconditionChecksResult.resource
-		serializedView, _ := json.Marshal(view)
-		requestPayload := bytes.NewBuffer(serializedView)
-		method = http.MethodPut
-		req, err = http.NewRequest(
-			method,
-			viewUrl,
-			requestPayload,
-		)
+		var viewDefinition *dash0.ViewDefinition
+		viewDefinition, err = mapToViewDefinition(preconditionChecksResult.resource)
+		if err != nil {
+			conversionErr := fmt.Errorf("unable to convert the view to the Dash0 API format: %w", err)
+			logger.Error(conversionErr, "error converting view")
+			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, conversionErr.Error())
+		}
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodPut,
+			Url:    viewUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				updatedView, err := apiClient.UpdateView(ctx, originForApiClient, viewDefinition, &dataset)
+				if err != nil {
+					return "", err
+				}
+				if updatedView == nil {
+					return "", errors.New("unexpected nil/empty response body")
+				}
+				return dash0.GetViewID(updatedView), nil
+			},
+		}
 	case deleteAction:
-		method = http.MethodDelete
-		req, err = http.NewRequest(
-			method,
-			viewUrl,
-			nil,
-		)
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodDelete,
+			Url:    viewUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				return "", apiClient.DeleteView(ctx, originForApiClient, &dataset)
+			},
+		}
 	default:
 		unknownActionErr := fmt.Errorf("unknown API action: %d", action)
 		logger.Error(unknownActionErr, "unknown API action")
 		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, unknownActionErr.Error())
 	}
 
-	if err != nil {
-		httpError := fmt.Errorf(
-			"unable to create a new HTTP request to synchronize the view: %s %s: %w",
-			method,
-			viewUrl,
-			err,
-		)
-		logger.Error(httpError, "error creating http request")
-		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, httpError.Error())
-	}
-
-	addAuthorizationHeader(req, apiConfig.Token)
-	if action == upsertAction {
-		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
-	}
-
-	return NewResourceToRequestsResultSingleItemSuccess(
+	return NewResourceToRequestsResultSingleItemApiClientCall(
 		apiConfig,
-		req,
+		apiClientCall,
 		itemName,
 		viewOrigin,
 	)
+}
+
+// mapToViewDefinition converts the view resource to the typed view definition of the Dash0 API client. Fields that
+// the Dash0 API does not define for views (for example metadata.namespace, status) are dropped.
+func mapToViewDefinition(view map[string]any) (*dash0.ViewDefinition, error) {
+	serializedView, err := json.Marshal(view)
+	if err != nil {
+		return nil, err
+	}
+	viewDefinition := &dash0.ViewDefinition{}
+	if err = json.Unmarshal(serializedView, viewDefinition); err != nil {
+		return nil, err
+	}
+	return viewDefinition, nil
 }
 
 func (r *ViewReconciler) renderViewUrl(

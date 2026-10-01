@@ -1696,13 +1696,15 @@ func startDash0Controllers(
 		Agent0ConnectorImagePullPolicy:              envVars.agent0ConnectorImagePullPolicy,
 	}
 
-	httpClient := util.WithUserAgent(
-		dash0apiclient.NewTransport(
-			dash0apiclient.WithTransportMaxRetries(2),
-			dash0apiclient.WithTransportRetryWaitMin(1*time.Second),
-			dash0apiclient.WithTransportRetryWaitMax(3*time.Second),
-		).HTTPClient(),
-		images.GetOperatorVersion(),
+	dash0ApiTransport := dash0apiclient.NewTransport(
+		dash0apiclient.WithTransportMaxRetries(2),
+		dash0apiclient.WithTransportRetryWaitMin(1*time.Second),
+		dash0apiclient.WithTransportRetryWaitMax(3*time.Second),
+	)
+	httpClient := util.WithUserAgent(dash0ApiTransport.HTTPClient(), images.GetOperatorVersion())
+	apiClientPool := controller.NewApiClientPool(
+		dash0ApiTransport,
+		util.RenderUserAgent(images.GetOperatorVersion()),
 	)
 
 	isIPv6Cluster := util.IsIPv6Address(envVars.podIp)
@@ -1958,7 +1960,7 @@ func startDash0Controllers(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err := viewReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the view reconciler: %w", err)
