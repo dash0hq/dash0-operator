@@ -207,4 +207,4 @@ gh pr create \
   -B main \
   -H "$branch_name" \
   --title "$commit_message" \
-  --body "$pr_body"
+  --body "$(printf '%s\n\n%s\n' "$pr_body" '**Before merging, consider running the skill /kubectl-parsing-drift-check**')"
