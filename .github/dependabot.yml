@@ -21,13 +21,13 @@ updates:
   - package-ecosystem: "gomod"
     directories:
       - "/"
-      - "/images/agent0-connector/src"
       - "/images/configreloader/src"
       - "/images/filelogoffsetsync/src"
       - "/images/pkg/common"
       - "test/e2e"
       # images/collector/src/telemetry is deliberately absent here, it is updated via
       # .github/workflows/scripts/update-collector-components-check-and-bump-versions.sh
+      # images/agent0-connector/src also has its own update gomod block below.
     schedule:
       interval: "weekly"
       day: "tuesday"
@@ -42,6 +42,36 @@ updates:
         dependency-type: "development"
     commit-message:
       prefix: "chore(deps)"
+
+  - package-ecosystem: "gomod"
+    directory: "/images/agent0-connector/src"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:15"
+      timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 4
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+      development-dependencies:
+        dependency-type: "development"
+    commit-message:
+      prefix: "chore(deps)"
+    ignore:
+      # The kubectl Go modules and the kubectl image in images/agent0-connector/Dockerfile need to have the same
+      # version. They are updated together in one pull request by .github/workflows/update-agent0-connector-kubectl.yaml.
+      # The Kubernetes modules below are released in lockstep with kubectl.
+      - dependency-name: "k8s.io/api"
+      - dependency-name: "k8s.io/apimachinery"
+      - dependency-name: "k8s.io/cli-runtime"
+      - dependency-name: "k8s.io/client-go"
+      - dependency-name: "k8s.io/component-base"
+      - dependency-name: "k8s.io/component-helpers"
+      - dependency-name: "k8s.io/kubectl"
+      - dependency-name: "k8s.io/metrics"
+      - dependency-name: "k8s.io/streaming"
 
   # Dash0 OpenTelemetry Distro for Node.js
   - package-ecosystem: "npm"
@@ -96,6 +126,9 @@ updates:
       # and the `go` directive of all go.mod files together. Dependabot would update them in separate pull requests,
       # which breaks `make go-version-check`.
       - dependency-name: "golang"
+      # The kubectl image in images/agent0-connector/Dockerfile is updated together with the kubectl Go modules by
+      # .github/workflows/update-agent0-connector-kubectl.yaml, see above.
+      - dependency-name: "registry.k8s.io/kubectl"
       # enable the following `ignore` to prevent upgrades to python pre-releases
       - dependency-name: "python"
         update-types: ["version-update:semver-minor"]
