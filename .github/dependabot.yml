@@ -72,6 +72,11 @@ updates:
       - dependency-name: "k8s.io/kubectl"
       - dependency-name: "k8s.io/metrics"
       - dependency-name: "k8s.io/streaming"
+      # The kubectl binary has been built with the cobra and pflag versions that k8s.io/kubectl requires. The connector
+      # parses command requests with cobra and pflag, so updating them independently would make the parsing drift from
+      # the kubectl binary. "go get k8s.io/kubectl@..." updates them along with the kubectl Go modules.
+      - dependency-name: "github.com/spf13/cobra"
+      - dependency-name: "github.com/spf13/pflag"
 
   # Dash0 OpenTelemetry Distro for Node.js
   - package-ecosystem: "npm"
