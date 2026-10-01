@@ -142,9 +142,9 @@ func TestValidateCommandRequest(t *testing.T) {
 			rejectionReason: kubectlCommandAllowedBareOnly("cluster-info", "dump")},
 		{name: "cluster-info dump with an output format is rejected", command: "kubectl", arguments: []string{"cluster-info", "dump", "-o", "json"}, allowed: false,
 			rejectionReason: kubectlCommandAllowedBareOnly("cluster-info", "dump")},
-		// Any positional argument is rejected, so a subcommand added by a future kubectl release is rejected as well.
-		{name: "an unknown cluster-info subcommand is rejected", command: "kubectl", arguments: []string{"cluster-info", "somethingelse"}, allowed: false,
-			rejectionReason: kubectlCommandAllowedBareOnly("cluster-info", "somethingelse")},
+		// An argument that kubectl's command tree does not resolve to a subcommand is a positional argument, which
+		// "kubectl cluster-info" ignores.
+		{name: "cluster-info with a positional argument is allowed", command: "kubectl", arguments: []string{"cluster-info", "somethingelse"}, allowed: true},
 		{name: "cluster-info with only flags stays allowed", command: "kubectl", arguments: []string{"cluster-info", "--help"}, allowed: true},
 		{name: "top is allowed", command: "kubectl", arguments: []string{"top", "pods"}, allowed: true},
 		{name: "auth can-i is allowed", command: "kubectl", arguments: []string{"auth", "can-i", "get", "pods"},
@@ -157,6 +157,8 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "auth whoami is rejected", command: "kubectl", arguments: []string{"auth", "whoami"}, allowed: false,
 			rejectionReason: subcommandNotAllowed("auth", "can-i", "whoami")},
 		{name: "bare auth is rejected", command: "kubectl", arguments: []string{"auth"}, allowed: false,
+			rejectionReason: subcommandMissing("auth", "can-i")},
+		{name: "auth with a positional argument instead of a subcommand is rejected", command: "kubectl", arguments: []string{"auth", "somethingelse"}, allowed: false,
 			rejectionReason: subcommandMissing("auth", "can-i")},
 		{name: "events is allowed", command: "kubectl", arguments: []string{"events"}, allowed: true},
 

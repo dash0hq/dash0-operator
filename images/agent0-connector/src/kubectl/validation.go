@@ -60,8 +60,8 @@ var unconditionallyRejectedKubectlCommands = map[string]string{
 // allowedSubcommandsPerKubectlCommand lists the allowed kubectl commands that may only be invoked with one of the
 // listed subcommands. Every other subcommand is rejected for that kubectl command. This way a future kubectl release
 // adding a new subcommand does not widen what the connector accepts. The empty string stands for the bare subcommand,
-// that is, an invocation of that particular kubectl command without any positional argument. A kubctl command that may
-// only be invoked bare must list the empty string as its only entry.
+// that is, an invocation of that particular kubectl command without a subcommand. A kubctl command that may only be
+// invoked bare must list the empty string as its only entry.
 var allowedSubcommandsPerKubectlCommand = map[string][]string{
 	// "auth can-i" only reports what the agent0-connector's service account is allowed to do, but its sibling
 	// subcommand "auth reconcile" creates and updates roles and role bindings, hence "auth" is only allowed with the
@@ -309,13 +309,6 @@ func disallowedSubcommandRequested(parsed kubectlArguments) (string, bool) {
 		return "", false
 	}
 	requestedSubcommand := parsed.subcommand
-	if requestedSubcommand == "" && len(parsed.positionalArguments) > 0 {
-		// For kubectl commands where we restrict the allowed subcommands, we also disallow any positional argument
-		// that were not detected as subcommands by kubectl. This enforces a stricter rule than only rejecting subcommands
-		// based on the allowlist. E.g. we do not only reject "kubectl cluster-info dump" but also "kubectl cluster-info
-		// foobar".
-		requestedSubcommand = parsed.positionalArguments[0]
-	}
 	if slices.Contains(allowedSubcommands, requestedSubcommand) {
 		return "", false
 	}
