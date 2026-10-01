@@ -51,9 +51,8 @@ func parseKubectlArguments(arguments []string) (kubectlArguments, error) {
 		Arguments: []string{kubectlCommand},
 		IOStreams: genericiooptions.IOStreams{In: strings.NewReader(""), Out: io.Discard, ErrOut: io.Discard},
 	})
-	// kubectl's main function runs the command tree via component-base's cli.RunNoErrOutput, which adds the klog flags
-	// (-v, --vmodule, ...) to the root command.
-	logs.AddFlags(root.PersistentFlags())
+
+	addKlogFlagStandIns(root.PersistentFlags())
 	root.DisableSuggestions = true
 
 	// This is where we actually hand over the arguments from the command request to kubectl's command line parsing
@@ -156,4 +155,42 @@ func normalizeResourceType(resourceType string) string {
 		resourceType = resourceType[:idx]
 	}
 	return resourceType
+}
+
+// addKlogFlagStandIns overrides the flags that component-base's logs.AddFlags adds to kubectl's root command, with the
+// same names, shorthands and parsing behavior; but with values that are not bound to the global state of klog and
+// component-base.
+// Without this, logs.AddFlags itself would hand out flags whose values write directly to the global logging
+// configuration of the connector process, so parsing a command request with -v or --vmodule would change global state
+// (before validation.go rejects the command based on the presence of -v).
+func addKlogFlagStandIns(flags *pflag.FlagSet) {
+	klogFlags := pflag.NewFlagSet("klog", pflag.ContinueOnError)
+	logs.AddFlags(klogFlags)
+	klogFlags.VisitAll(func(flag *pflag.Flag) {
+		if flags.Lookup(flag.Name) != nil {
+			return
+		}
+		standIn := *flag
+		standIn.Value = &standInFlagValue{value: flag.DefValue, valueType: flag.Value.Type()}
+		flags.AddFlag(&standIn)
+	})
+}
+
+// standInFlagValue is a pflag.Value that only records the string it is set to.
+type standInFlagValue struct {
+	value     string
+	valueType string
+}
+
+func (v *standInFlagValue) String() string {
+	return v.value
+}
+
+func (v *standInFlagValue) Set(value string) error {
+	v.value = value
+	return nil
+}
+
+func (v *standInFlagValue) Type() string {
+	return v.valueType
 }

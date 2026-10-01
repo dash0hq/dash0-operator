@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+	"k8s.io/component-base/logs"
 )
 
 //nolint:lll
@@ -322,4 +324,51 @@ func TestParseArgumentsIsSafeForConcurrentUse(t *testing.T) {
 		})
 	}
 	wg.Wait()
+}
+
+// TestParseArgumentsDoesNotChangeTheLoggingConfigurationOfTheProcess covers that parsing a command request does not
+// write to global klog flags.
+func TestParseArgumentsDoesNotChangeTheLoggingConfigurationOfTheProcess(t *testing.T) {
+	before := globalLoggingFlagValues()
+
+	parsed, err := parseKubectlArguments(
+		[]string{"get", "-v", "10", "--vmodule=parser=5", "--log-flush-frequency=1ms", "pods"},
+	)
+	if err != nil {
+		t.Fatalf("expected the arguments to be parsed, but got an error: %v", err)
+	}
+
+	expectedFlags := []parsedFlag{
+		{longName: "log-flush-frequency", value: "1ms"},
+		{longName: "v", shorthand: "v", value: "10"},
+		{longName: "vmodule", value: "parser=5"},
+	}
+	if !slices.Equal(parsed.flags, expectedFlags) {
+		t.Errorf("expected flags %v, got %v", expectedFlags, parsed.flags)
+	}
+	if !slices.Equal(parsed.positionalArguments, []string{"pods"}) {
+		t.Errorf("expected positional arguments %v, got %v", []string{"pods"}, parsed.positionalArguments)
+	}
+
+	after := globalLoggingFlagValues()
+	if len(before) == 0 {
+		t.Fatal("expected logs.AddFlags to add flags")
+	}
+	for name, value := range before {
+		if after[name] != value {
+			t.Errorf("expected the global value of the flag %q to stay %q, but it is %q", name, value, after[name])
+		}
+	}
+}
+
+// globalLoggingFlagValues returns the current values of the flags that logs.AddFlags binds to the global state of klog
+// and component-base, keyed by flag name.
+func globalLoggingFlagValues() map[string]string {
+	flags := pflag.NewFlagSet("global-logging-flags", pflag.ContinueOnError)
+	logs.AddFlags(flags)
+	values := map[string]string{}
+	flags.VisitAll(func(flag *pflag.Flag) {
+		values[flag.Name] = flag.Value.String()
+	})
+	return values
 }
