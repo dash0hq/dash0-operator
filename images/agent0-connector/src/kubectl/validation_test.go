@@ -34,6 +34,14 @@ func flagNotAllowedWithLongNameAndShorthand(flag string, shorthand string) strin
 	return fmt.Sprintf("the kubectl flag %q (%q) is not allowed", flag, shorthand)
 }
 
+func hiddenLogVerbosityNotAllowed(level string) string {
+	return fmt.Sprintf(
+		"the kubectl arguments set the log verbosity to %q, since kubectl reads \"-v=\" anywhere in an argument; "+
+			"change the argument that contains \"-v=\" or \"--v=\"",
+		level,
+	)
+}
+
 func argumentsNotParseable(reason string) string {
 	return fmt.Sprintf("the kubectl arguments cannot be parsed: %s", reason)
 }
@@ -225,6 +233,18 @@ func TestValidateCommandRequest(t *testing.T) {
 			rejectionReason: flagNotAllowedWithLongNameAndShorthand("--v", "-v")},
 		{name: "long verbosity flag is rejected", command: "kubectl", arguments: []string{"get", "pods", "--v=9"}, allowed: false,
 			rejectionReason: flagNotAllowedWithLongNameAndShorthand("--v", "-v")},
+		// The kubectl binary takes the log verbosity from any argument that contains "-v=", before it parses any flags.
+		{name: "verbosity hidden in a label selector is rejected", command: "kubectl", arguments: []string{"get", "secrets", "-o", "name", "-l", "x-v=10"}, allowed: false,
+			rejectionReason: hiddenLogVerbosityNotAllowed("10")},
+		{name: "verbosity hidden in a label selector with the default output is rejected", command: "kubectl", arguments: []string{"get", "configmaps", "-l", "x-v=8"}, allowed: false,
+			rejectionReason: hiddenLogVerbosityNotAllowed("8")},
+		{name: "verbosity hidden in a label selector with json output is rejected", command: "kubectl", arguments: []string{"get", "pods", "-o", "json", "-l", "app-v=9"}, allowed: false,
+			rejectionReason: hiddenLogVerbosityNotAllowed("9")},
+		{name: "verbosity hidden in a positional argument is rejected", command: "kubectl", arguments: []string{"get", "configmaps", "x-v=10", "-o", "name"}, allowed: false,
+			rejectionReason: hiddenLogVerbosityNotAllowed("10")},
+		{name: "verbosity hidden in a container name is rejected", command: "kubectl", arguments: []string{"logs", "p", "-c", "c-v=10"}, allowed: false,
+			rejectionReason: hiddenLogVerbosityNotAllowed("10")},
+		{name: "a hidden verbosity of zero is allowed", command: "kubectl", arguments: []string{"get", "pods", "-l", "x-v=0"}, allowed: true},
 		{name: "a grouped shorthand with an unknown member is rejected", command: "kubectl", arguments: []string{"get", "pods", "-Az"}, allowed: false,
 			rejectionReason: argumentsNotParseable("unknown shorthand flag: 'z' in -z")},
 		{name: "--filename is rejected", command: "kubectl", arguments: []string{"get", "--filename", "pod.yaml"}, allowed: false,

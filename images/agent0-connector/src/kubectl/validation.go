@@ -13,6 +13,8 @@ import (
 	"slices"
 	"strings"
 
+	kubectlcmd "k8s.io/kubectl/pkg/cmd"
+
 	pb "github.com/dash0hq/dash0-operator/images/agent0-connector/proto"
 )
 
@@ -208,6 +210,9 @@ func validateCommandAndParseArguments(
 	if reason, blocked := disallowedFlagRequested(arguments); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
+	if reason, blocked := hiddenLogVerbosityRequested(req); blocked {
+		return kubectlArguments{}, errors.New(reason)
+	}
 
 	// Check the kubectl command first, reject any kubectl command that is not on the allowlist (supportedKubectlCommands)
 	// or that has not been enabled via the configuration (allowedKubectlCommands).
@@ -268,6 +273,24 @@ func disallowedFlagRequested(parsed kubectlArguments) (string, bool) {
 		return fmt.Sprintf("the kubectl flag %q is not allowed", "--"+flag.longName), true
 	}
 	return "", false
+}
+
+// hiddenLogVerbosityRequested reports whether the raw argument list sets kubectl's log verbosity outside of the -v
+// flag, returning a human-readable reason when it does. Before parsing any flags, the main function of the kubectl
+// binary scans the raw arguments with kubectlcmd.GetLogVerbosity, which takes the level from any argument that merely
+// contains "-v=" or "--v=" - a label selector such as "-l x-v=10", a container name or a positional argument. The
+// level is applied globally, so at 8 and above kubectl logs the HTTP response bodies, and with them the unredacted
+// contents of any resource, to stderr. parseKubectlArguments does not see this, since no -v flag is set.
+func hiddenLogVerbosityRequested(req *pb.CommandRequest) (string, bool) {
+	level := kubectlcmd.GetLogVerbosity(append([]string{kubectlCommand}, req.GetArguments()...))
+	if level == "0" {
+		return "", false
+	}
+	return fmt.Sprintf(
+		"the kubectl arguments set the log verbosity to %q, since kubectl reads \"-v=\" anywhere in an argument; "+
+			"change the argument that contains \"-v=\" or \"--v=\"",
+		level,
+	), true
 }
 
 func disallowedKubectlCommandRequested(
