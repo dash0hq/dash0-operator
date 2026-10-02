@@ -120,18 +120,8 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		return admission.Denied(ErrorMessageTelemetryCollectionDisabledViaHelm)
 	}
 
-	if !h.agent0ConnectorEnabledViaHelm && pointers.ReadBoolPointerWithDefault(spec.Agent0Connector.Enabled, false) {
-		newlyEnabled, errorResponse := isFeatureNewlyEnabled(request, logger, "agent0-connector",
-			func(r *dash0v1alpha1.Dash0OperatorConfiguration) bool {
-				return pointers.ReadBoolPointerWithDefault(r.Spec.Agent0Connector.Enabled, false)
-			})
-		if errorResponse != nil {
-			return *errorResponse
-		}
-		if newlyEnabled {
-			logger.Warn(ErrorMessageAgent0ConnectorDisabledViaHelm)
-			return admission.Denied(ErrorMessageAgent0ConnectorDisabledViaHelm)
-		}
+	if response, denied := h.validateAgent0ConnectorEnabledConsistency(spec, request, logger); denied {
+		return response
 	}
 
 	if response, denied := h.validateSyntheticsWorkerEnabledConsistency(spec, request, logger); denied {
@@ -260,6 +250,31 @@ func isFeatureNewlyEnabled(
 		return false, &errResponse
 	}
 	return !wasEnabled(oldResource), nil
+}
+
+// validateAgent0ConnectorEnabledConsistency rejects enabling the agent0-connector via the operator configuration
+// resource when it has been disabled via the Helm chart. It returns denied=true together with the denial response
+// when that is the case.
+func (h *OperatorConfigurationValidationWebhookHandler) validateAgent0ConnectorEnabledConsistency(
+	spec dash0v1alpha1.Dash0OperatorConfigurationSpec,
+	request admission.Request,
+	logger logd.Logger,
+) (admission.Response, bool) {
+	if h.agent0ConnectorEnabledViaHelm || !pointers.ReadBoolPointerWithDefault(spec.Agent0Connector.Enabled, false) {
+		return admission.Response{}, false
+	}
+	newlyEnabled, errorResponse := isFeatureNewlyEnabled(request, logger, "agent0-connector",
+		func(r *dash0v1alpha1.Dash0OperatorConfiguration) bool {
+			return pointers.ReadBoolPointerWithDefault(r.Spec.Agent0Connector.Enabled, false)
+		})
+	if errorResponse != nil {
+		return *errorResponse, true
+	}
+	if !newlyEnabled {
+		return admission.Response{}, false
+	}
+	logger.Warn(ErrorMessageAgent0ConnectorDisabledViaHelm)
+	return admission.Denied(ErrorMessageAgent0ConnectorDisabledViaHelm), true
 }
 
 // validateSyntheticsWorkerEnabledConsistency rejects enabling the synthetics-worker via the operator configuration
