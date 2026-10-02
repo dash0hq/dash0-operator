@@ -37,17 +37,17 @@ import (
 // operator.agent0Connector.allowedKubectlCommands in helm-chart/dash0-operator/values.yaml, see
 // TestHelmChartListsEverySupportedKubectlCommand.
 var supportedKubectlCommands = map[string]struct{}{
-	"api-resources":   {},
-	"auth":            {},
-	"api-versions":    {},
-	"cluster-info":    {},
-	"describe":        {}, // describe is not actually supported, see unconditionallyRejectedKubectlCommands
-	"events":          {},
-	"explain":         {},
-	kubectlCommandGet: {},
-	"logs":            {},
-	"top":             {},
-	"version":         {},
+	"api-resources":    {},
+	"auth":             {},
+	"api-versions":     {},
+	"cluster-info":     {},
+	"describe":         {}, // describe is not actually supported, see unconditionallyRejectedKubectlCommands
+	"events":           {},
+	"explain":          {},
+	kubectlCommandGet:  {},
+	kubectlCommandLogs: {},
+	"top":              {},
+	"version":          {},
 }
 
 // unconditionallyRejectedKubectlCommands are kubectl commands that are listed in supportedKubectlCommands so that a
@@ -176,6 +176,7 @@ var sensitiveResourceTypes = map[string]sensitiveResource{
 const (
 	kubectlCommandGet    = "get"
 	kubectlCommandEvents = "events"
+	kubectlCommandLogs   = "logs"
 )
 
 // eventResourceTypes are the normalized resource types under which "kubectl get" reads Kubernetes events, from the core
