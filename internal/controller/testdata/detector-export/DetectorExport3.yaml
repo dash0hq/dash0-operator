@@ -1,0 +1,28 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: detectorexport3
+  labels:
+    dash0.com/dataset: production
+spec:
+  groups:
+    - name: Alerting
+      interval: 1m
+      rules:
+        - alert: DetectorExport3
+          expr: (((sum by (service_namespace, service_name) (increase({otel_metric_name = "dash0.spans", deployment_environment_name != "", dash0_service_qualified_name =~ "^(billing/payments|other/checkout|shop/checkout)$", dash0_operation_name != "", dash0_operation_name = "POST /pay", otel_span_status_code = "ERROR"}[5m]))) / (sum by (service_namespace, service_name) (increase({otel_metric_name = "dash0.spans", deployment_environment_name != "", dash0_service_qualified_name =~ "^(billing/payments|other/checkout|shop/checkout)$", dash0_operation_name != "", dash0_operation_name = "POST /pay"}[5m])) > 0) > $__threshold) and on (service_namespace, service_name) (ready > 0)) and ignoring (dash0_check_id, dash0_check_fingerprint) ((avg_over_time((sum by (service_namespace, service_name) (histogram_count(rate({otel_metric_name = "dash0.spans.red", deployment_environment_name != "", dash0_service_qualified_name =~ "^(billing/payments|other/checkout|shop/checkout)$", dash0_operation_name != "", dash0_operation_name = "POST /pay"}[5m]))))[1h:max_of(1m, min_of(step(), 10m))] offset 2m)) > 0.5)
+          for: 2m
+          keep_firing_for: 3m
+          annotations:
+            summary: Detector export
+            description: Preserve executable authoring
+            dash0.com/notification-channel-ids: email:critical-only
+            runbook_url: https://example.com/payments
+            dash0.com/change-gate-comparison: relative_factor
+            dash0.com/change-gate-value: "2"
+            dash0.com/change-gate-baseline-window: 1h
+            dash0-enabled: "false"
+            dash0-threshold-critical: "3"
+            dash0-threshold-degraded: "2"
+          labels:
+            team: payments

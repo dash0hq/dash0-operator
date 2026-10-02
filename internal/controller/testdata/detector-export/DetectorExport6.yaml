@@ -1,0 +1,28 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: detectorexport6
+  labels:
+    dash0.com/dataset: production
+spec:
+  groups:
+    - name: Alerting
+      interval: 1m
+      rules:
+        - alert: DetectorExport6
+          expr: ((histogram_count(sum by (service_namespace, service_name) (increase({otel_metric_name = "dash0.spans.red", deployment_environment_name != "", dash0_service_qualified_name =~ "^(billing/payments|other/checkout|shop/checkout)$", dash0_operation_name != "", dash0_operation_name = "POST /pay", otel_span_status_code = "ERROR"}[max_of(2m, 5m)])))) / (histogram_count(sum by (service_namespace, service_name) (increase({otel_metric_name = "dash0.spans.red", deployment_environment_name != "", dash0_service_qualified_name =~ "^(billing/payments|other/checkout|shop/checkout)$", dash0_operation_name != "", dash0_operation_name = "POST /pay"}[max_of(2m, 5m)]))) > 0) > $__threshold) and on (service_namespace, service_name) (ready > 0)
+          for: 2m
+          keep_firing_for: 3m
+          annotations:
+            summary: Detector export
+            description: Preserve executable authoring
+            dash0.com/notification-channel-ids: email:critical-only
+            runbook_url: https://example.com/payments
+            dash0.com/change-gate-comparison: absolute_delta
+            dash0.com/change-gate-value: "0.05"
+            dash0.com/change-gate-baseline-window: 30m
+            dash0-enabled: "false"
+            dash0-threshold-critical: "3"
+            dash0-threshold-degraded: "2"
+          labels:
+            team: payments
