@@ -143,6 +143,37 @@ spec:
                   and no Signal Control resources (e.g. Edge Proxy) are deployed, regardless of other settings in this resource. This
                   setting is optional, it defaults to true.
                 type: boolean
+              logEnrichment:
+                description: |-
+                  Configuration for log enrichment, which applies centrally learned log patterns to this cluster's
+                  logs: it sets the OTLP severity, a normalized dash0.log.message, and the dash0.log.pattern that the
+                  record matched. Enrichment runs before the spam filter, so spam filter rules can match on the
+                  pattern and severity it adds. This setting is optional.
+                properties:
+                  enabled:
+                    default: false
+                    description: |-
+                      Whether to enrich logs with centrally learned log patterns. This setting is optional, it defaults
+                      to false.
+                    type: boolean
+                  groupingCacheExpiration:
+                    description: |-
+                      How long fetched log templates are cached before they are re-read. Go duration syntax. Must be
+                      between 10s and 1h. This setting is optional, it defaults to 1m.
+                    type: string
+                  parserCacheExpiration:
+                    description: |-
+                      How long fetched log patterns are cached before they are re-read. Go duration syntax. Must be
+                      between 10s and 1h. This setting is optional, it defaults to 1m.
+                    type: string
+                  patternRefreshInterval:
+                    description: |-
+                      How often learned log patterns are fetched from Dash0. Go duration syntax (e.g. "60s", "5m"). Must
+                      be between 10s and 1h. This setting is optional; when unset, the settings refresh interval applies.
+                    type: string
+                required:
+                - enabled
+                type: object
               operationProcessor:
                 description: |-
                   Configuration for the dash0operation processor. This processor derives dash0.operation.* and dash0.span.*
