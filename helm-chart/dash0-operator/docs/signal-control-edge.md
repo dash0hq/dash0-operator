@@ -143,10 +143,22 @@ The patterns are learned by Dash0 and polled back into the cluster at runtime: i
 extension fetches them; when the Edge Proxy is enabled they ride the proxy's settings stream instead. Either way, pattern
 changes take effect without redeploying the collector.
 
-Log enrichment is off by default and must be turned on explicitly with `spec.logEnrichment.enabled: true`. The pattern
-refresh interval and the two cache expirations are configurable under `spec.logEnrichment` — see
-[dash0signalcontrol_types.go](https://github.com/dash0hq/dash0-operator/blob/main/api/operator/v1alpha1/dash0signalcontrol_types.go)
-for the fields and their defaults.
+Log enrichment is off by default. To turn it on, set `spec.logEnrichment.enabled: true` on the `Dash0SignalControl`
+resource:
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SignalControl
+metadata:
+  name: dash0-signal-control
+spec:
+  logEnrichment:
+    enabled: true
+  # ... other settings
+```
+
+The pattern refresh interval and the two cache expirations under `spec.logEnrichment` are optional; they are listed with
+all other fields and their defaults in the field reference linked in the [Quickstart](#quickstart).
 
 ### Zone-aware routing
 
