@@ -30,7 +30,10 @@ var kubernetesGoModulesUsedForParsing = []string{
 }
 
 // cliParsingGoModules are the Go modules that implement kubectl's command line parsing. They are not released in
-// lockstep with kubectl, the kubectl binary is built with the versions that k8s.io/kubectl requires.
+// lockstep with kubectl. The kubectl binary is built from the k8s.io/kubernetes Go workspace, and the versions selected
+// there are the ones that k8s.io/kubectl requires: hack/update-vendor.sh in kubernetes/kubernetes runs "go work sync",
+// which writes the versions selected for the workspace back into the go.mod file of every staging module, including
+// k8s.io/kubectl, from which the published module is created.
 var cliParsingGoModules = []string{
 	"github.com/spf13/cobra",
 	"github.com/spf13/pflag",
@@ -108,8 +111,8 @@ func TestCliParsingGoModuleVersionsMatchKubectl(t *testing.T) {
 		}
 		if string(moduleVersion[1]) != string(requiredByKubectl[1]) {
 			t.Errorf(
-				"k8s.io/kubectl requires the Go module %s in version %s, but %s requires %s; the kubectl binary is "+
-					"built with %s, update %s to the same version",
+				"k8s.io/kubectl requires the Go module %s in version %s, but %s requires %s; the kubectl binary of "+
+					"the same release is built with %s, update %s to the same version",
 				module,
 				requiredByKubectl[1],
 				goModPath,
