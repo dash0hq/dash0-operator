@@ -241,6 +241,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					Entry("should instrument new Node.js deployments", workloadTypeDeployment, runtimeTypeNodeJs),
 					Entry("should instrument new JVM deployments", workloadTypeDeployment, runtimeTypeJvm),
 					Entry("should instrument new .NET deployments", workloadTypeDeployment, runtimeTypeDotnet),
+					Entry("should instrument new .NET 8 deployments", workloadTypeDeployment, runtimeTypeDotnet8),
 					Entry("should instrument new Python deployments", workloadTypeDeployment, runtimeTypePython),
 					Entry("should instrument new Ruby deployments", workloadTypeDeployment, runtimeTypeRuby),
 					Entry("should instrument new Node.js jobs", workloadTypeJob, runtimeTypeNodeJs),
@@ -1655,6 +1656,68 @@ traces:
 					)
 				})
 
+				It("does not emit health check spans when a cluster-wide filter is active", func() {
+					minTimestampCollectorConfigReload := time.Now()
+					deployDash0MonitoringResourceWithRetry(
+						applicationUnderTestNamespace,
+						dash0MonitoringValuesWithExport,
+						operatorNamespace,
+					)
+					setOperatorConfigurationFilter(
+						`{"traces":{"span":["attributes[\"http.route\"] == \"/ready\""]}}`)
+					DeferCleanup(removeOperatorConfigurationFilterAndTransform)
+
+					// The condition of a cluster-wide filter is not scoped to a namespace.
+					verifyDaemonSetCollectorConfigMapContainsString(
+						operatorNamespace,
+						`- 'attributes["http.route"] == "/ready"'`,
+					)
+					verifyDaemonSetCollectorConfigMapDoesNotContainStrings(
+						operatorNamespace,
+						// nolint:lll
+						`- 'resource.attributes["k8s.namespace.name"] == "e2e-test-ns" and (attributes["http.route"] == "/ready")'`,
+					)
+					verifyCollectorHasReloadedItsConfiguration(collectorDaemonSetNameQualified, minTimestampCollectorConfigReload)
+
+					testId := uuid.New().String()
+					timestampLowerBound := time.Now()
+					By("verifying that the Node.js deployment emits spans")
+					Eventually(func(g Gomega) {
+						verifySpans(
+							g,
+							runtimeTypeNodeJs,
+							workloadTypeDeployment,
+							testEndpoint,
+							fmt.Sprintf("id=%s", testId),
+							timestampLowerBound,
+							false,
+						)
+					}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
+					By("Node.js deployment: matching spans have been received")
+					By("now searching collected spans for health checks...")
+					askTelemetryMatcherForMatchingSpans(
+						Default,
+						shared.ExpectNoMatches,
+						runtimeTypeNodeJs,
+						workloadTypeDeployment,
+						false,
+						false,
+						timestampLowerBound,
+						"/ready",
+						"", // health check spans have no query parameter
+						"",
+					)
+				})
+
+				It("rejects an operator configuration resource with an undefined function in a cluster-wide filter",
+					func() {
+						setOperatorConfigurationFilterExpectingRejection(
+							`{"logs":{"log_records":["NoSuchFunction(body)"]}}`,
+							`unable to parse OTTL condition "NoSuchFunction(body)"`,
+							`undefined function "NoSuchFunction"`,
+						)
+					})
+
 				It("rejects a monitoring resource with a syntactically invalid span filter", func() {
 					filter :=
 						`
@@ -1760,6 +1823,54 @@ trace_statements:
 							// This is the expected http.target attribute. Since the route "/dash0-k8s-operator-test" is
 							// already > 10 chars, so the target (which is route + query) will only contain the truncated
 							// route.
+							truncatedRoute,
+						)
+					}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
+				})
+
+				It("truncates attributes when a cluster-wide transform is active", func() {
+					minTimestampCollectorConfigReload := time.Now()
+					deployDash0MonitoringResourceWithRetry(
+						applicationUnderTestNamespace,
+						dash0MonitoringValuesWithExport,
+						operatorNamespace,
+					)
+					setOperatorConfigurationTransform(
+						`{"trace_statements":["truncate_all(span.attributes, 10)"]}`)
+					DeferCleanup(removeOperatorConfigurationFilterAndTransform)
+
+					verifyDaemonSetCollectorConfigMapContainsString(
+						operatorNamespace,
+						`- 'truncate_all(span.attributes, 10)'`,
+					)
+					// A cluster-wide transform group has no namespace condition.
+					verifyDaemonSetCollectorConfigMapDoesNotContainStrings(
+						operatorNamespace,
+						`- 'resource.attributes["k8s.namespace.name"] == "e2e-test-ns"'`,
+					)
+					verifyCollectorHasReloadedItsConfiguration(collectorDaemonSetNameQualified, minTimestampCollectorConfigReload)
+
+					testId := uuid.New().String()
+					timestampLowerBound := time.Now()
+					By("verifying that span attributes have been transformed")
+					Eventually(func(g Gomega) {
+						route := testEndpoint
+						query := fmt.Sprintf("id=%s", testId)
+
+						sendRequest(g, runtimeTypeNodeJs, workloadTypeDeployment, route, query)
+
+						truncatedRoute := route[0:10]
+						truncatedQuery := query[0:10]
+						askTelemetryMatcherForMatchingSpans(
+							g,
+							shared.ExpectAtLeastOne,
+							runtimeTypeNodeJs,
+							workloadTypeDeployment,
+							false,
+							false,
+							timestampLowerBound,
+							truncatedRoute,
+							truncatedQuery,
 							truncatedRoute,
 						)
 					}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
@@ -2646,7 +2757,7 @@ spec:
 		})
 	}) // end of suite "with the agent0-connector enabled and a manually managed operator configuration resource"
 
-	Context("with the agent0-connector and a custom cluster role", Ordered, func() {
+	Context("with the agent0-connector, a custom cluster role and command allowlist", Ordered, func() {
 		var pseudoClusterUid string
 
 		BeforeAll(func() {
@@ -2668,7 +2779,8 @@ spec:
 			applyConfigMapCmd.Stdin = strings.NewReader(configMapWithCredentialManifest)
 			Expect(runAndIgnoreOutput(applyConfigMapCmd)).To(Succeed())
 
-			By("deploying the Dash0 operator with a custom cluster role for the agent0-connector")
+			By("deploying the Dash0 operator with a custom cluster role and a custom command allowlist for the " +
+				"agent0-connector")
 			deployOperatorWithDefaultAutoOperationConfiguration(
 				operatorNamespace,
 				operatorHelmChart,
@@ -2683,17 +2795,28 @@ spec:
 					"operator.agent0Connector.insecure":      "true",
 
 					// The custom rules replace the operator's default rules entirely: they grant read access to config
-					// maps, which the default rules deliberately exclude, and they do not grant access to pods, which
-					// the default rules do cover. The empty API group of the core resource types has to be set via the
-					// index syntax; "{\"\"}" would render as a list holding the two quote characters.
+					// maps and pod logs, which the default rules deliberately exclude, and they do not grant access to
+					// namespaces, which the default rules do cover.
 					"operator.agent0Connector.clusterRole.rules[0].apiGroups[0]": "",
 					"operator.agent0Connector.clusterRole.rules[0].resources":    "{configmaps}",
 					"operator.agent0Connector.clusterRole.rules[0].verbs":        "{get,list}",
 					// "get" for the required API discovery URLs (/api, /apis, /openapi/v3, ...) is usually granted automatically
 					// via the group system:authenticated/cluster role binding system:discovery cluster, so this is not necessary
-					// in most clusters.
-					"operator.agent0Connector.clusterRole.rules[1].nonResourceURLs": "{*}",
-					"operator.agent0Connector.clusterRole.rules[1].verbs":           "{get}",
+					// in most clusters, but it also does not hurt to set this anyway.
+					"operator.agent0Connector.clusterRole.rules[1].nonResourceURLs": "{/api,/api/*,/apis,/apis/*," +
+						"/healthz,/livez,/openapi,/openapi/*,/readyz,/version,/version/}",
+					"operator.agent0Connector.clusterRole.rules[1].verbs":        "{get}",
+					"operator.agent0Connector.clusterRole.rules[2].apiGroups[0]": "",
+					"operator.agent0Connector.clusterRole.rules[2].resources":    "{pods}",
+					"operator.agent0Connector.clusterRole.rules[2].verbs":        "{get,list}",
+					"operator.agent0Connector.clusterRole.rules[3].apiGroups[0]": "",
+					"operator.agent0Connector.clusterRole.rules[3].resources":    "{pods/log}",
+					"operator.agent0Connector.clusterRole.rules[3].verbs":        "{get}",
+
+					// Helm merges these values into the default allowlist, all other kubectl commands keep their
+					// default setting.
+					"operator.agent0Connector.allowedKubectlCommands.logs":         "true",
+					"operator.agent0Connector.allowedKubectlCommands.cluster-info": "false",
 				},
 			)
 		})
@@ -2709,7 +2832,7 @@ spec:
 			))).To(Succeed())
 		})
 
-		It("grants the custom rules and not the default rules", func() {
+		It("grants the custom rules and not the default rules, and only allows the configured kubectl commands", func() {
 			waitForAgent0ConnectorDeploymentToBecomeAvailable()
 
 			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceAutomaticallyManagedName)
@@ -2809,14 +2932,15 @@ spec:
 					"the rest of the config map should stay readable")
 			}, 90*time.Second, pollingInterval).Should(Succeed())
 
-			By("triggering a command request for pods, which only the replaced default rules would allow")
+			By("triggering a command request for namespaces, which the default rules would have allowed but the custom " +
+				"rules do not")
 			var forbiddenRequestId string
 			Eventually(func(g Gomega) {
 				forbiddenRequestId = triggerOutboundConnectorMockCommandRequest(
 					g,
 					pseudoClusterUid,
 					"kubectl",
-					[]string{"get", "pods", "--all-namespaces"},
+					[]string{"get", "namespaces"},
 				)
 			}, 30*time.Second, pollingInterval).Should(Succeed())
 
@@ -2825,13 +2949,77 @@ spec:
 				response := findOutboundConnectorMockCommandResponse(g, forbiddenRequestId)
 				g.Expect(response.ExitCode).ToNot(
 					BeEquivalentTo(0),
-					"\"kubectl get pods\" should have failed; stdout was: %s", response.Stdout)
+					"\"kubectl get namespaces\" should have failed; stdout was: %s", response.Stdout)
 				g.Expect(response.Stderr).To(
-					ContainSubstring("pods is forbidden"),
-					"the request for pods should have been rejected by RBAC; stderr was: %s", response.Stderr)
+					ContainSubstring("namespaces is forbidden"),
+					"the request for namespaces should have been rejected by RBAC; stderr was: %s", response.Stderr)
+			}, 90*time.Second, pollingInterval).Should(Succeed())
+
+			By("determining the name of the outbound-connector mock pod")
+			outboundConnectorMockPodName, err := run(exec.Command(
+				"kubectl",
+				"get", "pods",
+				"-n", outboundConnectorMockNamespace,
+				"-l", "app=outbound-connector-mock-app",
+				"-o", "jsonpath={.items[0].metadata.name}",
+			), false)
+			Expect(err).ToNot(HaveOccurred())
+			outboundConnectorMockPodName = strings.TrimSpace(outboundConnectorMockPodName)
+			Expect(outboundConnectorMockPodName).ToNot(BeEmpty())
+
+			By("triggering a \"kubectl logs\" command request, which the custom command allowlist enables")
+			var logsRequestId string
+			Eventually(func(g Gomega) {
+				logsRequestId = triggerOutboundConnectorMockCommandRequest(
+					g,
+					pseudoClusterUid,
+					"kubectl",
+					[]string{"logs", outboundConnectorMockPodName, "-n", outboundConnectorMockNamespace},
+				)
+			}, 30*time.Second, pollingInterval).Should(Succeed())
+
+			By("verifying the agent0-connector returned the logs of the pod")
+			Eventually(func(g Gomega) {
+				response := findOutboundConnectorMockCommandResponse(g, logsRequestId)
+				g.Expect(response.ExitCode).To(
+					BeEquivalentTo(0),
+					"\"kubectl logs %s\" should have succeeded; stderr was: %s",
+					outboundConnectorMockPodName,
+					response.Stderr,
+				)
+				g.Expect(response.Stdout).To(
+					ContainSubstring("outbound-connector-mock gRPC server listening on"),
+					"stdout should contain the startup log line of the outbound-connector mock")
+			}, 90*time.Second, pollingInterval).Should(Succeed())
+
+			By("triggering a \"kubectl cluster-info\" command request, which the custom command allowlist disables")
+			var clusterInfoRequestId string
+			Eventually(func(g Gomega) {
+				clusterInfoRequestId = triggerOutboundConnectorMockCommandRequest(
+					g,
+					pseudoClusterUid,
+					"kubectl",
+					[]string{"cluster-info"},
+				)
+			}, 30*time.Second, pollingInterval).Should(Succeed())
+
+			By("verifying the agent0-connector rejected the disabled kubectl command")
+			Eventually(func(g Gomega) {
+				response := findOutboundConnectorMockCommandResponse(g, clusterInfoRequestId)
+				g.Expect(response.ExitCode).ToNot(
+					BeEquivalentTo(0),
+					"\"kubectl cluster-info\" should have been rejected; stdout was: %s", response.Stdout)
+				g.Expect(response.Stdout).To(BeEmpty())
+				g.Expect(response.Stderr).To(Equal(
+					"dash0 agent0-connector rejected the command: the kubectl command \"cluster-info\" has been " +
+						"disabled in the configuration of the agent0-connector (via the Helm value " +
+						"operator.agent0Connector.allowedKubectlCommands), the only allowed kubectl commands are " +
+						"\"api-resources\", \"api-versions\", \"auth\", \"explain\", \"get\", \"logs\", \"top\" " +
+						"and \"version\"",
+				))
 			}, 90*time.Second, pollingInterval).Should(Succeed())
 		})
-	}) // end of suite "with the agent0-connector and a custom cluster role"
+	}) // end of suite "with the agent0-connector, a custom cluster role and a custom command allowlist"
 
 	Context("with an existing operator deployment without an operation configuration resource", func() {
 		BeforeAll(func() {
@@ -2893,6 +3081,61 @@ spec:
 			})
 
 			It("should collect metrics without deploying a Dash0 monitoring resource", func() {
+				By("waiting for metrics")
+				Eventually(func(g Gomega) {
+					verifyNonNamespaceScopedKubeletStatsMetricsOnly(g, timestampLowerBound)
+				}, 50*time.Second, time.Second).Should(Succeed())
+			})
+		})
+
+		Describe("with a gRPC export provided via the Helm value operator.exports", func() {
+
+			var timestampLowerBound time.Time
+
+			BeforeAll(func() {
+				By("deploying the Dash0 operator with a gRPC export instead of a Dash0 export")
+				Expect(deployOperator(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					// no operator.dash0Export.* values, the export is provided via operator.exports only
+					nil,
+					map[string]string{
+						"operator.exports[0].grpc.endpoint": defaultEndpoint,
+						"operator.exports[0].grpc.insecure": "true",
+						"operator.clusterName":              e2eKubernetesContext,
+						// Self-monitoring would send the operator's own, namespace-scoped metrics to the same
+						// gRPC endpoint, which would break the assertion that only non-namespace-scoped metrics
+						// arrive.
+						"operator.selfMonitoringEnabled": "false",
+					},
+				)).To(Succeed())
+				waitForCollectorToStart(operatorNamespace, operatorHelmChart)
+				waitForAutoOperatorConfigurationResourceToBecomeAvailable()
+				time.Sleep(10 * time.Second)
+				timestampLowerBound = time.Now()
+			})
+
+			AfterAll(func() {
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should create an operator configuration resource with the gRPC export and send telemetry to it", func() {
+				By("verifying the exports of the automatically created operator configuration resource")
+				Eventually(func(g Gomega) {
+					operatorConfiguration := loadOperatorConfigurationResource(g, util.OperatorConfigurationAutoResourceName)
+					exports := operatorConfiguration.Spec.Exports
+					g.Expect(exports).To(HaveLen(1))
+					g.Expect(exports[0].Dash0).To(BeNil())
+					g.Expect(exports[0].Http).To(BeNil())
+					g.Expect(exports[0].Grpc).ToNot(BeNil())
+					g.Expect(exports[0].Grpc.Endpoint).To(Equal(defaultEndpoint))
+					g.Expect(exports[0].Grpc.Insecure).ToNot(BeNil())
+					g.Expect(*exports[0].Grpc.Insecure).To(BeTrue())
+				}, 30*time.Second, pollingInterval).Should(Succeed())
+
 				By("waiting for metrics")
 				Eventually(func(g Gomega) {
 					verifyNonNamespaceScopedKubeletStatsMetricsOnly(g, timestampLowerBound)
@@ -3522,6 +3765,85 @@ spec:
 					images,
 					"webhook",
 				)
+			})
+		})
+
+		Describe("with shared k8s_attributes processor", func() {
+			BeforeAll(func() {
+				By("deploying the Dash0 operator with the shared k8s_attributes processor enabled")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					true,
+					map[string]string{
+						"operator.collectors.k8s_attributes.shareProcessorBetweenPipelines": "true",
+					},
+				)
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+			})
+
+			AfterAll(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should enable the feature gate for the daemonset and deployment collectors", func() {
+				featureGateArg := "--feature-gates=processor.k8sattributes.ShareProcessorBetweenPipelines"
+				verifyCollectorContainerArgsContainString(operatorNamespace, collectorDaemonSetNameQualified, featureGateArg)
+				verifyCollectorContainerArgsContainString(
+					operatorNamespace,
+					collectorDeploymentNameQualified,
+					featureGateArg,
+				)
+			})
+
+			It("should enrich spans, logs and metrics with Kubernetes metadata", func() {
+				timestampLowerBound := time.Now()
+				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+
+				By("installing the Node.js deployment")
+				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+
+				By("verifying that spans carry Kubernetes metadata")
+				verifyThatWorkloadHasBeenInstrumented(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					testId,
+					images,
+					"webhook",
+				)
+
+				By("verifying that log records carry Kubernetes metadata")
+				// The collector only starts collecting logs from the test namespace once kubelet has synced the updated
+				// collector config map to the node and the collector has reloaded it, which can take up to a minute.
+				Eventually(func(g Gomega) {
+					verifyWorkloadLogRecords(
+						g,
+						runtimeTypeNodeJs,
+						workloadTypeDeployment,
+						testEndpoint,
+						fmt.Sprintf("id=%s", testId),
+						timestampLowerBound,
+						"",
+						fmt.Sprintf("processing request %s", testId),
+					)
+				}, 120*time.Second, time.Second).Should(Succeed())
+
+				By("verifying that metrics carry Kubernetes metadata")
+				Eventually(func(g Gomega) {
+					verifyKubeletStatsMetrics(g, timestampLowerBound)
+				}, 120*time.Second, time.Second).Should(Succeed())
+				Eventually(func(g Gomega) {
+					verifyK8skClusterReceiverMetrics(g, timestampLowerBound)
+				}, 120*time.Second, time.Second).Should(Succeed())
 			})
 		})
 

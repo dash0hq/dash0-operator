@@ -16,7 +16,7 @@ var _ = Describe("The reconcile guard", func() {
 	It("executes the reconciliation and returns its result", func() {
 		guard := &ReconcileGuard{}
 
-		hasBeenReconciled, err := guard.Run(func() (bool, error) { return true, nil }, nil)
+		hasBeenReconciled, err := guard.Run(func() (bool, error) { return true, nil }, nil, nil)
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(hasBeenReconciled).To(BeTrue())
@@ -26,7 +26,7 @@ var _ = Describe("The reconcile guard", func() {
 		guard := &ReconcileGuard{}
 		expectedErr := errors.New("reconciliation failed")
 
-		_, err := guard.Run(func() (bool, error) { return false, expectedErr }, nil)
+		_, err := guard.Run(func() (bool, error) { return false, expectedErr }, nil, nil)
 
 		Expect(err).To(MatchError(expectedErr))
 	})
@@ -40,7 +40,7 @@ var _ = Describe("The reconcile guard", func() {
 		}
 
 		for range 3 {
-			_, err := guard.Run(reconcile, nil)
+			_, err := guard.Run(reconcile, nil, nil)
 			Expect(err).ToNot(HaveOccurred())
 		}
 
@@ -65,10 +65,11 @@ var _ = Describe("The reconcile guard", func() {
 						return false, nil
 					},
 					func() { nested.skipped = true },
+					nil,
 				)
 			}
 			return true, nil
-		}, nil)
+		}, nil, nil)
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(nested.skipped).To(BeTrue())
@@ -84,10 +85,10 @@ var _ = Describe("The reconcile guard", func() {
 			executions++
 			if executions == 1 {
 				// A trigger arrives while the first execution is still running. It must not be lost.
-				_, _ = guard.Run(func() (bool, error) { return true, nil }, nil)
+				_, _ = guard.Run(func() (bool, error) { return true, nil }, nil, nil)
 			}
 			return true, nil
-		}, nil)
+		}, nil, nil)
 
 		Expect(err).ToNot(HaveOccurred())
 		// Once for the original trigger, once for the one that arrived while it was running, and no more: the second
@@ -103,11 +104,11 @@ var _ = Describe("The reconcile guard", func() {
 			executions++
 			if executions == 1 {
 				for range 5 {
-					_, _ = guard.Run(func() (bool, error) { return true, nil }, nil)
+					_, _ = guard.Run(func() (bool, error) { return true, nil }, nil, nil)
 				}
 			}
 			return true, nil
-		}, nil)
+		}, nil, nil)
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(executions).To(Equal(2))
@@ -120,13 +121,39 @@ var _ = Describe("The reconcile guard", func() {
 
 		_, err := guard.Run(func() (bool, error) {
 			executions++
-			_, _ = guard.Run(func() (bool, error) { return true, nil }, nil)
+			_, _ = guard.Run(func() (bool, error) { return true, nil }, nil, nil)
 			// Repeating immediately would busy-loop on a permanent failure, the caller requeues instead.
 			return false, expectedErr
-		}, nil)
+		}, nil, nil)
 
 		Expect(err).To(MatchError(expectedErr))
 		Expect(executions).To(Equal(1))
+	})
+
+	It("stops repeating a reconciliation which triggers itself on every run", func() {
+		guard := &ReconcileGuard{}
+		executions := 0
+		limitReached := 0
+
+		_, err := guard.Run(func() (bool, error) {
+			executions++
+			_, _ = guard.Run(func() (bool, error) { return true, nil }, nil, nil)
+			return true, nil
+		}, nil, func() { limitReached++ })
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(executions).To(Equal(1 + maxReconcileRepetitions))
+		Expect(limitReached).To(Equal(1))
+
+		executions = 0
+		_, err = guard.Run(func() (bool, error) {
+			executions++
+			return true, nil
+		}, nil, func() { limitReached++ })
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(executions).To(Equal(1))
+		Expect(limitReached).To(Equal(1))
 	})
 
 	It("executes exactly one reconciliation at a time under concurrent triggers", func() {
@@ -144,7 +171,7 @@ var _ = Describe("The reconcile guard", func() {
 					executions.Add(1)
 					concurrent.Add(-1)
 					return true, nil
-				}, nil)
+				}, nil, nil)
 			}()
 		}
 		waitGroup.Wait()

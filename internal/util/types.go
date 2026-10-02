@@ -78,6 +78,7 @@ type CollectorConfig struct {
 	K8sAttributesDisableReplicasetInformer bool
 	K8sAttributesWaitForMetadata           bool
 	K8sAttributesWaitForMetadataTimeout    string
+	K8sAttributesShareProcessor            bool
 	NodeIp                                 string
 	NodeName                               string
 	// KubeletStatsAutoDetectEndpoint controls whether the operator probes the node's kubelet at startup to determine the

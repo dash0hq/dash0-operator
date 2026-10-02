@@ -39,7 +39,11 @@ operator:
     # `dash0.com:4317`.
     endpoint:
 
-    # The dataset to be used for reported telemetry and API access. This property is optional, it defaults to "default".
+    # The identifier of the dataset to be used for reported telemetry and API access. Note that this is the dataset's
+    # identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
+    # identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
+    # optional. If omitted, no dataset is sent along with the telemetry and Dash0 selects the dataset based on the auth
+    # token; API access uses "default".
     # See https://www.dash0.com/docs/dash0/miscellaneous/glossary/datasets.
     dataset:
 
@@ -86,6 +90,49 @@ operator:
       timeout:
       # Allow keepalive pings when there are no active streams.
       permit_without_stream:
+
+  # Additional exports for the automatically created Dash0OperatorConfiguration resource. Use this to send telemetry to
+  # an arbitrary OTLP-compatible backend via gRPC or HTTP, either instead of or in addition to Dash0. The value is a
+  # list with exactly the structure of the spec.exports list of the Dash0OperatorConfiguration resource, see
+  # https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/advanced-configuration.md#exporting-data-to-other-observability-backends
+  #
+  # Setting this to a non-empty list makes the operator manager create the Dash0OperatorConfiguration resource at
+  # startup, exactly like setting operator.dash0Export.enabled to true does. For any setup with more than one export,
+  # we recommend configuring all exports here, including the dash0 export(s), instead of spreading them over
+  # operator.dash0Export.* and operator.exports. Combining both is possible nonetheless; the Dash0 export configured via
+  # operator.dash0Export.* then always comes first, followed by the entries listed here. It is an error to configure a
+  # dash0 export here while operator.dash0Export.enabled is true.
+  #
+  # Note that the order matters for self-monitoring: the operator's own telemetry is sent to the first export only.
+  # Self-monitoring is not supported for an HTTP export with encoding "json"; it is silently disabled in that case.
+  #
+  # Note that the values listed here are rendered verbatim into a Kubernetes ConfigMap. For header values that contain
+  # sensitive data, use valueFrom.secretKeyRef instead of a literal value; the referenced secret has to exist in the
+  # namespace the operator is installed in.
+  #
+  # Example:
+  # exports:
+  #   - dash0:
+  #       endpoint: ingress... # the OTLP/gRPC endpoint of your Dash0 organization
+  #       authorization:
+  #         secretRef:
+  #           name: dash0-authorization-secret
+  #           key: token
+  #       dataset: default
+  #       apiEndpoint: https://api... # the API endpoint of your Dash0 organization
+  #   - grpc:
+  #       endpoint: otel-collector.other-namespace.svc.cluster.local:4317
+  #       insecure: true
+  #   - http:
+  #       endpoint: https://otlp.example.com
+  #       encoding: proto
+  #       headers:
+  #         - name: authorization
+  #           valueFrom:
+  #             secretKeyRef:
+  #               name: my-backend-secret
+  #               key: token
+  exports: []
 
   # An opt-out for operator self-monitoring. If set to false, self monitoring for the operator will be disabled, that
   # is, the operator will not send self-monitoring telemetry to the configured Dash0 backend. This setting is optional,
@@ -498,7 +545,7 @@ operator:
     repository: "ghcr.io/dash0hq/signal-control-collector"
     # The Signal Control collector is versioned independently of the operator, so this tag is pinned to that component
     # version; it does not track the chart appVersion.
-    tag: "1.2.0"
+    tag: "1.3.0"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -509,7 +556,7 @@ operator:
     repository: "ghcr.io/dash0hq/edge-proxy"
     # The Edge Proxy is versioned independently of the operator, so this tag is pinned to that component version; it
     # does not track the chart appVersion.
-    tag: "1.2.0"
+    tag: "1.3.0"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -800,6 +847,12 @@ operator:
     #   - name: net.ipv4.tcp_keepalive_probes
     #     value: "3"
 
+    # The pod-level SELinux options for the collector DaemonSet pods, used as is for
+    # spec.securityContext.seLinuxOptions. Unset by default.
+    # Example:
+    # daemonSetSeLinuxOptions:
+    #   type: <selinux-type>
+
     # The priority class name for the DaemonSet collector pods. If set, these manager pods will be scheduled with
     # the specified priority class.
     # This is useful if you want to make sure that the collector pods are scheduled with a higher priority than other
@@ -1088,6 +1141,13 @@ operator:
       wait_for_metadata: false
       wait_for_metadata_timeout: 15s
 
+      # Share one k8s_attributes processor instance between the traces, metrics and logs pipelines of a collector,
+      # instead of running one instance (with its own Kubernetes API watches and metadata cache) per pipeline. This can
+      # reduce the memory usage of the collectors considerably, in particular in large clusters.
+      # This enables the collector feature gate processor.k8sattributes.ShareProcessorBetweenPipelines, which is
+      # currently in alpha stage. The default is false.
+      shareProcessorBetweenPipelines: false
+
     # Settings for the kubeletstats receiver in the DaemonSet collector, which scrapes the local kubelet for Kubernetes
     # infrastructure metrics.
     #
@@ -1255,6 +1315,48 @@ operator:
   #      enabled: true
   #    synchronizePersesDashboards: true
   #    synchronizePrometheusRules: true
+
+  # Optional cluster-wide filters for telemetry, to drop entire spans, span events, metrics, metric data points, log
+  # records or profiles. In contrast to the filters of a Dash0 monitoring resource, which only apply to the telemetry
+  # collected in the namespace of that monitoring resource, these filters apply to all telemetry collected in the
+  # cluster, including telemetry that is not associated with a namespace, like node metrics or cluster-level metrics.
+  #
+  # The conditions are OTTL expressions, the structure is identical to the configuration of the OpenTelemetry
+  # collector's filter processor, see
+  # https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/filterprocessor/README.md.
+  #
+  # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration resource will
+  # be created by the Helm chart then.
+  #filter:
+  #  error_mode: ignore
+  #  traces:
+  #    span:
+  #      - 'attributes["http.route"] == "/ready"'
+  #  metrics:
+  #    metric:
+  #      - 'name == "k8s.replicaset.available"'
+
+  # Optional cluster-wide transformations for telemetry, to modify collected telemetry before it is sent to the
+  # backend. In contrast to the transformations of a Dash0 monitoring resource, which only apply to the telemetry
+  # collected in the namespace of that monitoring resource, these transformations apply to all telemetry collected in
+  # the cluster, including telemetry that is not associated with a namespace, like node metrics or cluster-level
+  # metrics.
+  #
+  # The statements are OTTL statements, the structure is identical to the configuration of the OpenTelemetry
+  # collector's transform processor, see
+  # https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md.
+  # Both the basic and the advanced config style of the transform processor are supported.
+  #
+  # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration resource will
+  # be created by the Helm chart then.
+  #transform:
+  #  error_mode: ignore
+  #  trace_statements:
+  #    - truncate_all(span.attributes, 128)
+  #  metric_statements:
+  #    - context: datapoint
+  #      statements:
+  #        - truncate_all(attributes, 128)
 
   # Settings related to Signal Control.
   signalControl:
@@ -1518,9 +1620,11 @@ operator:
       #
       # By default, Kubernetes grants the verb "get" for the API discovery URLs (/api, /apis, /openapi/v3, ..., all of
       # which are required for this component) to the group system:authenticated via the system:discovery cluster role
-      # binding. On a cluster where system:authenticated has been removed from that binding (e.g. for hardening etc.),
-      # add a rule with nonResourceURLs: ["*"] and verbs: ["get"], otherwise kubectl's API discovery fails and no
-      # kubectl command works.
+      # binding. The default rules grant the same URLs explicitly, so that the agent0-connector also works on a cluster
+      # where system:authenticated has been removed from that binding (e.g. for hardening etc.). Custom rules replace
+      # the default rules, so they need to list this nonResourceURLs rule as well for clusters where that default
+      # binding has been revoked. Without it, kubectl's API discovery fails on such a cluster and no kubectl command
+      # works.
       #
       # Example:
       # rules:
@@ -1533,4 +1637,43 @@ operator:
       #   - apiGroups: ["authorization.k8s.io"]
       #     resources: ["selfsubjectaccessreviews", "selfsubjectrulesreviews"]
       #     verbs: ["create"]
+      #   - nonResourceURLs:
+      #       ["/api", "/api/*", "/apis", "/apis/*", "/healthz", "/livez", "/openapi", "/openapi/*", "/readyz",
+      #        "/version", "/version/"]
+      #     verbs: ["get"]
       rules: []
+
+    # The kubectl commands the agent0-connector may execute on behalf of Agent0. A command set to false is rejected by
+    # the agent0-connector. Note that Helm merges the map you provide with the defaults below, so this is not an
+    # exclusive list: to disable a command that is enabled by default, you need to set it to false explicitly. Commands
+    # that you do not list keep their default value, and an empty map ({}) leaves all defaults in place. This setting
+    # can only restrict the set of commands the agent0-connector supports, it cannot add new ones: kubectl commands that
+    # the agent0-connector always rejects (e.g. "kubectl describe", or any command that modifies the cluster state)
+    # cannot be enabled here. Listing any other key than the ones below fails the installation. Disabling all commands
+    # also fails the installation - set operator.agent0Connector.enabled=false instead. Allowing a command does not
+    # automatically grant the RBAC permissions it needs, see operator.agent0Connector.clusterRole.rules.
+    allowedKubectlCommands:
+      api-resources: true
+      auth: true
+      api-versions: true
+      cluster-info: true
+      # kubectl events are not redacted. Only enable it if you are sure that no sensitive information like
+      # credentials, API tokens, secrets or customer PII is leaked into event bodies. If in doubt, leave it disabled.
+      # Kubernetes events can also be collected as normal telemetry via the operator, which is also available to
+      # Agent0 then. If you want to allow access to events, you also need to allow RBAC access to events (core API
+      # group) and events.events.k8s.io via operator.agent0Connector.clusterRole.rules. While events is disabled, reading
+      # events via "kubectl get events" is rejected as well.
+      events: false
+      explain: true
+      # kubectl get is the main kubectl command that Agent0 uses. Disabling it will likely render the agent0-connector
+      # more or less useless and is not recommended. (If you do not want to allow "kubectl get", consider leaving
+      # operator.agent0Connector.enabled=false instead, to disable the entire feature.)
+      get: true
+      # kubectl logs cannot be redacted reliably. Only enable it if you are sure that you do not leak sensitive
+      # information like credentials, API tokens, secrets or customer PII into logs in the cluster. If in doubt,
+      # leave it disabled. Pod logs can also be collected via OTLP, and are then also available to Agent0.
+      # If you want to allow access to logs, you also need to allow RBAC access to pods/log (core API group) via
+      # operator.agent0Connector.clusterRole.rules.
+      logs: false
+      top: true
+      version: true

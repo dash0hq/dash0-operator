@@ -80,6 +80,9 @@ TEST_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
 TEST_APP_DOTNET_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-dotnet-test-app
 TEST_APP_DOTNET_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
 
+TEST_APP_DOTNET_8_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-dotnet-8-test-app
+TEST_APP_DOTNET_8_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
+
 TEST_APP_JVM_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-jvm-spring-boot-test-app
 TEST_APP_JVM_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
 
@@ -412,6 +415,7 @@ all-auxiliary-images: \
 PHONY: test-app-images
 test-app-images: \
   test-app-image-dotnet \
+  test-app-image-dotnet-8 \
   test-app-image-jvm \
   test-app-image-nodejs \
   test-app-image-python \
@@ -420,6 +424,10 @@ test-app-images: \
 .PHONY: test-app-image-dotnet
 test-app-image-dotnet: ## Build the .NET test application.
 	@$(call build_container_image,$(TEST_APP_DOTNET_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_IMAGE_TAG),test-resources/dotnet)
+
+.PHONY: test-app-image-dotnet-8
+test-app-image-dotnet-8: ## Build the .NET test application with .NET 8.
+	@$(call build_container_image,$(TEST_APP_DOTNET_8_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_8_IMAGE_TAG),test-resources/dotnet,,--build-arg base_image_build=mcr.microsoft.com/dotnet/sdk:8.0-bookworm-slim --build-arg base_image_run=mcr.microsoft.com/dotnet/aspnet:8.0-bookworm-slim)
 
 .PHONY: test-app-image-jvm
 test-app-image-jvm: ## Build the JVM test application.
@@ -474,6 +482,7 @@ push-all-auxiliary-images: \
 PHONY: push-test-app-images
 push-test-app-images: \
   push-test-app-image-dotnet \
+  push-test-app-image-dotnet-8 \
   push-test-app-image-jvm \
   push-test-app-image-nodejs \
   push-test-app-image-python \
@@ -482,6 +491,10 @@ push-test-app-images: \
 .PHONY: push-test-app-image-dotnet
 push-test-app-image-dotnet: ## Push the .NET test app image.
 	@$(call push_container_image,$(TEST_APP_DOTNET_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_IMAGE_TAG))
+
+.PHONY: push-test-app-image-dotnet-8
+push-test-app-image-dotnet-8: ## Push the .NET 8 test app image.
+	@$(call push_container_image,$(TEST_APP_DOTNET_8_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_8_IMAGE_TAG))
 
 .PHONY: push-test-app-image-jvm
 push-test-app-image-jvm: ## Push the JVM test app image.
@@ -579,6 +592,7 @@ $(eval $@_IMAGE_REPOSITORY = $(1))
 $(eval $@_IMAGE_TAG = $(2))
 $(eval $@_CONTEXT = $(3))
 $(eval $@_DOCKERFILE = $(4))
+$(eval $@_EXTRA_BUILD_ARGS = $(5))
 dockerfile=$($@_DOCKERFILE);                                                                     \
 if [[ -z $$dockerfile ]]; then                                                                   \
   dockerfile=$($@_CONTEXT)/Dockerfile;                                                           \
@@ -586,6 +600,9 @@ fi;                                                                             
 build_cmd="$(CONTAINER_TOOL) build";                                                             \
 if [[ -n "$(IMAGE_PLATFORMS)" ]]; then                                                           \
   build_cmd="$$build_cmd --platform $(IMAGE_PLATFORMS)";                                         \
+fi;                                                                                              \
+if [[ -n "$($@_EXTRA_BUILD_ARGS)" ]]; then                                                       \
+  build_cmd="$$build_cmd $($@_EXTRA_BUILD_ARGS)";                                                \
 fi;                                                                                              \
 build_cmd="$$build_cmd -t $($@_IMAGE_REPOSITORY):$($@_IMAGE_TAG) -f $$dockerfile $($@_CONTEXT)"; \
 echo "$$build_cmd";                                                                              \

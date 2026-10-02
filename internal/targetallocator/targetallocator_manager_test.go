@@ -488,7 +488,7 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 	})
 
 	Describe("when handling concurrent reconciliation requests", func() {
-		It("should skip reconciliation if another reconciliation is already in progress", func() {
+		It("does not reconcile when a reconciliation is already in progress, but does not lose the trigger", func() {
 			tatest.CreateDefaultOperatorConfigurationResourceWithPrometheusCrdSupport(
 				ctx,
 				k8sClient,
@@ -499,18 +499,31 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 			)
 			createdObjectsTargetAllocatorManagerTest = append(createdObjectsTargetAllocatorManagerTest, monitoringResource)
 
-			targetAllocatorManager.updateInProgress.Store(true)
+			// Occupy the manager's reconcile guard and trigger a reconciliation from within it, the way a watch event
+			// or an extra config map update would arrive while a reconciliation is running.
+			executions := 0
+			var skippedHasBeenReconciled bool
+			var skippedErr error
+			_, err := targetAllocatorManager.reconcileGuard.Run(func() (bool, error) {
+				executions++
+				if executions == 1 {
+					skippedHasBeenReconciled, skippedErr = targetAllocatorManager.ReconcileTargetAllocator(
+						ctx,
+						TriggeredByWatchEvent,
+					)
+				}
+				return true, nil
+			}, nil, nil)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(skippedErr).ToNot(HaveOccurred())
+			Expect(skippedHasBeenReconciled).To(BeFalse())
+			// The reconciliation was not executed, so no resources were created ...
+			tatest.VerifyTargetAllocatorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
+			// ... but the trigger was recorded and the guard repeated the reconciliation once, instead of dropping it.
+			Expect(executions).To(Equal(2))
 
 			hasBeenReconciled, err := targetAllocatorManager.ReconcileTargetAllocator(
-				ctx,
-				TriggeredByWatchEvent,
-			)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(hasBeenReconciled).To(BeFalse())
-
-			targetAllocatorManager.updateInProgress.Store(false)
-
-			hasBeenReconciled, err = targetAllocatorManager.ReconcileTargetAllocator(
 				ctx,
 				TriggeredByDash0ResourceReconcile,
 			)

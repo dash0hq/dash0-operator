@@ -8,8 +8,9 @@ FROM --platform=${BUILDPLATFORM} golang:1.27.1-alpine3.24 AS builder
 RUN apk add --update git make yq && apk cache clean
 
 COPY collector/src/builder /src/builder
-# Custom internal-telemetry factory, adds k8s.node.uid to self-monitoring collector telemetry, plus the shared module
-# it uses to resolve the node UID. The layout below has to match the paths in builder/config.yaml.
+# Custom internal-telemetry factory, adds k8s.node.uid to self-monitoring collector telemetry and checks the pod log
+# directory, plus the shared module it uses to resolve the node UID. The layout below has to match the paths in
+# builder/config.yaml.
 COPY collector/src/telemetry /src/telemetry
 COPY pkg/nodeuid /src/pkg/nodeuid
 WORKDIR /src

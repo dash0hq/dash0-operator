@@ -106,7 +106,6 @@ tests:
             resources:
               - componentstatuses
               - endpoints
-              - events
               - limitranges
               - namespaces
               - nodes
@@ -114,7 +113,6 @@ tests:
               - persistentvolumes
               - podtemplates
               - pods
-              - pods/log
               - replicationcontrollers
               - resourcequotas
               - serviceaccounts
@@ -259,7 +257,39 @@ tests:
         documentSelector:
           path: metadata.name
           value: dash0-operator-manager-agent0-connector-ro
+      - notContains:
+          path: rules[*].resources
+          content: pods/log
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - notContains:
+          path: rules[*].resources
+          content: events
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
       - contains:
+          path: rules
+          content:
+            nonResourceURLs:
+              - /api
+              - /api/*
+              - /apis
+              - /apis/*
+              - /healthz
+              - /livez
+              - /openapi
+              - /openapi/*
+              - /readyz
+              - /version
+              - /version/
+            verbs:
+              - get
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - notContains:
           path: rules
           content:
             nonResourceURLs:

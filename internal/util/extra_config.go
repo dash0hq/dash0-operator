@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"sigs.k8s.io/yaml"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
@@ -53,6 +54,8 @@ type ExtraConfig struct {
 	DaemonSetNodeAffinity *corev1.NodeAffinity `json:"daemonSetNodeAffinity,omitempty"`
 
 	DaemonSetSysctls []corev1.Sysctl `json:"daemonSetSysctls,omitempty"`
+
+	DaemonSetSELinuxOptions *corev1.SELinuxOptions `json:"daemonSetSeLinuxOptions,omitempty"`
 
 	CollectorDaemonSetPriorityClassName string `json:"collectorDaemonSetPriorityClassName,omitempty"`
 
@@ -116,19 +119,28 @@ type ExtraConfig struct {
 	EdgeProxyPodLabels      map[string]string `json:"edgeProxyPodLabels,omitempty"`
 	EdgeProxyPodAnnotations map[string]string `json:"edgeProxyPodAnnotations,omitempty"`
 
-	Agent0ConnectorMaxConcurrentCommands int32                              `json:"agent0ConnectorMaxConcurrentCommands,omitempty"`
-	Agent0ConnectorContainerResources    ResourceRequirementsWithGoMemLimit `json:"agent0ConnectorContainerResources"`
-	Agent0ConnectorClusterRoleRules      []rbacv1.PolicyRule                `json:"agent0ConnectorClusterRoleRules,omitempty"`
-	Agent0ConnectorLabels                map[string]string                  `json:"agent0ConnectorLabels,omitempty"`
-	Agent0ConnectorAnnotations           map[string]string                  `json:"agent0ConnectorAnnotations,omitempty"`
-	Agent0ConnectorPodLabels             map[string]string                  `json:"agent0ConnectorPodLabels,omitempty"`
-	Agent0ConnectorPodAnnotations        map[string]string                  `json:"agent0ConnectorPodAnnotations,omitempty"`
-	Agent0ConnectorTolerations           []corev1.Toleration                `json:"agent0ConnectorTolerations,omitempty"`
-	Agent0ConnectorNodeAffinity          *corev1.NodeAffinity               `json:"agent0ConnectorNodeAffinity,omitempty"`
+	Agent0ConnectorMaxConcurrentCommands  int32                              `json:"agent0ConnectorMaxConcurrentCommands,omitempty"`
+	Agent0ConnectorClusterRoleRules       []rbacv1.PolicyRule                `json:"agent0ConnectorClusterRoleRules,omitempty"`
+	Agent0ConnectorAllowedKubectlCommands map[string]bool                    `json:"agent0ConnectorAllowedKubectlCommands,omitempty"`
+	Agent0ConnectorContainerResources     ResourceRequirementsWithGoMemLimit `json:"agent0ConnectorContainerResources"`
+	Agent0ConnectorLabels                 map[string]string                  `json:"agent0ConnectorLabels,omitempty"`
+	Agent0ConnectorAnnotations            map[string]string                  `json:"agent0ConnectorAnnotations,omitempty"`
+	Agent0ConnectorPodLabels              map[string]string                  `json:"agent0ConnectorPodLabels,omitempty"`
+	Agent0ConnectorPodAnnotations         map[string]string                  `json:"agent0ConnectorPodAnnotations,omitempty"`
+	Agent0ConnectorTolerations            []corev1.Toleration                `json:"agent0ConnectorTolerations,omitempty"`
+	Agent0ConnectorNodeAffinity           *corev1.NodeAffinity               `json:"agent0ConnectorNodeAffinity,omitempty"`
 
-	// Actually we would like to use the type *dash0v1alpha1.MonitoringTemplate here, but that leads to circular package
-	// dependencies. We should revisit how to untangle this.
+	// Actually we would like to use the types *dash0v1alpha1.MonitoringTemplate, *dash0common.Filter and
+	// *dash0common.Transform here, but that leads to circular package dependencies. We should revisit how to untangle
+	// this.
 	MonitoringTemplateRaw *json.RawMessage `json:"monitoringTemplate,omitempty"`
+	FilterRaw             *json.RawMessage `json:"filter,omitempty"`
+	TransformRaw          *json.RawMessage `json:"transform,omitempty"`
+
+	// Exports are the exports for the automatically created operator configuration resource, provided via the Helm
+	// value operator.exports. They are appended to the Dash0 export that is derived from the operator.dash0Export.*
+	// Helm values (if any).
+	Exports []dash0common.Export `json:"exports,omitempty"`
 }
 
 type ExtraConfigClient interface {

@@ -144,9 +144,11 @@ func (m *TargetAllocatorResourceManager) updateResource(
 		return false, err
 	}
 
+	desiredResourceForComparison := desiredResource.DeepCopyObject().(client.Object)
+	resources.AdoptGkeAutopilotResourceAdjustments(existingResource, desiredResourceForComparison, logger)
 	patchResult, err := patch.DefaultPatchMaker.Calculate(
 		existingResource,
-		desiredResource,
+		desiredResourceForComparison,
 		patch.IgnoreField("kind"),
 		patch.IgnoreField("apiVersion"),
 	)

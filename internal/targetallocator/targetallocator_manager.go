@@ -25,7 +25,7 @@ type TargetAllocatorManager struct {
 	targetAllocatorResourceManager *taresources.TargetAllocatorResourceManager
 	extraConfig                    atomic.Pointer[util.ExtraConfig]
 	developmentMode                bool
-	updateInProgress               atomic.Bool
+	reconcileGuard                 util.ReconcileGuard
 }
 
 type TargetAllocatorReconcileTrigger string
@@ -73,9 +73,14 @@ func (m *TargetAllocatorManager) UpdateExtraConfig(ctx context.Context, newConfi
 //  3. a change event on one of the target-allocator related resources that the operator manages
 //
 // Returns a boolean flag indicating whether the reconciliation has been performed (true) or has been cancelled, due
-// to another reconcliation already being in progress or because the resource has been deleted by the operator.
-// A return value of (nil, true) does not necessarily indicate that any target-allocator resource has been created, updated, or
-// deleted; it only indicates that the reconciliation has been performed.
+// to another reconciliation already being in progress or because the resource has been deleted by the operator.
+// A return value of (true, nil) does not necessarily indicate that any target-allocator resource has been created,
+// updated, or deleted; it only indicates that the reconciliation has been performed.
+//
+// A request that arrives while a reconciliation is in progress is not executed. The reconciliation which is in progress
+// repeats itself once it is done, see util.ReconcileGuard. Without that, an operator configuration or extra config
+// change arriving mid-reconciliation would be stored but never applied, since none of the controllers requeues
+// periodically.
 func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 	ctx context.Context,
 	trigger TargetAllocatorReconcileTrigger,
@@ -83,18 +88,27 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 	logger := logd.FromContext(ctx)
 	logger.Info("ReconcileTargetAllocator", "trigger", trigger)
 
-	if m.updateInProgress.Load() {
-		if m.developmentMode {
-			logger.Info("creation/update of the OpenTelemetry target-allocator resources is already in progress, skipping " +
-				"additional reconciliation request.")
-		}
-		return false, nil
-	}
-	m.updateInProgress.Store(true)
-	defer func() {
-		m.updateInProgress.Store(false)
-	}()
+	return m.reconcileGuard.Run(
+		func() (bool, error) {
+			return m.reconcileTargetAllocator(ctx, logger)
+		},
+		func() {
+			if m.developmentMode {
+				logger.Info("creation/update of the OpenTelemetry target-allocator resources is already in progress, " +
+					"the additional reconciliation request will be served by the reconciliation which is in progress.")
+			}
+		},
+		func() {
+			logger.Warn("the reconciliation of the OpenTelemetry target-allocator resources kept being triggered while it was " +
+				"running, stopped repeating it, the pending reconciliation request is dropped.")
+		},
+	)
+}
 
+// reconcileTargetAllocator is the body of ReconcileTargetAllocator, executed under the manager's reconcile guard. It
+// reads the operator configuration resource, the monitoring resources and the extra config itself, which is what
+// allows the guard to repeat it for a trigger that arrived while it was running.
+func (m *TargetAllocatorManager) reconcileTargetAllocator(ctx context.Context, logger logd.Logger) (bool, error) {
 	operatorConfigurationResource, err := resources.FindOperatorConfigurationResource(ctx, m.Client, logger)
 	if err != nil {
 		return false, err

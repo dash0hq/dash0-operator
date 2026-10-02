@@ -571,10 +571,12 @@ monitoring resource CRD should match snapshot:
                               type: string
                           type: object
                         dataset:
-                          default: default
                           description: |-
-                            The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-                            dataset "default" will be used.
+                            The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
+                            identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
+                            identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
+                            optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
+                            authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                           type: string
                         endpoint:
                           description: |-
@@ -820,10 +822,12 @@ monitoring resource CRD should match snapshot:
                                 type: string
                             type: object
                           dataset:
-                            default: default
                             description: |-
-                              The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-                              dataset "default" will be used.
+                              The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
+                              identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
+                              identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
+                              optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
+                              authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                             type: string
                           endpoint:
                             description: |-
@@ -1030,9 +1034,10 @@ monitoring resource CRD should match snapshot:
 
                         This is optional, default to "ignore", there is usually no reason to change this.
 
-                        Note that although this can be specified per namespace, the filter conditions will be aggregated into one
-                        single filter processor in the resulting OpenTelemetry collector configuration; if different error modes are
-                        specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+                        Note that although this can be specified per namespace and cluster-wide, the filter conditions will be aggregated
+                        into one single filter processor in the resulting OpenTelemetry collector configuration; if different error modes
+                        are specified in different namespaces, or cluster-wide in the operator configuration resource, the "most severe"
+                        error mode will be used (propagate > ignore > silent).
                       enum:
                         - ignore
                         - silent
@@ -1277,9 +1282,10 @@ monitoring resource CRD should match snapshot:
 
                         This is optional, default to "ignore".
 
-                        Note that although this can be specified per namespace, the transform statements will be aggregated into one
-                        single transform processor in the resulting OpenTelemetry collector configuration; if different error modes are
-                        specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+                        Note that although this can be specified per namespace and cluster-wide, the transform statements will be
+                        aggregated into one single transform processor in the resulting OpenTelemetry collector configuration; if
+                        different error modes are specified in different namespaces, or cluster-wide in the operator configuration
+                        resource, the "most severe" error mode will be used (propagate > ignore > silent).
                       enum:
                         - ignore
                         - silent
@@ -1731,10 +1737,12 @@ monitoring resource CRD should match snapshot:
                               type: string
                           type: object
                         dataset:
-                          default: default
                           description: |-
-                            The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-                            dataset "default" will be used.
+                            The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
+                            identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
+                            identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
+                            optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
+                            authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                           type: string
                         endpoint:
                           description: |-
@@ -1980,10 +1988,12 @@ monitoring resource CRD should match snapshot:
                                 type: string
                             type: object
                           dataset:
-                            default: default
                             description: |-
-                              The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-                              dataset "default" will be used.
+                              The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
+                              identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
+                              identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
+                              optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
+                              authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                             type: string
                           endpoint:
                             description: |-
@@ -2190,9 +2200,10 @@ monitoring resource CRD should match snapshot:
 
                         This is optional, default to "ignore", there is usually no reason to change this.
 
-                        Note that although this can be specified per namespace, the filter conditions will be aggregated into one
-                        single filter processor in the resulting OpenTelemetry collector configuration; if different error modes are
-                        specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+                        Note that although this can be specified per namespace and cluster-wide, the filter conditions will be aggregated
+                        into one single filter processor in the resulting OpenTelemetry collector configuration; if different error modes
+                        are specified in different namespaces, or cluster-wide in the operator configuration resource, the "most severe"
+                        error mode will be used (propagate > ignore > silent).
                       enum:
                         - ignore
                         - silent
@@ -2504,9 +2515,10 @@ monitoring resource CRD should match snapshot:
 
                         This is optional, default to "ignore".
 
-                        Note that although this can be specified per namespace, the transform statements will be aggregated into one
-                        single transform processor in the resulting OpenTelemetry collector configuration; if different error modes are
-                        specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+                        Note that although this can be specified per namespace and cluster-wide, the transform statements will be
+                        aggregated into one single transform processor in the resulting OpenTelemetry collector configuration; if
+                        different error modes are specified in different namespaces, or cluster-wide in the operator configuration
+                        resource, the "most severe" error mode will be used (propagate > ignore > silent).
                       enum:
                         - ignore
                         - silent

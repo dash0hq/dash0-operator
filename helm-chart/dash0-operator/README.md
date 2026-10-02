@@ -22,7 +22,7 @@ Supported runtimes for automatic workload instrumentation:
 
 * Java 8+
 * Node.js 16+
-* .NET
+* .NET 8+
 * Python ([opt-in](https://github.com/dash0hq/dash0-operator/blob/0.100.0/helm-chart/dash0-operator/values.yaml#L408-L409))
 * Ruby 3.3+ ([opt-in](docs/configuration.md#ruby-auto-instrumentation))
 
@@ -90,8 +90,8 @@ This README provides a quick overview. Detailed documentation is organized by to
 ### Advanced Topics
 
 * **[Managing Dash0 Resources](docs/managing-dash0-resources.md)** - Managing dashboards, check rules, synthetic checks, views, notification channels, spam filters, signal-to-metrics, and teams via infrastructure-as-code
-* **[Advanced Configuration](docs/advanced-configuration.md)** - cert-manager, node affinity, tolerations, sysctls, and filelog offset volumes
-* **[Platform Specific](docs/platform-specific.md)** - Notes for AWS EKS, GKE Autopilot, OpenShift, Azure AKS, Docker Desktop, Minikube, Apple Silicon, and compatibility with OPA and Kyverno
+* **[Advanced Configuration](docs/advanced-configuration.md)** - cert-manager, node affinity, tolerations, sysctls, SELinux options, and filelog offset volumes
+* **[Platform Specific](docs/platform-specific.md)** - Notes for AWS EKS, GKE Autopilot, OpenShift, SELinux-enforcing clusters, Azure AKS, Docker Desktop, Minikube, Apple Silicon, and compatibility with OPA and Kyverno
 * **[SignalControl Edge](docs/signal-control-edge.md)** - How to configure Signal Control, which offers in-cluster tail-sampling, RED metrics, signal-to-metrics, and spam filters to reduce egress costs.
 
 ### Operations

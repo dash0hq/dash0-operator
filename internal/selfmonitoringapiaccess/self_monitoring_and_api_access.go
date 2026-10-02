@@ -641,7 +641,7 @@ func ConvertExportConfigurationToEnvVarSettings(selfMonitoringExport dash0common
 				Value: selfMonitoringAuthHeaderValue,
 			},
 		}
-		if dash0Export.Dataset != "" && dash0Export.Dataset != util.DatasetDefault {
+		if dash0Export.Dataset != "" {
 			headers = append(
 				headers, dash0common.Header{
 					Name:  util.Dash0DatasetHeaderName,
@@ -747,7 +747,7 @@ func convertDash0ExportConfigurationToCollectorLogSelfMonitoringPipelineString(
                     value: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"`,
 		util.AuthorizationHeaderName,
 	)
-	if dash0Export.Dataset != "" && dash0Export.Dataset != util.DatasetDefault {
+	if dash0Export.Dataset != "" {
 		pipeline += fmt.Sprintf(
 			`
                   - name: %s

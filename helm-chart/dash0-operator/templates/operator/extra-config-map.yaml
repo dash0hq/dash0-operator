@@ -80,6 +80,18 @@ data:
     daemonSetSysctls:
       {{- toYaml .Values.operator.collectors.daemonSetSysctls | nindent 6 }}
 {{- end }}
+{{- if .Values.operator.collectors.daemonSetSeLinuxOptions }}
+{{- if not (kindIs "map" .Values.operator.collectors.daemonSetSeLinuxOptions) }}
+{{- fail "Error: operator.collectors.daemonSetSeLinuxOptions must be a map with the settings user, role, type and level." }}
+{{- end }}
+{{- range $key, $value := .Values.operator.collectors.daemonSetSeLinuxOptions }}
+{{- if not (has $key (list "user" "role" "type" "level")) }}
+{{- fail (printf "Error: operator.collectors.daemonSetSeLinuxOptions.%s is not a valid setting. Valid settings are user, role, type and level." $key) }}
+{{- end }}
+{{- end }}
+    daemonSetSeLinuxOptions:
+      {{- toYaml .Values.operator.collectors.daemonSetSeLinuxOptions | nindent 6 }}
+{{- end }}
     collectorDeploymentCollectorContainerResources:
       {{- toYaml (
             default
@@ -214,6 +226,8 @@ data:
     agent0ConnectorContainerResources:
       {{- toYaml .Values.operator.agent0Connector.containerResources | nindent 6 }}
     agent0ConnectorMaxConcurrentCommands: {{ .Values.operator.agent0Connector.maxConcurrentCommands }}
+    agent0ConnectorAllowedKubectlCommands:
+      {{- include "dash0-operator.agent0ConnectorAllowedKubectlCommands" . | nindent 6 }}
 {{- if .Values.operator.agent0Connector.clusterRole.rules }}
     agent0ConnectorClusterRoleRules:
       {{- include "dash0-operator.agent0ConnectorClusterRoleRules" . | nindent 6 }}
@@ -243,6 +257,28 @@ data:
     {{- if .Values.operator.autoMonitorNamespaces.monitoringTemplate }}
     {{- fail "Error: operator.autoMonitorNamespaces.monitoringTemplate is not a valid setting. The monitoring template is a top-level operator setting; please use operator.monitoringTemplate instead." -}}
     {{- end }}
+    {{- if .Values.operator.exports }}
+    {{- range $index, $export := .Values.operator.exports }}
+    {{- if not (or $export.dash0 $export.grpc $export.http) }}
+    {{- fail (printf "Error: operator.exports[%d] has none of dash0, grpc or http set, at least one of them is required." $index) -}}
+    {{- end }}
+    {{- if and $export.dash0 $.Values.operator.dash0Export.enabled }}
+    {{- fail (printf "Error: operator.exports[%d] defines a dash0 export while operator.dash0Export.enabled is true. Please configure the Dash0 export either via operator.dash0Export.* or via operator.exports, but not via both." $index) -}}
+    {{- end }}
+    {{- if and $export.dash0 (not $export.dash0.endpoint) }}
+    {{- fail (printf "Error: operator.exports[%d].dash0 has no endpoint." $index) -}}
+    {{- end }}
+    {{- if and $export.grpc (not $export.grpc.endpoint) }}
+    {{- fail (printf "Error: operator.exports[%d].grpc has no endpoint." $index) -}}
+    {{- end }}
+    {{- if and $export.http (not $export.http.endpoint) }}
+    {{- fail (printf "Error: operator.exports[%d].http has no endpoint." $index) -}}
+    {{- end }}
+    {{- end }}
+    exports:
+      {{- toYaml .Values.operator.exports | nindent 6 }}
+    {{- end }}
+
     {{- if .Values.operator.monitoringTemplate }}
     {{- if and .Values.operator.monitoringTemplate.spec .Values.operator.monitoringTemplate.spec.export }}
     {{- fail "Error: operator.monitoringTemplate.spec.export: Providing custom export settings in the monitoring template is not allowed, please remove the field." -}}
@@ -252,4 +288,13 @@ data:
     {{- end }}
     monitoringTemplate:
       {{- toYaml .Values.operator.monitoringTemplate | nindent 6 }}
+    {{- end }}
+
+    {{- if .Values.operator.filter }}
+    filter:
+      {{- toYaml .Values.operator.filter | nindent 6 }}
+    {{- end }}
+    {{- if .Values.operator.transform }}
+    transform:
+      {{- toYaml .Values.operator.transform | nindent 6 }}
     {{- end }}

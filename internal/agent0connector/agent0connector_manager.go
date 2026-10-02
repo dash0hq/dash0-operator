@@ -110,6 +110,10 @@ func (m *Agent0ConnectorManager) ReconcileAgent0Connector(
 					"additional reconciliation request will be served by the reconciliation which is in progress.")
 			}
 		},
+		func() {
+			logger.Warn("the reconciliation of the agent0-connector resources kept being triggered while it was running, " +
+				"stopped repeating it, the pending reconciliation request is dropped.")
+		},
 	)
 }
 

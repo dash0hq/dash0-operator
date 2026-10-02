@@ -41,6 +41,9 @@ Here is a list of configuration options for this resource:
   If multiple exports are defined, the telemetry will be exported to all defined exports and CRs (views, synthetic
   checks, dashboards, check rules, notification channels, spam filters, signal-to-metrics rules) will be synced to all
   defined Dash0 exports.
+  Next to `dash0`, an export can also be an `http` or a `grpc` export, to send telemetry to an arbitrary
+  OTLP-compatible backend; see
+  [Exporting Data to Other Observability Backends](advanced-configuration.md#exporting-data-to-other-observability-backends).
 
 * <a href="#operatorconfigurationresource.spec.exports[].dash0.endpoint"><span id="operatorconfigurationresource.spec.exports[].dash0.endpoint">**`spec.exports[].dash0.endpoint`**</span></a>:
   The URL of the Dash0 ingress endpoint to which telemetry data will be sent.
@@ -119,6 +122,49 @@ Here is a list of configuration options for this resource:
   If set, the value will be added as the resource attribute `k8s.cluster.name` to all telemetry.
   This setting is optional.
   By default, `k8s.cluster.name` will not be added to telemetry.
+
+* <a href="#operatorconfigurationresource.spec.filter"><span id="operatorconfigurationresource.spec.filter">**`spec.filter`**</span></a>:
+  An optional cluster-wide filter configuration to drop some of the collected telemetry before sending it to the
+  configured telemetry backend.
+  The structure is identical to the [filter configuration of a monitoring resource](#monitoringresource.spec.filter),
+  see there for the list of available settings.
+  In contrast to the filters of a monitoring resource, which only apply to the telemetry collected in the namespace of
+  that monitoring resource, these filters apply to all telemetry collected in the cluster.
+  That includes telemetry which is not associated with a namespace, like node metrics or cluster-level metrics.
+  This setting is optional, by default, no filters are applied.
+  It is a validation error to set `telemetryCollection.enabled=false` and set filters at the same time.
+
+  If your goal is to reduce the volume of data sent to Dash0, consider using
+  [spam filters](managing-dash0-resources.md#managing-spam-filters) instead, which are authored in Dash0 rather than
+  in the cluster.
+
+  The filters of monitoring resources and the filters configured here are evaluated by the same filter processor;
+  telemetry is dropped if at least one condition of either matches.
+  The error mode is aggregated across all monitoring resources and this setting, the "most severe" error mode is used
+  (`propagate` > `ignore` > `silent`).
+
+* <a href="#operatorconfigurationresource.spec.transform"><span id="operatorconfigurationresource.spec.transform">**`spec.transform`**</span></a>:
+  An optional cluster-wide transformation configuration that will be applied to the collected telemetry before sending
+  it to the configured telemetry backend.
+  The structure is identical to the
+  [transform configuration of a monitoring resource](#monitoringresource.spec.transform), see there for the list of
+  available settings.
+  In contrast to the transformations of a monitoring resource, which only apply to the telemetry collected in the
+  namespace of that monitoring resource, these transformations apply to all telemetry collected in the cluster.
+  That includes telemetry which is not associated with a namespace, like node metrics or cluster-level metrics.
+  This setting is optional, by default, no transformations are applied.
+  It is a validation error to set `telemetryCollection.enabled=false` and set transformations at the same time.
+
+  The order in which filters and transformations are applied is:
+  1. the filters of the monitoring resource of the namespace the telemetry originates from,
+  2. the filters configured here,
+  3. the transformations of the monitoring resource of the namespace the telemetry originates from,
+  4. the transformations configured here.
+
+  That is, you cannot assume that transformations have already been applied when writing filter conditions, and the
+  cluster-wide transformations see the result of the transformations of the monitoring resource.
+  The error mode is aggregated across all monitoring resources and this setting, the "most severe" error mode is used
+  (`propagate` > `ignore` > `silent`).
 
 * <a href="#operatorconfigurationresource.spec.telemetryCollection.enabled"><span id="operatorconfigurationresource.spec.telemetryCollection.enabled">**`spec.telemetryCollection.enabled`**</span></a>:
   An opt-out switch for all telemetry collection, and to avoid having the operator deploy OpenTelemetry collectors in
@@ -220,6 +266,18 @@ provided values at startup.
 This automatically created operator configuration resource will have the name
 `dash0-operator-configuration-auto-resource`.
 
+Providing a non-empty list for the Helm value `operator.exports` has the same effect.
+Use it to configure `http` or `grpc` exports, or a combination of exports, which `operator.dash0Export.*` cannot
+express; see
+[Configuring Other Backends Via Helm](advanced-configuration.md#configuring-other-backends-via-helm).
+Both settings can be combined: the Dash0 export derived from `operator.dash0Export.*` becomes the first entry of
+`spec.exports`, the entries of `operator.exports` follow.
+However, for any setup with more than one export, we recommend configuring all exports via `operator.exports`,
+including the `dash0` export(s), instead of spreading them over two different Helm values.
+Note that the entries of `operator.exports` are transported to the operator manager via a Kubernetes ConfigMap, that is,
+unlike the `operator.dash0Export.*` values, they are applied without restarting the operator manager pod when you change
+them via `helm upgrade`.
+
 If an operator configuration resource with any other name already exists in the cluster (e.g. a manually created
 operator configuration resource), the operator will treat this as an error and refuse to overwrite the existing operator
 configuration resource with the values provided via Helm.
@@ -240,8 +298,8 @@ operator configuration.
 Any changes you want to be permanent should be applied via Helm and the `operator.dash0Export.*` settings.
 
 If you would rather retain manual control over the operator configuration resource, you should omit any
-`operator.dash0Export.*` Helm values and create and manage the operator configuration resource manually (that is, via
-kubectl, ArgoCD etc.).
+`operator.dash0Export.*` and `operator.exports` Helm values and create and manage the operator configuration resource
+manually (that is, via kubectl, ArgoCD etc.).
 
 ### Enable Dash0 Monitoring For a Namespace
 
@@ -442,6 +500,8 @@ The Dash0 monitoring resource supports additional configuration settings:
   One difference to the filter processor is that the filter rules configured in a Dash0 monitoring resource will only be
   applied to the telemetry collected in the namespace the monitoring resource is installed in.
   Telemetry from other namespaces is not affected.
+  Use [`spec.filter` of the operator configuration resource](#operatorconfigurationresource.spec.filter) for filters
+  that apply to the whole cluster.
   Existing configurations for the filter processor can be copied and pasted without syntactical changes.
     * **`spec.filter.traces.span`**:
       A list of OTTL conditions for filtering spans.
@@ -470,7 +530,8 @@ The Dash0 monitoring resource supports additional configuration settings:
 
   Note that although `error_mode` can be specified per namespace, the filter conditions will be aggregated into one
   single filter processor in the resulting OpenTelemetry collector configuration; if different error modes are
-  specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+  specified in different namespaces, or in the operator configuration resource, the "most severe" error mode will be
+  used (propagate > ignore > silent).
 
 * <a href="#monitoringresource.spec.transform"><span id="monitoringresource.spec.transform">**`spec.transform`**</span></a>:
   An optional custom transformation configuration that will be applied to the collected telemetry before sending it to
@@ -489,6 +550,8 @@ The Dash0 monitoring resource supports additional configuration settings:
   One difference to the transform processor is that the transform rules configured in a Dash0 monitoring resource will
   only be applied to the telemetry collected in the namespace the monitoring resource is installed in.
   Telemetry from other namespaces is not affected.
+  Use [`spec.transform` of the operator configuration resource](#operatorconfigurationresource.spec.transform) for
+  transformations that apply to the whole cluster.
   If both `spec.filter` and `spec.transform` are configured, the filtering for a given signal (traces, metrics, logs, profiles)
   will be executed before the transform processor.
   (That is, you cannot assume that transformations have already been applied when writing filter rules.)
@@ -507,7 +570,8 @@ The Dash0 monitoring resource supports additional configuration settings:
 
   Note that although `error_mode` can be specified per namespace, the transform statements will be aggregated into one
   single transform processor in the resulting OpenTelemetry collector configuration; if different error modes are
-  specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+  specified in different namespaces, or in the operator configuration resource, the "most severe" error mode will be
+  used (propagate > ignore > silent).
 
 * <a href="#monitoringresource.spec.synchronizePersesDashboards"><span id="monitoringresource.spec.synchronizePersesDashboards">**`spec.synchronizePersesDashboards`**</span></a>:
   A namespace-wide opt-out for synchronizing Perses dashboard resources found in the target namespace.
@@ -1031,7 +1095,13 @@ See https://kubernetes.io/docs/concepts/configuration/secret/ for more informati
 ### Dash0 Dataset Configuration
 
 Use the `spec.exports[].dash0.dataset` property to configure the dataset that should be used for the telemetry data.
-By default, data will be sent to the dataset `default`.
+The value is the dataset's identifier, not its display name.
+For example, a dataset named `prod` can have the identifier `default`; in that case, use `dataset: default`.
+The identifier can be looked up in [Dash0](https://app.dash0.com) -> organization settings -> "Datasets".
+If the property is omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
+authorization token: a token that is limited to a single dataset writes to that dataset, any other token writes to its
+default ingestion dataset. If a dataset is set (including `default`), it is always sent, and the token needs to have
+permission to write to it.
 Here is an example for a configuration that uses a different Dash0 dataset:
 
 ```yaml
@@ -1044,7 +1114,7 @@ spec:
     - dash0:
         endpoint: ingress... # see above
 
-        dataset: my-custom-dataset # This optional setting determines the Dash0 dataset to which telemetry will be sent.
+        dataset: my-custom-dataset # This optional setting determines the identifier of the Dash0 dataset to which telemetry will be sent.
 
         authorization: # see above
           ...

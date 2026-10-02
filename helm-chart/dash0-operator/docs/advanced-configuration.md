@@ -14,6 +14,7 @@ This guide covers advanced configuration topics for the Dash0 operator, includin
   - [Adding Custom Labels and Annotations to the Collector Resources](#adding-custom-labels-and-annotations-to-the-collector-resources)
 - [Configuring Collector Host Ports](#configuring-collector-host-ports)
 - [Configuring Pod-Level sysctls for the Collector Pods (TCP Keepalive)](#configuring-pod-level-sysctls-for-the-collector-pods-tcp-keepalive)
+- [Configuring SELinux Options for the Collector DaemonSet](#configuring-selinux-options-for-the-collector-daemonset)
 - [Disable Self-Monitoring](#disable-self-monitoring)
 - [Exporting Data to Other Observability Backends](#exporting-data-to-other-observability-backends)
   - [Note regarding TLS when using arbitrary OTLP-compatible backends](#note-regarding-tls-when-using-arbitrary-otlp-compatible-backends)
@@ -525,6 +526,23 @@ This setting is opt-in for two reasons:
 
 Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or similar to take effect.
 
+## Configuring SELinux Options for the Collector DaemonSet
+
+Pod-level [SELinux options](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/) for the
+collector DaemonSet pods can be set via `operator.collectors.daemonSetSeLinuxOptions`. The value is used as is for the
+pod's `spec.securityContext.seLinuxOptions`. It is unset by default. Changing it changes the collector pod spec, which
+triggers a rollout of the collector DaemonSet pods.
+
+```yaml
+operator:
+  collectors:
+    daemonSetSeLinuxOptions:
+      type: <selinux-type>
+```
+
+Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or
+similar to take effect.
+
 ## Disable Self-Monitoring
 
 By default, self-monitoring is enabled for the Dash0 operator as soon as you deploy a Dash0 operator configuration resource with exports.
@@ -585,6 +603,57 @@ spec:
             value: my-value
 ```
 
+### Configuring Other Backends Via Helm
+
+The same exports can be configured via the Helm value `operator.exports`, which lets the operator create the operator
+configuration resource for you instead of applying it with `kubectl`. The value is a list with exactly the structure of
+`spec.exports` shown above:
+
+```yaml
+operator:
+  exports:
+    - grpc:
+        endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
+        headers:
+          - name: X-My-Header
+            value: my-value
+```
+
+Setting `operator.exports` to a non-empty list makes the operator create the operator configuration resource at startup,
+just like `operator.dash0Export.enabled=true` does; see
+[Notes on Creating the Operator Configuration Resource Via Helm](configuration.md#notes-on-creating-the-operator-configuration-resource-via-helm).
+For any setup with more than one export, we recommend configuring all exports via `operator.exports`, including the
+`dash0` export(s), so that all exports are defined in one place:
+
+```yaml
+operator:
+  exports:
+    - dash0:
+        endpoint: ... # provide the OTLP gRPC endpoint of your Dash0 organization here
+        authorization:
+          secretRef:
+            name: dash0-authorization-secret
+            key: token
+        apiEndpoint: ... # provide the API endpoint of your Dash0 organization here
+    - grpc:
+        endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
+```
+
+Combining `operator.dash0Export.*` with `operator.exports` is also possible: the Dash0 export configured via
+`operator.dash0Export.*` comes first, followed by the exports listed in `operator.exports`. Configuring a `dash0` export
+in `operator.exports` while `operator.dash0Export.enabled` is `true` is an error; use one of the two, not both.
+
+The order matters for the operator's self-monitoring telemetry, which is only sent to the first export. Self-monitoring
+is not supported for an `http` export with `encoding: json` and is silently disabled in that case.
+
+Note that the values of `operator.exports` are rendered verbatim into a Kubernetes ConfigMap. For header values that
+contain sensitive data, use `valueFrom.secretKeyRef` (see the next section) instead of a literal `value`.
+
+Two operator features require a Dash0 export and are therefore not available with `http` or `grpc` exports alone:
+synchronizing dashboards, check rules, synthetic checks, views, notification channels, spam filters and
+signal-to-metrics rules (which needs `dash0.apiEndpoint`), and Signal Control (which needs a Dash0 export with an auth
+token).
+
 ### Providing Header Values via a Kubernetes Secret
 
 Header values often contain sensitive data, such as authorization tokens or API keys. Instead of providing such a value
@@ -623,7 +692,8 @@ header values provided via a Dash0 monitoring resource.
 
 Export to multiple backends is also supported.
 The supplied backends can be either of the same type or of different types.
-In the following example the telemetry would be sent to two different datasets in Dash0 and in addition to a gRPC endpoint:
+In the following example the telemetry would be sent to two different datasets in Dash0 (referenced by their dataset
+identifiers) and in addition to a gRPC endpoint:
 
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1

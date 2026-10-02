@@ -33,7 +33,7 @@ type CollectorManager struct {
 	extraConfig                 atomic.Pointer[util.ExtraConfig]
 	developmentMode             bool
 	signalControlFeatureEnabled bool
-	updateInProgress            atomic.Bool
+	reconcileGuard              util.ReconcileGuard
 	// zoneCoverageReporter warns when the Signal Control collector has fewer replicas than the cluster has
 	// availability zones. See cluster.ZoneCoverageReporter.
 	zoneCoverageReporter *cluster.ZoneCoverageReporter
@@ -96,23 +96,38 @@ func (m *CollectorManager) UpdateExtraConfig(ctx context.Context, newConfig util
 //
 // Returns a boolean flag indicating whether the reconciliation has been performed (true) or has been cancelled, due
 // to another reconciliation already being in progress or because the resource has been deleted by the operator.
-// A return value of (nil, true) does not necessarily indicate that any collector resource has been created, updated, or
+// A return value of (true, nil) does not necessarily indicate that any collector resource has been created, updated, or
 // deleted; it only indicates that the reconciliation has been performed.
+//
+// A request that arrives while a reconciliation is in progress is not executed. The reconciliation which is in progress
+// repeats itself once it is done, see util.ReconcileGuard. Without that, an operator configuration or extra config
+// change arriving mid-reconciliation would be stored but never applied, since none of the controllers requeues
+// periodically.
 func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 	ctx context.Context,
 ) (bool, error) {
 	logger := logd.FromContext(ctx)
-	if m.updateInProgress.Load() {
-		logger.Debug("creation/update of the OpenTelemetry collector resources is already in progress, skipping " +
-			"additional reconciliation request.")
-		return false, nil
-	}
 
-	m.updateInProgress.Store(true)
-	defer func() {
-		m.updateInProgress.Store(false)
-	}()
+	return m.reconcileGuard.Run(
+		func() (bool, error) {
+			return m.reconcileOpenTelemetryCollector(ctx, logger)
+		},
+		func() {
+			logger.Debug("creation/update of the OpenTelemetry collector resources is already in progress, the " +
+				"additional reconciliation request will be served by the reconciliation which is in progress.")
+		},
+		func() {
+			logger.Warn("the reconciliation of the OpenTelemetry collector resources kept being triggered while it was " +
+				"running, stopped repeating it, the pending reconciliation request is dropped.")
+		},
+	)
+}
 
+// reconcileOpenTelemetryCollector is the body of ReconcileOpenTelemetryCollector, executed under the manager's
+// reconcile guard. It reads the operator configuration resource, the monitoring resources, the Signal Control resource
+// and the extra config itself, which is what allows the guard to repeat it for a trigger that arrived while it was
+// running.
+func (m *CollectorManager) reconcileOpenTelemetryCollector(ctx context.Context, logger logd.Logger) (bool, error) {
 	operatorConfigurationResource, err := m.findOperatorConfigurationResource(ctx, logger)
 	if err != nil {
 		return false, err

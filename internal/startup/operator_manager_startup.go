@@ -112,6 +112,7 @@ type environmentVariables struct {
 	k8sAttributesDisableReplicasetInformer      bool
 	k8sAttributesWaitForMetadata                bool
 	k8sAttributesWaitForMetadataTimeout         string
+	k8sAttributesShareProcessor                 bool
 	kubeletStatsAutoDetectEndpoint              bool
 	kubeletStatsReceiverConfig                  *util.KubeletStatsReceiverConfig
 	instrumentationDebug                        bool
@@ -130,6 +131,7 @@ type commandLineArguments struct {
 	allowlistSynchronizerReadyCheck                                       bool
 	allowlistVersion                                                      string
 	deleteAllowlistSynchronizer                                           bool
+	operatorConfigurationManagedViaHelm                                   bool
 	operatorConfigurationEndpoint                                         string
 	operatorConfigurationToken                                            string
 	operatorConfigurationSecretRefName                                    string
@@ -235,6 +237,7 @@ const (
 	k8sAttributesDisableReplicasetInformerEnvVarName = "OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER"
 	k8sAttributesWaitForMetadataEnvVarName           = "OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA"
 	k8sAttributesWaitForMetadataTimeoutEnvVarName    = "OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA_TIMEOUT"
+	k8sAttributesShareProcessorEnvVarName            = "OTEL_COLLECTOR_K8SATTRIBUTES_SHARE_PROCESSOR_BETWEEN_PIPELINES"
 	enablePprofExtensionEnvVarName                   = "OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION"
 	compressConfigMapsEnvVarName                     = "OTEL_COLLECTOR_COMPRESS_CONFIG_MAPS"
 	kubeletStatsAutoDetectEndpointEnvVarName         = "OTEL_COLLECTOR_KUBELETSTATS_AUTO_DETECT_ENDPOINT"
@@ -511,6 +514,13 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 		false,
 		"If set, the process will remove the GKE Autopilot AllowlistSynchronizer resource from the cluster, then "+
 			"exit.",
+	)
+	fs.BoolVar(
+		&cliArgs.operatorConfigurationManagedViaHelm,
+		"operator-configuration-managed-via-helm",
+		false,
+		"If set, the operator manager creates and updates the operator configuration resource from the values provided "+
+			"via Helm, that is, from the operator-configuration-* arguments and the exports in the extra config map.",
 	)
 	fs.StringVar(
 		&cliArgs.operatorConfigurationEndpoint,
@@ -988,6 +998,8 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	k8sAttributesWaitForMetadata := readBooleanEnvVar(k8sAttributesWaitForMetadataEnvVarName)
 	k8sAttributesWaitForMetadataTimeout, _ := os.LookupEnv(k8sAttributesWaitForMetadataTimeoutEnvVarName)
 
+	k8sAttributesShareProcessor := readBooleanEnvVar(k8sAttributesShareProcessorEnvVarName)
+
 	kubeletStatsAutoDetectEndpoint, kubeletStatsReceiverConfig := readKubeletStatsReceiverConfigFromEnv()
 
 	enablePprofExtension := readBooleanEnvVar(enablePprofExtensionEnvVarName)
@@ -1037,6 +1049,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		k8sAttributesDisableReplicasetInformer:      k8sAttributesDisableReplicasetInformer,
 		k8sAttributesWaitForMetadata:                k8sAttributesWaitForMetadata,
 		k8sAttributesWaitForMetadataTimeout:         k8sAttributesWaitForMetadataTimeout,
+		k8sAttributesShareProcessor:                 k8sAttributesShareProcessor,
 		kubeletStatsAutoDetectEndpoint:              kubeletStatsAutoDetectEndpoint,
 		kubeletStatsReceiverConfig:                  kubeletStatsReceiverConfig,
 		instrumentationDebug:                        instrumentationDebug,
@@ -1792,6 +1805,7 @@ func startDash0Controllers(
 			K8sAttributesDisableReplicasetInformer: envVars.k8sAttributesDisableReplicasetInformer,
 			K8sAttributesWaitForMetadata:           envVars.k8sAttributesWaitForMetadata,
 			K8sAttributesWaitForMetadataTimeout:    envVars.k8sAttributesWaitForMetadataTimeout,
+			K8sAttributesShareProcessor:            envVars.k8sAttributesShareProcessor,
 			NodeIp:                                 envVars.nodeIp,
 			NodeName:                               envVars.nodeName,
 			KubeletStatsAutoDetectEndpoint:         envVars.kubeletStatsAutoDetectEndpoint,
@@ -2278,8 +2292,10 @@ func findDeploymentReference(
 }
 
 func operatorConfigurationIsManagedViaHelm(cliArgs *commandLineArguments) bool {
-	// cliArgs.operatorConfigurationEndpoint is provided via Helm if and only if operator.dash0Export.enabled is true.
-	return len(cliArgs.operatorConfigurationEndpoint) > 0
+	// cliArgs.operatorConfigurationManagedViaHelm is provided via Helm if and only if operator.dash0Export.enabled is
+	// true or operator.exports is non-empty. The check for cliArgs.operatorConfigurationEndpoint keeps argument sets
+	// that predate that flag working, where the endpoint was the only signal.
+	return cliArgs.operatorConfigurationManagedViaHelm || len(cliArgs.operatorConfigurationEndpoint) > 0
 }
 
 func createOrUpdateAutoOperatorConfigurationResource(
@@ -2295,7 +2311,7 @@ func createOrUpdateAutoOperatorConfigurationResource(
 		startupTasksK8sClient,
 		readyCheckExecuter,
 		*operatorConfigurationValues,
-		extraConfig.MonitoringTemplateRaw,
+		extraConfig,
 	)
 	leaderElectionAwareRunnable.AddLeaderElectionClient(autoOperatorConfigurationResourceHandler)
 	if operatorConfigurationResource, err :=

@@ -472,7 +472,7 @@ processors:
 
 {{ if (and .KubernetesInfrastructureMetricsCollectionEnabled .CustomFilters.HasMetricFilters) }}
   filter/metrics/custom_telemetry_filter:
-    error_mode: ignore
+    error_mode: {{ .CustomFilters.ErrorMode }}
     metrics:
       {{- if .CustomFilters.MetricConditions }}
       metric:

@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/agent0connector/a0cresources"
@@ -176,6 +177,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		K8sAttributesDisableReplicasetInformer:           m.collectorConfig.K8sAttributesDisableReplicasetInformer,
 		K8sAttributesWaitForMetadata:                     m.collectorConfig.K8sAttributesWaitForMetadata,
 		K8sAttributesWaitForMetadataTimeout:              m.collectorConfig.K8sAttributesWaitForMetadataTimeout,
+		K8sAttributesShareProcessor:                      m.collectorConfig.K8sAttributesShareProcessor,
 		PrometheusCrdSupportEnabled:                      prometheusCrdSupportEnabled,
 		TargetAllocatorNamePrefix:                        m.collectorConfig.TargetAllocatorNamePrefix,
 		Agent0ConnectorEnabled:                           agent0ConnectorEnabled,
@@ -202,12 +204,14 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			m.collectorConfig.KubernetesApiServerVersion,
 			logger,
 		),
-		SignalControl:          signalControlConfigFromResource(signalControlResource, operatorConfigurationResource, m.collectorConfig.OperatorNamespace, m.collectorConfig.OTelCollectorNamePrefix, logger),
-		DevelopmentMode:        m.collectorConfig.DevelopmentMode,
-		DebugVerbosityDetailed: m.collectorConfig.DebugVerbosityDetailed,
-		EnableProfExtension:    m.collectorConfig.EnableProfExtension,
-		ProfilingEnabled:       profilingEnabled,
-		CompressConfigMap:      m.collectorConfig.CompressConfigMap,
+		GlobalFilter:              globalFilter(operatorConfigurationResource),
+		GlobalNormalizedTransform: globalNormalizedTransform(operatorConfigurationResource),
+		SignalControl:             signalControlConfigFromResource(signalControlResource, operatorConfigurationResource, m.collectorConfig.OperatorNamespace, m.collectorConfig.OTelCollectorNamePrefix, logger),
+		DevelopmentMode:           m.collectorConfig.DevelopmentMode,
+		DebugVerbosityDetailed:    m.collectorConfig.DebugVerbosityDetailed,
+		EnableProfExtension:       m.collectorConfig.EnableProfExtension,
+		ProfilingEnabled:          profilingEnabled,
+		CompressConfigMap:         m.collectorConfig.CompressConfigMap,
 	}
 	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
 		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume
@@ -345,9 +349,11 @@ func (m *OTelColResourceManager) updateResource(
 	// environment variable, and modifying the containers will automatically restart them.
 	m.amendDeploymentAndDaemonSetWithSelfReferenceUIDs(existingResource, desiredResource)
 
+	desiredResourceForComparison := desiredResource.DeepCopyObject().(client.Object)
+	resources.AdoptGkeAutopilotResourceAdjustments(existingResource, desiredResourceForComparison, logger)
 	patchResult, err := patch.DefaultPatchMaker.Calculate(
 		existingResource,
-		desiredResource,
+		desiredResourceForComparison,
 		patch.IgnoreField("kind"),
 		patch.IgnoreField("apiVersion"),
 	)
@@ -680,6 +686,28 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 	// reconcile.
 	m.kubeletStatsReceiverConfig.Store(&kubeletStatsReceiverConfig)
 	return kubeletStatsReceiverConfig
+}
+
+// globalFilter returns the cluster-wide filters of the operator configuration resource, or nil if it has none.
+func globalFilter(operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration) *dash0common.Filter {
+	filter := operatorConfigurationResource.Spec.Filter
+	if filter == nil || !filter.HasAnyFilters() {
+		return nil
+	}
+	return filter
+}
+
+// globalNormalizedTransform returns the cluster-wide transformations of the operator configuration resource in their
+// normalized form, or nil if it has none. The normalized form is written by the operator configuration mutating
+// webhook.
+func globalNormalizedTransform(
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+) *dash0common.NormalizedTransformSpec {
+	transform := operatorConfigurationResource.Spec.NormalizedTransformSpec
+	if transform == nil || !transform.HasAnyStatements() {
+		return nil
+	}
+	return transform
 }
 
 func signalControlConfigFromResource(

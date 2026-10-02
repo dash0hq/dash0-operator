@@ -46,12 +46,12 @@ RUN NPM_CONFIG_UPDATE_NOTIFIER=false \
   # host is duplicated here for the "-1.x" compatibility line as well, further multiplying the waste.
   && find node_modules/@opentelemetry -type d \( -name esm -o -name esnext \) -path '*/build/*' -exec rm -rf {} +
 
-# download .NET auto instrumentation
+# download the Dash0 OpenTelemetry .NET distribution
 FROM alpine:3.24.2 AS build-dotnet
 RUN apk add --no-cache \
 		curl \
-		unzip
-COPY dotnet/opentelemetry-dotnet-instrumentation-version .
+		tar
+COPY dotnet/dash0-dotnet-distribution-version .
 COPY dotnet/download-instrumentation.sh .
 RUN ./download-instrumentation.sh
 

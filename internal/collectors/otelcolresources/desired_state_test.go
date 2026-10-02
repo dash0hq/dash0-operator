@@ -881,6 +881,62 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSetCollectorContainer.Args[1]).To(Equal("--feature-gates=service.profilesSupport"))
 	})
 
+	It("should not add the k8s_attributes ShareProcessorBetweenPipelines feature gate by default", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			Images: TestImages,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(getDaemonSet(desiredState).Spec.Template.Spec.Containers[0].Args).
+			To(Equal([]string{"--config=file:/etc/otelcol/conf/config.yaml"}))
+		Expect(getDeployment(desiredState).Spec.Template.Spec.Containers[0].Args).
+			To(Equal([]string{"--config=file:/etc/otelcol/conf/config.yaml"}))
+	})
+
+	It("should add the k8s_attributes ShareProcessorBetweenPipelines feature gate to the daemonset and deployment "+
+		"collector args when enabled", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			K8sAttributesShareProcessor:                      true,
+			Images:                                           TestImages,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		expectedArgs := []string{
+			"--config=file:/etc/otelcol/conf/config.yaml",
+			"--feature-gates=processor.k8sattributes.ShareProcessorBetweenPipelines",
+		}
+		Expect(getDaemonSet(desiredState).Spec.Template.Spec.Containers[0].Args).To(Equal(expectedArgs))
+		Expect(getDeployment(desiredState).Spec.Template.Spec.Containers[0].Args).To(Equal(expectedArgs))
+	})
+
+	It("should combine the profilesSupport and the k8s_attributes ShareProcessorBetweenPipelines feature gates in "+
+		"the daemonset collector args", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			ProfilingEnabled:                                 true,
+			K8sAttributesShareProcessor:                      true,
+			Images:                                           TestImages,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(getDaemonSet(desiredState).Spec.Template.Spec.Containers[0].Args).To(Equal([]string{
+			"--config=file:/etc/otelcol/conf/config.yaml",
+			"--feature-gates=service.profilesSupport,processor.k8sattributes.ShareProcessorBetweenPipelines",
+		}))
+	})
+
 	It("should not add the -processor.resourcedetection.propagateerrors feature gate to the collector args when Signal Control is disabled", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
@@ -1634,6 +1690,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				{Name: "net.ipv4.tcp_keepalive_time", Value: "200"},
 				{Name: "net.ipv4.tcp_keepalive_intvl", Value: "30"},
 			},
+			DaemonSetSELinuxOptions: &corev1.SELinuxOptions{Type: "spc_t"},
 			DeploymentTolerations: []corev1.Toleration{
 				{
 					Key:      "key3",
@@ -1713,6 +1770,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			{Name: "net.ipv4.tcp_keepalive_time", Value: "200"},
 			{Name: "net.ipv4.tcp_keepalive_intvl", Value: "30"},
 		}))
+		Expect(daemonSetPodSpec.SecurityContext.SELinuxOptions).To(Equal(&corev1.SELinuxOptions{Type: "spc_t"}))
 
 		deploymentPodSpec := getDeployment(desiredState).Spec.Template.Spec
 		Expect(deploymentPodSpec.Tolerations).To(HaveLen(2))
@@ -1747,9 +1805,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(deploymentPodSpec.SecurityContext.Sysctls).To(Equal([]corev1.Sysctl{
 			{Name: "net.ipv4.tcp_keepalive_time", Value: "200"},
 		}))
+		Expect(deploymentPodSpec.SecurityContext.SELinuxOptions).To(BeNil())
 	})
 
-	It("should not set pod sysctls on the collectors by default", func() {
+	It("should not set pod sysctls or seLinuxOptions on the collectors by default", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
@@ -1762,6 +1821,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		Expect(getDaemonSet(desiredState).Spec.Template.Spec.SecurityContext.Sysctls).To(BeNil())
 		Expect(getDeployment(desiredState).Spec.Template.Spec.SecurityContext.Sysctls).To(BeNil())
+		Expect(getDaemonSet(desiredState).Spec.Template.Spec.SecurityContext.SELinuxOptions).To(BeNil())
 	})
 
 	It("should render additional collector labels and annotations", func() {

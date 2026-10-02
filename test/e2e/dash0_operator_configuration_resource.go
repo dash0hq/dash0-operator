@@ -231,6 +231,97 @@ func updateOperatorConfigurationMonitoringTemplateInstrumentWorkloadsMode(
 	updateDash0OperatorConfigurationResource(jsonPatch)
 }
 
+// setOperatorConfigurationFilter sets the cluster-wide filter on the automatically managed operator configuration
+// resource. The filter is provided as JSON, since the kubectl JSON patch requires a JSON value.
+func setOperatorConfigurationFilter(filterJson string) {
+	jsonPatch := fmt.Sprintf(`[{
+   "op":"add",
+   "path":"/spec/filter",
+   "value":%s
+	}]`, filterJson)
+	updateDash0OperatorConfigurationResourceWithName(
+		dash0OperatorConfigurationResourceAutomaticallyManagedName, jsonPatch)
+}
+
+// setOperatorConfigurationTransform sets the cluster-wide transformation on the automatically managed operator
+// configuration resource. The transformation is provided as JSON, since the kubectl JSON patch requires a JSON value.
+func setOperatorConfigurationTransform(transformJson string) {
+	jsonPatch := fmt.Sprintf(`[{
+   "op":"add",
+   "path":"/spec/transform",
+   "value":%s
+	}]`, transformJson)
+	updateDash0OperatorConfigurationResourceWithName(
+		dash0OperatorConfigurationResourceAutomaticallyManagedName, jsonPatch)
+}
+
+// removeOperatorConfigurationFilterAndTransform removes the cluster-wide filter and transformation from the
+// automatically managed operator configuration resource. Each field is removed with its own patch, since a JSON patch
+// fails as a whole when one of its remove operations addresses a field that is not set.
+func removeOperatorConfigurationFilterAndTransform() {
+	for _, path := range []string{
+		"/spec/filter",
+		"/spec/transform",
+		"/spec/__dash0_internal__normalizedTransform",
+	} {
+		jsonPatch := fmt.Sprintf(`[{"op":"remove","path":"%s"}]`, path)
+		// The field might not be set, in which case the patch fails; that is not an error here.
+		_, _ = run(exec.Command(
+			"kubectl",
+			"patch",
+			"Dash0OperatorConfiguration",
+			dash0OperatorConfigurationResourceAutomaticallyManagedName,
+			"--type",
+			"json",
+			"-p",
+			jsonPatch,
+		), true, false, false)
+	}
+}
+
+// setOperatorConfigurationFilterExpectingRejection applies a cluster-wide filter that the validation webhook is
+// expected to reject, and verifies that the rejection message contains the given strings.
+func setOperatorConfigurationFilterExpectingRejection(filterJson string, expectedErrorMessages ...string) {
+	jsonPatch := fmt.Sprintf(`[{
+   "op":"add",
+   "path":"/spec/filter",
+   "value":%s
+	}]`, filterJson)
+	output, err := run(exec.Command(
+		"kubectl",
+		"patch",
+		"Dash0OperatorConfiguration",
+		dash0OperatorConfigurationResourceAutomaticallyManagedName,
+		"--type",
+		"json",
+		"-p",
+		jsonPatch,
+	), true, false, false)
+	Expect(err).To(HaveOccurred())
+	Expect(output).To(ContainSubstring(
+		`admission webhook "validate-operator-configuration.dash0.com" denied the request`))
+	for _, expectedErrorMessage := range expectedErrorMessages {
+		Expect(output).To(ContainSubstring(expectedErrorMessage))
+	}
+}
+
+func updateDash0OperatorConfigurationResourceWithName(
+	name string,
+	jsonPatch string,
+) {
+	Expect(
+		runAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"patch",
+			"Dash0OperatorConfiguration",
+			name,
+			"--type",
+			"json",
+			"-p",
+			jsonPatch,
+		))).To(Succeed())
+}
+
 func updateDash0OperatorConfigurationResource(
 	jsonPatch string,
 ) {

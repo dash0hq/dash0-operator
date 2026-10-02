@@ -29,7 +29,7 @@ type otlpExporter struct {
 	BalancerName       string
 	// Dataset is the Dash0 dataset this exporter targets. It is only meaningful for Dash0 exporters
 	// (IsDash0 == true); for generic gRPC/HTTP exporters it is empty. An empty value on a Dash0 exporter
-	// means the default dataset.
+	// means no Dash0-Dataset header is sent; Signal Control treats it as the default dataset.
 	Dataset string
 }
 
@@ -324,7 +324,7 @@ func convertDash0ExporterToOtlpExporter(
 			Value: authHeaderValue(auth.EnvVarName),
 		},
 	}
-	if d0.Dataset != "" && d0.Dataset != util.DatasetDefault {
+	if d0.Dataset != "" {
 		headers = append(headers, dash0common.Header{
 			Name:  util.Dash0DatasetHeaderName,
 			Value: d0.Dataset,
