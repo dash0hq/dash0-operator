@@ -29,7 +29,8 @@ RUN CGO_ENABLED=0 \
     GOOS=${TARGETOS:-linux} \
     GOARCH=${TARGETARCH} \
     go build \
-    -ldflags '-extldflags "-static"' \
+    -ldflags '-s -w -extldflags "-static"' \
+    -trimpath \
     -v \
     agent0-connector
 
