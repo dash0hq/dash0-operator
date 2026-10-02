@@ -12,8 +12,8 @@ metrics accurate
 filter - so you keep visibility into filtered data without shipping the raw signals. It also carries the SignalControl
 metering counters, which are classified internal: they are not billed at ingest and do not appear in your telemetry
 - the operation processor derives useful attributes and normalizes high-cardinality attributes
-- log enrichment applies centrally learned patterns to logs, setting the OTLP severity, a normalized message and a
-pattern attribute so logs are easier to query and lower in cardinality (opt-in)
+- log enrichment applies centrally learned log patterns, setting the OTLP severity, a normalized message and the
+matched pattern on each log record (opt-in)
 
 Tail-sampling decisions that require cross-collector coordination are made by the Dash0 Decision Maker (SaaS-side).
 Sampling rules, spam filters, and signal-to-metrics rules are configured as Kubernetes custom resources and synced to the
@@ -133,10 +133,10 @@ is how a namespace with several datasets gets a copy per dataset — and why onl
 
 ### Log enrichment
 
-Log enrichment applies centrally learned log patterns in-cluster so that logs are easier to query and carry lower
-cardinality. Two processors run in the SignalControl collector's logs pipeline: `dash0logparser` applies the learned
-patterns to set the OTLP severity and a normalized `dash0.log.message`, and `dash0loggrouping` tags each record with the
-`dash0.log.pattern` it matched. Both run ahead of the spam filter, so spam-filter rules can match on the pattern and
+Log enrichment applies centrally learned log patterns in-cluster. Two processors run in the SignalControl collector's
+logs pipeline: `dash0logparser` applies the learned patterns to set the OTLP severity and a normalized
+`dash0.log.message`, and `dash0loggrouping` tags each record with the `dash0.log.pattern` it matched and the values it
+extracted as `dash0.log.attribute.*`. Both run ahead of the spam filter, so spam-filter rules can match on the pattern and
 severity that enrichment adds.
 
 The patterns are learned by Dash0 and polled back into the cluster at runtime: in direct mode the `dash0settingsonedge`
