@@ -916,6 +916,13 @@ func stripKubernetesOnlyMetadataFields(resource map[string]any) {
 	delete(metadata, "selfLink")
 }
 
+// setPayloadKind stamps the endpoint-specific Dash0 API kind onto an outbound sync payload map. A typed
+// controller-runtime Get leaves TypeMeta empty, so kind must be set explicitly before serialization; all sync
+// endpoints decode leniently, so this is always safe even where the body type has no kind field.
+func setPayloadKind(resource map[string]any, kind string) {
+	resource["kind"] = kind
+}
+
 func fetchExistingOrigins(
 	apiSyncReconciler ApiSyncReconciler,
 	preconditionChecksResult *preconditionValidationResult,

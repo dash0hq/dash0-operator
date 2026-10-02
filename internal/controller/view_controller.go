@@ -348,6 +348,7 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 	switch action {
 	case upsertAction:
 		view := preconditionChecksResult.resource
+		setPayloadKind(view, "Dash0View")
 		serializedView, _ := json.Marshal(view)
 		requestPayload := bytes.NewBuffer(serializedView)
 		method = http.MethodPut

@@ -371,6 +371,7 @@ func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
 	switch action {
 	case upsertAction:
 		syntheticCheck := preconditionChecksResult.resource
+		setPayloadKind(syntheticCheck, "Dash0SyntheticCheck")
 		serializedSyntheticCheck, _ := json.Marshal(syntheticCheck)
 		requestPayload := bytes.NewBuffer(serializedSyntheticCheck)
 		method = http.MethodPut

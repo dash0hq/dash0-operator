@@ -348,6 +348,7 @@ func (r *SpamFilterReconciler) MapResourceToHttpRequests(
 	switch action {
 	case upsertAction:
 		resource := preconditionChecksResult.resource
+		setPayloadKind(resource, "Dash0SpamFilter")
 		serializedResource, _ := json.Marshal(resource)
 		requestPayload := bytes.NewBuffer(serializedResource)
 		method = http.MethodPut
