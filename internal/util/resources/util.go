@@ -100,13 +100,18 @@ func SetOwnerReference(
 		// cluster scoped resources like ClusterRole and ClusterRoleBinding cannot have a namespace-scoped owner.
 		return nil
 	}
-	if err := controllerutil.SetControllerReference(&appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: operatorManagerDeployment.Namespace,
-			Name:      operatorManagerDeployment.Name,
-			UID:       operatorManagerDeployment.UID,
+	if err := controllerutil.SetOwnerReference(
+		&appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: operatorManagerDeployment.Namespace,
+				Name:      operatorManagerDeployment.Name,
+				UID:       operatorManagerDeployment.UID,
+			},
 		},
-	}, object, scheme); err != nil {
+		object,
+		scheme,
+		controllerutil.WithBlockOwnerDeletion(true),
+	); err != nil {
 		logger.Error(err, "cannot set owner reference on object")
 		return err
 	}
