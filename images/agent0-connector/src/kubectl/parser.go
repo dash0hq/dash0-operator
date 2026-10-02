@@ -24,8 +24,17 @@ var (
 	errUnknownKubectlCommand = errors.New("the arguments do not resolve to a kubectl command")
 
 	// commandTreeMutex serializes building and using kubectl's command tree: kubectl.NewKubectlCommand writes to
-	// package-level variables (e.g. the profiling flags), so building two command trees concurrently is a data race.
+	// package-level variables (e.g. the profiling flags), and resolving a command merges the persistent flags of its
+	// parents into its flag set, so neither is safe for concurrent use.
 	commandTreeMutex sync.Mutex
+
+	// commandTree is kubectl's command tree, built once lazily by the first call to parseKubectlArguments and guarded by
+	// commandTreeMutex. It is only used to resolve commands and to look up the flags they define. Flag values are parsed
+	// into a separate flag set per command request (see newRequestFlagSet), so no state carries over between requests.
+	// The tree is not built per request, because building it registers flag completion functions in a package-level map
+	// of cobra that is never pruned. If we built a new command tree for every request, the tree would never be garbage
+	// collected and stay in memory for the lifetime of the process, leading to a memory leak.
+	commandTree *cobra.Command
 )
 
 // parseKubectlArguments resolves the argument list of a kubectl invocation into its kubectl command, subcommand,
@@ -35,57 +44,42 @@ var (
 // It returns an error if kubectl would reject the argument list itself, i.e. if it references a command that does not
 // exist (wrapping errUnknownKubectlCommand) or a flag that the resolved command does not define.
 func parseKubectlArguments(arguments []string) (kubectlArguments, error) {
-	// The command parsing machinery from k8s.io/kubectl/pkg/cmd is not meant to be used multiple times, let alone
-	// concurrently. For this reason command parsing requires acquiring a lock.
 	commandTreeMutex.Lock()
 	defer commandTreeMutex.Unlock()
 
-	// The command tree is built from scratch for every incoming command request. (Parsing the flags stores their values
-	// in the tree, hence we cannot re-use a parsed command tree.)
-
-	// First, build an "empty" kubectl command struct without passing the argument list. The argument list is not passed
-	// here to NewKubectlCommand, but passed below via root.Find. Reason: kubectl only applies the user preferences of a
-	// kuberc file (aliases and default flag values) when NewKubectlCommand receives the argument list. The kubectl
-	// subprocess has user preferences and kuberc disabled as well (see kubectlEnv).
-	root := kubectlcmd.NewKubectlCommand(kubectlcmd.KubectlOptions{
-		Arguments: []string{kubectlCommand},
-		IOStreams: genericiooptions.IOStreams{In: strings.NewReader(""), Out: io.Discard, ErrOut: io.Discard},
-	})
-
-	addKlogFlagStandIns(root.PersistentFlags())
-	root.DisableSuggestions = true
+	if commandTree == nil {
+		// Initialize the singleton kubectl command tree lazily.
+		commandTree = newKubectlCommandTree()
+	}
 
 	// This is where we actually hand over the arguments from the command request to kubectl's command line parsing
-	// machinery. The following lines mirror cobra's Command.ExecuteC, which kubectl's main function invokes. That is:
-	// - resolve the command via Find,
-	// - register the help flag,
-	// - then parse the remaining arguments with the flags of the resolved command.
-	resolved, remainingArguments, err := findCommand(root, arguments)
+	// machinery. The following lines mirror cobra's Command.ExecuteC, which kubectl's main function invokes.
+	resolved, remainingArguments, err := findCommand(commandTree, arguments)
 	if err != nil {
 		return kubectlArguments{}, err
 	}
 	if resolved.DisableFlagParsing {
-		// No allowed kubectl command disables flag parsing. A command that does that is therefore implicitly disallowed.
-		// Allowing commands which use DisableFlagParsing would receive its flags as positional arguments, which invalidates
-		// assumptions that validation.go makes.
+		// No allowed kubectl command disables flag parsing. Allowing commands which use DisableFlagParsing would receive
+		// its flags as positional arguments, which invalidates assumptions that validation.go makes. To avoid that
+		// situation, a command that disables flag parsing is therefore explicitly rejected here.
 		return kubectlArguments{}, fmt.Errorf("the kubectl command %q does not support flag parsing", resolved.CommandPath())
 	}
-	// Required so ParseFlags does not reject --help and -h as unknown flags.
-	resolved.InitDefaultHelpFlag()
-	if err = resolved.ParseFlags(remainingArguments); err != nil {
+
+	flags := newRequestFlagSet(resolved)
+	if err = flags.Parse(remainingArguments); err != nil {
 		return kubectlArguments{}, err
 	}
 
 	parsed := kubectlArguments{
-		positionalArguments:    resolved.Flags().Args(),
-		hasEndOfFlagsSeparator: resolved.Flags().ArgsLenAtDash() >= 0,
+		positionalArguments:    flags.Args(),
+		hasEndOfFlagsSeparator: flags.ArgsLenAtDash() >= 0,
 	}
 	commandPath := commandPathBelowRoot(resolved)
 	if len(commandPath) > 0 {
 		parsed.kubectlCommand = commandPath[0]
 		parsed.subcommand = strings.Join(commandPath[1:], " ")
 	}
-	resolved.Flags().Visit(func(flag *pflag.Flag) {
+	flags.Visit(func(flag *pflag.Flag) {
 		parsed.flags = append(parsed.flags, parsedFlag{
 			longName:  flag.Name,
 			shorthand: flag.Shorthand,
@@ -97,6 +91,45 @@ func parseKubectlArguments(arguments []string) (kubectlArguments, error) {
 			append(parsed.resourceTypes, extractNormalizedResourceTypes(argument, positionalIndex == 0)...)
 	}
 	return parsed, nil
+}
+
+// newKubectlCommandTree builds kubectl's command tree the way the kubectl binary does, in a way that makes it resolve
+// argument lists in the same way as the kubectl subprocess. Additionally, it takes precautions to avoid writing to the
+// global state of the connector process when using the resulting Command to parse an argument list.
+func newKubectlCommandTree() *cobra.Command {
+	// Without an argument list beyond the executable name, NewKubectlCommand applies no user preferences from a kuberc
+	// file (aliases and default flag values). This matches the kubectl subprocess, which has kuberc disabled (see
+	// kubectlEnv).
+	root := kubectlcmd.NewKubectlCommand(kubectlcmd.KubectlOptions{
+		Arguments: []string{kubectlCommand},
+		IOStreams: genericiooptions.IOStreams{In: strings.NewReader(""), Out: io.Discard, ErrOut: io.Discard},
+	})
+	addKlogFlagStandIns(root.PersistentFlags())
+	root.DisableSuggestions = true
+	return root
+}
+
+// newRequestFlagSet returns a flag set for parsing the flags of one command request for the given resolved command. It
+// mirrors the flag set that cobra's Command.ParseFlags parses into: the flags of the command including the persistent
+// flags of its parents and the help flag, the same normalization function and the same allowlist of tolerated parse
+// errors. Each flag is a copy of the command's flag with the same name, shorthand and NoOptDefVal (which together
+// determine how pflag splits the argument list), but with a stand-in value, so parsing never writes to the command
+// tree or to the variables kubectl binds its flags to.
+func newRequestFlagSet(resolved *cobra.Command) *pflag.FlagSet {
+	// Required so that --help and -h are known flags, as cobra's ExecuteC does before parsing.
+	resolved.InitDefaultHelpFlag()
+	// InheritedFlags merges the persistent flags of the parents into resolved.Flags(), as cobra's ParseFlags does.
+	resolved.InheritedFlags()
+
+	commandFlags := resolved.Flags()
+	flags := pflag.NewFlagSet(resolved.Name(), pflag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	flags.SetNormalizeFunc(commandFlags.GetNormalizeFunc())
+	flags.ParseErrorsAllowlist = pflag.ParseErrorsAllowlist(resolved.FParseErrWhitelist)
+	commandFlags.VisitAll(func(flag *pflag.Flag) {
+		flags.AddFlag(newStandInFlag(flag))
+	})
+	return flags
 }
 
 // findCommand resolves the argument list to a command of the given command tree the way cobra's Command.ExecuteC does.
@@ -157,12 +190,10 @@ func normalizeResourceType(resourceType string) string {
 	return resourceType
 }
 
-// addKlogFlagStandIns overrides the flags that component-base's logs.AddFlags adds to kubectl's root command, with the
+// addKlogFlagStandIns adds the flags that component-base's logs.AddFlags adds to kubectl's root command, with the
 // same names, shorthands and parsing behavior; but with values that are not bound to the global state of klog and
-// component-base.
-// Without this, logs.AddFlags itself would hand out flags whose values write directly to the global logging
-// configuration of the connector process, so parsing a command request with -v or --vmodule would change global state
-// (before validation.go rejects the command based on the presence of -v).
+// component-base. Without this, logs.AddFlags itself would hand out flags whose values write directly to the global
+// logging configuration of the connector process.
 func addKlogFlagStandIns(flags *pflag.FlagSet) {
 	klogFlags := pflag.NewFlagSet("klog", pflag.ContinueOnError)
 	logs.AddFlags(klogFlags)
@@ -170,10 +201,16 @@ func addKlogFlagStandIns(flags *pflag.FlagSet) {
 		if flags.Lookup(flag.Name) != nil {
 			return
 		}
-		standIn := *flag
-		standIn.Value = &standInFlagValue{value: flag.DefValue, valueType: flag.Value.Type()}
-		flags.AddFlag(&standIn)
+		flags.AddFlag(newStandInFlag(flag))
 	})
+}
+
+// newStandInFlag returns a copy of the given flag whose value only records the string it is set to, starting with the
+// flag's default value.
+func newStandInFlag(flag *pflag.Flag) *pflag.Flag {
+	standIn := *flag
+	standIn.Value = &standInFlagValue{value: flag.DefValue, valueType: flag.Value.Type()}
+	return &standIn
 }
 
 // standInFlagValue is a pflag.Value that only records the string it is set to.

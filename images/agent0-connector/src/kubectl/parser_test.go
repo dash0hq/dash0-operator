@@ -5,6 +5,7 @@ package kubectl
 
 import (
 	"errors"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -325,6 +326,58 @@ func TestParseArgumentsIsSafeForConcurrentUse(t *testing.T) {
 		})
 	}
 	wg.Wait()
+}
+
+// TestParseArgumentsDoesNotCarryOverFlagsBetweenRequests covers that the flags of one command request are not visible
+// when parsing the next one, although all command requests are resolved with the same command tree.
+func TestParseArgumentsDoesNotCarryOverFlagsBetweenRequests(t *testing.T) {
+	if _, err := parseKubectlArguments(
+		[]string{"get", "pods", "-n", "foo", "-o", "yaml", "--sort-by=.metadata.name", "--help"},
+	); err != nil {
+		t.Fatalf("expected the arguments to be parsed, but got an error: %v", err)
+	}
+
+	parsed, err := parseKubectlArguments([]string{"get", "pods"})
+	if err != nil {
+		t.Fatalf("expected the arguments to be parsed, but got an error: %v", err)
+	}
+	if len(parsed.flags) != 0 {
+		t.Errorf("expected no flags, got %v", parsed.flags)
+	}
+	if format, isSet := parsed.outputFormat(); isSet {
+		t.Errorf("expected no output format, got %q", format)
+	}
+}
+
+// TestCommandTreeOnlyUsesFlagParsingFeaturesThatNewRequestFlagSetMirrors covers an assumption newRequestFlagSet makes
+// about the flag sets of kubectl's commands: pflag has no getter for whether a flag set allows flags interspersed with
+// positional arguments, so newRequestFlagSet always allows them (pflag's default). A kubectl command that disallows
+// them would split its argument list differently in the kubectl binary.
+func TestCommandTreeOnlyUsesFlagParsingFeaturesThatNewRequestFlagSetMirrors(t *testing.T) {
+	commandTreeMutex.Lock()
+	defer commandTreeMutex.Unlock()
+	if commandTree == nil {
+		commandTree = newKubectlCommandTree()
+	}
+
+	var checkCommand func(command *cobra.Command)
+	checkCommand = func(command *cobra.Command) {
+		interspersed := reflect.ValueOf(command.Flags()).Elem().FieldByName("interspersed")
+		if !interspersed.IsValid() {
+			t.Fatal("pflag.FlagSet has no field \"interspersed\" anymore, check how pflag handles interspersed flags now " +
+				"and whether newRequestFlagSet still mirrors it")
+		}
+		if !interspersed.Bool() {
+			t.Errorf(
+				"the kubectl command %q does not allow interspersed flags, which newRequestFlagSet does not mirror",
+				command.CommandPath(),
+			)
+		}
+		for _, subcommand := range command.Commands() {
+			checkCommand(subcommand)
+		}
+	}
+	checkCommand(commandTree)
 }
 
 // TestParseArgumentsDoesNotChangeTheLoggingConfigurationOfTheProcess covers that parsing a command request does not

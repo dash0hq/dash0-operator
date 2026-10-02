@@ -66,9 +66,9 @@ Work in the session's scratchpad directory, not in the repository.
 Read these files completely before analyzing kubectl changes:
 
 * `images/agent0-connector/src/kubectl/parser.go`: how the argument list is resolved. Pay attention to
-  `NewKubectlCommand` (instead of `NewDefaultKubectlCommandWithArgs`), `findCommand`, `InitDefaultHelpFlag`,
-  `ParseFlags`, `commandPathBelowRoot`, `extractNormalizedResourceTypes`, `normalizeResourceType` and
-  `addKlogFlagStandIns`.
+  `newKubectlCommandTree` (`NewKubectlCommand` instead of `NewDefaultKubectlCommandWithArgs`, built once per process),
+  `findCommand`, `newRequestFlagSet` (the per-request flag set that replaces cobra's `ParseFlags`), `newStandInFlag`,
+  `commandPathBelowRoot`, `extractNormalizedResourceTypes`, `normalizeResourceType` and `addKlogFlagStandIns`.
 * `images/agent0-connector/src/kubectl/parsed_arguments.go`: how the parsed result is interpreted (output formats,
   `--template`).
 * `images/agent0-connector/src/kubectl/validation.go`: the allowed kubectl commands (`supportedKubectlCommands`,
@@ -127,6 +127,17 @@ command resolution and flag parsing that the connector does not do, or does diff
   `parseArgs`, `parseLongArg`, `parseShortArg`, `NoOptDefVal` handling, `--` handling, normalization,
   `ParseErrorsAllowlist`) between the two versions and analyze every change for differences in how an argument list is
   split into command path, flags and positional arguments.
+* `newRequestFlagSet` parses each command request into a flag set of its own instead of calling cobra's `ParseFlags`,
+  with copies of the resolved command's flags that carry a stand-in value. Check that it still mirrors what
+  `ParseFlags` (and `mergePersistentFlags`) set up before parsing: the merged persistent flags of the parents, the help
+  flag, the normalization function and `ParseErrorsAllowlist`. pflag offers no getter for `interspersed`, so
+  `newRequestFlagSet` assumes the default; `TestCommandTreeOnlyUsesFlagParsingFeaturesThatNewRequestFlagSetMirrors`
+  checks the command tree for that. Also check that pflag still decides how to split the argument list only from the
+  fields of `pflag.Flag` (`Name`, `Shorthand`, `NoOptDefVal`, ...), which the copies keep, and not from the type or the
+  behavior of the flag's `Value` (for example a type switch on `boolFlag`), which the stand-in does not reproduce.
+* Check that building a kubectl command tree still has global side effects that rule out building it per request (such
+  as cobra's package-level `flagCompletionFunctions` map, which is never pruned); `TestParseArgumentsDoesNotRetainMemory`
+  covers the memory side of this.
 * Even if the versions match, check whether kubectl started using cobra features that `findCommand` explicitly does not
   support or does not mirror (`TraverseChildren`, `EnablePrefixMatching`, `FParseErrWhitelist`,
   `DisableFlagParsing`, `Args` validators that change which arguments are positional, `PersistentPreRun` hooks that
