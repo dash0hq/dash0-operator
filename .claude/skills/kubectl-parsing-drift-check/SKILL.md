@@ -38,9 +38,9 @@ Do not change any code unless the user asks you to. The output of this skill is 
 
 * If two versions were given in $ARGUMENTS, use them as the old and the new kubectl version.
 * If one version was given, audit only that version (skip the diffing in step 3, but do all other steps).
-* If no arguments were given, read the old version from `images/agent0-connector/Dockerfile` on `main`
-  (`git show main:images/agent0-connector/Dockerfile`) and the new version from the working tree. If they are equal,
-  audit the current version without a baseline.
+* If no arguments were given, read the old version from `images/agent0-connector/Dockerfile` on `origin/main`
+  (`git fetch origin main && git show origin/main:images/agent0-connector/Dockerfile`) and the new version from the
+  working tree. If they are equal, audit the current version without a baseline.
 
 kubectl `v1.X.Y` belongs to the Go modules `k8s.io/kubectl`, `k8s.io/cli-runtime` and `k8s.io/component-base` in
 version `v0.X.Y`. Check that the Dockerfile and `images/agent0-connector/src/go.mod` agree on the new version (this is
@@ -138,6 +138,11 @@ command resolution and flag parsing that the connector does not do, or does diff
 * Check that building a kubectl command tree still has global side effects that rule out building it per request (such
   as cobra's package-level `flagCompletionFunctions` map, which is never pruned); `TestParseArgumentsDoesNotRetainMemory`
   covers the memory side of this.
+* Since the command tree is shared by all command requests, nothing that runs per request may add flags to it that
+  cobra's `Find` (`stripFlags`) takes into account but that the kubectl binary only adds after `Find` (for example the
+  help flag of cobra's `InitDefaultHelpFlag`, which `newRequestFlagSet` therefore only adds to the per-request flag
+  set). Otherwise, the command an argument list resolves to depends on earlier requests. Check new calls into cobra or
+  kubectl in `parser.go` for this; `TestCommandResolutionDoesNotDependOnEarlierRequests` covers the known cases.
 * Even if the versions match, check whether kubectl started using cobra features that `findCommand` explicitly does not
   support or does not mirror (`TraverseChildren`, `EnablePrefixMatching`, `FParseErrWhitelist`,
   `DisableFlagParsing`, `Args` validators that change which arguments are positional, `PersistentPreRun` hooks that
@@ -190,9 +195,10 @@ the RESTMapper. Diff and check for:
 A source diff is only a hypothesis. For every potential fail-open drift, try to confirm or refute it with a concrete
 argument list:
 
-* Write a temporary Go test in the scratchpad or a temporary `_test.go` file in
-  `images/agent0-connector/src/kubectl` that calls `parseKubectlArguments` and `validateCommandAndParseArguments` with
-  the argument list, and prints what the connector resolved. Delete temporary test files afterwards.
+* Write a temporary `_test.go` file in `images/agent0-connector/src/kubectl` (both functions are unexported, so a test
+  outside the package cannot call them) that calls `parseKubectlArguments` and `validateCommandAndParseArguments` with
+  the argument list, and prints what the connector resolved. This is the only change to the repository this skill
+  makes; delete the file afterwards.
 * Run the real kubectl binary of the new version with the same argument list and observe what it does. Download the
   binary from `https://dl.k8s.io/release/v1.X.Y/bin/<os>/<arch>/kubectl` into the scratchpad. Run it with `KUBERC=off`,
   `HOME` set to an empty scratchpad directory, and a kubeconfig that points to a server that is not reachable (for

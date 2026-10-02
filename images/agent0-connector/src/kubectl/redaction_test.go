@@ -1495,12 +1495,15 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 	logger := discardLogger()
 
 	for _, tt := range []struct {
-		name         string
-		outputFormat string
-		response     string
+		name        string
+		outputFlags []string
+		response    string
 	}{
-		{name: "json", outputFormat: "json", response: dash0ResourcesJson},
-		{name: "yaml", outputFormat: "yaml", response: monitoringResourceYaml},
+		{name: "json", outputFlags: []string{"-o", "json"}, response: dash0ResourcesJson},
+		{name: "yaml", outputFlags: []string{"-o", "yaml"}, response: monitoringResourceYaml},
+		// kubectl applies the last output format if -o is set more than once.
+		{name: "yaml (-o json -o yaml)", outputFlags: []string{"-o", "json", "-o", "yaml"}, response: monitoringResourceYaml},
+		{name: "json (-o yaml -o json)", outputFlags: []string{"-o", "yaml", "-o", "json"}, response: dash0ResourcesJson},
 	} {
 		t.Run("redacts the secrets of a "+tt.name+" response", func(t *testing.T) {
 			fakeKubectlEchoing(t, tt.response)
@@ -1508,7 +1511,7 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 			resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 				RequestId: "req-redact-" + tt.name,
 				Command:   "kubectl",
-				Arguments: []string{"get", "dash0monitorings", "-A", "-o", tt.outputFormat},
+				Arguments: append([]string{"get", "dash0monitorings", "-A"}, tt.outputFlags...),
 			})
 
 			if resp.GetExitCode() != 0 {
@@ -1683,9 +1686,8 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 			response:  monitoringResourceYaml + "\n---\n" + monitoringResourceYaml,
 		},
 		{
-			// Both formats are redactable on their own, so validation accepts the request, but which one kubectl actually
-			// applied is not replicated here (see parseableOutputFormat).
-			name:      "the output format is set more than once",
+			// kubectl applies the last output format (json), so a yaml response is a shape the redaction does not expect.
+			name:      "the output format is set more than once and the response does not match the last one",
 			arguments: []string{"get", "dash0monitorings", "-o", "yaml", "-o", "json"},
 			response:  monitoringResourceYaml,
 		},

@@ -992,6 +992,29 @@ func TestHiddenGetIsRedacted(t *testing.T) {
 	}
 }
 
+// TestDisallowedSubcommandHiddenBehindTheHelpFlagIsRejected covers "-h" followed by an allowed command: while
+// resolving the command, kubectl does not know the help flag yet and takes "version" as its value, so it executes
+// "cluster-info dump" ("--help=false" cancels printing the help text). The earlier "--help" request must not change
+// how the connector resolves the argument list.
+func TestDisallowedSubcommandHiddenBehindTheHelpFlagIsRejected(t *testing.T) {
+	earlierReq := &pb.CommandRequest{Command: "kubectl", Arguments: []string{"--help"}}
+	if _, err := validateCommandAndParseArguments(earlierReq, defaultKubectlCommands); err != nil {
+		t.Fatalf("expected the earlier request to be allowed, but it was rejected: %v", err)
+	}
+
+	req := &pb.CommandRequest{
+		Command:   "kubectl",
+		Arguments: []string{"-h", "version", "cluster-info", "dump", "--help=false"},
+	}
+	_, err := validateCommandAndParseArguments(req, defaultKubectlCommands)
+	if err == nil {
+		t.Fatal("expected request to be rejected, but it was allowed")
+	}
+	if expected := kubectlCommandAllowedBareOnly("cluster-info", "dump"); err.Error() != expected {
+		t.Errorf("expected the request to be rejected with\n\t%s\nbut it was rejected with\n\t%s", expected, err)
+	}
+}
+
 // kubectlCommandRedactionRationale records, for every kubectl command in supportedKubectlCommands, why its response
 // cannot be used to exfiltrate secrets. Only "get" is routed through redaction (see responseHasToBeRedacted, which
 // returns false for every other kubectl command). Therefor every other entry has to justify itself by not rendering the

@@ -37,6 +37,11 @@ var (
 	commandTree *cobra.Command
 )
 
+const (
+	helpFlagName      = "help"
+	helpFlagShorthand = "h"
+)
+
 // parseKubectlArguments resolves the argument list of a kubectl invocation into its kubectl command, subcommand,
 // flags, positional arguments and the resource types it references. It uses kubectl's own command tree
 // (from k8s.io/kubectl), so the result is exactly what kubectl executes.
@@ -59,7 +64,10 @@ func parseKubectlArguments(arguments []string) (kubectlArguments, error) {
 		return kubectlArguments{}, err
 	}
 
-	flags := newRequestFlagSet(resolved)
+	flags, err := newRequestFlagSet(resolved)
+	if err != nil {
+		return kubectlArguments{}, err
+	}
 	if err = flags.Parse(remainingArguments); err != nil {
 		return kubectlArguments{}, err
 	}
@@ -109,9 +117,7 @@ func newKubectlCommandTree() *cobra.Command {
 // errors. Each flag is a copy of the command's flag with the same name, shorthand and NoOptDefVal (which together
 // determine how pflag splits the argument list), but with a stand-in value, so parsing never writes to the command
 // tree or to the variables kubectl binds its flags to.
-func newRequestFlagSet(resolved *cobra.Command) *pflag.FlagSet {
-	// Required so that --help and -h are known flags, as cobra's ExecuteC does before parsing.
-	resolved.InitDefaultHelpFlag()
+func newRequestFlagSet(resolved *cobra.Command) (*pflag.FlagSet, error) {
 	// InheritedFlags merges the persistent flags of the parents into resolved.Flags(), as cobra's ParseFlags does.
 	resolved.InheritedFlags()
 
@@ -123,7 +129,24 @@ func newRequestFlagSet(resolved *cobra.Command) *pflag.FlagSet {
 	commandFlags.VisitAll(func(flag *pflag.Flag) {
 		flags.AddFlag(newStandInFlag(flag))
 	})
-	return flags
+
+	// The help flag is only added to the returned flag set, never to the command tree. cobra's ExecuteC adds it to the
+	// resolved command after resolving it, and resolving takes the flags known at that time into account (whether "-h x"
+	// means "-h" plus the argument "x" or "-h" with the value "x"). Adding it to the command tree would make the command
+	// resolution of later requests differ from the kubectl subprocess.
+	if flags.Lookup(helpFlagName) == nil {
+		// Mirrors cobra's Command.InitDefaultHelpFlag.
+		if flags.ShorthandLookup(helpFlagShorthand) != nil {
+			return nil, fmt.Errorf(
+				"the kubectl command %q uses the shorthand -%s, which cobra reserves for --%s",
+				resolved.CommandPath(),
+				helpFlagShorthand,
+				helpFlagName,
+			)
+		}
+		flags.BoolP(helpFlagName, helpFlagShorthand, false, "")
+	}
+	return flags, nil
 }
 
 // findCommand resolves the argument list to a command of the given command tree the way cobra's Command.ExecuteC does.

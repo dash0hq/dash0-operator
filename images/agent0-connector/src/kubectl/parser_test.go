@@ -428,6 +428,55 @@ func TestParseArgumentsDoesNotCarryOverFlagsBetweenRequests(t *testing.T) {
 	}
 }
 
+// TestCommandResolutionDoesNotDependOnEarlierRequests covers that earlier command requests do not change how later
+// argument lists resolve to a command, although all command requests are resolved with the same command tree. The
+// expected command is the one a freshly built command tree resolves to, which is what the kubectl subprocess does.
+func TestCommandResolutionDoesNotDependOnEarlierRequests(t *testing.T) {
+	for _, earlierRequest := range [][]string{
+		{"--help"},
+		{"version"},
+		{"cluster-info"},
+		{"auth", "can-i", "list", "pods"},
+		{"get", "pods", "-h"},
+	} {
+		if _, err := parseKubectlArguments(earlierRequest); err != nil {
+			t.Fatalf("expected %v to be parsed, but got an error: %v", earlierRequest, err)
+		}
+	}
+
+	for _, arguments := range [][]string{
+		{"-h", "version", "cluster-info", "dump", "--help=false"},
+		{"--help", "version", "cluster-info", "dump", "--help=false"},
+		{"cluster-info", "-h", "version", "dump", "--help=false"},
+		{"auth", "-h", "can-i", "whoami", "--help=false"},
+		{"-h", "get", "describe", "configmaps", "--help=false"},
+		{"get", "-h", "pods", "--help=false"},
+	} {
+		t.Run(strings.Join(arguments, " "), func(t *testing.T) {
+			freshlyResolved, _, freshErr := newKubectlCommandTree().Find(arguments)
+			parsed, err := parseKubectlArguments(arguments)
+			if freshErr != nil {
+				if err == nil {
+					t.Fatalf("expected an error, as with a fresh command tree (%v), but the arguments resolved to %q %q",
+						freshErr, parsed.kubectlCommand, parsed.subcommand)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected the arguments to be parsed, but got an error: %v", err)
+			}
+			expectedPath := commandPathBelowRoot(freshlyResolved)
+			actualPath := slices.DeleteFunc(
+				[]string{parsed.kubectlCommand, parsed.subcommand},
+				func(s string) bool { return s == "" },
+			)
+			if strings.Join(actualPath, " ") != strings.Join(expectedPath, " ") {
+				t.Errorf("expected the command %q (as with a fresh command tree), got %q", expectedPath, actualPath)
+			}
+		})
+	}
+}
+
 // TestCommandTreeOnlyUsesFlagParsingFeaturesThatNewRequestFlagSetMirrors covers an assumption newRequestFlagSet makes
 // about the flag sets of kubectl's commands: pflag has no getter for whether a flag set allows flags interspersed with
 // positional arguments, so newRequestFlagSet always allows them (pflag's default). A kubectl command that disallows
