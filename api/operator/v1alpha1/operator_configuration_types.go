@@ -33,7 +33,6 @@ import (
 // +kubebuilder:printcolumn:name="Collect Namespace Meta",type="boolean",JSONPath=".spec.collectNamespaceLabelsAndAnnotations.enabled"
 // +kubebuilder:printcolumn:name="Collect Node Meta",type="boolean",JSONPath=".spec.collectNodeLabelsAndAnnotations.enabled"
 // +kubebuilder:printcolumn:name="Available",type="string",JSONPath=`.status.conditions[?(@.type == "Available")].status`
-// +kubebuilder:printcolumn:name="Synthetics Worker Ready",type="boolean",JSONPath=".status.syntheticsWorker.ready"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 type Dash0OperatorConfiguration struct {
 	metav1.TypeMeta   `json:",inline"`

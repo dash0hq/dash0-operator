@@ -33,9 +33,6 @@ spec:
     - jsonPath: .status.conditions[?(@.type == "Available")].status
       name: Available
       type: string
-    - jsonPath: .status.syntheticsWorker.ready
-      name: Synthetics Worker Ready
-      type: boolean
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
