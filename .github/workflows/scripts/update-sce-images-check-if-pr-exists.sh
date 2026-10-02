@@ -10,11 +10,11 @@ if ! command -v gh &> /dev/null; then
   exit 1
 fi
 
-gh pr list --json title | grep "chore(deps): update Signal Control and Edge Proxy images" || true
-if gh pr list --json title | grep "chore(deps): update Signal Control and Edge Proxy images"; then
+gh pr list --json title | grep "chore(deps): update Signal Control, Edge Proxy and synthetics-worker images" || true
+if gh pr list --json title | grep "chore(deps): update Signal Control, Edge Proxy and synthetics-worker images"; then
   echo pr_exists=true >> "$GITHUB_OUTPUT"
-  echo "There is already an open pull request to update the Signal Control and Edge Proxy images, remaining steps will be skipped."
+  echo "There is already an open pull request to update the Signal Control, Edge Proxy and synthetics-worker images, remaining steps will be skipped."
 else
   echo pr_exists=false >> "$GITHUB_OUTPUT"
-  echo "No open pull request to update the Signal Control and Edge Proxy images exists, continuing with the workflow."
+  echo "No open pull request to update the Signal Control, Edge Proxy and synthetics-worker images exists, continuing with the workflow."
 fi

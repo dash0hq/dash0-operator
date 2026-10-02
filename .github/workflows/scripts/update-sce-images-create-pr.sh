@@ -15,11 +15,13 @@ done
 branch_name="update-sce-images"
 values_file="helm-chart/dash0-operator/values.yaml"
 test_file="helm-chart/dash0-operator/tests/operator/deployment-and-webhooks_test.yaml"
+snapshot_file="helm-chart/dash0-operator/tests/operator/__snapshot__/deployment-and-webhooks_test.yaml.snap"
 
 # image (ghcr repository name) -> Helm chart values key under .operator
 image_specs=(
   "signal-control-collector:signalControlCollectorImage"
   "edge-proxy:edgeProxyImage"
+  "dash0-synthetics-worker:syntheticsWorkerImage"
 )
 
 # Resolve the highest published MAJOR.MINOR.PATCH tag for a ghcr.io/dash0hq image via the OCI
@@ -69,8 +71,9 @@ update_tag() {
   rm -f "${values_file}.bak"
 }
 
-# Rewrite the expected image references in the Helm chart unit tests, which assert the pinned tags from values.yaml.
-# The whole quoted value is replaced, so a tag that does not look like vMAJOR.MINOR.PATCH cannot end up half-rewritten.
+# Rewrite the expected image references in the Helm chart unit tests and their snapshots, which assert the pinned tags
+# from values.yaml. The whole tag is replaced (quoted or not), so a tag that does not look like vMAJOR.MINOR.PATCH cannot
+# end up half-rewritten.
 # Aborts if the test file does not reference the image at all, otherwise values.yaml would be bumped while the tests
 # keep asserting the previous tag.
 update_expected_tag_in_tests() {
@@ -79,16 +82,21 @@ update_expected_tag_in_tests() {
     echo "Error: no expected image reference for ${img} found in ${test_file}." >&2
     exit 1
   fi
-  sed -i.bak "s|\"ghcr\.io/dash0hq/${img}:[^\"]*\"|\"ghcr.io/dash0hq/${img}:${new_tag}\"|g" "$test_file"
-  rm -f "${test_file}.bak"
+  local f
+  for f in "$test_file" "$snapshot_file"; do
+    sed -i.bak "s|ghcr\.io/dash0hq/${img}:[^\"[:space:]]*|ghcr.io/dash0hq/${img}:${new_tag}|g" "$f"
+    rm -f "${f}.bak"
+  done
 }
 
 # Aborts if any file other than values.yaml and the Helm chart unit tests pins one of the image tags, since this script
-# would leave such a reference behind and the bump would break the build.
+# would leave such a reference behind and the bump would break the build. Go tests are skipped, they inject their own
+# image references and never read values.yaml.
 assert_no_other_pinned_references() {
   local img="$1"
   local other_files
-  other_files=$(git grep -lE "ghcr\.io/dash0hq/${img}:v?[0-9]+" -- . ":!${values_file}" ":!${test_file}" || true)
+  other_files=$(git grep -lE "ghcr\.io/dash0hq/${img}:v?[0-9]+" -- . ":!${values_file}" ":!${test_file}" \
+    ":!${snapshot_file}" ":!*_test.go" || true)
   if [[ -n "$other_files" ]]; then
     echo "Error: ${img} is pinned to a tag in unexpected files, update this script to rewrite them, too:" >&2
     echo "$other_files" >&2
@@ -110,7 +118,7 @@ for spec in "${image_specs[@]}"; do
   current_tag="${current_tag#\"}"
   echo "${img}: current=${current_tag}, latest=${new_tag}"
   assert_no_other_pinned_references "$img"
-  # Both files are always rewritten to the latest tag, so that an earlier manual edit which touched only one of them
+  # All files are always rewritten to the latest tag, so that an earlier manual edit which touched only one of them
   # cannot leave the two out of sync.
   update_tag "$key" "$new_tag"
   update_expected_tag_in_tests "$img" "$new_tag"
@@ -119,17 +127,17 @@ for spec in "${image_specs[@]}"; do
   fi
 done
 
-# Both files are rewritten unconditionally above, so their stat information always differs from the index. The porcelain
+# All files are rewritten unconditionally above, so their stat information always differs from the index. The porcelain
 # "git diff" is used on purpose: it ignores stat-only changes (diff.autoRefreshIndex, on by default), while the plumbing
 # "git diff-files" would report a change and produce an empty commit.
 # git diff --quiet exits with 1 if there were differences, exit code 0 means no differences.
-if git diff --quiet -- "$values_file" "$test_file"; then
+if git diff --quiet -- "$values_file" "$test_file" "$snapshot_file"; then
   echo "There are no changes, everything up to date."
   exit 0
 fi
 
 echo "There are changes, creating a pull request."
-commit_message="chore(deps): update Signal Control and Edge Proxy images"
+commit_message="chore(deps): update Signal Control, Edge Proxy and synthetics-worker images"
 if [[ ${#changes[@]} -gt 0 ]]; then
   pr_body="Updates the following image tags in ${values_file}:"
   for change in "${changes[@]}"; do
@@ -138,7 +146,7 @@ if [[ ${#changes[@]} -gt 0 ]]; then
 else
   # The commit message is a fixed string, .github/workflows/scripts/update-sce-images-check-if-pr-exists.sh matches on
   # it, so the body has to spell out that only the tests changed.
-  pr_body="The image tags in ${values_file} are already up to date, this only realigns the expected image tags in ${test_file}."
+  pr_body="The image tags in ${values_file} are already up to date, this only realigns the expected image tags in the Helm chart unit tests."
 fi
 
 # Remove any branch lingering from a previous failed run (no-op if it does not exist). Note: We abort early if an open
@@ -153,7 +161,7 @@ gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
 # Let "gh api graphql"/createCommitOnBranch create the commit via the GitHub API rather than "git commit"/"git push", so
 # commits are automatically signed.
 # Note: expectedHeadOid is an optimistic lock: the branch tip must still be at base_sha (it is, we just created it).
-# Note: both files are always sent; the git diff check above guarantees that at least one of them differs.
+# Note: all files are always sent; the git diff check above guarantees that at least one of them differs.
 jq -n \
   --arg repo "$GITHUB_REPOSITORY" \
   --arg branch "$branch_name" \
@@ -164,6 +172,8 @@ jq -n \
   --arg valuesContents "$(base64 < "$values_file" | tr -d '\n')" \
   --arg testPath "$test_file" \
   --arg testContents "$(base64 < "$test_file" | tr -d '\n')" \
+  --arg snapshotPath "$snapshot_file" \
+  --arg snapshotContents "$(base64 < "$snapshot_file" | tr -d '\n')" \
   '{
     query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
     variables: {
@@ -173,7 +183,8 @@ jq -n \
         expectedHeadOid: $oid,
         fileChanges:     { additions: [
                              { path: $valuesPath, contents: $valuesContents },
-                             { path: $testPath,   contents: $testContents }
+                             { path: $testPath,   contents: $testContents },
+                             { path: $snapshotPath, contents: $snapshotContents }
                            ] }
       }
     }
