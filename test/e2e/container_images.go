@@ -26,6 +26,7 @@ type Images struct {
 	signalControlCollector       ImageSpec
 	edgeProxy                    ImageSpec
 	agent0Connector              ImageSpec
+	syntheticsWorker             ImageSpec
 }
 
 const (
@@ -136,6 +137,10 @@ func createContainerImages(repositoryPrefix string, imageTag string, pullPolicy 
 			imageTag,
 			pullPolicy,
 		),
+		// The synthetics-worker is released independently (synthetics-worker-release.yaml, tags
+		// synthetics-worker-X.Y.Z), like the Signal Control collector and the Edge Proxy, so its default
+		// repository/tag comes from the Helm chart's pinned values.yaml, not from this run's IMAGE_TAG.
+		syntheticsWorker: determineExternalContainerImage("SYNTHETICS_WORKER"),
 	}
 }
 
