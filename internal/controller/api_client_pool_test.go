@@ -79,6 +79,17 @@ var _ = Describe("Converting API client errors", func() {
 		Entry("500 for a delete", http.StatusInternalServerError, true),
 	)
 
+	It("maps an invalid auth token to status code 401, which is not retried", func() {
+		_, poolErr := testApiClientPool().Get(ApiEndpointStandardizedTest, "not-a-dash0-token")
+		err := convertApiClientError(poolErr, actionLabel, false)
+		Expect(err).To(HaveOccurred())
+		Expect(httpStatusCodeFromError(err)).To(Equal(http.StatusUnauthorized))
+		Expect(isRetryableHttpStatusCode(httpStatusCodeFromError(err))).To(BeFalse())
+		Expect(err.Error()).To(Equal(
+			"unable to " + actionLabel + `: the Dash0 auth token is invalid, it must start with "auth_" or "dash0_at_"`,
+		))
+	})
+
 	It("maps errors without an HTTP response to status code 0", func() {
 		transportErr := errors.New("connection refused")
 		err := convertApiClientError(transportErr, actionLabel, false)

@@ -1258,8 +1258,16 @@ func executeApiClientCall(
 }
 
 // convertApiClientError maps an error returned by the Dash0 API client to an apiSyncHttpError. It returns nil for a
-// 404 response to a delete request, since the object to delete is already gone.
+// 404 response to a delete request, since the object to delete is already gone. An invalid auth token is reported with
+// status code 401, so it is not retried.
 func convertApiClientError(err error, actionLabel string, isDelete bool) error {
+	var invalidTokenErr *invalidAuthTokenError
+	if errors.As(err, &invalidTokenErr) {
+		return &apiSyncHttpError{
+			statusCode: http.StatusUnauthorized,
+			err:        fmt.Errorf("unable to %s: %w", actionLabel, err),
+		}
+	}
 	var apiErr *dash0.APIError
 	if !errors.As(err, &apiErr) {
 		return &apiSyncHttpError{statusCode: 0, err: err}

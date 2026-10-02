@@ -4,6 +4,8 @@
 package controller
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 
 	dash0 "github.com/dash0hq/dash0-api-client-go"
@@ -12,6 +14,20 @@ import (
 type apiClientKey struct {
 	endpoint string
 	token    string
+}
+
+// invalidAuthTokenError is returned for a token that the Dash0 API client refuses to use. The Dash0 API would reject
+// such a token anyway, so it is treated like an HTTP 401 response.
+type invalidAuthTokenError struct {
+	err error
+}
+
+func (e *invalidAuthTokenError) Error() string {
+	return e.err.Error()
+}
+
+func (e *invalidAuthTokenError) Unwrap() error {
+	return e.err
 }
 
 // ApiClientPool hands out Dash0 API clients per (endpoint, token) combination. All clients share one transport, so
@@ -40,6 +56,15 @@ func (p *ApiClientPool) Get(endpoint string, token string) (dash0.Client, error)
 	defer p.mutex.Unlock()
 	if apiClient, ok := p.clients[key]; ok {
 		return apiClient, nil
+	}
+	if !strings.HasPrefix(token, dash0.AuthTokenPrefixStatic) && !strings.HasPrefix(token, dash0.AuthTokenPrefixOAuth) {
+		return nil, &invalidAuthTokenError{
+			err: fmt.Errorf(
+				"the Dash0 auth token is invalid, it must start with %q or %q",
+				dash0.AuthTokenPrefixStatic,
+				dash0.AuthTokenPrefixOAuth,
+			),
+		}
 	}
 	apiClient, err := dash0.NewClient(
 		dash0.WithApiUrl(endpoint),
