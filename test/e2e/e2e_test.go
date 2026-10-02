@@ -2773,55 +2773,67 @@ spec:
 		})
 	}) // end of suite "with the agent0-connector enabled and a manually managed operator configuration resource"
 
-	Context("with the synthetics-worker enabled", Ordered, func() {
+	Context("with the synthetics-worker enabled and a manually managed operator configuration resource", Ordered, func() {
 		BeforeAll(func() {
-			By("deploying the Dash0 operator with the synthetics-worker enabled")
-			deployOperatorWithDefaultAutoOperationConfiguration(
+			By("deploying the Dash0 operator with the synthetics-worker enabled, but without an operator " +
+				"configuration resource")
+			deployOperatorWithoutAutoOperationConfiguration(
 				operatorNamespace,
 				operatorHelmChart,
 				operatorHelmChartUrl,
 				"",
 				&images,
-				false,
 				map[string]string{
 					"operator.syntheticsWorker.enabled":       "true",
 					"operator.syntheticsWorker.serverAddress": "synthetics.dash0.com:443",
 				},
 			)
 
-			// The location ID and the authorization token are per-cluster settings that live on the operator
-			// configuration resource (kubectl-editable at runtime), not on the Helm chart.
+			// Instances have no Helm-level configuration, so they require a manually managed operator configuration
+			// resource; the synthetics-worker is also independent of telemetry collection, so this suite does not
+			// deploy collectors.
+			By("deploying the Dash0 operator configuration resource manually")
+			deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
+				SelfMonitoringEnabled:      false,
+				Endpoint:                   defaultEndpoint,
+				Token:                      defaultToken,
+				ApiEndpoint:                dash0ApiMockServiceBaseUrl,
+				ClusterName:                e2eKubernetesContext,
+				TelemetryCollectionEnabled: false,
+			}, operatorNamespace, operatorHelmChart)
+
 			configureSyntheticsWorkerLocationAndToken(
-				dash0OperatorConfigurationResourceAutomaticallyManagedName,
+				dash0OperatorConfigurationResourceManuallyManagedName,
 				"e2e-test-location",
 				"auth_e2e-synthetics-worker-dummy-token",
 			)
 		})
 
 		AfterAll(func() {
+			undeployDash0OperatorConfigurationResource()
 			undeployOperator(operatorNamespace)
 		})
 
 		It("deploys the synthetics-worker, and removes/redeploys it as the operator configuration resource opts "+
 			"out and back in", func() {
 			waitForSyntheticsWorkerDeploymentToBecomeAvailable("e2e-test-location")
-			verifySyntheticsWorkerIsReportedAsDeployed(dash0OperatorConfigurationResourceAutomaticallyManagedName)
+			verifySyntheticsWorkerIsReportedAsDeployed(dash0OperatorConfigurationResourceManuallyManagedName)
 
 			By("opting out of the synthetics-worker via the operator configuration resource")
 			updateOperatorConfigurationSyntheticsWorkerEnabled(
-				dash0OperatorConfigurationResourceAutomaticallyManagedName, false)
+				dash0OperatorConfigurationResourceManuallyManagedName, false)
 
 			verifySyntheticsWorkerResourcesDoNotExist("e2e-test-location")
-			verifySyntheticsWorkerIsReportedAsDisabled(dash0OperatorConfigurationResourceAutomaticallyManagedName)
+			verifySyntheticsWorkerIsReportedAsDisabled(dash0OperatorConfigurationResourceManuallyManagedName)
 
 			By("revoking the opt-out via the operator configuration resource")
 			updateOperatorConfigurationSyntheticsWorkerEnabled(
-				dash0OperatorConfigurationResourceAutomaticallyManagedName, true)
+				dash0OperatorConfigurationResourceManuallyManagedName, true)
 
 			waitForSyntheticsWorkerDeploymentToBecomeAvailable("e2e-test-location")
-			verifySyntheticsWorkerIsReportedAsDeployed(dash0OperatorConfigurationResourceAutomaticallyManagedName)
+			verifySyntheticsWorkerIsReportedAsDeployed(dash0OperatorConfigurationResourceManuallyManagedName)
 		})
-	}) // end of suite "with the synthetics-worker enabled"
+	}) // end of suite "with the synthetics-worker enabled and a manually managed operator configuration resource"
 
 	Context("with the agent0-connector, a custom cluster role and command allowlist", Ordered, func() {
 		var pseudoClusterUid string
