@@ -69,15 +69,19 @@ func TestResponseHasToBeRedacted(t *testing.T) {
 		{name: "Dash0 resource types without credential fields", arguments: []string{"get", "dash0views,dash0teams,dash0samplingrules", "-o", "yaml"}, expected: true},
 		{name: "a resource named like a Dash0 resource", arguments: []string{"get", "services", "dash0monitorings", "-o", "yaml"}, expected: true},
 
-		// A format that reshapes the response is rejected by validation for every resource type, so it never reaches
-		// redaction. Should one ever get here, it counts as content that has to be redacted and is withheld, since
-		// parseableOutputFormat cannot resolve it - the same outcome a repeated output format gets.
-		{name: "repeated output format", arguments: []string{"get", "dash0monitorings", "-o", "yaml", "-o", "yaml"}, expected: true},
+		// kubectl applies the last occurrence of a repeated output format.
+		{name: "repeated output format (identical)", arguments: []string{"get", "dash0monitorings", "-o", "yaml", "-o", "yaml"}, expected: true},
+		{name: "repeated output format (different, needs redaction)", arguments: []string{"get", "dash0monitorings", "-o", "wide", "-o", "yaml"}, expected: true},
+		{name: "repeated output format (different, needs no redaction)", arguments: []string{"get", "dash0monitorings", "-o", "yaml", "-o", "wide"}, expected: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := responseHasToBeRedacted(parseKubectlArguments(tt.arguments)); got != tt.expected {
+			parsed, err := parseKubectlArguments(tt.arguments)
+			if err != nil {
+				t.Fatalf("expected the arguments to be parsed, but got an error: %v", err)
+			}
+			if got := responseHasToBeRedacted(parsed); got != tt.expected {
 				t.Errorf("expected responseHasToBeRedacted=%t, got %t", tt.expected, got)
 			}
 		})
@@ -1491,12 +1495,15 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 	logger := discardLogger()
 
 	for _, tt := range []struct {
-		name         string
-		outputFormat string
-		response     string
+		name        string
+		outputFlags []string
+		response    string
 	}{
-		{name: "json", outputFormat: "json", response: dash0ResourcesJson},
-		{name: "yaml", outputFormat: "yaml", response: monitoringResourceYaml},
+		{name: "json", outputFlags: []string{"-o", "json"}, response: dash0ResourcesJson},
+		{name: "yaml", outputFlags: []string{"-o", "yaml"}, response: monitoringResourceYaml},
+		// kubectl applies the last output format if -o is set more than once.
+		{name: "yaml (-o json -o yaml)", outputFlags: []string{"-o", "json", "-o", "yaml"}, response: monitoringResourceYaml},
+		{name: "json (-o yaml -o json)", outputFlags: []string{"-o", "yaml", "-o", "json"}, response: dash0ResourcesJson},
 	} {
 		t.Run("redacts the secrets of a "+tt.name+" response", func(t *testing.T) {
 			fakeKubectlEchoing(t, tt.response)
@@ -1504,7 +1511,7 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 			resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 				RequestId: "req-redact-" + tt.name,
 				Command:   "kubectl",
-				Arguments: []string{"get", "dash0monitorings", "-A", "-o", tt.outputFormat},
+				Arguments: append([]string{"get", "dash0monitorings", "-A"}, tt.outputFlags...),
 			})
 
 			if resp.GetExitCode() != 0 {
@@ -1679,9 +1686,8 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 			response:  monitoringResourceYaml + "\n---\n" + monitoringResourceYaml,
 		},
 		{
-			// Both formats are redactable on their own, so validation accepts the request, but which one kubectl actually
-			// applied is not replicated here (see parseableOutputFormat).
-			name:      "the output format is set more than once",
+			// kubectl applies the last output format (json), so a yaml response is a shape the redaction does not expect.
+			name:      "the output format is set more than once and the response does not match the last one",
 			arguments: []string{"get", "dash0monitorings", "-o", "yaml", "-o", "json"},
 			response:  monitoringResourceYaml,
 		},

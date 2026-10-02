@@ -1,0 +1,36 @@
+name: Check for kubectl Updates (agent0-connector)
+
+# Checks for a new stable kubectl release and updates the kubectl image in images/agent0-connector/Dockerfile and the
+# kubectl Go modules in images/agent0-connector/src/go.mod in one pull request.
+#
+# The agent0-connector parses kubectl command lines with the kubectl Go modules and executes them with the kubectl
+# binary from the image, both need to have the same version. Dependabot's gomod and docker ecosystem updaters would
+# update them in separate pull requests, so they are excluded from Dependabot (see .github/dependabot.yml) and handled
+# here instead.
+
+on:
+  schedule:
+    - cron: "30 09 * * MON-FRI"
+
+  workflow_dispatch:
+
+jobs:
+  check-and-update:
+    name: check for a new kubectl release and update the agent0-connector
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: 'images/agent0-connector/src/go.mod'
+          cache: true
+          cache-dependency-path: images/agent0-connector/src/go.sum
+
+      - name: update kubectl and create PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: .github/workflows/scripts/update-agent0-connector-kubectl.sh

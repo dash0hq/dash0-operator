@@ -203,8 +203,8 @@ func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, 
 	format, parseable := parsed.parseableOutputFormat()
 	if !parseable {
 		// Validation leaves only the parseable and the content-free formats, and responseHasToBeRedacted already ruled
-		// out the content-free ones, so what remains here is an invocation that sets the output format more than once,
-		// which parseableOutputFormat refuses to resolve. Withhold response.
+		// out the content-free ones, so nothing should remain here. Should an invocation get here nonetheless, its
+		// response is withheld.
 		return fmt.Errorf("the output format of this command cannot be parsed for redaction")
 	}
 	if stdoutTruncated {
@@ -250,8 +250,7 @@ func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, 
 // token - so every response that renders resource content is walked, and one that cannot be walked is not handed out:
 // validation rejects "kubectl describe" and every output format that could reshape a response before it gets here.
 func responseHasToBeRedacted(parsed kubectlArguments) bool {
-	//nolint:goconst
-	if parsed.kubectlCommand != "get" {
+	if parsed.kubectlCommand != kubectlCommandGet {
 		// No other allowed kubectl command renders resource content: "describe" is rejected outright (see
 		// unconditionallyRejectedKubectlCommands), "explain" only prints the schema.
 		return false

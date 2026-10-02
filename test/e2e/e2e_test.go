@@ -2812,6 +2812,10 @@ spec:
 					"operator.agent0Connector.clusterRole.rules[3].apiGroups[0]": "",
 					"operator.agent0Connector.clusterRole.rules[3].resources":    "{pods/log}",
 					"operator.agent0Connector.clusterRole.rules[3].verbs":        "{get}",
+					// Events are granted so that the allowlist, not RBAC, is what keeps "kubectl events" from being executed.
+					"operator.agent0Connector.clusterRole.rules[4].apiGroups[0]": "",
+					"operator.agent0Connector.clusterRole.rules[4].resources":    "{events}",
+					"operator.agent0Connector.clusterRole.rules[4].verbs":        "{get,list}",
 
 					// Helm merges these values into the default allowlist, all other kubectl commands keep their
 					// default setting.
@@ -3012,6 +3016,90 @@ spec:
 				g.Expect(response.Stdout).To(BeEmpty())
 				g.Expect(response.Stderr).To(Equal(
 					"dash0 agent0-connector rejected the command: the kubectl command \"cluster-info\" has been " +
+						"disabled in the configuration of the agent0-connector (via the Helm value " +
+						"operator.agent0Connector.allowedKubectlCommands), the only allowed kubectl commands are " +
+						"\"api-resources\", \"api-versions\", \"auth\", \"explain\", \"get\", \"logs\", \"top\" " +
+						"and \"version\"",
+				))
+			}, 90*time.Second, pollingInterval).Should(Succeed())
+
+			// Regression tests for inconsistencies between kubectl's cobra based parsing and agent0-connector's parsing.
+			By("triggering a \"kubectl describe\" command request hidden behind a grouped shorthand")
+			var hiddenDescribeRequestId string
+			Eventually(func(g Gomega) {
+				hiddenDescribeRequestId = triggerOutboundConnectorMockCommandRequest(
+					g,
+					pseudoClusterUid,
+					"kubectl",
+					[]string{"-An", "describe", "version", "configmaps"},
+				)
+			}, 30*time.Second, pollingInterval).Should(Succeed())
+			By("verifying the agent0-connector rejects the hidden \"kubectl describe\"")
+			Eventually(func(g Gomega) {
+				response := findOutboundConnectorMockCommandResponse(g, hiddenDescribeRequestId)
+				g.Expect(response.Stdout).ToNot(
+					ContainSubstring(configMapCredentialValue),
+					"the unredacted output of \"kubectl describe\" must not be returned")
+				g.Expect(response.ExitCode).ToNot(
+					BeEquivalentTo(0),
+					"\"kubectl -An describe version configmaps\" should have been rejected; stdout was: %s",
+					response.Stdout,
+				)
+				g.Expect(response.Stdout).To(BeEmpty())
+				g.Expect(response.Stderr).To(Equal(
+					"dash0 agent0-connector rejected the command: \"kubectl describe\" is not supported, because its " +
+						"output cannot be redacted reliably; read the resource with \"kubectl get ... -o yaml\" or " +
+						"\"-o json\" instead",
+				))
+			}, 90*time.Second, pollingInterval).Should(Succeed())
+			By("triggering a \"kubectl get\" command request hidden behind a grouped shorthand")
+			var hiddenGetRequestId string
+			Eventually(func(g Gomega) {
+				hiddenGetRequestId = triggerOutboundConnectorMockCommandRequest(
+					g,
+					pseudoClusterUid,
+					"kubectl",
+					[]string{"-An", "get", "version", "configmaps", "-o", "yaml"},
+				)
+			}, 30*time.Second, pollingInterval).Should(Succeed())
+			By("verifying the agent0-connector detected the hidden configmap get and redacted its response")
+			Eventually(func(g Gomega) {
+				response := findOutboundConnectorMockCommandResponse(g, hiddenGetRequestId)
+				g.Expect(response.ExitCode).To(
+					BeEquivalentTo(0),
+					"\"kubectl -An get version configmaps -o yaml\" should have succeeded; stderr was: %s",
+					response.Stderr,
+				)
+				g.Expect(response.Stdout).ToNot(
+					ContainSubstring(configMapCredentialValue),
+					"the credential in the config map should have been redacted")
+				g.Expect(response.Stderr).ToNot(ContainSubstring(configMapCredentialValue))
+				g.Expect(response.Stdout).To(
+					ContainSubstring("(redacted)"),
+					"stdout should carry the redaction placeholder in place of the header value")
+				g.Expect(response.Stdout).To(
+					ContainSubstring("example.com:4317"),
+					"the rest of the config map should stay readable")
+			}, 90*time.Second, pollingInterval).Should(Succeed())
+			By("triggering a \"kubectl events\" command request hidden behind a grouped shorthand")
+			var hiddenEventsRequestId string
+			Eventually(func(g Gomega) {
+				hiddenEventsRequestId = triggerOutboundConnectorMockCommandRequest(
+					g,
+					pseudoClusterUid,
+					"kubectl",
+					[]string{"-An", "events", "version"},
+				)
+			}, 30*time.Second, pollingInterval).Should(Succeed())
+			By("verifying the agent0-connector rejected the hidden \"kubectl events\"")
+			Eventually(func(g Gomega) {
+				response := findOutboundConnectorMockCommandResponse(g, hiddenEventsRequestId)
+				g.Expect(response.ExitCode).ToNot(
+					BeEquivalentTo(0),
+					"\"kubectl -An events version\" should have been rejected; stdout was: %s", response.Stdout)
+				g.Expect(response.Stdout).To(BeEmpty())
+				g.Expect(response.Stderr).To(Equal(
+					"dash0 agent0-connector rejected the command: the kubectl command \"events\" has been " +
 						"disabled in the configuration of the agent0-connector (via the Helm value " +
 						"operator.agent0Connector.allowedKubectlCommands), the only allowed kubectl commands are " +
 						"\"api-resources\", \"api-versions\", \"auth\", \"explain\", \"get\", \"logs\", \"top\" " +
