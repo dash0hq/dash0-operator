@@ -46,6 +46,15 @@ func argumentsNotParseable(reason string) string {
 	return fmt.Sprintf("the kubectl arguments cannot be parsed: %s", reason)
 }
 
+func unknownKubectlCommand(kubectlCommand string) string {
+	return fmt.Sprintf(
+		"the arguments do not resolve to a kubectl command: unknown command %q for \"kubectl\", the only allowed "+
+			"kubectl commands are \"api-resources\", \"api-versions\", \"auth\", \"cluster-info\", \"events\", "+
+			"\"explain\", \"get\", \"logs\", \"top\" and \"version\"",
+		kubectlCommand,
+	)
+}
+
 func kubectlCommandNotAllowed(kubectlCommand string) string {
 	return fmt.Sprintf(
 		"the kubectl command %q is not an allowed read-only command, the only allowed kubectl commands are "+
@@ -177,9 +186,7 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "mutating delete is rejected", command: "kubectl", arguments: []string{"delete", "pod", "x"}, allowed: false,
 			rejectionReason: kubectlCommandNotAllowed("delete")},
 		{name: "an unknown kubectl command is rejected", command: "kubectl", arguments: []string{"foo", "bar"}, allowed: false,
-			rejectionReason: `the arguments do not resolve to a kubectl command: unknown command "foo" for "kubectl", the ` +
-				`only allowed kubectl commands are "api-resources", "api-versions", "auth", "cluster-info", "events", ` +
-				`"explain", "get", "logs", "top" and "version"`},
+			rejectionReason: unknownKubectlCommand("foo")},
 		{name: "mutating apply is rejected", command: "kubectl", arguments: []string{"apply"}, allowed: false,
 			rejectionReason: kubectlCommandNotAllowed("apply")},
 		// The flags are checked before the kubectl command, so this is rejected for the "-f" flag rather than for "apply".
@@ -211,6 +218,17 @@ func TestValidateCommandRequest(t *testing.T) {
 			rejectionReason: flagNotAllowedWithLongNameAndShorthand("--follow", "-f")},
 		{name: "--follow=true is rejected", command: "kubectl", arguments: []string{"logs", "x", "--follow=true"}, allowed: false,
 			rejectionReason: flagNotAllowedWithLongNameAndShorthand("--follow", "-f")},
+
+		// The kubectl binary knows these commands, since cobra adds them right before resolving the argument list, but the
+		// connector does not. The completion commands disable flag parsing, so their flags can not be validated.
+		{name: "help is rejected", command: "kubectl", arguments: []string{"help", "get"}, allowed: false,
+			rejectionReason: unknownKubectlCommand("help")},
+		{name: "__complete is rejected", command: "kubectl", arguments: []string{"__complete", "get", "secrets", ""}, allowed: false,
+			rejectionReason: unknownKubectlCommand("__complete")},
+		{name: "__complete with a flag it would not parse is rejected", command: "kubectl", arguments: []string{"__complete", "get", "--kubeconfig=/x", ""}, allowed: false,
+			rejectionReason: unknownKubectlCommand("__complete")},
+		{name: "__completeNoDesc is rejected", command: "kubectl", arguments: []string{"__completeNoDesc", "get", ""}, allowed: false,
+			rejectionReason: unknownKubectlCommand("__completeNoDesc")},
 
 		// Flags outside the allowlist are rejected, whatever they are for; --raw would otherwise turn "get" into an
 		// arbitrary API request, bypassing the resource-based secret check below.
@@ -252,6 +270,10 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "the kustomize shorthand (-k) is rejected", command: "kubectl", arguments: []string{"get", "-k", "dir"}, allowed: false,
 			rejectionReason: flagNotAllowedWithLongNameAndShorthand("--kustomize", "-k")},
 		{name: "the end-of-flags separator is rejected", command: "kubectl", arguments: []string{"get", "pods", "--"}, allowed: false,
+			rejectionReason: flagNotAllowedLongNameOnly("--")},
+		{name: "the end-of-flags separator before the kubectl command is rejected", command: "kubectl", arguments: []string{"--", "get", "pods"}, allowed: false,
+			rejectionReason: flagNotAllowedLongNameOnly("--")},
+		{name: "the end-of-flags separator between a flag and the kubectl command is rejected", command: "kubectl", arguments: []string{"-n", "x", "--", "get", "pods"}, allowed: false,
 			rejectionReason: flagNotAllowedLongNameOnly("--")},
 		// kubectl takes a bare dash as a positional argument, here the name of a pod.
 		{name: "a bare dash is a positional argument", command: "kubectl", arguments: []string{"get", "pods", "-"}, allowed: true},
@@ -311,6 +333,9 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "a file output format is rejected even when it overrides an allowed one",
 			command: "kubectl", arguments: []string{"get", "pods", "-o", "name", "-o", "jsonpath-file=/etc/passwd"}, allowed: false,
 			rejectionReason: outputFormatNotAllowed("jsonpath-file")},
+		{name: "a shorthand swallows the rest of its token as its value",
+			command: "kubectl", arguments: []string{"get", "pods", "-oA"}, allowed: false,
+			rejectionReason: outputFormatNotAllowed("a")},
 		{name: "an unknown output format is rejected",
 			command: "kubectl", arguments: []string{"get", "pods", "-o", "bogusformat"}, allowed: false,
 			rejectionReason: outputFormatNotAllowed("bogusformat")},
@@ -548,6 +573,11 @@ func TestValidateCommandRequest(t *testing.T) {
 			command: "kubectl", arguments: []string{"get", "secrets"}, allowed: true},
 		{name: "listing secrets in a namespace is allowed",
 			command: "kubectl", arguments: []string{"get", "secrets", "-n", "x"}, allowed: true},
+		{name: "listing secrets with an empty namespace is allowed",
+			command: "kubectl", arguments: []string{"get", "secrets", "--namespace="}, allowed: true},
+		// -n swallows the rest of its token, so "oyaml" is the namespace and the output format is the default table.
+		{name: "listing secrets with a namespace that looks like an output format is allowed",
+			command: "kubectl", arguments: []string{"get", "secrets", "-noyaml"}, allowed: true},
 		{name: "presence check of a secret is allowed",
 			command: "kubectl", arguments: []string{"get", "secret", "my-secret"}, allowed: true},
 		{name: "presence check via type/name is allowed",
@@ -589,6 +619,12 @@ func TestValidateCommandRequest(t *testing.T) {
 			rejectionReason: contentsNotReadable},
 		{name: "fully qualified secret as yaml is rejected",
 			command: "kubectl", arguments: []string{"get", "secrets.v1.", "-o", "yaml"}, allowed: false,
+			rejectionReason: contentsNotReadable},
+		{name: "an empty namespace does not hide the secret resource type",
+			command: "kubectl", arguments: []string{"get", "--namespace=", "secrets", "-o", "yaml"}, allowed: false,
+			rejectionReason: contentsNotReadable},
+		{name: "an empty namespace before the kubectl command does not hide the secret resource type",
+			command: "kubectl", arguments: []string{"--namespace=", "get", "secrets", "-o", "yaml"}, allowed: false,
 			rejectionReason: contentsNotReadable},
 		{name: "output flag before resource is rejected",
 			command: "kubectl", arguments: []string{"get", "-o", "yaml", "secret", "my-secret"}, allowed: false,

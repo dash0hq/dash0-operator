@@ -78,6 +78,15 @@ func TestParseArguments(t *testing.T) {
 				{longName: "watch", shorthand: "w", value: "true"},
 			},
 			positionalArguments: []string{"pods"}, resourceTypes: []string{"pods"}},
+		{name: "a shorthand that takes a value swallows the rest of its token", arguments: []string{"get", "pods", "-oA"},
+			kubectlCommand: "get", flags: []parsedFlag{{longName: "output", shorthand: "o", value: "A"}},
+			positionalArguments: []string{"pods"}, resourceTypes: []string{"pods"}},
+		{name: "an empty inline value does not consume the next argument", arguments: []string{"get", "--namespace=", "secrets"},
+			kubectlCommand: "get", flags: []parsedFlag{{longName: "namespace", shorthand: "n", value: ""}},
+			positionalArguments: []string{"secrets"}, resourceTypes: []string{"secrets"}},
+		{name: "an empty inline value before the kubectl command", arguments: []string{"--namespace=", "get", "secrets"},
+			kubectlCommand: "get", flags: []parsedFlag{{longName: "namespace", shorthand: "n", value: ""}},
+			positionalArguments: []string{"secrets"}, resourceTypes: []string{"secrets"}},
 		{name: "a repeated flag holds the value kubectl applies", arguments: []string{"get", "pods", "-o", "name", "--output=yaml"},
 			kubectlCommand: "get", flags: []parsedFlag{{longName: "output", shorthand: "o", value: "yaml"}},
 			positionalArguments: []string{"pods"}, resourceTypes: []string{"pods"}},
@@ -88,6 +97,12 @@ func TestParseArguments(t *testing.T) {
 		{name: "the end-of-flags separator", arguments: []string{"get", "pods", "--", "-x"},
 			kubectlCommand: "get", positionalArguments: []string{"pods", "-x"}, resourceTypes: []string{"pods"},
 			hasEndOfFlagsSeparator: true},
+		// cobra does not look for commands after "--", so the argument list resolves to the root command.
+		{name: "the end-of-flags separator before the kubectl command", arguments: []string{"--", "get", "pods"},
+			positionalArguments: []string{"get", "pods"}, resourceTypes: []string{"get"}, hasEndOfFlagsSeparator: true},
+		{name: "the end-of-flags separator between a flag and the kubectl command", arguments: []string{"-n", "x", "--", "get", "pods"},
+			flags:               []parsedFlag{{longName: "namespace", shorthand: "n", value: "x"}},
+			positionalArguments: []string{"get", "pods"}, resourceTypes: []string{"get"}, hasEndOfFlagsSeparator: true},
 
 		// Subcommands are part of the resolved command path, not positional arguments.
 		{name: "subcommand", arguments: []string{"auth", "can-i", "--list"},
@@ -183,6 +198,66 @@ func TestFindCommandRejectsTraverseChildren(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "TraverseChildren") {
 		t.Errorf("expected the error to mention TraverseChildren, got %q", err)
+	}
+}
+
+// TestFindCommandRejectsCommandsThatDisableFlagParsing covers that a command that disables flag parsing is rejected,
+// since its flags would end up in the positional arguments. No command of kubectl's command tree disables flag parsing.
+func TestFindCommandRejectsCommandsThatDisableFlagParsing(t *testing.T) {
+	root := &cobra.Command{Use: "kubectl"}
+	parent := &cobra.Command{Use: "plugin"}
+	parent.AddCommand(&cobra.Command{Use: "run", DisableFlagParsing: true, Run: func(*cobra.Command, []string) {}})
+	root.AddCommand(parent)
+
+	for _, arguments := range [][]string{
+		{"plugin", "run"},
+		{"plugin", "run", "--kubeconfig=/x", "-o", "yaml"},
+		{"-n", "x", "plugin", "run", "secrets"},
+	} {
+		_, _, err := findCommand(root, arguments)
+		if err == nil {
+			t.Fatalf("expected an error for %q, but the command was resolved", arguments)
+		}
+		if !strings.Contains(err.Error(), `the kubectl command "kubectl plugin run" does not support flag parsing`) {
+			t.Errorf("expected the error for %q to mention that flag parsing is disabled, got %q", arguments, err)
+		}
+		if errors.Is(err, errUnknownKubectlCommand) {
+			t.Errorf("expected the error for %q not to be an unknown command error, got %v", arguments, err)
+		}
+	}
+}
+
+// TestParseArgumentsRejectsCommandsThatCobraOnlyAddsAtExecution covers the commands that cobra's Command.ExecuteC adds
+// to the command tree of the kubectl binary right before resolving the argument list: "help" and the completion
+// commands "__complete" and "__completeNoDesc". The latter disable flag parsing, so the connector could not validate
+// their flags. The command tree of parseKubectlArguments does not contain them, so they are unknown commands.
+func TestParseArgumentsRejectsCommandsThatCobraOnlyAddsAtExecution(t *testing.T) {
+	tests := []struct {
+		arguments      []string
+		unknownCommand string
+	}{
+		{arguments: []string{"help"}, unknownCommand: "help"},
+		{arguments: []string{"help", "get"}, unknownCommand: "help"},
+		{arguments: []string{"-n", "x", "help", "get"}, unknownCommand: "help"},
+		{arguments: []string{"__complete", "get", "secrets", ""}, unknownCommand: "__complete"},
+		{arguments: []string{"__complete", "get", "secrets", "--kubeconfig=/x", ""}, unknownCommand: "__complete"},
+		{arguments: []string{"__completeNoDesc", "get", ""}, unknownCommand: "__completeNoDesc"},
+	}
+
+	for _, tt := range tests {
+		t.Run(strings.Join(tt.arguments, " "), func(t *testing.T) {
+			_, err := parseKubectlArguments(tt.arguments)
+			if err == nil {
+				t.Fatal("expected an error, but the arguments were parsed")
+			}
+			if !errors.Is(err, errUnknownKubectlCommand) {
+				t.Errorf("expected an unknown command error, got %v", err)
+			}
+			expected := `unknown command "` + tt.unknownCommand + `" for "kubectl"`
+			if !strings.Contains(err.Error(), expected) {
+				t.Errorf("expected the error to contain %q, got %q", expected, err)
+			}
+		})
 	}
 }
 
@@ -293,6 +368,10 @@ func TestOutputFormat(t *testing.T) {
 		{name: "value of another flag is not read as the format",
 			arguments: []string{"get", "pods", "-l", "o=yaml"}},
 		{name: "empty value", arguments: []string{"get", "pods", "-o="}, expected: "", isSet: true},
+		{name: "a shorthand swallows the rest of its token",
+			arguments: []string{"get", "pods", "-oA"}, expected: "a", isSet: true},
+		{name: "a shorthand that takes a value swallows a following output shorthand",
+			arguments: []string{"get", "pods", "-noyaml"}},
 	}
 
 	for _, tt := range tests {

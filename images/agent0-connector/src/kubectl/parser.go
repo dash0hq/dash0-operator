@@ -58,12 +58,6 @@ func parseKubectlArguments(arguments []string) (kubectlArguments, error) {
 	if err != nil {
 		return kubectlArguments{}, err
 	}
-	if resolved.DisableFlagParsing {
-		// No allowed kubectl command disables flag parsing. Allowing commands which use DisableFlagParsing would receive
-		// its flags as positional arguments, which invalidates assumptions that validation.go makes. To avoid that
-		// situation, a command that disables flag parsing is therefore explicitly rejected here.
-		return kubectlArguments{}, fmt.Errorf("the kubectl command %q does not support flag parsing", resolved.CommandPath())
-	}
 
 	flags := newRequestFlagSet(resolved)
 	if err = flags.Parse(remainingArguments); err != nil {
@@ -146,6 +140,14 @@ func findCommand(root *cobra.Command, arguments []string) (*cobra.Command, []str
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: %w", errUnknownKubectlCommand, err)
 	}
+
+	if resolved.DisableFlagParsing {
+		// No allowed kubectl command disables flag parsing. Allowing commands which use DisableFlagParsing would receive
+		// its flags as positional arguments, which invalidates assumptions that validation.go makes. To avoid that
+		// situation, a command that disables flag parsing is therefore explicitly rejected here.
+		return nil, nil, fmt.Errorf("the kubectl command %q does not support flag parsing", resolved.CommandPath())
+	}
+
 	return resolved, remainingArguments, nil
 }
 
