@@ -5,6 +5,7 @@ package kubectl
 
 import (
 	"errors"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -371,4 +372,53 @@ func globalLoggingFlagValues() map[string]string {
 		values[flag.Name] = flag.Value.String()
 	})
 	return values
+}
+
+// TestParseArgumentsDoesNotRetainMemory covers that parsing a command request does not leave memory behind that
+// outlives the request. The connector parses every command request it receives, so memory retained per parse adds up
+// over the lifetime of the process until it runs into its memory limit.
+func TestParseArgumentsDoesNotRetainMemory(t *testing.T) {
+	const (
+		warmUpParses       = 5
+		measuredParses     = 100
+		maxHeapGrowthBytes = 5 << 20
+	)
+	arguments := []string{"get", "pods", "-n", "default", "-o", "json"}
+
+	// State that is initialized once per process on the first parse is not a leak, hence it is excluded from the
+	// measurement.
+	for range warmUpParses {
+		if _, err := parseKubectlArguments(arguments); err != nil {
+			t.Fatalf("expected the arguments to be parsed, but got an error: %v", err)
+		}
+	}
+
+	before := heapAllocAfterGC()
+	for range measuredParses {
+		if _, err := parseKubectlArguments(arguments); err != nil {
+			t.Fatalf("expected the arguments to be parsed, but got an error: %v", err)
+		}
+	}
+	growth := int64(heapAllocAfterGC()) - int64(before)
+
+	if growth > maxHeapGrowthBytes {
+		t.Errorf(
+			"expected the heap to grow by at most %d MiB over %d parses, but it grew by %.1f MiB (%d KiB per parse)",
+			maxHeapGrowthBytes>>20,
+			measuredParses,
+			float64(growth)/(1<<20),
+			growth/measuredParses>>10,
+		)
+	}
+}
+
+// heapAllocAfterGC returns the number of bytes of allocated heap objects after a garbage collection, i.e. the heap that
+// is still reachable.
+func heapAllocAfterGC() uint64 {
+	// The second collection frees objects whose finalizers ran during the first one.
+	runtime.GC()
+	runtime.GC()
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+	return memStats.HeapAlloc
 }
