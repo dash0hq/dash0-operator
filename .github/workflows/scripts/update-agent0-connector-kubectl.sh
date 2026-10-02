@@ -55,7 +55,7 @@ kubectl_go_modules=(
 # Matches a stable kubectl version like "v1.37.1". Pre-releases ("v1.38.0-rc.0") deliberately do not match.
 kubectl_version_regex='v1\.[0-9]+\.[0-9]+'
 
-current_version=$(grep -oE "^FROM registry\.k8s\.io/kubectl:${kubectl_version_regex} " "$dockerfile" | head -n 1 | sed -E 's/^FROM registry\.k8s\.io\/kubectl:([^ ]+) $/\1/')
+current_version=$(grep -oE "^FROM registry\.k8s\.io/kubectl:${kubectl_version_regex} " "$dockerfile" | head -n 1 | sed -E 's/^FROM registry\.k8s\.io\/kubectl:([^ ]+) $/\1/' || true)
 if [[ -z "$current_version" ]]; then
   echo "Error: cannot determine the current kubectl version from ${dockerfile}." >&2
   exit 1
@@ -172,6 +172,10 @@ base_sha=$(git rev-parse HEAD)
 gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
   -f ref="refs/heads/${branch_name}" \
   -f sha="${base_sha}" >/dev/null
+
+# Delete the branch again if creating the commit or the pull request fails, otherwise the branch check above would make
+# every following run fail.
+trap 'gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${branch_name}" >/dev/null 2>&1 || true' ERR
 
 # Let "gh api graphql"/createCommitOnBranch create the commit via the GitHub API rather than "git commit"/"git push", so
 # commits are automatically signed.

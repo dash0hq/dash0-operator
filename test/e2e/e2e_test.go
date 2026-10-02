@@ -3065,10 +3065,21 @@ spec:
 			By("verifying the agent0-connector detected the hidden configmap get and redacted its response")
 			Eventually(func(g Gomega) {
 				response := findOutboundConnectorMockCommandResponse(g, hiddenGetRequestId)
+				g.Expect(response.ExitCode).To(
+					BeEquivalentTo(0),
+					"\"kubectl -An get version configmaps -o yaml\" should have succeeded; stderr was: %s",
+					response.Stderr,
+				)
 				g.Expect(response.Stdout).ToNot(
 					ContainSubstring(configMapCredentialValue),
 					"the credential in the config map should have been redacted")
 				g.Expect(response.Stderr).ToNot(ContainSubstring(configMapCredentialValue))
+				g.Expect(response.Stdout).To(
+					ContainSubstring("(redacted)"),
+					"stdout should carry the redaction placeholder in place of the header value")
+				g.Expect(response.Stdout).To(
+					ContainSubstring("example.com:4317"),
+					"the rest of the config map should stay readable")
 			}, 90*time.Second, pollingInterval).Should(Succeed())
 			By("triggering a \"kubectl events\" command request hidden behind a grouped shorthand")
 			var hiddenEventsRequestId string

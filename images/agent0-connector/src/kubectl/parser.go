@@ -45,8 +45,8 @@ func parseKubectlArguments(arguments []string) (kubectlArguments, error) {
 
 	// First, build an "empty" kubectl command struct without passing the argument list. The argument list is not passed
 	// here to NewKubectlCommand, but passed below via root.Find. Reason: kubectl only applies the user preferences of a
-	// kuberc file (aliases and default flag values) when it is. The kubectl subprocess has user preferences and kuberc
-	// disabled as well (see kubectlEnv).
+	// kuberc file (aliases and default flag values) when NewKubectlCommand receives the argument list. The kubectl
+	// subprocess has user preferences and kuberc disabled as well (see kubectlEnv).
 	root := kubectlcmd.NewKubectlCommand(kubectlcmd.KubectlOptions{
 		Arguments: []string{kubectlCommand},
 		IOStreams: genericiooptions.IOStreams{In: strings.NewReader(""), Out: io.Discard, ErrOut: io.Discard},
