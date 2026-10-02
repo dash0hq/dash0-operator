@@ -1,4 +1,4 @@
-name: Check for Signal Control and Edge Proxy Image Updates
+name: Check for Signal Control, Edge Proxy and Synthetics Worker Image Updates
 
 on:
   schedule:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   check-and-update:
-    name: check for new Signal Control collector and Edge Proxy image tags and update the Helm chart values
+    name: check for new Signal Control collector, Edge Proxy and synthetics-worker image tags and update the Helm chart values
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
