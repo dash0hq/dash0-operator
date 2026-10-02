@@ -2800,13 +2800,9 @@ spec:
 				ApiEndpoint:                dash0ApiMockServiceBaseUrl,
 				ClusterName:                e2eKubernetesContext,
 				TelemetryCollectionEnabled: false,
+				SyntheticsWorkerLocationId: "e2e-test-location",
+				SyntheticsWorkerToken:      "auth_e2e-synthetics-worker-dummy-token",
 			}, operatorNamespace, operatorHelmChart)
-
-			configureSyntheticsWorkerLocationAndToken(
-				dash0OperatorConfigurationResourceManuallyManagedName,
-				"e2e-test-location",
-				"auth_e2e-synthetics-worker-dummy-token",
-			)
 		})
 
 		AfterAll(func() {

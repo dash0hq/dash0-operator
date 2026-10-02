@@ -31,6 +31,8 @@ type dash0OperatorConfigurationValues struct {
 	ClusterName                    string
 	TelemetryCollectionEnabled     bool
 	AutoNamespaceMonitoringEnabled bool
+	SyntheticsWorkerLocationId     string
+	SyntheticsWorkerToken          string
 }
 
 const (
@@ -568,32 +570,6 @@ func updateOperatorConfigurationSyntheticsWorkerEnabled(operatorConfigurationRes
 			"merge",
 			"-p",
 			fmt.Sprintf(`{"spec":{"syntheticsWorker":{"enabled":%t}}}`, enabled),
-		))).To(Succeed())
-}
-
-// configureSyntheticsWorkerLocationAndToken sets spec.syntheticsWorker.instances to a single instance with the given
-// locationId and authorization.token on the given operator configuration resource. Unlike the agent0-connector's
-// server address and token, which are Helm-level settings, the synthetics-worker's instances live on the CRD resource
-// so that they can be changed per-cluster without a Helm re-install.
-func configureSyntheticsWorkerLocationAndToken(
-	operatorConfigurationResourceName string,
-	locationId string,
-	token string,
-) {
-	Expect(
-		runAndIgnoreOutput(exec.Command(
-			"kubectl",
-			"patch",
-			"Dash0OperatorConfiguration",
-			operatorConfigurationResourceName,
-			"--type",
-			"merge",
-			"-p",
-			fmt.Sprintf(
-				`{"spec":{"syntheticsWorker":{"instances":[{"locationId":%q,"authorization":{"token":%q}}]}}}`,
-				locationId,
-				token,
-			),
 		))).To(Succeed())
 }
 
