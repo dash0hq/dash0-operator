@@ -213,6 +213,9 @@ func validateCommandAndParseArguments(
 	if reason, blocked := hiddenLogVerbosityRequested(req); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
+	if reason, blocked := hiddenKubercRequested(req); blocked {
+		return kubectlArguments{}, errors.New(reason)
+	}
 
 	// Check the kubectl command first, reject any kubectl command that is not on the allowlist (supportedKubectlCommands)
 	// or that has not been enabled via the configuration (allowedKubectlCommands).
@@ -291,6 +294,27 @@ func hiddenLogVerbosityRequested(req *pb.CommandRequest) (string, bool) {
 			"change the argument that contains \"-v=\" or \"--v=\"",
 		level,
 	), true
+}
+
+// hiddenKubercRequested reports whether the raw argument list selects a kuberc file outside of the --kuberc flag,
+// returning a human-readable reason when it does. Before parsing any flags, kubectl scans the raw arguments for the
+// kuberc file to load user preferences (aliases and default flag values) from (see getExplicitKuberc in
+// k8s.io/kubectl/pkg/kuberc). It takes the path from any argument that merely contains "--kuberc=", or from the
+// argument following an argument that equals "--kuberc" - a label selector such as "-l --kuberc=/x", a container name
+// or a positional argument. Preferences from that file would make kubectl resolve the argument list differently than
+// parseKubectlArguments does. parseKubectlArguments does not see this, since no --kuberc flag is set. Unlike kubectl,
+// the scan does not stop at "--", which only makes it stricter.
+func hiddenKubercRequested(req *pb.CommandRequest) (string, bool) {
+	for _, argument := range req.GetArguments() {
+		if argument == "--kuberc" || strings.Contains(argument, "--kuberc=") {
+			return fmt.Sprintf(
+				"the kubectl arguments select a kuberc file, since kubectl reads \"--kuberc\" anywhere in an argument; "+
+					"change the argument %q",
+				argument,
+			), true
+		}
+	}
+	return "", false
 }
 
 func disallowedKubectlCommandRequested(

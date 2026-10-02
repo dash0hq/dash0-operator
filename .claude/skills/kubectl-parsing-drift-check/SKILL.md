@@ -73,7 +73,9 @@ Read these files completely before analyzing kubectl changes:
   `--template`).
 * `images/agent0-connector/src/kubectl/validation.go`: the allowed kubectl commands (`supportedKubectlCommands`,
   `unconditionallyRejectedKubectlCommands`, `allowedSubcommandsPerKubectlCommand`), the flag allowlist
-  (`allowedFlags`), the output formats (`knownOutputFormats`) and the blocked resource types (`sensitiveResourceTypes`).
+  (`allowedFlags`), the output formats (`knownOutputFormats`), the blocked resource types (`sensitiveResourceTypes`)
+  and the checks that mirror kubectl's scans of the raw argument list (`hiddenLogVerbosityRequested`,
+  `hiddenKubercRequested`).
 * `images/agent0-connector/src/kubectl/kubectl.go`: how the binary is invoked, in particular `kubectlEnv`,
   `kubectlEnvPassThrough` and the kuberc settings.
 * `images/agent0-connector/src/kubectl/allowed_commands.go`: the configurable command allowlist.
@@ -112,6 +114,14 @@ command resolution and flag parsing that the connector does not do, or does diff
   process, with the connector's environment) still matches the one the binary builds (in the subprocess, with the
   environment from `kubectlEnv`). Feature gates that are read from the environment are evaluated in both processes,
   and both environments differ.
+* **Raw argument scans**: before any flag is parsed, kubectl scans the raw argument list for some settings and takes
+  them from any argument that merely contains the flag, e.g. from a label selector value. Today these are the log
+  verbosity (`GetLogVerbosity` in `k8s.io/kubectl/pkg/cmd/cmd.go`, mirrored by `hiddenLogVerbosityRequested`) and the
+  kuberc file (`getExplicitKuberc` in `k8s.io/kubectl/pkg/kuberc/kuberc.go`, mirrored by `hiddenKubercRequested`).
+  Check whether these scans changed (which flag names and argument forms they match, where they stop) and whether there
+  are new ones in `cmd/kubectl/kubectl.go`, `cmd.go` or `kuberc.go` (loops over the raw arguments with
+  `strings.Contains`/`strings.HasPrefix` that run before cobra's `Execute`). Every scan needs a counterpart in
+  `validation.go`, since `parseKubectlArguments` does not see a setting that is hidden in a flag value.
 * Commands that cobra adds only in `ExecuteC` (the `help` command, the `completion` command, `__complete` and
   `__completeNoDesc`): the connector does not add them, so they do not resolve. Check that this is still fail-closed.
 * **Logging flags**: `addKlogFlagStandIns` copies the flags from `logs.AddFlags`. Check that the copies still have the
@@ -132,9 +142,11 @@ command resolution and flag parsing that the connector does not do, or does diff
   `ParseFlags` (and `mergePersistentFlags`) set up before parsing: the merged persistent flags of the parents, the help
   flag, the normalization function and `ParseErrorsAllowlist`. pflag offers no getter for `interspersed`, so
   `newRequestFlagSet` assumes the default; `TestCommandTreeOnlyUsesFlagParsingFeaturesThatNewRequestFlagSetMirrors`
-  checks the command tree for that. Also check that pflag still decides how to split the argument list only from the
-  fields of `pflag.Flag` (`Name`, `Shorthand`, `NoOptDefVal`, ...), which the copies keep, and not from the type or the
-  behavior of the flag's `Value` (for example a type switch on `boolFlag`), which the stand-in does not reproduce.
+  checks the command tree for that. Also grep the new versions of the modules for `SetInterspersed` to see whether any
+  command started disabling interspersed flags. Also check that pflag still decides how to split the argument list only
+  from the fields of `pflag.Flag` (`Name`, `Shorthand`, `NoOptDefVal`, ...), which the copies keep, and not from the
+  type or the behavior of the flag's `Value` (for example a type switch on `boolFlag`), which the stand-in does not
+  reproduce.
 * Check that building a kubectl command tree still has global side effects that rule out building it per request (such
   as cobra's package-level `flagCompletionFunctions` map, which is never pruned); `TestParseArgumentsDoesNotRetainMemory`
   covers the memory side of this.
@@ -187,6 +199,11 @@ the RESTMapper. Diff and check for:
 * New environment variables that kubectl reads (`grep -rn 'os.Getenv\|os.LookupEnv' ` in the downloaded modules) and
   whether any of them is in `kubectlEnvPassThrough` or is set in the connector process, where the in-process command
   tree is built.
+* Feature gates read from the environment (`KUBECTL_*` in `k8s.io/kubectl/pkg/cmd/util/helpers.go`, `KUBE_FEATURE_*`
+  in client-go): the connector evaluates them when it builds its command tree, in the connector process, while the
+  kubectl binary evaluates them in the subprocess with the environment from `kubectlEnv`. A gate that adds, removes or
+  changes a flag or command of a reachable command makes both command trees differ if it is set in one environment but
+  not in the other. List the gates of the new version that affect reachable commands and check how each would differ.
 * New files that kubectl reads from `HOME` (the subprocess runs with `HOME` set to the `DASH0_KUBECTL_TMP` directory)
   or from the working directory.
 

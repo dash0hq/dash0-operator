@@ -42,6 +42,14 @@ func hiddenLogVerbosityNotAllowed(level string) string {
 	)
 }
 
+func hiddenKubercNotAllowed(argument string) string {
+	return fmt.Sprintf(
+		"the kubectl arguments select a kuberc file, since kubectl reads \"--kuberc\" anywhere in an argument; "+
+			"change the argument %q",
+		argument,
+	)
+}
+
 func argumentsNotParseable(reason string) string {
 	return fmt.Sprintf("the kubectl arguments cannot be parsed: %s", reason)
 }
@@ -263,6 +271,18 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "verbosity hidden in a container name is rejected", command: "kubectl", arguments: []string{"logs", "p", "-c", "c-v=10"}, allowed: false,
 			rejectionReason: hiddenLogVerbosityNotAllowed("10")},
 		{name: "a hidden verbosity of zero is allowed", command: "kubectl", arguments: []string{"get", "pods", "-l", "x-v=0"}, allowed: true},
+		// The kubectl binary takes the kuberc file from any argument that contains "--kuberc=" or equals "--kuberc", before
+		// it parses any flags.
+		{name: "kuberc hidden in a label selector is rejected", command: "kubectl", arguments: []string{"get", "secrets", "-o", "name", "-l", "--kuberc=/x"}, allowed: false,
+			rejectionReason: hiddenKubercNotAllowed("--kuberc=/x")},
+		{name: "kuberc hidden in a label selector with a separate value is rejected", command: "kubectl", arguments: []string{"get", "-l", "--kuberc", "pods"}, allowed: false,
+			rejectionReason: hiddenKubercNotAllowed("--kuberc")},
+		{name: "kuberc hidden in a positional argument is rejected", command: "kubectl", arguments: []string{"get", "configmaps", "x--kuberc=/x", "-o", "name"}, allowed: false,
+			rejectionReason: hiddenKubercNotAllowed("x--kuberc=/x")},
+		{name: "kuberc hidden in a container name is rejected", command: "kubectl", arguments: []string{"logs", "p", "-c", "c--kuberc=/x"}, allowed: false,
+			rejectionReason: hiddenKubercNotAllowed("c--kuberc=/x")},
+		{name: "kuberc hidden after an end-of-flags separator that is a flag value is rejected", command: "kubectl", arguments: []string{"get", "pods", "-l", "--", "-l", "--kuberc=/x"}, allowed: false,
+			rejectionReason: hiddenKubercNotAllowed("--kuberc=/x")},
 		{name: "a grouped shorthand with an unknown member is rejected", command: "kubectl", arguments: []string{"get", "pods", "-Az"}, allowed: false,
 			rejectionReason: argumentsNotParseable("unknown shorthand flag: 'z' in -z")},
 		{name: "--filename is rejected", command: "kubectl", arguments: []string{"get", "--filename", "pod.yaml"}, allowed: false,

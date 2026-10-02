@@ -235,6 +235,10 @@ func addKlogFlagStandIns(flags *pflag.FlagSet) {
 func newStandInFlag(flag *pflag.Flag) *pflag.Flag {
 	standIn := *flag
 	standIn.Value = &standInFlagValue{value: flag.DefValue, valueType: flag.Value.Type()}
+	// The copy is always unchanged: pflag only records a flag as set (i.e. Visit reports it) if the flag is still
+	// unchanged when the argument list sets it. A copy of a changed flag would be invisible to the validation even when
+	// the argument list sets it.
+	standIn.Changed = false
 	return &standIn
 }
 

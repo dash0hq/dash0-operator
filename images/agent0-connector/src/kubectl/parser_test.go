@@ -428,6 +428,37 @@ func TestParseArgumentsDoesNotCarryOverFlagsBetweenRequests(t *testing.T) {
 	}
 }
 
+// TestRequestFlagSetReportsFlagsThatAreChangedInTheCommandTree covers that a flag the argument list sets is reported,
+// even if the flag of the command tree it is copied from is marked as changed. pflag only reports a flag as set if it
+// is unchanged when the argument list sets it, so a copy that kept the changed marker would hide e.g. "-o yaml" from
+// the validation.
+func TestRequestFlagSetReportsFlagsThatAreChangedInTheCommandTree(t *testing.T) {
+	resolved, remainingArguments, err := findCommand(newKubectlCommandTree(), []string{"get", "secrets", "-o", "yaml"})
+	if err != nil {
+		t.Fatalf("expected the arguments to resolve to a command, but got an error: %v", err)
+	}
+	outputFlag := resolved.Flags().Lookup("output")
+	if outputFlag == nil {
+		t.Fatalf("expected the command %q to define the flag --output", resolved.CommandPath())
+	}
+	outputFlag.Changed = true
+
+	flags, err := newRequestFlagSet(resolved)
+	if err != nil {
+		t.Fatalf("expected a flag set, but got an error: %v", err)
+	}
+	if err = flags.Parse(remainingArguments); err != nil {
+		t.Fatalf("expected the arguments to be parsed, but got an error: %v", err)
+	}
+	var visited []string
+	flags.Visit(func(flag *pflag.Flag) {
+		visited = append(visited, flag.Name+"="+flag.Value.String())
+	})
+	if !slices.Contains(visited, "output=yaml") {
+		t.Errorf("expected the flag set to report output=yaml, got %v", visited)
+	}
+}
+
 // TestCommandResolutionDoesNotDependOnEarlierRequests covers that earlier command requests do not change how later
 // argument lists resolve to a command, although all command requests are resolved with the same command tree. The
 // expected command is the one a freshly built command tree resolves to, which is what the kubectl subprocess does.
