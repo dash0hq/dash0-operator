@@ -2812,7 +2812,7 @@ spec:
 
 		It("deploys the synthetics-worker, and removes/redeploys it as the operator configuration resource opts "+
 			"out and back in", func() {
-			waitForSyntheticsWorkerDeploymentToBecomeAvailable("e2e-test-location")
+			waitForSyntheticsWorkerPodToStart("e2e-test-location")
 			verifySyntheticsWorkerIsReportedAsDeployed(dash0OperatorConfigurationResourceManuallyManagedName)
 
 			By("opting out of the synthetics-worker via the operator configuration resource")
@@ -2826,7 +2826,7 @@ spec:
 			updateOperatorConfigurationSyntheticsWorkerEnabled(
 				dash0OperatorConfigurationResourceManuallyManagedName, true)
 
-			waitForSyntheticsWorkerDeploymentToBecomeAvailable("e2e-test-location")
+			waitForSyntheticsWorkerPodToStart("e2e-test-location")
 			verifySyntheticsWorkerIsReportedAsDeployed(dash0OperatorConfigurationResourceManuallyManagedName)
 		})
 	}) // end of suite "with the synthetics-worker enabled and a manually managed operator configuration resource"

@@ -5,6 +5,7 @@ package e2e
 
 import (
 	_ "embed"
+	"fmt"
 	"os/exec"
 	"time"
 
@@ -14,19 +15,26 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// waitForSyntheticsWorkerDeploymentToBecomeAvailable waits for the synthetics-worker deployment the operator manages
-// for the given location ID to report the Available condition.
-func waitForSyntheticsWorkerDeploymentToBecomeAvailable(locationId string) {
-	By("waiting for the synthetics-worker deployment to become available")
+// waitForSyntheticsWorkerPodToStart waits for the synthetics-worker pod the operator manages for the given location
+// ID to reach the Running phase. It deliberately does not wait for the Deployment's Available condition or the pod's
+// Ready condition: the synthetics-worker's readiness probe only turns healthy once it holds an open stream to its
+// configured server address, which the e2e cluster's sandboxed network cannot reach.
+func waitForSyntheticsWorkerPodToStart(locationId string) {
+	By("waiting for the synthetics-worker pod to start")
 	Eventually(func(g Gomega) {
-		g.Expect(runAndIgnoreOutput(exec.Command(
+		output, err := run(exec.Command(
 			"kubectl",
 			"-n", operatorNamespace,
-			"wait", "--for=condition=Available",
-			"deployment/"+swresources.DeploymentName(operatorHelmReleaseName, locationId),
-			"--timeout=30s",
-		))).To(Succeed())
-	}, 120*time.Second, 2*time.Second).Should(Succeed())
+			"get", "pods",
+			"-l", fmt.Sprintf(
+				"app.kubernetes.io/name=dash0-synthetics-worker,synthetics-worker.dash0.com/location-id=%s",
+				locationId,
+			),
+			"-o", "jsonpath={.items[0].status.phase}",
+		), false)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal("Running"))
+	}, 60*time.Second, pollingInterval).Should(Succeed())
 }
 
 // verifySyntheticsWorkerResourcesDoNotExist verifies that the operator has removed every Kubernetes resource it
