@@ -883,6 +883,17 @@ const getEventsDisabled = `reading events via "kubectl get" is not allowed, beca
 	`been disabled in the configuration of the agent0-connector (via the Helm value ` +
 	`operator.agent0Connector.allowedKubectlCommands)`
 
+// sortByTerminationMessage is the reason with which a --sort-by expression that addresses the termination messages of
+// containers is rejected while "kubectl logs" is disabled.
+func sortByTerminationMessage(expression string) string {
+	return fmt.Sprintf(
+		"the --sort-by expression %q is not allowed, because it addresses the termination messages of containers, "+
+			"which can hold log output, and the kubectl command \"logs\" has been disabled in the configuration of "+
+			"the agent0-connector (via the Helm value operator.agent0Connector.allowedKubectlCommands)",
+		expression,
+	)
+}
+
 func TestValidationHonorsTheAllowedKubectlCommands(t *testing.T) {
 	defaults := defaultKubectlCommands
 	onlyGet := mustParseAllowedKubectlCommands("get")
@@ -951,6 +962,34 @@ func TestValidationHonorsTheAllowedKubectlCommands(t *testing.T) {
 			arguments: []string{"get", "configmap", "events"}},
 		{name: "get events is allowed when events is enabled", allowed: everySupportedKubectlCommandAllowed(),
 			arguments: []string{"get", "events", "-o", "yaml"}},
+		{name: "sort-by a termination message is rejected by default", allowed: defaults,
+			arguments:       []string{"get", "pods", "--sort-by", ".status.containerStatuses[0].lastState.terminated.message"},
+			rejectionReason: sortByTerminationMessage(".status.containerStatuses[0].lastState.terminated.message")},
+		{name: "sort-by a termination message of an init container is rejected by default", allowed: defaults,
+			arguments:       []string{"get", "pods", "--sort-by={.status.initContainerStatuses[1].state.terminated.message}"},
+			rejectionReason: sortByTerminationMessage("{.status.initContainerStatuses[1].state.terminated.message}")},
+		{name: "sort-by a termination message of an ephemeral container is rejected by default", allowed: defaults,
+			arguments: []string{
+				"get", "pods", "--sort-by", ".status.ephemeralContainerStatuses[0].state.terminated.message",
+			},
+			rejectionReason: sortByTerminationMessage(".status.ephemeralContainerStatuses[0].state.terminated.message")},
+		{name: "sort-by a termination message in bracket notation is rejected by default", allowed: defaults,
+			arguments: []string{
+				"get", "pods", "--sort-by", "{.status['containerStatuses'][0]['state']['terminated']['message']}",
+			},
+			rejectionReason: sortByTerminationMessage(
+				"{.status['containerStatuses'][0]['state']['terminated']['message']}",
+			)},
+		{name: "sort-by a field that contains a termination message is rejected by default", allowed: defaults,
+			arguments:       []string{"get", "pods", "--sort-by", ".status.containerStatuses[0].state.terminated"},
+			rejectionReason: sortByTerminationMessage(".status.containerStatuses[0].state.terminated")},
+		{name: "sort-by the whole status is rejected by default", allowed: defaults,
+			arguments: []string{"get", "pods", "--sort-by", ".status"}, rejectionReason: sortByTerminationMessage(".status")},
+		{name: "sort-by another field of a terminated state is allowed by default", allowed: defaults,
+			arguments: []string{"get", "pods", "--sort-by", ".status.containerStatuses[0].lastState.terminated.exitCode"}},
+		{name: "sort-by a termination message is allowed when logs is enabled",
+			allowed:   everySupportedKubectlCommandAllowed(),
+			arguments: []string{"get", "pods", "--sort-by", ".status.containerStatuses[0].lastState.terminated.message"}},
 
 		// Regression tests for inconsistencies between kubectl's cobra based parsing and our parsing.
 		{name: "a disabled command hidden behind -A and an allowed command is rejected", allowed: withoutClusterInfo,

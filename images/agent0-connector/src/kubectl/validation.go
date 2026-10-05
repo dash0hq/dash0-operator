@@ -142,7 +142,8 @@ var knownOutputFormats = map[string]outputFormatHandling{
 
 // safeSortByPathPrefixes are the top-level fields a --sort-by expression may address. Neither the metadata nor the
 // status of a resource holds a credential, while its spec holds every field the response redacts, and the data of a
-// secret sits outside both prefixes.
+// secret sits outside both prefixes. The termination messages in the status of a pod are the one exception, they are
+// guarded separately, see terminationMessageSortByRequested.
 var safeSortByPathPrefixes = []string{"metadata", "status"}
 
 var safeSortByPathPrefixesHumanReadable = func() string {
@@ -238,6 +239,9 @@ func validateCommandAndParseArguments(
 		return kubectlArguments{}, errors.New(reason)
 	}
 	if reason, blocked := unsafeSortByRequested(arguments); blocked {
+		return kubectlArguments{}, errors.New(reason)
+	}
+	if reason, blocked := terminationMessageSortByRequested(arguments, allowedKubectlCommands); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
 	return arguments, nil
@@ -501,6 +505,54 @@ func unsafeSortByRequested(parsed kubectlArguments) (string, bool) {
 		safeSortByPathPrefixesHumanReadable,
 		unsafeSortByPathPrefix,
 	), true
+}
+
+// terminationMessageSortByPaths are the paths of the termination messages in the container statuses of a pod, without
+// list indices, see redactTerminationMessages.
+var terminationMessageSortByPaths = func() []string {
+	paths := make([]string, 0, 2*len(containerSpecFieldsPerStatusField))
+	for statusField := range containerSpecFieldsPerStatusField {
+		for _, stateField := range []string{"state", "lastState"} {
+			paths = append(paths, "status."+statusField+"."+stateField+".terminated.message")
+		}
+	}
+	return paths
+}()
+
+// terminationMessageSortByRequested reports whether the "kubectl get" arguments sort by the termination messages of
+// containers while "kubectl logs" has been disabled in the configuration, returning a human-readable reason when they
+// do. Since the response redacts these messages in that case (see redactTerminationMessages), sorting by them would
+// leak their order, see unsafeSortByRequested. An expression is rejected when it addresses a termination message or
+// any field that contains one. The check runs after unsafeSortByRequested, which has already rejected every expression
+// that is not a plain path.
+func terminationMessageSortByRequested(
+	parsed kubectlArguments,
+	allowedKubectlCommands AllowedKubectlCommands,
+) (string, bool) {
+	if parsed.kubectlCommand != kubectlCommandGet || allowedKubectlCommands.Allows(kubectlCommandLogs) {
+		return "", false
+	}
+	expression, isSet := parsed.valueOf("sort-by")
+	if !isSet {
+		return "", false
+	}
+	path, normalized := normalizeSortByPath(expression)
+	if !normalized {
+		return "", false
+	}
+	path = numericSortByIndexSegment.ReplaceAllString(path, "")
+	for _, messagePath := range terminationMessageSortByPaths {
+		if isSortByPathBelow(messagePath, path) || isSortByPathBelow(path, messagePath) {
+			return fmt.Sprintf(
+				"the --sort-by expression %q is not allowed, because it addresses the termination messages of "+
+					"containers, which can hold log output, and the kubectl command \"logs\" has been disabled in the "+
+					"configuration of the agent0-connector (via the Helm value "+
+					"operator.agent0Connector.allowedKubectlCommands)",
+				expression,
+			), true
+		}
+	}
+	return "", false
 }
 
 // sortByExpressionIsSafe reports whether a --sort-by JSONPath expression addresses only fields that cannot hold a
