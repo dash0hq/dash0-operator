@@ -69,7 +69,7 @@ func NewSignalToMetricsReconciler(
 func (r *SignalToMetricsReconciler) SetupWithManager(mgr manager.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dash0v1alpha1.Dash0SignalToMetrics{}).
-		WithEventFilter(generationOrLabelChangePredicate).
+		WithEventFilter(generationLabelOrDash0AnnotationChangePredicate).
 		Complete(r)
 }
 

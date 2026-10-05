@@ -70,7 +70,7 @@ func NewSamplingRuleReconciler(
 func (r *SamplingRuleReconciler) SetupWithManager(mgr manager.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dash0v1alpha1.Dash0SamplingRule{}).
-		WithEventFilter(generationOrLabelChangePredicate).
+		WithEventFilter(generationLabelOrDash0AnnotationChangePredicate).
 		Complete(r)
 }
 

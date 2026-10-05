@@ -382,6 +382,7 @@ var _ = Describe("The synchronization retry runnable", func() {
 				k8sClient,
 				types.UID("test-cluster-uid"),
 				&DummyLeaderElectionAware{Leader: true},
+				recorder,
 				TestHTTPClient(),
 			)
 
