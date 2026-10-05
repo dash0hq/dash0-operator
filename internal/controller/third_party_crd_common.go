@@ -6,7 +6,9 @@ package controller
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -38,6 +40,37 @@ import (
 // generationOrLabelChangePredicate reacts on spec changes (via generation) and label changes, but ignores status
 // subresource updates so that writing the status after a reconcile does not trigger another no-op reconcile.
 var generationOrLabelChangePredicate = predicate.Or(predicate.GenerationChangedPredicate{}, predicate.LabelChangedPredicate{})
+
+// generationLabelOrDash0AnnotationChangePredicate additionally reacts on changes of annotations with the prefix
+// dash0.com/ (e.g. dash0.com/folder-path), which are part of the payload sent to the Dash0 API. Changes to other
+// annotations are ignored.
+var generationLabelOrDash0AnnotationChangePredicate = predicate.Or(
+	predicate.GenerationChangedPredicate{},
+	predicate.LabelChangedPredicate{},
+	dash0AnnotationChangedPredicate,
+)
+
+var dash0AnnotationChangedPredicate = predicate.Funcs{
+	UpdateFunc: func(e event.UpdateEvent) bool {
+		if e.ObjectOld == nil || e.ObjectNew == nil {
+			return false
+		}
+		return !maps.Equal(
+			dash0Annotations(e.ObjectOld.GetAnnotations()),
+			dash0Annotations(e.ObjectNew.GetAnnotations()),
+		)
+	},
+}
+
+func dash0Annotations(annotations map[string]string) map[string]string {
+	filtered := make(map[string]string)
+	for key, value := range annotations {
+		if strings.HasPrefix(key, "dash0.com/") {
+			filtered[key] = value
+		}
+	}
+	return filtered
+}
 
 // ThirdPartyCrdReconciler is an interface for reconcilers that act on CRDs of third-party resource types (i.e. when a
 // particular CRD is deployed to the cluster or removed).

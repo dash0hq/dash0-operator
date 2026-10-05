@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -20,6 +21,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
@@ -250,6 +252,44 @@ var _ = Describe(
 							"",
 						)
 						Expect(gock.IsDone()).To(BeTrue())
+					},
+				)
+
+				It(
+					"synchronizes a view with the deprecated field spec.display.folder and queues a warning event",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						expectViewPutRequest(clusterId, defaultExpectedPathView)
+						defer gock.Off()
+
+						viewResource := createViewResource(TestNamespaceName, viewName)
+						viewResource.Spec.Display.Folder = []string{"Shop", "Checkout"}
+						Expect(k8sClient.Create(ctx, viewResource)).To(Succeed())
+
+						result, err := viewReconciler.Reconcile(
+							ctx, reconcile.Request{
+								NamespacedName: types.NamespacedName{
+									Namespace: TestNamespaceName,
+									Name:      viewName,
+								},
+							},
+						)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(result).To(Equal(reconcile.Result{}))
+						Expect(gock.IsDone()).To(BeTrue())
+
+						VerifyEvent(
+							ctx,
+							clientset,
+							TestNamespaceName,
+							viewName,
+							corev1.EventTypeWarning,
+							util.ReasonDeprecatedFieldUsed,
+							util.ActionSynchronization,
+							"The field spec.display.folder is deprecated and ignored by Dash0. Use the annotation "+
+								"dash0.com/folder-path: \"/Shop/Checkout\" instead.",
+						)
 					},
 				)
 
@@ -1010,6 +1050,7 @@ func createViewReconciler(clusterId string) *ViewReconciler {
 		k8sClient,
 		types.UID(clusterId),
 		viewLeaderElectionAware,
+		recorder,
 		TestHTTPClient(),
 	)
 	return viewReconciler

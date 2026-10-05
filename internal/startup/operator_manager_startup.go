@@ -2000,6 +2000,7 @@ func startDash0Controllers(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
+		mgr.GetEventRecorder("dash0-view-controller"),
 		httpClient,
 	)
 	if err := viewReconciler.SetupWithManager(mgr); err != nil {

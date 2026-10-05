@@ -26,6 +26,7 @@ const (
 	ActionUninstrumentation      Action = "Uninstrumentation"
 	ActionAgent0ConnectorDeploy  Action = "Agent0ConnectorDeployment"
 	ActionSyntheticsWorkerDeploy Action = "SyntheticsWorkerDeployment"
+	ActionSynchronization        Action = "Synchronization"
 )
 
 type Reason string
@@ -51,6 +52,8 @@ const (
 	ReasonSyntheticsWorkerDeployed    Reason = "SyntheticsWorkerDeployed"
 	ReasonSyntheticsWorkerNotDeployed Reason = "SyntheticsWorkerNotDeployed"
 	ReasonSyntheticsWorkerDisabled    Reason = "SyntheticsWorkerDisabled"
+
+	ReasonDeprecatedFieldUsed Reason = "DeprecatedFieldUsed"
 )
 
 // AllInstrumentationEvents lists the events the instrumentation webhook queues for a workload. The webhook cannot set
