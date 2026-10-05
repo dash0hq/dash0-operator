@@ -37,13 +37,10 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
-// generationOrLabelChangePredicate reacts on spec changes (via generation) and label changes, but ignores status
-// subresource updates so that writing the status after a reconcile does not trigger another no-op reconcile.
-var generationOrLabelChangePredicate = predicate.Or(predicate.GenerationChangedPredicate{}, predicate.LabelChangedPredicate{})
-
-// generationLabelOrDash0AnnotationChangePredicate additionally reacts on changes of annotations with the prefix
-// dash0.com/ (e.g. dash0.com/folder-path), which are part of the payload sent to the Dash0 API. Changes to other
-// annotations are ignored.
+// generationLabelOrDash0AnnotationChangePredicate reacts on spec changes (via generation), label changes and changes of
+// annotations with the prefix dash0.com/ (e.g. dash0.com/folder-path), which are part of the payload sent to the Dash0
+// API. Changes to other annotations are ignored. Status subresource updates are ignored as well, so that writing the
+// status after a reconcile does not trigger another no-op reconcile.
 var generationLabelOrDash0AnnotationChangePredicate = predicate.Or(
 	predicate.GenerationChangedPredicate{},
 	predicate.LabelChangedPredicate{},
