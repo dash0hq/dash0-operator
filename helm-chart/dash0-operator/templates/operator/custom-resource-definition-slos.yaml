@@ -81,17 +81,14 @@ spec:
                     description: Spec is the SLI specification.
                     properties:
                       description:
-                        description: Description is an optional human-readable description
-                          of the SLI.
                         maxLength: 1050
                         type: string
                       ratioMetric:
-                        description: RatioMetric is a ratio-based SLI metric over
-                          Prometheus sources.
+                        description: RatioMetric is a ratio-based SLI metric.
                         properties:
                           bad:
-                            description: Bad is the metric source counting bad (failed)
-                              events. It is used together with total, instead of good.
+                            description: SLOMetricSourceWrapper wraps a metric source
+                              for use as the numerator or denominator of a ratio metric.
                             properties:
                               metricSource:
                                 description: MetricSource is the underlying metric
@@ -125,11 +122,11 @@ spec:
                           counter:
                             description: |-
                               Counter indicates whether the underlying metric is a monotonically increasing counter (true) or a gauge-like
-                              value (false). It is ignored when raw is set.
+                              value (false).
                             type: boolean
                           good:
                             description: Good is the metric source counting good (successful)
-                              events. It is used together with total.
+                              events.
                             properties:
                               metricSource:
                                 description: MetricSource is the underlying metric
@@ -161,9 +158,8 @@ spec:
                             - metricSource
                             type: object
                           raw:
-                            description: |-
-                              Raw is the metric source for a precomputed ratio: a stored metric or any PromQL expression that evaluates to an
-                              instant vector with a single series between 0 and 1. It is used instead of good, bad and total.
+                            description: SLOMetricSourceWrapper wraps a metric source
+                              for use as the numerator or denominator of a ratio metric.
                             properties:
                               metricSource:
                                 description: MetricSource is the underlying metric
@@ -195,16 +191,12 @@ spec:
                             - metricSource
                             type: object
                           rawType:
-                            description: |-
-                              RawType states how the raw ratio is calculated: success for good/total, failure for bad/total. It is only used
-                              with raw. When it is omitted, Dash0 treats the ratio as success.
                             enum:
                             - success
                             - failure
                             type: string
                           total:
                             description: Total is the metric source counting all events.
-                              It is used together with good or bad.
                             properties:
                               metricSource:
                                 description: MetricSource is the underlying metric

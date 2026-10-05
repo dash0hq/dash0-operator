@@ -101,46 +101,38 @@ type SLOIndicatorMetadata struct {
 
 // SLOIndicatorSpec is the specification of an inline SLI. Only a ratioMetric is supported.
 type SLOIndicatorSpec struct {
-	// Description is an optional human-readable description of the SLI.
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxLength=1050
 	Description string `json:"description,omitempty"`
 
-	// RatioMetric is a ratio-based SLI metric over Prometheus sources.
+	// RatioMetric is a ratio-based SLI metric.
 	// +kubebuilder:validation:Required
 	RatioMetric SLORatioMetric `json:"ratioMetric"`
 }
 
-// SLORatioMetric is a ratio-based SLI metric. It has one of three shapes: good and total, bad and total, or raw (a
-// precomputed ratio). The validation rule counts the shapes the same way the Dash0 API does, so the CRD and the API
-// accept the same shapes.
+// SLORatioMetric is a ratio-based SLI metric.
 //
 // +kubebuilder:validation:XValidation:rule="(has(self.good) && has(self.total) ? 1 : 0) + (has(self.bad) && has(self.total) ? 1 : 0) + (has(self.raw) ? 1 : 0) == 1",message="exactly one of good and total, bad and total, or raw must be set"
 type SLORatioMetric struct {
 	// Counter indicates whether the underlying metric is a monotonically increasing counter (true) or a gauge-like
-	// value (false). It is ignored when raw is set.
+	// value (false).
 	// +kubebuilder:validation:Optional
 	Counter *bool `json:"counter,omitempty"`
 
-	// Good is the metric source counting good (successful) events. It is used together with total.
+	// Good is the metric source counting good (successful) events.
 	// +kubebuilder:validation:Optional
 	Good *SLOMetricSourceWrapper `json:"good,omitempty"`
 
-	// Bad is the metric source counting bad (failed) events. It is used together with total, instead of good.
 	// +kubebuilder:validation:Optional
 	Bad *SLOMetricSourceWrapper `json:"bad,omitempty"`
 
-	// Total is the metric source counting all events. It is used together with good or bad.
+	// Total is the metric source counting all events.
 	// +kubebuilder:validation:Optional
 	Total *SLOMetricSourceWrapper `json:"total,omitempty"`
 
-	// Raw is the metric source for a precomputed ratio: a stored metric or any PromQL expression that evaluates to an
-	// instant vector with a single series between 0 and 1. It is used instead of good, bad and total.
 	// +kubebuilder:validation:Optional
 	Raw *SLOMetricSourceWrapper `json:"raw,omitempty"`
 
-	// RawType states how the raw ratio is calculated: success for good/total, failure for bad/total. It is only used
-	// with raw. When it is omitted, Dash0 treats the ratio as success.
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Enum=success;failure
 	RawType string `json:"rawType,omitempty"`
