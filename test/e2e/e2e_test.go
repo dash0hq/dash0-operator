@@ -1192,7 +1192,8 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 
 			It("should not deploy the synthetics-worker since the default for syntheticsWorker.enabled is `false`",
 				func() {
-					syntheticsWorkerDeployment := swresources.DeploymentName(operatorHelmReleaseName, "e2e-test-location")
+					syntheticsWorkerDeployment :=
+						swresources.DeploymentName(operatorHelmReleaseName, syntheticsWorkerLocationId)
 					By("verifying that the synthetics-worker deployment does not exist")
 					Expect(runAndIgnoreOutput(
 						exec.Command(
@@ -2775,6 +2776,9 @@ spec:
 
 	Context("with the synthetics-worker enabled and a manually managed operator configuration resource", Ordered, func() {
 		BeforeAll(func() {
+			By("installing the outbound-connector mock")
+			installOutboundConnectorMock()
+
 			By("deploying the Dash0 operator with the synthetics-worker enabled, but without an operator " +
 				"configuration resource")
 			deployOperatorWithoutAutoOperationConfiguration(
@@ -2785,7 +2789,8 @@ spec:
 				&images,
 				map[string]string{
 					"operator.syntheticsWorker.enabled":       "true",
-					"operator.syntheticsWorker.serverAddress": "synthetics.dash0.com:443",
+					"operator.syntheticsWorker.serverAddress": outboundConnectorMockGrpcEndpoint,
+					"operator.syntheticsWorker.insecure":      "true",
 				},
 			)
 
@@ -2800,34 +2805,42 @@ spec:
 				ApiEndpoint:                dash0ApiMockServiceBaseUrl,
 				ClusterName:                e2eKubernetesContext,
 				TelemetryCollectionEnabled: false,
-				SyntheticsWorkerLocationId: "e2e-test-location",
-				SyntheticsWorkerToken:      "auth_e2e-synthetics-worker-dummy-token",
+				SyntheticsWorkerLocationId: syntheticsWorkerLocationId,
+				SyntheticsWorkerToken:      syntheticsWorkerToken,
 			}, operatorNamespace, operatorHelmChart)
 		})
 
 		AfterAll(func() {
 			undeployDash0OperatorConfigurationResource()
 			undeployOperator(operatorNamespace)
+			uninstallOutboundConnectorMock()
 		})
 
 		It("deploys the synthetics-worker, and removes/redeploys it as the operator configuration resource opts "+
 			"out and back in", func() {
-			waitForSyntheticsWorkerPodToStart("e2e-test-location")
+			waitForSyntheticsWorkerDeploymentToBecomeAvailable(syntheticsWorkerLocationId)
 			verifySyntheticsWorkerIsReportedAsDeployed(dash0OperatorConfigurationResourceManuallyManagedName)
+			workerId := verifySyntheticsWorkerIsConnectedToOutboundConnectorMock(
+				syntheticsWorkerLocationId, syntheticsWorkerToken, "")
+			verifySyntheticsWorkerExecutesHttpCheck(syntheticsWorkerLocationId, workerId)
 
 			By("opting out of the synthetics-worker via the operator configuration resource")
 			updateOperatorConfigurationSyntheticsWorkerEnabled(
 				dash0OperatorConfigurationResourceManuallyManagedName, false)
 
-			verifySyntheticsWorkerResourcesDoNotExist("e2e-test-location")
+			verifySyntheticsWorkerResourcesDoNotExist(syntheticsWorkerLocationId)
 			verifySyntheticsWorkerIsReportedAsDisabled(dash0OperatorConfigurationResourceManuallyManagedName)
+			verifySyntheticsWorkerIsNotConnectedToOutboundConnectorMock(syntheticsWorkerLocationId)
 
 			By("revoking the opt-out via the operator configuration resource")
 			updateOperatorConfigurationSyntheticsWorkerEnabled(
 				dash0OperatorConfigurationResourceManuallyManagedName, true)
 
-			waitForSyntheticsWorkerPodToStart("e2e-test-location")
+			waitForSyntheticsWorkerDeploymentToBecomeAvailable(syntheticsWorkerLocationId)
 			verifySyntheticsWorkerIsReportedAsDeployed(dash0OperatorConfigurationResourceManuallyManagedName)
+			redeployedWorkerId := verifySyntheticsWorkerIsConnectedToOutboundConnectorMock(
+				syntheticsWorkerLocationId, syntheticsWorkerToken, workerId)
+			verifySyntheticsWorkerExecutesHttpCheck(syntheticsWorkerLocationId, redeployedWorkerId)
 		})
 	}) // end of suite "with the synthetics-worker enabled and a manually managed operator configuration resource"
 
