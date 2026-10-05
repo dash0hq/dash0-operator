@@ -69,7 +69,8 @@ const (
 	DatasetCustomTest                      = "test-dataset"
 	DatasetCustomTestAlternative           = "test-dataset-alt"
 
-	Agent0ConnectorServerAddress = "api.dash0.com:8022"
+	Agent0ConnectorServerAddress  = "api.dash0.com:8022"
+	SyntheticsWorkerServerAddress = "synthetics.dash0.com:443"
 )
 
 var (

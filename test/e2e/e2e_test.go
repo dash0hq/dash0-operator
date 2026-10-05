@@ -22,6 +22,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/startup"
+	"github.com/dash0hq/dash0-operator/internal/syntheticsworker/swresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -1188,6 +1189,21 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				// A disabled agent0-connector is reported nowhere: neither the status entry nor an event exists.
 				verifyNoAgent0ConnectorStatusOrEvent(dash0OperatorConfigurationResourceAutomaticallyManagedName)
 			})
+
+			It("should not deploy the synthetics-worker since the default for syntheticsWorker.enabled is `false`",
+				func() {
+					syntheticsWorkerDeployment := swresources.DeploymentName(operatorHelmReleaseName, "e2e-test-location")
+					By("verifying that the synthetics-worker deployment does not exist")
+					Expect(runAndIgnoreOutput(
+						exec.Command(
+							"kubectl",
+							"get",
+							"deployment",
+							"--namespace",
+							operatorNamespace,
+							syntheticsWorkerDeployment,
+						), false, false, false)).ToNot(Succeed())
+				})
 
 		}) // end of suite "with an existing operator deployment and operation configuration resource::with a deployed
 		// Dash0 monitoring resource"
@@ -2756,6 +2772,64 @@ spec:
 			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceManuallyManagedName)
 		})
 	}) // end of suite "with the agent0-connector enabled and a manually managed operator configuration resource"
+
+	Context("with the synthetics-worker enabled and a manually managed operator configuration resource", Ordered, func() {
+		BeforeAll(func() {
+			By("deploying the Dash0 operator with the synthetics-worker enabled, but without an operator " +
+				"configuration resource")
+			deployOperatorWithoutAutoOperationConfiguration(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				"",
+				&images,
+				map[string]string{
+					"operator.syntheticsWorker.enabled":       "true",
+					"operator.syntheticsWorker.serverAddress": "synthetics.dash0.com:443",
+				},
+			)
+
+			// Instances have no Helm-level configuration, so they require a manually managed operator configuration
+			// resource; the synthetics-worker is also independent of telemetry collection, so this suite does not
+			// deploy collectors.
+			By("deploying the Dash0 operator configuration resource manually")
+			deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
+				SelfMonitoringEnabled:      false,
+				Endpoint:                   defaultEndpoint,
+				Token:                      defaultToken,
+				ApiEndpoint:                dash0ApiMockServiceBaseUrl,
+				ClusterName:                e2eKubernetesContext,
+				TelemetryCollectionEnabled: false,
+				SyntheticsWorkerLocationId: "e2e-test-location",
+				SyntheticsWorkerToken:      "auth_e2e-synthetics-worker-dummy-token",
+			}, operatorNamespace, operatorHelmChart)
+		})
+
+		AfterAll(func() {
+			undeployDash0OperatorConfigurationResource()
+			undeployOperator(operatorNamespace)
+		})
+
+		It("deploys the synthetics-worker, and removes/redeploys it as the operator configuration resource opts "+
+			"out and back in", func() {
+			waitForSyntheticsWorkerPodToStart("e2e-test-location")
+			verifySyntheticsWorkerIsReportedAsDeployed(dash0OperatorConfigurationResourceManuallyManagedName)
+
+			By("opting out of the synthetics-worker via the operator configuration resource")
+			updateOperatorConfigurationSyntheticsWorkerEnabled(
+				dash0OperatorConfigurationResourceManuallyManagedName, false)
+
+			verifySyntheticsWorkerResourcesDoNotExist("e2e-test-location")
+			verifySyntheticsWorkerIsReportedAsDisabled(dash0OperatorConfigurationResourceManuallyManagedName)
+
+			By("revoking the opt-out via the operator configuration resource")
+			updateOperatorConfigurationSyntheticsWorkerEnabled(
+				dash0OperatorConfigurationResourceManuallyManagedName, true)
+
+			waitForSyntheticsWorkerPodToStart("e2e-test-location")
+			verifySyntheticsWorkerIsReportedAsDeployed(dash0OperatorConfigurationResourceManuallyManagedName)
+		})
+	}) // end of suite "with the synthetics-worker enabled and a manually managed operator configuration resource"
 
 	Context("with the agent0-connector, a custom cluster role and command allowlist", Ordered, func() {
 		var pseudoClusterUid string

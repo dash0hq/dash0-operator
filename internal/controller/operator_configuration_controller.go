@@ -22,6 +22,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol"
+	"github.com/dash0hq/dash0-operator/internal/syntheticsworker"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -34,6 +35,7 @@ type OperatorConfigurationReconciler struct {
 	collectorManager             *collectors.CollectorManager
 	targetAllocatorManager       *targetallocator.TargetAllocatorManager
 	agent0ConnectorManager       *agent0connector.Agent0ConnectorManager
+	syntheticsWorkerManager      *syntheticsworker.SyntheticsWorkerManager
 	signalControlManager         *signalcontrol.SignalControlManager
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig
 	pseudoClusterUid             types.UID
@@ -64,6 +66,7 @@ func NewOperatorConfigurationReconciler(
 	collectorManager *collectors.CollectorManager,
 	targetAllocatorManager *targetallocator.TargetAllocatorManager,
 	agent0ConnectorManager *agent0connector.Agent0ConnectorManager,
+	syntheticsWorkerManager *syntheticsworker.SyntheticsWorkerManager,
 	signalControlManager *signalcontrol.SignalControlManager,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
 	pseudoClusterUid types.UID,
@@ -82,6 +85,7 @@ func NewOperatorConfigurationReconciler(
 		collectorManager:             collectorManager,
 		targetAllocatorManager:       targetAllocatorManager,
 		agent0ConnectorManager:       agent0ConnectorManager,
+		syntheticsWorkerManager:      syntheticsWorkerManager,
 		signalControlManager:         signalControlManager,
 		clusterInstrumentationConfig: clusterInstrumentationConfig,
 		pseudoClusterUid:             pseudoClusterUid,
@@ -162,6 +166,9 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		if err = r.reconcileAgent0Connector(ctx, logger); err != nil {
 			return ctrl.Result{}, err
 		}
+		if err = r.reconcileSyntheticsWorker(ctx, logger); err != nil {
+			return ctrl.Result{}, err
+		}
 		if err = r.reconcileSignalControl(ctx, logger); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -240,6 +247,10 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	if err = r.reconcileAgent0Connector(ctx, logger); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if err = r.reconcileSyntheticsWorker(ctx, logger); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -457,6 +468,24 @@ func (r *OperatorConfigurationReconciler) reconcileAgent0Connector(
 		agent0connector.TriggeredByDash0OperatorConfigurationResourceReconcile,
 	); err != nil {
 		logger.Error(err, "Failed to reconcile the agent0-connector resources, requeuing reconcile request.")
+		return err
+	}
+	return nil
+}
+
+func (r *OperatorConfigurationReconciler) reconcileSyntheticsWorker(
+	ctx context.Context,
+	logger logd.Logger,
+) error {
+	if r.syntheticsWorkerManager == nil {
+		logger.Debug("synthetics-worker manager is not initialized, skipping synthetics-worker reconciliation")
+		return nil
+	}
+	if _, err := r.syntheticsWorkerManager.ReconcileSyntheticsWorker(
+		ctx,
+		syntheticsworker.TriggeredByDash0OperatorConfigurationResourceReconcile,
+	); err != nil {
+		logger.Error(err, "Failed to reconcile the synthetics-worker resources, requeuing reconcile request.")
 		return err
 	}
 	return nil

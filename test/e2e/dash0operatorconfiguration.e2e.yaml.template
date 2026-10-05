@@ -20,3 +20,10 @@ spec:
   autoMonitorNamespaces:
     enabled: true
   {{- end }}
+  {{- if .SyntheticsWorkerLocationId }}
+  syntheticsWorker:
+    instances:
+      - locationId: {{ .SyntheticsWorkerLocationId }}
+        authorization:
+          token: {{ .SyntheticsWorkerToken }}
+  {{- end }}
