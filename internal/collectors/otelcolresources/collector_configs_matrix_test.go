@@ -110,6 +110,7 @@ func maximalMatrixBaseline() collectorConfigMatrixEntry {
 			TargetAllocatorNamePrefix:                        namePrefix,
 			Agent0ConnectorEnabled:                           true,
 			Agent0ConnectorDeploymentName:                    "dash0-operator-agent0-connector",
+			SyntheticsWorkerDeploymentNames:                  []string{"dash0-operator-synthetics-worker-location-a"},
 			KubeletStatsReceiverConfig: util.KubeletStatsReceiverConfig{
 				Enabled:            true,
 				Endpoint:           "${env:K8S_NODE_NAME}:10250",

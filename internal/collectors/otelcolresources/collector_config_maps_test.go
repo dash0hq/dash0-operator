@@ -4528,12 +4528,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 	Describe("discard metrics from unmonitored namespaces", func() {
 
 		type ottlFilterExpressionTestConfig struct {
-			monitoredNamespaces           []string
-			selfMonitoringEnabled         bool
-			prometheusCrdSupportEnabled   bool
-			operatorManagerDeploymentName string
-			signalControl                 SignalControlConfig
-			expectedExpression            string
+			monitoredNamespaces             []string
+			selfMonitoringEnabled           bool
+			prometheusCrdSupportEnabled     bool
+			operatorManagerDeploymentName   string
+			signalControl                   SignalControlConfig
+			syntheticsWorkerDeploymentNames []string
+			expectedExpression              string
 		}
 
 		DescribeTable("should render the namespace filter ottl expression correctly", func(testConfig ottlFilterExpressionTestConfig) {
@@ -4544,9 +4545,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 					SelfMonitoringEnabled: testConfig.selfMonitoringEnabled,
 				},
-				PrometheusCrdSupportEnabled: testConfig.prometheusCrdSupportEnabled,
-				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
-				SignalControl:               testConfig.signalControl,
+				PrometheusCrdSupportEnabled:     testConfig.prometheusCrdSupportEnabled,
+				TargetAllocatorNamePrefix:       TargetAllocatorPrefixTest,
+				SignalControl:                   testConfig.signalControl,
+				SyntheticsWorkerDeploymentNames: testConfig.syntheticsWorkerDeploymentNames,
 			}
 			expression := renderOttlNamespaceFilter(
 				testConfig.monitoredNamespaces,
@@ -4720,16 +4722,48 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				},
 				expectedExpression: "resource.attributes[\"k8s.namespace.name\"] != nil\n",
 			}),
+			Entry("with no namespaces, self-monitoring enabled, two synthetics-worker instances", ottlFilterExpressionTestConfig{
+				monitoredNamespaces:           nil,
+				selfMonitoringEnabled:         true,
+				prometheusCrdSupportEnabled:   false,
+				operatorManagerDeploymentName: OperatorManagerDeploymentName,
+				syntheticsWorkerDeploymentNames: []string{
+					namePrefix + "-synthetics-worker-location-a",
+					namePrefix + "-synthetics-worker-location-b",
+				},
+				expectedExpression: "(resource.attributes[\"k8s.deployment.name\"] != \"" + OperatorManagerDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.daemonset.name\"] != \"" + ExpectedDaemonSetName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + ExpectedDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + namePrefix + "-synthetics-worker-location-a\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + namePrefix + "-synthetics-worker-location-b\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          resource.attributes[\"k8s.namespace.name\"] != nil\n",
+			}),
+			Entry("self-monitoring disabled - synthetics-worker exclusions not added", ottlFilterExpressionTestConfig{
+				monitoredNamespaces:           nil,
+				selfMonitoringEnabled:         false,
+				prometheusCrdSupportEnabled:   false,
+				operatorManagerDeploymentName: OperatorManagerDeploymentName,
+				syntheticsWorkerDeploymentNames: []string{
+					namePrefix + "-synthetics-worker-location-a",
+				},
+				expectedExpression: "resource.attributes[\"k8s.namespace.name\"] != nil\n",
+			}),
 		)
 
 		type ottlFilterEvaluationTestConfig struct {
-			monitoredNamespaces           []string
-			selfMonitoringEnabled         bool
-			prometheusCrdSupportEnabled   bool
-			operatorManagerDeploymentName string
-			signalControl                 SignalControlConfig
-			resourceAttributes            map[string]string
-			expectedToBeDropped           bool
+			monitoredNamespaces             []string
+			selfMonitoringEnabled           bool
+			prometheusCrdSupportEnabled     bool
+			operatorManagerDeploymentName   string
+			signalControl                   SignalControlConfig
+			syntheticsWorkerDeploymentNames []string
+			resourceAttributes              map[string]string
+			expectedToBeDropped             bool
 		}
 
 		DescribeTable("should let self-monitoring metrics pass through the OTTL namespace filter", func(testConfig ottlFilterEvaluationTestConfig) {
@@ -4740,9 +4774,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 					SelfMonitoringEnabled: testConfig.selfMonitoringEnabled,
 				},
-				PrometheusCrdSupportEnabled: testConfig.prometheusCrdSupportEnabled,
-				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
-				SignalControl:               testConfig.signalControl,
+				PrometheusCrdSupportEnabled:     testConfig.prometheusCrdSupportEnabled,
+				TargetAllocatorNamePrefix:       TargetAllocatorPrefixTest,
+				SignalControl:                   testConfig.signalControl,
+				SyntheticsWorkerDeploymentNames: testConfig.syntheticsWorkerDeploymentNames,
 			}
 			expression := renderOttlNamespaceFilter(testConfig.monitoredNamespaces, colConfig)
 
@@ -4993,6 +5028,37 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					resourceAttributes: map[string]string{
 						"k8s.deployment.name": namePrefix + "-edge-proxy",
 						"k8s.namespace.name":  OperatorNamespace,
+					},
+					expectedToBeDropped: true,
+				}),
+			Entry("synthetics-worker metrics are not dropped when self-monitoring is enabled",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   false,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					syntheticsWorkerDeploymentNames: []string{
+						namePrefix + "-synthetics-worker-location-a",
+						namePrefix + "-synthetics-worker-location-b",
+					},
+					resourceAttributes: map[string]string{
+						"k8s.deployment.name": namePrefix + "-synthetics-worker-location-b",
+						"k8s.namespace.name":  OperatorNamespace,
+					},
+					expectedToBeDropped: false,
+				}),
+			Entry("synthetics-worker metrics in a different namespace are still dropped",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   false,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					syntheticsWorkerDeploymentNames: []string{
+						namePrefix + "-synthetics-worker-location-a",
+					},
+					resourceAttributes: map[string]string{
+						"k8s.deployment.name": namePrefix + "-synthetics-worker-location-a",
+						"k8s.namespace.name":  "some-namespace",
 					},
 					expectedToBeDropped: true,
 				}),

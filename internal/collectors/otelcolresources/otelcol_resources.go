@@ -27,6 +27,7 @@ import (
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/agent0connector/a0cresources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
+	"github.com/dash0hq/dash0-operator/internal/syntheticsworker/swresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -143,6 +144,15 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			)
 	agent0ConnectorEnabled :=
 		operatorConfigurationResource.Spec.Agent0Connector.IsEnabled(m.collectorConfig.Agent0ConnectorEnabledViaHelm)
+	var syntheticsWorkerDeploymentNames []string
+	if operatorConfigurationResource.Spec.SyntheticsWorker.IsEnabled(m.collectorConfig.SyntheticsWorkerEnabledViaHelm) {
+		for _, instance := range operatorConfigurationResource.Spec.SyntheticsWorker.Instances {
+			syntheticsWorkerDeploymentNames = append(
+				syntheticsWorkerDeploymentNames,
+				swresources.DeploymentName(m.collectorConfig.OTelCollectorNamePrefix, instance.LocationID),
+			)
+		}
+	}
 	clusterName = operatorConfigurationResource.Spec.ClusterName
 	kubeletStatsReceiverConfig :=
 		m.determineKubeletstatsReceiverEndpoint(
@@ -182,6 +192,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		TargetAllocatorNamePrefix:                        m.collectorConfig.TargetAllocatorNamePrefix,
 		Agent0ConnectorEnabled:                           agent0ConnectorEnabled,
 		Agent0ConnectorDeploymentName:                    a0cresources.DeploymentName(m.collectorConfig.OTelCollectorNamePrefix),
+		SyntheticsWorkerDeploymentNames:                  syntheticsWorkerDeploymentNames,
 		KubeletStatsReceiverConfig:                       kubeletStatsReceiverConfig,
 		AutoNamespaceMonitoringEnabled:                   operatorConfigurationResource.Spec.AutoMonitorNamespaces.IsEnabled(),
 		// The hostmetrics receiver requires mapping the root file system as a volume mount, see

@@ -81,6 +81,7 @@ type CollectorConfig struct {
 	// config of the prometheus_receiver
 	TargetAllocatorNamePrefix              string
 	Agent0ConnectorEnabledViaHelm          bool
+	SyntheticsWorkerEnabledViaHelm         bool
 	SendBatchSize                          *uint32
 	SendBatchMaxSize                       *uint32
 	K8sAttributesDisableReplicasetInformer bool

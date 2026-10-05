@@ -20,6 +20,7 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/agent0connector/a0cresources"
+	"github.com/dash0hq/dash0-operator/internal/syntheticsworker/swresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
@@ -429,6 +430,66 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Entry("when explicitly disabled in the resource", new(false), false),
 		)
 	})
+
+	DescribeTable("should exclude the synthetics-worker deployments from the namespace filter if the synthetics-worker is enabled",
+		func(enabledViaHelm bool, enabledInResource *bool, expectExclusion bool) {
+			manager := NewOTelColResourceManager(
+				k8sClient,
+				k8sClient.Scheme(),
+				OperatorManagerDeployment,
+				util.CollectorConfig{
+					Images:                         TestImages,
+					OperatorNamespace:              OperatorNamespace,
+					OTelCollectorNamePrefix:        OTelCollectorNamePrefixTest,
+					KubeletStatsAutoDetectEndpoint: true,
+					DevelopmentMode:                true,
+					SyntheticsWorkerEnabledViaHelm: enabledViaHelm,
+				},
+			)
+			locationIds := []string{"location-a", "location-b"}
+			operatorConfiguration := DefaultOperatorConfigurationResource()
+			operatorConfiguration.Spec.SyntheticsWorker = dash0v1alpha1.SyntheticsWorker{
+				Enabled: enabledInResource,
+				Instances: []dash0v1alpha1.SyntheticsWorkerInstance{
+					{LocationID: locationIds[0]},
+					{LocationID: locationIds[1]},
+				},
+			}
+			_, _, err := manager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx,
+				util.ExtraConfigDefaults,
+				operatorConfiguration,
+				nil,
+				nil,
+				logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			configMap := VerifyResourceExists(
+				ctx,
+				k8sClient,
+				OperatorNamespace,
+				ExpectedDaemonSetCollectorConfigMapName,
+				&corev1.ConfigMap{},
+			).(*corev1.ConfigMap)
+			for _, locationId := range locationIds {
+				exclusion := fmt.Sprintf(
+					"(resource.attributes[\"k8s.deployment.name\"] != \"%s\" or resource.attributes[\"k8s.namespace.name\"] != \"%s\")",
+					swresources.DeploymentName(OTelCollectorNamePrefixTest, locationId),
+					OperatorNamespace,
+				)
+				if expectExclusion {
+					Expect(configMap.Data["config.yaml"]).To(ContainSubstring(exclusion))
+				} else {
+					Expect(configMap.Data["config.yaml"]).ToNot(ContainSubstring(exclusion))
+				}
+			}
+		},
+		Entry("when enabled via Helm, with no explicit setting in the resource", true, nil, true),
+		Entry("when enabled via Helm and explicitly enabled in the resource", true, new(true), true),
+		Entry("when enabled via Helm and explicitly disabled in the resource", true, new(false), false),
+		Entry("when disabled via Helm", false, nil, false),
+	)
 
 	Context("when OpenTelemetry collector resources have been modified externally", func() {
 		It("should reconcile the resources back into the desired state", func() {
