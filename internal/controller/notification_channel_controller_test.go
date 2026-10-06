@@ -499,6 +499,7 @@ var _ = Describe(
 
 						var payload map[string]any
 						Expect(json.Unmarshal(body, &payload)).To(Succeed())
+						Expect(payload["kind"]).To(Equal("Dash0NotificationChannel"))
 
 						// Verify display name was moved to metadata.name and removed from spec.
 						metadata := payload["metadata"].(map[string]any)

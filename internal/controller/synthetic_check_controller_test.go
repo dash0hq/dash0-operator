@@ -726,6 +726,9 @@ var _ = Describe(
 					"maps synthetic checks", func(testConfig syntheticCheckToRequestTestConfig) {
 						syntheticCheck := map[string]any{}
 						Expect(yaml.Unmarshal([]byte(testConfig.syntheticCheck), &syntheticCheck)).To(Succeed())
+						// Mimic production: a typed Get leaves TypeMeta empty, so the resource map has no kind/apiVersion.
+						delete(syntheticCheck, "kind")
+						delete(syntheticCheck, "apiVersion")
 						apiConfig := ApiConfig{
 							Endpoint: ApiEndpointTest,
 							Dataset:  DatasetCustomTest,
@@ -762,6 +765,7 @@ var _ = Describe(
 						Expect(err).ToNot(HaveOccurred())
 						resultingSyntheticCheckInRequest := map[string]any{}
 						Expect(json.Unmarshal(body, &resultingSyntheticCheckInRequest)).To(Succeed())
+						Expect(ReadFromMap(resultingSyntheticCheckInRequest, []string{"kind"})).To(Equal("Dash0SyntheticCheck"))
 						Expect(resultingSyntheticCheckInRequest["spec"]).ToNot(BeNil())
 
 						Expect(resultingSyntheticCheckInRequest["metadata"]).ToNot(BeNil())
