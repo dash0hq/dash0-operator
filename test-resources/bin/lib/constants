@@ -33,3 +33,7 @@ default_operator_webhook_service_name=dash0-operator-webhook-service
 # nodejs paths
 nodejs_values_with_service_monitor="test-resources/node.js/express/test-values/with_service_monitor.yaml"
 nodejs_values_with_pod_monitor="test-resources/node.js/express/test-values/with_pod_monitor.yaml"
+
+# Operator Lifecycle Manager, used by deploy-olm.sh and delete-olm.sh
+olm_version=v0.46.0
+olm_release_url="https://github.com/operator-framework/operator-lifecycle-manager/releases/download/$olm_version"
