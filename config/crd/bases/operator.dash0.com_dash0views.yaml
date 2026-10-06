@@ -49,12 +49,8 @@ spec:
                     type: string
                   folder:
                     description: |-
-                      The name of the folder in which the view is located. For example, if
-                      the view is located in the root folder, this field will be an empty array.
-
-                      A view can only be located within a single folder. However, it can be nested.
-                      Meaning, a value such as `["Shop", "Checkout"]` describes that the view is
-                      residing within a folder called `Checkout` and that folder is within a folder called
+                      Deprecated: Dash0 ignores this field. Use the annotation dash0.com/folder-path instead, for example
+                      `dash0.com/folder-path: "/Shop/Checkout"` places the view in the folder `Checkout`, which is within the folder
                       `Shop`.
                     items:
                       type: string

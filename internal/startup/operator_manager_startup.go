@@ -60,6 +60,8 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol/scresources"
+	"github.com/dash0hq/dash0-operator/internal/syntheticsworker"
+	"github.com/dash0hq/dash0-operator/internal/syntheticsworker/swresources"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -104,6 +106,12 @@ type environmentVariables struct {
 	agent0ConnectorToken                        string
 	agent0ConnectorSecretRefName                string
 	agent0ConnectorSecretRefKey                 string
+	syntheticsWorkerImage                       string
+	syntheticsWorkerImagePullPolicy             corev1.PullPolicy
+	syntheticsWorkerEnabled                     bool
+	syntheticsWorkerServerAddress               string
+	syntheticsWorkerInsecure                    bool
+	syntheticsWorkerPriorityClassName           string
 	nodeIp                                      string
 	nodeName                                    string
 	podIp                                       string
@@ -222,6 +230,12 @@ const (
 	agent0ConnectorTokenEnvVarName                        = "DASH0_AGENT0_CONNECTOR_TOKEN"
 	agent0ConnectorSecretRefNameEnvVarName                = "DASH0_AGENT0_CONNECTOR_SECRET_REF_NAME"
 	agent0ConnectorSecretRefKeyEnvVarName                 = "DASH0_AGENT0_CONNECTOR_SECRET_REF_KEY"
+	syntheticsWorkerImageEnvVarName                       = "DASH0_SYNTHETICS_WORKER_IMAGE"
+	syntheticsWorkerImagePullPolicyEnvVarName             = "DASH0_SYNTHETICS_WORKER_IMAGE_PULL_POLICY"
+	syntheticsWorkerEnabledEnvVarName                     = "DASH0_SYNTHETICS_WORKER_ENABLED"
+	syntheticsWorkerServerAddressEnvVarName               = "DASH0_SYNTHETICS_WORKER_SERVER_ADDRESS"
+	syntheticsWorkerInsecureEnvVarName                    = "DASH0_SYNTHETICS_WORKER_INSECURE"
+	syntheticsWorkerPriorityClassNameEnvVarName           = "DASH0_SYNTHETICS_WORKER_PRIORITY_CLASS_NAME"
 	k8sNodeIpEnvVarName                                   = "K8S_NODE_IP"
 	k8sNodeNameEnvVarName                                 = "K8S_NODE_NAME"
 	k8sPodIpEnvVarName                                    = "K8S_POD_IP"
@@ -950,6 +964,13 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	agent0ConnectorSecretRefName, _ := os.LookupEnv(agent0ConnectorSecretRefNameEnvVarName)
 	agent0ConnectorSecretRefKey, _ := os.LookupEnv(agent0ConnectorSecretRefKeyEnvVarName)
 
+	syntheticsWorkerImage, _ := os.LookupEnv(syntheticsWorkerImageEnvVarName)
+	syntheticsWorkerImagePullPolicy := readOptionalPullPolicyFromEnvironmentVariable(syntheticsWorkerImagePullPolicyEnvVarName)
+	syntheticsWorkerEnabled := readOptionalBoolFromEnvironmentVariable(syntheticsWorkerEnabledEnvVarName, false)
+	syntheticsWorkerServerAddress, _ := os.LookupEnv(syntheticsWorkerServerAddressEnvVarName)
+	syntheticsWorkerInsecure := readBooleanEnvVar(syntheticsWorkerInsecureEnvVarName)
+	syntheticsWorkerPriorityClassName, _ := os.LookupEnv(syntheticsWorkerPriorityClassNameEnvVarName)
+
 	nodeIp, isSet := os.LookupEnv(k8sNodeIpEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, k8sNodeIpEnvVarName)
@@ -1041,6 +1062,12 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		agent0ConnectorToken:                        agent0ConnectorToken,
 		agent0ConnectorSecretRefName:                agent0ConnectorSecretRefName,
 		agent0ConnectorSecretRefKey:                 agent0ConnectorSecretRefKey,
+		syntheticsWorkerImage:                       syntheticsWorkerImage,
+		syntheticsWorkerImagePullPolicy:             syntheticsWorkerImagePullPolicy,
+		syntheticsWorkerEnabled:                     syntheticsWorkerEnabled,
+		syntheticsWorkerServerAddress:               syntheticsWorkerServerAddress,
+		syntheticsWorkerInsecure:                    syntheticsWorkerInsecure,
+		syntheticsWorkerPriorityClassName:           syntheticsWorkerPriorityClassName,
 		nodeIp:                                      nodeIp,
 		nodeName:                                    nodeName,
 		podIp:                                       podIp,
@@ -1694,15 +1721,19 @@ func startDash0Controllers(
 		EdgeProxyImagePullPolicy:                    envVars.edgeProxyImagePullPolicy,
 		Agent0ConnectorImage:                        envVars.agent0ConnectorImage,
 		Agent0ConnectorImagePullPolicy:              envVars.agent0ConnectorImagePullPolicy,
+		SyntheticsWorkerImage:                       envVars.syntheticsWorkerImage,
+		SyntheticsWorkerImagePullPolicy:             envVars.syntheticsWorkerImagePullPolicy,
 	}
 
-	httpClient := util.WithUserAgent(
-		dash0apiclient.NewTransport(
-			dash0apiclient.WithTransportMaxRetries(2),
-			dash0apiclient.WithTransportRetryWaitMin(1*time.Second),
-			dash0apiclient.WithTransportRetryWaitMax(3*time.Second),
-		).HTTPClient(),
-		images.GetOperatorVersion(),
+	dash0ApiTransport := dash0apiclient.NewTransport(
+		dash0apiclient.WithTransportMaxRetries(2),
+		dash0apiclient.WithTransportRetryWaitMin(1*time.Second),
+		dash0apiclient.WithTransportRetryWaitMax(3*time.Second),
+	)
+	httpClient := util.WithUserAgent(dash0ApiTransport.HTTPClient(), images.GetOperatorVersion())
+	apiClientPool := controller.NewApiClientPool(
+		dash0ApiTransport,
+		util.RenderUserAgent(images.GetOperatorVersion()),
 	)
 
 	isIPv6Cluster := util.IsIPv6Address(envVars.podIp)
@@ -1891,6 +1922,19 @@ func startDash0Controllers(
 		return err
 	}
 
+	syntheticsWorkerManager, err := setupSyntheticsWorkerManager(
+		mgr,
+		k8sClient,
+		envVars,
+		images,
+		operatorDeploymentSelfReference,
+		developmentMode,
+		cliArgs.isOpenShift,
+	)
+	if err != nil {
+		return err
+	}
+
 	var scManager *signalcontrol.SignalControlManager
 	if !cliArgs.featureSignalControlEnabled {
 		setupLog.Info("Signal Control features are disabled.")
@@ -1958,7 +2002,8 @@ func startDash0Controllers(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		mgr.GetEventRecorder("dash0-view-controller"),
+		apiClientPool,
 	)
 	if err := viewReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the view reconciler: %w", err)
@@ -2119,6 +2164,7 @@ func startDash0Controllers(
 		collectorManager,
 		targetallocatorManager,
 		agent0ConnectorManager,
+		syntheticsWorkerManager,
 		scManager,
 		clusterInstrumentationConfig,
 		clusterUid,
@@ -2204,6 +2250,7 @@ func startDash0Controllers(
 		cliArgs.telemetryCollectionEnabled,
 		cliArgs.featureSignalControlEnabled,
 		envVars.agent0ConnectorEnabled,
+		envVars.syntheticsWorkerEnabled,
 	); err != nil {
 		return err
 	}
@@ -2435,6 +2482,54 @@ func setupAgent0ConnectorManager(
 	return agent0ConnectorManager, nil
 }
 
+func setupSyntheticsWorkerManager(
+	mgr ctrl.Manager,
+	k8sClient client.Client,
+	envVars environmentVariables,
+	images util.Images,
+	operatorDeploymentSelfReference *appsv1.Deployment,
+	developmentMode bool,
+	isOpenShift bool,
+) (*syntheticsworker.SyntheticsWorkerManager, error) {
+	if !envVars.syntheticsWorkerEnabled {
+		// We might not have the permissions to manage the synthetics-worker resources (in particular when telemetry
+		// collection is also disabled), e.g. no permission to manage deployments.
+		return nil, nil
+	}
+	syntheticsWorkerConfig := util.SyntheticsWorkerConfig{
+		Images:            images,
+		OperatorNamespace: envVars.operatorNamespace,
+		NamePrefix:        envVars.oTelCollectorNamePrefix,
+		ServerAddress:     envVars.syntheticsWorkerServerAddress,
+		Insecure:          envVars.syntheticsWorkerInsecure,
+		PriorityClassName: envVars.syntheticsWorkerPriorityClassName,
+		IsOpenShift:       isOpenShift,
+		DevelopmentMode:   developmentMode,
+	}
+	syntheticsWorkerResourceManager := swresources.NewSyntheticsWorkerResourceManager(
+		k8sClient,
+		mgr.GetScheme(),
+		operatorDeploymentSelfReference,
+		syntheticsWorkerConfig,
+	)
+	syntheticsWorkerManager := syntheticsworker.NewSyntheticsWorkerManager(
+		k8sClient,
+		developmentMode,
+		syntheticsWorkerResourceManager,
+		mgr.GetEventRecorder("dash0-synthetics-worker"),
+	)
+	syntheticsWorkerReconciler := syntheticsworker.NewSyntheticsWorkerReconciler(
+		k8sClient,
+		syntheticsWorkerManager,
+		envVars.operatorNamespace,
+		envVars.oTelCollectorNamePrefix,
+	)
+	if err := syntheticsWorkerReconciler.SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("unable to set up the synthetics-worker reconciler: %w", err)
+	}
+	return syntheticsWorkerManager, nil
+}
+
 // agent0ConnectorAuthorization builds the Dash0 authorization configuration for the agent0-connector workload from the
 // operator's environment variables. A literal token (operator.agent0Connector.token) takes precedence over a secret
 // reference (operator.agent0Connector.secretRef); if neither is configured, an empty authorization is returned (the
@@ -2613,11 +2708,14 @@ func setupResourceWebhooks(
 	telemetryCollectionEnabled bool,
 	signalControlEnabled bool,
 	agent0ConnectorEnabled bool,
+	syntheticsWorkerEnabled bool,
 ) error {
 	if err := webhooks.NewOperatorConfigurationMutatingWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration mutating webhook: %w", err)
 	}
-	if err := webhooks.NewOperatorConfigurationValidationWebhookHandler(k8sClient, telemetryCollectionEnabled, agent0ConnectorEnabled).SetupWebhookWithManager(mgr); err != nil {
+	if err := webhooks.NewOperatorConfigurationValidationWebhookHandler(
+		k8sClient, telemetryCollectionEnabled, agent0ConnectorEnabled, syntheticsWorkerEnabled,
+	).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration validation webhook: %w", err)
 	}
 	if signalControlEnabled {

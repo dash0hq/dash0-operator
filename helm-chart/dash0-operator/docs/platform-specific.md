@@ -58,6 +58,8 @@ clusters:
 - collecting the extra metadata labels `container.id` and `k8s.volume.type` for the `kubeletstats` receiver metrics is
   disabled, collecting these requires access to the `/pod` endpoint of the kubelet API which is not available in GKE
   autopilot due to the lack of the `nodes/proxy` permission
+- the [synthetics-worker](synthetics-worker.md) is not yet supported, since its container image has not been added to
+  the GKE Autopilot workload allowlist
 
 GKE Autopilot [adjusts](https://cloud.google.com/kubernetes-engine/docs/concepts/autopilot-resource-requests) the
 resource requests and limits of all workloads, including the OpenTelemetry collectors and the other workloads managed by

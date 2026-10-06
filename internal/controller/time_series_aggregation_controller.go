@@ -69,8 +69,8 @@ func NewTimeSeriesAggregationReconciler(
 func (r *TimeSeriesAggregationReconciler) SetupWithManager(mgr manager.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dash0v1alpha1.Dash0TimeSeriesAggregation{}).
-		// ignore changes in the status subresource, but react on changes to spec, label and annotations
-		WithEventFilter(generationOrLabelChangePredicate).
+		// ignore changes in the status subresource, but react on changes to spec, labels and dash0.com/ annotations
+		WithEventFilter(generationLabelOrDash0AnnotationChangePredicate).
 		Complete(r)
 }
 

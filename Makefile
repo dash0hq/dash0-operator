@@ -202,7 +202,7 @@ nodeuid-package-unit-tests: ## Run the Go unit tests for the nodeuid package (sh
 
 .PHONY: agent0-connector-unit-tests
 agent0-connector-unit-tests: ## Run the Go unit tests for the agent0-connector image Go app.
-	cd images/agent0-connector/src && go test ./...
+	cd images/agent0-connector/src && go test -race ./...
 
 .PHONY: collector-telemetry-unit-tests
 collector-telemetry-unit-tests: ## Run the Go unit tests for the collector image's custom internal-telemetry factory.
@@ -565,6 +565,24 @@ proto-gen-agent0-connector:
 	    --go_out=. --go_opt=paths=source_relative \
 	    --go-grpc_out=. --go-grpc_opt=paths=source_relative \
 	    proto/outboundconnector.proto
+
+# Regenerates the gRPC bindings for the synthetics-worker part of the outbound-connector mock from its vendored proto
+# file. Not part of `make build` — run manually after re-vendoring the proto. Runs protoc in a container, so only
+# Docker is required on the host.
+.PHONY: proto-gen-outbound-connector-mock-synthetics
+proto-gen-outbound-connector-mock-synthetics:
+	@docker run --rm \
+	  -v "$(CURDIR)/test/e2e/outbound-connector-mock:/src" \
+	  -w /src \
+	  golang:1.27.1-alpine3.24 \
+	  sh -c 'apk add --no-cache protobuf protobuf-dev > /dev/null && \
+	    go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.10 && \
+	    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1 && \
+	    protoc \
+	      --go_out=. --go_opt=paths=source_relative \
+	      --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+	      proto/synthetictasks.proto && \
+	    chown $(shell id -u):$(shell id -g) proto/synthetictasks.pb.go proto/synthetictasks_grpc.pb.go'
 
 .PHONY: push-telemetry-matcher-image
 push-telemetry-matcher-image: ## Push the telemetry-matcher container image.

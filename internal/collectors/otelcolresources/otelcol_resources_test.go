@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cisco-open/k8s-objectmatcher/patch"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -17,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/agent0connector/a0cresources"
@@ -154,6 +156,32 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(isNew).To(BeFalse())
 			Expect(isChanged).To(BeFalse())
 			verifyObject(ctx, testResource)
+		})
+
+		It("should replace a controller owner reference with a non-controller owner reference", func() {
+			existing := testResource.DeepCopy()
+			Expect(controllerutil.SetControllerReference(&appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: OperatorManagerDeployment.Namespace,
+					Name:      OperatorManagerDeployment.Name,
+					UID:       OperatorManagerDeployment.UID,
+				},
+			}, existing, k8sClient.Scheme())).To(Succeed())
+			Expect(patch.DefaultAnnotator.SetLastAppliedAnnotation(existing)).To(Succeed())
+			Expect(k8sClient.Create(ctx, existing)).To(Succeed())
+
+			isNew, isChanged, err := oTelColResourceManager.createOrUpdateResource(ctx, testResource.DeepCopy(), logger)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(isNew).To(BeFalse())
+			Expect(isChanged).To(BeTrue())
+			object := &corev1.ConfigMap{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(testResource), object)).To(Succeed())
+			ownerReferences := object.GetOwnerReferences()
+			Expect(ownerReferences).To(HaveLen(1))
+			Expect(ownerReferences[0].UID).To(Equal(OperatorManagerDeployment.UID))
+			Expect(ownerReferences[0].Controller).To(BeNil())
+			Expect(*ownerReferences[0].BlockOwnerDeletion).To(BeTrue())
 		})
 	})
 

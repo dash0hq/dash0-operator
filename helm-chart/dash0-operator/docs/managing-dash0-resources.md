@@ -305,6 +305,22 @@ checks with the same name but different internal IDs.
 If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the synthetic
 checks in that dataset, otherwise they will be created in the `default` dataset.
 
+To place a synthetic check in a folder in Dash0, add the annotation `dash0.com/folder-path` to the synthetic check resource, for
+example `dash0.com/folder-path: "/Shop/Checkout"` for the folder `Checkout` within the folder `Shop`.
+The operator synchronizes changes to `dash0.com/*` annotations like any other change to the resource.
+The resource is the source of truth: when the operator synchronizes the synthetic check, it replaces the folder in Dash0
+with the value of the annotation (or removes it, if the annotation is not set).
+The folder of a synthetic check managed by the operator cannot be changed in the Dash0 UI.
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SyntheticCheck
+metadata:
+  name: ...
+  annotations:
+    dash0.com/folder-path: "/Shop/Checkout"
+```
+
 You can opt out of synchronization for individual synthetic check resources by adding the Kubernetes label
 `dash0.com/enable: false` to the synthetic check resource.
 If this label is added to a synthetic check which has previously been synchronized to Dash0, the operator will delete
@@ -373,6 +389,25 @@ name but different internal IDs.
 
 If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the view in that
 dataset, otherwise they will be created in the `default` dataset.
+
+To place a view in a folder in Dash0, add the annotation `dash0.com/folder-path` to the view resource, for
+example `dash0.com/folder-path: "/Shop/Checkout"` for the folder `Checkout` within the folder `Shop`.
+The operator synchronizes changes to `dash0.com/*` annotations like any other change to the resource.
+The resource is the source of truth: when the operator synchronizes the view, it replaces the folder in Dash0
+with the value of the annotation (or removes it, if the annotation is not set).
+The folder of a view managed by the operator cannot be changed in the Dash0 UI.
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0View
+metadata:
+  name: ...
+  annotations:
+    dash0.com/folder-path: "/Shop/Checkout"
+```
+
+The field `spec.display.folder` is deprecated, Dash0 ignores it.
+The operator logs a warning and queues a Kubernetes event of type `Warning` for views that still use it.
 
 You can opt out of synchronization for individual view resources by adding the Kubernetes label
 `dash0.com/enable: false` to the view resource.
