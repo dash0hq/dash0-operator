@@ -24,11 +24,17 @@ func (defaultTransportProxy) RoundTrip(req *http.Request) (*http.Response, error
 // for unit tests. Retry delays are set to milliseconds to avoid slowing down the test suite. The base transport is a
 // proxy to http.DefaultTransport so that gock interception works.
 func TestHTTPClient() *http.Client {
+	return TestTransport().HTTPClient()
+}
+
+// TestTransport returns the dash0-api-client-go transport used by TestHTTPClient, for creating typed API clients in
+// unit tests.
+func TestTransport() *dash0.Transport {
 	return dash0.NewTransport(
 		dash0.WithBaseTransport(defaultTransportProxy{}),
 		dash0.WithTransportMaxRetries(2),
 		dash0.WithTransportRetryWaitMin(1*time.Millisecond),
 		dash0.WithTransportRetryWaitMax(5*time.Millisecond),
 		dash0.WithTransportTimeout(10*time.Second),
-	).HTTPClient()
+	)
 }

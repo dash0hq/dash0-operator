@@ -80,11 +80,11 @@ var (
 	}
 
 	AuthorizationDefaultEnvVar         = "OTELCOL_AUTH_TOKEN_DEFAULT_0"
-	AuthorizationTokenTest             = "authorization-token-test"
+	AuthorizationTokenTest             = "auth_authorization-token-test"
 	AuthorizationHeaderTest            = fmt.Sprintf("Bearer %s", AuthorizationTokenTest)
-	AuthorizationTokenTestAlternative  = "authorization-token-test-alternative"
+	AuthorizationTokenTestAlternative  = "auth_authorization-token-test-alternative"
 	AuthorizationHeaderTestAlternative = fmt.Sprintf("Bearer %s", AuthorizationTokenTestAlternative)
-	AuthorizationTokenTestFromSecret   = "authorization-token-test-from-secret"
+	AuthorizationTokenTestFromSecret   = "auth_authorization-token-test-from-secret"
 	AuthorizationHeaderTestFromSecret  = fmt.Sprintf("Bearer %s", AuthorizationTokenTestFromSecret)
 	SecretRefTest                      = dash0common.SecretRef{
 		Name: "secret-ref",

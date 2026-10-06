@@ -4,9 +4,9 @@
 package controller
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -27,6 +27,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
+
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
@@ -40,7 +42,7 @@ type ViewReconciler struct {
 	pseudoClusterUid      types.UID
 	leaderElectionAware   util.LeaderElectionAware
 	recorder              events.EventRecorder
-	httpClient            *http.Client
+	apiClientPool         *ApiClientPool
 	defaultApiConfigs     selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs  selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	initialSyncMutex      sync.Mutex
@@ -60,14 +62,14 @@ func NewViewReconciler(
 	pseudoClusterUid types.UID,
 	leaderElectionAware util.LeaderElectionAware,
 	recorder events.EventRecorder,
-	httpClient *http.Client,
+	apiClientPool *ApiClientPool,
 ) *ViewReconciler {
 	return &ViewReconciler{
 		Client:               k8sClient,
 		pseudoClusterUid:     pseudoClusterUid,
 		leaderElectionAware:  leaderElectionAware,
 		recorder:             recorder,
-		httpClient:           httpClient,
+		apiClientPool:        apiClientPool,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
 		namespacedSyncMutex:  *selfmonitoringapiaccess.NewNamespaceMutex(),
@@ -122,8 +124,9 @@ func (r *ViewReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
+// HttpClient returns nil, the view reconciler talks to the Dash0 API via the API client pool.
 func (r *ViewReconciler) HttpClient() *http.Client {
-	return r.httpClient
+	return nil
 }
 
 func (r *ViewReconciler) SetDefaultApiConfigs(ctx context.Context, apiConfigs []ApiConfig, logger logd.Logger) {
@@ -375,57 +378,73 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 	itemName := preconditionChecksResult.k8sName
 
 	viewUrl, viewOrigin := r.renderViewUrl(preconditionChecksResult, apiConfig.Endpoint, apiConfig.Dataset)
+	dataset := apiConfig.Dataset
 
-	var req *http.Request
-	var method string
-	var err error
-
+	var apiClientCall *ApiClientCall
 	switch action {
 	case upsertAction:
-		view := preconditionChecksResult.resource
-		serializedView, _ := json.Marshal(view)
-		requestPayload := bytes.NewBuffer(serializedView)
-		method = http.MethodPut
-		req, err = http.NewRequest(
-			method,
-			viewUrl,
-			requestPayload,
-		)
+		viewDefinition, err := mapToViewDefinition(preconditionChecksResult.resource)
+		if err != nil {
+			conversionErr := fmt.Errorf("unable to convert the view to the Dash0 API format: %w", err)
+			logger.Error(conversionErr, "error converting view")
+			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, conversionErr.Error())
+		}
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodPut,
+			Url:    viewUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				updatedView, err := apiClient.UpdateView(ctx, viewOrigin, viewDefinition, &dataset)
+				if err != nil {
+					return "", err
+				}
+				if updatedView == nil {
+					return "", errors.New("unexpected nil/empty response body")
+				}
+				return dash0apiclient.GetViewID(updatedView), nil
+			},
+		}
 	case deleteAction:
-		method = http.MethodDelete
-		req, err = http.NewRequest(
-			method,
-			viewUrl,
-			nil,
-		)
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodDelete,
+			Url:    viewUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				return "", apiClient.DeleteView(ctx, viewOrigin, &dataset)
+			},
+		}
 	default:
 		unknownActionErr := fmt.Errorf("unknown API action: %d", action)
 		logger.Error(unknownActionErr, "unknown API action")
 		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, unknownActionErr.Error())
 	}
 
-	if err != nil {
-		httpError := fmt.Errorf(
-			"unable to create a new HTTP request to synchronize the view: %s %s: %w",
-			method,
-			viewUrl,
-			err,
-		)
-		logger.Error(httpError, "error creating http request")
-		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, httpError.Error())
-	}
-
-	addAuthorizationHeader(req, apiConfig.Token)
-	if action == upsertAction {
-		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
-	}
-
-	return NewResourceToRequestsResultSingleItemSuccess(
+	return NewResourceToRequestsResultSingleItemApiClientCall(
 		apiConfig,
-		req,
+		apiClientCall,
 		itemName,
 		viewOrigin,
 	)
+}
+
+// mapToViewDefinition converts the view resource to the typed view definition of the Dash0 API client. Fields that
+// the Dash0 API does not define for views (for example metadata.namespace, status) are dropped.
+func mapToViewDefinition(view map[string]any) (*dash0apiclient.ViewDefinition, error) {
+	serializedView, err := json.Marshal(view)
+	if err != nil {
+		return nil, err
+	}
+	viewDefinition := &dash0apiclient.ViewDefinition{}
+	if err = json.Unmarshal(serializedView, viewDefinition); err != nil {
+		return nil, err
+	}
+	return viewDefinition, nil
 }
 
 func (r *ViewReconciler) renderViewUrl(
@@ -433,21 +452,20 @@ func (r *ViewReconciler) renderViewUrl(
 	endpoint string,
 	dataset string,
 ) (string, string) {
-	datasetUrlEncoded := url.QueryEscape(dataset)
 	viewOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s",
 		r.pseudoClusterUid,
-		datasetUrlEncoded,
+		datasetInOrigin(dataset),
 		preconditionChecksResult.k8sNamespace,
 		preconditionChecksResult.k8sName,
 	)
 	return fmt.Sprintf(
 		"%sapi/views/%s?dataset=%s",
 		endpoint,
-		viewOrigin,
-		datasetUrlEncoded,
+		url.PathEscape(viewOrigin),
+		url.QueryEscape(dataset),
 	), viewOrigin
 }
 

@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -967,11 +966,11 @@ var _ = Describe(
 						Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(1))
 						apiRequest := resourceToRequestsResult.ApiRequests[0]
 						Expect(apiRequest.ItemName).To(Equal("dash0-view"))
-						req := apiRequest.Request
-						defer func() {
-							_ = req.Body.Close()
-						}()
-						body, err := io.ReadAll(req.Body)
+						Expect(apiRequest.ApiClientCall).ToNot(BeNil())
+						Expect(apiRequest.ApiClientCall.Method).To(Equal(http.MethodPut))
+						viewDefinition, err := mapToViewDefinition(view)
+						Expect(err).ToNot(HaveOccurred())
+						body, err := json.Marshal(viewDefinition)
 						Expect(err).ToNot(HaveOccurred())
 						resultingViewInRequest := map[string]any{}
 						Expect(json.Unmarshal(body, &resultingViewInRequest)).To(Succeed())
@@ -1021,8 +1020,9 @@ kind: Dash0View
 metadata:
   name: dash0-view
   annotations:
-    dash0com/annotation1: value1
-    dash0com/annotation2: value2
+    dash0.com/folder-path: /shop/checkout
+    dash0.com/sharing: team:team_01abc
+    dash0com/not-part-of-the-api: dropped
 spec:
   display:
     name: Dash0 View Example
@@ -1034,8 +1034,8 @@ spec:
         stringValue: "200"
 `,
 							expectedAnnotations: map[string]string{
-								"dash0com/annotation1": "value1",
-								"dash0com/annotation2": "value2",
+								"dash0.com/folder-path": "/shop/checkout",
+								"dash0.com/sharing":     "team:team_01abc",
 							},
 						},
 					),
@@ -1051,7 +1051,7 @@ func createViewReconciler(clusterId string) *ViewReconciler {
 		types.UID(clusterId),
 		viewLeaderElectionAware,
 		recorder,
-		TestHTTPClient(),
+		testApiClientPool(),
 	)
 	return viewReconciler
 }

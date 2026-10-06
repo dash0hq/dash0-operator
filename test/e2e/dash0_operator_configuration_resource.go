@@ -47,7 +47,7 @@ const (
 
 	// We only need a non-empty token to pass the validation in startup.auto_operator_configuration_handler.go,
 	// we do not actually send data to a Dash0 backend so no real token is required.
-	defaultToken = "dummy-token"
+	defaultToken = "auth_dummy-token"
 )
 
 var (

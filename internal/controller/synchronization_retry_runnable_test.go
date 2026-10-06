@@ -383,7 +383,7 @@ var _ = Describe("The synchronization retry runnable", func() {
 				types.UID("test-cluster-uid"),
 				&DummyLeaderElectionAware{Leader: true},
 				recorder,
-				TestHTTPClient(),
+				testApiClientPool(),
 			)
 
 			createViewWithSynchronizationError(ctx, "view-server-error", 503, "server error")
