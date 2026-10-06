@@ -202,7 +202,7 @@ nodeuid-package-unit-tests: ## Run the Go unit tests for the nodeuid package (sh
 
 .PHONY: agent0-connector-unit-tests
 agent0-connector-unit-tests: ## Run the Go unit tests for the agent0-connector image Go app.
-	cd images/agent0-connector/src && go test ./...
+	cd images/agent0-connector/src && go test -race ./...
 
 .PHONY: collector-telemetry-unit-tests
 collector-telemetry-unit-tests: ## Run the Go unit tests for the collector image's custom internal-telemetry factory.

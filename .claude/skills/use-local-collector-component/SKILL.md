@@ -1,11 +1,15 @@
-# Invoke with:
-# /use-local-collector-component kubeletstatsreceiver
-# /use-local-collector-component --cleanup kubeletstatsreceiver
 ---
 name: use-local-collector-component
 description: Use this skill to prepare the dash0-operator repository for using an OpenTelemetry collector component that is built from local sources. Pass --cleanup to revert the changes.
 disable-model-invocation: true
 ---
+
+Invoke with:
+
+```
+/use-local-collector-component kubeletstatsreceiver
+/use-local-collector-component --cleanup kubeletstatsreceiver
+```
 
 If $ARGUMENTS starts with `--cleanup`, extract the component name (the part after `--cleanup `) and perform the cleanup steps below. Otherwise perform the setup steps below.
 
