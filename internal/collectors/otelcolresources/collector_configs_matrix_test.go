@@ -168,6 +168,10 @@ func maximalSignalControlConfig() SignalControlConfig {
 		SpamFilterCacheExpiration:          "5m",
 		SpamFilterAllowNoSettingsExt:       true,
 		OperationPreferSpanName:            true,
+		LogEnrichmentEnabled:               true,
+		LogPatternRefreshInterval:          "2m",
+		LogParserCacheExpiration:           "5m",
+		LogGroupingCacheExpiration:         "5m",
 		OperationCardinalityRules: []SignalControlCardinalityRule{
 			{
 				Id:              "rule-1",
@@ -624,6 +628,29 @@ func matrixSettings() []matrixSetting {
 					e.config.SignalControl.SpamFilterCacheExpiration = "5m"
 				} else {
 					e.config.SignalControl.SpamFilterCacheExpiration = ""
+				}
+			},
+		},
+		{
+			name: "signal-control-log-enrichment",
+			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				enableSignalControl(e)
+				e.config.SignalControl.LogEnrichmentEnabled = enabled
+			},
+		},
+		{
+			name: "signal-control-log-enrichment-options",
+			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				enableSignalControl(e)
+				e.config.SignalControl.LogEnrichmentEnabled = true
+				if enabled {
+					e.config.SignalControl.LogPatternRefreshInterval = "2m"
+					e.config.SignalControl.LogParserCacheExpiration = "5m"
+					e.config.SignalControl.LogGroupingCacheExpiration = "5m"
+				} else {
+					e.config.SignalControl.LogPatternRefreshInterval = ""
+					e.config.SignalControl.LogParserCacheExpiration = ""
+					e.config.SignalControl.LogGroupingCacheExpiration = ""
 				}
 			},
 		},
