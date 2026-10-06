@@ -12,23 +12,23 @@ import (
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
-var _ = Describe("The view API client calls", func() {
-	DescribeTable("address the same view in Dash0 as the hand-built URL",
+var _ = Describe("The synthetic check API client calls", func() {
+	DescribeTable("address the same synthetic check in Dash0 as the hand-built URL",
 		func(dataset string) {
 			apiClientPool, recorder := urlRecordingApiClientPool()
-			viewReconciler := &ViewReconciler{
+			syntheticCheckReconciler := &SyntheticCheckReconciler{
 				pseudoClusterUid: "cluster-uid",
 				apiClientPool:    apiClientPool,
 			}
 			apiConfig := ApiConfig{Endpoint: ApiEndpointStandardizedTest, Dataset: dataset, Token: AuthorizationTokenTest}
 			expectApiClientCallsToAddressUrl(
-				viewReconciler,
+				syntheticCheckReconciler,
 				recorder,
 				&preconditionValidationResult{k8sNamespace: "namespace", k8sName: "name"},
 				func() map[string]any { return map[string]any{"metadata": map[string]any{"name": "name"}} },
 				apiConfig,
 				fmt.Sprintf(
-					"%sapi/views/dash0-operator_cluster-uid_%s_namespace_name?dataset=%s",
+					"%sapi/synthetic-checks/dash0-operator_cluster-uid_%s_namespace_name?dataset=%s",
 					apiConfig.Endpoint,
 					url.QueryEscape(dataset),
 					url.QueryEscape(dataset),

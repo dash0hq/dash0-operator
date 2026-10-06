@@ -246,4 +246,45 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 			},
 		)
 	})
+	syntheticCheckUnionReason := "a union in the API client which keeps the raw JSON, see synthetic_check_definition_roundtrip_test.go"
+
+	It("finds no unexpected drift between Dash0SyntheticCheck and the API client's synthetic check type", func() {
+		expectNoUnexpectedApiTypeDrift(
+			reflect.TypeFor[dash0v1alpha1.Dash0SyntheticCheckSpec](),
+			reflect.TypeFor[dash0apiclient.SyntheticCheckSpec](),
+			map[string]string{
+				"plugin.kind":  syntheticCheckUnionReason,
+				"plugin.spec":  syntheticCheckUnionReason,
+				"retries.kind": syntheticCheckUnionReason,
+				"retries.spec": syntheticCheckUnionReason,
+			},
+			map[string]string{
+				"notifications.onlyCriticalChannels": "not supported by Dash0SyntheticCheck yet",
+				"permissions":                        "not supported by Dash0SyntheticCheck yet",
+			},
+		)
+	})
+
+	It("finds no unexpected drift between the synthetic check plugin and the API client's HTTP check plugin", func() {
+		expectNoUnexpectedApiTypeDrift(
+			reflect.TypeFor[dash0v1alpha1.Dash0SyntheticCheckPlugin](),
+			reflect.TypeFor[dash0apiclient.SyntheticHttpCheckPlugin](),
+			map[string]string{
+				"spec.assertions.criticalAssertions.kind": syntheticCheckUnionReason,
+				"spec.assertions.criticalAssertions.spec": syntheticCheckUnionReason,
+				"spec.assertions.degradedAssertions.kind": syntheticCheckUnionReason,
+				"spec.assertions.degradedAssertions.spec": syntheticCheckUnionReason,
+			},
+			nil,
+		)
+	})
+
+	It("finds no unexpected drift between the synthetic check retries and the API client's retries types", func() {
+		expectNoUnexpectedApiTypeDrift(
+			reflect.TypeFor[dash0v1alpha1.Dash0SyntheticCheckRetries](),
+			reflect.TypeFor[dash0apiclient.SyntheticCheckRetriesExponential](),
+			nil,
+			nil,
+		)
+	})
 })
