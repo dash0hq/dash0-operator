@@ -289,11 +289,19 @@ func (e *Export) ToExports() []Export {
 	}
 }
 
+// Redact removes a literal authorization token, if any is set. The authorization is modified in place, make sure to
+// only call it on a resource that is not intended to be used for actual exporting/authentication later.
+func (a *Authorization) Redact() {
+	if a.Token != nil && len(*a.Token) > 0 {
+		a.Token = new(RedactedValue)
+	}
+}
+
 // Redact removes the authorization token and header values from the export. The export is modified in place, make sure
 // to only call it on exports that are not intended to be used for actual exporting later.
 func (e *Export) Redact() {
-	if e.Dash0 != nil && e.Dash0.Authorization.Token != nil && len(*e.Dash0.Authorization.Token) > 0 {
-		e.Dash0.Authorization.Token = new(RedactedValue)
+	if e.Dash0 != nil {
+		e.Dash0.Authorization.Redact()
 	}
 	if e.Http != nil {
 		// Any header value can potentially be a secret, so we redact all values. Headers whose values are sourced from a

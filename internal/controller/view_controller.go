@@ -11,14 +11,17 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	otelmetric "go.opentelemetry.io/otel/metric"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -38,6 +41,7 @@ type ViewReconciler struct {
 	client.Client
 	pseudoClusterUid      types.UID
 	leaderElectionAware   util.LeaderElectionAware
+	recorder              events.EventRecorder
 	apiClientPool         *ApiClientPool
 	defaultApiConfigs     selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs  selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
@@ -47,6 +51,8 @@ type ViewReconciler struct {
 	namespacedSyncMutex   selfmonitoringapiaccess.NamespaceMutex
 }
 
+const viewFolderPathAnnotation = "dash0.com/folder-path"
+
 var (
 	viewReconcileRequestMetric otelmetric.Int64Counter
 )
@@ -55,12 +61,14 @@ func NewViewReconciler(
 	k8sClient client.Client,
 	pseudoClusterUid types.UID,
 	leaderElectionAware util.LeaderElectionAware,
+	recorder events.EventRecorder,
 	apiClientPool *ApiClientPool,
 ) *ViewReconciler {
 	return &ViewReconciler{
 		Client:               k8sClient,
 		pseudoClusterUid:     pseudoClusterUid,
 		leaderElectionAware:  leaderElectionAware,
+		recorder:             recorder,
 		apiClientPool:        apiClientPool,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
@@ -71,8 +79,8 @@ func NewViewReconciler(
 func (r *ViewReconciler) SetupWithManager(mgr manager.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dash0v1alpha1.Dash0View{}).
-		// ignore changes in the status subresource, but react on changes to spec, label and annotations
-		WithEventFilter(generationOrLabelChangePredicate).
+		// ignore changes in the status subresource, but react on changes to spec, labels and dash0.com/ annotations
+		WithEventFilter(generationLabelOrDash0AnnotationChangePredicate).
 		Complete(r)
 }
 
@@ -312,6 +320,10 @@ func (r *ViewReconciler) Reconcile(ctx context.Context, req reconcile.Request) (
 		}
 	}
 
+	if action == upsertAction {
+		r.warnAboutDeprecatedFolderField(viewResource, logger)
+	}
+
 	unstructuredResource, err := structToMap(viewResource)
 	if err != nil {
 		msg := "cannot serialize the view resource"
@@ -332,6 +344,29 @@ func (r *ViewReconciler) Reconcile(ctx context.Context, req reconcile.Request) (
 	)
 
 	return reconcile.Result{}, nil
+}
+
+func (r *ViewReconciler) warnAboutDeprecatedFolderField(viewResource *dash0v1alpha1.Dash0View, logger logd.Logger) {
+	folder := viewResource.Spec.Display.Folder //nolint:staticcheck
+	if len(folder) == 0 {
+		return
+	}
+	message := fmt.Sprintf(
+		"The field spec.display.folder is deprecated and ignored by Dash0. Use the annotation %s: \"/%s\" instead.",
+		viewFolderPathAnnotation,
+		strings.Join(folder, "/"),
+	)
+	logger.Warn(message, "namespace", viewResource.Namespace, "name", viewResource.Name)
+	if r.recorder != nil {
+		r.recorder.Eventf(
+			viewResource,
+			nil,
+			corev1.EventTypeWarning,
+			string(util.ReasonDeprecatedFieldUsed),
+			string(util.ActionSynchronization),
+			message,
+		)
+	}
 }
 
 func (r *ViewReconciler) MapResourceToHttpRequests(
