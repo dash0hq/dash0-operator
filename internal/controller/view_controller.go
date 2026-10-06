@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	dash0 "github.com/dash0hq/dash0-api-client-go"
+	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
@@ -344,17 +344,11 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 
 	viewUrl, viewOrigin := r.renderViewUrl(preconditionChecksResult, apiConfig.Endpoint, apiConfig.Dataset)
 	dataset := apiConfig.Dataset
-	// The origin contains the query-escaped dataset, and the API client path-escapes the origin again.
-	originForApiClient, err := url.PathUnescape(viewOrigin)
-	if err != nil {
-		originForApiClient = viewOrigin
-	}
 
 	var apiClientCall *ApiClientCall
 	switch action {
 	case upsertAction:
-		var viewDefinition *dash0.ViewDefinition
-		viewDefinition, err = mapToViewDefinition(preconditionChecksResult.resource)
+		viewDefinition, err := mapToViewDefinition(preconditionChecksResult.resource)
 		if err != nil {
 			conversionErr := fmt.Errorf("unable to convert the view to the Dash0 API format: %w", err)
 			logger.Error(conversionErr, "error converting view")
@@ -368,14 +362,14 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 				if err != nil {
 					return "", err
 				}
-				updatedView, err := apiClient.UpdateView(ctx, originForApiClient, viewDefinition, &dataset)
+				updatedView, err := apiClient.UpdateView(ctx, viewOrigin, viewDefinition, &dataset)
 				if err != nil {
 					return "", err
 				}
 				if updatedView == nil {
 					return "", errors.New("unexpected nil/empty response body")
 				}
-				return dash0.GetViewID(updatedView), nil
+				return dash0apiclient.GetViewID(updatedView), nil
 			},
 		}
 	case deleteAction:
@@ -387,7 +381,7 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 				if err != nil {
 					return "", err
 				}
-				return "", apiClient.DeleteView(ctx, originForApiClient, &dataset)
+				return "", apiClient.DeleteView(ctx, viewOrigin, &dataset)
 			},
 		}
 	default:
@@ -406,12 +400,12 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 
 // mapToViewDefinition converts the view resource to the typed view definition of the Dash0 API client. Fields that
 // the Dash0 API does not define for views (for example metadata.namespace, status) are dropped.
-func mapToViewDefinition(view map[string]any) (*dash0.ViewDefinition, error) {
+func mapToViewDefinition(view map[string]any) (*dash0apiclient.ViewDefinition, error) {
 	serializedView, err := json.Marshal(view)
 	if err != nil {
 		return nil, err
 	}
-	viewDefinition := &dash0.ViewDefinition{}
+	viewDefinition := &dash0apiclient.ViewDefinition{}
 	if err = json.Unmarshal(serializedView, viewDefinition); err != nil {
 		return nil, err
 	}
@@ -423,21 +417,20 @@ func (r *ViewReconciler) renderViewUrl(
 	endpoint string,
 	dataset string,
 ) (string, string) {
-	datasetUrlEncoded := url.QueryEscape(dataset)
 	viewOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s",
 		r.pseudoClusterUid,
-		datasetUrlEncoded,
+		datasetInOrigin(dataset),
 		preconditionChecksResult.k8sNamespace,
 		preconditionChecksResult.k8sName,
 	)
 	return fmt.Sprintf(
 		"%sapi/views/%s?dataset=%s",
 		endpoint,
-		viewOrigin,
-		datasetUrlEncoded,
+		url.PathEscape(viewOrigin),
+		url.QueryEscape(dataset),
 	), viewOrigin
 }
 

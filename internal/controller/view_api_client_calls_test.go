@@ -6,10 +6,11 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 
-	dash0 "github.com/dash0hq/dash0-api-client-go"
+	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -35,13 +36,18 @@ var _ = Describe("The view API client calls", func() {
 			viewReconciler := &ViewReconciler{
 				pseudoClusterUid: "cluster-uid",
 				apiClientPool: NewApiClientPool(
-					dash0.NewTransport(dash0.WithBaseTransport(recorder), dash0.WithTransportMaxRetries(0)),
+					dash0apiclient.NewTransport(dash0apiclient.WithBaseTransport(recorder), dash0apiclient.WithTransportMaxRetries(0)),
 					"test",
 				),
 			}
 			preconditionChecksResult := &preconditionValidationResult{k8sNamespace: "namespace", k8sName: "name"}
 			apiConfig := ApiConfig{Endpoint: ApiEndpointStandardizedTest, Dataset: dataset, Token: AuthorizationTokenTest}
-			handBuiltUrl, _ := viewReconciler.renderViewUrl(preconditionChecksResult, apiConfig.Endpoint, dataset)
+			handBuiltUrl := fmt.Sprintf(
+				"%sapi/views/dash0-operator_cluster-uid_%s_namespace_name?dataset=%s",
+				apiConfig.Endpoint,
+				url.QueryEscape(dataset),
+				url.QueryEscape(dataset),
+			)
 			expected, err := url.Parse(handBuiltUrl)
 			Expect(err).ToNot(HaveOccurred())
 

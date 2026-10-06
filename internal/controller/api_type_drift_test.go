@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	dash0 "github.com/dash0hq/dash0-api-client-go"
+	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -235,7 +235,7 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 	It("finds no unexpected drift between Dash0View and the API client's view type", func() {
 		expectNoUnexpectedApiTypeDrift(
 			reflect.TypeFor[dash0v1alpha1.Dash0ViewSpec](),
-			reflect.TypeFor[dash0.ViewSpec](),
+			reflect.TypeFor[dash0apiclient.ViewSpec](),
 			map[string]string{
 				"display.folder": "ignored by the Dash0 API, folders are set via the dash0.com/folder-path annotation",
 			},

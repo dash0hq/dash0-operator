@@ -14,7 +14,7 @@ import (
 	"slices"
 	"strings"
 
-	dash0 "github.com/dash0hq/dash0-api-client-go"
+	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/resources"
@@ -1268,7 +1268,7 @@ func convertApiClientError(err error, actionLabel string, isDelete bool) error {
 			err:        fmt.Errorf("unable to %s: %w", actionLabel, err),
 		}
 	}
-	var apiErr *dash0.APIError
+	var apiErr *dash0apiclient.APIError
 	if !errors.As(err, &apiErr) {
 		return &apiSyncHttpError{statusCode: 0, err: err}
 	}
@@ -1284,6 +1284,13 @@ func convertApiClientError(err error, actionLabel string, isDelete bool) error {
 			apiErr.Body,
 		),
 	}
+}
+
+// datasetInOrigin returns the dataset as it is contained in the origin of objects the operator synchronizes to Dash0.
+// The origins are defined as the path-unescaped form of url.QueryEscape(dataset), which is the dataset itself except
+// that spaces are replaced by "+".
+func datasetInOrigin(dataset string) string {
+	return strings.ReplaceAll(dataset, " ", "+")
 }
 
 // apiSyncHttpError wraps an error that occurred while synchronizing a resource to the Dash0 API together with the HTTP
