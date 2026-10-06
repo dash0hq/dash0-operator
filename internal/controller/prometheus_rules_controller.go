@@ -476,6 +476,14 @@ func (r *PrometheusRuleReconciler) Generic(
 	e event.TypedGenericEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
+	r.resyncViaApi(ctx, e.Object, nil)
+}
+
+func (r *PrometheusRuleReconciler) resyncViaApi(
+	ctx context.Context,
+	ruleResource *unstructured.Unstructured,
+	originsInNamespace *existingOriginsInNamespace,
+) {
 	if prometheusRuleReconcileRequestMetric != nil {
 		prometheusRuleReconcileRequestMetric.Add(ctx, 1)
 	}
@@ -484,12 +492,12 @@ func (r *PrometheusRuleReconciler) Generic(
 	logger.Info(
 		"Reconciling check rule triggered by config event (updated API config or authorization).",
 		"namespace",
-		e.Object.GetNamespace(),
+		ruleResource.GetNamespace(),
 		"name",
-		e.Object.GetName(),
+		ruleResource.GetName(),
 	)
 
-	upsertViaApi(r, e.Object)
+	upsertViaApiWithOriginsInNamespace(r, ruleResource, originsInNamespace)
 }
 
 func (r *PrometheusRuleReconciler) Reconcile(
@@ -506,29 +514,50 @@ func (r *PrometheusRuleReconciler) FetchExistingResourceOriginsRequests(
 	preconditionValidationResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 ) ([]*http.Request, error) {
+	return r.createFetchOriginsRequests(
+		r.renderRuleOriginPrefix(preconditionValidationResult, url.QueryEscape(apiConfig.Dataset)),
+		apiConfig,
+	)
+}
+
+func (r *PrometheusRuleReconciler) FetchExistingNamespaceOriginsRequests(
+	namespace string,
+	apiConfig ApiConfig,
+) ([]*http.Request, error) {
+	return r.createFetchOriginsRequests(
+		r.renderRuleOriginPrefixForNamespace(namespace, url.QueryEscape(apiConfig.Dataset)),
+		apiConfig,
+	)
+}
+
+// createFetchOriginsRequests creates the requests for fetching the origins of all existing alerting and recording
+// rules whose origin starts with the given prefix.
+func (r *PrometheusRuleReconciler) createFetchOriginsRequests(
+	originPrefix string,
+	apiConfig ApiConfig,
+) ([]*http.Request, error) {
 	var requests []*http.Request
-
-	// Fetch existing alerting rule origins.
-	checkRulesUrl := r.renderCheckRuleListUrl(preconditionValidationResult, apiConfig.Endpoint, apiConfig.Dataset)
-	if req, err := http.NewRequest(http.MethodGet, checkRulesUrl, nil); err != nil {
-		return nil, err
-	} else {
+	for _, listUrl := range []string{
+		r.renderCheckRuleListUrl(originPrefix, apiConfig.Endpoint, apiConfig.Dataset),
+		r.renderRecordingRuleListUrl(originPrefix, apiConfig.Endpoint, apiConfig.Dataset),
+	} {
+		req, err := http.NewRequest(http.MethodGet, listUrl, nil)
+		if err != nil {
+			return nil, err
+		}
 		addAuthorizationHeader(req, apiConfig.Token)
 		req.Header.Set(util.AcceptHeaderName, util.ApplicationJsonMediaType)
 		requests = append(requests, req)
 	}
-
-	// Fetch existing recording rule origins.
-	recordingRulesUrl := r.renderRecordingRuleListUrl(preconditionValidationResult, apiConfig.Endpoint, apiConfig.Dataset)
-	if req, err := http.NewRequest(http.MethodGet, recordingRulesUrl, nil); err != nil {
-		return nil, err
-	} else {
-		addAuthorizationHeader(req, apiConfig.Token)
-		req.Header.Set(util.AcceptHeaderName, util.ApplicationJsonMediaType)
-		requests = append(requests, req)
-	}
-
 	return requests, nil
+}
+
+func (r *PrometheusRuleReconciler) IsOriginOfResource(
+	origin string,
+	preconditionValidationResult *preconditionValidationResult,
+	apiConfig ApiConfig,
+) bool {
+	return strings.HasPrefix(origin, r.renderRuleOriginPrefix(preconditionValidationResult, apiConfig.Dataset))
 }
 
 func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
@@ -674,14 +703,13 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 	return result
 }
 
-// renderCheckRuleListUrl renders the URL to fetch the list of existing check rule IDs from the Dash0 API.
+// renderCheckRuleListUrl renders the URL to fetch the list of existing check rules with the given origin prefix from
+// the Dash0 API.
 func (r *PrometheusRuleReconciler) renderCheckRuleListUrl(
-	preconditionChecksResult *preconditionValidationResult,
+	originPrefix string,
 	endpoint string,
 	dataset string,
 ) string {
-	originPrefix :=
-		r.renderRuleOriginPrefix(preconditionChecksResult, url.QueryEscape(dataset))
 	return fmt.Sprintf(
 		"%sapi/alerting/check-rules?dataset=%s&originPrefix=%s",
 		endpoint,
@@ -781,24 +809,35 @@ func (r *PrometheusRuleReconciler) renderRuleOriginPrefix(
 	dataset string,
 ) string {
 	return fmt.Sprintf(
-		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
-		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
-		"dash0-operator_%s_%s_%s_%s_",
-		r.pseudoClusterUid,
-		dataset,
-		preconditionChecksResult.k8sNamespace,
+		"%s%s_",
+		r.renderRuleOriginPrefixForNamespace(preconditionChecksResult.k8sNamespace, dataset),
 		preconditionChecksResult.k8sName,
 	)
 }
 
-// renderRecordingRuleListUrl renders the URL to fetch the list of existing recording rule origins from the Dash0 API.
+// renderRuleOriginPrefixForNamespace renders the common origin prefix for all alerting or recording rules that are
+// created from Kubernetes PrometheusRule resources in one namespace.
+func (r *PrometheusRuleReconciler) renderRuleOriginPrefixForNamespace(
+	namespace string,
+	dataset string,
+) string {
+	return fmt.Sprintf(
+		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
+		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
+		"dash0-operator_%s_%s_%s_",
+		r.pseudoClusterUid,
+		dataset,
+		namespace,
+	)
+}
+
+// renderRecordingRuleListUrl renders the URL to fetch the list of existing recording rules with the given origin prefix
+// from the Dash0 API.
 func (r *PrometheusRuleReconciler) renderRecordingRuleListUrl(
-	preconditionChecksResult *preconditionValidationResult,
+	originPrefix string,
 	endpoint string,
 	dataset string,
 ) string {
-	originPrefix :=
-		r.renderRuleOriginPrefix(preconditionChecksResult, url.QueryEscape(dataset))
 	return fmt.Sprintf(
 		"%sapi/recording-rules?dataset=%s&originPrefix=%s",
 		endpoint,
@@ -1321,12 +1360,9 @@ func (r *PrometheusRuleReconciler) synchronizeNamespacedResources(
 			return
 		}
 
+		originsInNamespace := newExistingOriginsInNamespace(namespace)
 		for i := range allRulesResourcesInNamespace.Items {
-			ruleResource := &allRulesResourcesInNamespace.Items[i]
-			evt := event.TypedGenericEvent[*unstructured.Unstructured]{
-				Object: ruleResource,
-			}
-			r.Generic(ctx, evt, nil)
+			r.resyncViaApi(ctx, &allRulesResourcesInNamespace.Items[i], originsInNamespace)
 
 			// stagger API requests a bit
 			time.Sleep(50 * time.Millisecond)

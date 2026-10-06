@@ -127,6 +127,16 @@ type ThirdPartyResourceReconciler interface {
 	// which manage objects with a one-to-one relation (like Perses dashboards) should return nil, nil.
 	FetchExistingResourceOriginsRequests(*preconditionValidationResult, ApiConfig) ([]*http.Request, error)
 
+	// FetchExistingNamespaceOriginsRequests creates HTTP requests for retrieving the origins of all Dash0 API objects
+	// that have been synchronized from Kubernetes resources in the given namespace. The responses may contain origins
+	// that do not belong to the namespace, IsOriginOfResource is used to filter them. This is used when synchronizing
+	// all resources in a namespace at once, to avoid sending DELETE requests for objects that do not exist.
+	FetchExistingNamespaceOriginsRequests(string, ApiConfig) ([]*http.Request, error)
+
+	// IsOriginOfResource reports whether the given origin belongs to a Dash0 API object that has been produced from
+	// the Kubernetes resource described by the precondition validation result.
+	IsOriginOfResource(string, *preconditionValidationResult, ApiConfig) bool
+
 	// CreateDeleteRequests produces an HTTP DELETE requests for the resources that still exist in Dash0, but should
 	// not. It does so by comparing the list of IDs of objects that exist in the Dash0 backend with the list
 	// of IDs found in a given Kubernetes resource. This mechanism is only used for resource types where one Kubernetes
@@ -149,6 +159,7 @@ type ThirdPartyResourceSyncJob struct {
 	thirdPartyResourceReconciler ThirdPartyResourceReconciler
 	dash0ApiResource             *unstructured.Unstructured
 	action                       apiAction
+	originsInNamespace           *existingOriginsInNamespace
 }
 
 // SetupThirdPartyCrdReconcilerWithManager sets up a ThirdPartyCrdReconciler with the provided manager. It establishes
@@ -501,6 +512,16 @@ func upsertViaApi(
 	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
 	dash0ApiResource *unstructured.Unstructured,
 ) {
+	upsertViaApiWithOriginsInNamespace(thirdPartyResourceReconciler, dash0ApiResource, nil)
+}
+
+// upsertViaApiWithOriginsInNamespace enqueues a synchronization job for the given resource. The existing origins
+// in originsInNamespace (if not nil) are shared by all resources of one namespace-wide synchronization run.
+func upsertViaApiWithOriginsInNamespace(
+	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
+	dash0ApiResource *unstructured.Unstructured,
+	originsInNamespace *existingOriginsInNamespace,
+) {
 	// The create/update/delete/... events we receive from K8s are sequential per resource type, that is, we only
 	// receive the next event for a Perses dashboard resource once we have processed the previous one; same for
 	// Prometheus rules. However, we might receive events for different resource types concurrently, that is, one event
@@ -514,6 +535,7 @@ func upsertViaApi(
 			thirdPartyResourceReconciler: thirdPartyResourceReconciler,
 			dash0ApiResource:             dash0ApiResource,
 			action:                       upsertAction,
+			originsInNamespace:           originsInNamespace,
 		},
 	)
 }
@@ -522,7 +544,8 @@ func deleteViaApi(
 	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
 	dash0ApiResource *unstructured.Unstructured,
 ) {
-	// See comment in upsertViaApi for an explanation why we use a shared queue for all resource types.
+	// See comment in upsertViaApiWithOriginsInNamespace for an explanation why we use a shared queue for all resource
+	// types.
 	thirdPartyResourceReconciler.Queue().Add(
 		ThirdPartyResourceSyncJob{
 			thirdPartyResourceReconciler: thirdPartyResourceReconciler,
@@ -555,12 +578,13 @@ func StartProcessingThirdPartySynchronizationQueue(
 				),
 			)
 
-			synchronizeViaApiAndUpdateStatus(
+			synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 				ctx,
 				item.thirdPartyResourceReconciler,
 				item.dash0ApiResource,
 				nil,
 				item.action,
+				item.originsInNamespace,
 				logger,
 			)
 			logger.Info(
@@ -608,7 +632,7 @@ func writeSynchronizationResultToDash0MonitoringStatus(
 
 	if hasSuccess && hasError {
 		status = dash0common.ThirdPartySynchronizationStatusPartiallySuccessful
-	} else if hasSuccess {
+	} else if hasSuccess || (syncResults.isDeletion && !hasError) {
 		status = dash0common.ThirdPartySynchronizationStatusSuccessful
 	}
 

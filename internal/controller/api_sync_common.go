@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 
 	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -63,6 +64,9 @@ type NamespacedApiClient interface {
 	SetSynchronizationEnabled(context.Context, string, *dash0v1beta1.Dash0Monitoring, logd.Logger)
 	RemoveSynchronizationEnabled(string)
 }
+
+// preconditionErrorItemName is the item name under which an error is recorded that affects all items of a resource.
+const preconditionErrorItemName = "*"
 
 type ResourceToRequestsResult struct {
 	ApiConfig ApiConfig
@@ -179,7 +183,7 @@ func NewResourceToRequestsResultPreconditionError(apiConfig ApiConfig, errorMess
 		nil,
 		nil,
 		nil,
-		map[string]string{"*": errorMessage},
+		map[string]string{preconditionErrorItemName: errorMessage},
 	)
 }
 
@@ -360,6 +364,7 @@ type synchronizationResults struct {
 	orphanDeletesTotal  int
 	validationIssues    map[string][]string
 	resultsPerApiConfig []synchronizationResultPerApiConfig
+	isDeletion          bool
 }
 
 func (s *synchronizationResults) totalProcessed() int {
@@ -418,12 +423,58 @@ func firstSynchronizationErrorAndStatusCode(result *ResourceToRequestsResult) (s
 	return result.SynchronizationErrors[itemName], result.SynchronizationErrorStatusCodes[itemName]
 }
 
+// synchronizeViaApiAndUpdateStatus synchronizes the given dash0ApiResource to the Dash0 API. It either upserts or
+// deletes the corresponding Dash0 API object(s), depending on the action. For upserts it
+// then writes the synchronization result to the status of the resource.
+//
+// The synchronization is executed for every validated API config (preconditionChecksResult.validatedApiConfigs).
+//
+// This function is used for Dash0 resource types (Dash0View etc.), and it delegates to
+// synchronizeViaApiAndUpdateStatusWithOriginsInNamespace. Third-party resource types (PersesDashboard,
+// PrometheusRule) use synchronizeViaApiAndUpdateStatusWithOriginsInNamespace directly.
+//
+// Pass a pointer of the corresponding Dash0 type as ownedResource.
 func synchronizeViaApiAndUpdateStatus(
 	ctx context.Context,
 	apiSyncReconciler ApiSyncReconciler,
 	dash0ApiResource *unstructured.Unstructured,
 	ownedResource client.Object,
 	action apiAction,
+	logger logd.Logger,
+) {
+	synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
+		ctx,
+		apiSyncReconciler,
+		dash0ApiResource,
+		ownedResource,
+		action,
+		nil,
+		logger,
+	)
+}
+
+// synchronizeViaApiAndUpdateStatusWithOriginsInNamespace synchronizes the given dash0ApiResource to the Dash0 API.
+// It either upserts or deletes the corresponding Dash0 API object(s), depending on the action.
+//
+// The synchronization is executed for every validated API config (preconditionChecksResult.validatedApiConfigs).
+//
+// This function is used for Dash0 resource types (Dash0View etc., via synchronizeViaApiAndUpdateStatus), and for
+// third-party resource types.
+//
+// For third-party resource types, the origins of the Dash0 API objects that already exist for the Kubernetes resource
+// are used to decide which DELETE requests need to be sent to remove stale API objects.
+// synchronizeViaApiAndUpdateStatusWithOriginsInNamespace can either work from a previously fetched list (passed as
+// originsInNamespace), or fetch the origins on demand (when originsInNamespace is nil).
+//
+// For Dash0 resource types (Dash0View etc.), pass a pointer of the corresponding type as ownedResource. For
+// third-party resource types (PersesDashboard, PrometheusRule) pass nil for ownedResource.
+func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
+	ctx context.Context,
+	apiSyncReconciler ApiSyncReconciler,
+	dash0ApiResource *unstructured.Unstructured,
+	ownedResource client.Object,
+	action apiAction,
+	originsInNamespace *existingOriginsInNamespace,
 	logger logd.Logger,
 ) {
 	preconditionChecksResult := validatePreconditionsAndPreprocess(
@@ -450,28 +501,31 @@ func synchronizeViaApiAndUpdateStatus(
 	var synchronizationResultsPerApiConfig []synchronizationResultPerApiConfig
 
 	for _, validatedApiConfig := range preconditionChecksResult.validatedApiConfigs {
-		var existingOriginsFromApi []string
-		if action != deleteAction {
-			var err error
-			existingOriginsFromApi, err = fetchExistingOrigins(
-				apiSyncReconciler,
-				preconditionChecksResult,
-				validatedApiConfig.ApiConfig,
-				logger,
-			)
-			if err != nil {
-				// The error has already been logged in fetchExistingOrigins. Record the failure for this config
-				// and continue with the remaining configs.
-				requestResult := NewResourceToRequestsResultPreconditionError(validatedApiConfig.ApiConfig, err.Error())
-				synchronizationResultsPerApiConfig = append(
-					synchronizationResultsPerApiConfig, synchronizationResultPerApiConfig{
-						apiConfig:                validatedApiConfig.ApiConfig,
-						successfullySynchronized: nil,
-						resourceToRequestsResult: requestResult,
-					},
-				)
-				continue
+		existingOriginsFromApi, existingOriginsAreKnown, err := fetchExistingOriginsForResource(
+			apiSyncReconciler,
+			preconditionChecksResult,
+			validatedApiConfig.ApiConfig,
+			action,
+			originsInNamespace,
+			logger,
+		)
+		if err != nil {
+			// The error has already been logged in fetchExistingOriginsForResource. Record the failure for this config
+			// and continue with the remaining configs. Without knowing which objects exist, no DELETE requests are sent.
+			// This is only relevant for third-party resource types which support fetching existing origins, not for Dash0
+			// types.
+			requestResult := NewResourceToRequestsResultPreconditionError(validatedApiConfig.ApiConfig, err.Error())
+			requestResult.SynchronizationErrorStatusCodes = map[string]int{
+				preconditionErrorItemName: httpStatusCodeFromError(err),
 			}
+			synchronizationResultsPerApiConfig = append(
+				synchronizationResultsPerApiConfig, synchronizationResultPerApiConfig{
+					apiConfig:                validatedApiConfig.ApiConfig,
+					successfullySynchronized: nil,
+					resourceToRequestsResult: requestResult,
+				},
+			)
+			continue
 		}
 
 		resourceToRequestsResult := apiSyncReconciler.MapResourceToHttpRequests(
@@ -481,7 +535,10 @@ func synchronizeViaApiAndUpdateStatus(
 			logger,
 		)
 
-		if action != deleteAction {
+		if existingOriginsAreKnown {
+			if action == deleteAction {
+				removeDeleteRequestsForObjectsThatDoNotExist(existingOriginsFromApi, resourceToRequestsResult)
+			}
 			addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 				apiSyncReconciler,
 				validatedApiConfig.ApiConfig,
@@ -490,7 +547,19 @@ func synchronizeViaApiAndUpdateStatus(
 				logger,
 			)
 		}
-		if resourceToRequestsResult.IsNoOp() {
+		if action == deleteAction && resourceToRequestsResult.IsNoOp() {
+			logger.Info(
+				fmt.Sprintf(
+					"%s %s/%s: no %s from this resource exists in %s (%s), nothing to delete.",
+					apiSyncReconciler.KindDisplayName(),
+					dash0ApiResource.GetNamespace(),
+					dash0ApiResource.GetName(),
+					apiSyncReconciler.ShortName(),
+					validatedApiConfig.Endpoint,
+					validatedApiConfig.Dataset,
+				),
+			)
+		} else if resourceToRequestsResult.IsNoOp() {
 			logger.Info(
 				fmt.Sprintf(
 					"%s %s/%s did not contain any %s, skipping.",
@@ -576,6 +645,7 @@ func synchronizeViaApiAndUpdateStatus(
 			orphanDeletesTotal:  first.OrphanDeletesTotal,
 			validationIssues:    first.ValidationIssues,
 			resultsPerApiConfig: synchronizationResultsPerApiConfig,
+			isDeletion:          action == deleteAction,
 		}
 	}
 
@@ -964,32 +1034,81 @@ func stripKubernetesOnlyMetadataFields(resource map[string]any) {
 	delete(metadata, "selfLink")
 }
 
-func fetchExistingOrigins(
+// fetchExistingOriginsForResource retrieves the origins of the Dash0 API objects for a given Kubernetes resource
+// that currently exist in the backend. This is particularly relevant for resource types that have a 1-to-many
+// relationship between Kubernetes resource and Dash0 API object.
+//
+// The boolean return value is false if the existing origins are unknown, either because the reconciler does not support
+// retrieving them, or because they are not required for the given action. (A nil value in the first return value does
+// not necessarily mean the origins are unknown, it can also represent an empty list.)
+//
+// For a delete action, the existing origins are used to only send DELETE requests for objects that actually exist.
+func fetchExistingOriginsForResource(
 	apiSyncReconciler ApiSyncReconciler,
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
+	action apiAction,
+	originsInNamespace *existingOriginsInNamespace,
 	logger logd.Logger,
-) ([]string, error) {
+) ([]string, bool, error) {
 	thirdPartyResourceReconciler, ok := apiSyncReconciler.(ThirdPartyResourceReconciler)
 	if !ok {
 		// this resource reconciler synchronizes a resource type owned by the Dash0 operator, fetching existing origins
 		// is neither supported nor necessary since there is a one-to-one relationship between K8s resource and Dash0
 		// API object
-		return nil, nil
+		return nil, false, nil
 	}
-	fetchExistingOriginsRequests, err :=
+	perResourceRequests, err :=
 		thirdPartyResourceReconciler.FetchExistingResourceOriginsRequests(preconditionChecksResult, apiConfig)
 	if err != nil {
 		logger.Error(err, "cannot create request to fetch existing resource origins")
-		return nil, err
+		return nil, false, err
 	}
-	if len(fetchExistingOriginsRequests) == 0 {
-		// No requests returned — either this reconciler does not support fetching existing origins (e.g. for resource
-		// types with a one-to-one relationship between K8s resource and Dash0 API object, like Perses dashboards), or
-		// there are simply no origin APIs to query.
-		return nil, nil
+	// Reconcilers for resource types with a one-to-one relationship between K8s resource and Dash0 API object (like
+	// Perses dashboards) do not return requests for fetching the origins of a single resource.
+	supportsFetchingOriginsPerResource := len(perResourceRequests) > 0
+	if action != deleteAction && !supportsFetchingOriginsPerResource {
+		return nil, false, nil
 	}
 
+	// originsInNamespace is the pre-fetched list of origins that is used in a namespace-wide resync.
+	if originsInNamespace != nil {
+		// Fetch the origins of all Dash0 API objects that exist in the given API config for this namespace.
+		// The origins are only fetched from the backend on the first call per API config, and then cached in
+		// originsInNamespace for the rest of the namespace-wide resync.
+		allOriginsInNamespace, err := originsInNamespace.get(thirdPartyResourceReconciler, apiConfig, logger)
+		if err != nil {
+			return nil, false, err
+		}
+		var originsOfResource []string
+		for _, origin := range allOriginsInNamespace {
+			if thirdPartyResourceReconciler.IsOriginOfResource(origin, preconditionChecksResult, apiConfig) {
+				originsOfResource = append(originsOfResource, origin)
+			}
+		}
+		// use the pre-fetched origin list
+		return originsOfResource, true, nil
+	}
+
+	if !supportsFetchingOriginsPerResource {
+		return nil, false, nil
+	}
+	// no pre-fetched origin list available, fetch the origins now
+	origins, err := executeFetchExistingOriginsRequests(apiSyncReconciler, perResourceRequests, logger)
+	if err != nil {
+		return nil, false, err
+	}
+	return origins, true, nil
+}
+
+// executeFetchExistingOriginsRequests executes the given requests to list Dash0 API objects, one after another, and
+// returns the combined origins from all responses. It stops at the first request that fails or whose response cannot
+// be parsed, and returns that error without any origins, so the caller never works with a partial list.
+func executeFetchExistingOriginsRequests(
+	apiSyncReconciler ApiSyncReconciler,
+	fetchExistingOriginsRequests []*http.Request,
+	logger logd.Logger,
+) ([]string, error) {
 	var allExistingOrigins []string
 	for _, fetchExistingOriginsRequest := range fetchExistingOriginsRequests {
 		actionLabel := fmt.Sprintf(
@@ -1020,6 +1139,62 @@ func fetchExistingOrigins(
 		allExistingOrigins,
 	)
 	return allExistingOrigins, nil
+}
+
+// existingOriginsInNamespace holds the origins of all Dash0 API objects that have been synchronized from one Kubernetes
+// namespace. One instance is reused by all synchronization actions that a single invocation of
+// synchronizeNamespacedResources triggers, so that the list of existing origins is fetched once per namespace and API
+// config (instead of once per Kubernetes resource). The origins for an API config are fetched when the first job that
+// needs them is processed. A failed fetch is remembered as well, so that the remaining jobs of the run do not repeat
+// it.
+type existingOriginsInNamespace struct {
+	namespace           string
+	lock                sync.Mutex
+	originsPerApiConfig map[ApiConfig]existingOriginsFetchResult
+}
+
+type existingOriginsFetchResult struct {
+	origins []string
+	err     error
+}
+
+func newExistingOriginsInNamespace(namespace string) *existingOriginsInNamespace {
+	return &existingOriginsInNamespace{
+		namespace:           namespace,
+		originsPerApiConfig: make(map[ApiConfig]existingOriginsFetchResult),
+	}
+}
+
+// get returns the origins of all Dash0 API objects that exist in the given API config for this namespace. The
+// origins are fetched on the first call for an API config; later calls for the same API config return the memoized
+// result, including a memoized error. Safe for concurrent use.
+//
+// Worst case, it returns a list the size of all objects in the dataset; for dashboards that limit is 512
+// and for check rules it is 128, see https://www.dash0.com/docs/dash0/cost-control/quotas-and-limits.
+func (o *existingOriginsInNamespace) get(
+	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
+	apiConfig ApiConfig,
+	logger logd.Logger,
+) ([]string, error) {
+	o.lock.Lock()
+	defer o.lock.Unlock()
+	if fetchResult, ok := o.originsPerApiConfig[apiConfig]; ok {
+		return fetchResult.origins, fetchResult.err
+	}
+	var fetchResult existingOriginsFetchResult
+	requests, err := thirdPartyResourceReconciler.FetchExistingNamespaceOriginsRequests(o.namespace, apiConfig)
+	if err != nil {
+		logger.Error(err, "cannot create request to fetch existing origins in namespace", "namespace", o.namespace)
+		fetchResult.err = err
+	} else {
+		fetchResult.origins, fetchResult.err = executeFetchExistingOriginsRequests(
+			thirdPartyResourceReconciler,
+			requests,
+			logger,
+		)
+	}
+	o.originsPerApiConfig[apiConfig] = fetchResult
+	return fetchResult.origins, fetchResult.err
 }
 
 // extractOriginsFromResponse parses a JSON array response and extracts origin strings. It handles two formats:
@@ -1098,6 +1273,21 @@ func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 	resourceToRequestsResult.OrphanDeletesTotal = len(deleteHttpRequests)
 	maps.Copy(resourceToRequestsResult.SynchronizationErrors, deleteSynchronizationErrors)
 	resourceToRequestsResult.ApiRequests = slices.Concat(resourceToRequestsResult.ApiRequests, deleteHttpRequests)
+}
+
+// removeDeleteRequestsForObjectsThatDoNotExist drops all DELETE requests for objects whose origin is not in the list of
+// existing origins, so that deleting a resource that has never been synchronized does not produce any requests.
+func removeDeleteRequestsForObjectsThatDoNotExist(
+	existingOriginsFromApi []string,
+	resourceToRequestsResult *ResourceToRequestsResult,
+) {
+	resourceToRequestsResult.ApiRequests = slices.DeleteFunc(
+		resourceToRequestsResult.ApiRequests,
+		func(apiRequest WrappedApiRequest) bool {
+			return apiRequest.Request.Method == http.MethodDelete &&
+				!slices.Contains(existingOriginsFromApi, apiRequest.Origin)
+		},
+	)
 }
 
 // structToMap converts any struct to an unstructured.Unstructured object.

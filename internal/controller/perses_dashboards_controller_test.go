@@ -1041,6 +1041,66 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			)
 
 			It(
+				"fetches the existing dashboards only once when synchronizing all resources in a namespace, and only "+
+					"deletes dashboards that exist",
+				func() {
+					EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+					dashboardOrigin := func(name string) string {
+						return fmt.Sprintf("dash0-operator_%s_%s_%s_%s", clusterId, DatasetCustomTest, TestNamespaceName, name)
+					}
+					gock.New(ApiEndpointTest).
+						Get("/api/dashboards").
+						MatchHeader("Authorization", AuthorizationHeaderTest).
+						MatchParam("dataset", DatasetCustomTest).
+						Times(1).
+						Reply(http.StatusOK).
+						JSON([]map[string]string{
+							{"id": "1", "origin": dashboardOrigin("test-dashboard-2")},
+							// This origin must not be attributed to the resource test-dashboard-2.
+							{"id": "2", "origin": dashboardOrigin("test-dashboard-20")},
+							{"id": "3", "origin": "dashboard-not-managed-by-the-operator"},
+							{"id": "4"},
+						})
+					gock.New(ApiEndpointTest).
+						Delete(dashboardApiBasePath+dashboardOrigin("test-dashboard-2")).
+						MatchHeader("Authorization", AuthorizationHeaderTest).
+						MatchParam("dataset", DatasetCustomTest).
+						Times(1).
+						Reply(http.StatusOK)
+					defer gock.Off()
+
+					originsInNamespace := newExistingOriginsInNamespace(TestNamespaceName)
+					for _, name := range []string{"test-dashboard-1", "test-dashboard-2", "test-dashboard-3"} {
+						dashboardResource := createDashboardResourceWithEnableLabel("false")
+						dashboardResource.SetName(name)
+						synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
+							ctx,
+							persesDashboardReconciler,
+							&dashboardResource,
+							nil,
+							upsertAction,
+							originsInNamespace,
+							logger,
+						)
+					}
+
+					Expect(gock.IsDone()).To(BeTrue())
+					monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+					results := monRes.Status.PersesDashboardSynchronizationResults
+					Expect(results).To(HaveLen(3))
+					for _, name := range []string{"test-dashboard-1", "test-dashboard-2", "test-dashboard-3"} {
+						result := results[fmt.Sprintf("%s/%s", TestNamespaceName, name)]
+						Expect(result.SynchronizationStatus).To(
+							Equal(dash0common.ThirdPartySynchronizationStatusSuccessful),
+						)
+					}
+					Expect(results[fmt.Sprintf("%s/test-dashboard-2", TestNamespaceName)].
+						SynchronizationResults[0].Dash0Origin).To(Equal(dashboardOrigin("test-dashboard-2")))
+				},
+			)
+
+			It(
 				"reports validation issues for a dashboard", func() {
 					EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
