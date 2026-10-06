@@ -11,19 +11,19 @@
     "dev": "node --experimental-strip-types --watch instrumentation-image-test.ts"
   },
   "dependencies": {
-    "@supercharge/promise-pool": "^3.2.0",
-    "@types/node": "^22.0.0",
-    "chalk": "^5.4.1",
-    "yaml": "^2.8.3"
+    "@supercharge/promise-pool": "^3.3.0",
+    "@types/node": "^26.6.3",
+    "chalk": "^6.0.1",
+    "yaml": "^2.9.1"
   },
   "engines": {
     "node": ">=24"
   },
   "devDependencies": {
-    "@eslint/js": "^9.27.0",
-    "eslint": "^9.27.0",
-    "prettier": "^3.5.3",
-    "typescript": "^5.8.3",
-    "typescript-eslint": "^8.32.1"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.11.0",
+    "prettier": "^3.9.9",
+    "typescript": "^7.0.2",
+    "typescript-eslint": "^8.71.0"
   }
 }
