@@ -1243,6 +1243,111 @@ var _ = Describe(
 				)
 
 				It(
+					"fetches the existing rules only once when updating all resources in a namespace, and only deletes "+
+						"rules that have been removed from the respective resource",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						resourceNames := []string{"test-rule-1", "test-rule-2"}
+						orphanedCheckRuleOfTestRule2 := checkRuleRequestExpectation{
+							group: "dash0/group-9",
+							alert: "orphaned-check-rule",
+						}
+						orphanedRecordingRuleOfTestRule1 := checkRuleRequestExpectation{
+							group: "dash0/group-9",
+							alert: "orphaned-recording-rule",
+						}
+						expectFetchExistingRuleOriginsGetRequests(
+							ApiEndpointTest,
+							AuthorizationHeaderTest,
+							DatasetCustomTest,
+							fmt.Sprintf("dash0-operator_%s_%s_%s_", clusterId, DatasetCustomTest, TestNamespaceName),
+							[]string{
+								ruleOriginForResource(clusterId, DatasetCustomTest, "test-rule-1", defaultCheckRuleRequests()[0]),
+								ruleOriginForResource(clusterId, DatasetCustomTest, "test-rule-2", defaultCheckRuleRequests()[0]),
+								ruleOriginForResource(clusterId, DatasetCustomTest, "test-rule-2", orphanedCheckRuleOfTestRule2),
+								// This origin must neither be attributed to the resource test-rule-2 nor be deleted.
+								ruleOriginForResource(clusterId, DatasetCustomTest, "test-rule-20", orphanedCheckRuleOfTestRule2),
+							},
+							[]string{
+								ruleOriginForResource(clusterId, DatasetCustomTest, "test-rule-1", orphanedRecordingRuleOfTestRule1),
+								// This origin must neither be attributed to the resource test-rule-1 nor be deleted.
+								ruleOriginForResource(clusterId, DatasetCustomTest, "test-rule-10", orphanedRecordingRuleOfTestRule1),
+							},
+						)
+						for _, resourceName := range resourceNames {
+							expectRulePutRequestsForResource(clusterId, resourceName, checkRuleApiBasePath, defaultCheckRuleRequests())
+							expectRulePutRequestsForResource(
+								clusterId, resourceName, recordingRuleApiBasePath, defaultRecordingRuleRequests(),
+							)
+						}
+						// The origin of an orphaned rule does not tell whether it is a check rule or a recording rule, so the
+						// DELETE request is sent to both APIs; the API that does not have the rule responds with 404.
+						for _, orphan := range []struct {
+							origin                     string
+							checkRuleApiHttpStatus     int
+							recordingRuleApiHttpStatus int
+						}{
+							{
+								origin: ruleOriginForResource(
+									clusterId, DatasetCustomTest, "test-rule-2", orphanedCheckRuleOfTestRule2,
+								),
+								checkRuleApiHttpStatus:     http.StatusOK,
+								recordingRuleApiHttpStatus: http.StatusNotFound,
+							},
+							{
+								origin: ruleOriginForResource(
+									clusterId, DatasetCustomTest, "test-rule-1", orphanedRecordingRuleOfTestRule1,
+								),
+								checkRuleApiHttpStatus:     http.StatusNotFound,
+								recordingRuleApiHttpStatus: http.StatusOK,
+							},
+						} {
+							gock.New(ApiEndpointTest).
+								Delete(checkRuleApiBasePath+orphan.origin).
+								MatchHeader("Authorization", AuthorizationHeaderTest).
+								MatchParam("dataset", DatasetCustomTest).
+								Times(1).
+								Reply(orphan.checkRuleApiHttpStatus)
+							gock.New(ApiEndpointTest).
+								Delete(recordingRuleApiBasePath+orphan.origin).
+								MatchHeader("Authorization", AuthorizationHeaderTest).
+								MatchParam("dataset", DatasetCustomTest).
+								Times(1).
+								Reply(orphan.recordingRuleApiHttpStatus)
+						}
+						defer gock.Off()
+
+						originsInNamespace := newExistingOriginsInNamespace(TestNamespaceName)
+						for _, name := range resourceNames {
+							objectMeta := defaultRuleObjectMeta
+							objectMeta.Name = name
+							ruleResource := createPrometheusRuleResourceWithObjectMeta(createDefaultSpec(), objectMeta)
+							synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
+								ctx,
+								prometheusRuleReconciler,
+								&ruleResource,
+								nil,
+								upsertAction,
+								originsInNamespace,
+								logger,
+							)
+						}
+
+						Expect(gock.IsDone()).To(BeTrue())
+						monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+						results := monRes.Status.PrometheusRuleSynchronizationResults
+						Expect(results).To(HaveLen(len(resourceNames)))
+						for _, name := range resourceNames {
+							result := results[fmt.Sprintf("%s/%s", TestNamespaceName, name)]
+							Expect(result.SynchronizationStatus).To(
+								Equal(dash0common.ThirdPartySynchronizationStatusSuccessful),
+							)
+						}
+					},
+				)
+
+				It(
 					"deletes individual check rules when the rule has been removed from the PrometheusRule resource", func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
@@ -2945,6 +3050,31 @@ func expectRecordingRulePutRequestsCustom(
 
 func expectRecordingRulePutRequests(clusterId string, expectedRequests []checkRuleRequestExpectation) {
 	expectRecordingRulePutRequestsCustom(clusterId, ApiEndpointTest, AuthorizationHeaderTest, DatasetCustomTest, expectedRequests)
+}
+
+// expectRulePutRequestsForResource expects one PUT request per given rule, derived from the PrometheusRule resource
+// with the given name, to the given API base path (check rules or recording rules).
+func expectRulePutRequestsForResource(
+	clusterId string,
+	resourceName string,
+	apiBasePath string,
+	expectedRequests []checkRuleRequestExpectation,
+) {
+	for _, expectedRequest := range expectedRequests {
+		origin := ruleOriginForResource(clusterId, DatasetCustomTest, resourceName, expectedRequest)
+		gock.New(ApiEndpointTest).
+			Put("^"+regexp.QuoteMeta(apiBasePath+origin)+"$").
+			MatchHeader("Authorization", AuthorizationHeaderTest).
+			MatchParam("dataset", DatasetCustomTest).
+			Times(1).
+			Reply(200).
+			JSON(
+				map[string]any{
+					"id":      origin,
+					"dataset": DatasetCustomTest,
+				},
+			)
+	}
 }
 
 func defaultRecordingRuleRequests() []checkRuleRequestExpectation {
