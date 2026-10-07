@@ -2089,7 +2089,7 @@ func startDash0Controllers(
 		k8sClient,
 		thirdPartyResourceSynchronizationQueue,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 		controller.PersesDashboardConversionWebhookSettings{
 			AutoPatchConversionWebhook: envVars.autoPatchPersesDashboardConversionWebhook,
 			OperatorNamespace:          envVars.operatorNamespace,

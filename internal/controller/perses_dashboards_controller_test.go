@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io"
 	"math/big"
 	"net/http"
 	"os"
@@ -1162,11 +1161,11 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 					Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(1))
 					apiRequest := resourceToRequestsResult.ApiRequests[0]
 					Expect(apiRequest.ItemName).To(Equal("perses-dashboard"))
-					req := apiRequest.Request
-					defer func() {
-						_ = req.Body.Close()
-					}()
-					body, err := io.ReadAll(req.Body)
+					Expect(apiRequest.ApiClientCall).ToNot(BeNil())
+					Expect(apiRequest.ApiClientCall.Method).To(Equal(http.MethodPut))
+					dashboardDefinition, err := mapToDashboardDefinition(dashboard)
+					Expect(err).ToNot(HaveOccurred())
+					body, err := json.Marshal(dashboardDefinition)
 					Expect(err).ToNot(HaveOccurred())
 					resultingDashboardInRequest := map[string]any{}
 					Expect(json.Unmarshal(body, &resultingDashboardInRequest)).To(Succeed())
@@ -1187,8 +1186,9 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 						Expect(ReadFromMap(resultingDashboardInRequest, []string{"spec", "display", "description"})).To(BeNil())
 					}
 
+					Expect(resultingDashboardInRequest["kind"]).To(Equal("Dashboard"))
 					Expect(resultingDashboardInRequest["metadata"]).ToNot(BeNil())
-					Expect(ReadFromMap(resultingDashboardInRequest, []string{"metadata", "name"})).To(Equal("perses-dashboard"))
+					Expect(ReadFromMap(resultingDashboardInRequest, []string{"metadata", "name"})).To(Equal(testConfig.expectedName))
 
 					if testConfig.expectedAnnotations != nil {
 						annotationsRaw := ReadFromMap(resultingDashboardInRequest, []string{"metadata", "annotations"})
@@ -1302,15 +1302,16 @@ spec:
 					},
 				),
 				Entry(
-					"should send annotations with v1alpha1", dashboardToRequestTestConfig{
+					"should send Dash0 annotations and drop other annotations with v1alpha1", dashboardToRequestTestConfig{
 						dashboard: `
 apiVersion: perses.dev/v1alpha1
 kind: PersesDashboard
 metadata:
   name: perses-dashboard
   annotations:
-    dash0com/annotation1: value1
-    dash0com/annotation2: value2
+    dash0.com/folder-path: /team/dashboards
+    dash0.com/sharing: team:abc
+    example.com/other: value
 spec:
   display:
     name: Perses Dashboard Example
@@ -1320,21 +1321,22 @@ spec:
 						expectedName:        "Perses Dashboard Example",
 						expectedDescription: new("This is an example dashboard."),
 						expectedAnnotations: map[string]string{
-							"dash0com/annotation1": "value1",
-							"dash0com/annotation2": "value2",
+							"dash0.com/folder-path": "/team/dashboards",
+							"dash0.com/sharing":     "team:abc",
 						},
 					},
 				),
 				Entry(
-					"should send annotations with v1alpha2", dashboardToRequestTestConfig{
+					"should send Dash0 annotations and drop other annotations with v1alpha2", dashboardToRequestTestConfig{
 						dashboard: `
 apiVersion: perses.dev/v1alpha2
 kind: PersesDashboard
 metadata:
   name: perses-dashboard
   annotations:
-    dash0com/annotation1: value1
-    dash0com/annotation2: value2
+    dash0.com/folder-path: /team/dashboards
+    dash0.com/sharing: team:abc
+    example.com/other: value
 spec:
   config:
     display:
@@ -1345,8 +1347,8 @@ spec:
 						expectedName:        "Perses Dashboard Example",
 						expectedDescription: new("This is an example dashboard."),
 						expectedAnnotations: map[string]string{
-							"dash0com/annotation1": "value1",
-							"dash0com/annotation2": "value2",
+							"dash0.com/folder-path": "/team/dashboards",
+							"dash0.com/sharing":     "team:abc",
 						},
 					},
 				),
@@ -1361,7 +1363,7 @@ func createPersesDashboardCrdReconciler(autoPatch bool, caBundlePath string) *Pe
 		k8sClient,
 		testQueuePersesDashboards,
 		&DummyLeaderElectionAware{Leader: true},
-		TestHTTPClient(),
+		testApiClientPool(),
 		PersesDashboardConversionWebhookSettings{
 			// Default to disabled in tests; individual tests that exercise the patch logic set this back to true.
 			AutoPatchConversionWebhook: autoPatch,
