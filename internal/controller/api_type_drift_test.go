@@ -14,6 +14,7 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	dash0dashv1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 )
 
@@ -338,6 +339,15 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 		expectNoUnexpectedApiTypeDrift(
 			reflect.TypeFor[dash0v1alpha1.Dash0TimeSeriesAggregationSpec](),
 			reflect.TypeFor[dash0apiclient.TimeSeriesAggregationSpec](),
+			nil,
+			nil,
+		)
+	})
+
+	It("finds no unexpected drift between Dash0Team and the API client's team type", func() {
+		expectNoUnexpectedApiTypeDrift(
+			reflect.TypeFor[dash0dashv1alpha1.Dash0TeamSpec](),
+			reflect.TypeFor[dash0apiclient.TeamSpec](),
 			nil,
 			nil,
 		)
