@@ -17,7 +17,7 @@
     "yaml": "^2.9.1"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=26"
   },
   "devDependencies": {
     "prettier": "^3.9.9",
