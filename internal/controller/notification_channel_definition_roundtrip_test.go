@@ -27,11 +27,17 @@ var _ = Describe("Converting a Dash0NotificationChannel to the API client's Noti
 		roundTripped := map[string]any{}
 		Expect(json.Unmarshal(serialized, &roundTripped)).To(Succeed())
 
-		// mapToNotificationChannelDefinition transforms the map in place (display name moved to metadata.name,
-		// emailV2Config moved to config), so the expected spec is taken after the conversion.
-		expectedSpec := unstructuredNotificationChannel.Object["spec"].(map[string]any)
-		Expect(expectedSpec).To(HaveKey("config"))
-		Expect(expectedSpec).ToNot(HaveKey("display"))
+		// The expected spec is derived from the original struct, with the transformations applied by
+		// mapToNotificationChannelDefinition made manually (display name moved to metadata.name, emailV2Config moved
+		// to config).
+		serializedSpec, err := json.Marshal(notificationChannel.Spec)
+		Expect(err).ToNot(HaveOccurred())
+		expectedSpec := map[string]any{}
+		Expect(json.Unmarshal(serializedSpec, &expectedSpec)).To(Succeed())
+		expectedSpec["config"] = expectedSpec["emailV2Config"]
+		delete(expectedSpec, "emailV2Config")
+		delete(expectedSpec, "display")
+		Expect(expectedSpec).To(HaveKey("routing"))
 		Expect(roundTripped["kind"]).To(Equal("Dash0NotificationChannel"))
 		Expect(roundTripped["spec"]).To(Equal(expectedSpec))
 		// Kubernetes labels and annotations are dropped, only the display name remains; the Dash0 API accepts the
