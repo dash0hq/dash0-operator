@@ -883,6 +883,17 @@ const getEventsDisabled = `reading events via "kubectl get" is not allowed, beca
 	`been disabled in the configuration of the agent0-connector (via the Helm value ` +
 	`operator.agent0Connector.allowedKubectlCommands)`
 
+// sortByTerminationMessage is the reason with which a --sort-by expression that addresses the termination messages of
+// containers is rejected while "kubectl logs" is disabled.
+func sortByTerminationMessage(expression string) string {
+	return fmt.Sprintf(
+		"the --sort-by expression %q is not allowed, because it addresses the termination messages of containers, "+
+			"which can hold log output, and the kubectl command \"logs\" has been disabled in the configuration of "+
+			"the agent0-connector (via the Helm value operator.agent0Connector.allowedKubectlCommands)",
+		expression,
+	)
+}
+
 func TestValidationHonorsTheAllowedKubectlCommands(t *testing.T) {
 	defaults := defaultKubectlCommands
 	onlyGet := mustParseAllowedKubectlCommands("get")
@@ -951,6 +962,52 @@ func TestValidationHonorsTheAllowedKubectlCommands(t *testing.T) {
 			arguments: []string{"get", "configmap", "events"}},
 		{name: "get events is allowed when events is enabled", allowed: everySupportedKubectlCommandAllowed(),
 			arguments: []string{"get", "events", "-o", "yaml"}},
+		{name: "sort-by a termination message is rejected by default", allowed: defaults,
+			arguments:       []string{"get", "pods", "--sort-by", ".status.containerStatuses[0].lastState.terminated.message"},
+			rejectionReason: sortByTerminationMessage(".status.containerStatuses[0].lastState.terminated.message")},
+		{name: "sort-by a termination message of an init container is rejected by default", allowed: defaults,
+			arguments:       []string{"get", "pods", "--sort-by={.status.initContainerStatuses[1].state.terminated.message}"},
+			rejectionReason: sortByTerminationMessage("{.status.initContainerStatuses[1].state.terminated.message}")},
+		{name: "sort-by a termination message of an ephemeral container is rejected by default", allowed: defaults,
+			arguments: []string{
+				"get", "pods", "--sort-by", ".status.ephemeralContainerStatuses[0].state.terminated.message",
+			},
+			rejectionReason: sortByTerminationMessage(".status.ephemeralContainerStatuses[0].state.terminated.message")},
+		{name: "sort-by a termination message in bracket notation is rejected by default", allowed: defaults,
+			arguments: []string{
+				"get", "pods", "--sort-by", "{.status['containerStatuses'][0]['state']['terminated']['message']}",
+			},
+			rejectionReason: sortByTerminationMessage(
+				"{.status['containerStatuses'][0]['state']['terminated']['message']}",
+			)},
+		{name: "sort-by a field that contains a termination message is rejected by default", allowed: defaults,
+			arguments:       []string{"get", "pods", "--sort-by", ".status.containerStatuses[0].state.terminated"},
+			rejectionReason: sortByTerminationMessage(".status.containerStatuses[0].state.terminated")},
+		{name: "sort-by a termination message with a backslash in a field name is rejected by default", allowed: defaults,
+			arguments:       []string{"get", "pods", "--sort-by", `.status.containerStatuses[0].state.terminated.mes\sage`},
+			rejectionReason: sortByTerminationMessage(`.status.containerStatuses[0].state.terminated.mes\sage`)},
+		{name: "sort-by a termination message with a backslash in bracket notation is rejected by default",
+			allowed: defaults,
+			arguments: []string{
+				"get", "pods", "--sort-by", `{.status.containerStatuses[0].state.terminated['mes\sage']}`,
+			},
+			rejectionReason: sortByTerminationMessage(`{.status.containerStatuses[0].state.terminated['mes\sage']}`)},
+		{name: "sort-by a termination message with a space before a field is rejected by default", allowed: defaults,
+			arguments:       []string{"get", "pods", "--sort-by", "{.status.containerStatuses[0].state.terminated .message}"},
+			rejectionReason: sortByTerminationMessage("{.status.containerStatuses[0].state.terminated .message}")},
+		{name: "sort-by a termination message with $ before a field is rejected by default", allowed: defaults,
+			arguments:       []string{"get", "pods", "--sort-by", "{.status.containerStatuses[0].state.terminated$.message}"},
+			rejectionReason: sortByTerminationMessage("{.status.containerStatuses[0].state.terminated$.message}")},
+		{name: "sort-by a termination message with @ before a field is rejected by default", allowed: defaults,
+			arguments:       []string{"get", "pods", "--sort-by", "{.status.containerStatuses[0].state@.terminated.message}"},
+			rejectionReason: sortByTerminationMessage("{.status.containerStatuses[0].state@.terminated.message}")},
+		{name: "sort-by the whole status is rejected by default", allowed: defaults,
+			arguments: []string{"get", "pods", "--sort-by", ".status"}, rejectionReason: sortByTerminationMessage(".status")},
+		{name: "sort-by another field of a terminated state is allowed by default", allowed: defaults,
+			arguments: []string{"get", "pods", "--sort-by", ".status.containerStatuses[0].lastState.terminated.exitCode"}},
+		{name: "sort-by a termination message is allowed when logs is enabled",
+			allowed:   everySupportedKubectlCommandAllowed(),
+			arguments: []string{"get", "pods", "--sort-by", ".status.containerStatuses[0].lastState.terminated.message"}},
 
 		// Regression tests for inconsistencies between kubectl's cobra based parsing and our parsing.
 		{name: "a disabled command hidden behind -A and an allowed command is rejected", allowed: withoutClusterInfo,
@@ -1173,7 +1230,8 @@ func TestLookupSensitiveResourceType(t *testing.T) {
 
 // TestSortByExpressionIsSafe covers the --sort-by guard directly, in particular the JSONPath notations kubectl accepts
 // for the same path. kubectl hands the expression to client-go's JSONPath parser, which treats ['annotations'] and
-// .annotations as the same step, so the guard has to resolve the bracket form before it compares prefixes.
+// .annotations as the same step, removes backslashes from field names and skips spaces, "$" and "@" between fields, so
+// the guard has to see the expression the way that parser does.
 func TestSortByExpressionIsSafe(t *testing.T) {
 	tests := []struct {
 		expression string
@@ -1185,8 +1243,9 @@ func TestSortByExpressionIsSafe(t *testing.T) {
 		{expression: ".status.startTime", safe: true},
 		{expression: ".status.containerStatuses[0].name", safe: true},
 		{expression: ".metadata['name']", safe: true},
-		{expression: "{.metadata[\"name\"]}", safe: true},
-		{expression: "{['metadata']['name']}", safe: true},
+		{expression: "metadata['labels']", safe: true},
+		{expression: `{.metadata.labels.app\.kubernetes\.io/name}`, safe: true},
+		{expression: ".status.containerStatuses[-1].name", safe: true},
 
 		// The annotations hold the verbatim copy of the applied manifest, credentials included, in every notation.
 		{expression: ".metadata.annotations", safe: false},
@@ -1196,6 +1255,14 @@ func TestSortByExpressionIsSafe(t *testing.T) {
 		{expression: ".metadata[ 'annotations' ]", safe: false},
 		{expression: "{.metadata['annotations']['kubectl.kubernetes.io/last-applied-configuration']}", safe: false},
 		{expression: "{['metadata']['annotations']}", safe: false},
+		{expression: `.metadata.annot\ations`, safe: false},
+		{expression: `{.metadata.annot\ations.secret}`, safe: false},
+		{expression: `{.metadata['annot\ations']}`, safe: false},
+		{expression: `{.metadata.\annotations}`, safe: false},
+		{expression: "{.metadata .annotations}", safe: false},
+		{expression: "{.metadata$.annotations}", safe: false},
+		{expression: "{.metadata@.annotations}", safe: false},
+		{expression: "{.metadata $ @ .annotations}", safe: false},
 
 		// Anything outside metadata and status, and anything that can address more than one plain field.
 		{expression: ".spec.export.dash0.authorization.token", safe: false},
@@ -1208,7 +1275,16 @@ func TestSortByExpressionIsSafe(t *testing.T) {
 		// rather than matching the "metadata" prefix through its opening bracket.
 		{expression: ".metadata[annotations]", safe: false},
 		{expression: ".metadata[*]", safe: false},
+		{expression: ".status.containerStatuses[0:2].name", safe: false},
+		{expression: ".status.containerStatuses[0,1].name", safe: false},
+		{expression: "{.metadata.@name}", safe: false},
 		{expression: "", safe: false},
+
+		// kubectl cannot sort by these either: client-go's JSONPath parser only accepts single quotes in a bracket
+		// segment, and a bracket segment directly after the leading dot yields an empty field name, which matches nothing.
+		{expression: "{.metadata[\"name\"]}", safe: false},
+		{expression: "{['metadata']['name']}", safe: false},
+		{expression: "{.metadata.$.name}", safe: false},
 	}
 
 	for _, tt := range tests {

@@ -217,7 +217,7 @@ func ExecuteCommandRequest(
 
 	// The response is redacted before any notice is appended, so that redaction only ever operates on kubectl's own
 	// output.
-	redactionErr := redactSecretsInResponse(parsed, resp, stdout.truncated)
+	redactionErr := redactSecretsInResponse(parsed, resp, stdout.truncated, allowedKubectlCommands)
 	if redactionErr != nil {
 		// A withheld response delivers nothing at all, which is the more specific outcome than the exit code of the
 		// invocation, hence it is the one error recorded for this request.
