@@ -122,6 +122,7 @@ type oTelColConfig struct {
 	TargetAllocatorNamePrefix                        string
 	Agent0ConnectorEnabled                           bool
 	Agent0ConnectorDeploymentName                    string
+	SyntheticsWorkerDeploymentNames                  []string
 	KubeletStatsReceiverConfig                       util.KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
 	DisableHostPorts                                 bool
