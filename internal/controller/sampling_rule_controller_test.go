@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -652,11 +651,11 @@ spec:
 					Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(1))
 
 					apiRequest := resourceToRequestsResult.ApiRequests[0]
-					req := apiRequest.Request
-					defer func() {
-						_ = req.Body.Close()
-					}()
-					body, err := io.ReadAll(req.Body)
+					Expect(apiRequest.ApiClientCall).ToNot(BeNil())
+					Expect(apiRequest.ApiClientCall.Method).To(Equal(http.MethodPut))
+					samplingDefinition, err := mapToSamplingDefinition(samplingRule, "dash0-sampling-rule", DatasetCustomTest)
+					Expect(err).ToNot(HaveOccurred())
+					body, err := json.Marshal(samplingDefinition)
 					Expect(err).ToNot(HaveOccurred())
 					payload := map[string]interface{}{}
 					Expect(json.Unmarshal(body, &payload)).To(Succeed())
@@ -683,7 +682,7 @@ func createSamplingRuleReconciler(clusterId string) *SamplingRuleReconciler {
 		k8sClient,
 		types.UID(clusterId),
 		samplingRuleLeaderElectionAware,
-		TestHTTPClient(),
+		testApiClientPool(),
 	)
 }
 
