@@ -7,7 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
+	"net/http"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -321,9 +321,12 @@ var _ = Describe(
 						Expect(result.SynchronizationErrors).To(BeNil())
 						Expect(result.ApiRequests).To(HaveLen(1))
 
-						req := result.ApiRequests[0].Request
-						defer func() { _ = req.Body.Close() }()
-						body, err := io.ReadAll(req.Body)
+						apiClientCall := result.ApiRequests[0].ApiClientCall
+						Expect(apiClientCall).ToNot(BeNil())
+						Expect(apiClientCall.Method).To(Equal(http.MethodPut))
+						teamDefinition, err := mapToTeamDefinition(resource, teamName)
+						Expect(err).ToNot(HaveOccurred())
+						body, err := json.Marshal(teamDefinition)
 						Expect(err).ToNot(HaveOccurred())
 
 						var payload map[string]any
@@ -353,8 +356,8 @@ var _ = Describe(
 						Expect(members[1]).To(Equal(teamMemberBob))
 
 						// Verify URL format (org-level, no dataset query parameter).
-						Expect(req.URL.String()).NotTo(ContainSubstring("dataset="))
-						Expect(req.URL.Path).To(ContainSubstring("/api/teams/"))
+						Expect(apiClientCall.Url).NotTo(ContainSubstring("dataset="))
+						Expect(apiClientCall.Url).To(ContainSubstring("/api/teams/"))
 					},
 				)
 			},
@@ -367,7 +370,7 @@ func createTeamReconciler(clusterId string) *TeamReconciler {
 		k8sClient,
 		types.UID(clusterId),
 		teamLeaderElectionAware,
-		TestHTTPClient(),
+		testApiClientPool(),
 	)
 }
 

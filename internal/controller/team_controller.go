@@ -4,16 +4,18 @@
 package controller
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,7 +37,7 @@ type TeamReconciler struct {
 	client.Client
 	pseudoClusterUid      types.UID
 	leaderElectionAware   util.LeaderElectionAware
-	httpClient            *http.Client
+	apiClientPool         *ApiClientPool
 	defaultApiConfigs     selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs  selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	initialSyncMutex      sync.Mutex
@@ -52,13 +54,13 @@ func NewTeamReconciler(
 	k8sClient client.Client,
 	pseudoClusterUid types.UID,
 	leaderElectionAware util.LeaderElectionAware,
-	httpClient *http.Client,
+	apiClientPool *ApiClientPool,
 ) *TeamReconciler {
 	return &TeamReconciler{
 		Client:               k8sClient,
 		pseudoClusterUid:     pseudoClusterUid,
 		leaderElectionAware:  leaderElectionAware,
-		httpClient:           httpClient,
+		apiClientPool:        apiClientPool,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
 		namespacedSyncMutex:  *selfmonitoringapiaccess.NewNamespaceMutex(),
@@ -113,8 +115,9 @@ func (r *TeamReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
+// HttpClient returns nil, the team reconciler talks to the Dash0 API via the API client pool.
 func (r *TeamReconciler) HttpClient() *http.Client {
-	return r.httpClient
+	return nil
 }
 
 func (r *TeamReconciler) SetDefaultApiConfigs(
@@ -365,60 +368,75 @@ func (r *TeamReconciler) MapResourceToHttpRequests(
 		apiConfig.Endpoint,
 	)
 
-	var req *http.Request
-	var method string
-	var err error
-
+	var apiClientCall *ApiClientCall
 	switch action {
 	case upsertAction:
 		// The API expects a TeamDefinitionV1Alpha1 envelope. The controller preserves the CR's metadata.name as the
 		// technical name and passes spec.display and spec.members through unchanged. The server accepts emails in
 		// spec.members and resolves them to internal IDs during reconciliation, so no client-side lookup is needed.
-		resource := preconditionChecksResult.resource
-		prepareTeamApiPayload(resource, preconditionChecksResult.k8sName)
-		serializedResource, _ := json.Marshal(resource)
-		requestPayload := bytes.NewBuffer(serializedResource)
-		method = http.MethodPut
-		req, err = http.NewRequest(
-			method,
-			teamUrl,
-			requestPayload,
-		)
+		teamDefinition, err := mapToTeamDefinition(preconditionChecksResult.resource, preconditionChecksResult.k8sName)
+		if err != nil {
+			logger.Error(err, "error converting team")
+			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, err.Error())
+		}
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodPut,
+			Url:    teamUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				upsertedTeam, err := apiClient.UpsertTeam(ctx, teamOrigin, teamDefinition)
+				if err != nil {
+					return "", err
+				}
+				if upsertedTeam == nil {
+					return "", errors.New("unexpected nil/empty response body")
+				}
+				return dash0apiclient.GetTeamID(upsertedTeam), nil
+			},
+		}
 	case deleteAction:
-		method = http.MethodDelete
-		req, err = http.NewRequest(
-			method,
-			teamUrl,
-			nil,
-		)
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodDelete,
+			Url:    teamUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				return "", apiClient.DeleteTeam(ctx, teamOrigin)
+			},
+		}
 	default:
 		unknownActionErr := fmt.Errorf("unknown API action: %d", action)
 		logger.Error(unknownActionErr, "unknown API action")
 		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, unknownActionErr.Error())
 	}
 
-	if err != nil {
-		httpError := fmt.Errorf(
-			"unable to create a new HTTP request to synchronize the team: %s %s: %w",
-			method,
-			teamUrl,
-			err,
-		)
-		logger.Error(httpError, "error creating http request")
-		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, httpError.Error())
-	}
-
-	addAuthorizationHeader(req, apiConfig.Token)
-	if action == upsertAction {
-		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
-	}
-
-	return NewResourceToRequestsResultSingleItemSuccess(
+	return NewResourceToRequestsResultSingleItemApiClientCall(
 		apiConfig,
-		req,
+		apiClientCall,
 		itemName,
 		teamOrigin,
 	)
+}
+
+// mapToTeamDefinition converts the team resource to the typed team definition of the Dash0 API client. The resource
+// is first projected into the API payload format (see prepareTeamApiPayload). Kubernetes labels and annotations are
+// kept, the Dash0 API ignores all keys except the reserved dash0.com/* ones.
+func mapToTeamDefinition(resource map[string]any, k8sName string) (*dash0apiclient.TeamDefinitionV1Alpha1, error) {
+	prepareTeamApiPayload(resource, k8sName)
+	serializedResource, err := json.Marshal(resource)
+	if err != nil {
+		return nil, err
+	}
+	teamDefinition := &dash0apiclient.TeamDefinitionV1Alpha1{}
+	if err = json.Unmarshal(serializedResource, teamDefinition); err != nil {
+		return nil, fmt.Errorf("unable to convert the team to the Dash0 API format: %w", err)
+	}
+	return teamDefinition, nil
 }
 
 // prepareTeamApiPayload projects the operator's CR shape into the TeamDefinitionV1Alpha1 envelope the Dash0
@@ -459,7 +477,7 @@ func (r *TeamReconciler) renderTeamUrl(
 	return fmt.Sprintf(
 		"%sapi/teams/%s",
 		endpoint,
-		teamOrigin,
+		url.PathEscape(teamOrigin),
 	), teamOrigin
 }
 

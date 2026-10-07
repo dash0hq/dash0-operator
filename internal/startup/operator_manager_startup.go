@@ -1236,13 +1236,13 @@ func setupTeamReconciler(
 	k8sClient client.Client,
 	clusterUid types.UID,
 	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
-	httpClient *http.Client,
+	apiClientPool *controller.ApiClientPool,
 ) (*controller.TeamReconciler, error) {
 	teamReconciler := controller.NewTeamReconciler(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err := teamReconciler.SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("unable to set up the team reconciler: %w", err)
@@ -2037,7 +2037,7 @@ func startDash0Controllers(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err != nil {
 		return err
