@@ -1466,6 +1466,97 @@ var _ = Describe(
 				)
 
 				It(
+					"fetches the existing rules only once when a namespace-wide resync is triggered, and only deletes "+
+						"rules that exist",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						resourceNames := []string{"test-rule-1", "test-rule-2", "test-rule-3"}
+						namespaceOriginPrefix := fmt.Sprintf(
+							"dash0-operator_%s_%s_%s_",
+							clusterId,
+							DatasetCustomTest,
+							TestNamespaceName,
+						)
+						expectFetchExistingRuleOriginsGetRequests(
+							ApiEndpointTest,
+							AuthorizationHeaderTest,
+							DatasetCustomTest,
+							namespaceOriginPrefix,
+							[]string{
+								ruleOriginForResource(clusterId, DatasetCustomTest, "test-rule-2", defaultCheckRuleRequests()[0]),
+							},
+							[]string{},
+						)
+						gock.New(ApiEndpointTest).
+							Delete(checkRuleApiBasePath+ruleOriginForResource(
+								clusterId, DatasetCustomTest, "test-rule-2", defaultCheckRuleRequests()[0],
+							)).
+							MatchHeader("Authorization", AuthorizationHeaderTest).
+							MatchParam("dataset", DatasetCustomTest).
+							Times(1).
+							Reply(http.StatusOK)
+						defer gock.Off()
+
+						deleteRuleResources := createDisabledPrometheusRuleResourcesInKubernetes(ctx, resourceNames)
+						defer deleteRuleResources()
+
+						prometheusRuleReconciler.synchronizeNamespacedResources(ctx, TestNamespaceName, logger)
+
+						Eventually(func(g Gomega) {
+							monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, g)
+							results := monRes.Status.PrometheusRuleSynchronizationResults
+							g.Expect(results).To(HaveLen(len(resourceNames)))
+							for _, name := range resourceNames {
+								g.Expect(results[fmt.Sprintf("%s/%s", TestNamespaceName, name)].SynchronizationStatus).To(
+									Equal(dash0common.ThirdPartySynchronizationStatusSuccessful),
+								)
+							}
+						}, 5*time.Second, 50*time.Millisecond).Should(Succeed())
+						Expect(gock.IsDone()).To(BeTrue())
+					},
+				)
+
+				It(
+					"tries to fetch the existing rules only once when a namespace-wide resync is triggered and fetching "+
+						"them fails",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						resourceNames := []string{"test-rule-1", "test-rule-2", "test-rule-3"}
+						gock.New(ApiEndpointTest).
+							Get("/api/alerting/check-rules").
+							MatchHeader("Authorization", AuthorizationHeaderTest).
+							MatchParam("dataset", DatasetCustomTest).
+							Times(1).
+							Reply(http.StatusForbidden)
+						defer gock.Off()
+
+						deleteRuleResources := createDisabledPrometheusRuleResourcesInKubernetes(ctx, resourceNames)
+						defer deleteRuleResources()
+
+						prometheusRuleReconciler.synchronizeNamespacedResources(ctx, TestNamespaceName, logger)
+
+						Eventually(func(g Gomega) {
+							monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, g)
+							results := monRes.Status.PrometheusRuleSynchronizationResults
+							g.Expect(results).To(HaveLen(len(resourceNames)))
+							for _, name := range resourceNames {
+								result := results[fmt.Sprintf("%s/%s", TestNamespaceName, name)]
+								g.Expect(result.SynchronizationStatus).To(
+									Equal(dash0common.ThirdPartySynchronizationStatusFailed),
+								)
+								g.Expect(result.SynchronizationResults).To(HaveLen(1))
+								g.Expect(result.SynchronizationResults[0].SynchronizationErrors["*"]).To(
+									MatchRegexp("^unexpected status code 403 when trying to fetch existing origins: GET .*"),
+								)
+							}
+						}, 5*time.Second, 50*time.Millisecond).Should(Succeed())
+						Expect(gock.IsDone()).To(BeTrue())
+					},
+				)
+
+				It(
 					"deletes individual check rules when the rule has been removed from the PrometheusRule resource", func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
@@ -3274,6 +3365,25 @@ func createDefaultPrometheusRuleResourceWithEnableLabel(dash0EnableLabelValue st
 
 func createPrometheusRuleResource(spec prometheusv1.PrometheusRuleSpec) unstructured.Unstructured {
 	return createPrometheusRuleResourceWithObjectMeta(spec, defaultRuleObjectMeta)
+}
+
+// createDisabledPrometheusRuleResourcesInKubernetes creates PrometheusRule resources with the label
+// dash0.com/enable=false and the default spec in the test namespace, and returns a function that deletes them again.
+func createDisabledPrometheusRuleResourcesInKubernetes(ctx context.Context, names []string) func() {
+	ruleResources := make([]*unstructured.Unstructured, 0, len(names))
+	for _, name := range names {
+		objectMeta := defaultRuleObjectMeta
+		objectMeta.Name = name
+		objectMeta.Labels = map[string]string{"dash0.com/enable": "false"}
+		ruleResource := createPrometheusRuleResourceWithObjectMeta(createDefaultSpec(), objectMeta)
+		Expect(k8sClient.Create(ctx, &ruleResource)).To(Succeed())
+		ruleResources = append(ruleResources, &ruleResource)
+	}
+	return func() {
+		for _, ruleResource := range ruleResources {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, ruleResource))).To(Succeed())
+		}
+	}
 }
 
 func createPrometheusRuleResourceWithObjectMeta(
