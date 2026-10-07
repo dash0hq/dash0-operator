@@ -1134,6 +1134,39 @@ var _ = Describe(
 				)
 
 				It(
+					"still creates check rules but does not delete orphaned rules if the existing rules cannot be fetched",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						gock.New(ApiEndpointTest).
+							Get("/api/alerting/check-rules").
+							MatchHeader("Authorization", AuthorizationHeaderTest).
+							MatchParam("dataset", DatasetCustomTest).
+							Times(1).
+							Reply(http.StatusForbidden)
+						expectCheckRulePutRequests(clusterId, defaultCheckRuleRequests())
+						expectRecordingRulePutRequests(clusterId, defaultRecordingRuleRequests())
+						defer gock.Off()
+
+						ruleResource := createDefaultPrometheusRuleResource()
+						prometheusRuleReconciler.Create(
+							ctx,
+							event.TypedCreateEvent[*unstructured.Unstructured]{
+								Object: &ruleResource,
+							},
+							&controllertest.TypedQueue[reconcile.Request]{},
+						)
+
+						verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+							ctx,
+							k8sClient,
+							defaultExpectedPrometheusSyncResult(clusterId),
+						)
+						Expect(gock.IsDone()).To(BeTrue())
+					},
+				)
+
+				It(
 					"fetches the existing rules only once when synchronizing all resources in a namespace, and only "+
 						"deletes rules that exist",
 					func() {
