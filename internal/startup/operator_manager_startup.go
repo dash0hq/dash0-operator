@@ -284,6 +284,7 @@ var (
 	operatorDeploymentSelfReference *appsv1.Deployment
 	envVars                         environmentVariables
 	extraConfig                     util.ExtraConfig
+	extraConfigDefaults             util.ExtraConfig
 	extraConfigMapWatcher           = util.NewExtraConfigWatcher()
 
 	thirdPartyResourceSynchronizationQueue *workqueue.Typed[controller.ThirdPartyResourceSyncJob]
@@ -403,12 +404,13 @@ func Start() {
 		setupLog.Error(err, "invalid OTLP collector host port configuration")
 		os.Exit(1)
 	}
-	if err = readExtraConfigMap(); err != nil {
+	extraConfigDefaults = util.ExtraConfigDefaultsFor(cliArgs.isGkeAutopilot)
+	if err = readExtraConfigMap(extraConfigDefaults); err != nil {
 		setupLog.Error(err, "cannot read extra config map file at startup")
 		os.Exit(1)
 	}
 	util.WarnOnCollectorGoMemLimitInversion(extraConfig, setupLog)
-	if err = extraConfigMapWatcher.StartWatch(setupLog); err != nil {
+	if err = extraConfigMapWatcher.StartWatch(extraConfigDefaults, setupLog); err != nil {
 		setupLog.Error(err, "cannot establish file watch for extra config map")
 		os.Exit(1)
 	}
@@ -1115,9 +1117,9 @@ func readKubeletStatsReceiverConfigFromEnv() (bool, *util.KubeletStatsReceiverCo
 
 // readExtraConfigMap reads the config map content, which is basically a container for structured configuration data
 // that would be cumbersome to pass in as a command line argument.
-func readExtraConfigMap() error {
+func readExtraConfigMap(defaults util.ExtraConfig) error {
 	var err error
-	extraConfig, err = util.ReadExtraConfigMap()
+	extraConfig, err = util.ReadExtraConfigMap(defaults, setupLog)
 	if err != nil {
 		return err
 	}

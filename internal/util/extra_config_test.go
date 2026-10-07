@@ -5,11 +5,17 @@ package util
 
 import (
 	"context"
+	"encoding/json"
+	"io/fs"
 	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"sigs.k8s.io/yaml"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -27,8 +33,6 @@ var _ = Describe("extra config map", func() {
 		defaults *ResourceRequirementsWithGoMemLimit
 		expected *ResourceRequirementsWithGoMemLimit
 	}
-
-	emptyProbes := CollectorProbes{}
 
 	Describe("reading the config map", func() {
 		DescribeTable("should apply defaults resources to requirements", func(testConfig applyDefaultsTest) {
@@ -356,7 +360,7 @@ var _ = Describe("extra config map", func() {
 
 			Describe("parse the config map to extraConfig", func() {
 				It("should apply defaults for empty config", func() {
-					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name())
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
 					Expect(err).ToNot(HaveOccurred())
 
 					Expect(extraConfig.InstrumentationInitContainerResources.Limits).To(BeNil())
@@ -392,12 +396,12 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 
 					Expect(extraConfig.DaemonSetTolerations).To(HaveLen(0))
-					Expect(extraConfig.DaemonSetNodeAffinity).To(BeNil())
+					Expect(extraConfig.DaemonSetNodeAffinity).To(Equal(defaultNodeAffinity()))
 					Expect(extraConfig.DaemonSetSELinuxOptions).To(BeNil())
 
 					Expect(extraConfig.CollectorDaemonSetPriorityClassName).To(Equal(""))
 
-					Expect(extraConfig.DaemonSetProbes).To(Equal(emptyProbes))
+					Expect(extraConfig.DaemonSetProbes).To(Equal(defaultCollectorProbes))
 
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))
@@ -416,30 +420,171 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 
 					Expect(extraConfig.DeploymentTolerations).To(HaveLen(0))
-					Expect(extraConfig.DeploymentNodeAffinity).To(BeNil())
+					Expect(extraConfig.DeploymentNodeAffinity).To(Equal(defaultNodeAffinity()))
 
 					Expect(extraConfig.CollectorDeploymentPriorityClassName).To(Equal(""))
 
-					Expect(extraConfig.DeploymentProbes).To(Equal(emptyProbes))
+					Expect(extraConfig.DeploymentProbes).To(Equal(defaultCollectorProbes))
+
+					Expect(extraConfig.SignalControlCollectorReplicas).To(Equal(int32(2)))
+					Expect(extraConfig.SignalControlCollectorNodeAffinity).To(Equal(defaultNodeAffinity()))
+					Expect(extraConfig.SignalControlCollectorProbes).To(Equal(defaultCollectorProbes))
 
 					Expect(extraConfig.TargetAllocatorMtlsEnabled).To(BeFalse())
 					Expect(extraConfig.TargetAllocatorMtlsServerCertSecretName).To(Equal(""))
 					Expect(extraConfig.TargetAllocatorMtlsClientCertSecretName).To(Equal(""))
 					Expect(extraConfig.TargetAllocatorAllowInsecureAuthSecrets).To(BeFalse())
-					Expect(extraConfig.TargetAllocatorContainerResources.Limits).To(BeNil())
-					Expect(extraConfig.TargetAllocatorContainerResources.Requests).To(BeNil())
+					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Cpu().String()).To(Equal("200m"))
+					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))
+					Expect(extraConfig.TargetAllocatorContainerResources.Requests.Cpu().String()).To(Equal("200m"))
+					Expect(extraConfig.TargetAllocatorContainerResources.Requests.Memory().String()).To(Equal("128Mi"))
 					Expect(extraConfig.TargetAllocatorContainerResources.GoMemLimit).To(BeEmpty())
 					Expect(extraConfig.TargetAllocatorTolerations).To(HaveLen(0))
-					Expect(extraConfig.TargetAllocatorNodeAffinity).To(BeNil())
+					Expect(extraConfig.TargetAllocatorNodeAffinity).To(Equal(defaultNodeAffinity()))
+
+					Expect(extraConfig.EdgeProxyReplicas).To(Equal(int32(2)))
+					Expect(extraConfig.EdgeProxyEnablePprof).To(BeFalse())
+					Expect(extraConfig.EdgeProxyContainerResources.Limits.Cpu().String()).To(Equal("500m"))
+					Expect(extraConfig.EdgeProxyContainerResources.Limits.Memory().String()).To(Equal("512Mi"))
+					Expect(extraConfig.EdgeProxyContainerResources.Requests.Cpu().String()).To(Equal("50m"))
+					Expect(extraConfig.EdgeProxyContainerResources.Requests.Memory().String()).To(Equal("128Mi"))
+					Expect(extraConfig.EdgeProxyNodeAffinity).To(Equal(defaultNodeAffinity()))
 
 					Expect(extraConfig.Agent0ConnectorContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.Agent0ConnectorContainerResources.Limits.Memory().String()).To(Equal("256Mi"))
 					Expect(extraConfig.Agent0ConnectorContainerResources.GoMemLimit).To(BeEmpty())
 					Expect(extraConfig.Agent0ConnectorContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.Agent0ConnectorContainerResources.Requests.Memory().String()).To(Equal("64Mi"))
+					Expect(extraConfig.Agent0ConnectorMaxConcurrentCommands).To(Equal(int32(2)))
+					Expect(extraConfig.Agent0ConnectorAllowedKubectlCommands).To(
+						Equal(ExtraConfigDefaults.Agent0ConnectorAllowedKubectlCommands))
+					Expect(extraConfig.Agent0ConnectorNodeAffinity).To(Equal(defaultNodeAffinity()))
 					Expect(extraConfig.Agent0ConnectorClusterRoleRules).To(BeNil())
 
 					Expect(extraConfig.MonitoringTemplateRaw).To(BeNil())
+				})
+
+				It("should use the defaults if the file does not exist", func() {
+					Expect(os.Remove(tmpFile.Name())).To(Succeed())
+					missingFile := tmpFile.Name()
+					tmpFile = nil
+
+					extraConfig, err := readExtraConfigurationFromFile(missingFile, ExtraConfigDefaults, true, logger)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(marshalToJson(extraConfig)).To(MatchJSON(marshalToJson(ExtraConfigDefaults)))
+
+					_, err = readExtraConfigurationFromFile(missingFile, ExtraConfigDefaults, false, logger)
+					Expect(err).To(MatchError(fs.ErrNotExist))
+				})
+
+				It("should use the GKE Autopilot defaults for the init container if the key is missing", func() {
+					extraConfig, err :=
+						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(true), true, logger)
+					Expect(err).ToNot(HaveOccurred())
+					resources := extraConfig.InstrumentationInitContainerResources
+					Expect(resources.Limits.StorageEphemeral().String()).To(Equal("500Mi"))
+					Expect(resources.Requests.Cpu().String()).To(Equal("100m"))
+					Expect(resources.Requests.Memory().String()).To(Equal("128Mi"))
+					Expect(resources.Requests.StorageEphemeral().String()).To(Equal("500Mi"))
+				})
+
+				It("should keep values that are present, including explicit nulls and partial resources", func() {
+					_, err := tmpFile.WriteString(`
+initContainerResources: {}
+daemonSetNodeAffinity: null
+daemonSetProbes:
+  liveness:
+    periodSeconds: 5
+deploymentNodeAffinity:
+  preferredDuringSchedulingIgnoredDuringExecution:
+  - weight: 1
+    preference:
+      matchExpressions:
+      - key: node-type
+        operator: In
+        values:
+        - collector
+signalControlCollectorReplicas: 0
+targetAllocatorContainerResources:
+  limits:
+    memory: 600Mi
+edgeProxyReplicas: 3
+agent0ConnectorMaxConcurrentCommands: 4
+agent0ConnectorAllowedKubectlCommands:
+  get: true
+`)
+					Expect(err).ToNot(HaveOccurred())
+
+					extraConfig, err :=
+						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(true), true, logger)
+					Expect(err).ToNot(HaveOccurred())
+
+					Expect(extraConfig.InstrumentationInitContainerResources.Limits).To(BeNil())
+					Expect(extraConfig.InstrumentationInitContainerResources.Requests).To(BeNil())
+					Expect(extraConfig.DaemonSetNodeAffinity).To(BeNil())
+					Expect(extraConfig.DaemonSetProbes).To(Equal(CollectorProbes{
+						Liveness: corev1.Probe{PeriodSeconds: 5},
+					}))
+					Expect(extraConfig.DeploymentNodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution).To(BeNil())
+					Expect(extraConfig.DeploymentNodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution).To(HaveLen(1))
+					Expect(extraConfig.SignalControlCollectorReplicas).To(Equal(int32(0)))
+					Expect(extraConfig.TargetAllocatorContainerResources.Limits).To(HaveLen(1))
+					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Memory().String()).To(Equal("600Mi"))
+					Expect(extraConfig.TargetAllocatorContainerResources.Requests).To(BeNil())
+					Expect(extraConfig.EdgeProxyReplicas).To(Equal(int32(3)))
+					Expect(extraConfig.Agent0ConnectorMaxConcurrentCommands).To(Equal(int32(4)))
+					Expect(extraConfig.Agent0ConnectorAllowedKubectlCommands).To(Equal(map[string]bool{"get": true}))
+
+					// keys that are missing still get their defaults
+					Expect(extraConfig.DeploymentProbes).To(Equal(defaultCollectorProbes))
+					Expect(extraConfig.EdgeProxyNodeAffinity).To(Equal(defaultNodeAffinity()))
+				})
+
+				It("should not share the defaults with the extra config that has been read", func() {
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
+					Expect(err).ToNot(HaveOccurred())
+
+					extraConfig.DaemonSetNodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.
+						NodeSelectorTerms[0].MatchExpressions[0].Key = "modified"
+					extraConfig.TargetAllocatorContainerResources.Limits[corev1.ResourceCPU] = resource.MustParse("1")
+					extraConfig.Agent0ConnectorAllowedKubectlCommands["get"] = false
+					Expect(ExtraConfigDefaults.DaemonSetNodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.
+						NodeSelectorTerms[0].MatchExpressions[0].Key).To(Equal("dash0.com/enable"))
+					Expect(ExtraConfigDefaults.TargetAllocatorContainerResources.Limits.Cpu().String()).To(Equal("200m"))
+					Expect(ExtraConfigDefaults.Agent0ConnectorAllowedKubectlCommands["get"]).To(BeTrue())
+				})
+
+				It("drift protection: the defaults are in sync with the defaults of the Helm chart", func() {
+					Expect(marshalToJson(ExtraConfigDefaults)).To(
+						MatchJSON(marshalToJson(readDefaultsOfHelmChart())),
+						"the defaults of ExtraConfigDefaults and %s have diverged",
+						helmChartValuesFile,
+					)
+				})
+
+				It("drift protection: every field of ExtraConfig is compared with the defaults of the Helm chart", func() {
+					for field := range reflect.TypeFor[ExtraConfig]().Fields() {
+						key, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+						Expect(extraConfigKeysToHelmValues).To(
+							HaveKey(key),
+							"the key %s is missing from extraConfigKeysToHelmValues",
+							key,
+						)
+					}
+				})
+
+				It("drift protection: the GKE Autopilot defaults are in sync with the defaults of the Helm chart", func() {
+					content, err := os.ReadFile(helmChartGkeAutopilotInitContainerResourcesFile)
+					Expect(err).ToNot(HaveOccurred())
+					var helmChartDefaults ResourceRequirementsWithGoMemLimit
+					Expect(yaml.UnmarshalStrict(content, &helmChartDefaults)).To(Succeed())
+					helmChartDefaultsJson, err := json.Marshal(helmChartDefaults)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(json.Marshal(gkeAutopilotInstrumentationInitContainerResources)).To(
+						MatchJSON(helmChartDefaultsJson),
+						"gkeAutopilotInstrumentationInitContainerResources and %s have diverged",
+						helmChartGkeAutopilotInitContainerResourcesFile,
+					)
 				})
 
 				It("should parse the custom cluster role rules for the agent0-connector", func() {
@@ -461,7 +606,7 @@ agent0ConnectorClusterRoleRules:
 `)
 					Expect(err).ToNot(HaveOccurred())
 
-					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name())
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
 
 					Expect(err).ToNot(HaveOccurred())
 					Expect(extraConfig.Agent0ConnectorClusterRoleRules).To(HaveLen(2))
@@ -660,7 +805,7 @@ monitoringTemplate:
 `)
 					Expect(err).ToNot(HaveOccurred())
 
-					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name())
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
 					Expect(err).ToNot(HaveOccurred())
 
 					Expect(extraConfig.InstrumentationInitContainerResources.Limits.Cpu().String()).To(Equal("200m"))
@@ -863,7 +1008,7 @@ collectorDaemonSetPriorityClassName: daemon-set-priority
 `)
 					Expect(err).ToNot(HaveOccurred())
 
-					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name())
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
 					Expect(err).ToNot(HaveOccurred())
 
 					Expect(extraConfig.InstrumentationInitContainerResources.Limits.Cpu().String()).To(Equal("200m"))
@@ -900,7 +1045,7 @@ collectorDaemonSetPriorityClassName: daemon-set-priority
 
 					Expect(extraConfig.CollectorDaemonSetPriorityClassName).To(Equal("daemon-set-priority"))
 
-					Expect(extraConfig.DaemonSetProbes).To(Equal(emptyProbes))
+					Expect(extraConfig.DaemonSetProbes).To(Equal(defaultCollectorProbes))
 
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))
@@ -920,13 +1065,13 @@ collectorDaemonSetPriorityClassName: daemon-set-priority
 
 					Expect(extraConfig.CollectorDeploymentPriorityClassName).To(Equal(""))
 
-					Expect(extraConfig.DeploymentProbes).To(Equal(emptyProbes))
+					Expect(extraConfig.DeploymentProbes).To(Equal(defaultCollectorProbes))
 				})
 			})
 
 			Describe("parse config map and convert to resource requirements", func() {
 				It("should convert defaults to resource requirements", func() {
-					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name())
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
 					Expect(err).ToNot(HaveOccurred())
 
 					containerResources := extraConfig.InstrumentationInitContainerResources.ToResourceRequirements()
@@ -1047,7 +1192,7 @@ daemonSetTolerations:
 `)
 					Expect(err).ToNot(HaveOccurred())
 
-					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name())
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
 					Expect(err).ToNot(HaveOccurred())
 
 					containerResources := extraConfig.InstrumentationInitContainerResources.ToResourceRequirements()
@@ -1118,7 +1263,7 @@ collectorDaemonSetConfigurationReloaderContainerResources:
 `)
 					Expect(err).ToNot(HaveOccurred())
 
-					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name())
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
 					Expect(err).ToNot(HaveOccurred())
 
 					containerResources := extraConfig.InstrumentationInitContainerResources.ToResourceRequirements()
@@ -1169,7 +1314,7 @@ collectorDaemonSetConfigurationReloaderContainerResources:
 				})
 
 				It("should have no exports if the config map has none", func() {
-					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name())
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(extraConfig.Exports).To(BeEmpty())
 				})
@@ -1201,7 +1346,7 @@ exports:
 `)
 					Expect(err).ToNot(HaveOccurred())
 
-					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name())
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(extraConfig.Exports).To(HaveLen(2))
 
@@ -1243,7 +1388,7 @@ exports:
 `)
 					Expect(err).ToNot(HaveOccurred())
 
-					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name())
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(extraConfig.Exports).To(HaveLen(1))
 
@@ -1284,7 +1429,7 @@ exports:
 
 		It("without clients", func() {
 			watcher = NewExtraConfigWatcher()
-			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), logger))
+			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), ExtraConfigDefaults, logger))
 
 			_, err := tmpFile.WriteString(`
 collectorFilelogOffsetStorageVolume:
@@ -1305,7 +1450,7 @@ collectorFilelogOffsetStorageVolume:
 			clients := []*DummyExtraConfigClient{
 				client1, client2,
 			}
-			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), logger))
+			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), ExtraConfigDefaults, logger))
 
 			for _, c := range clients {
 				Expect(c.updatedConfig).To(BeNil())
@@ -1340,7 +1485,7 @@ collectorFilelogOffsetStorageVolume:
 			watcher = NewExtraConfigWatcher()
 			client := &DummyExtraConfigClient{}
 			watcher.AddClient(client)
-			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), logger))
+			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), ExtraConfigDefaults, logger))
 
 			// Make three file updates in quick succession, the code to read and parse the new config map should only be
 			// called once, after the last update.
@@ -1385,17 +1530,41 @@ collectorFilelogOffsetStorageVolume:
 			}, 3*time.Second, 30*time.Millisecond).To(Succeed())
 		})
 
+		It("should not fail if the directory does not exist", func() {
+			watcher = NewExtraConfigWatcher()
+			Expect(watcher.watchConfigurationDirectory(
+				filepath.Join(tmpDir, "does-not-exist"),
+				filepath.Join(tmpDir, "does-not-exist", "extra.yaml"),
+				ExtraConfigDefaults,
+				logger,
+			)).To(Succeed())
+		})
+
 		It("cope with parsing errors", func() {
 			watcher = NewExtraConfigWatcher()
 			client := &DummyExtraConfigClient{}
 			watcher.AddClient(client)
-			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), logger))
+			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), ExtraConfigDefaults, logger))
 
 			// deliberately write invalid yaml to the file
 			_, err := tmpFile.WriteString(`
 invalid yaml
 `)
 			Expect(err).ToNot(HaveOccurred())
+
+			Consistently(func(g Gomega) {
+				g.Expect(client.updateExtraConfigCalls).To(Equal(0))
+				g.Expect(client.updatedConfig).To(BeNil())
+			}, 2*time.Second, 100*time.Millisecond).To(Succeed())
+		})
+
+		It("should keep the current configuration if the file has been removed", func() {
+			watcher = NewExtraConfigWatcher()
+			client := &DummyExtraConfigClient{}
+			watcher.AddClient(client)
+			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), ExtraConfigDefaults, logger)).To(Succeed())
+
+			Expect(os.Remove(tmpFile.Name())).To(Succeed())
 
 			Consistently(func(g Gomega) {
 				g.Expect(client.updateExtraConfigCalls).To(Equal(0))
@@ -1413,4 +1582,129 @@ type DummyExtraConfigClient struct {
 func (c *DummyExtraConfigClient) UpdateExtraConfig(_ context.Context, updatedConfig ExtraConfig, _ logd.Logger) {
 	c.updateExtraConfigCalls += 1
 	c.updatedConfig = &updatedConfig
+}
+
+var helmChartValuesFile = filepath.Join("..", "..", "helm-chart", "dash0-operator", "values.yaml")
+
+var helmChartGkeAutopilotInitContainerResourcesFile = filepath.Join(
+	"..",
+	"..",
+	"helm-chart",
+	"dash0-operator",
+	"files",
+	"gke-autopilot-init-container-resources.yaml",
+)
+
+// extraConfigKeysToHelmValues maps the keys of the extra config map to the Helm values they are rendered from, see
+// helm-chart/dash0-operator/templates/operator/extra-config-map.yaml.
+var extraConfigKeysToHelmValues = map[string]string{
+	"initContainerResources":                                        "operator.initContainerResources",
+	"collectorFilelogOffsetStorageVolume":                           "operator.collectors.filelogOffsetSyncStorageVolume",
+	"collectorDaemonSetCollectorContainerResources":                 "operator.collectors.daemonSetCollectorContainerResources",
+	"collectorDaemonSetConfigurationReloaderContainerResources":     "operator.collectors.daemonSetConfigurationReloaderContainerResources",
+	"collectorDaemonSetFileLogOffsetSyncContainerResources":         "operator.collectors.daemonSetFileLogOffsetSyncContainerResources",
+	"collectorDaemonSetLabels":                                      "operator.collectors.daemonSetLabels",
+	"collectorDaemonSetAnnotations":                                 "operator.collectors.daemonSetAnnotations",
+	"collectorDaemonSetPodLabels":                                   "operator.collectors.daemonSetPodLabels",
+	"collectorDaemonSetPodAnnotations":                              "operator.collectors.daemonSetPodAnnotations",
+	"daemonSetTolerations":                                          "operator.collectors.daemonSetTolerations",
+	"daemonSetNodeAffinity":                                         "operator.collectors.daemonSetNodeAffinity",
+	"collectorDaemonSetPriorityClassName":                           "operator.collectors.daemonSetPriorityClassName",
+	"daemonSetProbes":                                               "operator.collectors.daemonSetProbes",
+	"daemonSetSysctls":                                              "operator.collectors.daemonSetSysctls",
+	"daemonSetSeLinuxOptions":                                       "operator.collectors.daemonSetSeLinuxOptions",
+	"collectorDeploymentCollectorContainerResources":                "operator.collectors.deploymentCollectorContainerResources",
+	"collectorDeploymentConfigurationReloaderContainerResources":    "operator.collectors.deploymentConfigurationReloaderContainerResources",
+	"collectorDeploymentLabels":                                     "operator.collectors.deploymentLabels",
+	"collectorDeploymentAnnotations":                                "operator.collectors.deploymentAnnotations",
+	"collectorDeploymentPodLabels":                                  "operator.collectors.deploymentPodLabels",
+	"collectorDeploymentPodAnnotations":                             "operator.collectors.deploymentPodAnnotations",
+	"deploymentTolerations":                                         "operator.collectors.deploymentTolerations",
+	"deploymentNodeAffinity":                                        "operator.collectors.deploymentNodeAffinity",
+	"collectorDeploymentPriorityClassName":                          "operator.collectors.deploymentPriorityClassName",
+	"deploymentProbes":                                              "operator.collectors.deploymentProbes",
+	"deploymentSysctls":                                             "operator.collectors.deploymentSysctls",
+	"signalControlCollectorReplicas":                                "operator.collectors.signalControlCollectorReplicas",
+	"signalControlCollectorContainerResources":                      "operator.collectors.signalControlCollectorContainerResources",
+	"signalControlCollectorConfigurationReloaderContainerResources": "operator.collectors.signalControlCollectorConfigurationReloaderContainerResources",
+	"signalControlCollectorLabels":                                  "operator.collectors.signalControlCollectorLabels",
+	"signalControlCollectorAnnotations":                             "operator.collectors.signalControlCollectorAnnotations",
+	"signalControlCollectorPodLabels":                               "operator.collectors.signalControlCollectorPodLabels",
+	"signalControlCollectorPodAnnotations":                          "operator.collectors.signalControlCollectorPodAnnotations",
+	"signalControlCollectorTolerations":                             "operator.collectors.signalControlCollectorTolerations",
+	"signalControlCollectorNodeAffinity":                            "operator.collectors.signalControlCollectorNodeAffinity",
+	"signalControlCollectorPriorityClassName":                       "operator.collectors.signalControlCollectorPriorityClassName",
+	"signalControlCollectorProbes":                                  "operator.collectors.signalControlCollectorProbes",
+	"signalControlCollectorSysctls":                                 "operator.collectors.signalControlCollectorSysctls",
+	"targetAllocatorMtlsEnabled":                                    "operator.targetAllocator.mTls.enabled",
+	"targetAllocatorMtlsServerCertSecretName":                       "operator.targetAllocator.mTls.serverCertSecretName",
+	"targetAllocatorMtlsClientCertSecretName":                       "operator.targetAllocator.mTls.clientCertSecretName",
+	"targetAllocatorAllowInsecureAuthSecrets":                       "operator.targetAllocator.allowInsecureAuthSecrets",
+	"targetAllocatorContainerResources":                             "operator.targetAllocator.containerResources",
+	"targetAllocatorLabels":                                         "operator.targetAllocator.labels",
+	"targetAllocatorAnnotations":                                    "operator.targetAllocator.annotations",
+	"targetAllocatorPodLabels":                                      "operator.targetAllocator.podLabels",
+	"targetAllocatorPodAnnotations":                                 "operator.targetAllocator.podAnnotations",
+	"targetAllocatorTolerations":                                    "operator.targetAllocator.tolerations",
+	"targetAllocatorNodeAffinity":                                   "operator.targetAllocator.nodeAffinity",
+	"edgeProxyReplicas":                                             "operator.signalControl.edgeProxy.replicas",
+	"edgeProxyEnablePprof":                                          "operator.signalControl.edgeProxy.enablePprof",
+	"edgeProxyContainerResources":                                   "operator.signalControl.edgeProxy.containerResources",
+	"edgeProxyTolerations":                                          "operator.signalControl.edgeProxy.tolerations",
+	"edgeProxyNodeAffinity":                                         "operator.signalControl.edgeProxy.nodeAffinity",
+	"edgeProxyLabels":                                               "operator.signalControl.edgeProxy.labels",
+	"edgeProxyAnnotations":                                          "operator.signalControl.edgeProxy.annotations",
+	"edgeProxyPodLabels":                                            "operator.signalControl.edgeProxy.podLabels",
+	"edgeProxyPodAnnotations":                                       "operator.signalControl.edgeProxy.podAnnotations",
+	"agent0ConnectorContainerResources":                             "operator.agent0Connector.containerResources",
+	"agent0ConnectorMaxConcurrentCommands":                          "operator.agent0Connector.maxConcurrentCommands",
+	"agent0ConnectorAllowedKubectlCommands":                         "operator.agent0Connector.allowedKubectlCommands",
+	"agent0ConnectorClusterRoleRules":                               "operator.agent0Connector.clusterRole.rules",
+	"agent0ConnectorLabels":                                         "operator.agent0Connector.labels",
+	"agent0ConnectorAnnotations":                                    "operator.agent0Connector.annotations",
+	"agent0ConnectorPodLabels":                                      "operator.agent0Connector.podLabels",
+	"agent0ConnectorPodAnnotations":                                 "operator.agent0Connector.podAnnotations",
+	"agent0ConnectorTolerations":                                    "operator.agent0Connector.tolerations",
+	"agent0ConnectorNodeAffinity":                                   "operator.agent0Connector.nodeAffinity",
+	"exports":                                                       "operator.exports",
+	"monitoringTemplate":                                            "operator.monitoringTemplate",
+	"filter":                                                        "operator.filter",
+	"transform":                                                     "operator.transform",
+}
+
+// readDefaultsOfHelmChart assembles the extra configuration that the Helm chart renders with the defaults of its
+// values.yaml.
+func readDefaultsOfHelmChart() ExtraConfig {
+	GinkgoHelper()
+	content, err := os.ReadFile(helmChartValuesFile)
+	Expect(err).ToNot(HaveOccurred())
+	var values map[string]any
+	Expect(yaml.Unmarshal(content, &values)).To(Succeed())
+
+	rendered := map[string]any{}
+	for extraConfigKey, helmValuePath := range extraConfigKeysToHelmValues {
+		var value any = values
+		for segment := range strings.SplitSeq(helmValuePath, ".") {
+			valueMap, isMap := value.(map[string]any)
+			Expect(isMap || value == nil).To(BeTrue(), "%s is not a map in %s", helmValuePath, helmChartValuesFile)
+			value = valueMap[segment]
+		}
+		// The chart does not render values that are commented out in values.yaml.
+		if value != nil {
+			rendered[extraConfigKey] = value
+		}
+	}
+
+	renderedContent, err := yaml.Marshal(rendered)
+	Expect(err).ToNot(HaveOccurred())
+	var extraConfig ExtraConfig
+	Expect(yaml.UnmarshalStrict(renderedContent, &extraConfig)).To(Succeed())
+	return extraConfig
+}
+
+func marshalToJson(extraConfig ExtraConfig) string {
+	GinkgoHelper()
+	content, err := json.Marshal(extraConfig)
+	Expect(err).ToNot(HaveOccurred())
+	return string(content)
 }

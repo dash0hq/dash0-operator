@@ -6,7 +6,10 @@ package util
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
+	"maps"
 	"os"
 	"time"
 
@@ -154,7 +157,6 @@ const (
 
 var (
 	ExtraConfigDefaults = ExtraConfig{
-		InstrumentationInitContainerResources: ResourceRequirementsWithGoMemLimit{},
 		CollectorDaemonSetCollectorContainerResources: ResourceRequirementsWithGoMemLimit{
 			Limits: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
@@ -229,21 +231,146 @@ var (
 				corev1.ResourceMemory: resource.MustParse("64Mi"),
 			},
 		},
+
+		// The following defaults are only applied when the respective key is missing from the extra config map (see
+		// readExtraConfigurationFromFile), since the Helm chart renders them whenever the respective component is
+		// enabled.
+		InstrumentationInitContainerResources: ResourceRequirementsWithGoMemLimit{},
+		DaemonSetNodeAffinity:                 defaultNodeAffinity(),
+		DaemonSetProbes:                       defaultCollectorProbes,
+		DeploymentNodeAffinity:                defaultNodeAffinity(),
+		DeploymentProbes:                      defaultCollectorProbes,
+		SignalControlCollectorReplicas:        2,
+		SignalControlCollectorNodeAffinity:    defaultNodeAffinity(),
+		SignalControlCollectorProbes:          defaultCollectorProbes,
+		TargetAllocatorContainerResources: ResourceRequirementsWithGoMemLimit{
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("200m"),
+				corev1.ResourceMemory: resource.MustParse("500Mi"),
+			},
+			GoMemLimit: "",
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("200m"),
+				corev1.ResourceMemory: resource.MustParse("128Mi"),
+			},
+		},
+		TargetAllocatorNodeAffinity: defaultNodeAffinity(),
+		EdgeProxyReplicas:           2,
+		EdgeProxyContainerResources: ResourceRequirementsWithGoMemLimit{
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("500m"),
+				corev1.ResourceMemory: resource.MustParse("512Mi"),
+			},
+			GoMemLimit: "",
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("50m"),
+				corev1.ResourceMemory: resource.MustParse("128Mi"),
+			},
+		},
+		EdgeProxyNodeAffinity:                defaultNodeAffinity(),
+		Agent0ConnectorMaxConcurrentCommands: 2,
+		Agent0ConnectorAllowedKubectlCommands: map[string]bool{
+			"api-resources": true,
+			"api-versions":  true,
+			"auth":          true,
+			"cluster-info":  true,
+			"events":        false,
+			"explain":       true,
+			"get":           true,
+			"logs":          false,
+			"top":           true,
+			"version":       true,
+		},
+		Agent0ConnectorNodeAffinity: defaultNodeAffinity(),
+	}
+
+	// gkeAutopilotInstrumentationInitContainerResources mirrors the Helm chart's fallback for GKE Autopilot when
+	// operator.initContainerResources is not set, see
+	// helm-chart/dash0-operator/files/gke-autopilot-init-container-resources.yaml.
+	gkeAutopilotInstrumentationInitContainerResources = ResourceRequirementsWithGoMemLimit{
+		Limits: corev1.ResourceList{
+			corev1.ResourceEphemeralStorage: resource.MustParse("500Mi"),
+		},
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:              resource.MustParse("100m"),
+			corev1.ResourceMemory:           resource.MustParse("128Mi"),
+			corev1.ResourceEphemeralStorage: resource.MustParse("500Mi"),
+		},
+	}
+
+	defaultCollectorProbes = CollectorProbes{
+		Liveness:  defaultProbe(20),
+		Readiness: defaultProbe(3),
+		Startup:   defaultProbe(45),
 	}
 )
 
-// ReadExtraConfigMap reads the config map content from the default location
-func ReadExtraConfigMap() (ExtraConfig, error) {
-	return readExtraConfigurationFromFile(extraConfigFile)
+func defaultProbe(failureThreshold int32) corev1.Probe {
+	return corev1.Probe{
+		InitialDelaySeconds: 0,
+		PeriodSeconds:       2,
+		TimeoutSeconds:      1,
+		FailureThreshold:    failureThreshold,
+	}
 }
 
-// readExtraConfigurationFromFile reads the config map content from the given file path.
-func readExtraConfigurationFromFile(configurationFile string) (ExtraConfig, error) {
+// defaultNodeAffinity keeps the pods of the managed workloads off nodes labelled with dash0.com/enable=false and off
+// non-Linux nodes.
+func defaultNodeAffinity() *corev1.NodeAffinity {
+	return &corev1.NodeAffinity{
+		RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+			NodeSelectorTerms: []corev1.NodeSelectorTerm{
+				{
+					MatchExpressions: []corev1.NodeSelectorRequirement{
+						{
+							Key:      "dash0.com/enable",
+							Operator: corev1.NodeSelectorOpNotIn,
+							Values:   []string{"false"},
+						},
+						{
+							Key:      "kubernetes.io/os",
+							Operator: corev1.NodeSelectorOpIn,
+							Values:   []string{"linux"},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// ExtraConfigDefaultsFor returns the defaults that apply when a value is missing from the extra config map. They match
+// the defaults of the Helm chart.
+func ExtraConfigDefaultsFor(isGkeAutopilot bool) ExtraConfig {
+	defaults := ExtraConfigDefaults
+	if isGkeAutopilot {
+		defaults.InstrumentationInitContainerResources = gkeAutopilotInstrumentationInitContainerResources
+	}
+	return defaults
+}
+
+// ReadExtraConfigMap reads the config map content from the default location. If the file does not exist, the defaults
+// are used.
+func ReadExtraConfigMap(defaults ExtraConfig, logger logd.Logger) (ExtraConfig, error) {
+	return readExtraConfigurationFromFile(extraConfigFile, defaults, true, logger)
+}
+
+// readExtraConfigurationFromFile reads the config map content from the given file path. A missing file is an error,
+// unless missingFileUsesDefaults is set.
+func readExtraConfigurationFromFile(
+	configurationFile string,
+	defaults ExtraConfig,
+	missingFileUsesDefaults bool,
+	logger logd.Logger,
+) (ExtraConfig, error) {
 	if len(configurationFile) == 0 {
 		return ExtraConfig{}, fmt.Errorf("filename is empty")
 	}
 	content, err := os.ReadFile(configurationFile)
-	if err != nil {
+	if errors.Is(err, fs.ErrNotExist) && missingFileUsesDefaults {
+		logger.Info("The extra configuration file does not exist, using the default values.", "file", configurationFile)
+		content = nil
+	} else if err != nil {
 		return ExtraConfig{}, fmt.Errorf("the configuration file (%s) is missing or cannot be opened %w", configurationFile, err)
 	}
 
@@ -251,44 +378,104 @@ func readExtraConfigurationFromFile(configurationFile string) (ExtraConfig, erro
 	if err = yaml.Unmarshal(content, extraConfig); err != nil {
 		return ExtraConfig{}, fmt.Errorf("cannot unmarshal the configuration file %w", err)
 	}
-	applyDefaults(
-		&extraConfig.InstrumentationInitContainerResources,
-		&ExtraConfigDefaults.InstrumentationInitContainerResources,
-	)
+	presentKeys := map[string]any{}
+	if err = yaml.Unmarshal(content, &presentKeys); err != nil {
+		return ExtraConfig{}, fmt.Errorf("cannot unmarshal the configuration file %w", err)
+	}
+	applyDefaultsForMissingKeys(extraConfig, &defaults, presentKeys)
+
 	applyDefaults(
 		&extraConfig.CollectorDaemonSetCollectorContainerResources,
-		&ExtraConfigDefaults.CollectorDaemonSetCollectorContainerResources,
+		&defaults.CollectorDaemonSetCollectorContainerResources,
 	)
 	applyDefaults(
 		&extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources,
-		&ExtraConfigDefaults.CollectorDaemonSetConfigurationReloaderContainerResources,
+		&defaults.CollectorDaemonSetConfigurationReloaderContainerResources,
 	)
 	applyDefaults(
 		&extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources,
-		&ExtraConfigDefaults.CollectorDaemonSetFileLogOffsetSyncContainerResources,
+		&defaults.CollectorDaemonSetFileLogOffsetSyncContainerResources,
 	)
 	applyDefaults(
 		&extraConfig.CollectorDeploymentCollectorContainerResources,
-		&ExtraConfigDefaults.CollectorDeploymentCollectorContainerResources,
+		&defaults.CollectorDeploymentCollectorContainerResources,
 	)
 	applyDefaults(
 		&extraConfig.CollectorDeploymentConfigurationReloaderContainerResources,
-		&ExtraConfigDefaults.CollectorDeploymentConfigurationReloaderContainerResources,
+		&defaults.CollectorDeploymentConfigurationReloaderContainerResources,
 	)
 	applyDefaults(
 		&extraConfig.SignalControlCollectorContainerResources,
-		&ExtraConfigDefaults.SignalControlCollectorContainerResources,
+		&defaults.SignalControlCollectorContainerResources,
 	)
 	applyDefaults(
 		&extraConfig.SignalControlCollectorConfigurationReloaderContainerResources,
-		&ExtraConfigDefaults.SignalControlCollectorConfigurationReloaderContainerResources,
+		&defaults.SignalControlCollectorConfigurationReloaderContainerResources,
 	)
 	applyDefaults(
 		&extraConfig.Agent0ConnectorContainerResources,
-		&ExtraConfigDefaults.Agent0ConnectorContainerResources,
+		&defaults.Agent0ConnectorContainerResources,
 	)
 
 	return *extraConfig, nil
+}
+
+// applyDefaultsForMissingKeys sets the defaults for the values that the Helm chart renders whenever the respective
+// component is enabled, when their key is missing. A value that is present is kept as it is, including an explicit
+// null.
+func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig, presentKeys map[string]any) {
+	missing := func(key string) bool {
+		_, present := presentKeys[key]
+		return !present
+	}
+	if missing("initContainerResources") {
+		extraConfig.InstrumentationInitContainerResources = defaults.InstrumentationInitContainerResources.DeepCopy()
+	}
+	if missing("daemonSetNodeAffinity") {
+		extraConfig.DaemonSetNodeAffinity = defaults.DaemonSetNodeAffinity.DeepCopy()
+	}
+	if missing("daemonSetProbes") {
+		extraConfig.DaemonSetProbes = defaults.DaemonSetProbes.DeepCopy()
+	}
+	if missing("deploymentNodeAffinity") {
+		extraConfig.DeploymentNodeAffinity = defaults.DeploymentNodeAffinity.DeepCopy()
+	}
+	if missing("deploymentProbes") {
+		extraConfig.DeploymentProbes = defaults.DeploymentProbes.DeepCopy()
+	}
+	if missing("signalControlCollectorReplicas") {
+		extraConfig.SignalControlCollectorReplicas = defaults.SignalControlCollectorReplicas
+	}
+	if missing("signalControlCollectorNodeAffinity") {
+		extraConfig.SignalControlCollectorNodeAffinity = defaults.SignalControlCollectorNodeAffinity.DeepCopy()
+	}
+	if missing("signalControlCollectorProbes") {
+		extraConfig.SignalControlCollectorProbes = defaults.SignalControlCollectorProbes.DeepCopy()
+	}
+	if missing("targetAllocatorContainerResources") {
+		extraConfig.TargetAllocatorContainerResources = defaults.TargetAllocatorContainerResources.DeepCopy()
+	}
+	if missing("targetAllocatorNodeAffinity") {
+		extraConfig.TargetAllocatorNodeAffinity = defaults.TargetAllocatorNodeAffinity.DeepCopy()
+	}
+	if missing("edgeProxyReplicas") {
+		extraConfig.EdgeProxyReplicas = defaults.EdgeProxyReplicas
+	}
+	if missing("edgeProxyContainerResources") {
+		extraConfig.EdgeProxyContainerResources = defaults.EdgeProxyContainerResources.DeepCopy()
+	}
+	if missing("edgeProxyNodeAffinity") {
+		extraConfig.EdgeProxyNodeAffinity = defaults.EdgeProxyNodeAffinity.DeepCopy()
+	}
+	if missing("agent0ConnectorMaxConcurrentCommands") {
+		extraConfig.Agent0ConnectorMaxConcurrentCommands = defaults.Agent0ConnectorMaxConcurrentCommands
+	}
+	if missing("agent0ConnectorAllowedKubectlCommands") {
+		extraConfig.Agent0ConnectorAllowedKubectlCommands = maps.Clone(defaults.Agent0ConnectorAllowedKubectlCommands)
+	}
+	if missing("agent0ConnectorNodeAffinity") {
+		extraConfig.Agent0ConnectorNodeAffinity = defaults.Agent0ConnectorNodeAffinity.DeepCopy()
+	}
 }
 
 // applyDefaults sets default values for CPU, Memory, and Ephemeral Storage on requests and limits.
@@ -338,6 +525,24 @@ func (rr ResourceRequirementsWithGoMemLimit) ToResourceRequirements() corev1.Res
 	}
 }
 
+// DeepCopy returns a copy that shares no maps with the original.
+func (rr ResourceRequirementsWithGoMemLimit) DeepCopy() ResourceRequirementsWithGoMemLimit {
+	return ResourceRequirementsWithGoMemLimit{
+		Limits:     rr.Limits.DeepCopy(),
+		Requests:   rr.Requests.DeepCopy(),
+		GoMemLimit: rr.GoMemLimit,
+	}
+}
+
+// DeepCopy returns a copy that shares no pointers with the original.
+func (p CollectorProbes) DeepCopy() CollectorProbes {
+	return CollectorProbes{
+		Liveness:  *p.Liveness.DeepCopy(),
+		Readiness: *p.Readiness.DeepCopy(),
+		Startup:   *p.Startup.DeepCopy(),
+	}
+}
+
 type ExtraConfigWatcher struct {
 	watcher *fsnotify.Watcher
 	clients []ExtraConfigClient
@@ -349,8 +554,11 @@ func NewExtraConfigWatcher() *ExtraConfigWatcher {
 	}
 }
 
-func (w *ExtraConfigWatcher) StartWatch(logger logd.Logger) error {
-	return w.watchConfigurationDirectory(extraConfigDir, extraConfigFile, logger)
+// StartWatch watches the extra config map file and updates all clients when it changes. The defaults are applied to
+// the updated content in the same way as in ReadExtraConfigMap. A file that has been removed does not fall back to the
+// defaults, the clients keep their current configuration until the operator restarts.
+func (w *ExtraConfigWatcher) StartWatch(defaults ExtraConfig, logger logd.Logger) error {
+	return w.watchConfigurationDirectory(extraConfigDir, extraConfigFile, defaults, logger)
 }
 
 func (w *ExtraConfigWatcher) AddClient(client ExtraConfigClient) {
@@ -360,8 +568,17 @@ func (w *ExtraConfigWatcher) AddClient(client ExtraConfigClient) {
 func (w *ExtraConfigWatcher) watchConfigurationDirectory(
 	configurationDir string,
 	extraConfigFile string,
+	defaults ExtraConfig,
 	setupLogger logd.Logger,
 ) error {
+	if _, err := os.Stat(configurationDir); errors.Is(err, fs.ErrNotExist) {
+		setupLogger.Info(
+			"The extra config directory does not exist, changes to the extra configuration will not be watched.",
+			"directory", configurationDir,
+		)
+		return nil
+	}
+
 	var err error
 	w.watcher, err = fsnotify.NewWatcher()
 	if err != nil {
@@ -385,7 +602,8 @@ func (w *ExtraConfigWatcher) watchConfigurationDirectory(
 				logger := logd.FromContext(ctx)
 				debouncedFileWatchEvents(func() {
 					logger.Info("the extra config map has been updated")
-					extraConfig, err := readExtraConfigurationFromFile(extraConfigFile)
+					// The defaults only stand in for a file that has never been mounted, not for one that has vanished.
+					extraConfig, err := readExtraConfigurationFromFile(extraConfigFile, defaults, false, logger)
 					if err != nil {
 						logger.Error(err, "cannot read extra config map file after it has been updated")
 						return

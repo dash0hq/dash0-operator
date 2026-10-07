@@ -1,7 +1,11 @@
 {{- $initContainerResources := .Values.operator.initContainerResources }}
 {{- if .Values.operator.gke.autopilot.enabled }}
   {{- if not $initContainerResources }}
-    {{- $initContainerResources = dict "limits" (dict "ephemeral-storage" "500Mi") "requests" (dict "cpu" "100m" "memory" "128Mi" "ephemeral-storage" "500Mi") }}
+    {{- $autopilotDefaultsFile := "files/gke-autopilot-init-container-resources.yaml" }}
+    {{- $initContainerResources = .Files.Get $autopilotDefaultsFile | fromYaml }}
+    {{- if not (hasKey $initContainerResources "requests") }}
+      {{- fail (printf "Error: the GKE Autopilot defaults for the init container resources could not be read from %s. This is a bug in the Dash0 operator Helm chart, please report it." $autopilotDefaultsFile) }}
+    {{- end }}
   {{- end }}
 {{- end }}
 

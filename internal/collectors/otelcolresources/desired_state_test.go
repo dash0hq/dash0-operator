@@ -656,7 +656,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSetFileLogOffsetSyncContainer.Resources.Requests.Memory().String()).To(Equal("32Mi"))
 
 		Expect(daemonSetPodSpec.Tolerations).To(HaveLen(0))
-		Expect(daemonSetPodSpec.Affinity).To(BeNil())
+		Expect(daemonSetPodSpec.Affinity).ToNot(BeNil())
+		Expect(daemonSetPodSpec.Affinity.NodeAffinity).To(Equal(util.ExtraConfigDefaults.DaemonSetNodeAffinity))
 
 		deployment := getDeployment(desiredState)
 		Expect(deployment).NotTo(BeNil())
