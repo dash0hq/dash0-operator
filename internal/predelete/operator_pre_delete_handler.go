@@ -10,25 +10,30 @@ import (
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 const (
-	defaultTimeout = 2 * time.Minute
+	defaultTimeout                      = 2 * time.Minute
+	defaultAutoMonitoringRemovalTimeout = 30 * time.Second
+	defaultPollingInterval              = 500 * time.Millisecond
 )
 
 type OperatorPreDeleteHandler struct {
-	client  client.WithWatch
-	logger  logd.Logger
-	timeout time.Duration
+	client          client.Client
+	logger          logd.Logger
+	timeout         time.Duration
+	pollingInterval time.Duration
 }
 
 func NewOperatorPreDeleteHandler() (*OperatorPreDeleteHandler, error) {
@@ -45,7 +50,7 @@ func NewOperatorPreDeleteHandlerFromConfig(config *rest.Config) (*OperatorPreDel
 	if err := dash0v1beta1.AddToScheme(s); err != nil {
 		return nil, err
 	}
-	k8sClient, err := client.NewWithWatch(config, client.Options{
+	k8sClient, err := client.New(config, client.Options{
 		Scheme: s,
 	})
 	if err != nil {
@@ -53,9 +58,10 @@ func NewOperatorPreDeleteHandlerFromConfig(config *rest.Config) (*OperatorPreDel
 	}
 
 	return &OperatorPreDeleteHandler{
-		client:  k8sClient,
-		logger:  logger,
-		timeout: defaultTimeout,
+		client:          k8sClient,
+		logger:          logger,
+		timeout:         defaultTimeout,
+		pollingInterval: defaultPollingInterval,
 	}, nil
 }
 
@@ -66,20 +72,37 @@ func (h *OperatorPreDeleteHandler) setTimeout(timeout time.Duration) {
 func (h *OperatorPreDeleteHandler) DeleteAllMonitoringResources() error {
 	ctx := context.Background()
 
-	totalNumberOfDash0MonitoringResources, err := h.findAllAndRequestDeletion(ctx)
+	// Without this, the still running operator would recreate every auto-monitoring resource deleted below.
+	autoNamespaceMonitoringHasBeenDisabled, err := h.disableAutoNamespaceMonitoring(ctx)
 	if err != nil {
 		return err
 	}
+	if autoNamespaceMonitoringHasBeenDisabled {
+		h.waitUntilNoMonitoringResourcesAreLeft(
+			ctx,
+			min(defaultAutoMonitoringRemovalTimeout, h.timeout),
+			"auto-monitoring",
+			false,
+			client.MatchingLabels{util.AutoMonitoredNamespaceLabel: util.TrueString},
+		)
+	}
 
-	if totalNumberOfDash0MonitoringResources == 0 {
-		h.logger.Info("No Dash0 monitoring resources have been deleted, nothing to wait for.")
+	allDash0MonitoringResources := &dash0v1beta1.Dash0MonitoringList{}
+	if err = h.client.List(ctx, allDash0MonitoringResources); err != nil {
+		if isResourceDefinitionMissing(err) {
+			h.logger.Error(err, "The Dash0 monitoring resource *definition* has not been found. Assuming that no Dash0 "+
+				"monitoring resources exist and no cleanup is necessary.")
+			return nil
+		}
+		h.logger.Error(err, "failed to list all Dash0 monitoring resources across all namespaces")
+		return fmt.Errorf("failed to list all Dash0 monitoring resources across all namespaces: %w", err)
+	}
+	if len(allDash0MonitoringResources.Items) == 0 {
+		h.logger.Info("No Dash0 monitoring resources have been found. Nothing to delete.")
 		return nil
 	}
 
-	err = h.waitForAllDash0MonitoringResourcesToBeFinalizedAndDeleted(ctx, totalNumberOfDash0MonitoringResources)
-	if err != nil {
-		return err
-	}
+	h.waitUntilNoMonitoringResourcesAreLeft(ctx, h.timeout, "Dash0 monitoring", true)
 
 	// We do not need to manually delete the Dash0 operator configuration resource. helm uninstall will also remove
 	// both of our CRDs and that will also delete all operator configuration resources. The reason we are having this
@@ -89,108 +112,127 @@ func (h *OperatorPreDeleteHandler) DeleteAllMonitoringResources() error {
 	return nil
 }
 
-func (h *OperatorPreDeleteHandler) findAllAndRequestDeletion(ctx context.Context) (int, error) {
-	allDash0MonitoringResources := &dash0v1beta1.Dash0MonitoringList{}
-	err := h.client.List(ctx, allDash0MonitoringResources)
-	if err != nil {
-		errMsg := err.Error()
-		if apierrors.IsNotFound(err) ||
-			strings.Contains(errMsg, "operator.dash0.com/v1alpha1: the server could not find the requested resource") ||
-			strings.Contains(errMsg, "no matches for kind \"Dash0\" in version") {
-			h.logger.Error(err, "The Dash0 monitoring resource *definition* has not been found. Assuming that no Dash0 "+
-				"monitoring resources exist and no cleanup is necessary.")
-			return 0, nil
+func (h *OperatorPreDeleteHandler) disableAutoNamespaceMonitoring(ctx context.Context) (bool, error) {
+	operatorConfigurationResources := &dash0v1alpha1.Dash0OperatorConfigurationList{}
+	if err := h.client.List(ctx, operatorConfigurationResources); err != nil {
+		if isResourceDefinitionMissing(err) {
+			h.logger.Info("The Dash0 operator configuration resource definition has not been found, skipping " +
+				"disabling automatic namespace monitoring.")
+			return false, nil
 		}
-
-		h.logger.Error(err, "failed to list all Dash0 monitoring resources across all namespaces")
-		return 0, fmt.Errorf("failed to list all Dash0 monitoring resources across all namespaces: %w", err)
+		h.logger.Error(err, "failed to list Dash0 operator configuration resources")
+		return false, fmt.Errorf("failed to list Dash0 operator configuration resources: %w", err)
 	}
 
-	if len(allDash0MonitoringResources.Items) == 0 {
-		h.logger.Info("No Dash0 monitoring resources have been found. Nothing to delete.")
-		return 0, nil
-	}
-
-	for _, dash0MonitoringResource := range allDash0MonitoringResources.Items {
-		namespace := dash0MonitoringResource.Namespace
-		// You would think that the following call without the "client.InNamespace(namespace)" would delete all
-		// resources across all namespaces in one go, but instead it fails with "the server could not find the requested
-		// resource". Same for the dynamic client.
-		err = h.client.DeleteAllOf(ctx, &dash0v1beta1.Dash0Monitoring{}, client.InNamespace(namespace))
-		if err != nil {
-			h.logger.Error(err, fmt.Sprintf("Failed to delete Dash0 monitoring resource in namespace %s.", namespace))
-		} else {
-			h.logger.Info(
-				fmt.Sprintf("Successfully requested the deletion of the Dash0 monitoring resource in namespace %s.",
-					namespace))
+	hasDisabledAutoNamespaceMonitoring := false
+	for i := range operatorConfigurationResources.Items {
+		operatorConfigurationResource := &operatorConfigurationResources.Items[i]
+		if !operatorConfigurationResource.Spec.AutoMonitorNamespaces.IsEnabled() {
+			continue
 		}
+		patch := client.MergeFrom(operatorConfigurationResource.DeepCopy())
+		operatorConfigurationResource.Spec.AutoMonitorNamespaces.Enabled = new(false)
+		if err := h.client.Patch(ctx, operatorConfigurationResource, patch); err != nil {
+			h.logger.Error(err, fmt.Sprintf(
+				"Failed to disable automatic namespace monitoring in the Dash0 operator configuration resource %s, "+
+					"auto-monitoring resources might be recreated while they are being deleted.",
+				operatorConfigurationResource.Name))
+			continue
+		}
+		h.logger.Info(fmt.Sprintf(
+			"Disabled automatic namespace monitoring in the Dash0 operator configuration resource %s.",
+			operatorConfigurationResource.Name))
+		hasDisabledAutoNamespaceMonitoring = true
 	}
-
-	return len(allDash0MonitoringResources.Items), nil
+	return hasDisabledAutoNamespaceMonitoring, nil
 }
 
-func (h *OperatorPreDeleteHandler) waitForAllDash0MonitoringResourcesToBeFinalizedAndDeleted(
+// waitUntilNoMonitoringResourcesAreLeft polls until no Dash0 monitoring resource matching the given list options is
+// left, or until the timeout has passed. If requestDeletion is set, it also requests the deletion of every matching
+// resource that is not already being deleted, which includes resources that have been recreated in the meantime.
+func (h *OperatorPreDeleteHandler) waitUntilNoMonitoringResourcesAreLeft(
 	ctx context.Context,
-	totalNumberOfDash0MonitoringResources int,
-) error {
-	watcher, err := h.client.Watch(ctx, &dash0v1beta1.Dash0MonitoringList{})
-	if err != nil {
-		h.logger.Error(err, "failed to watch Dash0 monitoring resources across all namespaces to wait for deletion")
-		return fmt.Errorf("failed to watch Dash0 monitoring resources across all namespaces to wait for deletion: %w", err)
+	timeout time.Duration,
+	description string,
+	requestDeletion bool,
+	listOptions ...client.ListOption,
+) {
+	var lastSeenRemainingResources *dash0v1beta1.Dash0MonitoringList
+	err := wait.PollUntilContextTimeout(ctx, h.pollingInterval, timeout, true,
+		func(ctx context.Context) (bool, error) {
+			remainingResources := &dash0v1beta1.Dash0MonitoringList{}
+			if err := h.client.List(ctx, remainingResources, listOptions...); err != nil {
+				if isResourceDefinitionMissing(err) {
+					h.logger.Info(fmt.Sprintf(
+						"The Dash0 monitoring resource definition is gone, assuming all %s resources have been deleted.",
+						description))
+					return true, nil
+				}
+				h.logger.Error(err, fmt.Sprintf("failed to list %s resources while waiting for their deletion", description))
+				return false, nil
+			}
+			numberOfRemainingResources := len(remainingResources.Items)
+			if numberOfRemainingResources == 0 {
+				return true, nil
+			}
+			if lastSeenRemainingResources == nil || len(lastSeenRemainingResources.Items) != numberOfRemainingResources {
+				h.logger.Info(fmt.Sprintf("Waiting for the deletion of %d %s resource(s) across all namespaces.",
+					numberOfRemainingResources, description))
+			}
+			lastSeenRemainingResources = remainingResources
+			if requestDeletion {
+				h.requestDeletionOfResourcesNotBeingDeletedYet(ctx, remainingResources)
+			}
+			return false, nil
+		})
+
+	if err == nil {
+		h.logger.Info(fmt.Sprintf(
+			"The deletion of all %s resource(s) across all namespaces has completed successfully.", description))
+		return
 	}
-
-	// by stopping the watcher we make sure the goroutine running r.watchAndProcessEvents will terminate
-	defer watcher.Stop()
-
-	channelToSignalDeletions := make(chan string)
-	go func() {
-		h.watchAndProcessEvents(watcher, &channelToSignalDeletions)
-	}()
-
-	h.logger.Info(
-		fmt.Sprintf("Waiting for the deletion of %d Dash0 monitoring resource(s) across all namespaces.",
-			totalNumberOfDash0MonitoringResources))
-	successfullyDeletedDash0MonitoringResources := 0
-	timeoutHasOccured := false
-	for !timeoutHasOccured && successfullyDeletedDash0MonitoringResources < totalNumberOfDash0MonitoringResources {
-		select {
-		case <-time.After(h.timeout):
-			timeoutHasOccured = true
-
-		case namespaceOfDeletedResource := <-channelToSignalDeletions:
-			successfullyDeletedDash0MonitoringResources++
-			h.logger.Info(
-				fmt.Sprintf("The deletion of the Dash0 monitoring resource in namespace %s has completed successfully (%d/%d).",
-					namespaceOfDeletedResource, successfullyDeletedDash0MonitoringResources, totalNumberOfDash0MonitoringResources))
-		}
+	remaining := "an unknown number of resource(s) are left"
+	if lastSeenRemainingResources != nil {
+		remaining = fmt.Sprintf("%d resource(s) are left in the following namespace(s): %s",
+			len(lastSeenRemainingResources.Items), strings.Join(namespacesOf(lastSeenRemainingResources), ", "))
 	}
-
-	if timeoutHasOccured {
-		h.logger.Warn(
-			fmt.Sprintf("The deletion of all Dash0 monitoring resource(s) across all namespaces has not completed "+
-				"successfully within the timeout of %d seconds. %d of %d resources have been deleted.",
-				int(h.timeout/time.Second),
-				successfullyDeletedDash0MonitoringResources,
-				totalNumberOfDash0MonitoringResources,
-			))
-	} else {
-		h.logger.Info(
-			fmt.Sprintf("The deletion of all %d Dash0 monitoring resource(s) across all namespaces has completed successfully.",
-				totalNumberOfDash0MonitoringResources))
-	}
-
-	return nil
+	h.logger.Warn(fmt.Sprintf(
+		"The deletion of all %s resource(s) across all namespaces has not completed successfully within the timeout of "+
+			"%d seconds, %s.",
+		description, int(timeout/time.Second), remaining))
 }
 
-func (h *OperatorPreDeleteHandler) watchAndProcessEvents(
-	watcher watch.Interface,
-	channelToSignalDeletions *chan string,
+func (h *OperatorPreDeleteHandler) requestDeletionOfResourcesNotBeingDeletedYet(
+	ctx context.Context,
+	monitoringResources *dash0v1beta1.Dash0MonitoringList,
 ) {
-	for event := range watcher.ResultChan() {
-		switch event.Type {
-		case watch.Deleted:
-			namespace := event.Object.(*dash0v1beta1.Dash0Monitoring).Namespace
-			*channelToSignalDeletions <- namespace
+	for i := range monitoringResources.Items {
+		monitoringResource := &monitoringResources.Items[i]
+		if monitoringResource.DeletionTimestamp != nil {
+			continue
 		}
+		if err := h.client.Delete(ctx, monitoringResource); err != nil && !apierrors.IsNotFound(err) {
+			h.logger.Error(err, fmt.Sprintf("Failed to delete the Dash0 monitoring resource in namespace %s.",
+				monitoringResource.Namespace))
+			continue
+		}
+		h.logger.Info(fmt.Sprintf("Successfully requested the deletion of the Dash0 monitoring resource in namespace %s.",
+			monitoringResource.Namespace))
 	}
+}
+
+func namespacesOf(monitoringResources *dash0v1beta1.Dash0MonitoringList) []string {
+	namespaces := make([]string, 0, len(monitoringResources.Items))
+	for _, monitoringResource := range monitoringResources.Items {
+		namespaces = append(namespaces, monitoringResource.Namespace)
+	}
+	return namespaces
+}
+
+func isResourceDefinitionMissing(err error) bool {
+	errMsg := err.Error()
+	return apierrors.IsNotFound(err) ||
+		meta.IsNoMatchError(err) ||
+		strings.Contains(errMsg, "operator.dash0.com/v1alpha1: the server could not find the requested resource") ||
+		strings.Contains(errMsg, "no matches for kind \"Dash0\" in version")
 }
