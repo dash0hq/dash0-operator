@@ -1066,43 +1066,62 @@ func fetchExistingOriginsForResource(
 		// API object
 		return nil, false, nil
 	}
-	perResourceRequests, err :=
+	mapsToMultipleApiObjects := thirdPartyResourceReconciler.MapsToMultipleApiObjects()
+	switch {
+	case originsInNamespace != nil && (mapsToMultipleApiObjects || action == deleteAction):
+		return filterOriginsOfResourceInNamespace(
+			thirdPartyResourceReconciler,
+			preconditionChecksResult,
+			apiConfig,
+			originsInNamespace,
+			logger,
+		)
+	case mapsToMultipleApiObjects:
+		return fetchOriginsOfResource(thirdPartyResourceReconciler, preconditionChecksResult, apiConfig, logger)
+	default:
+		// For resource types with a one-to-one relationship between K8s resource and Dash0 API object (like Perses
+		// dashboards), fetching the origins of a single resource would not save any requests.
+		return nil, false, nil
+	}
+}
+
+// filterOriginsOfResourceInNamespace returns the origins of the Dash0 API objects for a given Kubernetes resource from
+// the list of origins of all objects in the namespace. The list is only fetched from the backend on the first call per
+// API config, and then reused for the rest of the namespace-wide resync.
+func filterOriginsOfResourceInNamespace(
+	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
+	preconditionChecksResult *preconditionValidationResult,
+	apiConfig ApiConfig,
+	originsInNamespace *existingOriginsInNamespace,
+	logger logd.Logger,
+) ([]string, bool, error) {
+	allOriginsInNamespace, err := originsInNamespace.get(thirdPartyResourceReconciler, apiConfig, logger)
+	if err != nil {
+		return nil, false, err
+	}
+	var originsOfResource []string
+	for _, origin := range allOriginsInNamespace {
+		if thirdPartyResourceReconciler.IsOriginOfResource(origin, preconditionChecksResult, apiConfig) {
+			originsOfResource = append(originsOfResource, origin)
+		}
+	}
+	return originsOfResource, true, nil
+}
+
+// fetchOriginsOfResource fetches the origins of the Dash0 API objects for a given Kubernetes resource from the backend.
+func fetchOriginsOfResource(
+	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
+	preconditionChecksResult *preconditionValidationResult,
+	apiConfig ApiConfig,
+	logger logd.Logger,
+) ([]string, bool, error) {
+	requests, err :=
 		thirdPartyResourceReconciler.FetchExistingResourceOriginsRequests(preconditionChecksResult, apiConfig)
 	if err != nil {
 		logger.Error(err, "cannot create request to fetch existing resource origins")
 		return nil, false, err
 	}
-	// Reconcilers for resource types with a one-to-one relationship between K8s resource and Dash0 API object (like
-	// Perses dashboards) do not return requests for fetching the origins of a single resource.
-	supportsFetchingOriginsPerResource := len(perResourceRequests) > 0
-	if action != deleteAction && !supportsFetchingOriginsPerResource {
-		return nil, false, nil
-	}
-
-	// originsInNamespace is the pre-fetched list of origins that is used in a namespace-wide resync.
-	if originsInNamespace != nil {
-		// Fetch the origins of all Dash0 API objects that exist in the given API config for this namespace.
-		// The origins are only fetched from the backend on the first call per API config, and then cached in
-		// originsInNamespace for the rest of the namespace-wide resync.
-		allOriginsInNamespace, err := originsInNamespace.get(thirdPartyResourceReconciler, apiConfig, logger)
-		if err != nil {
-			return nil, false, err
-		}
-		var originsOfResource []string
-		for _, origin := range allOriginsInNamespace {
-			if thirdPartyResourceReconciler.IsOriginOfResource(origin, preconditionChecksResult, apiConfig) {
-				originsOfResource = append(originsOfResource, origin)
-			}
-		}
-		// use the pre-fetched origin list
-		return originsOfResource, true, nil
-	}
-
-	if !supportsFetchingOriginsPerResource {
-		return nil, false, nil
-	}
-	// no pre-fetched origin list available, fetch the origins now
-	origins, err := executeFetchExistingOriginsRequests(apiSyncReconciler, perResourceRequests, logger)
+	origins, err := executeFetchExistingOriginsRequests(thirdPartyResourceReconciler, requests, logger)
 	if err != nil {
 		return nil, false, err
 	}

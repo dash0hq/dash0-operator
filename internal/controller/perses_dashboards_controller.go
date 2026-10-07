@@ -674,6 +674,10 @@ func (r *PersesDashboardReconciler) Reconcile(
 	return reconcile.Result{}, nil
 }
 
+func (r *PersesDashboardReconciler) MapsToMultipleApiObjects() bool {
+	return false
+}
+
 func (r *PersesDashboardReconciler) FetchExistingResourceOriginsRequests(
 	_ *preconditionValidationResult,
 	_ ApiConfig,

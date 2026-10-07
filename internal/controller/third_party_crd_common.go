@@ -120,11 +120,15 @@ type ThirdPartyResourceReconciler interface {
 
 	Queue() *workqueue.Typed[ThirdPartyResourceSyncJob]
 
+	// MapsToMultipleApiObjects reports whether one Kubernetes resource of this type (say, a PrometheusRule) is
+	// potentially associated with multiple Dash0 API objects (multiple checks). It returns false for resource types
+	// with a one-to-one relation (like Perses dashboards).
+	MapsToMultipleApiObjects() bool
+
 	// FetchExistingResourceOriginsRequest creates an HTTP request for retrieving the existing origins from the Dash0
 	// API for a given Kubernetes resource.
-	// FetchExistingResourceOriginsRequest is only used for resource types where one Kubernetes resource (say, a
-	// PrometheusRule) is potentially associated with multiple Dash0 api objects (multiple checks). Controllers
-	// which manage objects with a one-to-one relation (like Perses dashboards) should return nil, nil.
+	// FetchExistingResourceOriginsRequest is only used for resource types where MapsToMultipleApiObjects returns true.
+	// Controllers which manage objects with a one-to-one relation (like Perses dashboards) should return nil, nil.
 	FetchExistingResourceOriginsRequests(*preconditionValidationResult, ApiConfig) ([]*http.Request, error)
 
 	// FetchExistingNamespaceOriginsRequests creates HTTP requests for retrieving the origins of all Dash0 API objects

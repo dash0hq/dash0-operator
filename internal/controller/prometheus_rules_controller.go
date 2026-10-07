@@ -510,6 +510,10 @@ func (r *PrometheusRuleReconciler) Reconcile(
 	return reconcile.Result{}, nil
 }
 
+func (r *PrometheusRuleReconciler) MapsToMultipleApiObjects() bool {
+	return true
+}
+
 func (r *PrometheusRuleReconciler) FetchExistingResourceOriginsRequests(
 	preconditionValidationResult *preconditionValidationResult,
 	apiConfig ApiConfig,
