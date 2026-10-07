@@ -4,9 +4,9 @@
 package controller
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,7 +38,7 @@ type SamplingRuleReconciler struct {
 	client.Client
 	pseudoClusterUid       types.UID
 	leaderElectionAware    util.LeaderElectionAware
-	httpClient             *http.Client
+	apiClientPool          *ApiClientPool
 	defaultApiConfigs      selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs   selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	initialSyncMutex       sync.Mutex
@@ -54,13 +55,13 @@ func NewSamplingRuleReconciler(
 	k8sClient client.Client,
 	pseudoClusterUid types.UID,
 	leaderElectionAware util.LeaderElectionAware,
-	httpClient *http.Client,
+	apiClientPool *ApiClientPool,
 ) *SamplingRuleReconciler {
 	return &SamplingRuleReconciler{
 		Client:               k8sClient,
 		pseudoClusterUid:     pseudoClusterUid,
 		leaderElectionAware:  leaderElectionAware,
-		httpClient:           httpClient,
+		apiClientPool:        apiClientPool,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
 		namespacedSyncMutex:  *selfmonitoringapiaccess.NewNamespaceMutex(),
@@ -114,8 +115,9 @@ func (r *SamplingRuleReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
+// HttpClient returns nil, the sampling rule reconciler talks to the Dash0 API via the API client pool.
 func (r *SamplingRuleReconciler) HttpClient() *http.Client {
-	return r.httpClient
+	return nil
 }
 
 func (r *SamplingRuleReconciler) SetDefaultApiConfigs(
@@ -359,43 +361,92 @@ func (r *SamplingRuleReconciler) MapResourceToHttpRequests(
 		apiConfig.Dataset,
 	)
 
-	var req *http.Request
-	var method string
-	var err error
+	dataset := apiConfig.Dataset
 
+	var apiClientCall *ApiClientCall
 	switch action {
 	case upsertAction:
-		apiPayload, transformErr := transformToSamplingApiPayload(preconditionChecksResult.resource, itemName, apiConfig.Dataset)
-		if transformErr != nil {
-			logger.Error(transformErr, "error transforming sampling rule to API payload")
-			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, transformErr.Error())
+		samplingDefinition, err := mapToSamplingDefinition(preconditionChecksResult.resource, itemName, dataset)
+		if err != nil {
+			logger.Error(err, "error converting sampling rule")
+			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, err.Error())
 		}
-		serialized, _ := json.Marshal(apiPayload)
-		method = http.MethodPut
-		req, err = http.NewRequest(method, samplingRuleUrl, bytes.NewBuffer(serialized))
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodPut,
+			Url:    samplingRuleUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				updatedSamplingRule, err := apiClient.UpdateSamplingRule(
+					ctx,
+					samplingRuleOrigin,
+					samplingDefinition,
+					&dataset,
+				)
+				if err != nil {
+					return "", err
+				}
+				if updatedSamplingRule == nil {
+					return "", errors.New("unexpected nil/empty response body")
+				}
+				return samplingDefinitionId(updatedSamplingRule), nil
+			},
+		}
 	case deleteAction:
-		method = http.MethodDelete
-		req, err = http.NewRequest(method, samplingRuleUrl, nil)
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodDelete,
+			Url:    samplingRuleUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				return "", apiClient.DeleteSamplingRule(ctx, samplingRuleOrigin, &dataset)
+			},
+		}
 	default:
 		unknownActionErr := fmt.Errorf("unknown API action: %d", action)
 		logger.Error(unknownActionErr, "unknown API action")
 		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, unknownActionErr.Error())
 	}
 
+	return NewResourceToRequestsResultSingleItemApiClientCall(
+		apiConfig,
+		apiClientCall,
+		itemName,
+		samplingRuleOrigin,
+	)
+}
+
+// mapToSamplingDefinition converts the sampling rule resource to the typed sampling definition of the Dash0 API client.
+func mapToSamplingDefinition(
+	samplingRule map[string]any,
+	name string,
+	dataset string,
+) (*dash0apiclient.SamplingDefinition, error) {
+	apiPayload, err := transformToSamplingApiPayload(samplingRule, name, dataset)
 	if err != nil {
-		httpError := fmt.Errorf(
-			"unable to create a new HTTP request to synchronize the sampling rule: %s %s: %w",
-			method, samplingRuleUrl, err)
-		logger.Error(httpError, "error creating http request")
-		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, httpError.Error())
+		return nil, err
 	}
-
-	addAuthorizationHeader(req, apiConfig.Token)
-	if action == upsertAction {
-		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
+	serializedSamplingRule, err := json.Marshal(apiPayload)
+	if err != nil {
+		return nil, err
 	}
+	samplingDefinition := &dash0apiclient.SamplingDefinition{}
+	if err = json.Unmarshal(serializedSamplingRule, samplingDefinition); err != nil {
+		return nil, fmt.Errorf("unable to convert the sampling rule %s to the Dash0 API format: %w", name, err)
+	}
+	return samplingDefinition, nil
+}
 
-	return NewResourceToRequestsResultSingleItemSuccess(apiConfig, req, itemName, samplingRuleOrigin)
+func samplingDefinitionId(samplingDefinition *dash0apiclient.SamplingDefinition) string {
+	labels := samplingDefinition.Metadata.Labels
+	if labels == nil || labels.Dash0Comid == nil {
+		return ""
+	}
+	return *labels.Dash0Comid
 }
 
 // transformToSamplingApiPayload converts the K8s resource map into the SamplingDefinition format expected by the
@@ -475,21 +526,20 @@ func (r *SamplingRuleReconciler) renderSamplingRuleUrl(
 	endpoint string,
 	dataset string,
 ) (string, string) {
-	datasetUrlEncoded := url.QueryEscape(dataset)
 	samplingRuleOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s",
 		r.pseudoClusterUid,
-		datasetUrlEncoded,
+		datasetInOrigin(dataset),
 		preconditionChecksResult.k8sNamespace,
 		preconditionChecksResult.k8sName,
 	)
 	return fmt.Sprintf(
 		"%sapi/sampling-rules/%s?dataset=%s",
 		endpoint,
-		samplingRuleOrigin,
-		datasetUrlEncoded,
+		url.PathEscape(samplingRuleOrigin),
+		url.QueryEscape(dataset),
 	), samplingRuleOrigin
 }
 

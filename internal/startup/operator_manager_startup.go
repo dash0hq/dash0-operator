@@ -2060,7 +2060,7 @@ func startDash0Controllers(
 			k8sClient,
 			clusterUid,
 			leaderElectionAwareRunnable,
-			httpClient,
+			apiClientPool,
 		)
 		if err := samplingRuleReconciler.SetupWithManager(mgr); err != nil {
 			return fmt.Errorf("unable to set up the sampling rule reconciler: %w", err)
