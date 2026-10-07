@@ -4,9 +4,9 @@
 package controller
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -16,7 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	dash0 "github.com/dash0hq/dash0-api-client-go"
+	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -52,7 +52,7 @@ type SLOReconciler struct {
 	client.Client
 	pseudoClusterUid      types.UID
 	leaderElectionAware   util.LeaderElectionAware
-	httpClient            *http.Client
+	apiClientPool         *ApiClientPool
 	defaultApiConfigs     selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs  selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	initialSyncMutex      sync.Mutex
@@ -73,13 +73,13 @@ func NewSLOReconciler(
 	k8sClient client.Client,
 	pseudoClusterUid types.UID,
 	leaderElectionAware util.LeaderElectionAware,
-	httpClient *http.Client,
+	apiClientPool *ApiClientPool,
 ) *SLOReconciler {
 	return &SLOReconciler{
 		Client:               k8sClient,
 		pseudoClusterUid:     pseudoClusterUid,
 		leaderElectionAware:  leaderElectionAware,
-		httpClient:           httpClient,
+		apiClientPool:        apiClientPool,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
 		namespacedSyncMutex:  *selfmonitoringapiaccess.NewNamespaceMutex(),
@@ -259,8 +259,9 @@ func (r *SLOReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
+// HttpClient returns nil, the SLO reconciler talks to the Dash0 API via the API client pool.
 func (r *SLOReconciler) HttpClient() *http.Client {
-	return r.httpClient
+	return nil
 }
 
 func (r *SLOReconciler) SetDefaultApiConfigs(
@@ -516,78 +517,77 @@ func (r *SLOReconciler) MapResourceToHttpRequests(
 		apiConfig.Dataset,
 	)
 
-	var req *http.Request
-	var method string
-	var err error
+	dataset := apiConfig.Dataset
 
+	var apiClientCall *ApiClientCall
 	switch action {
 	case upsertAction:
-		serializedSLO, buildErr := buildSLOApiBody(preconditionChecksResult.resource)
-		if buildErr != nil {
-			buildError := fmt.Errorf("unable to build the SLO API body: %w", buildErr)
-			logger.Error(buildError, "error building SLO API body")
-			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, buildError.Error())
+		sloDefinition, err := mapToSLODefinition(preconditionChecksResult.resource)
+		if err != nil {
+			conversionErr := fmt.Errorf("unable to convert the SLO to the Dash0 API format: %w", err)
+			logger.Error(conversionErr, "error converting SLO")
+			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, conversionErr.Error())
 		}
-		requestPayload := bytes.NewBuffer(serializedSLO)
-		method = http.MethodPut
-		req, err = http.NewRequest(
-			method,
-			sloUrl,
-			requestPayload,
-		)
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodPut,
+			Url:    sloUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				updatedSLO, err := apiClient.UpdateSLO(ctx, sloOrigin, sloDefinition, &dataset)
+				if err != nil {
+					return "", err
+				}
+				if updatedSLO == nil {
+					return "", errors.New("unexpected nil/empty response body")
+				}
+				return dash0apiclient.GetSLOID(updatedSLO), nil
+			},
+		}
 	case deleteAction:
-		method = http.MethodDelete
-		req, err = http.NewRequest(
-			method,
-			sloUrl,
-			nil,
-		)
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodDelete,
+			Url:    sloUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				return "", apiClient.DeleteSLO(ctx, sloOrigin, &dataset)
+			},
+		}
 	default:
 		unknownActionErr := fmt.Errorf("unknown API action: %d", action)
 		logger.Error(unknownActionErr, "unknown API action")
 		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, unknownActionErr.Error())
 	}
 
-	if err != nil {
-		httpError := fmt.Errorf(
-			"unable to create a new HTTP request to synchronize the SLO: %s %s: %w",
-			method,
-			sloUrl,
-			err,
-		)
-		logger.Error(httpError, "error creating http request")
-		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, httpError.Error())
-	}
-
-	addAuthorizationHeader(req, apiConfig.Token)
-	if action == upsertAction {
-		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
-	}
-
-	return NewResourceToRequestsResultSingleItemSuccess(
+	return NewResourceToRequestsResultSingleItemApiClientCall(
 		apiConfig,
-		req,
+		apiClientCall,
 		itemName,
 		sloOrigin,
 	)
 }
 
-// buildSLOApiBody builds the OpenSLO document to send to the Dash0 API. The CR mirrors dash0.SloDefinition
-// field-for-field, so a JSON round-trip carries it across and any spec field whose tag stops matching is dropped
-// silently. The mapping test in slo_controller_test.go asserts the whole spec to catch that.
-func buildSLOApiBody(resource map[string]any) ([]byte, error) {
+// mapToSLODefinition converts the SLO resource to the typed OpenSLO document of the Dash0 API client. The CR mirrors
+// dash0apiclient.SloDefinition field-for-field, so a JSON round-trip carries it across and any spec field whose tag
+// stops matching is dropped silently. slo_definition_roundtrip_test.go asserts the whole spec to catch that.
+func mapToSLODefinition(resource map[string]any) (*dash0apiclient.SloDefinition, error) {
 	resourceBytes, err := json.Marshal(resource)
 	if err != nil {
 		return nil, err
 	}
-	sloDefinition := &dash0.SloDefinition{}
-	if err := json.Unmarshal(resourceBytes, sloDefinition); err != nil {
+	sloDefinition := &dash0apiclient.SloDefinition{}
+	if err = json.Unmarshal(resourceBytes, sloDefinition); err != nil {
 		return nil, err
 	}
-	sloDefinition.ApiVersion = dash0.SloDefinitionApiVersion(sloApiVersion)
-	sloDefinition.Kind = dash0.SloDefinitionKind(sloKind)
-	dash0.StripSLOServerFields(sloDefinition)
-	return json.Marshal(sloDefinition)
+	sloDefinition.ApiVersion = dash0apiclient.SloDefinitionApiVersion(sloApiVersion)
+	sloDefinition.Kind = dash0apiclient.SloDefinitionKind(sloKind)
+	dash0apiclient.StripSLOServerFields(sloDefinition)
+	return sloDefinition, nil
 }
 
 func (r *SLOReconciler) renderSLOUrl(
@@ -595,21 +595,20 @@ func (r *SLOReconciler) renderSLOUrl(
 	endpoint string,
 	dataset string,
 ) (string, string) {
-	datasetUrlEncoded := url.QueryEscape(dataset)
 	sloOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s",
 		r.pseudoClusterUid,
-		datasetUrlEncoded,
+		datasetInOrigin(dataset),
 		preconditionChecksResult.k8sNamespace,
 		preconditionChecksResult.k8sName,
 	)
 	return fmt.Sprintf(
 		"%sapi/slos/%s?dataset=%s",
 		endpoint,
-		sloOrigin,
-		datasetUrlEncoded,
+		url.PathEscape(sloOrigin),
+		url.QueryEscape(dataset),
 	), sloOrigin
 }
 
