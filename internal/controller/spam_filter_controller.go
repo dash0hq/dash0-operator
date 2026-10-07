@@ -4,9 +4,9 @@
 package controller
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,7 +37,7 @@ type SpamFilterReconciler struct {
 	client.Client
 	pseudoClusterUid      types.UID
 	leaderElectionAware   util.LeaderElectionAware
-	httpClient            *http.Client
+	apiClientPool         *ApiClientPool
 	defaultApiConfigs     selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs  selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	initialSyncMutex      sync.Mutex
@@ -53,13 +54,13 @@ func NewSpamFilterReconciler(
 	k8sClient client.Client,
 	pseudoClusterUid types.UID,
 	leaderElectionAware util.LeaderElectionAware,
-	httpClient *http.Client,
+	apiClientPool *ApiClientPool,
 ) *SpamFilterReconciler {
 	return &SpamFilterReconciler{
 		Client:               k8sClient,
 		pseudoClusterUid:     pseudoClusterUid,
 		leaderElectionAware:  leaderElectionAware,
-		httpClient:           httpClient,
+		apiClientPool:        apiClientPool,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
 		namespacedSyncMutex:  *selfmonitoringapiaccess.NewNamespaceMutex(),
@@ -114,8 +115,9 @@ func (r *SpamFilterReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
+// HttpClient returns nil, the spam filter reconciler talks to the Dash0 API via the API client pool.
 func (r *SpamFilterReconciler) HttpClient() *http.Client {
-	return r.httpClient
+	return nil
 }
 
 func (r *SpamFilterReconciler) SetDefaultApiConfigs(ctx context.Context, apiConfigs []ApiConfig, logger logd.Logger) {
@@ -341,56 +343,73 @@ func (r *SpamFilterReconciler) MapResourceToHttpRequests(
 
 	spamFilterUrl, spamFilterOrigin := r.renderSpamFilterUrl(preconditionChecksResult, apiConfig.Endpoint, apiConfig.Dataset)
 
-	var req *http.Request
-	var method string
-	var err error
+	dataset := apiConfig.Dataset
 
+	var apiClientCall *ApiClientCall
 	switch action {
 	case upsertAction:
-		resource := preconditionChecksResult.resource
-		serializedResource, _ := json.Marshal(resource)
-		requestPayload := bytes.NewBuffer(serializedResource)
-		method = http.MethodPut
-		req, err = http.NewRequest(
-			method,
-			spamFilterUrl,
-			requestPayload,
-		)
+		spamFilterDefinition, err := mapToSpamFilterDefinition(preconditionChecksResult.resource)
+		if err != nil {
+			logger.Error(err, "error converting spam filter")
+			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, err.Error())
+		}
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodPut,
+			Url:    spamFilterUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				updatedSpamFilter, err := apiClient.UpdateSpamFilter(ctx, spamFilterOrigin, spamFilterDefinition, &dataset)
+				if err != nil {
+					return "", err
+				}
+				if updatedSpamFilter == nil {
+					return "", errors.New("unexpected nil/empty response body")
+				}
+				return dash0apiclient.GetSpamFilterID(updatedSpamFilter), nil
+			},
+		}
 	case deleteAction:
-		method = http.MethodDelete
-		req, err = http.NewRequest(
-			method,
-			spamFilterUrl,
-			nil,
-		)
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodDelete,
+			Url:    spamFilterUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				return "", apiClient.DeleteSpamFilter(ctx, spamFilterOrigin, &dataset)
+			},
+		}
 	default:
 		unknownActionErr := fmt.Errorf("unknown API action: %d", action)
 		logger.Error(unknownActionErr, "unknown API action")
 		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, unknownActionErr.Error())
 	}
 
-	if err != nil {
-		httpError := fmt.Errorf(
-			"unable to create a new HTTP request to synchronize the spam filter: %s %s: %w",
-			method,
-			spamFilterUrl,
-			err,
-		)
-		logger.Error(httpError, "error creating http request")
-		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, httpError.Error())
-	}
-
-	addAuthorizationHeader(req, apiConfig.Token)
-	if action == upsertAction {
-		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
-	}
-
-	return NewResourceToRequestsResultSingleItemSuccess(
+	return NewResourceToRequestsResultSingleItemApiClientCall(
 		apiConfig,
-		req,
+		apiClientCall,
 		itemName,
 		spamFilterOrigin,
 	)
+}
+
+// mapToSpamFilterDefinition converts the spam filter resource to the typed spam filter definition of the Dash0 API
+// client. Fields that the Dash0 API does not define for spam filters (for example metadata.namespace, status,
+// Kubernetes labels and annotations other than dash0.com/enabled) are dropped.
+func mapToSpamFilterDefinition(resource map[string]any) (*dash0apiclient.SpamFilter, error) {
+	serializedResource, err := json.Marshal(resource)
+	if err != nil {
+		return nil, err
+	}
+	spamFilterDefinition := &dash0apiclient.SpamFilter{}
+	if err = json.Unmarshal(serializedResource, spamFilterDefinition); err != nil {
+		return nil, fmt.Errorf("unable to convert the spam filter to the Dash0 API format: %w", err)
+	}
+	return spamFilterDefinition, nil
 }
 
 func (r *SpamFilterReconciler) renderSpamFilterUrl(
@@ -398,21 +417,20 @@ func (r *SpamFilterReconciler) renderSpamFilterUrl(
 	endpoint string,
 	dataset string,
 ) (string, string) {
-	datasetUrlEncoded := url.QueryEscape(dataset)
 	spamFilterOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s",
 		r.pseudoClusterUid,
-		datasetUrlEncoded,
+		datasetInOrigin(dataset),
 		preconditionChecksResult.k8sNamespace,
 		preconditionChecksResult.k8sName,
 	)
 	return fmt.Sprintf(
 		"%sapi/spam-filters/%s?dataset=%s",
 		endpoint,
-		spamFilterOrigin,
-		datasetUrlEncoded,
+		url.PathEscape(spamFilterOrigin),
+		url.QueryEscape(dataset),
 	), spamFilterOrigin
 }
 
