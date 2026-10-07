@@ -1134,7 +1134,8 @@ var _ = Describe(
 				)
 
 				It(
-					"still creates check rules but does not delete orphaned rules if the existing rules cannot be fetched",
+					"still creates check rules but does not delete orphaned rules if the existing rules cannot be fetched, "+
+						"and records the error",
 					func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
@@ -1157,10 +1158,19 @@ var _ = Describe(
 							&controllertest.TypedQueue[reconcile.Request]{},
 						)
 
+						expectedResult := defaultExpectedPrometheusSyncResult(clusterId)
+						expectedResult.SynchronizationStatus = dash0common.ThirdPartySynchronizationStatusPartiallySuccessful
+						expectedResult.SynchronizationResults[0].SynchronizationErrorsTotal = 1
+						expectedResult.SynchronizationResults[0].SynchronizationErrors = map[string]string{
+							"*": "^unexpected status code 403 when trying to fetch existing origins: GET .*",
+						}
+						expectedResult.SynchronizationResults[0].SynchronizationErrorHttpStatusCodes = map[string]int{
+							"*": http.StatusForbidden,
+						}
 						verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 							ctx,
 							k8sClient,
-							defaultExpectedPrometheusSyncResult(clusterId),
+							expectedResult,
 						)
 						Expect(gock.IsDone()).To(BeTrue())
 					},
@@ -1441,7 +1451,15 @@ var _ = Describe(
 						for _, name := range resourceNames {
 							result := results[fmt.Sprintf("%s/%s", TestNamespaceName, name)]
 							Expect(result.SynchronizationStatus).To(
-								Equal(dash0common.ThirdPartySynchronizationStatusSuccessful),
+								Equal(dash0common.ThirdPartySynchronizationStatusPartiallySuccessful),
+							)
+							Expect(result.SynchronizationResults).To(HaveLen(1))
+							Expect(result.SynchronizationResults[0].SynchronizedRulesTotal).To(Equal(5))
+							Expect(result.SynchronizationResults[0].SynchronizationErrors["*"]).To(
+								MatchRegexp("^unexpected status code 403 when trying to fetch existing origins: GET .*"),
+							)
+							Expect(result.SynchronizationResults[0].SynchronizationErrorHttpStatusCodes["*"]).To(
+								Equal(http.StatusForbidden),
 							)
 						}
 					},

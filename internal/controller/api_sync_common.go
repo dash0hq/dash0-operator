@@ -509,15 +509,11 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 			originsInNamespace,
 			logger,
 		)
-		if err != nil && resourceHasBeenDeleted {
-			// No later resync will revisit a resource that has been deleted in Kubernetes, so the DELETE requests are sent
-			// without knowing which objects exist, instead of leaving them behind in Dash0.
-			existingOriginsAreKnown = false
-		} else if err != nil && action == upsertAction {
-			// The objects from the resource are still created or updated, only deleting objects that have been removed
-			// from the resource is skipped. The next resync will catch up on that.
-			existingOriginsAreKnown = false
-		} else if err != nil {
+		// If fetching the existing origins fails for a resource that has been deleted in Kubernetes, the DELETE requests
+		// are sent without knowing which objects exist, since no later resync will revisit the resource. For an upsert,
+		// the objects are still created or updated, only deleting objects that have been removed from the resource is
+		// skipped; the fetch error is recorded below, so that the synchronization is retried.
+		if err != nil && !resourceHasBeenDeleted && action != upsertAction {
 			// The error has already been logged in fetchExistingOriginsForResource. Record the failure for this config
 			// and continue with the remaining configs. Without knowing which objects exist, no DELETE requests are sent.
 			// This is only relevant for third-party resource types which support fetching existing origins, not for Dash0
@@ -542,6 +538,19 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 			action,
 			logger,
 		)
+		if err != nil && action == upsertAction {
+			if resourceToRequestsResult.SynchronizationErrors == nil {
+				resourceToRequestsResult.SynchronizationErrors = make(map[string]string)
+			}
+			if resourceToRequestsResult.SynchronizationErrorStatusCodes == nil {
+				resourceToRequestsResult.SynchronizationErrorStatusCodes = make(map[string]int)
+			}
+			if _, exists := resourceToRequestsResult.SynchronizationErrors[preconditionErrorItemName]; !exists {
+				resourceToRequestsResult.SynchronizationErrors[preconditionErrorItemName] = err.Error()
+				resourceToRequestsResult.SynchronizationErrorStatusCodes[preconditionErrorItemName] =
+					httpStatusCodeFromError(err)
+			}
+		}
 
 		if existingOriginsAreKnown {
 			if action == deleteAction {
