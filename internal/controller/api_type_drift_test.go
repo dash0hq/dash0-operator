@@ -333,4 +333,13 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 			nil,
 		)
 	})
+
+	It("finds no unexpected drift between Dash0TimeSeriesAggregation and the API client's time series aggregation type", func() {
+		expectNoUnexpectedApiTypeDrift(
+			reflect.TypeFor[dash0v1alpha1.Dash0TimeSeriesAggregationSpec](),
+			reflect.TypeFor[dash0apiclient.TimeSeriesAggregationSpec](),
+			nil,
+			nil,
+		)
+	})
 })
