@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -593,11 +592,11 @@ var _ = Describe(
 						Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(1))
 						apiRequest := resourceToRequestsResult.ApiRequests[0]
 						Expect(apiRequest.ItemName).To(Equal("dash0-time-series-aggregation"))
-						req := apiRequest.Request
-						defer func() {
-							_ = req.Body.Close()
-						}()
-						body, err := io.ReadAll(req.Body)
+						Expect(apiRequest.ApiClientCall).ToNot(BeNil())
+						Expect(apiRequest.ApiClientCall.Method).To(Equal(http.MethodPut))
+						timeSeriesAggregationDefinition, err := mapToTimeSeriesAggregationDefinition(timeSeriesAggregation)
+						Expect(err).ToNot(HaveOccurred())
+						body, err := json.Marshal(timeSeriesAggregationDefinition)
 						Expect(err).ToNot(HaveOccurred())
 						resultingTimeSeriesAggregationInRequest := map[string]any{}
 						Expect(json.Unmarshal(body, &resultingTimeSeriesAggregationInRequest)).To(Succeed())
@@ -666,15 +665,15 @@ spec:
 						},
 					),
 					Entry(
-						"should send annotations", timeSeriesAggregationToRequestTestConfig{
+						"should drop all annotations", timeSeriesAggregationToRequestTestConfig{
 							timeSeriesAggregation: `
 apiVersion: operator.dash0.com/v1alpha1
 kind: Dash0TimeSeriesAggregation
 metadata:
   name: dash0-time-series-aggregation
   annotations:
-    dash0com/annotation1: value1
-    dash0com/annotation2: value2
+    dash0.com/enabled: "false"
+    example.com/not-part-of-the-api: dropped
 spec:
   enabled: true
   match:
@@ -684,10 +683,7 @@ spec:
   sample:
     interval: 60s
 `,
-							expectedAnnotations: map[string]string{
-								"dash0com/annotation1": "value1",
-								"dash0com/annotation2": "value2",
-							},
+							expectedAnnotations: map[string]string{},
 						},
 					),
 				)
@@ -701,7 +697,7 @@ func createTimeSeriesAggregationReconciler(clusterId string) *TimeSeriesAggregat
 		k8sClient,
 		types.UID(clusterId),
 		timeSeriesAggregationLeaderElectionAware,
-		TestHTTPClient(),
+		testApiClientPool(),
 	)
 	return timeSeriesAggregationReconciler
 }
