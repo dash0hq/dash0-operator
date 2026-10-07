@@ -1101,6 +1101,52 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			)
 
 			It(
+				"tries to fetch the existing dashboards only once when synchronizing all resources in a namespace, and "+
+					"records an error and does not send DELETE requests if fetching them fails",
+				func() {
+					EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+					gock.New(ApiEndpointTest).
+						Get("/api/dashboards").
+						MatchHeader("Authorization", AuthorizationHeaderTest).
+						MatchParam("dataset", DatasetCustomTest).
+						Times(1).
+						Reply(http.StatusForbidden)
+					defer gock.Off()
+
+					resourceNames := []string{"test-dashboard-1", "test-dashboard-2", "test-dashboard-3"}
+					originsInNamespace := newExistingOriginsInNamespace(TestNamespaceName)
+					for _, name := range resourceNames {
+						dashboardResource := createDashboardResourceWithEnableLabel("false")
+						dashboardResource.SetName(name)
+						synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
+							ctx,
+							persesDashboardReconciler,
+							&dashboardResource,
+							nil,
+							upsertAction,
+							originsInNamespace,
+							logger,
+						)
+					}
+
+					Expect(gock.IsDone()).To(BeTrue())
+					monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+					results := monRes.Status.PersesDashboardSynchronizationResults
+					Expect(results).To(HaveLen(len(resourceNames)))
+					for _, name := range resourceNames {
+						result := results[fmt.Sprintf("%s/%s", TestNamespaceName, name)]
+						Expect(result.SynchronizationStatus).To(Equal(dash0common.ThirdPartySynchronizationStatusFailed))
+						Expect(result.SynchronizationResults).To(HaveLen(1))
+						Expect(result.SynchronizationResults[0].SynchronizationError).To(
+							MatchRegexp("^unexpected status code 403 when trying to fetch existing origins: GET .*"),
+						)
+						Expect(result.SynchronizationResults[0].HttpStatusCode).To(Equal(http.StatusForbidden))
+					}
+				},
+			)
+
+			It(
 				"reports validation issues for a dashboard", func() {
 					EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 

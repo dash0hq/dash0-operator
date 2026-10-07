@@ -1348,6 +1348,106 @@ var _ = Describe(
 				)
 
 				It(
+					"tries to fetch the existing rules only once when synchronizing all resources in a namespace, and "+
+						"records an error and does not send DELETE requests if fetching them fails",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						gock.New(ApiEndpointTest).
+							Get("/api/alerting/check-rules").
+							MatchHeader("Authorization", AuthorizationHeaderTest).
+							MatchParam("dataset", DatasetCustomTest).
+							Times(1).
+							Reply(http.StatusForbidden)
+						defer gock.Off()
+
+						resourceNames := []string{"test-rule-1", "test-rule-2", "test-rule-3"}
+						originsInNamespace := newExistingOriginsInNamespace(TestNamespaceName)
+						for _, name := range resourceNames {
+							objectMeta := defaultRuleObjectMeta
+							objectMeta.Name = name
+							objectMeta.Labels = map[string]string{"dash0.com/enable": "false"}
+							ruleResource := createPrometheusRuleResourceWithObjectMeta(createDefaultSpec(), objectMeta)
+							synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
+								ctx,
+								prometheusRuleReconciler,
+								&ruleResource,
+								nil,
+								upsertAction,
+								originsInNamespace,
+								logger,
+							)
+						}
+
+						Expect(gock.IsDone()).To(BeTrue())
+						monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+						results := monRes.Status.PrometheusRuleSynchronizationResults
+						Expect(results).To(HaveLen(len(resourceNames)))
+						for _, name := range resourceNames {
+							result := results[fmt.Sprintf("%s/%s", TestNamespaceName, name)]
+							Expect(result.SynchronizationStatus).To(Equal(dash0common.ThirdPartySynchronizationStatusFailed))
+							Expect(result.SynchronizationResults).To(HaveLen(1))
+							Expect(result.SynchronizationResults[0].SynchronizationErrors["*"]).To(
+								MatchRegexp("^unexpected status code 403 when trying to fetch existing origins: GET .*"),
+							)
+							Expect(result.SynchronizationResults[0].SynchronizationErrorHttpStatusCodes["*"]).To(
+								Equal(http.StatusForbidden),
+							)
+						}
+					},
+				)
+
+				It(
+					"tries to fetch the existing rules only once when updating all resources in a namespace, and still "+
+						"updates the rules if fetching them fails",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						gock.New(ApiEndpointTest).
+							Get("/api/alerting/check-rules").
+							MatchHeader("Authorization", AuthorizationHeaderTest).
+							MatchParam("dataset", DatasetCustomTest).
+							Times(1).
+							Reply(http.StatusForbidden)
+						resourceNames := []string{"test-rule-1", "test-rule-2"}
+						for _, resourceName := range resourceNames {
+							expectRulePutRequestsForResource(clusterId, resourceName, checkRuleApiBasePath, defaultCheckRuleRequests())
+							expectRulePutRequestsForResource(
+								clusterId, resourceName, recordingRuleApiBasePath, defaultRecordingRuleRequests(),
+							)
+						}
+						defer gock.Off()
+
+						originsInNamespace := newExistingOriginsInNamespace(TestNamespaceName)
+						for _, name := range resourceNames {
+							objectMeta := defaultRuleObjectMeta
+							objectMeta.Name = name
+							ruleResource := createPrometheusRuleResourceWithObjectMeta(createDefaultSpec(), objectMeta)
+							synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
+								ctx,
+								prometheusRuleReconciler,
+								&ruleResource,
+								nil,
+								upsertAction,
+								originsInNamespace,
+								logger,
+							)
+						}
+
+						Expect(gock.IsDone()).To(BeTrue())
+						monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+						results := monRes.Status.PrometheusRuleSynchronizationResults
+						Expect(results).To(HaveLen(len(resourceNames)))
+						for _, name := range resourceNames {
+							result := results[fmt.Sprintf("%s/%s", TestNamespaceName, name)]
+							Expect(result.SynchronizationStatus).To(
+								Equal(dash0common.ThirdPartySynchronizationStatusSuccessful),
+							)
+						}
+					},
+				)
+
+				It(
 					"deletes individual check rules when the rule has been removed from the PrometheusRule resource", func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
