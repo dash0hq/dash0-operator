@@ -18,7 +18,6 @@ var _ = Describe("Converting a Dash0SpamFilter to the API client's SpamFilterDef
 	It("loses no field of the spam filter spec", func() {
 		unstructuredSpamFilter, err := structToMap(fullyPopulatedSpamFilter())
 		Expect(err).ToNot(HaveOccurred())
-		expectedSpec := unstructuredSpamFilter.Object["spec"]
 
 		spamFilterDefinition, err := mapToSpamFilterDefinition(unstructuredSpamFilter.Object)
 		Expect(err).ToNot(HaveOccurred())
@@ -29,7 +28,25 @@ var _ = Describe("Converting a Dash0SpamFilter to the API client's SpamFilterDef
 
 		Expect(roundTripped["apiVersion"]).To(Equal("operator.dash0.com/v1alpha1"))
 		Expect(roundTripped["kind"]).To(Equal("Dash0SpamFilter"))
-		Expect(roundTripped["spec"]).To(Equal(expectedSpec))
+		Expect(roundTripped["spec"]).To(Equal(map[string]any{
+			"contexts": []any{"log", "span", "metric"},
+			"filter": []any{
+				map[string]any{
+					"key":      "k8s.namespace.name",
+					"operator": "is",
+					"value":    "kube-system",
+				},
+				map[string]any{
+					"key":      "service.name",
+					"operator": "is_one_of",
+					"values":   []any{"health-checker", "load-generator"},
+				},
+				map[string]any{
+					"key":      "http.route",
+					"operator": "is_set",
+				},
+			},
+		}))
 		Expect(roundTripped["metadata"]).To(Equal(map[string]any{
 			"name": "full-spam-filter",
 			"annotations": map[string]any{
