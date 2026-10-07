@@ -509,7 +509,11 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 			originsInNamespace,
 			logger,
 		)
-		if err != nil {
+		if err != nil && resourceHasBeenDeleted {
+			// No later resync will revisit a resource that has been deleted in Kubernetes, so the DELETE requests are sent
+			// without knowing which objects exist, instead of leaving them behind in Dash0.
+			existingOriginsAreKnown = false
+		} else if err != nil {
 			// The error has already been logged in fetchExistingOriginsForResource. Record the failure for this config
 			// and continue with the remaining configs. Without knowing which objects exist, no DELETE requests are sent.
 			// This is only relevant for third-party resource types which support fetching existing origins, not for Dash0

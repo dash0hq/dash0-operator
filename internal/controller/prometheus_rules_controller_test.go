@@ -1512,6 +1512,40 @@ var _ = Describe(
 				)
 
 				It(
+					"sends DELETE requests for all check rules when the whole PrometheusRule resource has been deleted, "+
+						"even if the existing rules cannot be fetched",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						gock.New(ApiEndpointTest).
+							Get("/api/alerting/check-rules").
+							MatchHeader("Authorization", AuthorizationHeaderTest).
+							MatchParam("dataset", DatasetCustomTest).
+							Times(1).
+							Reply(http.StatusForbidden)
+						expectCheckRuleDeleteRequests(clusterId, defaultCheckRuleRequests())
+						expectRecordingRuleDeleteRequests(clusterId, defaultRecordingRuleRequests())
+						defer gock.Off()
+
+						ruleResource := createDefaultPrometheusRuleResource()
+						prometheusRuleReconciler.Delete(
+							ctx,
+							event.TypedDeleteEvent[*unstructured.Unstructured]{
+								Object: &ruleResource,
+							},
+							&controllertest.TypedQueue[reconcile.Request]{},
+						)
+
+						verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+							ctx,
+							k8sClient,
+							defaultExpectedPrometheusSyncResult(clusterId),
+						)
+						Expect(gock.IsDone()).To(BeTrue())
+					},
+				)
+
+				It(
 					"reports validation issues and http errors for Prometheus rules", func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
