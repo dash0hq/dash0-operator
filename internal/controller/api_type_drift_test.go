@@ -15,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 )
 
 var jsonMarshalerType = reflect.TypeFor[json.Marshaler]()
@@ -246,4 +247,97 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 			},
 		)
 	})
+
+	It("finds no unexpected drift between Dash0NotificationChannel and the API client's notification channel type",
+		func() {
+			movedToConfig := "assembled into spec.config by prepareNotificationChannelApiPayload"
+			expectNoUnexpectedApiTypeDrift(
+				reflect.TypeFor[dash0v1beta1.Dash0NotificationChannelSpec](),
+				reflect.TypeFor[dash0apiclient.NotificationChannelSpec](),
+				map[string]string{
+					"display":                 "moved to metadata.name by prepareNotificationChannelApiPayload",
+					"slackConfig":             movedToConfig,
+					"slackBotConfig":          movedToConfig,
+					"emailV2Config":           movedToConfig,
+					"webhookConfig":           movedToConfig,
+					"incidentioConfig":        movedToConfig,
+					"opsgenieConfig":          movedToConfig,
+					"pagerdutyConfig":         movedToConfig,
+					"teamsWebhookConfig":      movedToConfig,
+					"discordWebhookConfig":    movedToConfig,
+					"googleChatWebhookConfig": movedToConfig,
+					"ilertConfig":             movedToConfig,
+					"allQuietConfig":          movedToConfig,
+				},
+				map[string]string{
+					"config": "assembled from the type-specific *Config field by prepareNotificationChannelApiPayload",
+				},
+			)
+		})
+
+	DescribeTable("finds no drift between the notification channel config types",
+		func(crdType reflect.Type, clientType reflect.Type) {
+			expectNoUnexpectedApiTypeDrift(crdType, clientType, nil, nil)
+		},
+		Entry(
+			"slack",
+			reflect.TypeFor[dash0v1beta1.SlackConfig](),
+			reflect.TypeFor[dash0apiclient.SlackConfig](),
+		),
+		Entry(
+			"slack_bot",
+			reflect.TypeFor[dash0v1beta1.SlackBotConfig](),
+			reflect.TypeFor[dash0apiclient.SlackBotConfig](),
+		),
+		Entry(
+			"email_v2",
+			reflect.TypeFor[dash0v1beta1.EmailV2Config](),
+			reflect.TypeFor[dash0apiclient.EmailV2Config](),
+		),
+		Entry(
+			"webhook",
+			reflect.TypeFor[dash0v1beta1.WebhookConfig](),
+			reflect.TypeFor[dash0apiclient.WebhookConfig](),
+		),
+		Entry(
+			"incidentio",
+			reflect.TypeFor[dash0v1beta1.IncidentioConfig](),
+			reflect.TypeFor[dash0apiclient.IncidentIOConfig](),
+		),
+		Entry(
+			"opsgenie",
+			reflect.TypeFor[dash0v1beta1.OpsgenieConfig](),
+			reflect.TypeFor[dash0apiclient.OpsgenieConfig](),
+		),
+		Entry(
+			"pagerduty",
+			reflect.TypeFor[dash0v1beta1.PagerdutyConfig](),
+			reflect.TypeFor[dash0apiclient.PagerDutyConfig](),
+		),
+		Entry(
+			"teams_webhook",
+			reflect.TypeFor[dash0v1beta1.TeamsWebhookConfig](),
+			reflect.TypeFor[dash0apiclient.TeamsWebhookConfig](),
+		),
+		Entry(
+			"discord_webhook",
+			reflect.TypeFor[dash0v1beta1.DiscordWebhookConfig](),
+			reflect.TypeFor[dash0apiclient.DiscordWebhookConfig](),
+		),
+		Entry(
+			"google_chat_webhook",
+			reflect.TypeFor[dash0v1beta1.GoogleChatWebhookConfig](),
+			reflect.TypeFor[dash0apiclient.GoogleChatWebhookConfig](),
+		),
+		Entry(
+			"ilert",
+			reflect.TypeFor[dash0v1beta1.IlertConfig](),
+			reflect.TypeFor[dash0apiclient.IlertConfig](),
+		),
+		Entry(
+			"all_quiet",
+			reflect.TypeFor[dash0v1beta1.AllQuietConfig](),
+			reflect.TypeFor[dash0apiclient.AllQuietConfig](),
+		),
+	)
 })

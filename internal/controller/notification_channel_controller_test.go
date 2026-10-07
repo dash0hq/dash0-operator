@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -492,17 +491,20 @@ var _ = Describe(
 						Expect(result.SynchronizationErrors).To(BeNil())
 						Expect(result.ApiRequests).To(HaveLen(1))
 
-						req := result.ApiRequests[0].Request
-						defer func() { _ = req.Body.Close() }()
-						body, err := io.ReadAll(req.Body)
+						apiRequest := result.ApiRequests[0]
+						Expect(apiRequest.ApiClientCall).ToNot(BeNil())
+						Expect(apiRequest.ApiClientCall.Method).To(Equal(http.MethodPut))
+						notificationChannelDefinition, err := mapToNotificationChannelDefinition(resource)
+						Expect(err).ToNot(HaveOccurred())
+						body, err := json.Marshal(notificationChannelDefinition)
 						Expect(err).ToNot(HaveOccurred())
 
 						var payload map[string]any
 						Expect(json.Unmarshal(body, &payload)).To(Succeed())
 
-						// Verify display name was moved to metadata.name and removed from spec.
-						metadata := payload["metadata"].(map[string]any)
-						Expect(metadata["name"]).To(Equal(testDisplayName))
+						// Verify display name was moved to metadata.name and removed from spec, and that Kubernetes-only
+						// metadata (namespace) is dropped.
+						Expect(payload["metadata"]).To(Equal(map[string]any{"name": testDisplayName}))
 						spec := payload["spec"].(map[string]any)
 						Expect(spec).ToNot(HaveKey("display"))
 
@@ -515,8 +517,8 @@ var _ = Describe(
 						}
 
 						// Verify URL format (org-level, no dataset query parameter).
-						Expect(req.URL.String()).NotTo(ContainSubstring("dataset="))
-						Expect(req.URL.Path).To(ContainSubstring("/api/notification-channels/"))
+						Expect(apiRequest.ApiClientCall.Url).NotTo(ContainSubstring("dataset="))
+						Expect(apiRequest.ApiClientCall.Url).To(ContainSubstring("/api/notification-channels/"))
 					},
 
 					Entry("slack", ncMappingTestConfig{
@@ -643,7 +645,7 @@ func createNotificationChannelReconciler(clusterId string) *NotificationChannelR
 		k8sClient,
 		types.UID(clusterId),
 		notificationChannelLeaderElectionAware,
-		TestHTTPClient(),
+		testApiClientPool(),
 	)
 	return ncReconciler
 }
