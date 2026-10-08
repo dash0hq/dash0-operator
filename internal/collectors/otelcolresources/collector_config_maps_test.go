@@ -4278,6 +4278,43 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}),
 	)
 
+	type containerImageTagTest struct {
+		cmTypeDef                  configMapTypeDefinition
+		profilingEnabled           bool
+		k8sAttributesProcessorName string
+	}
+
+	DescribeTable("should extract container.image.tag and container.image.tags", func(testConfig containerImageTagTest) {
+		configMap, err := testConfig.cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         cmTestSingleDefaultOtlpExporter(),
+			ProfilingEnabled:  testConfig.profilingEnabled,
+		}, monitoredNamespaces, nil, nil, false)
+		Expect(err).ToNot(HaveOccurred())
+		collectorConfig := parseConfigMapContent(configMap)
+		metadataListRaw := ReadFromMap(
+			collectorConfig,
+			[]string{"processors", testConfig.k8sAttributesProcessorName, "extract", "metadata"},
+		)
+		Expect(metadataListRaw).ToNot(BeNil())
+		Expect(metadataListRaw.([]any)).To(ContainElements("container.image.tag", "container.image.tags"))
+	},
+		Entry("daemonset/k8s_attributes", containerImageTagTest{
+			cmTypeDef:                  cmTypeDefDaemonSet,
+			k8sAttributesProcessorName: "k8s_attributes",
+		}),
+		Entry("deployment/k8s_attributes", containerImageTagTest{
+			cmTypeDef:                  cmTypeDefDeployment,
+			k8sAttributesProcessorName: "k8s_attributes",
+		}),
+		Entry("daemonset/k8s_attributes/profiles", containerImageTagTest{
+			cmTypeDef:                  cmTypeDefDaemonSet,
+			profilingEnabled:           true,
+			k8sAttributesProcessorName: "k8s_attributes/profiles",
+		}),
+	)
+
 	Describe("should enable/disable wait_for_metadata", func() {
 		DescribeTable("should configure the k8s_attributes processor to wait for metadata if enabled", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{

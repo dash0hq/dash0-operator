@@ -823,6 +823,9 @@ func (e *collectorConfigMatrixEntry) render() ([]renderedCollectorConfig, error)
 		daemonSetFeatureGates = append(daemonSetFeatureGates, k8sAttributesShareProcessorFeatureGate)
 		deploymentFeatureGates = append(deploymentFeatureGates, k8sAttributesShareProcessorFeatureGate)
 	}
+	// On GKE Autopilot, the collector image's entrypoint adds this gate for the deployment instead of an arg.
+	daemonSetFeatureGates = append(daemonSetFeatureGates, disableK8sAttributesDontEmitV0K8sConventionsFeatureGate)
+	deploymentFeatureGates = append(deploymentFeatureGates, disableK8sAttributesDontEmitV0K8sConventionsFeatureGate)
 
 	rendered := []renderedCollectorConfig{
 		{
