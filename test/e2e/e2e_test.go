@@ -4295,8 +4295,9 @@ spec:
 				if autoNamespaceMonitoring {
 					monitoringResourceName = util.MonitoringAutoResourceDefaultName
 					additionalHelmParameters = map[string]string{
-						"operator.autoMonitorNamespaces.enabled":       "true",
-						"operator.autoMonitorNamespaces.labelSelector": "dash0.com/e2e-removal-auto-opt-in==true",
+						"operator.autoMonitorNamespaces.enabled":                    "true",
+						"operator.autoMonitorNamespaces.labelSelector":              "dash0.com/e2e-removal-auto-opt-in==true",
+						"operator.monitoringTemplate.spec.instrumentWorkloads.mode": "all",
 					}
 					for _, config := range configs {
 						recreateNamespaceWithLabel(

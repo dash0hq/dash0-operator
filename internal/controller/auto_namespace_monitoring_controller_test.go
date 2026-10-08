@@ -42,7 +42,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			autoNamespaceMonitoringReconciler = &AutoNamespaceMonitoringReconciler{
 				Client:           k8sClient,
 				manager:          mgr,
-				namespaceWatcher: NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace),
+				namespaceWatcher: NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace, time.Time{}),
 			}
 		})
 
@@ -175,7 +175,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 		})
 
 		BeforeEach(func() {
-			namespaceWatcher = NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace)
+			namespaceWatcher = NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace, time.Time{})
 		})
 
 		AfterEach(func() {
@@ -379,6 +379,17 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			Expect(listMonitoringResources(ctx, Default, testAutoNamespace1)).To(BeEmpty())
 		})
 
+		It("ignores a pre-delete hook job that has been created before the operator", func() {
+			namespaceWatcher = NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace, time.Now().Add(time.Hour))
+			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
+			preDeleteHookJob := createPreDeleteHookJob(ctx)
+			defer deletePreDeleteHookJob(ctx, preDeleteHookJob)
+
+			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+
+			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace1)
+		})
+
 		It("creates auto-monitoring resources again once the pre-delete hook job is gone", func() {
 			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
 			preDeleteHookJob := createPreDeleteHookJob(ctx)
@@ -572,7 +583,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 		})
 
 		BeforeEach(func() {
-			namespaceWatcher = NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace)
+			namespaceWatcher = NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace, time.Time{})
 			autoNamespaceMonitoringReconciler = &AutoNamespaceMonitoringReconciler{
 				Client:           k8sClient,
 				manager:          mgr,
@@ -1096,24 +1107,30 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 		})
 	})
 
-	Context("isJobFinished", func() {
-		DescribeTable("detects finished jobs",
-			func(conditions []batchv1.JobCondition, expected bool) {
-				job := &batchv1.Job{Status: batchv1.JobStatus{Conditions: conditions}}
-				Expect(isJobFinished(job)).To(Equal(expected))
+	Context("indicatesUninstallation", func() {
+		operatorCreatedAt := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+
+		DescribeTable("detects pre-delete hook jobs of an ongoing uninstallation",
+			func(createdAt time.Time, conditions []batchv1.JobCondition, expected bool) {
+				job := &batchv1.Job{
+					ObjectMeta: metav1.ObjectMeta{CreationTimestamp: metav1.NewTime(createdAt)},
+					Status:     batchv1.JobStatus{Conditions: conditions},
+				}
+				Expect(indicatesUninstallation(job, operatorCreatedAt)).To(Equal(expected))
 			},
-			Entry("no conditions", nil, false),
-			Entry("complete", []batchv1.JobCondition{
+			Entry("running", operatorCreatedAt.Add(time.Hour), nil, true),
+			Entry("complete", operatorCreatedAt.Add(time.Hour), []batchv1.JobCondition{
 				{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
 			}, true),
-			Entry("failed", []batchv1.JobCondition{
+			Entry("failed", operatorCreatedAt.Add(time.Hour), []batchv1.JobCondition{
 				{Type: batchv1.JobFailed, Status: corev1.ConditionTrue},
-			}, true),
-			Entry("failed condition not true", []batchv1.JobCondition{
-				{Type: batchv1.JobFailed, Status: corev1.ConditionFalse},
 			}, false),
-			Entry("other condition", []batchv1.JobCondition{
-				{Type: batchv1.JobSuspended, Status: corev1.ConditionTrue},
+			Entry("failed condition not true", operatorCreatedAt.Add(time.Hour), []batchv1.JobCondition{
+				{Type: batchv1.JobFailed, Status: corev1.ConditionFalse},
+			}, true),
+			Entry("created in the same second as the operator", operatorCreatedAt, nil, true),
+			Entry("created before the operator", operatorCreatedAt.Add(-time.Second), []batchv1.JobCondition{
+				{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
 			}, false),
 		)
 	})

@@ -2221,6 +2221,7 @@ func startDash0Controllers(
 		autoNamespaceMonitoringReconciler = controller.NewAutoNamespaceMonitoringReconciler(
 			k8sClient,
 			envVars.operatorNamespace,
+			operatorDeploymentSelfReference.CreationTimestamp.Time,
 		)
 		setupLog.Info("Starting the auto-namespace-monitoring reconciler.")
 		if err := autoNamespaceMonitoringReconciler.SetupWithManager(mgr); err != nil {

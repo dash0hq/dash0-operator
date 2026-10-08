@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"slices"
 	"sync"
+	"time"
 
 	otelmetric "go.opentelemetry.io/otel/metric"
 	batchv1 "k8s.io/api/batch/v1"
@@ -42,6 +43,7 @@ type AutoNamespaceMonitoringReconciler struct {
 	client.Client
 	manager           ctrl.Manager
 	operatorNamespace string
+	operatorCreatedAt time.Time
 	namespaceWatcher  *NamespaceWatcher
 }
 
@@ -50,19 +52,23 @@ var (
 	namespaceReconcileRequestMetric                                    otelmetric.Int64Counter
 )
 
+// NewAutoNamespaceMonitoringReconciler creates an AutoNamespaceMonitoringReconciler. operatorCreatedAt is the creation
+// timestamp of the operator manager deployment, see NewNamespaceWatcher.
 func NewAutoNamespaceMonitoringReconciler(
 	k8sClient client.Client,
 	operatorNamespace string,
+	operatorCreatedAt time.Time,
 ) *AutoNamespaceMonitoringReconciler {
 	return &AutoNamespaceMonitoringReconciler{
 		Client:            k8sClient,
 		operatorNamespace: operatorNamespace,
+		operatorCreatedAt: operatorCreatedAt,
 	}
 }
 
 func (r *AutoNamespaceMonitoringReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.manager = mgr
-	r.namespaceWatcher = NewNamespaceWatcher(r.Client, mgr.GetAPIReader(), r.operatorNamespace)
+	r.namespaceWatcher = NewNamespaceWatcher(r.Client, mgr.GetAPIReader(), r.operatorNamespace, r.operatorCreatedAt)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dash0v1alpha1.Dash0OperatorConfiguration{}).
 		Named("autoNamespaceMonitoring").
@@ -531,22 +537,25 @@ type NamespaceWatcher struct {
 	client.Client
 	apiReader                  client.Reader
 	operatorNamespace          string
+	operatorCreatedAt          time.Time
 	controllerStopFunctionLock sync.Mutex
 	controllerStopFunction     *context.CancelFunc
 }
 
 // NewNamespaceWatcher creates a NamespaceWatcher. The apiReader must read directly from the API server (not from the
-// informer cache), so that a just-created pre-delete hook job is guaranteed to be visible, see
-// isOperatorBeingUninstalled.
+// informer cache), so that a just-created pre-delete hook job is guaranteed to be visible. Pre-delete hook jobs created
+// before operatorCreatedAt are left over from a previous installation and are ignored. See isOperatorBeingUninstalled.
 func NewNamespaceWatcher(
 	k8sClient client.Client,
 	apiReader client.Reader,
 	operatorNamespace string,
+	operatorCreatedAt time.Time,
 ) *NamespaceWatcher {
 	return &NamespaceWatcher{
 		Client:            k8sClient,
 		apiReader:         apiReader,
 		operatorNamespace: operatorNamespace,
+		operatorCreatedAt: operatorCreatedAt,
 	}
 }
 
@@ -787,13 +796,15 @@ func (w *NamespaceWatcher) createMonitoringResource(
 	return nil
 }
 
-// isOperatorBeingUninstalled checks whether the Helm chart's pre-delete hook job is currently running in the operator
-// namespace. The hook deletes all Dash0Monitoring resources, auto-monitoring resources must not be recreated while it
-// runs. Helm creates the job before the hook deletes anything, and the check reads from the API server directly, so the
-// job is always visible by the time a deletion triggers a recreation attempt. A finished job (in particular a failed
-// one, which Helm leaves behind) does not count. If the uninstallation is aborted, resources skipped in the meantime
-// are only recreated with the next reconcile of the namespace (a namespace change, an operator restart or a cache
-// resync).
+// isOperatorBeingUninstalled checks whether the Helm chart's pre-delete hook job exists in the operator namespace. The
+// hook deletes all Dash0Monitoring resources, auto-monitoring resources must not be recreated from then on until the
+// operator is gone. Helm creates the job before the hook deletes anything, and the check reads from the API server
+// directly, so the job is always visible by the time a deletion triggers a recreation attempt. The chart keeps the job
+// for a while after it has completed (ttlSecondsAfterFinished), so that it outlives the operator manager pod, which
+// Helm only deletes after the hook has finished. A failed job means the uninstallation has been aborted and does not
+// count. If the uninstallation is aborted after the hook has completed, auto-monitoring resources are only recreated
+// after the job has been removed, with the next reconcile of the namespace (a namespace change, an operator restart or
+// a cache resync).
 func (w *NamespaceWatcher) isOperatorBeingUninstalled(ctx context.Context) (bool, error) {
 	preDeleteHookJobs := &batchv1.JobList{}
 	if err := w.apiReader.List(
@@ -805,21 +816,23 @@ func (w *NamespaceWatcher) isOperatorBeingUninstalled(ctx context.Context) (bool
 		return false, err
 	}
 	for i := range preDeleteHookJobs.Items {
-		if !isJobFinished(&preDeleteHookJobs.Items[i]) {
+		if indicatesUninstallation(&preDeleteHookJobs.Items[i], w.operatorCreatedAt) {
 			return true, nil
 		}
 	}
 	return false, nil
 }
 
-func isJobFinished(job *batchv1.Job) bool {
-	for _, condition := range job.Status.Conditions {
-		if (condition.Type == batchv1.JobComplete || condition.Type == batchv1.JobFailed) &&
-			condition.Status == corev1.ConditionTrue {
-			return true
+func indicatesUninstallation(preDeleteHookJob *batchv1.Job, operatorCreatedAt time.Time) bool {
+	if preDeleteHookJob.CreationTimestamp.Time.Before(operatorCreatedAt) {
+		return false
+	}
+	for _, condition := range preDeleteHookJob.Status.Conditions {
+		if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 // reconcileResourceWithMonitoringTemplate makes sure the monitoring resource reflects the current monitoring template.
