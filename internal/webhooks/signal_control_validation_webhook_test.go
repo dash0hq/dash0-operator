@@ -14,6 +14,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -132,7 +133,7 @@ var _ = Describe("The Signal Control validation webhook (cacheExpiration bounds)
 	var handler *SignalControlValidationWebhookHandler
 
 	BeforeEach(func() {
-		handler = NewSignalControlValidationWebhookHandler(k8sClient)
+		handler = NewSignalControlValidationWebhookHandler(k8sClient, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 		// The cacheExpiration checks are only reached after hasDash0ExportConfigured passes, so an operator
 		// configuration with a Dash0 export must exist; otherwise the resource is denied earlier.
 		_, err := CreateOperatorConfigurationResource(
@@ -257,7 +258,7 @@ var _ = Describe("The Signal Control validation webhook (Dash0 export requiremen
 	var handler *SignalControlValidationWebhookHandler
 
 	BeforeEach(func() {
-		handler = NewSignalControlValidationWebhookHandler(k8sClient)
+		handler = NewSignalControlValidationWebhookHandler(k8sClient, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 	})
 
 	AfterEach(func() {
@@ -290,6 +291,43 @@ var _ = Describe("The Signal Control validation webhook (Dash0 export requiremen
 		request := signalControlAdmissionRequest(dash0v1alpha1.Dash0SignalControlSpec{})
 		response := handler.Handle(ctx, request)
 		Expect(response.Allowed).To(BeTrue())
+	})
+})
+
+var _ = Describe("The Signal Control validation webhook (component settings)", func() {
+
+	componentsSpec := dash0v1alpha1.Dash0SignalControlSpec{
+		Components: &dash0v1alpha1.SignalControlComponents{
+			EdgeProxy: &dash0v1alpha1.EdgeProxySettings{
+				Replicas: new(int32(3)),
+			},
+		},
+	}
+
+	BeforeEach(func() {
+		createOperatorConfigurationWithExport(*Dash0ExportWithEndpointAndToken())
+	})
+
+	AfterEach(func() {
+		DeleteAllOperatorConfigurationResources(ctx, k8sClient)
+	})
+
+	It("should not return warnings when the Helm chart uses the default values", func() {
+		handler := NewSignalControlValidationWebhookHandler(k8sClient, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+		response := handler.Handle(ctx, signalControlAdmissionRequest(componentsSpec))
+		Expect(response.Allowed).To(BeTrue())
+		Expect(response.Warnings).To(BeEmpty())
+	})
+
+	It("should return a warning for a setting that overrides a different value provided via the Helm chart", func() {
+		extraConfig := util.ExtraConfigDefaults
+		extraConfig.EdgeProxyReplicas = 4
+		handler := NewSignalControlValidationWebhookHandler(k8sClient, extraConfig, util.ExtraConfigDefaults)
+		response := handler.Handle(ctx, signalControlAdmissionRequest(componentsSpec))
+		Expect(response.Allowed).To(BeTrue())
+		Expect(response.Warnings).To(ConsistOf(
+			"spec.components.edgeProxy.replicas overrides the custom Helm value " +
+				"operator.signalControl.edgeProxy.replicas: 3 instead of 4"))
 	})
 })
 

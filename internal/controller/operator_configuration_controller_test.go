@@ -1407,6 +1407,7 @@ func createReconcilerWithManagers(
 		k8sClient,
 		nodeMetadataClient,
 		util.ExtraConfigDefaults,
+		util.ExtraConfigDefaults,
 		false,
 		false,
 		oTelColResourceManager,

@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# A Dash0SignalControl resource that sets every field of spec.components.
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SignalControl
+metadata:
+  name: dash0-signal-control
+spec:
+  enabled: true
+  edgeProxy:
+    logLevel: debug
+    debug: true
+  components:
+    collector:
+      replicas: 1
+
+    edgeProxy:
+      replicas: 1
+      enablePprof: true

@@ -52,6 +52,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/allowlistreadycheck"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/componentsettings"
 	"github.com/dash0hq/dash0-operator/internal/controller"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
 	"github.com/dash0hq/dash0-operator/internal/postdelete"
@@ -1867,6 +1868,7 @@ func startDash0Controllers(
 			k8sClient,
 			nodeMetadataClient,
 			extraConfig,
+			extraConfigDefaults,
 			developmentMode,
 			cliArgs.featureSignalControlEnabled,
 			oTelColResourceManager,
@@ -1925,6 +1927,16 @@ func startDash0Controllers(
 		return err
 	}
 
+	componentSettingsConflictReporter := componentsettings.NewConflictReporter(
+		k8sClient,
+		extraConfig,
+		extraConfigDefaults,
+		cliArgs.featureSignalControlEnabled,
+		leaderElectionAwareRunnable,
+	)
+	extraConfigMapWatcher.AddClient(componentSettingsConflictReporter)
+	leaderElectionAwareRunnable.AddLeaderElectionClient(componentSettingsConflictReporter)
+
 	syntheticsWorkerManager, err := setupSyntheticsWorkerManager(
 		mgr,
 		k8sClient,
@@ -1961,6 +1973,7 @@ func startDash0Controllers(
 			scResourceManager,
 			nodeMetadataClient,
 			extraConfig,
+			extraConfigDefaults,
 		)
 		// Update the extra config in the Signal Control manager when the extra config map changes, and also trigger a
 		// reconciliation of the Signal Control resources.
@@ -1970,6 +1983,7 @@ func startDash0Controllers(
 			scManager,
 			collectorManager,
 		)
+		scReconciler.ComponentSettingsConflictReporter = componentSettingsConflictReporter
 		if err := scReconciler.SetupWithManager(mgr); err != nil {
 			return fmt.Errorf("unable to set up the Signal Control reconciler: %w", err)
 		}
@@ -2722,9 +2736,15 @@ func setupResourceWebhooks(
 		return fmt.Errorf("unable to create the operator configuration validation webhook: %w", err)
 	}
 	if signalControlEnabled {
-		if err := webhooks.NewSignalControlValidationWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
+		signalControlValidationWebhookHandler := webhooks.NewSignalControlValidationWebhookHandler(
+			k8sClient,
+			extraConfig,
+			extraConfigDefaults,
+		)
+		if err := signalControlValidationWebhookHandler.SetupWebhookWithManager(mgr); err != nil {
 			return fmt.Errorf("unable to create the Signal Control validation webhook: %w", err)
 		}
+		extraConfigMapWatcher.AddClient(signalControlValidationWebhookHandler)
 	}
 	if err := webhooks.NewMonitoringMutatingWebhookHandler(k8sClient, operatorNamespace).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the monitoring mutating webhook: %w", err)
