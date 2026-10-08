@@ -1041,8 +1041,8 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			)
 
 			It(
-				"fetches the existing dashboards only once when synchronizing all resources in a namespace, and only "+
-					"deletes dashboards that exist",
+				"synchronizeViaApiAndUpdateStatusWithOriginsInNamespace: fetches the existing dashboards only once, "+
+					"only deletes dashboards that exist",
 				func() {
 					EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
@@ -1101,7 +1101,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			)
 
 			It(
-				"tries to fetch the existing dashboards only once when synchronizing all resources in a namespace, and "+
+				"synchronizeViaApiAndUpdateStatusWithOriginsInNamespace: tries to fetch the existing dashboards only once, "+
 					"records an error and does not send DELETE requests if fetching them fails",
 				func() {
 					EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
@@ -1147,8 +1147,8 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			)
 
 			It(
-				"fetches the existing dashboards only once when a namespace-wide resync is triggered, and only deletes "+
-					"dashboards that exist",
+				"synchronizeNamespacedResources: fetches the existing dashboards only once in a namespace-wide resync, "+
+					"only deletes dashboards that exist",
 				func() {
 					EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
@@ -1190,8 +1190,8 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			)
 
 			It(
-				"tries to fetch the existing dashboards only once when a namespace-wide resync is triggered and fetching "+
-					"them fails",
+				"synchronizeNamespacedResources: tries to fetch the existing dashboards only once in a namespace-wide "+
+					"resync when fetching them fails",
 				func() {
 					EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 

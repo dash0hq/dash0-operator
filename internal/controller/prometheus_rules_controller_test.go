@@ -1042,7 +1042,7 @@ var _ = Describe(
 				)
 
 				It(
-					"only deletes the rules that exist in Dash0 if labelled with dash0.com/enable=false",
+					"Update only deletes the rules that exist in Dash0 if labelled with dash0.com/enable=false",
 					func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
@@ -1088,7 +1088,7 @@ var _ = Describe(
 				)
 
 				It(
-					"records an error and does not send DELETE requests if the existing rules cannot be fetched",
+					"Create records an error and does not send DELETE requests if the existing rules cannot be fetched",
 					func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
@@ -1134,8 +1134,8 @@ var _ = Describe(
 				)
 
 				It(
-					"still creates check rules but does not delete orphaned rules if the existing rules cannot be fetched, "+
-						"and records the error",
+					"Create till creates check rules but does not delete orphaned rules if the existing rules cannot be "+
+						"fetched, and records the error",
 					func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
@@ -1177,8 +1177,8 @@ var _ = Describe(
 				)
 
 				It(
-					"fetches the existing rules only once when synchronizing all resources in a namespace, and only "+
-						"deletes rules that exist",
+					"synchronizeViaApiAndUpdateStatusWithOriginsInNamespace: fetches the existing rules only once "+
+						"for resources with sync disabled, only deletes rules that exist",
 					func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
@@ -1253,8 +1253,9 @@ var _ = Describe(
 				)
 
 				It(
-					"fetches the existing rules only once when updating all resources in a namespace, and only deletes "+
-						"rules that have been removed from the respective resource",
+					"synchronizeViaApiAndUpdateStatusWithOriginsInNamespace: fetches the existing rules only once "+
+						"for resources with sync enabled, only deletes rules that have been removed from the "+
+						"respective resource",
 					func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
@@ -1358,8 +1359,9 @@ var _ = Describe(
 				)
 
 				It(
-					"tries to fetch the existing rules only once when synchronizing all resources in a namespace, and "+
-						"records an error and does not send DELETE requests if fetching them fails",
+					"synchronizeViaApiAndUpdateStatusWithOriginsInNamespace: tries to fetch the existing rules "+
+						"only once for resources with sync disabled, records an error and does not send DELETE "+
+						"requests if fetching them fails",
 					func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
@@ -1408,8 +1410,8 @@ var _ = Describe(
 				)
 
 				It(
-					"tries to fetch the existing rules only once when updating all resources in a namespace, and still "+
-						"updates the rules if fetching them fails",
+					"synchronizeViaApiAndUpdateStatusWithOriginsInNamespace: tries to fetch the existing rules "+
+						"only once for resources with sync enabled, and still updates the rules if fetching them fails",
 					func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
@@ -1466,8 +1468,8 @@ var _ = Describe(
 				)
 
 				It(
-					"fetches the existing rules only once when a namespace-wide resync is triggered, and only deletes "+
-						"rules that exist",
+					"synchronizeNamespacedResources: fetches the existing rules only once when a namespace-wide "+
+						"resync is triggered, and only deletes rules that exist",
 					func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
@@ -1518,8 +1520,8 @@ var _ = Describe(
 				)
 
 				It(
-					"tries to fetch the existing rules only once when a namespace-wide resync is triggered and fetching "+
-						"them fails",
+					"synchronizeNamespacedResources: tries to fetch the existing rules only once when a "+
+						"namespace-wide resync is triggered and fetching them fails",
 					func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
