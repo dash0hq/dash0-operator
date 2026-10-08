@@ -4,9 +4,9 @@
 package controller
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,7 +35,7 @@ type NotificationChannelReconciler struct {
 	client.Client
 	pseudoClusterUid      types.UID
 	leaderElectionAware   util.LeaderElectionAware
-	httpClient            *http.Client
+	apiClientPool         *ApiClientPool
 	defaultApiConfigs     selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs  selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	initialSyncMutex      sync.Mutex
@@ -51,13 +52,13 @@ func NewNotificationChannelReconciler(
 	k8sClient client.Client,
 	pseudoClusterUid types.UID,
 	leaderElectionAware util.LeaderElectionAware,
-	httpClient *http.Client,
+	apiClientPool *ApiClientPool,
 ) *NotificationChannelReconciler {
 	return &NotificationChannelReconciler{
 		Client:               k8sClient,
 		pseudoClusterUid:     pseudoClusterUid,
 		leaderElectionAware:  leaderElectionAware,
-		httpClient:           httpClient,
+		apiClientPool:        apiClientPool,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
 		namespacedSyncMutex:  *selfmonitoringapiaccess.NewNamespaceMutex(),
@@ -112,8 +113,9 @@ func (r *NotificationChannelReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
+// HttpClient returns nil, the notification channel reconciler talks to the Dash0 API via the API client pool.
 func (r *NotificationChannelReconciler) HttpClient() *http.Client {
-	return r.httpClient
+	return nil
 }
 
 func (r *NotificationChannelReconciler) SetDefaultApiConfigs(
@@ -368,60 +370,80 @@ func (r *NotificationChannelReconciler) MapResourceToHttpRequests(
 		apiConfig.Endpoint,
 	)
 
-	var req *http.Request
-	var method string
-	var err error
-
+	var apiClientCall *ApiClientCall
 	switch action {
 	case upsertAction:
-		// Transform the CRD resource into the API payload format:
-		// - move spec.display.name → metadata.name (API expects display name there)
-		// - assemble the type-specific config (e.g. spec.slackConfig) into spec.config
-		resource := preconditionChecksResult.resource
-		prepareNotificationChannelApiPayload(resource)
-		serializedResource, _ := json.Marshal(resource)
-		requestPayload := bytes.NewBuffer(serializedResource)
-		method = http.MethodPut
-		req, err = http.NewRequest(
-			method,
-			notificationChannelUrl,
-			requestPayload,
-		)
+		notificationChannelDefinition, err := mapToNotificationChannelDefinition(preconditionChecksResult.resource)
+		if err != nil {
+			conversionErr := fmt.Errorf("unable to convert the notification channel to the Dash0 API format: %w", err)
+			logger.Error(conversionErr, "error converting notification channel")
+			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, conversionErr.Error())
+		}
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodPut,
+			Url:    notificationChannelUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				updatedNotificationChannel, err := apiClient.UpdateNotificationChannel(
+					ctx,
+					notificationChannelOrigin,
+					notificationChannelDefinition,
+				)
+				if err != nil {
+					return "", err
+				}
+				if updatedNotificationChannel == nil {
+					return "", errors.New("unexpected nil/empty response body")
+				}
+				return dash0apiclient.GetNotificationChannelID(updatedNotificationChannel), nil
+			},
+		}
 	case deleteAction:
-		method = http.MethodDelete
-		req, err = http.NewRequest(
-			method,
-			notificationChannelUrl,
-			nil,
-		)
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodDelete,
+			Url:    notificationChannelUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				return "", apiClient.DeleteNotificationChannel(ctx, notificationChannelOrigin)
+			},
+		}
 	default:
 		unknownActionErr := fmt.Errorf("unknown API action: %d", action)
 		logger.Error(unknownActionErr, "unknown API action")
 		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, unknownActionErr.Error())
 	}
 
-	if err != nil {
-		httpError := fmt.Errorf(
-			"unable to create a new HTTP request to synchronize the notification channel: %s %s: %w",
-			method,
-			notificationChannelUrl,
-			err,
-		)
-		logger.Error(httpError, "error creating http request")
-		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, httpError.Error())
-	}
-
-	addAuthorizationHeader(req, apiConfig.Token)
-	if action == upsertAction {
-		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
-	}
-
-	return NewResourceToRequestsResultSingleItemSuccess(
+	return NewResourceToRequestsResultSingleItemApiClientCall(
 		apiConfig,
-		req,
+		apiClientCall,
 		itemName,
 		notificationChannelOrigin,
 	)
+}
+
+// mapToNotificationChannelDefinition converts the notification channel resource to the typed notification channel
+// definition of the Dash0 API client. The resource is first transformed into the API payload format (see
+// prepareNotificationChannelApiPayload). Fields that the Dash0 API does not define for notification channels (for
+// example metadata.namespace, status, Kubernetes labels and annotations) are dropped.
+func mapToNotificationChannelDefinition(
+	resource map[string]any,
+) (*dash0apiclient.NotificationChannelDefinition, error) {
+	prepareNotificationChannelApiPayload(resource)
+	serializedResource, err := json.Marshal(resource)
+	if err != nil {
+		return nil, err
+	}
+	notificationChannelDefinition := &dash0apiclient.NotificationChannelDefinition{}
+	if err = json.Unmarshal(serializedResource, notificationChannelDefinition); err != nil {
+		return nil, err
+	}
+	return notificationChannelDefinition, nil
 }
 
 // prepareNotificationChannelApiPayload transforms the Kubernetes CRD resource map into the format expected by the

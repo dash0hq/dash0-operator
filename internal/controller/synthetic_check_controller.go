@@ -375,7 +375,7 @@ func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
 		if err != nil {
 			conversionErr := fmt.Errorf("unable to convert the synthetic check to the Dash0 API format: %w", err)
 			logger.Error(conversionErr, "error converting synthetic check")
-			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, conversionErr.Error())
+			return NewResourceToRequestsResultSingleItemConversionError(apiConfig, itemName, conversionErr.Error())
 		}
 		apiClientCall = &ApiClientCall{
 			Method: http.MethodPut,
