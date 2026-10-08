@@ -312,6 +312,10 @@ manually (that is, via kubectl, ArgoCD etc.).
 > `created-and-updated`.
 > See below for more information on the `instrumentWorkloads` modes.
 
+> **Note:** Deploying a Dash0 monitoring resource to the namespace of the Dash0 operator is not necessary and not
+> recommended. Collecting the operator's own telemetry is handled via
+> [self-monitoring](#operatorconfigurationresource.spec.selfMonitoring.enabled).
+
 For each namespace that you want to monitor with Dash0, enable monitoring by installing a Dash0 monitoring resource into
 that namespace:
 
@@ -722,7 +726,8 @@ The following namespaces will not be monitored by automatic namespace monitoring
 * `kube-public`
 * the namespace of the Dash0 operator
 
-You can deploy a monitoring resource to these namespaces manually though.
+You can deploy a monitoring resource to these namespaces manually though. Deploying one to the namespace of the Dash0
+operator is not recommended, see [Enable Dash0 Monitoring For a Namespace](#enable-dash0-monitoring-for-a-namespace).
 
 Automatically monitoring namespaces will be monitored with the following default settings:
 

@@ -83,8 +83,9 @@ type ResourceToRequestsResult struct {
 	// SynchronizationErrorStatusCodes maps an item name (the same keys as in SynchronizationErrors) to the HTTP status
 	// code that the Dash0 API returned for the failed synchronization attempt of that item, if the failure was caused
 	// by an unexpected HTTP response. The status code is 0 for transport-level errors (network errors, timeouts, or
-	// errors that occurred before an HTTP request was even sent) where no HTTP response was received. This is used to
-	// decide whether a failed synchronization should be retried (see SynchronizationRetryRunnable).
+	// errors that occurred before an HTTP request was even sent) where no HTTP response was received, and 400 for
+	// resources that cannot be converted to the Dash0 API format. This is used to decide whether a failed
+	// synchronization should be retried (see SynchronizationRetryRunnable).
 	SynchronizationErrorStatusCodes map[string]int
 	// validation issues that occurred while preparing the request
 	ValidationIssues map[string][]string
@@ -171,6 +172,19 @@ func NewResourceToRequestsResultSingleItemError(
 	errorMessage string,
 ) *ResourceToRequestsResult {
 	return NewResourceToRequestsResult(apiConfig, nil, nil, nil, map[string]string{itemName: errorMessage})
+}
+
+// NewResourceToRequestsResultSingleItemConversionError creates a result with a synchronization error for a resource that
+// cannot be converted to the Dash0 API format. The error is recorded with status code 400, since retrying will not fix
+// an invalid resource.
+func NewResourceToRequestsResultSingleItemConversionError(
+	apiConfig ApiConfig,
+	itemName string,
+	errorMessage string,
+) *ResourceToRequestsResult {
+	result := NewResourceToRequestsResultSingleItemError(apiConfig, itemName, errorMessage)
+	result.SynchronizationErrorStatusCodes = map[string]int{itemName: http.StatusBadRequest}
+	return result
 }
 
 func NewResourceToRequestsResultPreconditionError(apiConfig ApiConfig, errorMessage string) *ResourceToRequestsResult {
