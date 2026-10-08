@@ -381,4 +381,42 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 			reflect.TypeFor[dash0apiclient.AllQuietConfig](),
 		),
 	)
+
+	samplingConditionUnionReason := "a union in the API client which keeps the raw JSON, see sampling_rule_definition_roundtrip_test.go"
+	samplingConditionVariantReason := "the custom resource has one condition spec type for all condition kinds"
+
+	It("finds no unexpected drift between Dash0SamplingRule and the API client's sampling rule type", func() {
+		expectNoUnexpectedApiTypeDrift(
+			reflect.TypeFor[dash0v1alpha1.Dash0SamplingRuleSpec](),
+			reflect.TypeFor[dash0apiclient.SamplingSpec](),
+			map[string]string{
+				"conditions.kind": samplingConditionUnionReason,
+				"conditions.spec": samplingConditionUnionReason,
+			},
+			nil,
+		)
+	})
+
+	DescribeTable("finds no unexpected drift between the sampling rule condition and the API client's condition types",
+		func(clientType reflect.Type, allowedOnlyInCrd map[string]string) {
+			expectNoUnexpectedApiTypeDrift(
+				reflect.TypeFor[dash0v1alpha1.Dash0SamplingRuleCondition](),
+				clientType,
+				allowedOnlyInCrd,
+				nil,
+			)
+		},
+		Entry("probabilistic", reflect.TypeFor[dash0apiclient.SamplingConditionProbabilistic](), map[string]string{
+			"spec.ottl":       samplingConditionVariantReason,
+			"spec.conditions": samplingConditionVariantReason,
+		}),
+		Entry("ottl", reflect.TypeFor[dash0apiclient.SamplingConditionOttl](), map[string]string{
+			"spec.rate":       samplingConditionVariantReason,
+			"spec.conditions": samplingConditionVariantReason,
+		}),
+		Entry("and", reflect.TypeFor[dash0apiclient.SamplingConditionAnd](), map[string]string{
+			"spec.rate": samplingConditionVariantReason,
+			"spec.ottl": samplingConditionVariantReason,
+		}),
+	)
 })
