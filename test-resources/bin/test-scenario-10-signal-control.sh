@@ -97,6 +97,6 @@ fi
 
 deploy_dash0_api_sync_resources
 
-deploy_signal_control_resource
+deploy_signal_control_resource test-resources/customresources/dash0signalcontrol/dash0signalcontrol.yaml
 
 finish_scenario

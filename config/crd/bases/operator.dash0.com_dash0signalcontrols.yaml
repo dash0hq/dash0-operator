@@ -58,6 +58,39 @@ spec:
               dash0operation, dash0filter, dash0sampling processors, dash0redmetrics and dash0signaltometrics connectors)
               and optionally deploys the Edge Proxy.
             properties:
+              components:
+                description: |-
+                  Settings for the Signal Control workloads the operator manages. Every setting is optional. An absent setting keeps
+                  the value provided via the Helm chart, a present one replaces it. Replacing a custom Helm value with a different
+                  one causes a warning in the operator log and an admission warning.
+                properties:
+                  collector:
+                    description: Settings for the Signal Control collector Deployment.
+                    properties:
+                      replicas:
+                        description: |-
+                          The number of replicas of the Signal Control collector Deployment (Helm value
+                          operator.collectors.signalControlCollectorReplicas, default 2).
+                        format: int32
+                        minimum: 1
+                        type: integer
+                    type: object
+                  edgeProxy:
+                    description: Settings for the Edge Proxy Deployment.
+                    properties:
+                      enablePprof:
+                        description: |-
+                          Whether to enable pprof for the Edge Proxy pods (Helm value operator.signalControl.edgeProxy.enablePprof, default
+                          false). Only enable this if instructed by Dash0 support.
+                        type: boolean
+                      replicas:
+                        description: The number of Edge Proxy pods to run (Helm value
+                          operator.signalControl.edgeProxy.replicas, default 2).
+                        format: int32
+                        minimum: 1
+                        type: integer
+                    type: object
+                type: object
               controlPlaneApiEndpoint:
                 description: |-
                   The Dash0 API endpoint used by the dash0settingsonedge extension to fetch settings and rules (it queries

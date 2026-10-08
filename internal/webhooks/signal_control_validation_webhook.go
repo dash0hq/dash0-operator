@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"sync/atomic"
 	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
@@ -17,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
@@ -27,15 +29,34 @@ const (
 )
 
 type SignalControlValidationWebhookHandler struct {
-	Client client.Client
+	Client              client.Client
+	extraConfig         atomic.Pointer[util.ExtraConfig]
+	extraConfigDefaults util.ExtraConfig
 }
 
+// NewSignalControlValidationWebhookHandler creates the validation webhook handler for Signal Control resources. The
+// extra configuration and its defaults are used to warn about settings in spec.components that override a value
+// provided via the Helm chart.
 func NewSignalControlValidationWebhookHandler(
 	k8sClient client.Client,
+	extraConfig util.ExtraConfig,
+	extraConfigDefaults util.ExtraConfig,
 ) *SignalControlValidationWebhookHandler {
-	return &SignalControlValidationWebhookHandler{
-		Client: k8sClient,
+	h := &SignalControlValidationWebhookHandler{
+		Client:              k8sClient,
+		extraConfigDefaults: extraConfigDefaults,
 	}
+	h.extraConfig.Store(&extraConfig)
+	return h
+}
+
+// UpdateExtraConfig stores the updated extra config map, which spec.components is checked against.
+func (h *SignalControlValidationWebhookHandler) UpdateExtraConfig(
+	_ context.Context,
+	extraConfig util.ExtraConfig,
+	_ logd.Logger,
+) {
+	h.extraConfig.Store(&extraConfig)
 }
 
 func (h *SignalControlValidationWebhookHandler) SetupWebhookWithManager(mgr ctrl.Manager) error {
@@ -129,6 +150,10 @@ func (h *SignalControlValidationWebhookHandler) Handle(ctx context.Context, requ
 			logger.Warn("Rejecting Signal Control resource, invalid logEnrichment.groupingCacheExpiration.", "error", err)
 			return admission.Denied(err.Error())
 		}
+
+		check := util.CheckComponentSettings(
+			*h.extraConfig.Load(), h.extraConfigDefaults, signalControlResource.Spec.Components)
+		return componentSettingsCheckResponse(check)
 	}
 
 	return admission.Allowed("")

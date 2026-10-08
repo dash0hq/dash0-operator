@@ -65,6 +65,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 			k8sClient,
 			nodeMetadataClient,
 			util.ExtraConfigDefaults,
+			util.ExtraConfigDefaults,
 			false,
 			false,
 			oTelColResourceManager,
@@ -566,6 +567,49 @@ var _ = Describe("The collector manager", Ordered, func() {
 		})
 	})
 
+	Describe("when component settings are configured in the custom resources", func() {
+		BeforeEach(func() {
+			CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
+			scResource := &dash0v1alpha1.Dash0SignalControl{
+				ObjectMeta: metav1.ObjectMeta{Name: "dash0-signal-control-test"},
+				Spec: dash0v1alpha1.Dash0SignalControlSpec{
+					Enabled: ptr.To(true),
+					Components: &dash0v1alpha1.SignalControlComponents{
+						Collector: &dash0v1alpha1.SignalControlCollectorSettings{
+							Replicas: ptr.To(int32(3)),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, scResource)).To(Succeed())
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, scResource)
+			monitoringResource := EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, monitoringResource)
+		})
+
+		AfterEach(func() {
+			_, err := collectorManager.oTelColResourceManager.DeleteResources(ctx, util.ExtraConfigDefaults, logger)
+			Expect(err).ToNot(HaveOccurred())
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
+		})
+
+		It("should apply the settings of the custom resources instead of the Helm values", func() {
+			collectorManager = newCollectorManagerWithSignalControlEnabled()
+			fileConfig := util.ExtraConfigDefaults
+			fileConfig.SignalControlCollectorReplicas = 4
+			collectorManager.extraConfig.Store(&fileConfig)
+
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
+
+			signalControlCollector := VerifyResourceExists(
+				ctx, k8sClient, operatorNamespace, ExpectedSignalControlCollectorName, &appsv1.Deployment{},
+			).(*appsv1.Deployment)
+			Expect(signalControlCollector.Spec.Replicas).To(Equal(ptr.To(int32(3))))
+		})
+	})
+
 	Describe("when handling concurrent reconciliation requests", func() {
 		BeforeEach(func() {
 			CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
@@ -748,6 +792,7 @@ func newCollectorManagerWithSignalControlEnabled() *CollectorManager {
 	return NewCollectorManager(
 		k8sClient,
 		nodeMetadataClient,
+		util.ExtraConfigDefaults,
 		util.ExtraConfigDefaults,
 		false,
 		true,
