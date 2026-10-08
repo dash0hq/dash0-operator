@@ -73,9 +73,40 @@ custom resource definition for SLOs should match snapshot:
                         spec:
                           description: Spec is the SLI specification.
                           properties:
+                            description:
+                              maxLength: 1050
+                              type: string
                             ratioMetric:
-                              description: RatioMetric is a ratio-based SLI metric with a good and a total Prometheus source.
+                              description: RatioMetric is a ratio-based SLI metric.
                               properties:
+                                bad:
+                                  description: SLOMetricSourceWrapper wraps a metric source for use as the numerator or denominator of a ratio metric.
+                                  properties:
+                                    metricSource:
+                                      description: MetricSource is the underlying metric source.
+                                      properties:
+                                        spec:
+                                          description: Spec holds the data-source-specific query parameters (for Prometheus, a PromQL query).
+                                          properties:
+                                            query:
+                                              description: Query is the PromQL query used to compute the metric.
+                                              minLength: 1
+                                              type: string
+                                          required:
+                                            - query
+                                          type: object
+                                        type:
+                                          description: Type is the metric source type. Only "Prometheus" is supported.
+                                          enum:
+                                            - Prometheus
+                                          type: string
+                                      required:
+                                        - spec
+                                        - type
+                                      type: object
+                                  required:
+                                    - metricSource
+                                  type: object
                                 counter:
                                   description: |-
                                     Counter indicates whether the underlying metric is a monotonically increasing counter (true) or a gauge-like
@@ -109,6 +140,39 @@ custom resource definition for SLOs should match snapshot:
                                   required:
                                     - metricSource
                                   type: object
+                                raw:
+                                  description: SLOMetricSourceWrapper wraps a metric source for use as the numerator or denominator of a ratio metric.
+                                  properties:
+                                    metricSource:
+                                      description: MetricSource is the underlying metric source.
+                                      properties:
+                                        spec:
+                                          description: Spec holds the data-source-specific query parameters (for Prometheus, a PromQL query).
+                                          properties:
+                                            query:
+                                              description: Query is the PromQL query used to compute the metric.
+                                              minLength: 1
+                                              type: string
+                                          required:
+                                            - query
+                                          type: object
+                                        type:
+                                          description: Type is the metric source type. Only "Prometheus" is supported.
+                                          enum:
+                                            - Prometheus
+                                          type: string
+                                      required:
+                                        - spec
+                                        - type
+                                      type: object
+                                  required:
+                                    - metricSource
+                                  type: object
+                                rawType:
+                                  enum:
+                                    - success
+                                    - failure
+                                  type: string
                                 total:
                                   description: Total is the metric source counting all events.
                                   properties:
@@ -137,10 +201,10 @@ custom resource definition for SLOs should match snapshot:
                                   required:
                                     - metricSource
                                   type: object
-                              required:
-                                - good
-                                - total
                               type: object
+                              x-kubernetes-validations:
+                                - message: exactly one of good and total, bad and total, or raw must be set
+                                  rule: '(has(self.good) && has(self.total) ? 1 : 0) + (has(self.bad) && has(self.total) ? 1 : 0) + (has(self.raw) ? 1 : 0) == 1'
                           required:
                             - ratioMetric
                           type: object

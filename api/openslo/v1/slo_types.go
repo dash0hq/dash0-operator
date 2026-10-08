@@ -101,12 +101,18 @@ type SLOIndicatorMetadata struct {
 
 // SLOIndicatorSpec is the specification of an inline SLI. Only a ratioMetric is supported.
 type SLOIndicatorSpec struct {
-	// RatioMetric is a ratio-based SLI metric with a good and a total Prometheus source.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxLength=1050
+	Description string `json:"description,omitempty"`
+
+	// RatioMetric is a ratio-based SLI metric.
 	// +kubebuilder:validation:Required
 	RatioMetric SLORatioMetric `json:"ratioMetric"`
 }
 
-// SLORatioMetric is a ratio-based SLI metric. Dash0 supports the good + total shape.
+// SLORatioMetric is a ratio-based SLI metric.
+//
+// +kubebuilder:validation:XValidation:rule="(has(self.good) && has(self.total) ? 1 : 0) + (has(self.bad) && has(self.total) ? 1 : 0) + (has(self.raw) ? 1 : 0) == 1",message="exactly one of good and total, bad and total, or raw must be set"
 type SLORatioMetric struct {
 	// Counter indicates whether the underlying metric is a monotonically increasing counter (true) or a gauge-like
 	// value (false).
@@ -114,12 +120,22 @@ type SLORatioMetric struct {
 	Counter *bool `json:"counter,omitempty"`
 
 	// Good is the metric source counting good (successful) events.
-	// +kubebuilder:validation:Required
-	Good SLOMetricSourceWrapper `json:"good"`
+	// +kubebuilder:validation:Optional
+	Good *SLOMetricSourceWrapper `json:"good,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	Bad *SLOMetricSourceWrapper `json:"bad,omitempty"`
 
 	// Total is the metric source counting all events.
-	// +kubebuilder:validation:Required
-	Total SLOMetricSourceWrapper `json:"total"`
+	// +kubebuilder:validation:Optional
+	Total *SLOMetricSourceWrapper `json:"total,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	Raw *SLOMetricSourceWrapper `json:"raw,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Enum=success;failure
+	RawType string `json:"rawType,omitempty"`
 }
 
 // SLOMetricSourceWrapper wraps a metric source for use as the numerator or denominator of a ratio metric.

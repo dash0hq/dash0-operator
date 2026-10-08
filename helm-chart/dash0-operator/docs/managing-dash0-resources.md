@@ -1051,9 +1051,20 @@ The SLOs created by the operator will be in read-only mode in Dash0.
 The custom resource definition for SLOs can be found
 [here](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/templates/operator/custom-resource-definition-slos.yaml).
 The operator supports the Dash0 subset of [OpenSLO](https://openslo.com) v1: a single objective, an inline
-`ratioMetric` indicator over `good` and `total` Prometheus sources, `Occurrences` budgeting, and a rolling `28d`
-window, which is also the default when `timeWindow` is omitted.
-Queries must be bare PromQL vector selectors, so no `rate()` and no `sum()`.
+`ratioMetric` indicator over Prometheus sources, `Occurrences` budgeting, and a rolling `28d` window, which is also the
+default when `timeWindow` is omitted.
+The `ratioMetric` has exactly one of these shapes:
+
+* `good` and `total`: the share of good events.
+* `bad` and `total`: the share of bad events, which Dash0 turns into the share of good events.
+* `raw` with `rawType`: a precomputed ratio. Set `rawType` to `success` if the query returns good/total, or to
+  `failure` if it returns bad/total. Without `rawType`, Dash0 treats the ratio as `success`.
+
+With `good` or `bad` and `counter: true` (the default), queries must be bare PromQL vector selectors, so no `rate()`
+and no `sum()`.
+With `counter: false`, and always with `raw`, a query can be any PromQL expression that returns an instant vector.
+A `raw` query must return a single series with a value between 0 and 1, so aggregate it in the query if needed:
+Dash0 adds up the series, and a sum above 1 pins the SLI at 100%.
 See [Create SLOs](https://dash0.com/docs/dash0/monitoring/alerting/create-slos) for the full document format and
 [Manage SLOs as Code](https://dash0.com/docs/dash0/monitoring/alerting/manage-slos-as-code) for the other ways to
 apply it.
