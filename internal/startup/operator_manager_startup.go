@@ -520,7 +520,7 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 		&cliArgs.allowlistVersion,
 		"allowlist-version",
 		"",
-		"The version of the Dash0 operator allowlist to wait for (e.g. v1.0.3). Used with --allowlist-synchronizer-ready-check.",
+		"The version of the Dash0 operator allowlist to wait for (e.g. v1.0.4). Used with --allowlist-synchronizer-ready-check.",
 	)
 	fs.BoolVar(
 		&cliArgs.deleteAllowlistSynchronizer,
@@ -1831,6 +1831,7 @@ func startDash0Controllers(
 			OTelCollectorNamePrefix:                envVars.oTelCollectorNamePrefix,
 			TargetAllocatorNamePrefix:              envVars.targetAllocatorNamePrefix,
 			Agent0ConnectorEnabledViaHelm:          envVars.agent0ConnectorEnabled,
+			SyntheticsWorkerEnabledViaHelm:         envVars.syntheticsWorkerEnabled,
 			SendBatchSize:                          envVars.sendBatchSize,
 			SendBatchMaxSize:                       envVars.sendBatchMaxSize,
 			K8sAttributesDisableReplicasetInformer: envVars.k8sAttributesDisableReplicasetInformer,
@@ -1916,6 +1917,7 @@ func startDash0Controllers(
 		operatorDeploymentSelfReference,
 		clusterUid,
 		developmentMode,
+		cliArgs.isGkeAutopilot,
 		cliArgs.isOpenShift,
 	)
 	if err != nil {
@@ -1951,6 +1953,7 @@ func startDash0Controllers(
 			images.GetOperatorVersion(),
 			int32(cliArgs.otlpGrpcHostPort),
 			kubernetesApiServerVersionInfo,
+			cliArgs.isGkeAutopilot,
 			cliArgs.isOpenShift,
 		)
 		scManager = signalcontrol.NewSignalControlManager(
@@ -2014,7 +2017,7 @@ func startDash0Controllers(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err := notificationChannelReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the notification channel reconciler: %w", err)
@@ -2438,6 +2441,7 @@ func setupAgent0ConnectorManager(
 	operatorDeploymentSelfReference *appsv1.Deployment,
 	pseudoClusterUid types.UID,
 	developmentMode bool,
+	isGkeAutopilot bool,
 	isOpenShift bool,
 ) (*agent0connector.Agent0ConnectorManager, error) {
 	if !envVars.agent0ConnectorEnabled {
@@ -2453,6 +2457,7 @@ func setupAgent0ConnectorManager(
 		ServerAddress:     envVars.agent0ConnectorServerAddress,
 		Insecure:          envVars.agent0ConnectorInsecure,
 		Authorization:     agent0ConnectorAuthorization(envVars),
+		IsGkeAutopilot:    isGkeAutopilot,
 		IsOpenShift:       isOpenShift,
 		DevelopmentMode:   developmentMode,
 	}

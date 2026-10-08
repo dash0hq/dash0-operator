@@ -81,6 +81,7 @@ type CollectorConfig struct {
 	// config of the prometheus_receiver
 	TargetAllocatorNamePrefix              string
 	Agent0ConnectorEnabledViaHelm          bool
+	SyntheticsWorkerEnabledViaHelm         bool
 	SendBatchSize                          *uint32
 	SendBatchMaxSize                       *uint32
 	K8sAttributesDisableReplicasetInformer bool
@@ -165,6 +166,7 @@ type Agent0ConnectorConfig struct {
 	// value operator.agent0Connector.secretRef). It is passed to the workload via the DASH0_AGENT0_CONNECTOR_AUTH_TOKEN
 	// environment variable.
 	Authorization   dash0common.Authorization
+	IsGkeAutopilot  bool
 	IsOpenShift     bool
 	DevelopmentMode bool
 }

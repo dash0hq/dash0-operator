@@ -143,7 +143,9 @@ async function runAllTests(): Promise<void> {
       // problem for the test runner since this guard is specific to Docker Desktop's
       // classic image store. Log and proceed; any real engine misconfiguration will surface
       // on the subsequent `docker build`/`docker run` calls.
-      log('could not evaluate Docker driver status (engine is not Docker, or daemon unavailable); skipping containerd image-store check');
+      log(
+        'could not evaluate Docker driver status (engine is not Docker, or daemon unavailable); skipping containerd image-store check'
+      );
     }
   }
 
@@ -281,8 +283,6 @@ async function buildOrPullInstrumentationImage(): Promise<void> {
         }
       }
       log(`done: building instrumentation image for platform(s) ${dockerPlatforms} from local sources`);
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       log(error.stdout || error.message);
       process.exit(1);
@@ -473,8 +473,6 @@ function createBuildTestImageTask(testImage: TestImage): () => Promise<void> {
       log(
         `done: building test image "${imageNameTest}" for ${arch}/${runtime}/${baseImageBuild} with instrumentation image ${instrumentationImage}`,
       );
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       log(
         `! error: building test image "${imageNameTest}" for ${arch}/${runtime}/${baseImageBuild} with instrumentation image ${instrumentationImage} has failed, docker build command was\n${dockerBuildCmd}`,
@@ -691,7 +689,6 @@ function createRunTestCaseTask(
           log(dockerRunOutputStdErr);
         }
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       handleTestCaseError(`${archRuntimeBaseImagePrefix.padEnd(32)}\t`, testCase, testCmd.join(' '), [], error);
     }
@@ -700,7 +697,6 @@ function createRunTestCaseTask(
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function handleTestCaseError(prefix: string, testCase: string, testCmd: string, testArgs: string[], error: any) {
   let failureMode = 'FAIL';
   let failureModeSummary = 'failed';
@@ -790,13 +786,11 @@ function cleanupDockerContainerImages(): void {
     }
 
     unlinkSync(imagesFile);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  } catch (error) {
+  } catch {
     // Ignore cleanup errors
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function log(message?: any, ...optionalParams: any[]): void {
   console.log(`${new Date().toLocaleTimeString()}: ${message}`, ...optionalParams);
 }
