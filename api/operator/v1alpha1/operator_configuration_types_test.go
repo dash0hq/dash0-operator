@@ -5,6 +5,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 
@@ -64,6 +65,41 @@ var _ = Describe("v1alpha1 Dash0 operator configuration CRD", func() {
 
 			Expect(*redacted.Spec.Exports[0].Dash0.Authorization.Token).To(Equal("<redacted>"))
 			Expect(*original.Spec.Exports[0].Dash0.Authorization.Token).To(Equal("my-secret-token"))
+		})
+
+		It("should redact a synthetics-worker instance's literal authorization token", func() {
+			token := "my-secret-token"
+			original := Dash0OperatorConfiguration{
+				Spec: Dash0OperatorConfigurationSpec{
+					SyntheticsWorker: SyntheticsWorker{
+						Instances: []SyntheticsWorkerInstance{
+							{LocationID: "a", Authorization: &dash0common.Authorization{Token: &token}},
+						},
+					},
+				},
+			}
+
+			redacted := original.cloneAndRedact()
+
+			Expect(*redacted.Spec.SyntheticsWorker.Instances[0].Authorization.Token).To(Equal("<redacted>"))
+			Expect(*original.Spec.SyntheticsWorker.Instances[0].Authorization.Token).To(Equal("my-secret-token"))
+		})
+
+		It("should not redact a synthetics-worker instance that uses a SecretRef instead of a token", func() {
+			original := Dash0OperatorConfiguration{
+				Spec: Dash0OperatorConfigurationSpec{
+					SyntheticsWorker: SyntheticsWorker{
+						Instances: []SyntheticsWorkerInstance{
+							{LocationID: "a", Authorization: &dash0common.Authorization{SecretRef: new(SecretRefTest)}},
+						},
+					},
+				},
+			}
+
+			redacted := original.cloneAndRedact()
+
+			Expect(redacted.Spec.SyntheticsWorker.Instances[0].Authorization.Token).To(BeNil())
+			Expect(redacted.Spec.SyntheticsWorker.Instances[0].Authorization.SecretRef).ToNot(BeNil())
 		})
 
 		It("should drop the kubectl last-applied-configuration annotation, which may embed a plaintext token", func() {
@@ -175,6 +211,124 @@ var _ = Describe("v1alpha1 Dash0 operator configuration CRD", func() {
 			Expect(redacted.Spec.Exports[0].Grpc.Headers[0].ValueFrom).ToNot(BeNil())
 			Expect(redacted.Spec.Exports[0].Grpc.Headers[0].ValueFrom.SecretKeyRef.Name).To(Equal("my-secret"))
 			Expect(redacted.Spec.Exports[0].Grpc.Headers[0].ValueFrom.SecretKeyRef.Key).To(Equal("api-key"))
+		})
+	})
+
+	Describe("Agent0Connector#IsEnabled", func() {
+
+		DescribeTable("should require the Helm value and let the resource opt out",
+			func(enabled *bool, enabledViaHelm bool, expected bool) {
+				agent0Connector := Agent0Connector{Enabled: enabled}
+
+				Expect(agent0Connector.IsEnabled(enabledViaHelm)).To(Equal(expected))
+			},
+			Entry("unset, enabled via Helm: enabled", nil, true, true),
+			Entry("unset, disabled via Helm: disabled", nil, false, false),
+			Entry("explicitly true, enabled via Helm: enabled", ptr.To(true), true, true),
+			Entry("explicitly true, disabled via Helm: disabled, the Helm value is required",
+				ptr.To(true), false, false),
+			Entry("explicitly false, enabled via Helm: disabled, the resource opts out",
+				ptr.To(false), true, false),
+			Entry("explicitly false, disabled via Helm: disabled", ptr.To(false), false, false),
+		)
+	})
+
+	Describe("SetSyntheticsWorkerStatus readiness", func() {
+		var resource *Dash0OperatorConfiguration
+
+		BeforeEach(func() {
+			resource = &Dash0OperatorConfiguration{}
+		})
+
+		instance := func(locationID string, ready bool, readyReason string) SyntheticsWorkerInstanceStatus {
+			return SyntheticsWorkerInstanceStatus{
+				LocationID:  locationID,
+				Deployed:    true,
+				Ready:       ready,
+				ReadyReason: readyReason,
+			}
+		}
+
+		It("aggregates Ready=true when every instance is ready", func() {
+			resource.SetSyntheticsWorkerStatus([]SyntheticsWorkerInstanceStatus{
+				instance("a", true, "Ready"),
+				instance("b", true, "Ready"),
+			})
+			Expect(resource.Status.SyntheticsWorker.Ready).To(BeTrue())
+			Expect(resource.Status.SyntheticsWorker.ReadyReason).To(Equal("Ready"))
+		})
+
+		It("keeps a single instance's reason when only that instance is not ready", func() {
+			resource.SetSyntheticsWorkerStatus([]SyntheticsWorkerInstanceStatus{
+				instance("a", true, "Ready"),
+				instance("b", false, "NoReadyReplicas"),
+			})
+			Expect(resource.Status.SyntheticsWorker.Ready).To(BeFalse())
+			Expect(resource.Status.SyntheticsWorker.ReadyReason).To(Equal("NoReadyReplicas"))
+		})
+
+		It("reports PartiallyReady when instances are not ready for different reasons", func() {
+			resource.SetSyntheticsWorkerStatus([]SyntheticsWorkerInstanceStatus{
+				instance("a", false, "NoReadyReplicas"),
+				instance("b", false, "PartiallyReady"),
+			})
+			Expect(resource.Status.SyntheticsWorker.Ready).To(BeFalse())
+			Expect(resource.Status.SyntheticsWorker.ReadyReason).To(Equal("PartiallyReady"))
+		})
+
+		It("reports NoInstancesConfigured when there are no instances", func() {
+			resource.SetSyntheticsWorkerStatus(nil)
+			Expect(resource.Status.SyntheticsWorker.Ready).To(BeFalse())
+			Expect(resource.Status.SyntheticsWorker.ReadyReason).To(Equal("NoInstancesConfigured"))
+		})
+
+		It("reports changed only on a readiness transition, not on repeating the same outcome", func() {
+			Expect(resource.SetSyntheticsWorkerStatus([]SyntheticsWorkerInstanceStatus{
+				instance("a", false, "NoReadyReplicas"),
+			})).To(BeTrue())
+
+			Expect(resource.SetSyntheticsWorkerStatus([]SyntheticsWorkerInstanceStatus{
+				instance("a", false, "NoReadyReplicas"),
+			})).To(BeFalse())
+
+			Expect(resource.SetSyntheticsWorkerStatus([]SyntheticsWorkerInstanceStatus{
+				instance("a", true, "Ready"),
+			})).To(BeTrue())
+		})
+
+		It("reports changed when only readyReplicas/desiredReplicas/message differ, without any outcome transition",
+			func() {
+				Expect(resource.SetSyntheticsWorkerStatus([]SyntheticsWorkerInstanceStatus{
+					{LocationID: "a", Deployed: true, Ready: false, ReadyReason: "NoReadyReplicas", ReadyReplicas: 1, DesiredReplicas: 3},
+				})).To(BeTrue())
+
+				Expect(resource.SetSyntheticsWorkerStatus([]SyntheticsWorkerInstanceStatus{
+					{LocationID: "a", Deployed: true, Ready: false, ReadyReason: "NoReadyReplicas", ReadyReplicas: 2, DesiredReplicas: 3},
+				})).To(BeTrue())
+			})
+	})
+
+	Describe("aggregateSyntheticsWorkerDeployment", func() {
+		instance := func(locationID string, deployed bool, reason string) SyntheticsWorkerInstanceStatus {
+			return SyntheticsWorkerInstanceStatus{LocationID: locationID, Deployed: deployed, Reason: reason}
+		}
+
+		It("reports the single failing instance's reason when only that instance fails to deploy", func() {
+			deployed, reason, _ := aggregateSyntheticsWorkerDeployment([]SyntheticsWorkerInstanceStatus{
+				instance("a", true, "Deployed"),
+				instance("b", false, "NoAuthorizationToken"),
+			})
+			Expect(deployed).To(BeFalse())
+			Expect(reason).To(Equal("NoAuthorizationToken"))
+		})
+
+		It("reports PartiallyDeployed when instances fail to deploy for different reasons", func() {
+			deployed, reason, _ := aggregateSyntheticsWorkerDeployment([]SyntheticsWorkerInstanceStatus{
+				instance("a", false, "NoAuthorizationToken"),
+				instance("b", false, "OperatorMissingPermissions"),
+			})
+			Expect(deployed).To(BeFalse())
+			Expect(reason).To(Equal("PartiallyDeployed"))
 		})
 	})
 })

@@ -80,6 +80,9 @@ TEST_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
 TEST_APP_DOTNET_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-dotnet-test-app
 TEST_APP_DOTNET_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
 
+TEST_APP_DOTNET_8_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-dotnet-8-test-app
+TEST_APP_DOTNET_8_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
+
 TEST_APP_JVM_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-jvm-spring-boot-test-app
 TEST_APP_JVM_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
 
@@ -157,7 +160,7 @@ help: ## Display this help.
 
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
-	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./api/..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) rbac:roleName=manager-role crd:allowDangerousTypes=true webhook paths="./api/..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
@@ -179,7 +182,7 @@ go-fix: ## Run go fix against code.
 test: go-unit-tests helm-unit-tests ## Run all unit tests (Go, Helm chart unit tests).
 
 .PHONY: go-unit-tests
-go-unit-tests: common-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests ## Run the Go unit tests for all packages.
+go-unit-tests: common-package-unit-tests nodeuid-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests collector-telemetry-unit-tests ## Run the Go unit tests for all packages.
 
 .PHONY: operator-manager-unit-tests
 operator-manager-unit-tests: manifests generate fmt vet envtest ## Run the Go unit tests for the operator code.
@@ -193,9 +196,17 @@ endif
 common-package-unit-tests: ## Run the Go unit tests for the common package (code shared between operator manager and other images, i.e. config-reloader, filelogoffsetsync).
 	go test github.com/dash0hq/dash0-operator/images/pkg/common
 
+.PHONY: nodeuid-package-unit-tests
+nodeuid-package-unit-tests: ## Run the Go unit tests for the nodeuid package (shared between the operator manager, the other images, and the collector's internal-telemetry factory).
+	cd images/pkg/nodeuid && go test ./...
+
 .PHONY: agent0-connector-unit-tests
 agent0-connector-unit-tests: ## Run the Go unit tests for the agent0-connector image Go app.
-	cd images/agent0-connector/src && go test ./...
+	cd images/agent0-connector/src && go test -race ./...
+
+.PHONY: collector-telemetry-unit-tests
+collector-telemetry-unit-tests: ## Run the Go unit tests for the collector image's custom internal-telemetry factory.
+	cd images/collector/src/telemetry && go test ./...
 
 .PHONY: helm-unit-tests
 helm-unit-tests: ## Run the Helm chart unit tests.
@@ -218,6 +229,24 @@ ifdef GINKGO_FOCUS
 else
 	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v .
 endif
+
+# Validates every collector configuration the operator can render against the collector binary, which rejects settings
+# the OpenTelemetry collector project has removed or renamed. Requires the operator's custom collector image, build it
+# with `make image-collector` beforehand or point COLLECTOR_IMAGE at an existing image. The SignalControl Edge collector
+# image is not built in this repository: by default the test uses the image pinned in the Helm chart's values.yaml
+# (operator.signalControlCollectorImage) and pulls it if it is missing, since that is the image all users run. Set
+# SIGNAL_CONTROL_COLLECTOR_IMAGE_OVERRIDE to validate against a different one.
+.PHONY: collector-configs-validate
+collector-configs-validate: ## Validate the collector configurations the operator can render against their respective collector binaries.
+	@if ! docker image inspect $(COLLECTOR_IMAGE) > /dev/null 2>&1; then \
+	  echo "error: the collector image $(COLLECTOR_IMAGE) does not exist locally, build it via \`make image-collector\` or set COLLECTOR_IMAGE to an existing image."; \
+	  exit 1; \
+	fi
+	RUN_COLLECTOR_CONFIGS_VALIDATION=true \
+	DASH0_COLLECTOR_IMAGE=$(COLLECTOR_IMAGE) \
+	DASH0_SIGNAL_CONTROL_COLLECTOR_IMAGE=$(SIGNAL_CONTROL_COLLECTOR_IMAGE_OVERRIDE) \
+	go test ./internal/collectors/otelcolresources/ \
+	  -run TestCollectorConfigurationsAreAcceptedByTheCollector -count=1 -v
 
 GOLANGCI_LINT = $(shell pwd)/bin/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.13.1
@@ -252,6 +281,11 @@ go-mod-tidy: ## Run go mod tidy for all modules
 		dir=$$(dirname "$$f"); echo $$dir; \
 		(cd "$$dir" && GOBIN=$(LOCALBIN) go mod tidy); \
 	done < <(find . -maxdepth 5 -type f -name go.mod -print0)
+
+.PHONY: ginkgo-suite-check
+ginkgo-suite-check: ## Check whether every package with Ginkgo specs has a suite bootstrap.
+	@echo "-------------------------------- (verifying every package with Ginkgo specs has a suite bootstrap)"
+	./test-resources/bin/ginkgo-suite-check.sh
 
 .PHONY: internal-config-map-lint
 internal-config-map-lint: ## Verify config map templates for resources managed by the collector.
@@ -322,6 +356,7 @@ instrumentation-test-lint: npm-installed
 GO_VERSION_CHECK_GOMOD_DOCKERFILE_PAIRS := \
   dockerfile:go.mod:Dockerfile \
   dockerfile:images/agent0-connector/src/go.mod:images/agent0-connector/Dockerfile \
+  dockerfile:images/collector/src/telemetry/go.mod:images/collector/Dockerfile \
   dockerfile:images/configreloader/src/go.mod:images/configreloader/Dockerfile \
   dockerfile:images/filelogoffsetsync/src/go.mod:images/filelogoffsetsync/Dockerfile \
   dockerfile:test/e2e/control-plane-mock/go.mod:test/e2e/control-plane-mock/Dockerfile \
@@ -333,6 +368,7 @@ GO_VERSION_CHECK_GOMOD_DOCKERFILE_PAIRS := \
 # Pairs of go.mod files whose Go versions must be in sync, encoded as "gomod:<go.mod>:<go.mod>".
 GO_VERSION_CHECK_GOMOD_GOMOD_PAIRS := \
   gomod:go.mod:images/pkg/common/go.mod \
+  gomod:go.mod:images/pkg/nodeuid/go.mod \
   gomod:go.mod:test/e2e/go.mod \
   gomod:test/e2e/go.mod:test/e2e/pkg/shared/go.mod \
   gomod:test/e2e/pkg/shared/go.mod:test/e2e/otlp-sink/telemetrymatcher/go.mod
@@ -355,7 +391,7 @@ perses-crd-version-check: ## Check whether all references to the PersesDashboard
 	./test-resources/bin/perses-crd-version-check.sh
 
 .PHONY: lint
-lint: go-version-check golangci-lint internal-config-map-lint helm-chart-lint shellcheck-lint instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check ## Run all static code analysis checks (Go, Helm, shell scripts, etc.).
+lint: go-version-check golangci-lint ginkgo-suite-check internal-config-map-lint helm-chart-lint shellcheck-lint instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check ## Run all static code analysis checks (Go, Helm, shell scripts, etc.).
 
 .PHONY: lint-fix
 lint-fix: golangci-lint-fix
@@ -379,6 +415,7 @@ all-auxiliary-images: \
 PHONY: test-app-images
 test-app-images: \
   test-app-image-dotnet \
+  test-app-image-dotnet-8 \
   test-app-image-jvm \
   test-app-image-nodejs \
   test-app-image-python \
@@ -387,6 +424,10 @@ test-app-images: \
 .PHONY: test-app-image-dotnet
 test-app-image-dotnet: ## Build the .NET test application.
 	@$(call build_container_image,$(TEST_APP_DOTNET_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_IMAGE_TAG),test-resources/dotnet)
+
+.PHONY: test-app-image-dotnet-8
+test-app-image-dotnet-8: ## Build the .NET test application with .NET 8.
+	@$(call build_container_image,$(TEST_APP_DOTNET_8_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_8_IMAGE_TAG),test-resources/dotnet,,--build-arg base_image_build=mcr.microsoft.com/dotnet/sdk:8.0-bookworm-slim --build-arg base_image_run=mcr.microsoft.com/dotnet/aspnet:8.0-bookworm-slim)
 
 .PHONY: test-app-image-jvm
 test-app-image-jvm: ## Build the JVM test application.
@@ -441,6 +482,7 @@ push-all-auxiliary-images: \
 PHONY: push-test-app-images
 push-test-app-images: \
   push-test-app-image-dotnet \
+  push-test-app-image-dotnet-8 \
   push-test-app-image-jvm \
   push-test-app-image-nodejs \
   push-test-app-image-python \
@@ -449,6 +491,10 @@ push-test-app-images: \
 .PHONY: push-test-app-image-dotnet
 push-test-app-image-dotnet: ## Push the .NET test app image.
 	@$(call push_container_image,$(TEST_APP_DOTNET_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_IMAGE_TAG))
+
+.PHONY: push-test-app-image-dotnet-8
+push-test-app-image-dotnet-8: ## Push the .NET 8 test app image.
+	@$(call push_container_image,$(TEST_APP_DOTNET_8_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_8_IMAGE_TAG))
 
 .PHONY: push-test-app-image-jvm
 push-test-app-image-jvm: ## Push the JVM test app image.
@@ -520,6 +566,24 @@ proto-gen-agent0-connector:
 	    --go-grpc_out=. --go-grpc_opt=paths=source_relative \
 	    proto/outboundconnector.proto
 
+# Regenerates the gRPC bindings for the synthetics-worker part of the outbound-connector mock from its vendored proto
+# file. Not part of `make build` — run manually after re-vendoring the proto. Runs protoc in a container, so only
+# Docker is required on the host.
+.PHONY: proto-gen-outbound-connector-mock-synthetics
+proto-gen-outbound-connector-mock-synthetics:
+	@docker run --rm \
+	  -v "$(CURDIR)/test/e2e/outbound-connector-mock:/src" \
+	  -w /src \
+	  golang:1.27.1-alpine3.24 \
+	  sh -c 'apk add --no-cache protobuf protobuf-dev > /dev/null && \
+	    go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.10 && \
+	    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1 && \
+	    protoc \
+	      --go_out=. --go_opt=paths=source_relative \
+	      --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+	      proto/synthetictasks.proto && \
+	    chown $(shell id -u):$(shell id -g) proto/synthetictasks.pb.go proto/synthetictasks_grpc.pb.go'
+
 .PHONY: push-telemetry-matcher-image
 push-telemetry-matcher-image: ## Push the telemetry-matcher container image.
 	@$(call push_container_image,$(TELEMETRY_MATCHER_IMAGE_REPOSITORY),$(TELEMETRY_MATCHER_IMAGE_TAG))
@@ -546,6 +610,7 @@ $(eval $@_IMAGE_REPOSITORY = $(1))
 $(eval $@_IMAGE_TAG = $(2))
 $(eval $@_CONTEXT = $(3))
 $(eval $@_DOCKERFILE = $(4))
+$(eval $@_EXTRA_BUILD_ARGS = $(5))
 dockerfile=$($@_DOCKERFILE);                                                                     \
 if [[ -z $$dockerfile ]]; then                                                                   \
   dockerfile=$($@_CONTEXT)/Dockerfile;                                                           \
@@ -553,6 +618,9 @@ fi;                                                                             
 build_cmd="$(CONTAINER_TOOL) build";                                                             \
 if [[ -n "$(IMAGE_PLATFORMS)" ]]; then                                                           \
   build_cmd="$$build_cmd --platform $(IMAGE_PLATFORMS)";                                         \
+fi;                                                                                              \
+if [[ -n "$($@_EXTRA_BUILD_ARGS)" ]]; then                                                       \
+  build_cmd="$$build_cmd $($@_EXTRA_BUILD_ARGS)";                                                \
 fi;                                                                                              \
 build_cmd="$$build_cmd -t $($@_IMAGE_REPOSITORY):$($@_IMAGE_TAG) -f $$dockerfile $($@_CONTEXT)"; \
 echo "$$build_cmd";                                                                              \
@@ -569,7 +637,7 @@ image-instrumentation: ## Build the instrumentation image.
 
 .PHONY: image-collector
 image-collector: ## Build the OpenTelemetry collector container image.
-	@$(call build_container_image,$(COLLECTOR_IMAGE_REPOSITORY),$(COLLECTOR_IMAGE_TAG),images/collector)
+	@$(call build_container_image,$(COLLECTOR_IMAGE_REPOSITORY),$(COLLECTOR_IMAGE_TAG),images,images/collector/Dockerfile)
 
 .PHONY: image-config-reloader
 image-config-reloader: ## Build the config reloader container image.

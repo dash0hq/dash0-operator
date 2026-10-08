@@ -8,12 +8,22 @@ on:
 
 jobs:
   check-and-update:
-    name: check for new available OpenTelemetry collector components  and update the builder config
+    name: check for new available OpenTelemetry collector components and update the builder config
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Required to update the collector modules of the custom internal-telemetry factory, see
+      # .github/workflows/scripts/update-collector-components-check-and-bump-versions.sh.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            images/collector/src/telemetry/go.sum
 
       - name: check if open PR already exists
         id: open_pr_exists

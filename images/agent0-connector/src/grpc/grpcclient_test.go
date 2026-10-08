@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -19,10 +21,6 @@ import (
 	pb "github.com/dash0hq/dash0-operator/images/agent0-connector/proto"
 )
 
-func discardLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
-}
-
 func TestResolveAuthToken(t *testing.T) {
 	logger := discardLogger()
 	t.Setenv(authTokenEnvVarName, "agent0-connector-auth-token")
@@ -31,6 +29,66 @@ func TestResolveAuthToken(t *testing.T) {
 
 	if token != "agent0-connector-auth-token" {
 		t.Errorf("expected the auth token to be read from the environment variable, got %q", token)
+	}
+}
+
+func TestResolveServerAddress(t *testing.T) {
+	logger := discardLogger()
+
+	tests := []struct {
+		name     string
+		value    string
+		expected string
+	}{
+		{
+			name:     "keeps a plain host and port",
+			value:    "outbound-connector.eu-west-1.aws.dash0.com:4317",
+			expected: "outbound-connector.eu-west-1.aws.dash0.com:4317",
+		},
+		{
+			name:     "removes an https prefix",
+			value:    "https://outbound-connector.eu-west-1.aws.dash0.com:4317",
+			expected: "outbound-connector.eu-west-1.aws.dash0.com:4317",
+		},
+		{
+			name:     "removes an http prefix",
+			value:    "http://host.docker.internal:8022",
+			expected: "host.docker.internal:8022",
+		},
+		{
+			name:     "removes a prefix written in upper case",
+			value:    "HTTPS://outbound-connector.eu-west-1.aws.dash0.com",
+			expected: "outbound-connector.eu-west-1.aws.dash0.com",
+		},
+		{
+			name:     "removes a trailing slash",
+			value:    "https://outbound-connector.eu-west-1.aws.dash0.com:443/",
+			expected: "outbound-connector.eu-west-1.aws.dash0.com:443",
+		},
+		{
+			name:     "removes a path, a query and a fragment",
+			value:    "https://outbound-connector.eu-west-1.aws.dash0.com:443/v1/commands?foo=bar#baz",
+			expected: "outbound-connector.eu-west-1.aws.dash0.com:443",
+		},
+		{
+			name:     "keeps a gRPC target with a scheme of its own",
+			value:    "dns:///outbound-connector.eu-west-1.aws.dash0.com:443",
+			expected: "dns:///outbound-connector.eu-west-1.aws.dash0.com:443",
+		},
+		{
+			name:     "keeps a host that merely starts with the letters of a prefix",
+			value:    "https-endpoint.dash0.com:443",
+			expected: "https-endpoint.dash0.com:443",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv(serverAddressEnvVarName, test.value)
+			if serverAddress := resolveServerAddress(logger); serverAddress != test.expected {
+				t.Errorf("expected the server address %q to resolve to %q, got %q", test.value, test.expected, serverAddress)
+			}
+		})
 	}
 }
 
@@ -221,14 +279,13 @@ func startListeningWithContext(
 ) <-chan error {
 	listenDone := make(chan error, 1)
 	go func() {
-		listenDone <- listenToCommandRequests(
-			ctx,
-			logger,
-			stream,
-			"/tmp",
-			maxConcurrentCommands,
-			execute,
-		)
+		subscriber := &Subscriber{
+			kubectlTmpDir:          "/tmp",
+			maxConcurrentCommands:  maxConcurrentCommands,
+			allowedKubectlCommands: allowOnlyGet(),
+			execute:                execute,
+		}
+		listenDone <- subscriber.listenToCommandRequests(ctx, logger, stream)
 	}()
 	return listenDone
 }
@@ -313,6 +370,7 @@ func TestListenToCommandRequests(t *testing.T) {
 			ctx context.Context,
 			_ *slog.Logger,
 			_ string,
+			_ kubectl.AllowedKubectlCommands,
 			req *pb.CommandRequest,
 		) *pb.CommandResponse {
 			if req.GetRequestId() == "slow-1" {
@@ -370,6 +428,7 @@ func TestListenToCommandRequests(t *testing.T) {
 			_ context.Context,
 			_ *slog.Logger,
 			_ string,
+			_ kubectl.AllowedKubectlCommands,
 			req *pb.CommandRequest,
 		) *pb.CommandResponse {
 			current := running.Add(1)
@@ -434,6 +493,7 @@ func TestListenToCommandRequestsAbortsRunningCommands(t *testing.T) {
 			ctx context.Context,
 			_ *slog.Logger,
 			_ string,
+			_ kubectl.AllowedKubectlCommands,
 			req *pb.CommandRequest,
 		) *pb.CommandResponse {
 			if req.GetRequestId() == "blocked-1" {
@@ -477,6 +537,7 @@ func TestListenToCommandRequestsAbortsRunningCommands(t *testing.T) {
 			execCtx context.Context,
 			_ *slog.Logger,
 			_ string,
+			_ kubectl.AllowedKubectlCommands,
 			req *pb.CommandRequest,
 		) *pb.CommandResponse {
 			close(longStarted)
@@ -523,4 +584,207 @@ func TestResolveMaxConcurrentCommands(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestWorkerSurvivesAPanickingExecutor pins the boundary around the command executor: the workers run in goroutines of
+// their own, where an unrecovered panic would end the process and every command in flight with it.
+func TestWorkerSurvivesAPanickingExecutor(t *testing.T) {
+	logger := discardLogger()
+
+	t.Run("answers the request that panicked and keeps taking the next one", func(t *testing.T) {
+		stream := &fakeStream{requests: []*pb.CommandRequest{
+			{RequestId: "req-panics", Command: "kubectl", Arguments: []string{"get", "pods"}},
+			{RequestId: "req-succeeds", Command: "kubectl", Arguments: []string{"get", "pods"}},
+		}}
+		execute := func(
+			_ context.Context,
+			_ *slog.Logger,
+			_ string,
+			_ kubectl.AllowedKubectlCommands,
+			req *pb.CommandRequest,
+		) *pb.CommandResponse {
+			if req.GetRequestId() == "req-panics" {
+				panic("the redaction walk fell over")
+			}
+			return &pb.CommandResponse{RequestId: req.GetRequestId(), Stdout: "fine"}
+		}
+
+		// A single worker, so that the second request is necessarily handled by the one that just panicked.
+		if err := listen(t, logger, stream, 1, execute); err != nil {
+			t.Fatalf("expected a nil error on clean stream close, got %v", err)
+		}
+
+		sent := stream.sentResponses()
+		if !slices.Equal(requestIDs(sent), []string{"req-panics", "req-succeeds"}) {
+			t.Fatalf("expected both requests to be answered, got %v", requestIDs(sent))
+		}
+		for _, resp := range sent {
+			if resp.GetRequestId() != "req-panics" {
+				continue
+			}
+			if resp.GetStdout() != "" {
+				t.Errorf("expected no output for the request that panicked, got %q", resp.GetStdout())
+			}
+			if resp.GetExitCode() != exitCodePanicked {
+				t.Errorf("expected exit code %d, got %d", exitCodePanicked, resp.GetExitCode())
+			}
+			if !strings.Contains(resp.GetStderr(), "could not execute the command") {
+				t.Errorf("expected an explanation on stderr, got %q", resp.GetStderr())
+			}
+		}
+	})
+
+	t.Run("does not hand out the output the executor had produced before it panicked", func(t *testing.T) {
+		stream := &fakeStream{requests: []*pb.CommandRequest{
+			{RequestId: "req-half-redacted", Command: "kubectl", Arguments: []string{"get", "pods", "-o", "json"}},
+		}}
+		execute := func(
+			_ context.Context,
+			_ *slog.Logger,
+			_ string,
+			_ kubectl.AllowedKubectlCommands,
+			resp *pb.CommandRequest,
+		) *pb.CommandResponse {
+			// What a panic in the middle of the redaction walk leaves behind: a response that still holds the
+			// credential the walk had not reached yet.
+			_ = resp
+			panic("panicked while holding my-unredacted-token")
+		}
+
+		if err := listen(t, logger, stream, 1, execute); err != nil {
+			t.Fatalf("expected a nil error on clean stream close, got %v", err)
+		}
+
+		sent := stream.sentResponses()
+		if len(sent) != 1 {
+			t.Fatalf("expected one response, got %d", len(sent))
+		}
+		if strings.Contains(sent[0].GetStdout(), "my-unredacted-token") ||
+			strings.Contains(sent[0].GetStderr(), "my-unredacted-token") {
+			t.Errorf("expected the panic value to be kept out of the response, got %v", sent[0])
+		}
+	})
+}
+
+func TestResolveAllowedKubectlCommands(t *testing.T) {
+	exitRecorder := mockExit(t)
+	t.Setenv(kubectl.AllowedKubectlCommandsEnvVarName, " logs, get ")
+	if got := resolveAllowedKubectlCommands(discardLogger()).String(); got != "get,logs" {
+		t.Errorf("expected the allowed kubectl commands from the environment variable, got %q", got)
+	}
+	exitRecorder.assertNotExited(t)
+}
+
+func TestNewSubscriberTerminatesOnMissingOrInvalidValues(t *testing.T) {
+	tests := []struct {
+		name          string
+		envVarName    string
+		value         *string
+		expectedError string
+	}{
+		{name: "server address is not set", envVarName: serverAddressEnvVarName,
+			expectedError: "the server address environment variable is not set"},
+		{name: "server address has no host", envVarName: serverAddressEnvVarName, value: new("https://"),
+			expectedError: "the server address environment variable has no host"},
+		{name: "cluster UID is not set", envVarName: clusterUidEnvVarName,
+			expectedError: "the cluster UID environment variable is not set"},
+		{name: "auth token is not set", envVarName: authTokenEnvVarName,
+			expectedError: "the authorization token environment variable is not set"},
+		{name: "kubectl tmp directory is not set", envVarName: kubectl.KubectlTmpEnvVarName,
+			expectedError: "the kubectl tmp directory environment variable is not set"},
+		{name: "allowed kubectl commands are not set", envVarName: kubectl.AllowedKubectlCommandsEnvVarName,
+			expectedError: "is not set or empty"},
+		{name: "allowed kubectl commands are empty", envVarName: kubectl.AllowedKubectlCommandsEnvVarName,
+			value: new(""), expectedError: "is not set or empty"},
+		{name: "allowed kubectl commands contain an empty entry", envVarName: kubectl.AllowedKubectlCommandsEnvVarName,
+			value: new("get,,logs"), expectedError: "contains an empty entry"},
+		{name: "allowed kubectl commands contain unsupported commands",
+			envVarName:    kubectl.AllowedKubectlCommandsEnvVarName,
+			value:         new("get,describe,delete"),
+			expectedError: "contains kubectl commands that the agent0-connector does not support: describe, delete"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setValidSubscriberEnvironment(t)
+			if tt.value != nil {
+				t.Setenv(tt.envVarName, *tt.value)
+			} else if err := os.Unsetenv(tt.envVarName); err != nil {
+				t.Fatal(err)
+			}
+			exitRecorder := mockExit(t)
+			var logOutput strings.Builder
+
+			NewSubscriber(slog.New(slog.NewTextHandler(&logOutput, nil)))
+
+			exitRecorder.assertExitedOnce(t, 1)
+			if !strings.Contains(logOutput.String(), "level=ERROR") ||
+				!strings.Contains(logOutput.String(), tt.expectedError) {
+				t.Errorf("expected an error log containing %q, got:\n%s", tt.expectedError, logOutput.String())
+			}
+		})
+	}
+}
+
+func TestNewSubscriberDoesNotTerminateWithAValidEnvironment(t *testing.T) {
+	setValidSubscriberEnvironment(t)
+	exitRecorder := mockExit(t)
+
+	NewSubscriber(discardLogger())
+
+	exitRecorder.assertNotExited(t)
+}
+
+// setValidSubscriberEnvironment sets every environment variable that NewSubscriber requires to a valid value. t.Setenv
+// restores the original values when the test ends, which also covers variables that the test unsets afterwards.
+func setValidSubscriberEnvironment(t *testing.T) {
+	t.Helper()
+	t.Setenv(serverAddressEnvVarName, "outbound-connector.eu-west-1.aws.dash0.com:4317")
+	t.Setenv(clusterUidEnvVarName, "cluster-uid")
+	t.Setenv(authTokenEnvVarName, "agent0-connector-auth-token")
+	t.Setenv(kubectl.KubectlTmpEnvVarName, "/tmp")
+	t.Setenv(kubectl.AllowedKubectlCommandsEnvVarName, "get")
+}
+
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func allowOnlyGet() kubectl.AllowedKubectlCommands {
+	allowed, err := kubectl.ParseAllowedKubectlCommands("get")
+	if err != nil {
+		panic(err)
+	}
+	return allowed
+}
+
+// exitRecorder records the calls of the exit function that mockExit installs.
+type exitRecorder struct {
+	exitCodes []int
+}
+
+// mockExit replaces exit with a function that records its calls instead of terminating the test process, and restores
+// the original function when the test ends.
+func mockExit(t *testing.T) *exitRecorder {
+	t.Helper()
+	recorder := &exitRecorder{}
+	original := exit
+	exit = func(exitCode int) {
+		recorder.exitCodes = append(recorder.exitCodes, exitCode)
+	}
+	t.Cleanup(func() { exit = original })
+	return recorder
+}
+
+func (r *exitRecorder) assertExitedOnce(t *testing.T, expectedExitCode int) {
+	t.Helper()
+	if !slices.Equal(r.exitCodes, []int{expectedExitCode}) {
+		t.Errorf("expected the process to exit once with exit code %d, got the exit codes %v", expectedExitCode, r.exitCodes)
+	}
+}
+
+func (r *exitRecorder) assertNotExited(t *testing.T) {
+	t.Helper()
+	if len(r.exitCodes) > 0 {
+		t.Errorf("expected the process to not exit, but it exited with the exit codes %v", r.exitCodes)
+	}
 }

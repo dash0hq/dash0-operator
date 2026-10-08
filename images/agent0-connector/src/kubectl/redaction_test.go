@@ -16,7 +16,7 @@ import (
 )
 
 //nolint:lll
-func TestResponseCanContainSecrets(t *testing.T) {
+func TestResponseHasToBeRedacted(t *testing.T) {
 	tests := []struct {
 		name      string
 		arguments []string
@@ -60,19 +60,29 @@ func TestResponseCanContainSecrets(t *testing.T) {
 		{name: "events do not reference the resource positionally", arguments: []string{"events", "--for", "dash0monitoring/my-resource"}, expected: false},
 		{name: "workload table output has no resource content", arguments: []string{"get", "deployments", "-o", "wide"}, expected: false},
 		{name: "config map table output has no resource content", arguments: []string{"get", "configmaps", "-o", "wide"}, expected: false},
-		{name: "a resource named like a config map is not a resource type", arguments: []string{"get", "services", "cm", "-o", "yaml"}, expected: false},
-		{name: "other resources are unaffected", arguments: []string{"get", "services", "-o", "yaml"}, expected: false},
-		{name: "Dash0 resource types without secrets are unaffected", arguments: []string{"get", "dash0views,dash0teams,dash0samplingrules", "-o", "yaml"}, expected: false},
-		{name: "a resource named like a Dash0 resource is not a resource type", arguments: []string{"get", "services", "dash0monitorings", "-o", "yaml"}, expected: false},
-		{name: "a namespace named like a Dash0 resource is not a resource type", arguments: []string{"get", "services", "-n", "dash0monitorings", "-o", "yaml"}, expected: false},
-		{name: "a resource named like a workload type is not a resource type", arguments: []string{"get", "services", "deployments", "-o", "yaml"}, expected: false},
 		{name: "no kubectl command", arguments: []string{"--help"}, expected: false},
+
+		// Any resource can hold a credential, so a response the connector can parse is walked whatever type it renders.
+		{name: "other resources as yaml", arguments: []string{"get", "services", "-o", "yaml"}, expected: true},
+		{name: "other resources as json", arguments: []string{"get", "nodes", "-o", "json"}, expected: true},
+		{name: "third-party custom resources granted by the default RBAC", arguments: []string{"get", "persesdashboards", "-o", "yaml"}, expected: true},
+		{name: "Dash0 resource types without credential fields", arguments: []string{"get", "dash0views,dash0teams,dash0samplingrules", "-o", "yaml"}, expected: true},
+		{name: "a resource named like a Dash0 resource", arguments: []string{"get", "services", "dash0monitorings", "-o", "yaml"}, expected: true},
+
+		// kubectl applies the last occurrence of a repeated output format.
+		{name: "repeated output format (identical)", arguments: []string{"get", "dash0monitorings", "-o", "yaml", "-o", "yaml"}, expected: true},
+		{name: "repeated output format (different, needs redaction)", arguments: []string{"get", "dash0monitorings", "-o", "wide", "-o", "yaml"}, expected: true},
+		{name: "repeated output format (different, needs no redaction)", arguments: []string{"get", "dash0monitorings", "-o", "yaml", "-o", "wide"}, expected: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := responseCanContainSecrets(parseKubectlArguments(tt.arguments)); got != tt.expected {
-				t.Errorf("expected responseCanContainSecrets=%t, got %t", tt.expected, got)
+			parsed, err := parseKubectlArguments(tt.arguments)
+			if err != nil {
+				t.Fatalf("expected the arguments to be parsed, but got an error: %v", err)
+			}
+			if got := responseHasToBeRedacted(parsed); got != tt.expected {
+				t.Errorf("expected responseHasToBeRedacted=%t, got %t", tt.expected, got)
 			}
 		})
 	}
@@ -90,7 +100,7 @@ func redactDocumentAs(t *testing.T, document string, format string) (string, []s
 	t.Helper()
 
 	var parsed any
-	if err := json.Unmarshal([]byte(document), &parsed); err != nil {
+	if err := unmarshalPreservingNumbers(document, &parsed); err != nil {
 		t.Fatalf("cannot parse the test document: %v", err)
 	}
 	redacted := &redactor{values: make(map[string]struct{})}
@@ -379,6 +389,316 @@ func nestedObject(t *testing.T, node map[string]any, path ...string) map[string]
 	return node
 }
 
+// TestRedactNestedAnnotations covers the annotations that do not sit on the resource the response lists, but deeper in
+// the document: on the pod template of a workload, or on a resource nested in a list. A tool embeds the same verbatim
+// copy of a manifest there that "kubectl apply" embeds on the resource itself.
+func TestRedactNestedAnnotations(t *testing.T) {
+	const podTemplateToken = "auth_pod-template-annotation-token"
+	const nestedListToken = "auth_nested-list-annotation-token"
+	const document = `{
+    "apiVersion": "v1",
+    "kind": "List",
+    "items": [
+        {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": {
+                "name": "my-deployment"
+            },
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "my-tool/applied": "{\"spec\":{\"exports\":[{\"dash0\":{\"authorization\":{\"token\":\"` +
+		podTemplateToken + `\"}}}]}}"
+                        }
+                    },
+                    "spec": {
+                        "containers": [
+                            {
+                                "name": "app"
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "List",
+            "items": [
+                {
+                    "apiVersion": "operator.dash0.com/v1beta1",
+                    "kind": "Dash0Monitoring",
+                    "metadata": {
+                        "name": "nested",
+                        "annotations": {
+                            "kubectl.kubernetes.io/last-applied-configuration":
+                                "{\"spec\":{\"exports\":[{\"dash0\":{\"authorization\":{\"token\":\"` +
+		nestedListToken + `\"}}}]}}"
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}`
+
+	rendered, _ := redactDocument(t, document)
+
+	for _, token := range []string{podTemplateToken, nestedListToken} {
+		if strings.Contains(rendered, token) {
+			t.Errorf("expected the token %q of a nested annotation to be redacted, got %q", token, rendered)
+		}
+	}
+	if !strings.Contains(rendered, "my-deployment") {
+		t.Errorf("expected the rest of the document to be preserved, got %q", rendered)
+	}
+}
+
+// TestRedactYamlAnnotations covers an annotation whose value is a YAML document rather than a JSON one. Not every tool
+// embeds its copy of a manifest as JSON the way kubectl apply does, and a credential in such a copy is no less a
+// credential.
+func TestRedactYamlAnnotations(t *testing.T) {
+	const yamlAnnotationToken = "auth_yaml-annotation-token"
+	const document = `{
+    "apiVersion": "operator.dash0.com/v1beta1",
+    "kind": "Dash0Monitoring",
+    "metadata": {
+        "name": "my-monitoring",
+        "annotations": {
+            "my-tool/applied": "spec:\n  exports:\n    - dash0:\n        authorization:\n          token: ` +
+		yamlAnnotationToken + `\n",
+            "my-tool/revision": "17",
+            "my-tool/managed-by": "my-tool"
+        }
+    }
+}`
+
+	rendered, _ := redactDocument(t, document)
+
+	if strings.Contains(rendered, yamlAnnotationToken) {
+		t.Errorf("expected the token of a YAML-valued annotation to be redacted, got %q", rendered)
+	}
+	if !strings.Contains(rendered, redactedValue) {
+		t.Errorf("expected the redacted YAML annotation to hold the placeholder, got %q", rendered)
+	}
+	for _, untouched := range []string{`"my-tool/revision": "17"`, `"my-tool/managed-by": "my-tool"`} {
+		if !strings.Contains(rendered, untouched) {
+			t.Errorf("expected the annotation %s to be handed out unchanged, got %q", untouched, rendered)
+		}
+	}
+}
+
+// TestRedactWorkloadCommandLines covers the command line of a container, which can carry a credential the same way an
+// environment variable can.
+func TestRedactWorkloadCommandLines(t *testing.T) {
+	const document = `{
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+        "name": "my-pod"
+    },
+    "spec": {
+        "containers": [
+            {
+                "name": "app",
+                "image": "app:1.0.0",
+                "command": ["/bin/sh", "-c"],
+                "args": ["exporter --api-key=my-command-line-secret"],
+                "livenessProbe": {
+                    "exec": {
+                        "command": ["check", "--token=my-probe-command-secret"]
+                    }
+                }
+            }
+        ]
+    }
+}`
+
+	rendered, replaced := redactDocument(t, document)
+
+	for _, value := range []string{"my-command-line-secret", "my-probe-command-secret", "/bin/sh"} {
+		if strings.Contains(rendered, value) {
+			t.Errorf("expected the command line element %q to be redacted, got %q", value, rendered)
+		}
+	}
+	// The rest of the container stays readable, which is what makes the response useful for diagnosing it.
+	for _, preserved := range []string{"my-pod", "app:1.0.0"} {
+		if !strings.Contains(rendered, preserved) {
+			t.Errorf("expected %q to be preserved, got %q", preserved, rendered)
+		}
+	}
+	// The elements are replaced in the document only. Scrubbing them from stderr as well would replace ordinary words
+	// in unrelated output, see redactArgumentValues.
+	if len(replaced) > 0 {
+		t.Errorf("expected no command line element to be scrubbed from stderr, got %v", replaced)
+	}
+}
+
+// TestRedactNonStringCredentialValues covers a credential that is written without quotes and is therefore not a string
+// in the parsed document. The walk reaches documents no schema validates - the parsed content of a config map value,
+// the copy of a manifest in an annotation, a custom resource that preserves unknown fields - so a credential can arrive
+// as a number or a boolean rather than as a string, see scalarValue.
+func TestRedactNonStringCredentialValues(t *testing.T) {
+	const configMapValue = "token: 9007199254740993\n" +
+		"password: 1234567890\n" +
+		"headers:\n" +
+		"  x-api-key: 987654321\n" +
+		"  accept: application/json\n" +
+		"port: 8080\n"
+
+	encodedValue, err := json.Marshal(configMapValue)
+	if err != nil {
+		t.Fatalf("cannot encode the test value: %v", err)
+	}
+	document := fmt.Sprintf(`{
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+        "name": "my-config-map"
+    },
+    "data": {
+        "config.yaml": %s
+    }
+}`, encodedValue)
+
+	rendered, _ := redactDocument(t, document)
+
+	for _, value := range []string{"9007199254740993", "1234567890", "987654321"} {
+		if strings.Contains(rendered, value) {
+			t.Errorf("expected the numeric credential %q to be redacted, got %q", value, rendered)
+		}
+	}
+	// A header value that is a well-known non-secret stays readable, whatever its type, and a field that is not a
+	// credential position keeps its value - redacting those would hide harmless information without protecting
+	// anything.
+	for _, preserved := range []string{"application/json", "8080"} {
+		if !strings.Contains(rendered, preserved) {
+			t.Errorf("expected %q to be preserved, got %q", preserved, rendered)
+		}
+	}
+}
+
+// TestRedactMultiValuedHeaders covers a header or query parameter that holds a list of values rather than a single
+// one. Examples: Prometheus Operator CRDs, multivalued HTTP headers.
+func TestRedactMultiValuedHeaders(t *testing.T) {
+	document := `{
+        "kind": "SomeCustomResource",
+        "spec": {
+            "headers": {
+                "X-Api-Key": ["my-multi-header-secret", "my-second-header-secret"],
+                "Accept-Encoding": ["gzip", "identity"]
+            },
+            "queryParameters": {
+                "token": ["my-multi-query-secret"]
+            }
+        }
+    }`
+
+	rendered, replaced := redactDocument(t, document)
+
+	for _, secret := range []string{
+		"my-multi-header-secret",
+		"my-second-header-secret",
+		"my-multi-query-secret",
+	} {
+		if strings.Contains(rendered, secret) {
+			t.Errorf("expected %q to be redacted, got %q", secret, rendered)
+		}
+		if !slices.Contains(replaced, secret) {
+			t.Errorf("expected %q to be reported as replaced, got %q", secret, replaced)
+		}
+	}
+	// The well-known non-secret values keep their place, as they do for a single-valued header.
+	for _, preserved := range []string{"gzip", "identity", "X-Api-Key"} {
+		if !strings.Contains(rendered, preserved) {
+			t.Errorf("expected %q to be preserved, got %q", preserved, rendered)
+		}
+	}
+}
+
+// TestRedactHeaderListOfScalars covers the third list shape a header field takes: a list of literal values, as opposed
+// to the list of name/value pairs of the Dash0 custom resources and the map of a name to its values.
+func TestRedactHeaderListOfScalars(t *testing.T) {
+	document := `{
+        "kind": "SomeCustomResource",
+        "spec": {
+            "headers": ["Bearer my-scalar-header-secret", "application/json"],
+            "queryParameters": ["my-scalar-query-secret"]
+        }
+    }`
+
+	rendered, replaced := redactDocument(t, document)
+
+	// The whole element is replaced, since it has no key to redact it by, and the whole element is what has to be
+	// scrubbed from stderr.
+	for _, secret := range []string{
+		"Bearer my-scalar-header-secret",
+		"my-scalar-query-secret",
+	} {
+		if strings.Contains(rendered, secret) {
+			t.Errorf("expected %q to be redacted, got %q", secret, rendered)
+		}
+		if !slices.Contains(replaced, secret) {
+			t.Errorf("expected %q to be reported as replaced, got %q", secret, replaced)
+		}
+	}
+	if !strings.Contains(rendered, "application/json") {
+		t.Errorf("expected %q to be preserved, got %q", "application/json", rendered)
+	}
+}
+
+// TestRedactEnvAndCommandInOtherShapes covers the shapes "env", "command" and "args" take outside a pod spec. The walk
+// reaches documents no schema validates, where an environment is a map of name to value or a list of "NAME=value"
+// entries, and a command line is one string rather than a list of elements.
+func TestRedactEnvAndCommandInOtherShapes(t *testing.T) {
+	const configMapValue = "env:\n" +
+		"  DB_PASSWORD: my-map-env-secret\n" +
+		"command: server --api-key=my-string-command-secret\n" +
+		"sidecar:\n" +
+		"  env:\n" +
+		"    - SMTP_TOKEN=my-list-env-secret\n" +
+		"  args: --flag=my-list-arg-secret\n"
+
+	encodedValue, err := json.Marshal(configMapValue)
+	if err != nil {
+		t.Fatalf("cannot encode the test value: %v", err)
+	}
+	document := fmt.Sprintf(`{
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+        "name": "my-config-map"
+    },
+    "data": {
+        "config.yaml": %s
+    }
+}`, encodedValue)
+
+	rendered, replaced := redactDocument(t, document)
+
+	for _, secret := range []string{
+		"my-map-env-secret",
+		"my-string-command-secret",
+		"my-list-env-secret",
+		"my-list-arg-secret",
+	} {
+		if strings.Contains(rendered, secret) {
+			t.Errorf("expected %q to be redacted, got %q", secret, rendered)
+		}
+	}
+	// The name of an environment variable stays readable wherever it is a key of its own, which is what makes the
+	// response useful for diagnosing the workload.
+	if !strings.Contains(rendered, "DB_PASSWORD") {
+		t.Errorf("expected the name of the environment variable to be preserved, got %q", rendered)
+	}
+	// Replaced in the document only, see redactEnvVarValue.
+	if len(replaced) > 0 {
+		t.Errorf("expected no value to be scrubbed from stderr, got %v", replaced)
+	}
+}
+
 // TestRedactWorkloadEnvVars covers the environment variables of a pod spec, wherever the pod spec sits.
 func TestRedactWorkloadEnvVars(t *testing.T) {
 	t.Run("redacts the literal value of every environment variable", func(t *testing.T) {
@@ -457,16 +777,24 @@ func TestRedactWorkloadEnvVars(t *testing.T) {
 				expected: `{"env":[{"name":"A","value":""}]}`,
 			},
 			{
-				// Not the env var list of a pod spec: the walk only replaces a string held by the "value" key of a list
-				// entry, so a field that happens to be called "env" is left alone.
-				name:     "an env field that is not a list",
+				// Not the env var list of a pod spec, but the map of name to value that a config map value or a
+				// third-party resource uses. The name stays readable, the value is replaced like any other.
+				name:     "an env map of name to value",
 				document: `{"env":{"A":"a"}}`,
-				expected: `{"env":{"A":"a"}}`,
+				expected: `{"env":{"A":"(redacted)"}}`,
 			},
 			{
+				// A "NAME=value" entry is replaced in full: the name cannot be told from the value without assuming a
+				// separator the shape does not guarantee.
 				name:     "an env list of strings",
 				document: `{"env":["A=a"]}`,
-				expected: `{"env":["A=a"]}`,
+				expected: `{"env":["(redacted)"]}`,
+			},
+			{
+				// A single scalar names an environment rather than holding the value of one.
+				name:     "an env field that is a scalar",
+				document: `{"env":"production"}`,
+				expected: `{"env":"production"}`,
 			},
 		}
 
@@ -547,6 +875,19 @@ const (
 		}
 	}`
 
+	// The operator's extra config map carries the exports of the automatically created operator configuration resource
+	// (Helm value operator.exports). Their headers use the name/value shape of the custom resources, not the map shape
+	// of a collector configuration.
+	extraConfigMapJson = `{
+		"apiVersion": "v1",
+		"kind": "ConfigMap",
+		"metadata": {"name": "dash0-operator-extra-config", "namespace": "dash0-system"},
+		"data": {
+			"extra.yaml": "exports:\n  - grpc:\n      endpoint: otlp.example.com:4317\n      headers:\n` +
+		`      - name: authorization\n        value: Bearer extra-cm-token\n"
+		}
+	}`
+
 	rootCaConfigMapJson = `{
 		"apiVersion": "v1",
 		"kind": "ConfigMap",
@@ -596,6 +937,22 @@ func TestRedactConfigMapData(t *testing.T) {
 			}
 		}
 		if !slices.Contains(replaced, "Bearer collector-cm-token") {
+			t.Errorf("expected the header value to be scrubbed from stderr as well, got %q", replaced)
+		}
+	})
+
+	t.Run("redacts a header value of an export in the operator's extra config map", func(t *testing.T) {
+		rendered, replaced := redactDocument(t, extraConfigMapJson)
+
+		if strings.Contains(rendered, "extra-cm-token") {
+			t.Errorf("expected the export header value to be redacted, got %q", rendered)
+		}
+		for _, preserved := range []string{"otlp.example.com:4317", "authorization"} {
+			if !strings.Contains(rendered, preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, rendered)
+			}
+		}
+		if !slices.Contains(replaced, "Bearer extra-cm-token") {
 			t.Errorf("expected the header value to be scrubbed from stderr as well, got %q", replaced)
 		}
 	})
@@ -789,6 +1146,365 @@ func TestRedactConfigMapData(t *testing.T) {
 			})
 		}
 	})
+}
+
+// TestRedactionPreservesNumbers pins that the parse/render round trip every response now goes through does not alter
+// the numbers of a resource. Decoding into float64 would re-render a large integer in float notation and lose its
+// precision beyond 2^53.
+func TestRedactionPreservesNumbers(t *testing.T) {
+	const document = `{
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+        "name": "my-pod",
+        "generation": 9007199254740993
+    },
+    "spec": {
+        "containers": [
+            {
+                "name": "app",
+                "ports": [
+                    {
+                        "containerPort": 8080
+                    }
+                ],
+                "env": [
+                    {
+                        "name": "TOKEN",
+                        "value": "` + monitoringToken + `"
+                    }
+                ]
+            }
+        ]
+    }
+}`
+
+	for _, format := range []string{outputFormatJson, outputFormatYaml} {
+		t.Run(format, func(t *testing.T) {
+			parsed, parsedSuccessfully := parseResponseDocument(format, document)
+			if !parsedSuccessfully {
+				t.Fatal("cannot parse the test document")
+			}
+			redacted := &redactor{values: make(map[string]struct{})}
+			if err := redactResourceList(parsed, redacted); err != nil {
+				t.Fatalf("cannot redact the test document: %v", err)
+			}
+			rendered, err := renderResponseDocument(format, parsed)
+			if err != nil {
+				t.Fatalf("cannot render the redacted test document: %v", err)
+			}
+
+			for _, number := range []string{"9007199254740993", "8080"} {
+				if !strings.Contains(rendered, number) {
+					t.Errorf("expected the number %s to be preserved, got %q", number, rendered)
+				}
+			}
+			if strings.Contains(rendered, "e+") || strings.Contains(rendered, "9007199254740992") {
+				t.Errorf("expected no number to be re-rendered as a float, got %q", rendered)
+			}
+			if strings.Contains(rendered, monitoringToken) {
+				t.Errorf("expected the environment variable value to be redacted, got %q", rendered)
+			}
+		})
+	}
+}
+
+const (
+	logTailStateMessage     = "panic: connecting to postgres://app:s3cr3t-state@db:5432 failed"
+	logTailLastStateMessage = "panic: connecting to postgres://app:s3cr3t-last-state@db:5432 failed"
+)
+
+// terminatedContainerStatus returns the status of a container that has terminated with an error, and that was
+// terminated with an error before its last restart, with the given messages as termination messages.
+func terminatedContainerStatus(name string, stateMessage string, lastStateMessage string) map[string]any {
+	return map[string]any{
+		"name": name,
+		"state": map[string]any{
+			"terminated": map[string]any{"exitCode": 2, "reason": "Error", "message": stateMessage},
+		},
+		"lastState": map[string]any{
+			"terminated": map[string]any{"exitCode": 2, "reason": "Error", "message": lastStateMessage},
+		},
+	}
+}
+
+// terminatedPod renders a pod whose container "app" has terminated, see terminatedContainerStatus. The pod spec lists
+// the given containers; with a nil spec, the pod has no spec at all.
+func terminatedPod(t *testing.T, kind string, spec map[string]any, statusField string) string {
+	t.Helper()
+	pod := map[string]any{
+		"apiVersion": "v1",
+		"kind":       kind,
+		"metadata":   map[string]any{"name": "my-pod"},
+		"status": map[string]any{
+			statusField: []any{terminatedContainerStatus("app", logTailStateMessage, logTailLastStateMessage)},
+		},
+	}
+	if spec != nil {
+		pod["spec"] = spec
+	}
+	rendered, err := json.Marshal(pod)
+	if err != nil {
+		t.Fatalf("cannot render the test pod: %v", err)
+	}
+	return string(rendered)
+}
+
+func containerSpecWithPolicy(name string, policy string) map[string]any {
+	container := map[string]any{"name": name, "image": "app:1.0"}
+	if policy != "" {
+		container["terminationMessagePolicy"] = policy
+	}
+	return container
+}
+
+// redactTerminationMessagesIn redacts the given document with the redaction of termination messages enabled or
+// disabled, and returns the rendered document together with the values that were replaced.
+func redactTerminationMessagesIn(t *testing.T, document string, enabled bool) (string, []string) {
+	t.Helper()
+	var parsed any
+	if err := unmarshalPreservingNumbers(document, &parsed); err != nil {
+		t.Fatalf("cannot parse the test document: %v", err)
+	}
+	redacted := &redactor{values: make(map[string]struct{}), redactTerminationMessages: enabled}
+	if err := redactResourceList(parsed, redacted); err != nil {
+		t.Fatalf("cannot redact the test document: %v", err)
+	}
+	rendered, err := renderResponseDocument(outputFormatJson, parsed)
+	if err != nil {
+		t.Fatalf("cannot render the redacted test document: %v", err)
+	}
+	return rendered, redacted.valuesToScrubFromStderr()
+}
+
+func TestRedactTerminationMessages(t *testing.T) {
+	for _, tt := range []struct {
+		name           string
+		kind           string
+		spec           map[string]any
+		statusField    string
+		enabled        bool
+		expectRedacted bool
+	}{
+		{
+			name:           "redacts the messages of a container with the policy FallbackToLogsOnError",
+			kind:           podKind,
+			spec:           map[string]any{"containers": []any{containerSpecWithPolicy("app", "FallbackToLogsOnError")}},
+			statusField:    "containerStatuses",
+			enabled:        true,
+			expectRedacted: true,
+		},
+		{
+			name: "redacts the messages of an init container with the policy FallbackToLogsOnError",
+			kind: podKind,
+			spec: map[string]any{
+				"initContainers": []any{containerSpecWithPolicy("app", "FallbackToLogsOnError")},
+			},
+			statusField:    "initContainerStatuses",
+			enabled:        true,
+			expectRedacted: true,
+		},
+		{
+			name: "redacts the messages of an ephemeral container with the policy FallbackToLogsOnError",
+			kind: podKind,
+			spec: map[string]any{
+				"ephemeralContainers": []any{containerSpecWithPolicy("app", "FallbackToLogsOnError")},
+			},
+			statusField:    "ephemeralContainerStatuses",
+			enabled:        true,
+			expectRedacted: true,
+		},
+		{
+			name:           "keeps the messages of a container with the policy File",
+			kind:           podKind,
+			spec:           map[string]any{"containers": []any{containerSpecWithPolicy("app", "File")}},
+			statusField:    "containerStatuses",
+			enabled:        true,
+			expectRedacted: false,
+		},
+		{
+			name:           "redacts the messages when the pod has no spec",
+			kind:           podKind,
+			spec:           nil,
+			statusField:    "containerStatuses",
+			enabled:        true,
+			expectRedacted: true,
+		},
+		{
+			name:           "redacts the messages when the spec does not list the container",
+			kind:           podKind,
+			spec:           map[string]any{"containers": []any{containerSpecWithPolicy("other", "File")}},
+			statusField:    "containerStatuses",
+			enabled:        true,
+			expectRedacted: true,
+		},
+		{
+			name: "redacts the messages when only another container list of the spec has the policy File",
+			kind: podKind,
+			spec: map[string]any{
+				"initContainers": []any{containerSpecWithPolicy("app", "File")},
+			},
+			statusField:    "containerStatuses",
+			enabled:        true,
+			expectRedacted: true,
+		},
+		{
+			name:           "redacts the messages when the container has no policy",
+			kind:           podKind,
+			spec:           map[string]any{"containers": []any{containerSpecWithPolicy("app", "")}},
+			statusField:    "containerStatuses",
+			enabled:        true,
+			expectRedacted: true,
+		},
+		{
+			name:           "keeps the messages when the redaction is disabled",
+			kind:           podKind,
+			spec:           map[string]any{"containers": []any{containerSpecWithPolicy("app", "FallbackToLogsOnError")}},
+			statusField:    "containerStatuses",
+			enabled:        false,
+			expectRedacted: false,
+		},
+		{
+			name:           "keeps the messages of a resource that is not a pod",
+			kind:           "SomethingElse",
+			spec:           map[string]any{"containers": []any{containerSpecWithPolicy("app", "FallbackToLogsOnError")}},
+			statusField:    "containerStatuses",
+			enabled:        true,
+			expectRedacted: false,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			rendered, scrubbed := redactTerminationMessagesIn(
+				t,
+				terminatedPod(t, tt.kind, tt.spec, tt.statusField),
+				tt.enabled,
+			)
+
+			for _, message := range []string{logTailStateMessage, logTailLastStateMessage} {
+				if tt.expectRedacted {
+					if strings.Contains(rendered, message) {
+						t.Errorf("expected the termination message %q to be redacted, got %s", message, rendered)
+					}
+					if !slices.Contains(scrubbed, message) {
+						t.Errorf("expected the termination message %q to be scrubbed from stderr, got %v", message, scrubbed)
+					}
+				} else if !strings.Contains(rendered, message) {
+					t.Errorf("expected the termination message %q to be kept, got %s", message, rendered)
+				}
+			}
+			if tt.expectRedacted && strings.Count(rendered, `"message": "`+redactedValue+`"`) != 2 {
+				t.Errorf("expected both termination messages to be replaced with the placeholder, got %s", rendered)
+			}
+			// The rest of the termination state stays readable, so that a crash can still be diagnosed.
+			for _, expected := range []string{`"reason": "Error"`, `"exitCode": 2`} {
+				if strings.Count(rendered, expected) != 2 {
+					t.Errorf("expected %s to be kept in both termination states, got %s", expected, rendered)
+				}
+			}
+		})
+	}
+
+	t.Run("matches the policies by container name", func(t *testing.T) {
+		pod := map[string]any{
+			"apiVersion": "v1",
+			"kind":       podKind,
+			"metadata":   map[string]any{"name": "my-pod"},
+			"spec": map[string]any{
+				"containers": []any{
+					containerSpecWithPolicy("logs-tail", "FallbackToLogsOnError"),
+					containerSpecWithPolicy("file", "File"),
+				},
+			},
+			"status": map[string]any{
+				"containerStatuses": []any{
+					terminatedContainerStatus("file", "written on purpose", "also written on purpose"),
+					terminatedContainerStatus("logs-tail", logTailStateMessage, logTailLastStateMessage),
+				},
+			},
+		}
+		document, err := json.Marshal(map[string]any{"apiVersion": "v1", "kind": "List", "items": []any{pod}})
+		if err != nil {
+			t.Fatalf("cannot render the test document: %v", err)
+		}
+
+		rendered, _ := redactTerminationMessagesIn(t, string(document), true)
+
+		for _, message := range []string{logTailStateMessage, logTailLastStateMessage} {
+			if strings.Contains(rendered, message) {
+				t.Errorf("expected the termination message %q to be redacted, got %s", message, rendered)
+			}
+		}
+		for _, message := range []string{"written on purpose", "also written on purpose"} {
+			if !strings.Contains(rendered, `"`+message+`"`) {
+				t.Errorf("expected the termination message %q to be kept, got %s", message, rendered)
+			}
+		}
+	})
+}
+
+func TestRedactTerminationMessagesInCommandResponse(t *testing.T) {
+	logger := discardLogger()
+	response := terminatedPod(
+		t,
+		podKind,
+		map[string]any{"containers": []any{containerSpecWithPolicy("app", "FallbackToLogsOnError")}},
+		"containerStatuses",
+	)
+
+	t.Run("redacts the termination messages if kubectl logs is not allowed", func(t *testing.T) {
+		fakeKubectlEchoing(t, response)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
+			RequestId: "req-termination-message-redacted",
+			Command:   "kubectl",
+			Arguments: []string{"get", "pod", "my-pod", "-o", "yaml"},
+		})
+
+		if resp.GetExitCode() != 0 {
+			t.Fatalf("expected exit code 0, got %d (stderr: %q)", resp.GetExitCode(), resp.GetStderr())
+		}
+		for _, message := range []string{logTailStateMessage, logTailLastStateMessage} {
+			if strings.Contains(resp.GetStdout(), message) {
+				t.Errorf("expected the termination message %q to be redacted, got %q", message, resp.GetStdout())
+			}
+		}
+	})
+
+	t.Run("keeps the termination messages if kubectl logs is allowed", func(t *testing.T) {
+		fakeKubectlEchoing(t, response)
+
+		resp := ExecuteCommandRequest(
+			context.Background(),
+			logger,
+			"/tmp",
+			mustParseAllowedKubectlCommands("get,logs"),
+			&pb.CommandRequest{
+				RequestId: "req-termination-message-kept",
+				Command:   "kubectl",
+				Arguments: []string{"get", "pod", "my-pod", "-o", "yaml"},
+			},
+		)
+
+		if resp.GetExitCode() != 0 {
+			t.Fatalf("expected exit code 0, got %d (stderr: %q)", resp.GetExitCode(), resp.GetStderr())
+		}
+		for _, message := range []string{logTailStateMessage, logTailLastStateMessage} {
+			if !strings.Contains(resp.GetStdout(), message) {
+				t.Errorf("expected the termination message %q to be kept, got %q", message, resp.GetStdout())
+			}
+		}
+	})
+}
+
+// TestParseResponseDocumentRejectsTrailingContent pins that a response holding more than one JSON document is not
+// parsed, so that everything after the first document cannot be handed out unwalked.
+func TestParseResponseDocumentRejectsTrailingContent(t *testing.T) {
+	if _, parsed := parseResponseDocument(outputFormatJson, `{"kind":"Pod"}{"kind":"Pod"}`); parsed {
+		t.Error("expected a response with a trailing document to not be parsed")
+	}
+	if _, parsed := parseResponseDocument(outputFormatJson, `{"kind":"Pod"}`); !parsed {
+		t.Error("expected a single document to be parsed")
+	}
 }
 
 func TestRedactSecrets(t *testing.T) {
@@ -1005,24 +1721,84 @@ func TestRedactCredentialsInUrl(t *testing.T) {
 	}
 }
 
+// TestIsUrlField pins which field names the connector treats as a URL: the suffix has to start a word of the name, in
+// any of the spellings a resource type might use, so that a name that merely ends in those three letters is not run
+// through redactUrlParts.
+func TestIsUrlField(t *testing.T) {
+	for _, name := range []string{
+		"url", "URL", "proxyUrl", "proxyURL", "tokenUrl", "apiURL", "proxy_url", "proxy-url", "webhook.url",
+	} {
+		if !isUrlField(name) {
+			t.Errorf("expected %q to be recognized as a URL field", name)
+		}
+	}
+	for _, name := range []string{"curl", "urls", "u", "ur", "hurl", ""} {
+		if isUrlField(name) {
+			t.Errorf("expected %q not to be recognized as a URL field", name)
+		}
+	}
+}
+
+// TestWholeUrlCredentialWinsOverUrlFields pins the rule that lets "url" be recognized as a URL field without weakening
+// the notification channels: a URL that is a credential as a whole carries its secret in its path, where redactUrlParts
+// would leave it in place. The configuration object that holds it is redacted one level above, before the walk
+// descends to the "url" key itself, so the whole value is already the placeholder when the weaker rule sees it.
+func TestWholeUrlCredentialWinsOverUrlFields(t *testing.T) {
+	const secretInPath = "https://api.incident.io/v2/alert_events/http/whole-url-credential-secret"
+	document := `{
+        "kind": "Dash0NotificationChannel",
+        "spec": {
+            "incidentioConfig": {
+                "url": "` + secretInPath + `"
+            },
+            "plugin": {
+                "spec": {
+                    "request": {
+                        "url": "https://target.example.com/health?apiKey=request-url-secret"
+                    }
+                }
+            }
+        }
+    }`
+
+	rendered, replaced := redactDocument(t, document)
+
+	if strings.Contains(rendered, secretInPath) || strings.Contains(rendered, "alert_events") {
+		t.Errorf("expected the whole webhook URL to be redacted, got %q", rendered)
+	}
+	if !slices.Contains(replaced, secretInPath) {
+		t.Errorf("expected the whole webhook URL to be reported as replaced, got %q", replaced)
+	}
+	// The URL that is not a credential itself keeps everything but its query parameter value.
+	if !strings.Contains(rendered, "https://target.example.com/health?apiKey=") {
+		t.Errorf("expected the request URL to stay readable apart from its query, got %q", rendered)
+	}
+	if strings.Contains(rendered, "request-url-secret") {
+		t.Errorf("expected the query parameter value of the request URL to be redacted, got %q", rendered)
+	}
+}
+
 func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 	logger := discardLogger()
 
 	for _, tt := range []struct {
-		name         string
-		outputFormat string
-		response     string
+		name        string
+		outputFlags []string
+		response    string
 	}{
-		{name: "json", outputFormat: "json", response: dash0ResourcesJson},
-		{name: "yaml", outputFormat: "yaml", response: monitoringResourceYaml},
+		{name: "json", outputFlags: []string{"-o", "json"}, response: dash0ResourcesJson},
+		{name: "yaml", outputFlags: []string{"-o", "yaml"}, response: monitoringResourceYaml},
+		// kubectl applies the last output format if -o is set more than once.
+		{name: "yaml (-o json -o yaml)", outputFlags: []string{"-o", "json", "-o", "yaml"}, response: monitoringResourceYaml},
+		{name: "json (-o yaml -o json)", outputFlags: []string{"-o", "yaml", "-o", "json"}, response: dash0ResourcesJson},
 	} {
 		t.Run("redacts the secrets of a "+tt.name+" response", func(t *testing.T) {
 			fakeKubectlEchoing(t, tt.response)
 
-			resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 				RequestId: "req-redact-" + tt.name,
 				Command:   "kubectl",
-				Arguments: []string{"get", "dash0monitorings", "-A", "-o", tt.outputFormat},
+				Arguments: append([]string{"get", "dash0monitorings", "-A"}, tt.outputFlags...),
 			})
 
 			if resp.GetExitCode() != 0 {
@@ -1064,7 +1840,7 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 }`
 		fakeKubectlEchoing(t, response)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-render-fidelity",
 			Command:   "kubectl",
 			Arguments: []string{"get", "dash0monitorings", "-o", "json"},
@@ -1078,7 +1854,7 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 	t.Run("redacts the third-party credentials of notification channels and synthetic checks", func(t *testing.T) {
 		fakeKubectlEchoing(t, dash0ApiResourcesJson)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-redact-api-resources",
 			Command:   "kubectl",
 			Arguments: []string{"get", "dash0notificationchannels,dash0syntheticchecks", "-A", "-o", "json"},
@@ -1117,7 +1893,7 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 	t.Run("redacts the environment variable values of a workload response", func(t *testing.T) {
 		fakeKubectlEchoing(t, workloadResourcesJson)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-redact-workloads",
 			Command:   "kubectl",
 			Arguments: []string{"get", "deployments,daemonsets,cronjobs,controllerrevisions,pods", "-A", "-o", "json"},
@@ -1147,26 +1923,29 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 		}
 	})
 
-	t.Run("leaves the response of a request for other resources untouched", func(t *testing.T) {
-		// The fake kubectl echoes a token-like value for any request; a request that targets neither a Dash0 resource nor
-		// a workload resource must not be post-processed at all.
-		fakeKubectlEchoing(t, monitoringToken)
+	t.Run("preserves the content of a credential-free response of another resource type", func(t *testing.T) {
+		fakeKubectlEchoing(t, serviceJson)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-other-resource",
 			Command:   "kubectl",
-			Arguments: []string{"get", "services", "-o", "yaml"},
+			Arguments: []string{"get", "services", "-o", "json"},
 		})
 
-		if strings.TrimSpace(resp.GetStdout()) != monitoringToken {
-			t.Errorf("expected the response to be passed through unchanged, got %q", resp.GetStdout())
+		for _, preserved := range []string{"my-service", "ClusterIP", "10.0.0.1"} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+		if strings.Contains(resp.GetStdout(), redactedValue) {
+			t.Errorf("expected nothing to be redacted in a credential-free response, got %q", resp.GetStdout())
 		}
 	})
 
 	t.Run("leaves a response that cannot contain resource content untouched", func(t *testing.T) {
 		fakeKubectlEchoing(t, monitoringToken)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-content-free",
 			Command:   "kubectl",
 			Arguments: []string{"get", "dash0monitorings", "-o", "name"},
@@ -1194,9 +1973,8 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 			response:  monitoringResourceYaml + "\n---\n" + monitoringResourceYaml,
 		},
 		{
-			// Both formats are redactable on their own, so validation accepts the request, but which one kubectl actually
-			// applied is not replicated here (see parseableOutputFormat).
-			name:      "the output format is set more than once",
+			// kubectl applies the last output format (json), so a yaml response is a shape the redaction does not expect.
+			name:      "the output format is set more than once and the response does not match the last one",
 			arguments: []string{"get", "dash0monitorings", "-o", "yaml", "-o", "json"},
 			response:  monitoringResourceYaml,
 		},
@@ -1221,7 +1999,7 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 		t.Run("withholds the response when "+tt.name, func(t *testing.T) {
 			fakeKubectlEchoing(t, tt.response)
 
-			resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 				RequestId: "req-unparseable",
 				Command:   "kubectl",
 				Arguments: tt.arguments,
@@ -1241,6 +2019,191 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRedactThirdPartyCustomResources covers the third-party custom resource types that the default RBAC rules of
+// agent0-connector grant access to, as well as an arbitrary one that only custom RBAC rules make reachable.
+func TestRedactThirdPartyCustomResources(t *testing.T) {
+	logger := discardLogger()
+
+	t.Run("redacts the proxy headers of a Perses dashboard", func(t *testing.T) {
+		fakeKubectlEchoing(t, persesDashboardJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
+			RequestId: "req-perses-dashboard",
+			Command:   "kubectl",
+			Arguments: []string{"get", "persesdashboards", "-o", "json"},
+		})
+
+		if strings.Contains(resp.GetStdout(), persesProxyToken) {
+			t.Errorf("expected the proxy header value to be redacted, got %q", resp.GetStdout())
+		}
+		for _, preserved := range []string{"my-dashboard", "https://prometheus.example.com"} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
+
+	t.Run("redacts the scrape parameters and the proxy URL of a service monitor", func(t *testing.T) {
+		fakeKubectlEchoing(t, serviceMonitorJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
+			RequestId: "req-service-monitor",
+			Command:   "kubectl",
+			Arguments: []string{"get", "servicemonitors", "-o", "json"},
+		})
+
+		for _, value := range []string{serviceMonitorScrapeApiKey, serviceMonitorProxyPassword} {
+			if strings.Contains(resp.GetStdout(), value) {
+				t.Errorf("expected %q to be redacted, got %q", value, resp.GetStdout())
+			}
+		}
+		// The parameter names, the well-known parameter value and the rest of the proxy URL stay readable.
+		for _, preserved := range []string{"api_key", "verbose", "true", "proxy-user", "proxy.example.com:3128"} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
+
+	t.Run("redacts the scrape parameters and the proxy URL of a pod monitor", func(t *testing.T) {
+		fakeKubectlEchoing(t, podMonitorJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
+			RequestId: "req-pod-monitor",
+			Command:   "kubectl",
+			Arguments: []string{"get", "podmonitors", "-o", "json"},
+		})
+
+		for _, value := range []string{podMonitorScrapeApiKey, podMonitorProxyPassword} {
+			if strings.Contains(resp.GetStdout(), value) {
+				t.Errorf("expected %q to be redacted, got %q", value, resp.GetStdout())
+			}
+		}
+		for _, preserved := range []string{"api_key", "verbose", "true", "proxy-user", "proxy.example.com:3128"} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
+
+	t.Run("redacts the scrape parameters and the proxy URL query of a scrape config", func(t *testing.T) {
+		fakeKubectlEchoing(t, scrapeConfigJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
+			RequestId: "req-scrape-config",
+			Command:   "kubectl",
+			Arguments: []string{"get", "scrapeconfigs", "-o", "json"},
+		})
+
+		for _, value := range []string{
+			scrapeConfigParamToken,
+			scrapeConfigProxyQueryApiKey,
+			scrapeConfigScalewayAccessKey,
+			scrapeConfigOvhcloudApplicationKey,
+		} {
+			if strings.Contains(resp.GetStdout(), value) {
+				t.Errorf("expected %q to be redacted, got %q", value, resp.GetStdout())
+			}
+		}
+		// The names of the referenced Kubernetes secrets are not credentials and stay readable, and so does everything
+		// that makes the service discovery configuration comprehensible.
+		for _, preserved := range []string{
+			"apiKey",
+			"proxy.example.com:3128",
+			"my-target.example.com:9100",
+			"my-project-id",
+			"my-scaleway-secret",
+			"my-ovhcloud-secret",
+			"VPS",
+		} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
+
+	t.Run("redacts the scrape parameters, the OAuth2 endpoint parameters and the query of the OAuth2 token URL of a "+
+		"probe", func(t *testing.T) {
+		fakeKubectlEchoing(t, probeJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
+			RequestId: "req-probe",
+			Command:   "kubectl",
+			Arguments: []string{"get", "probes", "-o", "json"},
+		})
+
+		for _, value := range []string{probeScrapeApiKey, probeOauth2ClientSecret, probeOauth2TokenUrlSecret} {
+			if strings.Contains(resp.GetStdout(), value) {
+				t.Errorf("expected %q to be redacted, got %q", value, resp.GetStdout())
+			}
+		}
+		for _, preserved := range []string{
+			"api_key",
+			"verbose",
+			"true",
+			"client_secret",
+			"https://oauth.example.com/token",
+			"blackbox.example.com:9115",
+		} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
+
+	t.Run("preserves a params field of a resource kind that does not hold query parameters", func(t *testing.T) {
+		fakeKubectlEchoing(t, configMapWithParamsJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
+			RequestId: "req-config-map-params",
+			Command:   "kubectl",
+			Arguments: []string{"get", "configmaps", "-o", "json"},
+		})
+
+		if !strings.Contains(resp.GetStdout(), unrelatedParamsValue) {
+			t.Errorf("expected %q to be preserved, got %q", unrelatedParamsValue, resp.GetStdout())
+		}
+	})
+
+	t.Run("redacts the credentials of a resource type that is not known at all", func(t *testing.T) {
+		// Fields like "token", "password" etc. are always redacted.
+		fakeKubectlEchoing(t, unknownCustomResourceJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
+			RequestId: "req-unknown-custom-resource",
+			Command:   "kubectl",
+			Arguments: []string{"get", "somecustomresources.example.com", "-o", "json"},
+		})
+
+		for _, value := range []string{
+			unknownResourceToken,
+			unknownResourcePassword,
+			unknownResourceHeaderValue,
+			unknownResourceProxyPassword,
+		} {
+			if strings.Contains(resp.GetStdout(), value) {
+				t.Errorf("expected %q to be redacted, got %q", value, resp.GetStdout())
+			}
+		}
+		// The rest of the resource stays readable, including the well-known non-secret header value, the readable parts
+		// of the proxy URL and a field that merely ends in those three letters without holding a URL.
+		for _, preserved := range []string{
+			"my-custom-resource",
+			"https://upstream.example.com",
+			"db.example.com",
+			"db-user",
+			"application/json",
+			"proxy-user",
+			"proxy.example.com:3128",
+			unrelatedCurlValue,
+		} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
 }
 
 func TestRedactDash0SecretsWithTruncatedStdout(t *testing.T) {
@@ -1268,7 +2231,7 @@ done
 printf '" }\n'
 `)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-truncated-stdout",
 			Command:   "kubectl",
 			Arguments: []string{"get", "dash0monitorings", "-o", "json"},
@@ -1308,7 +2271,7 @@ while [ $i -lt 200 ]; do
 done
 `)
 
-			resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 				RequestId: "req-truncated-" + format,
 				Command:   "kubectl",
 				Arguments: []string{"get", "dash0monitorings", "-o", format},
@@ -1323,9 +2286,9 @@ done
 		}
 	})
 
-	t.Run("hands out a truncated response for a resource type without secrets", func(t *testing.T) {
-		// Truncation only withholds where redaction is required. A resource type that cannot contain a credential keeps
-		// the existing behaviour: the truncated output is returned with a notice.
+	t.Run("withholds a truncated response of a resource type that is not known to hold a credential", func(t *testing.T) {
+		// Every response the connector can parse is walked, so a truncated one is withheld whatever resource type it
+		// renders: the walk cannot tell a credential-free document from one whose credential sits past the cut.
 		fakeKubectlOnPath(t, `#!/bin/sh
 s=0123456789012345678901234567890123456789012345678901234567890123
 s=$s$s$s$s
@@ -1339,54 +2302,59 @@ while [ $i -lt 200 ]; do
 done
 `)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-truncated-services",
 			Command:   "kubectl",
 			Arguments: []string{"get", "services", "-o", "json"},
 		})
 
-		if resp.GetStdout() == "" {
-			t.Error("expected the truncated response to be handed out")
+		if resp.GetStdout() != "" {
+			t.Errorf("expected the truncated response to be withheld, got %q", resp.GetStdout())
 		}
-		if !strings.Contains(resp.GetStdout(), "truncated the output") {
-			t.Error("expected a truncation notice on stdout")
-		}
-		if strings.Contains(resp.GetStderr(), "withheld the response") {
-			t.Errorf("expected the response to not be withheld, got %q", resp.GetStderr())
+		if !strings.Contains(resp.GetStderr(), "withheld the response") {
+			t.Errorf("expected the response to be withheld, got %q", resp.GetStderr())
 		}
 	})
+
 }
 
 func TestRedactDash0SecretsWithEmptyStdout(t *testing.T) {
 	logger := discardLogger()
 
-	t.Run("withholds a response that only has content on stderr", func(t *testing.T) {
-		// kubectl reports some errors by formatting the offending value - for a template or jsonpath error even the
-		// whole object - into a message on stderr while stdout stays empty. There is no document to redact then, so the
-		// response has to be withheld rather than handed out.
+	t.Run("hands out an error message that only has content on stderr", func(t *testing.T) {
+		// kubectl rendered no resource and only reported why. There is no document to redact, and the message is the
+		// answer to the request rather than a failure of the redaction: withholding it would leave the caller unable to
+		// tell a resource that does not exist from one it may not read, with nothing to correct.
+		//
+		// The formats that make kubectl format an object into a message on stderr - a template, jsonpath,
+		// custom-columns - are rejected for every resource type before the command runs, see knownOutputFormats, so
+		// what reaches this point is an error message rendered by kubectl itself.
 		fakeKubectlOnPath(t, `#!/bin/sh
-echo "error: the object given to the engine was map[token:`+monitoringToken+`]" >&2
+echo 'Error from server (NotFound): dash0monitorings.operator.dash0.com "my-resource" not found' >&2
 exit 1
 `)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
-			RequestId: "req-secret-on-stderr",
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
+			RequestId: "req-error-on-stderr",
 			Command:   "kubectl",
-			Arguments: []string{"get", "dash0monitorings", "-o", "yaml"},
+			Arguments: []string{"get", "dash0monitorings", "my-resource", "-o", "yaml"},
 		})
 
-		if strings.Contains(resp.GetStderr(), monitoringToken) {
-			t.Errorf("expected the token to be withheld, got %q", resp.GetStderr())
+		if strings.Contains(resp.GetStderr(), "withheld the response") {
+			t.Errorf("expected the error message to be handed out, got %q", resp.GetStderr())
 		}
-		if !strings.Contains(resp.GetStderr(), "withheld the response") {
-			t.Errorf("expected an explanation on stderr, got %q", resp.GetStderr())
+		if !strings.Contains(resp.GetStderr(), "NotFound") {
+			t.Errorf("expected kubectl's own error message on stderr, got %q", resp.GetStderr())
+		}
+		if resp.GetExitCode() != 1 {
+			t.Errorf("expected kubectl's exit code 1, got %d (stderr: %q)", resp.GetExitCode(), resp.GetStderr())
 		}
 	})
 
 	t.Run("passes a response through that has no content at all", func(t *testing.T) {
 		fakeKubectlOnPath(t, "#!/bin/sh\nexit 0\n")
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-empty-response",
 			Command:   "kubectl",
 			Arguments: []string{"get", "dash0monitorings", "-o", "yaml"},
@@ -1410,7 +2378,7 @@ OUTPUT
 echo "warning: could not reach the endpoint with `+grpcHeaderValue+`" >&2
 `)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-stderr-scrub",
 			Command:   "kubectl",
 			Arguments: []string{"get", "dash0monitorings", "-o", "yaml"},
@@ -1435,7 +2403,280 @@ OUTPUT
 `)
 }
 
+// persesDashboardJson is a third-party custom resource which is included in the default RBAC rules. The proxy of its
+// datasource can potentially carry the headers it sends, hence it needs redaction.
+const persesDashboardJson = `{
+    "apiVersion": "perses.dev/v1alpha1",
+    "kind": "PersesDashboard",
+    "metadata": {
+        "name": "my-dashboard",
+        "namespace": "perses-dev"
+    },
+    "spec": {
+        "display": {
+            "name": "my-dashboard"
+        },
+        "datasources": {
+            "my-datasource": {
+                "plugin": {
+                    "kind": "PrometheusDatasource",
+                    "spec": {
+                        "proxy": {
+                            "kind": "HTTPProxy",
+                            "spec": {
+                                "url": "https://prometheus.example.com",
+                                "headers": {
+                                    "Authorization": "` + persesProxyToken + `"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}`
+
+// serviceMonitorJson is a third-party custom resource which is included in the default RBAC rules. The query
+// parameters of its scrape endpoints and the URL of the proxy they go through can both carry a credential.
+const serviceMonitorJson = `{
+    "apiVersion": "monitoring.coreos.com/v1",
+    "kind": "ServiceMonitor",
+    "metadata": {
+        "name": "my-service-monitor",
+        "namespace": "monitoring"
+    },
+    "spec": {
+        "endpoints": [
+            {
+                "path": "/metrics",
+                "port": "http",
+                "params": {
+                    "api_key": [
+                        "` + serviceMonitorScrapeApiKey + `"
+                    ],
+                    "verbose": [
+                        "true"
+                    ]
+                },
+                "proxyUrl": "http://proxy-user:` + serviceMonitorProxyPassword + `@proxy.example.com:3128"
+            }
+        ],
+        "selector": {
+            "matchLabels": {
+                "app": "my-app"
+            }
+        }
+    }
+}`
+
+// podMonitorJson holds its query parameters under a different path than a ServiceMonitor
+// (spec.podMetricsEndpoints rather than spec.endpoints), see queryParameterFieldsPerResourceKind.
+const podMonitorJson = `{
+    "apiVersion": "monitoring.coreos.com/v1",
+    "kind": "PodMonitor",
+    "metadata": {
+        "name": "my-pod-monitor",
+        "namespace": "monitoring"
+    },
+    "spec": {
+        "podMetricsEndpoints": [
+            {
+                "path": "/metrics",
+                "port": "http",
+                "params": {
+                    "api_key": [
+                        "` + podMonitorScrapeApiKey + `"
+                    ],
+                    "verbose": [
+                        "true"
+                    ]
+                },
+                "proxyUrl": "http://proxy-user:` + podMonitorProxyPassword + `@proxy.example.com:3128"
+            }
+        ],
+        "selector": {
+            "matchLabels": {
+                "app": "my-app"
+            }
+        }
+    }
+}`
+
+// scrapeConfigJson holds its query parameters at the root of its spec, unlike a ServiceMonitor, and carries the
+// credential in the query of its proxy URL rather than in its user information. Its service discovery configurations
+// are lists of configuration objects, and the two below hold a credential as a literal string rather than as a
+// reference to a Kubernetes secret.
+const scrapeConfigJson = `{
+    "apiVersion": "monitoring.coreos.com/v1alpha1",
+    "kind": "ScrapeConfig",
+    "metadata": {
+        "name": "my-scrape-config",
+        "namespace": "monitoring"
+    },
+    "spec": {
+        "params": {
+            "token": [
+                "` + scrapeConfigParamToken + `"
+            ]
+        },
+        "proxyUrl": "http://proxy.example.com:3128?apiKey=` + scrapeConfigProxyQueryApiKey + `",
+        "scalewaySDConfigs": [
+            {
+                "accessKey": "` + scrapeConfigScalewayAccessKey + `",
+                "projectID": "my-project-id",
+                "secretKey": {
+                    "name": "my-scaleway-secret",
+                    "key": "secret-key"
+                }
+            }
+        ],
+        "ovhcloudSDConfigs": [
+            {
+                "applicationKey": "` + scrapeConfigOvhcloudApplicationKey + `",
+                "service": "VPS",
+                "applicationSecret": {
+                    "name": "my-ovhcloud-secret",
+                    "key": "application-secret"
+                }
+            }
+        ],
+        "staticConfigs": [
+            {
+                "targets": [
+                    "my-target.example.com:9100"
+                ]
+            }
+        ]
+    }
+}`
+
+// probeJson holds its query parameters as a list of name/values pairs, unlike the other Prometheus Operator resources,
+// which hold them as a map. It also carries the parameters of an OAuth2 token request, which are redacted wherever they
+// occur rather than per resource kind, and the token endpoint of that OAuth2 configuration, whose field name ends in
+// "url" without being named "url".
+const probeJson = `{
+    "apiVersion": "monitoring.coreos.com/v1",
+    "kind": "Probe",
+    "metadata": {
+        "name": "my-probe",
+        "namespace": "monitoring"
+    },
+    "spec": {
+        "params": [
+            {
+                "name": "api_key",
+                "values": [
+                    "` + probeScrapeApiKey + `"
+                ]
+            },
+            {
+                "name": "verbose",
+                "values": [
+                    "true"
+                ]
+            }
+        ],
+        "oauth2": {
+            "tokenUrl": "https://oauth.example.com/token?client_secret=` + probeOauth2TokenUrlSecret + `",
+            "endpointParams": {
+                "client_secret": "` + probeOauth2ClientSecret + `"
+            }
+        },
+        "prober": {
+            "url": "blackbox.example.com:9115"
+        }
+    }
+}`
+
+// configMapWithParamsJson has a field named "params", but is not a resource kind whose query parameters are known, so
+// its values stay readable, see queryParameterFieldsPerResourceKind.
+const configMapWithParamsJson = `{
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+        "name": "my-config-map",
+        "namespace": "my-namespace"
+    },
+    "data": {
+        "params": "` + unrelatedParamsValue + `"
+    }
+}`
+
+// unknownCustomResourceJson is a custom resource of a type the connector knows nothing about: it is neither a Dash0
+// resource type nor one the default RBAC rules grant, so it is only reachable with custom RBAC rules.
+const unknownCustomResourceJson = `{
+    "apiVersion": "example.com/v1",
+    "kind": "SomeCustomResource",
+    "metadata": {
+        "name": "my-custom-resource",
+        "namespace": "my-namespace"
+    },
+    "spec": {
+        "replicas": 3,
+        "upstream": {
+            "endpoint": "https://upstream.example.com",
+            "token": "` + unknownResourceToken + `",
+            "headers": {
+                "Authorization": "` + unknownResourceHeaderValue + `",
+                "Content-Type": "application/json"
+            }
+        },
+        "database": {
+            "host": "db.example.com",
+            "user": "db-user",
+            "password": "` + unknownResourcePassword + `"
+        },
+        "proxyURL": "http://proxy-user:` + unknownResourceProxyPassword + `@proxy.example.com:3128",
+        "curl": "` + unrelatedCurlValue + `"
+    }
+}`
+
+// serviceJson is an example for a resource that holds no credential at all.
+const serviceJson = `{
+    "apiVersion": "v1",
+    "kind": "Service",
+    "metadata": {
+        "name": "my-service",
+        "namespace": "my-namespace"
+    },
+    "spec": {
+        "clusterIP": "10.0.0.1",
+        "ports": [
+            {
+                "name": "http",
+                "port": 80,
+                "targetPort": 8080
+            }
+        ],
+        "type": "ClusterIP"
+    }
+}`
+
 const (
+	persesProxyToken = "Bearer my-perses-proxy-secret"
+
+	unknownResourceToken       = "my-unknown-resource-token"
+	unknownResourcePassword    = "my-unknown-resource-password"
+	unknownResourceHeaderValue = "Bearer my-unknown-resource-header-secret"
+
+	unknownResourceProxyPassword = "my-unknown-resource-proxy-password"
+	unrelatedCurlValue           = "curl -sS https://upstream.example.com/health"
+
+	serviceMonitorScrapeApiKey   = "my-service-monitor-scrape-api-key"
+	serviceMonitorProxyPassword  = "my-service-monitor-proxy-password"
+	podMonitorScrapeApiKey       = "my-pod-monitor-scrape-api-key"
+	podMonitorProxyPassword      = "my-pod-monitor-proxy-password"
+	scrapeConfigParamToken       = "my-scrape-config-param-token"
+	scrapeConfigProxyQueryApiKey = "my-scrape-config-proxy-query-api-key"
+	probeScrapeApiKey            = "my-probe-scrape-api-key"
+	probeOauth2ClientSecret      = "my-probe-oauth2-client-secret"
+	probeOauth2TokenUrlSecret    = "my-probe-oauth2-token-url-secret"
+	unrelatedParamsValue         = "not-a-credential"
+
+	scrapeConfigScalewayAccessKey      = "my-scrape-config-scaleway-access-key"
+	scrapeConfigOvhcloudApplicationKey = "my-scrape-config-ovhcloud-application-key"
+
 	operatorConfigurationToken = "auth_operator-configuration-token"
 	monitoringToken            = "auth_monitoring-token"
 	lastAppliedToken           = "auth_last-applied-token"

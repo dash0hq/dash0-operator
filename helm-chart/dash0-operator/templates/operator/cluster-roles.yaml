@@ -107,7 +107,7 @@ rules:
   - update
 
 # Permissions required to detect the container runtime, and to count the cluster's availability zones when checking
-# whether the Signal Control collector has a replica in every zone:
+# whether the Signal Control collector and the Edge Proxy have a replica in every zone:
 - apiGroups:
   - ""
   resources:
@@ -115,6 +115,18 @@ rules:
   verbs:
   - get
   - list
+
+# The operator sets its own manager deployment as the owner (with blockOwnerDeletion) of the resources it manages. The
+# OwnerReferencesPermissionEnforcement admission plugin (upstream Kubernetes, enabled by default on OpenShift and
+# MicroShift, and enableable on any cluster) then requires update on the owner's finalizers subresource to set
+# blockOwnerDeletion. Granted unconditionally because it is a no-op where the plugin is off and the flag would be a
+# wrong proxy: a non-OpenShift cluster can enable the plugin too.
+- apiGroups:
+  - apps
+  resources:
+  - deployments/finalizers
+  verbs:
+  - update
 
 ---
 {{/*
@@ -189,6 +201,26 @@ rules:
   - operator.dash0.com
   resources:
   - dash0syntheticchecks/status
+  verbs:
+  - get
+  - patch
+  - update
+
+# Permissions required to watch SLO resources (openslo.com/v1):
+- apiGroups:
+  - openslo.com
+  resources:
+  - slos
+  verbs:
+  - get
+  - list
+  - watch
+
+# Permissions required to write to SLO resource status:
+- apiGroups:
+  - openslo.com
+  resources:
+  - slos/status
   verbs:
   - get
   - patch
@@ -290,6 +322,26 @@ rules:
   - operator.dash0.com
   resources:
   - dash0spamfilters/status
+  verbs:
+  - get
+  - patch
+  - update
+
+# Permissions required to watch Dash0 time series aggregation resources:
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0timeseriesaggregations
+  verbs:
+  - get
+  - list
+  - watch
+
+# Permissions required to write to Dash0 time series aggregation resource status:
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0timeseriesaggregations/status
   verbs:
   - get
   - patch
@@ -661,7 +713,8 @@ rules:
 {{/*
 The -manager-agent0-connector-ro cluster role holds the read-only permissions that the operator delegates to the
 agent0-connector deployment. The operator creates a dedicated cluster role/cluster role binding granting the
-agent0-connector service account "get" & "list" on the well-known resource types plus get on all non-resource URLs.
+agent0-connector service account "get" & "list" on the well-known resource types plus get on the non-resource URLs
+kubectl needs (the system:discovery list).
 Kubernetes' privilege-escalation prevention only allows the operator to grant permissions it holds itself, so it must
 hold these read permissions as well. This cluster role (and its binding) only exist when the agent0-connector feature
 is enabled (operator.agent0Connector.enabled).
@@ -747,3 +800,4 @@ rules:
   - watch
 
 {{ end }}
+

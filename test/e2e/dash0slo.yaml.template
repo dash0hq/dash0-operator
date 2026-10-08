@@ -1,0 +1,26 @@
+apiVersion: openslo.com/v1
+kind: SLO
+metadata:
+  name: slo-e2e-test
+  labels:
+    app.kubernetes.io/name: slo-e2e-test
+spec:
+  description: E2E test SLO for synchronizing SLOs with the Dash0 Operator.
+  budgetingMethod: Occurrences
+  indicator:
+    metadata:
+      name: e2e-test-ratio
+    spec:
+      ratioMetric:
+        good:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: 'http_server_request_duration_seconds_count{http_response_status_code!~"5.."}'
+        total:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: 'http_server_request_duration_seconds_count'
+  objectives:
+    - target: 0.99

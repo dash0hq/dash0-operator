@@ -97,6 +97,12 @@ cluster roles should match snapshot:
         verbs:
           - get
           - list
+      - apiGroups:
+          - apps
+        resources:
+          - deployments/finalizers
+        verbs:
+          - update
   2: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
@@ -156,6 +162,22 @@ cluster roles should match snapshot:
           - operator.dash0.com
         resources:
           - dash0syntheticchecks/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
+          - openslo.com
+        resources:
+          - slos
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - openslo.com
+        resources:
+          - slos/status
         verbs:
           - get
           - patch
@@ -236,6 +258,22 @@ cluster roles should match snapshot:
           - operator.dash0.com
         resources:
           - dash0spamfilters/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0timeseriesaggregations
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0timeseriesaggregations/status
         verbs:
           - get
           - patch
@@ -656,6 +694,12 @@ cluster roles should match snapshot with agent0-connector enabled:
         verbs:
           - get
           - list
+      - apiGroups:
+          - apps
+        resources:
+          - deployments/finalizers
+        verbs:
+          - update
   2: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
@@ -715,6 +759,22 @@ cluster roles should match snapshot with agent0-connector enabled:
           - operator.dash0.com
         resources:
           - dash0syntheticchecks/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
+          - openslo.com
+        resources:
+          - slos
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - openslo.com
+        resources:
+          - slos/status
         verbs:
           - get
           - patch
@@ -795,6 +855,22 @@ cluster roles should match snapshot with agent0-connector enabled:
           - operator.dash0.com
         resources:
           - dash0spamfilters/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0timeseriesaggregations
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0timeseriesaggregations/status
         verbs:
           - get
           - patch
@@ -1135,7 +1211,6 @@ cluster roles should match snapshot with agent0-connector enabled:
         resources:
           - componentstatuses
           - endpoints
-          - events
           - limitranges
           - namespaces
           - nodes
@@ -1143,7 +1218,6 @@ cluster roles should match snapshot with agent0-connector enabled:
           - persistentvolumes
           - podtemplates
           - pods
-          - pods/log
           - replicationcontrollers
           - resourcequotas
           - serviceaccounts
@@ -1261,13 +1335,6 @@ cluster roles should match snapshot with agent0-connector enabled:
           - get
           - list
       - apiGroups:
-          - events.k8s.io
-        resources:
-          - events
-        verbs:
-          - get
-          - list
-      - apiGroups:
           - metrics.k8s.io
         resources:
           - nodes
@@ -1336,7 +1403,15 @@ cluster roles should match snapshot with agent0-connector enabled:
           - dash0signaltometrics
           - dash0spamfilters
           - dash0syntheticchecks
+          - dash0timeseriesaggregations
           - dash0views
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - openslo.com
+        resources:
+          - slos
         verbs:
           - get
           - list
@@ -1359,7 +1434,17 @@ cluster roles should match snapshot with agent0-connector enabled:
           - get
           - list
       - nonResourceURLs:
-          - '*'
+          - /api
+          - /api/*
+          - /apis
+          - /apis/*
+          - /healthz
+          - /livez
+          - /openapi
+          - /openapi/*
+          - /readyz
+          - /version
+          - /version/
         verbs:
           - get
   6: |

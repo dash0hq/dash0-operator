@@ -42,8 +42,42 @@ var _ = Describe("Exporter Conversion", func() {
 			Expect(exporter).NotTo(BeNil())
 			Expect(exporter.Name).To(Equal("otlp_grpc/dash0/default"))
 			Expect(exporter.Endpoint).To(Equal(EndpointDash0Test))
-			Expect(exporter.Headers).To(HaveLen(1))
+			Expect(exporter.Headers).To(HaveLen(2))
+			Expect(exporter.Headers[1]).To(Equal(dash0common.Header{
+				Name:  util.Dash0DatasetHeaderName,
+				Value: util.DatasetDefault,
+			}))
 		})
+
+		DescribeTable("should only send the dataset header if a dataset has been set",
+			func(dataset string, expectedHeaders []dash0common.Header) {
+				d0Config := &dash0common.Dash0Configuration{
+					Endpoint: EndpointDash0Test,
+					Dataset:  dataset,
+					Authorization: dash0common.Authorization{
+						Token: &AuthorizationTokenTest,
+					},
+				}
+				auth := &dash0ExporterAuthorization{
+					EnvVarName: authEnvVarNameDefault,
+					Authorization: dash0common.Authorization{
+						Token: &AuthorizationTokenTest,
+					},
+				}
+
+				exporter, err := convertDash0ExporterToOtlpExporter(d0Config, "default", auth)
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(exporter.Headers[1:]).To(Equal(expectedHeaders))
+			},
+			Entry("no dataset", "", []dash0common.Header{}),
+			Entry("explicit default dataset", util.DatasetDefault, []dash0common.Header{
+				{Name: util.Dash0DatasetHeaderName, Value: util.DatasetDefault},
+			}),
+			Entry("custom dataset", DatasetCustomTest, []dash0common.Header{
+				{Name: util.Dash0DatasetHeaderName, Value: DatasetCustomTest},
+			}),
+		)
 
 		It("should return error when endpoint is empty", func() {
 			d0Config := &dash0common.Dash0Configuration{

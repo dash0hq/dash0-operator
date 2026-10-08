@@ -12,6 +12,10 @@ fi
 
 branch_name="update-dash0-collector-components"
 config_file="images/collector/src/builder/config.yaml"
+telemetry_go_mod="images/collector/src/telemetry/go.mod"
+telemetry_module_files=("$telemetry_go_mod" "images/collector/src/telemetry/go.sum")
+# All files that update-collector-components-check-and-bump-versions.sh can modify.
+changed_files=("$config_file" "${telemetry_module_files[@]}")
 
 # Base commit that the new branch will be based on.
 base_sha=$(git rev-parse HEAD)
@@ -24,22 +28,30 @@ trap 'rm -f "$COLLECTOR_VERSIONS_OUTPUT"' EXIT
 source "$COLLECTOR_VERSIONS_OUTPUT"
 
 # git diff-files --quiet exits with 1 if there were differences, exit code 0 means no differences.
-if git diff-files --quiet "$config_file"; then
+if git diff-files --quiet -- "${changed_files[@]}"; then
   echo "There are no changes, everything up to date."
   exit 0
 fi
 
 echo "There are changes, creating a pull request."
 
-commit_message="chore(deps): bump Dash0 collector components"
-pr_body=""
-# Note: new_stable_version etc. are sourced from $COLLECTOR_VERSIONS_OUTPUT, which is populated by
-# .github/workflows/scripts/update-collector-components-check-and-bump-versions.sh.
+# Note: components_updated, new_core_stable_version etc. are sourced from $COLLECTOR_VERSIONS_OUTPUT, which is populated
+# by .github/workflows/scripts/update-collector-components-check-and-bump-versions.sh.
 # shellcheck disable=SC2154
-if [[ -n "${new_stable_version:-}" && -n "${new_beta_version:-}" && -n "${new_contrib_version:-}" ]]; then
-  commit_message="chore(deps): bump Dash0 collector components (${new_stable_version}/${new_beta_version}/${new_contrib_version})"
-  pr_body=$(printf 'Update to:\n- core stable version: %s\n- core beta version: v%s\n- contrib version: v%s' \
-    "$new_stable_version" "$new_beta_version" "$new_contrib_version")
+if [[ "${components_updated:-false}" == "true" ]]; then
+  commit_message="chore(deps): bump Dash0 collector components (${new_core_stable_version}/${new_core_beta_version}/${new_contrib_stable_version}/${new_contrib_beta_version})"
+  pr_body=$(printf 'Update to:\n- core stable version: %s\n- core beta version: v%s\n- contrib stable version: v%s\n- contrib beta version: v%s' \
+    "$new_core_stable_version" "$new_core_beta_version" "$new_contrib_stable_version" "$new_contrib_beta_version")
+  if ! git diff-files --quiet -- "${telemetry_module_files[@]}"; then
+    pr_body="${pr_body}"$'\n\n'$(printf \
+      'Also aligns the collector modules required by %s with these versions.' \
+      "$telemetry_go_mod")
+  fi
+else
+  commit_message="chore(deps): align the collector telemetry module with the builder config"
+  pr_body=$(printf \
+    'The collector modules required by %s had drifted from the component versions in %s. No component was updated.' \
+    "$telemetry_go_mod" "$config_file")
 fi
 
 # Remove any branch lingering from a previous failed run (no-op if it does not exist). Note: We abort early if an open
@@ -51,17 +63,29 @@ gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
   -f ref="refs/heads/${branch_name}" \
   -f sha="${base_sha}" >/dev/null
 
+# The base64-encoded file contents and the additions are passed to jq via --rawfile and --slurpfile, not via --arg and
+# --argjson: they can exceed the maximum length of a single command line argument (MAX_ARG_STRLEN, 128 KiB).
+contents_file=$(mktemp)
+additions_file=$(mktemp)
+trap 'rm -f "$COLLECTOR_VERSIONS_OUTPUT" "$contents_file" "$additions_file"' EXIT
+for file in "${changed_files[@]}"; do
+  base64 < "$file" | tr -d '\n' > "$contents_file"
+  jq -n \
+    --arg path "$file" \
+    --rawfile contents "$contents_file" \
+    '{ path: $path, contents: $contents }' >> "$additions_file"
+done
+
 # Let "gh api graphql"/createCommitOnBranch create the commit via the GitHub API rather than "git commit"/"git push", so
 # commits are automatically signed.
 # Note: expectedHeadOid is an optimistic lock: the branch tip must still be at base_sha (it is, we just created it).
-jq -n \
+payload=$(jq -n \
   --arg repo "$GITHUB_REPOSITORY" \
   --arg branch "$branch_name" \
   --arg headline "$commit_message" \
   --arg body "$pr_body" \
   --arg oid "$base_sha" \
-  --arg path "$config_file" \
-  --arg contents "$(base64 < "$config_file" | tr -d '\n')" \
+  --slurpfile additions "$additions_file" \
   '{
     query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
     variables: {
@@ -69,10 +93,11 @@ jq -n \
         branch:          { repositoryNameWithOwner: $repo, branchName: $branch },
         message:         { headline: $headline, body: $body },
         expectedHeadOid: $oid,
-        fileChanges:     { additions: [ { path: $path, contents: $contents } ] }
+        fileChanges:     { additions: $additions }
       }
     }
-  }' | gh api graphql --input - >/dev/null
+  }')
+echo "$payload" | gh api graphql --input - >/dev/null
 
 gh pr create \
   -B main \

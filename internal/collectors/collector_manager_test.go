@@ -6,6 +6,7 @@ package collectors
 import (
 	"context"
 	"slices"
+	"time"
 
 	"github.com/go-logr/logr/funcr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -20,8 +21,8 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
-	"github.com/dash0hq/dash0-operator/internal/signalcontrol/enablement"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -66,7 +67,6 @@ var _ = Describe("The collector manager", Ordered, func() {
 			util.ExtraConfigDefaults,
 			false,
 			false,
-			nil,
 			oTelColResourceManager,
 		)
 	})
@@ -457,50 +457,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 			}, funcr.Options{}))
 		})
 
-		It("warns once per distinct zone/replica combination, not on every reconcile", func() {
-			manager := &CollectorManager{}
-
-			manager.reportZoneCoverage(3, 2, recordingLogger)
-			Expect(warnings).To(HaveLen(1))
-			Expect(warnings[0]).To(ContainSubstring("3 availability zones"))
-			Expect(warnings[0]).To(ContainSubstring("2 replicas"))
-			Expect(warnings[0]).To(ContainSubstring("signalControlCollectorReplicas"))
-
-			// A steady state must not produce a warning again.
-			manager.reportZoneCoverage(3, 2, recordingLogger)
-			manager.reportZoneCoverage(3, 2, recordingLogger)
-			Expect(warnings).To(HaveLen(1))
-
-			// A changed zone count is a new situation and is reported again.
-			manager.reportZoneCoverage(4, 2, recordingLogger)
-			Expect(warnings).To(HaveLen(2))
-		})
-
-		It("does not warn when there are at least as many replicas as zones", func() {
-			manager := &CollectorManager{}
-			manager.reportZoneCoverage(3, 3, recordingLogger)
-			manager.reportZoneCoverage(3, 5, recordingLogger)
-			Expect(warnings).To(BeEmpty())
-		})
-
-		It("does not warn on clusters with no zone labels or a single zone", func() {
-			manager := &CollectorManager{}
-			manager.reportZoneCoverage(0, 1, recordingLogger)
-			manager.reportZoneCoverage(1, 1, recordingLogger)
-			Expect(warnings).To(BeEmpty())
-		})
-
-		It("warns again after the situation was resolved and then reoccurs", func() {
-			manager := &CollectorManager{}
-			manager.reportZoneCoverage(3, 2, recordingLogger)
-			Expect(warnings).To(HaveLen(1))
-			manager.reportZoneCoverage(3, 3, recordingLogger)
-			Expect(warnings).To(HaveLen(1))
-			manager.reportZoneCoverage(3, 2, recordingLogger)
-			Expect(warnings).To(HaveLen(2))
-		})
-
-		It("derives the zone count from the node labels reported by the API server", func() {
+		It("warns with the Signal Control collector wording, lists nodes at most once per interval, and re-checks on a "+
+			"replica change", func() {
 			for _, zone := range []string{"zone-a", "zone-b", "zone-c"} {
 				node := &corev1.Node{
 					ObjectMeta: metav1.ObjectMeta{
@@ -514,24 +472,51 @@ var _ = Describe("The collector manager", Ordered, func() {
 				})
 			}
 
-			manager := &CollectorManager{nodeMetadataClient: nodeMetadataClient}
+			currentTime := time.Unix(0, 0)
+			manager := &CollectorManager{}
+			twoReplicas := util.ExtraConfig{SignalControlCollectorReplicas: 2}
+			threeReplicas := util.ExtraConfig{SignalControlCollectorReplicas: 3}
+
 			// The node list is served from the API server's watch cache, which may not have caught up with the nodes
-			// created above yet.
+			// created above yet. A fresh reporter on every attempt makes each one a first check that lists the nodes.
 			Eventually(func(g Gomega) {
 				warnings = nil
-				manager.warnAboutInsufficientZoneCoverage(
-					ctx,
-					util.ExtraConfig{SignalControlCollectorReplicas: 2},
-					recordingLogger,
-				)
+				manager.zoneCoverageReporter = cluster.NewZoneCoverageReporter(
+					nodeMetadataClient, cluster.WithClock(func() time.Time { return currentTime }))
+				manager.warnAboutInsufficientZoneCoverage(ctx, twoReplicas, recordingLogger)
 				g.Expect(warnings).To(HaveLen(1))
 				g.Expect(warnings[0]).To(ContainSubstring("3 availability zones"))
 				g.Expect(warnings[0]).To(ContainSubstring("2 replicas"))
+				g.Expect(warnings[0]).To(ContainSubstring("signalControlCollectorReplicas"))
 			}).Should(Succeed())
+
+			// Within the interval and with an unchanged replica count, the node list is skipped and nothing is logged.
+			warnings = nil
+			manager.warnAboutInsufficientZoneCoverage(ctx, twoReplicas, recordingLogger)
+			Expect(warnings).To(BeEmpty())
+
+			// A replica change bypasses the interval: the check runs again and, now sufficient, logs the info.
+			warnings = nil
+			manager.warnAboutInsufficientZoneCoverage(ctx, threeReplicas, recordingLogger)
+			Expect(warnings).To(HaveLen(1))
+			Expect(warnings[0]).To(ContainSubstring("cross-zone traffic is avoided"))
+
+			// Once the interval has elapsed the periodic check runs again; back to two replicas, it warns once more.
+			currentTime = currentTime.Add(cluster.ZoneCoverageCheckInterval)
+			warnings = nil
+			manager.warnAboutInsufficientZoneCoverage(ctx, twoReplicas, recordingLogger)
+			Expect(warnings).To(HaveLen(1))
+			Expect(warnings[0]).To(ContainSubstring("incurs cross-zone traffic cost"))
+
+			// A further periodic check in the same state does not warn again.
+			currentTime = currentTime.Add(cluster.ZoneCoverageCheckInterval)
+			warnings = nil
+			manager.warnAboutInsufficientZoneCoverage(ctx, twoReplicas, recordingLogger)
+			Expect(warnings).To(BeEmpty())
 		})
 	})
 
-	Describe("when Signal Control is gated on the organization's entitlement", func() {
+	Describe("when Signal Control is enabled", func() {
 		BeforeEach(func() {
 			CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
 			scResource := &dash0v1alpha1.Dash0SignalControl{
@@ -548,8 +533,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 		})
 
-		It("deploys the Signal Control collector when the organization is entitled", func() {
-			collectorManager = newCollectorManagerWithEnablementChecker(stubEnablementChecker{allowed: true})
+		It("deploys the Signal Control collector when enabled", func() {
+			collectorManager = newCollectorManagerWithSignalControlEnabled()
 
 			_, err := collectorManager.ReconcileOpenTelemetryCollector(ctx)
 			Expect(err).ToNot(HaveOccurred())
@@ -563,8 +548,13 @@ var _ = Describe("The collector manager", Ordered, func() {
 			Expect(daemonSetConfig).To(ContainSubstring("otlp/signal-control-collector"))
 		})
 
-		It("deploys no Signal Control collector when the organization is not entitled", func() {
-			collectorManager = newCollectorManagerWithEnablementChecker(stubEnablementChecker{allowed: false})
+		It("deploys no Signal Control collector when the operator configuration has no Dash0 export", func() {
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
+			CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(false)},
+				Exports:        []dash0common.Export{*HttpExportTest()},
+			})
+			collectorManager = newCollectorManagerWithSignalControlEnabled()
 
 			_, err := collectorManager.ReconcileOpenTelemetryCollector(ctx)
 			Expect(err).ToNot(HaveOccurred())
@@ -574,22 +564,55 @@ var _ = Describe("The collector manager", Ordered, func() {
 			Expect(daemonSetConfig).ToNot(ContainSubstring("dash0settingsonedgeextension"))
 			Expect(daemonSetConfig).ToNot(ContainSubstring("otlp/signal-control-collector"))
 		})
+	})
 
-		It("deploys no Signal Control collector when the operator configuration has no Dash0 export, even when entitled", func() {
-			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
-			CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, dash0v1alpha1.Dash0OperatorConfigurationSpec{
-				SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(false)},
-				Exports:        []dash0common.Export{*HttpExportTest()},
-			})
-			collectorManager = newCollectorManagerWithEnablementChecker(stubEnablementChecker{allowed: true})
+	Describe("when handling concurrent reconciliation requests", func() {
+		BeforeEach(func() {
+			CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
+			resource := EnsureMonitoringResourceExistsAndIsAvailable(
+				ctx,
+				k8sClient,
+			)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, resource)
+		})
 
-			_, err := collectorManager.ReconcileOpenTelemetryCollector(ctx)
+		AfterEach(func() {
+			_, err := collectorManager.oTelColResourceManager.DeleteResources(
+				ctx,
+				util.ExtraConfigDefaults,
+				logger,
+			)
 			Expect(err).ToNot(HaveOccurred())
 
-			VerifySignalControlCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
-			daemonSetConfig := GetOTelColDaemonSetConfigMap(ctx, k8sClient, operatorNamespace).Data["config.yaml"]
-			Expect(daemonSetConfig).ToNot(ContainSubstring("dash0settingsonedgeextension"))
-			Expect(daemonSetConfig).ToNot(ContainSubstring("otlp/signal-control-collector"))
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
+		})
+
+		It("does not reconcile when a reconciliation is already in progress, but does not lose the trigger", func() {
+			// Occupy the manager's reconcile guard and trigger a reconciliation from within it, the way a watch event
+			// or an extra config map update would arrive while a reconciliation is running.
+			executions := 0
+			var skippedHasBeenReconciled bool
+			var skippedErr error
+			_, err := collectorManager.reconcileGuard.Run(func() (bool, error) {
+				executions++
+				if executions == 1 {
+					skippedHasBeenReconciled, skippedErr = collectorManager.ReconcileOpenTelemetryCollector(ctx)
+				}
+				return true, nil
+			}, nil, nil)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(skippedErr).ToNot(HaveOccurred())
+			Expect(skippedHasBeenReconciled).To(BeFalse())
+			// The reconciliation was not executed, so no resources were created ...
+			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
+			// ... but the trigger was recorded and the guard repeated the reconciliation once, instead of dropping it.
+			Expect(executions).To(Equal(2))
+
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
+			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
 		})
 	})
 
@@ -710,26 +733,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 	})
 })
 
-type stubEnablementChecker struct {
-	allowed bool
-}
-
-func (s stubEnablementChecker) EnsureAllowed(
-	context.Context,
-	*dash0v1alpha1.Dash0OperatorConfiguration,
-	logd.Logger,
-) bool {
-	return s.allowed
-}
-
-func (s stubEnablementChecker) Result() enablement.Result {
-	if s.allowed {
-		return enablement.ResultAllowed
-	}
-	return enablement.ResultNotAllowed
-}
-
-func newCollectorManagerWithEnablementChecker(checker enablement.Checker) *CollectorManager {
+func newCollectorManagerWithSignalControlEnabled() *CollectorManager {
 	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
 		k8sClient,
 		k8sClient.Scheme(),
@@ -747,7 +751,6 @@ func newCollectorManagerWithEnablementChecker(checker enablement.Checker) *Colle
 		util.ExtraConfigDefaults,
 		false,
 		true,
-		checker,
 		oTelColResourceManager,
 	)
 }

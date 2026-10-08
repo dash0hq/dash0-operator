@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync/atomic"
 
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/metadata"
@@ -22,30 +21,22 @@ import (
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/resources"
-	"github.com/dash0hq/dash0-operator/internal/signalcontrol/enablement"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
 
 type CollectorManager struct {
 	client.Client
-	nodeMetadataClient          metadata.Interface
 	oTelColResourceManager      *otelcolresources.OTelColResourceManager
 	extraConfig                 atomic.Pointer[util.ExtraConfig]
 	developmentMode             bool
 	signalControlFeatureEnabled bool
-	enablementChecker           enablement.Checker
-	updateInProgress            atomic.Bool
-	// lastReportedZoneCoverage remembers the (zone count, replica count) pair the zone coverage warning was last
-	// emitted for, so that the warning is logged on transitions instead of on every reconcile.
-	lastReportedZoneCoverage atomic.Pointer[zoneCoverage]
-}
-
-// zoneCoverage is the pair the zone coverage warning is keyed on.
-type zoneCoverage struct {
-	zoneCount    int
-	replicaCount int32
+	reconcileGuard              util.ReconcileGuard
+	// zoneCoverageReporter warns when the Signal Control collector has fewer replicas than the cluster has
+	// availability zones. See cluster.ZoneCoverageReporter.
+	zoneCoverageReporter *cluster.ZoneCoverageReporter
 }
 
 type CollectorReconcileTrigger string
@@ -67,16 +58,14 @@ func NewCollectorManager(
 	extraConfig util.ExtraConfig,
 	developmentMode bool,
 	signalControlFeatureEnabled bool,
-	enablementChecker enablement.Checker,
 	oTelColResourceManager *otelcolresources.OTelColResourceManager,
 ) *CollectorManager {
 	m := &CollectorManager{
 		Client:                      k8sClient,
-		nodeMetadataClient:          nodeMetadataClient,
 		developmentMode:             developmentMode,
 		signalControlFeatureEnabled: signalControlFeatureEnabled,
-		enablementChecker:           enablementChecker,
 		oTelColResourceManager:      oTelColResourceManager,
+		zoneCoverageReporter:        cluster.NewZoneCoverageReporter(nodeMetadataClient),
 	}
 	m.extraConfig.Store(&extraConfig)
 	return m
@@ -85,6 +74,7 @@ func NewCollectorManager(
 func (m *CollectorManager) UpdateExtraConfig(ctx context.Context, newConfig util.ExtraConfig, logger logd.Logger) {
 	previousConfig := m.extraConfig.Swap(&newConfig)
 	if previousConfig == nil || !reflect.DeepEqual(*previousConfig, newConfig) {
+		util.WarnOnCollectorGoMemLimitInversion(newConfig, logger)
 		hasBeenReconciled, err := m.ReconcileOpenTelemetryCollector(ctx)
 		if err != nil {
 			logger.ErrorTelemetryCollectionIssue(err, "Failed to create/update collector resources after extra config map update.")
@@ -106,23 +96,38 @@ func (m *CollectorManager) UpdateExtraConfig(ctx context.Context, newConfig util
 //
 // Returns a boolean flag indicating whether the reconciliation has been performed (true) or has been cancelled, due
 // to another reconciliation already being in progress or because the resource has been deleted by the operator.
-// A return value of (nil, true) does not necessarily indicate that any collector resource has been created, updated, or
+// A return value of (true, nil) does not necessarily indicate that any collector resource has been created, updated, or
 // deleted; it only indicates that the reconciliation has been performed.
+//
+// A request that arrives while a reconciliation is in progress is not executed. The reconciliation which is in progress
+// repeats itself once it is done, see util.ReconcileGuard. Without that, an operator configuration or extra config
+// change arriving mid-reconciliation would be stored but never applied, since none of the controllers requeues
+// periodically.
 func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 	ctx context.Context,
 ) (bool, error) {
 	logger := logd.FromContext(ctx)
-	if m.updateInProgress.Load() {
-		logger.Debug("creation/update of the OpenTelemetry collector resources is already in progress, skipping " +
-			"additional reconciliation request.")
-		return false, nil
-	}
 
-	m.updateInProgress.Store(true)
-	defer func() {
-		m.updateInProgress.Store(false)
-	}()
+	return m.reconcileGuard.Run(
+		func() (bool, error) {
+			return m.reconcileOpenTelemetryCollector(ctx, logger)
+		},
+		func() {
+			logger.Debug("creation/update of the OpenTelemetry collector resources is already in progress, the " +
+				"additional reconciliation request will be served by the reconciliation which is in progress.")
+		},
+		func() {
+			logger.Warn("the reconciliation of the OpenTelemetry collector resources kept being triggered while it was " +
+				"running, stopped repeating it, the pending reconciliation request is dropped.")
+		},
+	)
+}
 
+// reconcileOpenTelemetryCollector is the body of ReconcileOpenTelemetryCollector, executed under the manager's
+// reconcile guard. It reads the operator configuration resource, the monitoring resources, the Signal Control resource
+// and the extra config itself, which is what allows the guard to repeat it for a trigger that arrived while it was
+// running.
+func (m *CollectorManager) reconcileOpenTelemetryCollector(ctx context.Context, logger logd.Logger) (bool, error) {
 	operatorConfigurationResource, err := m.findOperatorConfigurationResource(ctx, logger)
 	if err != nil {
 		return false, err
@@ -164,19 +169,6 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 				"Dash0 export; Signal Control components will not be added to the collector.")
 			signalControlResource = nil
 		}
-
-		// Gate Signal Control on the organization's entitlement. If the organization is not entitled (or the
-		// entitlement cannot be confirmed), treat Signal Control as absent so the collector is rendered without any
-		// Signal Control components (plain collector image and config).
-		if signalControlResource != nil &&
-			signalControlEnabled &&
-			m.enablementChecker != nil &&
-			operatorConfigurationResource != nil &&
-			!m.enablementChecker.EnsureAllowed(ctx, operatorConfigurationResource, logger) {
-			logger.WarnTelemetryCollectionIssue("The organization is not entitled to use Signal Control (or the " +
-				"entitlement could not be confirmed); Signal Control components will not be added to the collector.")
-			signalControlResource = nil
-		}
 	}
 
 	extraConfig := m.extraConfig.Load()
@@ -198,7 +190,7 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 		return err == nil, err
 	} else {
 		// Only relevant when a Signal Control collector is actually deployed: the resource may exist while being
-		// explicitly disabled, not entitled, or without a Dash0 export, in which case there is nothing to spread over
+		// explicitly disabled or without a Dash0 export, in which case there is nothing to spread over
 		// availability zones.
 		if signalControlResource != nil && signalControlEnabled {
 			m.warnAboutInsufficientZoneCoverage(ctx, *extraConfig, logger)
@@ -228,60 +220,29 @@ func (m *CollectorManager) warnAboutInsufficientZoneCoverage(
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) {
-	if m.nodeMetadataClient == nil {
-		return
-	}
-	// The metadata client bypasses the controller-runtime cache on purpose: reading nodes through the cached client
-	// would start an informer that keeps every node object in memory for the lifetime of the operator. Only object
-	// metadata is requested, since the zone label is all that is read, which keeps the node status (in particular the
-	// image list) off the wire. The read is served from the API server's watch cache (ResourceVersion "0") and
-	// restricted to nodes that carry a zone label, since nodes without one contribute nothing to the zone count.
-	nodes, err := m.nodeMetadataClient.
-		Resource(corev1.SchemeGroupVersion.WithResource("nodes")).
-		List(ctx, metav1.ListOptions{
-			ResourceVersion: "0",
-			LabelSelector:   corev1.LabelTopologyZone,
-		})
-	if err != nil {
-		logger.Debug("cannot list nodes to check the Signal Control collector's availability zone coverage", "error", err)
-		return
-	}
-	zones := make(map[string]struct{})
-	for _, node := range nodes.Items {
-		if zone := node.Labels[corev1.LabelTopologyZone]; zone != "" {
-			zones[zone] = struct{}{}
-		}
-	}
-
 	replicaCount := extraConfig.SignalControlCollectorReplicas
 	if replicaCount < 1 {
 		replicaCount = otelcolresources.SignalControlCollectorDefaultReplicas
 	}
-	m.reportZoneCoverage(len(zones), replicaCount, logger)
-}
-
-// reportZoneCoverage emits the zone coverage warning when there are more availability zones than Signal Control
-// collector replicas, at most once per distinct (zone count, replica count) pair so that a steady state does not
-// produce a warning on every reconcile.
-func (m *CollectorManager) reportZoneCoverage(zoneCount int, replicaCount int32, logger logd.Logger) {
-	// With zero or one zone there is nothing to spread over, the zone preference is inert either way.
-	if zoneCount <= 1 || int32(zoneCount) <= replicaCount {
-		m.lastReportedZoneCoverage.Store(nil)
-		return
-	}
-
-	current := zoneCoverage{zoneCount: zoneCount, replicaCount: replicaCount}
-	if previous := m.lastReportedZoneCoverage.Load(); previous != nil && *previous == current {
-		return
-	}
-	m.lastReportedZoneCoverage.Store(&current)
-	logger.WarnTelemetryCollectionIssue(fmt.Sprintf(
-		"The cluster has %d availability zones but the Signal Control collector runs with %d replicas, so at least "+
-			"one zone has no Signal Control collector pod. Telemetry from those zones is sent to a collector in "+
-			"another zone, which works but incurs cross-zone traffic cost. Set "+
-			"operator.collectors.signalControlCollectorReplicas to at least %d to avoid that.",
-		zoneCount, replicaCount, zoneCount,
-	))
+	m.zoneCoverageReporter.Report(ctx, replicaCount, cluster.ZoneCoverageMessages{
+		Warn: func(zoneCount int, replicaCount int32) string {
+			return fmt.Sprintf(
+				"The cluster has %d availability zones but the Signal Control collector runs with %d replicas, so at least "+
+					"one zone has no Signal Control collector pod. Telemetry from those zones is sent to a collector in "+
+					"another zone, which works but incurs cross-zone traffic cost. Set "+
+					"operator.collectors.signalControlCollectorReplicas to at least %d to avoid that.",
+				zoneCount, replicaCount, zoneCount,
+			)
+		},
+		Resolved: func(zoneCount int, replicaCount int32) string {
+			return fmt.Sprintf(
+				"The Signal Control collector now runs with %d replicas across %d availability zones, so every zone has a "+
+					"Signal Control collector pod and cross-zone traffic is avoided.",
+				replicaCount, zoneCount,
+			)
+		},
+		ListErrDebug: "cannot list nodes to check the Signal Control collector's availability zone coverage",
+	}, logger)
 }
 
 func (m *CollectorManager) createOrUpdateOpenTelemetryCollector(

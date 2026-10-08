@@ -20,15 +20,20 @@ type TraceContext struct {
 // traceparentPropagator parses W3C traceparent headers.
 var traceparentPropagator = propagation.TraceContext{}
 
-// ParseTraceparent parses a W3C traceparent header (e.g. "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01")
-// into a traceContext. A missing or malformed header yields a zero traceContext.
-func ParseTraceparent(traceparent string) TraceContext {
-	ctx := traceparentPropagator.Extract(context.Background(), propagation.MapCarrier{"traceparent": traceparent})
-	sc := trace.SpanContextFromContext(ctx)
+// Extract parses a W3C traceparent header (e.g. "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01") and returns
+// the given context with the span context of the upstream caller attached, together with the trace and span ID for
+// logging. A missing or malformed header returns the given context unchanged and yields a zero TraceContext.
+//
+// To correlate telemetry emitted by the connector with the trace of the upstream caller, use the context returned by
+// this method when processing the request. The OTel slog bridge adds the trace and span ID from the context to every
+// log record it converts.
+func Extract(ctx context.Context, traceparent string) (context.Context, TraceContext) {
+	extractedCtx := traceparentPropagator.Extract(ctx, propagation.MapCarrier{"traceparent": traceparent})
+	sc := trace.SpanContextFromContext(extractedCtx)
 	if !sc.IsValid() {
-		return TraceContext{}
+		return ctx, TraceContext{}
 	}
-	return TraceContext{
+	return extractedCtx, TraceContext{
 		TraceID: sc.TraceID().String(),
 		SpanID:  sc.SpanID().String(),
 	}

@@ -111,7 +111,6 @@ var _ = Describe(
 					util.ExtraConfigDefaults,
 					false,
 					false,
-					nil,
 					oTelColResourceManager,
 				)
 				targetAllocatorResourceManager := taresources.NewTargetAllocatorResourceManager(
@@ -2703,6 +2702,36 @@ var _ = Describe("monitoringPredicate", func() {
 
 	It("should return true when ObjectNew is nil", func() {
 		Expect(p.Update(event.UpdateEvent{ObjectOld: baseMonitoring(), ObjectNew: nil})).To(BeTrue())
+	})
+})
+
+var _ = Describe("warnIfInOperatorNamespace", func() {
+	reconciler := &MonitoringReconciler{operatorNamespace: OperatorNamespace}
+
+	monitoringResourceInNamespace := func(namespace string) *dash0v1beta1.Dash0Monitoring {
+		return &dash0v1beta1.Dash0Monitoring{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      MonitoringResourceName,
+				Namespace: namespace,
+			},
+		}
+	}
+
+	It("should log a warning when the monitoring resource is in the operator namespace", func() {
+		logger, capturingLogSink := NewCapturingLogger()
+		reconciler.warnIfInOperatorNamespace(monitoringResourceInNamespace(OperatorNamespace), logger)
+		capturingLogSink.HasLogMessage(
+			Default,
+			"The Dash0 monitoring resource "+MonitoringResourceName+" has been deployed to the namespace of the Dash0 "+
+				"operator ("+OperatorNamespace+"). Deploying a monitoring resource to the operator namespace is not "+
+				"necessary and not recommended. Collecting the operator's own telemetry is handled via self-monitoring.",
+		)
+	})
+
+	It("should not log anything when the monitoring resource is in a different namespace", func() {
+		logger, capturingLogSink := NewCapturingLogger()
+		reconciler.warnIfInOperatorNamespace(monitoringResourceInNamespace(TestNamespaceName), logger)
+		capturingLogSink.HasNoLogMessages(Default)
 	})
 })
 

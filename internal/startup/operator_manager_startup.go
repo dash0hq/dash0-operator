@@ -6,11 +6,9 @@ package startup
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"flag"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof"
 	"os"
 	"strconv"
 	"strings"
@@ -44,6 +42,7 @@ import (
 	k8swebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	dash0dashv1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
+	openslov1 "github.com/dash0hq/dash0-operator/api/openslo/v1"
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
@@ -60,8 +59,9 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/predelete"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol"
-	"github.com/dash0hq/dash0-operator/internal/signalcontrol/enablement"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol/scresources"
+	"github.com/dash0hq/dash0-operator/internal/syntheticsworker"
+	"github.com/dash0hq/dash0-operator/internal/syntheticsworker/swresources"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -106,6 +106,12 @@ type environmentVariables struct {
 	agent0ConnectorToken                        string
 	agent0ConnectorSecretRefName                string
 	agent0ConnectorSecretRefKey                 string
+	syntheticsWorkerImage                       string
+	syntheticsWorkerImagePullPolicy             corev1.PullPolicy
+	syntheticsWorkerEnabled                     bool
+	syntheticsWorkerServerAddress               string
+	syntheticsWorkerInsecure                    bool
+	syntheticsWorkerPriorityClassName           string
 	nodeIp                                      string
 	nodeName                                    string
 	podIp                                       string
@@ -114,6 +120,7 @@ type environmentVariables struct {
 	k8sAttributesDisableReplicasetInformer      bool
 	k8sAttributesWaitForMetadata                bool
 	k8sAttributesWaitForMetadataTimeout         string
+	k8sAttributesShareProcessor                 bool
 	kubeletStatsAutoDetectEndpoint              bool
 	kubeletStatsReceiverConfig                  *util.KubeletStatsReceiverConfig
 	instrumentationDebug                        bool
@@ -132,6 +139,7 @@ type commandLineArguments struct {
 	allowlistSynchronizerReadyCheck                                       bool
 	allowlistVersion                                                      string
 	deleteAllowlistSynchronizer                                           bool
+	operatorConfigurationManagedViaHelm                                   bool
 	operatorConfigurationEndpoint                                         string
 	operatorConfigurationToken                                            string
 	operatorConfigurationSecretRefName                                    string
@@ -156,6 +164,7 @@ type commandLineArguments struct {
 	featureSignalControlEnabled                                           bool
 	forceUseOpenTelemetryCollectorServiceUrl                              bool
 	isGkeAutopilot                                                        bool
+	isOpenShift                                                           bool
 	disableOpenTelemetryCollectorHostPorts                                bool
 	otlpGrpcHostPort                                                      int
 	otlpHttpHostPort                                                      int
@@ -166,6 +175,24 @@ type commandLineArguments struct {
 	secureMetrics                                                         bool
 	enableHTTP2                                                           bool
 	logLevel                                                              string
+}
+
+// pprofLogger adapts logd.Logger to common.PprofLogger. The shared helper logs in the slog style, while logd.Logger
+// inherits logr's Error(err, msg, keysAndValues...) signature; the error itself arrives as a key/value pair in args.
+type pprofLogger struct {
+	logger logd.Logger
+}
+
+func (l pprofLogger) Info(msg string, args ...any) {
+	l.logger.Info(msg, args...)
+}
+
+func (l pprofLogger) Warn(msg string, args ...any) {
+	l.logger.Warn(msg, args...)
+}
+
+func (l pprofLogger) Error(msg string, args ...any) {
+	l.logger.Error(nil, msg, args...)
 }
 
 const (
@@ -203,12 +230,17 @@ const (
 	agent0ConnectorTokenEnvVarName                        = "DASH0_AGENT0_CONNECTOR_TOKEN"
 	agent0ConnectorSecretRefNameEnvVarName                = "DASH0_AGENT0_CONNECTOR_SECRET_REF_NAME"
 	agent0ConnectorSecretRefKeyEnvVarName                 = "DASH0_AGENT0_CONNECTOR_SECRET_REF_KEY"
+	syntheticsWorkerImageEnvVarName                       = "DASH0_SYNTHETICS_WORKER_IMAGE"
+	syntheticsWorkerImagePullPolicyEnvVarName             = "DASH0_SYNTHETICS_WORKER_IMAGE_PULL_POLICY"
+	syntheticsWorkerEnabledEnvVarName                     = "DASH0_SYNTHETICS_WORKER_ENABLED"
+	syntheticsWorkerServerAddressEnvVarName               = "DASH0_SYNTHETICS_WORKER_SERVER_ADDRESS"
+	syntheticsWorkerInsecureEnvVarName                    = "DASH0_SYNTHETICS_WORKER_INSECURE"
+	syntheticsWorkerPriorityClassNameEnvVarName           = "DASH0_SYNTHETICS_WORKER_PRIORITY_CLASS_NAME"
 	k8sNodeIpEnvVarName                                   = "K8S_NODE_IP"
 	k8sNodeNameEnvVarName                                 = "K8S_NODE_NAME"
 	k8sPodIpEnvVarName                                    = "K8S_POD_IP"
 
 	developmentModeEnvVarName                        = "DASH0_DEVELOPMENT_MODE"
-	pprofPortEnvVarName                              = "DASH0_PPROF_PORT"
 	instrumentationDebugEnvVarName                   = "DASH0_INSTRUMENTATION_DEBUG"
 	enablePythonAutoInstrumentationEnvVarName        = "DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION"
 	enableRubyAutoInstrumentationEnvVarName          = "DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION"
@@ -219,6 +251,7 @@ const (
 	k8sAttributesDisableReplicasetInformerEnvVarName = "OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER"
 	k8sAttributesWaitForMetadataEnvVarName           = "OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA"
 	k8sAttributesWaitForMetadataTimeoutEnvVarName    = "OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA_TIMEOUT"
+	k8sAttributesShareProcessorEnvVarName            = "OTEL_COLLECTOR_K8SATTRIBUTES_SHARE_PROCESSOR_BETWEEN_PIPELINES"
 	enablePprofExtensionEnvVarName                   = "OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION"
 	compressConfigMapsEnvVarName                     = "OTEL_COLLECTOR_COMPRESS_CONFIG_MAPS"
 	kubeletStatsAutoDetectEndpointEnvVarName         = "OTEL_COLLECTOR_KUBELETSTATS_AUTO_DETECT_ENDPOINT"
@@ -265,6 +298,7 @@ func init() {
 	utilruntime.Must(dash0v1alpha1.AddToScheme(runtimeScheme))
 	utilruntime.Must(dash0dashv1alpha1.AddToScheme(runtimeScheme))
 	utilruntime.Must(dash0v1beta1.AddToScheme(runtimeScheme))
+	utilruntime.Must(openslov1.AddToScheme(runtimeScheme))
 
 	// required for Perses dashboard controller and Prometheus rules controller.
 	utilruntime.Must(apiextensionsv1.AddToScheme(runtimeScheme))
@@ -278,8 +312,12 @@ func Start() {
 
 	developmentMode := readBooleanEnvVar(developmentModeEnvVarName)
 
-	cliArgs := defineCommandLineArguments()
-	opts := parseCommandLineOptions(cliArgs, developmentMode)
+	cliArgs := defineCommandLineArguments(flag.CommandLine)
+	opts, appliedEnvVars, parseErr := parseCommandLineOptions(cliArgs, developmentMode)
+	if parseErr != nil {
+		fmt.Fprintln(os.Stderr, parseErr.Error())
+		os.Exit(1)
+	}
 	crZapOpts := crzap.UseFlagOptions(&opts)
 
 	// Maintenance note: setupLog is not yet initialized before the call to setUpLogging.
@@ -287,24 +325,9 @@ func Start() {
 	// setupLog is initialized after this point and can be used
 
 	setupLog.Debug("development/debug mode enabled")
+	logAppliedEnvVarDefaults(appliedEnvVars)
 
-	pprofPort := os.Getenv(pprofPortEnvVarName)
-	if pprofPort != "" {
-		go func() {
-			setupLog.Warn(
-				"starting pprof server (do not use in production unless instructed by Dash0 support to do so)",
-				"port",
-				pprofPort,
-			)
-			if err := http.ListenAndServe(fmt.Sprintf(":%s", pprofPort), nil); err != nil {
-				if errors.Is(err, http.ErrServerClosed) {
-					setupLog.Info("pprof server has been closed")
-				} else {
-					setupLog.Error(err, "error in pprof server")
-				}
-			}
-		}()
-	}
+	common.StartPprofServerIfConfigured(pprofLogger{logger: setupLog})
 
 	if cliArgs.isUninstrumentAll {
 		if err := deleteMonitoringResourcesInAllNamespaces(setupLog); err != nil {
@@ -384,6 +407,7 @@ func Start() {
 		setupLog.Error(err, "cannot read extra config map file at startup")
 		os.Exit(1)
 	}
+	util.WarnOnCollectorGoMemLimitInversion(extraConfig, setupLog)
 	if err = extraConfigMapWatcher.StartWatch(setupLog); err != nil {
 		setupLog.Error(err, "cannot establish file watch for extra config map")
 		os.Exit(1)
@@ -462,9 +486,9 @@ func Start() {
 	}
 }
 
-func defineCommandLineArguments() *commandLineArguments {
+func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 	cliArgs := &commandLineArguments{}
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.isUninstrumentAll,
 		"uninstrument-all",
 		false,
@@ -472,166 +496,173 @@ func defineCommandLineArguments() *commandLineArguments {
 			"exit. This will trigger the Dash0 monitoring resources' finalizers in each namespace, which in turn will "+
 			"revert the instrumentation of all workloads in all namespaces.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.autoOperatorConfigurationResourceAvailableCheck,
 		"auto-operator-configuration-resource-available-check",
 		false,
 		"If set, the process will only wait until the Dash0 operator configuration resource has been created and "+
 			"becomes available, then exit.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.webhookEndpointReadyCheck,
 		"dash0-webhook-endpoint-ready-check",
 		false,
 		"If set, the process will only wait until the Dash0 operator's webhook service endpoint has a port assigned "+
 			"and is marked as ready (that is, until the API server is actually able to reach the webhook), then exit.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.allowlistSynchronizerReadyCheck,
 		"allowlist-synchronizer-ready-check",
 		false,
 		"If set, the process will wait until the GKE Autopilot AllowlistSynchronizer resource is ready, then exit.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.allowlistVersion,
 		"allowlist-version",
 		"",
 		"The version of the Dash0 operator allowlist to wait for (e.g. v1.0.4). Used with --allowlist-synchronizer-ready-check.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.deleteAllowlistSynchronizer,
 		"delete-allowlist-synchronizer",
 		false,
 		"If set, the process will remove the GKE Autopilot AllowlistSynchronizer resource from the cluster, then "+
 			"exit.",
 	)
-	flag.StringVar(
+	fs.BoolVar(
+		&cliArgs.operatorConfigurationManagedViaHelm,
+		"operator-configuration-managed-via-helm",
+		false,
+		"If set, the operator manager creates and updates the operator configuration resource from the values provided "+
+			"via Helm, that is, from the operator-configuration-* arguments and the exports in the extra config map.",
+	)
+	fs.StringVar(
 		&cliArgs.operatorConfigurationEndpoint,
 		"operator-configuration-endpoint",
 		"",
 		"The Dash0 endpoint gRPC URL for creating an operator configuration resource.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.operatorConfigurationToken,
 		"operator-configuration-token",
 		"",
 		"The Dash0 auth token for creating an operator configuration resource.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.operatorConfigurationSecretRefName,
 		"operator-configuration-secret-ref-name",
 		"",
 		"The name of an existing Kubernetes secret containing the Dash0 auth token, used to creating an operator "+
 			"configuration resource.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.operatorConfigurationSecretRefKey,
 		"operator-configuration-secret-ref-key",
 		"",
 		"The key in an existing Kubernetes secret containing the Dash0 auth token, used to creating an operator "+
 			"configuration resource.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.operatorConfigurationDataset,
 		"operator-configuration-dataset",
 		"default",
 		"The Dash0 dataset into which telemetry will be reported and which will be used for API access.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.operatorConfigurationApiEndpoint,
 		"operator-configuration-api-endpoint",
 		"",
 		"The Dash0 API endpoint for managing dashboards, check rules, synthetic checks and views via the operator.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.operatorConfigurationKeepaliveTime,
 		"operator-configuration-keepalive-time",
 		"",
 		"The keepalive time for the gRPC connection to the Dash0 backend; will be ignored if "+
 			"operator-configuration-endpoint is not set.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.operatorConfigurationKeepaliveTimeout,
 		"operator-configuration-keepalive-timeout",
 		"",
 		"The keepalive timeout for the gRPC connection to the Dash0 backend; will be ignored if "+
 			"operator-configuration-endpoint is not set.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.operatorConfigurationKeepalivePermitWithoutStream,
 		"operator-configuration-keepalive-permit-without-stream",
 		false,
 		"Whether to allow keepalive pings when there are no active gRPC streams; will be ignored if "+
 			"operator-configuration-endpoint is not set.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.operatorConfigurationSelfMonitoringEnabled,
 		"operator-configuration-self-monitoring-enabled",
 		true,
 		"Whether to set selfMonitoring.enabled on the operator configuration resource; will be ignored if "+
 			"operator-configuration-endpoint is not set.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled,
 		"operator-configuration-kubernetes-infrastructure-metrics-collection-enabled",
 		true,
 		"The value for kubernetesInfrastructureMetricsCollection.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
 		"operator-configuration-collect-pod-labels-and-annotations-enabled",
 		true,
 		"The value for collectPodLabelsAndAnnotations.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled,
 		"operator-configuration-collect-namespace-labels-and-annotations-enabled",
 		true,
 		"The value for collectNamespaceLabelsAndAnnotations.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.operatorConfigurationCollectNodeLabelsAndAnnotationsEnabled,
 		"operator-configuration-collect-node-labels-and-annotations-enabled",
 		true,
 		"The value for collectNodeLabelsAndAnnotations.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
 		"operator-configuration-prometheus-crd-support-enabled",
 		false,
 		"The value for prometheusCrdSupport.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.operatorConfigurationProfilingEnabled,
 		"operator-configuration-profiling-enabled",
 		false,
 		"The value for profiling.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.telemetryCollectionEnabled,
 		"dash0-telemetry-collection-enabled",
 		true,
 		"The value for telemetryCollection.enabled on the operator configuration resource.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.logLevel,
 		"dash0-log-level",
 		"info",
 		"The log level for the operator manager (debug, info, warn, error). Ignored when development mode is active.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.featureSignalControlEnabled,
 		"dash0-feature-signal-control-enabled",
 		false,
 		"Enable Signal Control features (sampling, RED metrics, Edge Proxy).",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.operatorConfigurationClusterName,
 		"operator-configuration-cluster-name",
 		"",
@@ -639,21 +670,21 @@ func defineCommandLineArguments() *commandLineArguments {
 			"operator-configuration-endpoint is not set. If set, the value will be added as the resource attribute "+
 			"k8s.cluster.name to all telemetry.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.operatorConfigurationAutoMonitorNamespacesEnabled,
 		"operator-configuration-auto-monitor-namespaces-enabled",
 		false,
 		"The value for autoMonitorNamespaces.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.operatorConfigurationAutoMonitorNamespacesLabelSelector,
 		"operator-configuration-auto-monitor-namespaces-label-selector",
 		"",
 		"The value for autoMonitorNamespaces.labelSelector on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
-	flag.Func(
+	fs.Func(
 		"operator-configuration-instrumentation-delivery",
 		"The value for spec.instrumentWorkloads.instrumentationDelivery on the operator configuration resource. "+
 			"Allowed values are \"auto\", \"image-volume\" and \"init-container\". Will be ignored if "+
@@ -663,34 +694,40 @@ func defineCommandLineArguments() *commandLineArguments {
 			return nil
 		},
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.forceUseOpenTelemetryCollectorServiceUrl,
 		"dash0-force-use-otel-collector-service-url",
 		false,
 		"When modifying workloads, always use the service URL of the OpenTelemetry collector DaemonSet, instead of "+
 			"routing telemetry from workloads via node-local traffic to the node IP/host port of the collector pod.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.isGkeAutopilot,
 		"dash0-gke-autopilot",
 		false,
 		"Whether the operator is running on GKE Autopilot.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
+		&cliArgs.isOpenShift,
+		"dash0-openshift",
+		false,
+		"Whether the operator is running on Red Hat OpenShift.",
+	)
+	fs.BoolVar(
 		&cliArgs.disableOpenTelemetryCollectorHostPorts,
 		"dash0-disable-otel-collector-host-ports",
 		false,
 		"Disable the host ports of the OpenTelemetry collector pods managed by the operator. Implies "+
 			"--dash0-force-use-otel-collector-service-url.",
 	)
-	flag.IntVar(
+	fs.IntVar(
 		&cliArgs.otlpGrpcHostPort,
 		"dash0-otel-collector-otlp-grpc-host-port",
 		otelcolresources.DefaultOtlpGrpcHostPort,
 		"The host port used by the gRPC OTLP receiver of the OpenTelemetry collector pods managed by the operator. "+
 			"Only takes effect when host ports are not disabled.",
 	)
-	flag.IntVar(
+	fs.IntVar(
 		&cliArgs.otlpHttpHostPort,
 		"dash0-otel-collector-otlp-http-host-port",
 		otelcolresources.DefaultOtlpHttpHostPort,
@@ -698,7 +735,7 @@ func defineCommandLineArguments() *commandLineArguments {
 			"Only takes effect when host ports are not disabled.",
 	)
 	cliArgs.instrumentationDelays = &util.DelayConfig{}
-	flag.Uint64Var(
+	fs.Uint64Var(
 		&cliArgs.instrumentationDelays.AfterEachWorkloadMillis,
 		"instrumentation-delay-after-each-workload-millis",
 		0,
@@ -706,7 +743,7 @@ func defineCommandLineArguments() *commandLineArguments {
 			"operator startup or when enabling instrumentation for a new namespace via Dash0Monitoring resource. This "+
 			"delay will be applied after each individual workload.",
 	)
-	flag.Uint64Var(
+	fs.Uint64Var(
 		&cliArgs.instrumentationDelays.AfterEachNamespaceMillis,
 		"instrumentation-delay-after-each-namespace-millis",
 		0,
@@ -714,32 +751,32 @@ func defineCommandLineArguments() *commandLineArguments {
 			"instrumentation of) existing workloads at operator startup. This delay will be applied each time all "+
 			"workloads in a namespace have been processed, before starting with the next namespace.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.metricsAddr,
 		"metrics-bind-address",
 		":8080",
 		"The address the metric endpoint binds to.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.probeAddr,
 		"health-probe-bind-address",
 		":8081",
 		"The address the probe endpoint binds to.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.enableLeaderElection,
 		"leader-elect",
 		false,
 		"Enable leader election for operator manager. "+
 			"Enabling this will ensure there is only one active operator manager.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.secureMetrics,
 		"metrics-secure",
 		false,
 		"If set, the metrics endpoint is served securely.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.enableHTTP2,
 		"enable-http2",
 		false,
@@ -748,7 +785,7 @@ func defineCommandLineArguments() *commandLineArguments {
 	return cliArgs
 }
 
-func parseCommandLineOptions(cliArgs *commandLineArguments, developmentMode bool) crzap.Options {
+func parseCommandLineOptions(cliArgs *commandLineArguments, developmentMode bool) (crzap.Options, []appliedEnvVar, error) {
 	var opts crzap.Options
 	if developmentMode {
 		opts = crzap.Options{
@@ -761,6 +798,11 @@ func parseCommandLineOptions(cliArgs *commandLineArguments, developmentMode bool
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+
+	appliedEnvVars, err := applyEnvironmentVariableDefaults(flag.CommandLine)
+	if err != nil {
+		return opts, nil, err
+	}
 
 	if !developmentMode {
 		var level zapcore.Level
@@ -776,7 +818,7 @@ func parseCommandLineOptions(cliArgs *commandLineArguments, developmentMode bool
 		// disableOpenTelemetryCollectorHostPorts implies forceUseOpenTelemetryCollectorServiceUrl
 		cliArgs.forceUseOpenTelemetryCollectorServiceUrl = true
 	}
-	return opts
+	return opts, appliedEnvVars, nil
 }
 
 func setUpLogging(crZapOpts crzap.Opts) *zaputil.DelegatingZapCoreWrapper {
@@ -922,6 +964,13 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	agent0ConnectorSecretRefName, _ := os.LookupEnv(agent0ConnectorSecretRefNameEnvVarName)
 	agent0ConnectorSecretRefKey, _ := os.LookupEnv(agent0ConnectorSecretRefKeyEnvVarName)
 
+	syntheticsWorkerImage, _ := os.LookupEnv(syntheticsWorkerImageEnvVarName)
+	syntheticsWorkerImagePullPolicy := readOptionalPullPolicyFromEnvironmentVariable(syntheticsWorkerImagePullPolicyEnvVarName)
+	syntheticsWorkerEnabled := readOptionalBoolFromEnvironmentVariable(syntheticsWorkerEnabledEnvVarName, false)
+	syntheticsWorkerServerAddress, _ := os.LookupEnv(syntheticsWorkerServerAddressEnvVarName)
+	syntheticsWorkerInsecure := readBooleanEnvVar(syntheticsWorkerInsecureEnvVarName)
+	syntheticsWorkerPriorityClassName, _ := os.LookupEnv(syntheticsWorkerPriorityClassNameEnvVarName)
+
 	nodeIp, isSet := os.LookupEnv(k8sNodeIpEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, k8sNodeIpEnvVarName)
@@ -970,6 +1019,8 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	k8sAttributesWaitForMetadata := readBooleanEnvVar(k8sAttributesWaitForMetadataEnvVarName)
 	k8sAttributesWaitForMetadataTimeout, _ := os.LookupEnv(k8sAttributesWaitForMetadataTimeoutEnvVarName)
 
+	k8sAttributesShareProcessor := readBooleanEnvVar(k8sAttributesShareProcessorEnvVarName)
+
 	kubeletStatsAutoDetectEndpoint, kubeletStatsReceiverConfig := readKubeletStatsReceiverConfigFromEnv()
 
 	enablePprofExtension := readBooleanEnvVar(enablePprofExtensionEnvVarName)
@@ -1011,6 +1062,12 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		agent0ConnectorToken:                        agent0ConnectorToken,
 		agent0ConnectorSecretRefName:                agent0ConnectorSecretRefName,
 		agent0ConnectorSecretRefKey:                 agent0ConnectorSecretRefKey,
+		syntheticsWorkerImage:                       syntheticsWorkerImage,
+		syntheticsWorkerImagePullPolicy:             syntheticsWorkerImagePullPolicy,
+		syntheticsWorkerEnabled:                     syntheticsWorkerEnabled,
+		syntheticsWorkerServerAddress:               syntheticsWorkerServerAddress,
+		syntheticsWorkerInsecure:                    syntheticsWorkerInsecure,
+		syntheticsWorkerPriorityClassName:           syntheticsWorkerPriorityClassName,
 		nodeIp:                                      nodeIp,
 		nodeName:                                    nodeName,
 		podIp:                                       podIp,
@@ -1019,6 +1076,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		k8sAttributesDisableReplicasetInformer:      k8sAttributesDisableReplicasetInformer,
 		k8sAttributesWaitForMetadata:                k8sAttributesWaitForMetadata,
 		k8sAttributesWaitForMetadataTimeout:         k8sAttributesWaitForMetadataTimeout,
+		k8sAttributesShareProcessor:                 k8sAttributesShareProcessor,
 		kubeletStatsAutoDetectEndpoint:              kubeletStatsAutoDetectEndpoint,
 		kubeletStatsReceiverConfig:                  kubeletStatsReceiverConfig,
 		instrumentationDebug:                        instrumentationDebug,
@@ -1193,6 +1251,28 @@ func setupTeamReconciler(
 	return teamReconciler, nil
 }
 
+// setupTimeSeriesAggregationReconciler constructs and wires the time-series-aggregation reconciler with the manager and
+// the leader-election-aware runnable. Companion to setupSpamFilterReconciler; see its godoc for the rationale.
+func setupTimeSeriesAggregationReconciler(
+	mgr manager.Manager,
+	k8sClient client.Client,
+	clusterUid types.UID,
+	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
+	httpClient *http.Client,
+) (*controller.TimeSeriesAggregationReconciler, error) {
+	timeSeriesAggregationReconciler := controller.NewTimeSeriesAggregationReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err := timeSeriesAggregationReconciler.SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("unable to set up the time series aggregation reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(timeSeriesAggregationReconciler)
+	return timeSeriesAggregationReconciler, nil
+}
+
 // allOwnedIacResourceSynchronizationControllers gathers the reconcilers of the operator-owned resource types into a
 // slice of OwnedIacResourceSynchronizationController for the periodic synchronization retry runnable. The sampling rule
 // reconciler is optional (it is only created when the corresponding feature is enabled), so it is only included when
@@ -1200,24 +1280,76 @@ func setupTeamReconciler(
 func allOwnedIacResourceSynchronizationControllers(
 	notificationChannelReconciler *controller.NotificationChannelReconciler,
 	signalToMetricsReconciler *controller.SignalToMetricsReconciler,
+	sloReconciler *controller.SLOReconciler,
 	spamFilterReconciler *controller.SpamFilterReconciler,
 	syntheticCheckReconciler *controller.SyntheticCheckReconciler,
 	teamReconciler *controller.TeamReconciler,
+	timeSeriesAggregationReconciler *controller.TimeSeriesAggregationReconciler,
 	viewReconciler *controller.ViewReconciler,
 	samplingRuleReconciler *controller.SamplingRuleReconciler,
 ) []controller.OwnedIacResourceSynchronizationController {
 	controllers := []controller.OwnedIacResourceSynchronizationController{
 		notificationChannelReconciler,
 		signalToMetricsReconciler,
+		sloReconciler,
 		spamFilterReconciler,
 		syntheticCheckReconciler,
 		teamReconciler,
+		timeSeriesAggregationReconciler,
 		viewReconciler,
 	}
 	if samplingRuleReconciler != nil {
 		controllers = append(controllers, samplingRuleReconciler)
 	}
 	return controllers
+}
+
+// setupSyntheticCheckReconciler constructs and wires the synthetic check reconciler with the manager and the
+// leader-election-aware runnable. Companion to setupSpamFilterReconciler; see its godoc for the rationale.
+func setupSyntheticCheckReconciler(
+	mgr manager.Manager,
+	k8sClient client.Client,
+	clusterUid types.UID,
+	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
+	httpClient *http.Client,
+) (*controller.SyntheticCheckReconciler, error) {
+	syntheticCheckReconciler := controller.NewSyntheticCheckReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err := syntheticCheckReconciler.SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("unable to set up the synthetic check reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(syntheticCheckReconciler)
+	return syntheticCheckReconciler, nil
+}
+
+// setupSLOReconciler constructs and wires the SLO reconciler with the manager and the leader-election-aware runnable.
+// Companion to setupSpamFilterReconciler; see its godoc for the rationale. It also takes the uncached startup client,
+// see SLOReconciler.SetupWithManager.
+func setupSLOReconciler(
+	ctx context.Context,
+	mgr manager.Manager,
+	k8sClient client.Client,
+	startupK8sClient client.Client,
+	clusterUid types.UID,
+	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
+	httpClient *http.Client,
+	logger logd.Logger,
+) (*controller.SLOReconciler, error) {
+	sloReconciler := controller.NewSLOReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err := sloReconciler.SetupWithManager(ctx, mgr, startupK8sClient, logger); err != nil {
+		return nil, fmt.Errorf("unable to set up the SLO reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(sloReconciler)
+	return sloReconciler, nil
 }
 
 // setupSynchronizationRetryRunnable adds the periodic synchronization retry runnable to the manager, unless it has been
@@ -1312,6 +1444,10 @@ func startOperatorManager(
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	developmentMode bool,
 ) error {
+	// Start resolving the node UID for the self-monitoring telemetry in the background as early as possible, so it is
+	// available by the time the OTel SDK is started.
+	common.PrefetchNodeUid(ctx)
+
 	options := ctrl.Options{
 		Scheme: runtimeScheme,
 		Metrics: metricsserver.Options{
@@ -1456,6 +1592,8 @@ func startOperatorManager(
 		cliArgs.disableOpenTelemetryCollectorHostPorts,
 		"is GKE Autopilot",
 		cliArgs.isGkeAutopilot,
+		"is OpenShift",
+		cliArgs.isOpenShift,
 
 		"metrics bind address",
 		cliArgs.metricsAddr,
@@ -1583,15 +1721,19 @@ func startDash0Controllers(
 		EdgeProxyImagePullPolicy:                    envVars.edgeProxyImagePullPolicy,
 		Agent0ConnectorImage:                        envVars.agent0ConnectorImage,
 		Agent0ConnectorImagePullPolicy:              envVars.agent0ConnectorImagePullPolicy,
+		SyntheticsWorkerImage:                       envVars.syntheticsWorkerImage,
+		SyntheticsWorkerImagePullPolicy:             envVars.syntheticsWorkerImagePullPolicy,
 	}
 
-	httpClient := util.WithUserAgent(
-		dash0apiclient.NewTransport(
-			dash0apiclient.WithTransportMaxRetries(2),
-			dash0apiclient.WithTransportRetryWaitMin(1*time.Second),
-			dash0apiclient.WithTransportRetryWaitMax(3*time.Second),
-		).HTTPClient(),
-		images.GetOperatorVersion(),
+	dash0ApiTransport := dash0apiclient.NewTransport(
+		dash0apiclient.WithTransportMaxRetries(2),
+		dash0apiclient.WithTransportRetryWaitMin(1*time.Second),
+		dash0apiclient.WithTransportRetryWaitMax(3*time.Second),
+	)
+	httpClient := util.WithUserAgent(dash0ApiTransport.HTTPClient(), images.GetOperatorVersion())
+	apiClientPool := controller.NewApiClientPool(
+		dash0ApiTransport,
+		util.RenderUserAgent(images.GetOperatorVersion()),
 	)
 
 	isIPv6Cluster := util.IsIPv6Address(envVars.podIp)
@@ -1620,12 +1762,6 @@ func startDash0Controllers(
 
 	k8sClient := mgr.GetClient()
 
-	scEnablementChecker := enablement.NewEnablementChecker(
-		httpClient,
-		k8sClient,
-		envVars.operatorNamespace,
-	)
-
 	if err = mgr.Add(NewLogConfigurationResourcesRunnable(k8sClient)); err != nil {
 		return fmt.Errorf("unable to add log-operator-configuration task: %w", err)
 	}
@@ -1641,6 +1777,7 @@ func startDash0Controllers(
 		envVars.enablePythonAutoInstrumentation,
 		envVars.enableRubyAutoInstrumentation,
 	)
+	clusterInstrumentationConfig.IsOpenShift = cliArgs.isOpenShift
 
 	startMinimumKubeletVersionDetection(
 		ctx,
@@ -1693,12 +1830,14 @@ func startDash0Controllers(
 			OperatorNamespace:                      envVars.operatorNamespace,
 			OTelCollectorNamePrefix:                envVars.oTelCollectorNamePrefix,
 			TargetAllocatorNamePrefix:              envVars.targetAllocatorNamePrefix,
-			Agent0ConnectorEnabled:                 envVars.agent0ConnectorEnabled,
+			Agent0ConnectorEnabledViaHelm:          envVars.agent0ConnectorEnabled,
+			SyntheticsWorkerEnabledViaHelm:         envVars.syntheticsWorkerEnabled,
 			SendBatchSize:                          envVars.sendBatchSize,
 			SendBatchMaxSize:                       envVars.sendBatchMaxSize,
 			K8sAttributesDisableReplicasetInformer: envVars.k8sAttributesDisableReplicasetInformer,
 			K8sAttributesWaitForMetadata:           envVars.k8sAttributesWaitForMetadata,
 			K8sAttributesWaitForMetadataTimeout:    envVars.k8sAttributesWaitForMetadataTimeout,
+			K8sAttributesShareProcessor:            envVars.k8sAttributesShareProcessor,
 			NodeIp:                                 envVars.nodeIp,
 			NodeName:                               envVars.nodeName,
 			KubeletStatsAutoDetectEndpoint:         envVars.kubeletStatsAutoDetectEndpoint,
@@ -1728,7 +1867,6 @@ func startDash0Controllers(
 			extraConfig,
 			developmentMode,
 			cliArgs.featureSignalControlEnabled,
-			scEnablementChecker,
 			oTelColResourceManager,
 		)
 		// We update the extra config map in the collectorManager when the extra config map changes, and also trigger a
@@ -1746,6 +1884,7 @@ func startDash0Controllers(
 			TargetAllocatorNamePrefix: envVars.targetAllocatorNamePrefix,
 			CollectorComponent:        otelcolresources.CollectorDaemonSetServiceComponent(),
 			IsGkeAutopilot:            cliArgs.isGkeAutopilot,
+			IsOpenShift:               cliArgs.isOpenShift,
 		}
 		targetallocatorResourceManager := taresources.NewTargetAllocatorResourceManager(
 			k8sClient,
@@ -1777,8 +1916,22 @@ func startDash0Controllers(
 		images,
 		operatorDeploymentSelfReference,
 		clusterUid,
-		cliArgs,
 		developmentMode,
+		cliArgs.isGkeAutopilot,
+		cliArgs.isOpenShift,
+	)
+	if err != nil {
+		return err
+	}
+
+	syntheticsWorkerManager, err := setupSyntheticsWorkerManager(
+		mgr,
+		k8sClient,
+		envVars,
+		images,
+		operatorDeploymentSelfReference,
+		developmentMode,
+		cliArgs.isOpenShift,
 	)
 	if err != nil {
 		return err
@@ -1799,12 +1952,14 @@ func startDash0Controllers(
 			envVars.edgeProxyImagePullPolicy,
 			images.GetOperatorVersion(),
 			int32(cliArgs.otlpGrpcHostPort),
+			kubernetesApiServerVersionInfo,
 			cliArgs.isGkeAutopilot,
+			cliArgs.isOpenShift,
 		)
 		scManager = signalcontrol.NewSignalControlManager(
 			k8sClient,
 			scResourceManager,
-			scEnablementChecker,
+			nodeMetadataClient,
 			extraConfig,
 		)
 		// Update the extra config in the Signal Control manager when the extra config map changes, and also trigger a
@@ -1814,7 +1969,6 @@ func startDash0Controllers(
 			k8sClient,
 			scManager,
 			collectorManager,
-			scEnablementChecker,
 		)
 		if err := scReconciler.SetupWithManager(mgr); err != nil {
 			return fmt.Errorf("unable to set up the Signal Control reconciler: %w", err)
@@ -1822,22 +1976,37 @@ func startDash0Controllers(
 		setupLog.Info("The Signal Control reconciler has been started.")
 	} // closes else (Signal Control enabled)
 
-	syntheticCheckReconciler := controller.NewSyntheticCheckReconciler(
+	syntheticCheckReconciler, err := setupSyntheticCheckReconciler(
+		mgr,
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
 		httpClient,
 	)
-	if err := syntheticCheckReconciler.SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to set up the synthetic check reconciler: %w", err)
+	if err != nil {
+		return err
 	}
-	leaderElectionAwareRunnable.AddLeaderElectionClient(syntheticCheckReconciler)
+
+	sloReconciler, err := setupSLOReconciler(
+		ctx,
+		mgr,
+		k8sClient,
+		startupTasksK8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+		setupLog,
+	)
+	if err != nil {
+		return err
+	}
 
 	viewReconciler := controller.NewViewReconciler(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		mgr.GetEventRecorder("dash0-view-controller"),
+		apiClientPool,
 	)
 	if err := viewReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the view reconciler: %w", err)
@@ -1848,7 +2017,7 @@ func startDash0Controllers(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err := notificationChannelReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the notification channel reconciler: %w", err)
@@ -1867,6 +2036,17 @@ func startDash0Controllers(
 	}
 
 	teamReconciler, err := setupTeamReconciler(
+		mgr,
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err != nil {
+		return err
+	}
+
+	timeSeriesAggregationReconciler, err := setupTimeSeriesAggregationReconciler(
 		mgr,
 		k8sClient,
 		clusterUid,
@@ -1949,9 +2129,11 @@ func startDash0Controllers(
 		allOwnedIacResourceSynchronizationControllers(
 			notificationChannelReconciler,
 			signalToMetricsReconciler,
+			sloReconciler,
 			spamFilterReconciler,
 			syntheticCheckReconciler,
 			teamReconciler,
+			timeSeriesAggregationReconciler,
 			viewReconciler,
 			samplingRuleReconciler,
 		),
@@ -1965,10 +2147,12 @@ func startDash0Controllers(
 	setupLog.Info("Creating the operator configuration resource reconciler.")
 	apiClients := []controller.ApiClient{
 		syntheticCheckReconciler,
+		sloReconciler,
 		viewReconciler,
 		notificationChannelReconciler,
 		spamFilterReconciler,
 		teamReconciler,
+		timeSeriesAggregationReconciler,
 		signalToMetricsReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
@@ -1983,6 +2167,7 @@ func startDash0Controllers(
 		collectorManager,
 		targetallocatorManager,
 		agent0ConnectorManager,
+		syntheticsWorkerManager,
 		scManager,
 		clusterInstrumentationConfig,
 		clusterUid,
@@ -2004,10 +2189,12 @@ func startDash0Controllers(
 	namespacedApiClients := appendSamplingRuleNamespacedApiClient(
 		[]controller.NamespacedApiClient{
 			syntheticCheckReconciler,
+			sloReconciler,
 			viewReconciler,
 			notificationChannelReconciler,
 			spamFilterReconciler,
 			teamReconciler,
+			timeSeriesAggregationReconciler,
 			signalToMetricsReconciler,
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
@@ -2065,6 +2252,8 @@ func startDash0Controllers(
 		envVars.operatorNamespace,
 		cliArgs.telemetryCollectionEnabled,
 		cliArgs.featureSignalControlEnabled,
+		envVars.agent0ConnectorEnabled,
+		envVars.syntheticsWorkerEnabled,
 	); err != nil {
 		return err
 	}
@@ -2078,8 +2267,10 @@ func startDash0Controllers(
 		notificationChannelReconciler,
 		syntheticCheckReconciler,
 		teamReconciler,
+		sloReconciler,
 		viewReconciler,
 		spamFilterReconciler,
+		timeSeriesAggregationReconciler,
 		signalToMetricsReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
@@ -2151,8 +2342,10 @@ func findDeploymentReference(
 }
 
 func operatorConfigurationIsManagedViaHelm(cliArgs *commandLineArguments) bool {
-	// cliArgs.operatorConfigurationEndpoint is provided via Helm if and only if operator.dash0Export.enabled is true.
-	return len(cliArgs.operatorConfigurationEndpoint) > 0
+	// cliArgs.operatorConfigurationManagedViaHelm is provided via Helm if and only if operator.dash0Export.enabled is
+	// true or operator.exports is non-empty. The check for cliArgs.operatorConfigurationEndpoint keeps argument sets
+	// that predate that flag working, where the endpoint was the only signal.
+	return cliArgs.operatorConfigurationManagedViaHelm || len(cliArgs.operatorConfigurationEndpoint) > 0
 }
 
 func createOrUpdateAutoOperatorConfigurationResource(
@@ -2168,7 +2361,7 @@ func createOrUpdateAutoOperatorConfigurationResource(
 		startupTasksK8sClient,
 		readyCheckExecuter,
 		*operatorConfigurationValues,
-		extraConfig.MonitoringTemplateRaw,
+		extraConfig,
 	)
 	leaderElectionAwareRunnable.AddLeaderElectionClient(autoOperatorConfigurationResourceHandler)
 	if operatorConfigurationResource, err :=
@@ -2247,8 +2440,9 @@ func setupAgent0ConnectorManager(
 	images util.Images,
 	operatorDeploymentSelfReference *appsv1.Deployment,
 	pseudoClusterUid types.UID,
-	cliArgs *commandLineArguments,
 	developmentMode bool,
+	isGkeAutopilot bool,
+	isOpenShift bool,
 ) (*agent0connector.Agent0ConnectorManager, error) {
 	if !envVars.agent0ConnectorEnabled {
 		// We might not have the permissions to manage the agent0 connector resources (in particular when telemetry
@@ -2263,7 +2457,8 @@ func setupAgent0ConnectorManager(
 		ServerAddress:     envVars.agent0ConnectorServerAddress,
 		Insecure:          envVars.agent0ConnectorInsecure,
 		Authorization:     agent0ConnectorAuthorization(envVars),
-		IsGkeAutopilot:    cliArgs.isGkeAutopilot,
+		IsGkeAutopilot:    isGkeAutopilot,
+		IsOpenShift:       isOpenShift,
 		DevelopmentMode:   developmentMode,
 	}
 	agent0ConnectorResourceManager := a0cresources.NewAgent0ConnectorResourceManager(
@@ -2274,7 +2469,6 @@ func setupAgent0ConnectorManager(
 	)
 	agent0ConnectorManager := agent0connector.NewAgent0ConnectorManager(
 		k8sClient,
-		envVars.agent0ConnectorEnabled,
 		extraConfig,
 		developmentMode,
 		agent0ConnectorResourceManager,
@@ -2291,6 +2485,54 @@ func setupAgent0ConnectorManager(
 		return nil, fmt.Errorf("unable to set up the agent0-connector reconciler: %w", err)
 	}
 	return agent0ConnectorManager, nil
+}
+
+func setupSyntheticsWorkerManager(
+	mgr ctrl.Manager,
+	k8sClient client.Client,
+	envVars environmentVariables,
+	images util.Images,
+	operatorDeploymentSelfReference *appsv1.Deployment,
+	developmentMode bool,
+	isOpenShift bool,
+) (*syntheticsworker.SyntheticsWorkerManager, error) {
+	if !envVars.syntheticsWorkerEnabled {
+		// We might not have the permissions to manage the synthetics-worker resources (in particular when telemetry
+		// collection is also disabled), e.g. no permission to manage deployments.
+		return nil, nil
+	}
+	syntheticsWorkerConfig := util.SyntheticsWorkerConfig{
+		Images:            images,
+		OperatorNamespace: envVars.operatorNamespace,
+		NamePrefix:        envVars.oTelCollectorNamePrefix,
+		ServerAddress:     envVars.syntheticsWorkerServerAddress,
+		Insecure:          envVars.syntheticsWorkerInsecure,
+		PriorityClassName: envVars.syntheticsWorkerPriorityClassName,
+		IsOpenShift:       isOpenShift,
+		DevelopmentMode:   developmentMode,
+	}
+	syntheticsWorkerResourceManager := swresources.NewSyntheticsWorkerResourceManager(
+		k8sClient,
+		mgr.GetScheme(),
+		operatorDeploymentSelfReference,
+		syntheticsWorkerConfig,
+	)
+	syntheticsWorkerManager := syntheticsworker.NewSyntheticsWorkerManager(
+		k8sClient,
+		developmentMode,
+		syntheticsWorkerResourceManager,
+		mgr.GetEventRecorder("dash0-synthetics-worker"),
+	)
+	syntheticsWorkerReconciler := syntheticsworker.NewSyntheticsWorkerReconciler(
+		k8sClient,
+		syntheticsWorkerManager,
+		envVars.operatorNamespace,
+		envVars.oTelCollectorNamePrefix,
+	)
+	if err := syntheticsWorkerReconciler.SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("unable to set up the synthetics-worker reconciler: %w", err)
+	}
+	return syntheticsWorkerManager, nil
 }
 
 // agent0ConnectorAuthorization builds the Dash0 authorization configuration for the agent0-connector workload from the
@@ -2464,11 +2706,21 @@ func deleteDash0AllowlistSynchronizer(ctx context.Context, logger logd.Logger) e
 	return nil
 }
 
-func setupResourceWebhooks(mgr ctrl.Manager, k8sClient client.Client, operatorNamespace string, telemetryCollectionEnabled bool, signalControlEnabled bool) error {
+func setupResourceWebhooks(
+	mgr ctrl.Manager,
+	k8sClient client.Client,
+	operatorNamespace string,
+	telemetryCollectionEnabled bool,
+	signalControlEnabled bool,
+	agent0ConnectorEnabled bool,
+	syntheticsWorkerEnabled bool,
+) error {
 	if err := webhooks.NewOperatorConfigurationMutatingWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration mutating webhook: %w", err)
 	}
-	if err := webhooks.NewOperatorConfigurationValidationWebhookHandler(k8sClient, telemetryCollectionEnabled).SetupWebhookWithManager(mgr); err != nil {
+	if err := webhooks.NewOperatorConfigurationValidationWebhookHandler(
+		k8sClient, telemetryCollectionEnabled, agent0ConnectorEnabled, syntheticsWorkerEnabled,
+	).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration validation webhook: %w", err)
 	}
 	if signalControlEnabled {

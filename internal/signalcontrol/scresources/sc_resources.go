@@ -16,21 +16,24 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
 
 type SignalControlResourceManager struct {
 	client.Client
-	scheme                    *runtime.Scheme
-	operatorManagerDeployment *appsv1.Deployment
-	operatorNamespace         string
-	namePrefix                string
-	edgeProxyImage            string
-	edgeProxyImagePullPolicy  corev1.PullPolicy
-	operatorVersion           string
-	otlpGrpcHostPort          int32
-	isGkeAutopilot            bool
+	scheme                     *runtime.Scheme
+	operatorManagerDeployment  *appsv1.Deployment
+	operatorNamespace          string
+	namePrefix                 string
+	edgeProxyImage             string
+	edgeProxyImagePullPolicy   corev1.PullPolicy
+	operatorVersion            string
+	otlpGrpcHostPort           int32
+	kubernetesApiServerVersion cluster.KubernetesVersionInfo
+	isGkeAutopilot             bool
+	isOpenShift                bool
 }
 
 func NewSignalControlResourceManager(
@@ -43,19 +46,23 @@ func NewSignalControlResourceManager(
 	edgeProxyImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
 	otlpGrpcHostPort int32,
+	kubernetesApiServerVersion cluster.KubernetesVersionInfo,
 	isGkeAutopilot bool,
+	isOpenShift bool,
 ) *SignalControlResourceManager {
 	return &SignalControlResourceManager{
-		Client:                    k8sClient,
-		scheme:                    scheme,
-		operatorManagerDeployment: operatorManagerDeployment,
-		operatorNamespace:         operatorNamespace,
-		namePrefix:                namePrefix,
-		edgeProxyImage:            edgeProxyImage,
-		edgeProxyImagePullPolicy:  edgeProxyImagePullPolicy,
-		operatorVersion:           operatorVersion,
-		otlpGrpcHostPort:          otlpGrpcHostPort,
-		isGkeAutopilot:            isGkeAutopilot,
+		Client:                     k8sClient,
+		scheme:                     scheme,
+		operatorManagerDeployment:  operatorManagerDeployment,
+		operatorNamespace:          operatorNamespace,
+		namePrefix:                 namePrefix,
+		edgeProxyImage:             edgeProxyImage,
+		edgeProxyImagePullPolicy:   edgeProxyImagePullPolicy,
+		operatorVersion:            operatorVersion,
+		otlpGrpcHostPort:           otlpGrpcHostPort,
+		kubernetesApiServerVersion: kubernetesApiServerVersion,
+		isGkeAutopilot:             isGkeAutopilot,
+		isOpenShift:                isOpenShift,
 	}
 }
 
@@ -66,7 +73,7 @@ func (m *SignalControlResourceManager) CreateOrUpdateResources(
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) (bool, bool, error) {
-	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, signalControlResource, operatorConfig, m.edgeProxyImage, m.edgeProxyImagePullPolicy, m.operatorVersion, m.otlpGrpcHostPort, extraConfig, m.isGkeAutopilot, false, logger)
+	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, signalControlResource, operatorConfig, m.edgeProxyImage, m.edgeProxyImagePullPolicy, m.operatorVersion, m.otlpGrpcHostPort, m.kubernetesApiServerVersion, extraConfig, false, m.isGkeAutopilot, m.isOpenShift, logger)
 
 	resourcesHaveBeenCreated := false
 	resourcesHaveBeenUpdated := false
@@ -142,9 +149,11 @@ func (m *SignalControlResourceManager) updateResource(
 	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
 		return false, err
 	}
+	desiredResourceForComparison := desiredResource.DeepCopyObject().(client.Object)
+	resources.AdoptGkeAutopilotResourceAdjustments(existingResource, desiredResourceForComparison, logger)
 	patchResult, err := patch.DefaultPatchMaker.Calculate(
 		existingResource,
-		desiredResource,
+		desiredResourceForComparison,
 		patch.IgnoreField("kind"),
 		patch.IgnoreField("apiVersion"),
 	)
@@ -157,6 +166,9 @@ func (m *SignalControlResourceManager) updateResource(
 	if err = patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
 		return false, err
 	}
+	// Carry over the live resource version; some kinds (PodDisruptionBudget) reject an update without it
+	// ("resourceVersion: Invalid value: 0: must be specified for an update") and it adds optimistic locking.
+	desiredResource.SetResourceVersion(existingResource.GetResourceVersion())
 	if err = m.Update(ctx, desiredResource); err != nil {
 		return false, err
 	}

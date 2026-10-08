@@ -14,6 +14,7 @@ import (
 	"text/template"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -130,6 +131,11 @@ type collectorConfigurationTemplateValues struct {
 	SignalControlGatewayActive                       bool
 	SignalControlCollectorServiceName                string
 	SignalControlCollectorDeploymentName             string
+	// MemoryLimiterLimitMiB and MemoryLimiterSpikeLimitMiB are the memory_limiter limit_mib / spike_limit_mib
+	// derived from the collector container memory limit. When MemoryLimiterLimitMiB is zero (no limit set), the
+	// template falls back to the percentage-based memory_limiter configuration.
+	MemoryLimiterLimitMiB      int
+	MemoryLimiterSpikeLimitMiB int
 }
 
 var (
@@ -226,6 +232,7 @@ func assembleDaemonSetCollectorConfigMap(
 		namespacesWithPrometheusScraping,
 		filters,
 		transforms,
+		config.DaemonSetCollectorMemoryLimit,
 		daemonSetCollectorConfigurationTemplate,
 		DaemonSetCollectorConfigConfigMapName(config.NamePrefix),
 		targetAllocatorMtlsConfig,
@@ -249,6 +256,7 @@ func assembleDeploymentCollectorConfigMap(
 		nil, // namespacesWithPrometheusScraping is not used when rendering the deployment config map
 		filters,
 		transforms,
+		config.DeploymentCollectorMemoryLimit,
 		deploymentCollectorConfigurationTemplate,
 		DeploymentCollectorConfigConfigMapName(config.NamePrefix),
 		TargetAllocatorMtlsConfig{}, // target-allocator mTLS config is not used when rendering the deployment config map
@@ -273,6 +281,7 @@ func assembleSignalControlCollectorConfigMap(
 		nil, // namespacesWithPrometheusScraping is not used when rendering the Signal Control collector config map
 		nil, // custom filters are applied upstream, in the daemonset and deployment collectors
 		nil, // custom transforms are applied upstream, in the daemonset and deployment collectors
+		config.SignalControlCollectorMemoryLimit,
 		signalControlCollectorConfigurationTemplate,
 		SignalControlCollectorConfigConfigMapName(config.NamePrefix),
 		TargetAllocatorMtlsConfig{}, // target-allocator mTLS config is not used for the Signal Control collector
@@ -288,6 +297,7 @@ func assembleCollectorConfigMap(
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
+	collectorMemoryLimit resource.Quantity,
 	template *template.Template,
 	configMapName string,
 	targetAllocatorMtlsConfig TargetAllocatorMtlsConfig,
@@ -311,76 +321,18 @@ func assembleCollectorConfigMap(
 		return &configMap, nil
 	}
 
-	selfIpReference := "${env:K8S_POD_IP}"
-	if config.IsIPv6Cluster {
-		selfIpReference = "[${env:K8S_POD_IP}]"
-	}
-	namespaceOttlFilter := renderOttlNamespaceFilter(
-		monitoredNamespaces,
-		config,
-	)
-	customTelemetryFilters := aggregateCustomFilters(filters)
-	customTelemetryTransforms := aggregateCustomTransforms(transforms)
-	selfMonitoringMetricsConfig :=
-		selfmonitoringapiaccess.ConvertExportConfigurationToCollectorMetricsSelfMonitoringPipelineString(
-			config.SelfMonitoringConfiguration,
-		)
-	selfMonitoringLogsConfig :=
-		selfmonitoringapiaccess.ConvertExportConfigurationToCollectorLogsSelfMonitoringPipelineString(
-			config.SelfMonitoringConfiguration,
-		)
-
-	targetAllocatorServiceName := taresources.ServiceName(config.TargetAllocatorNamePrefix)
-
 	collectorConfiguration, err := renderCollectorConfiguration(template,
-		&collectorConfigurationTemplateValues{
-			OperatorNamespace:           config.OperatorNamespace,
-			OperatorResourcesNamePrefix: config.NamePrefix,
-			Exporters:                   config.Exporters,
-			SendBatchSize:               config.SendBatchSize,
-			SendBatchMaxSize:            config.SendBatchMaxSize,
-			KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
-			CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
-			CollectNamespaceLabelsAndAnnotationsEnabled:      config.CollectNamespaceLabelsAndAnnotationsEnabled,
-			CollectNodeLabelsAndAnnotationsEnabled:           config.CollectNodeLabelsAndAnnotationsEnabled,
-			LabelAndAnnotationExclusionPatterns:              labelAndAnnotationExclusionPatterns(),
-			K8sAttributesDisableReplicasetInformer:           config.K8sAttributesDisableReplicasetInformer,
-			K8sAttributesWaitForMetadata:                     config.K8sAttributesWaitForMetadata,
-			K8sAttributesWaitForMetadataTimeout:              config.K8sAttributesWaitForMetadataTimeout,
-			PrometheusCrdSupportEnabled:                      config.PrometheusCrdSupportEnabled,
-			TargetAllocatorAppKubernetesIoName:               taresources.AppKubernetesIoNameValue,
-			TargetAllocatorAppKubernetesIoInstance:           taresources.AppKubernetesIoInstanceValue,
-			TargetAllocatorServiceName:                       targetAllocatorServiceName,
-			TargetAllocatorMtlsEnabled:                       targetAllocatorMtlsConfig.Enabled,
-			TargetAllocatorMtlsClientCertsDir:                targetAllocatorCertsVolumeDir,
-			Agent0ConnectorEnabled:                           config.Agent0ConnectorEnabled,
-			Agent0ConnectorDeploymentName:                    config.Agent0ConnectorDeploymentName,
-			KubeletStatsReceiverConfig:                       config.KubeletStatsReceiverConfig,
-			UseHostMetricsReceiver:                           config.UseHostMetricsReceiver,
-			IsGkeAutopilot:                                   config.IsGkeAutopilot,
-			PseudoClusterUid:                                 string(config.PseudoClusterUid),
-			ClusterName:                                      config.ClusterName,
-			OperatorVersion:                                  config.Images.GetOperatorVersion(),
-			NamespacesWithLogCollection:                      namespacesWithLogCollection,
-			NamespacesWithEventCollection:                    namespacesWithEventCollection,
-			NamespaceOttlFilter:                              namespaceOttlFilter,
-			NamespacesWithPrometheusScraping:                 namespacesWithPrometheusScraping,
-			CustomFilters:                                    customTelemetryFilters,
-			CustomTransforms:                                 customTelemetryTransforms,
-			SelfIpReference:                                  selfIpReference,
-			InternalTelemetryEnabled:                         selfMonitoringMetricsConfig != "" || selfMonitoringLogsConfig != "",
-			SelfMonitoringEnabled:                            config.SelfMonitoringConfiguration.SelfMonitoringEnabled,
-			SelfMonitoringMetricsConfig:                      selfMonitoringMetricsConfig,
-			SelfMonitoringLogsConfig:                         selfMonitoringLogsConfig,
-			DevelopmentMode:                                  config.DevelopmentMode,
-			DebugVerbosityDetailed:                           config.DebugVerbosityDetailed,
-			EnableProfExtension:                              config.EnableProfExtension,
-			ProfilingEnabled:                                 config.ProfilingEnabled,
-			SignalControl:                                    config.SignalControl,
-			SignalControlGatewayActive:                       config.signalControlGatewayActive(),
-			SignalControlCollectorServiceName:                SignalControlCollectorServiceName(config.NamePrefix),
-			SignalControlCollectorDeploymentName:             SignalControlCollectorDeploymentName(config.NamePrefix),
-		})
+		newCollectorConfigurationTemplateValues(
+			config,
+			monitoredNamespaces,
+			namespacesWithLogCollection,
+			namespacesWithEventCollection,
+			namespacesWithPrometheusScraping,
+			filters,
+			transforms,
+			collectorMemoryLimit,
+			targetAllocatorMtlsConfig,
+		))
 	if err != nil {
 		return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)
 	}
@@ -403,6 +355,100 @@ func assembleCollectorConfigMap(
 		collectorConfigurationYaml: compressedConfiguration.Bytes(),
 	}
 	return &configMap, nil
+}
+
+// newCollectorConfigurationTemplateValues derives the values for one collector configuration template from the
+// operator's collector configuration. It is the single place where the template's view of the configuration is
+// assembled, which allows tests to inspect the exact values a template is rendered with.
+func newCollectorConfigurationTemplateValues(
+	config *oTelColConfig,
+	monitoredNamespaces []string,
+	namespacesWithLogCollection []string,
+	namespacesWithEventCollection []string,
+	namespacesWithPrometheusScraping []string,
+	filters []NamespacedFilter,
+	transforms []NamespacedTransform,
+	collectorMemoryLimit resource.Quantity,
+	targetAllocatorMtlsConfig TargetAllocatorMtlsConfig,
+) *collectorConfigurationTemplateValues {
+	selfIpReference := "${env:K8S_POD_IP}"
+	if config.IsIPv6Cluster {
+		selfIpReference = "[${env:K8S_POD_IP}]"
+	}
+	namespaceOttlFilter := renderOttlNamespaceFilter(
+		monitoredNamespaces,
+		config,
+	)
+	customTelemetryFilters := aggregateCustomFilters(filters, config.GlobalFilter)
+	customTelemetryTransforms := aggregateCustomTransforms(transforms, config.GlobalNormalizedTransform)
+	selfMonitoringMetricsConfig :=
+		selfmonitoringapiaccess.ConvertExportConfigurationToCollectorMetricsSelfMonitoringPipelineString(
+			config.SelfMonitoringConfiguration,
+		)
+	selfMonitoringLogsConfig :=
+		selfmonitoringapiaccess.ConvertExportConfigurationToCollectorLogsSelfMonitoringPipelineString(
+			config.SelfMonitoringConfiguration,
+		)
+
+	targetAllocatorServiceName := taresources.ServiceName(config.TargetAllocatorNamePrefix)
+
+	memoryLimiterLimitMiB := 0
+	memoryLimiterSpikeMiB := 0
+	if settings, ok := util.DeriveCollectorMemorySettings(collectorMemoryLimit); ok {
+		memoryLimiterLimitMiB = settings.LimitMiB
+		memoryLimiterSpikeMiB = settings.SpikeMiB
+	}
+
+	return &collectorConfigurationTemplateValues{
+		OperatorNamespace:           config.OperatorNamespace,
+		OperatorResourcesNamePrefix: config.NamePrefix,
+		Exporters:                   config.Exporters,
+		SendBatchSize:               config.SendBatchSize,
+		SendBatchMaxSize:            config.SendBatchMaxSize,
+		KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
+		CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
+		CollectNamespaceLabelsAndAnnotationsEnabled:      config.CollectNamespaceLabelsAndAnnotationsEnabled,
+		CollectNodeLabelsAndAnnotationsEnabled:           config.CollectNodeLabelsAndAnnotationsEnabled,
+		LabelAndAnnotationExclusionPatterns:              labelAndAnnotationExclusionPatterns(),
+		K8sAttributesDisableReplicasetInformer:           config.K8sAttributesDisableReplicasetInformer,
+		K8sAttributesWaitForMetadata:                     config.K8sAttributesWaitForMetadata,
+		K8sAttributesWaitForMetadataTimeout:              config.K8sAttributesWaitForMetadataTimeout,
+		PrometheusCrdSupportEnabled:                      config.PrometheusCrdSupportEnabled,
+		TargetAllocatorAppKubernetesIoName:               taresources.AppKubernetesIoNameValue,
+		TargetAllocatorAppKubernetesIoInstance:           taresources.AppKubernetesIoInstanceValue,
+		TargetAllocatorServiceName:                       targetAllocatorServiceName,
+		TargetAllocatorMtlsEnabled:                       targetAllocatorMtlsConfig.Enabled,
+		TargetAllocatorMtlsClientCertsDir:                targetAllocatorCertsVolumeDir,
+		Agent0ConnectorEnabled:                           config.Agent0ConnectorEnabled,
+		Agent0ConnectorDeploymentName:                    config.Agent0ConnectorDeploymentName,
+		KubeletStatsReceiverConfig:                       config.KubeletStatsReceiverConfig,
+		UseHostMetricsReceiver:                           config.UseHostMetricsReceiver,
+		IsGkeAutopilot:                                   config.IsGkeAutopilot,
+		PseudoClusterUid:                                 string(config.PseudoClusterUid),
+		ClusterName:                                      config.ClusterName,
+		OperatorVersion:                                  config.Images.GetOperatorVersion(),
+		NamespacesWithLogCollection:                      namespacesWithLogCollection,
+		NamespacesWithEventCollection:                    namespacesWithEventCollection,
+		NamespaceOttlFilter:                              namespaceOttlFilter,
+		NamespacesWithPrometheusScraping:                 namespacesWithPrometheusScraping,
+		CustomFilters:                                    customTelemetryFilters,
+		CustomTransforms:                                 customTelemetryTransforms,
+		SelfIpReference:                                  selfIpReference,
+		InternalTelemetryEnabled:                         selfMonitoringMetricsConfig != "" || selfMonitoringLogsConfig != "",
+		SelfMonitoringEnabled:                            config.SelfMonitoringConfiguration.SelfMonitoringEnabled,
+		SelfMonitoringMetricsConfig:                      selfMonitoringMetricsConfig,
+		SelfMonitoringLogsConfig:                         selfMonitoringLogsConfig,
+		DevelopmentMode:                                  config.DevelopmentMode,
+		DebugVerbosityDetailed:                           config.DebugVerbosityDetailed,
+		EnableProfExtension:                              config.EnableProfExtension,
+		ProfilingEnabled:                                 config.ProfilingEnabled,
+		SignalControl:                                    config.SignalControl,
+		SignalControlGatewayActive:                       config.signalControlGatewayActive(),
+		SignalControlCollectorServiceName:                SignalControlCollectorServiceName(config.NamePrefix),
+		SignalControlCollectorDeploymentName:             SignalControlCollectorDeploymentName(config.NamePrefix),
+		MemoryLimiterLimitMiB:                            memoryLimiterLimitMiB,
+		MemoryLimiterSpikeLimitMiB:                       memoryLimiterSpikeMiB,
+	}
 }
 
 func compressContent(collectorConfiguration string) (bytes.Buffer, error) {
@@ -484,8 +530,20 @@ func renderOttlNamespaceFilter(
 			config.OperatorNamespace,
 		)
 	}
+	// Do not drop metrics about the synthetics-worker pods (kubeletstats / k8s_cluster receivers) when self-monitoring is
+	// enabled. There is one deployment per configured synthetics-worker instance.
+	var syntheticsWorkerExclusion strings.Builder
+	if selfMonitoringEnabled {
+		for _, deploymentName := range config.SyntheticsWorkerDeploymentNames {
+			fmt.Fprintf(&syntheticsWorkerExclusion, "(resource.attributes[\"k8s.deployment.name\"] != \"%s\" or "+
+				"resource.attributes[\"k8s.namespace.name\"] != \"%s\") and\n          ",
+				deploymentName,
+				config.OperatorNamespace,
+			)
+		}
+	}
 	selfMonitoringExclusions := operatorManagerExclusion + taExclusion + signalControlCollectorExclusion +
-		edgeProxyExclusion + agent0ConnectorExclusion
+		edgeProxyExclusion + agent0ConnectorExclusion + syntheticsWorkerExclusion.String()
 
 	// Drop all metrics that have a namespace resource attribute but are from a namespace that is not in the
 	// list of monitored namespaces.
@@ -514,7 +572,10 @@ func labelAndAnnotationExclusionPatterns() []string {
 	return patterns
 }
 
-func aggregateCustomFilters(filtersSpec []NamespacedFilter) customFilters {
+func aggregateCustomFilters(
+	filtersSpec []NamespacedFilter,
+	globalFilter *dash0common.Filter,
+) customFilters {
 	var errorMode dash0common.FilterTransformErrorMode
 	var allSpanFilters []string
 	var allSpanEventFilters []string
@@ -577,6 +638,27 @@ func aggregateCustomFilters(filtersSpec []NamespacedFilter) customFilters {
 		errorMode = compareErrorMode(errorMode, filterSpecForNamespace.ErrorMode)
 	}
 
+	// The cluster-wide filters from the operator configuration resource are appended to the conditions of all
+	// namespaces. Their conditions are deliberately not scoped to a namespace, so they also apply to telemetry that is
+	// not associated with a namespace, like node metrics or cluster-level metrics.
+	if globalFilter != nil && globalFilter.HasAnyFilters() {
+		if globalFilter.Traces != nil {
+			allSpanFilters = slices.Concat(allSpanFilters, globalFilter.Traces.SpanFilter)
+			allSpanEventFilters = slices.Concat(allSpanEventFilters, globalFilter.Traces.SpanEventFilter)
+		}
+		if globalFilter.Metrics != nil {
+			allMetricFilters = slices.Concat(allMetricFilters, globalFilter.Metrics.MetricFilter)
+			allDataPointFilters = slices.Concat(allDataPointFilters, globalFilter.Metrics.DataPointFilter)
+		}
+		if globalFilter.Logs != nil {
+			allLogRecordFilters = slices.Concat(allLogRecordFilters, globalFilter.Logs.LogRecordFilter)
+		}
+		if globalFilter.Profiles != nil {
+			allProfileFilters = slices.Concat(allProfileFilters, globalFilter.Profiles.ProfileFilter)
+		}
+		errorMode = compareErrorMode(errorMode, globalFilter.ErrorMode)
+	}
+
 	if errorMode == "" {
 		// If no error mode has been specified at all, use ignore as the default. This should not actually happen
 		// if there is at least one monitoring resource with a telemetry filter, since the Dash0Monitoring spec
@@ -599,7 +681,10 @@ func prependNamespaceCheckToOttlCondition(namespace string, condition string) st
 	return fmt.Sprintf(`resource.attributes["k8s.namespace.name"] == "%s" and (%s)`, namespace, condition)
 }
 
-func aggregateCustomTransforms(transformsSpec []NamespacedTransform) customTransforms {
+func aggregateCustomTransforms(
+	transformsSpec []NamespacedTransform,
+	globalTransform *dash0common.NormalizedTransformSpec,
+) customTransforms {
 	var globalErrorMode dash0common.FilterTransformErrorMode
 	var allTraceGroups []customTransformGroup
 	var allMetricTraceGroups []customTransformGroup
@@ -639,6 +724,20 @@ func aggregateCustomTransforms(transformsSpec []NamespacedTransform) customTrans
 		}
 	}
 
+	// The cluster-wide transformations from the operator configuration resource are appended after the transformations
+	// of all namespaces, that is, they are applied last. Their conditions are deliberately not scoped to a namespace,
+	// so they also apply to telemetry that is not associated with a namespace, like node metrics or cluster-level
+	// metrics.
+	if globalTransform != nil && globalTransform.HasAnyStatements() {
+		allTraceGroups = slices.Concat(allTraceGroups, convertTransformGroups(globalTransform.Traces))
+		allMetricTraceGroups = slices.Concat(allMetricTraceGroups, convertTransformGroups(globalTransform.Metrics))
+		allLogGroups = slices.Concat(allLogGroups, convertTransformGroups(globalTransform.Logs))
+		allProfileGroups = slices.Concat(allProfileGroups, convertTransformGroups(globalTransform.Profiles))
+		if globalTransform.ErrorMode != nil {
+			globalErrorMode = compareErrorMode(globalErrorMode, *globalTransform.ErrorMode)
+		}
+	}
+
 	if globalErrorMode == "" {
 		// If no error mode has been specified at all, use ignore as the default. This should not actually happen
 		// if there is at least one monitoring resource with a transform configuration, since the Dash0Monitoring spec
@@ -661,13 +760,7 @@ func prependNamespaceConditionToTransformGroupConditions(
 ) []customTransformGroup {
 	groupsWithNamespaceCondition := make([]customTransformGroup, 0, len(transformGroups))
 	for _, transformGroup := range transformGroups {
-		transformGroupWithNamespaceCondition := customTransformGroup{}
-		if transformGroup.Context != nil && *transformGroup.Context != "" {
-			transformGroupWithNamespaceCondition.Context = *transformGroup.Context
-		}
-		if transformGroup.ErrorMode != nil && *transformGroup.ErrorMode != "" {
-			transformGroupWithNamespaceCondition.ErrorMode = *transformGroup.ErrorMode
-		}
+		transformGroupWithNamespaceCondition := convertTransformGroup(transformGroup)
 		// The transformprocessor ORs items in the list of conditions for a group. To scope the user's conditions to a specific
 		// namespace, we prepend the namespace check with AND to each existing condition.
 		if len(transformGroup.Conditions) > 0 {
@@ -683,13 +776,35 @@ func prependNamespaceConditionToTransformGroupConditions(
 				fmt.Sprintf(`resource.attributes["k8s.namespace.name"] == "%s"`, namespace),
 			}
 		}
-		if len(transformGroup.Statements) > 0 {
-			transformGroupWithNamespaceCondition.Statements = transformGroup.Statements
-		}
 
 		groupsWithNamespaceCondition = append(groupsWithNamespaceCondition, transformGroupWithNamespaceCondition)
 	}
 	return groupsWithNamespaceCondition
+}
+
+func convertTransformGroups(transformGroups []dash0common.NormalizedTransformGroup) []customTransformGroup {
+	converted := make([]customTransformGroup, 0, len(transformGroups))
+	for _, transformGroup := range transformGroups {
+		converted = append(converted, convertTransformGroup(transformGroup))
+	}
+	return converted
+}
+
+func convertTransformGroup(transformGroup dash0common.NormalizedTransformGroup) customTransformGroup {
+	converted := customTransformGroup{}
+	if transformGroup.Context != nil && *transformGroup.Context != "" {
+		converted.Context = *transformGroup.Context
+	}
+	if transformGroup.ErrorMode != nil && *transformGroup.ErrorMode != "" {
+		converted.ErrorMode = *transformGroup.ErrorMode
+	}
+	if len(transformGroup.Conditions) > 0 {
+		converted.Conditions = transformGroup.Conditions
+	}
+	if len(transformGroup.Statements) > 0 {
+		converted.Statements = transformGroup.Statements
+	}
+	return converted
 }
 
 func compareErrorMode(

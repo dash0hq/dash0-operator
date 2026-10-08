@@ -22,8 +22,9 @@ image_specs=(
   "edge-proxy:edgeProxyImage"
 )
 
-# Resolve the highest published vMAJOR.MINOR.PATCH tag for a ghcr.io/dash0hq image via the OCI
+# Resolve the highest published MAJOR.MINOR.PATCH tag for a ghcr.io/dash0hq image via the OCI
 # registry tags/list endpoint. Prints the tag to stdout; all diagnostics go to stderr.
+# Legacy v-prefixed build tags (e.g. v2.0.3005) are ignored; only unprefixed semver releases count.
 resolve_latest_tag() {
   local img="$1"
   local token
@@ -52,9 +53,9 @@ resolve_latest_tag() {
   done
 
   local latest
-  latest=$(echo "$all_tags" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)
+  latest=$(echo "$all_tags" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)
   if [[ -z "$latest" ]]; then
-    echo "Error: no tag matching vMAJOR.MINOR.PATCH found for ${img}." >&2
+    echo "Error: no tag matching MAJOR.MINOR.PATCH found for ${img}." >&2
     exit 1
   fi
   echo "$latest"
@@ -87,7 +88,7 @@ update_expected_tag_in_tests() {
 assert_no_other_pinned_references() {
   local img="$1"
   local other_files
-  other_files=$(git grep -lE "ghcr\.io/dash0hq/${img}:v[0-9]+" -- . ":!${values_file}" ":!${test_file}" || true)
+  other_files=$(git grep -lE "ghcr\.io/dash0hq/${img}:v?[0-9]+" -- . ":!${values_file}" ":!${test_file}" || true)
   if [[ -n "$other_files" ]]; then
     echo "Error: ${img} is pinned to a tag in unexpected files, update this script to rewrite them, too:" >&2
     echo "$other_files" >&2
@@ -149,20 +150,28 @@ gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
   -f ref="refs/heads/${branch_name}" \
   -f sha="${base_sha}" >/dev/null
 
+# The base64-encoded file contents are passed to jq via --rawfile and not via --arg: they can exceed the maximum length
+# of a single command line argument (MAX_ARG_STRLEN, 128 KiB).
+values_base64=$(mktemp)
+test_base64=$(mktemp)
+trap 'rm -f "$values_base64" "$test_base64"' EXIT
+base64 < "$values_file" | tr -d '\n' > "$values_base64"
+base64 < "$test_file" | tr -d '\n' > "$test_base64"
+
 # Let "gh api graphql"/createCommitOnBranch create the commit via the GitHub API rather than "git commit"/"git push", so
 # commits are automatically signed.
 # Note: expectedHeadOid is an optimistic lock: the branch tip must still be at base_sha (it is, we just created it).
 # Note: both files are always sent; the git diff check above guarantees that at least one of them differs.
-jq -n \
+payload=$(jq -n \
   --arg repo "$GITHUB_REPOSITORY" \
   --arg branch "$branch_name" \
   --arg headline "$commit_message" \
   --arg body "$pr_body" \
   --arg oid "$base_sha" \
   --arg valuesPath "$values_file" \
-  --arg valuesContents "$(base64 < "$values_file" | tr -d '\n')" \
+  --rawfile valuesContents "$values_base64" \
   --arg testPath "$test_file" \
-  --arg testContents "$(base64 < "$test_file" | tr -d '\n')" \
+  --rawfile testContents "$test_base64" \
   '{
     query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
     variables: {
@@ -176,7 +185,8 @@ jq -n \
                            ] }
       }
     }
-  }' | gh api graphql --input - >/dev/null
+  }')
+echo "$payload" | gh api graphql --input - >/dev/null
 
 gh pr create \
   -B main \

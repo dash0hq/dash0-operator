@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -38,6 +40,11 @@ type setMonitoringTemplateDefaultsTestConfig struct {
 	autoMonitorNamespacesEnabled bool
 	template                     *dash0v1alpha1.MonitoringTemplate
 	wanted                       *dash0v1alpha1.MonitoringTemplate
+}
+
+type setSyntheticsWorkerInstanceDefaultsTestConfig struct {
+	instances []dash0v1alpha1.SyntheticsWorkerInstance
+	wanted    []dash0v1alpha1.SyntheticsWorkerInstance
 }
 
 var _ = Describe("The mutating webhook for the operator configuration resource", func() {
@@ -73,6 +80,8 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 				g.Expect(spec.CollectNamespaceLabelsAndAnnotations.Enabled).To(Equal(new(false)))
 				g.Expect(spec.CollectNodeLabelsAndAnnotations.Enabled).To(Equal(new(false)))
 				g.Expect(spec.TelemetryCollection.Enabled).To(Equal(new(true)))
+				// the mutating webhook does not default agent0Connector.enabled
+				g.Expect(spec.Agent0Connector.Enabled).To(BeNil())
 			})
 		})
 
@@ -107,6 +116,87 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 			})
 		})
 	})
+
+	DescribeTable("should normalize the transform spec",
+		func(transform *dash0common.Transform, wanted *dash0common.NormalizedTransformSpec) {
+			spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				Transform: transform,
+			}
+
+			_, errorResponse := operatorConfigurationMutatingWebhookHandler.
+				normalizeOperatorConfigurationResourceSpec(admission.Request{}, &spec, logger)
+
+			Expect(errorResponse).To(BeNil())
+			Expect(spec.NormalizedTransformSpec).To(Equal(wanted))
+		},
+		Entry("no transform: nothing to normalize", nil, nil),
+		Entry("basic config style",
+			&dash0common.Transform{
+				Traces: []json.RawMessage{
+					json.RawMessage(`"truncate_all(span.attributes, 128)"`),
+				},
+			},
+			&dash0common.NormalizedTransformSpec{
+				Traces: []dash0common.NormalizedTransformGroup{
+					{Statements: []string{"truncate_all(span.attributes, 128)"}},
+				},
+			},
+		),
+		Entry("advanced config style",
+			&dash0common.Transform{
+				Metrics: []json.RawMessage{
+					json.RawMessage(
+						`{"context":"datapoint","conditions":["metric.name == \"foo\""],` +
+							`"statements":["truncate_all(attributes, 128)"]}`),
+				},
+			},
+			&dash0common.NormalizedTransformSpec{
+				Metrics: []dash0common.NormalizedTransformGroup{
+					{
+						Context:    ptr.To("datapoint"),
+						Conditions: []string{`metric.name == "foo"`},
+						Statements: []string{"truncate_all(attributes, 128)"},
+					},
+				},
+			},
+		),
+	)
+
+	It("should clear the normalized transform spec when the transform has been removed", func() {
+		spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
+			NormalizedTransformSpec: &dash0common.NormalizedTransformSpec{
+				Traces: []dash0common.NormalizedTransformGroup{
+					{Statements: []string{"truncate_all(span.attributes, 128)"}},
+				},
+			},
+		}
+
+		patchRequired, errorResponse := operatorConfigurationMutatingWebhookHandler.
+			normalizeOperatorConfigurationResourceSpec(admission.Request{}, &spec, logger)
+
+		Expect(errorResponse).To(BeNil())
+		Expect(patchRequired).To(BeTrue())
+		Expect(spec.NormalizedTransformSpec).To(BeNil())
+	})
+
+	DescribeTable("should never modify agent0Connector.enabled",
+		func(enabled *bool) {
+			spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				Agent0Connector: dash0v1alpha1.Agent0Connector{
+					Enabled: enabled,
+				},
+			}
+
+			_, errorResponse := operatorConfigurationMutatingWebhookHandler.
+				normalizeOperatorConfigurationResourceSpec(admission.Request{}, &spec, logger)
+
+			Expect(errorResponse).To(BeNil())
+			Expect(spec.Agent0Connector.Enabled).To(Equal(enabled))
+		},
+		Entry("unset: stays unset, so the operator resolves it against the Helm value", nil),
+		Entry("explicitly false: kept", new(false)),
+		Entry("explicitly true: kept", new(true)),
+	)
 
 	DescribeTable("should normalize the resource spec", func(testConfig normalizeOperatorConfigurationResourceSpecTestConfig) {
 		spec := testConfig.spec
@@ -660,6 +750,103 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 						},
 						PrometheusScraping: dash0common.PrometheusScraping{
 							Enabled: new(false),
+						},
+					},
+				},
+			}),
+	)
+
+	DescribeTable("should default synthetics-worker instance NodeAffinity", func(testConfig setSyntheticsWorkerInstanceDefaultsTestConfig) {
+		spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
+			SyntheticsWorker: dash0v1alpha1.SyntheticsWorker{
+				Instances: testConfig.instances,
+			},
+		}
+		_, errorResponse := operatorConfigurationMutatingWebhookHandler.normalizeOperatorConfigurationResourceSpec(
+			admission.Request{},
+			&spec,
+			logger,
+		)
+		Expect(errorResponse).To(BeNil())
+		Expect(spec.SyntheticsWorker.Instances).To(Equal(testConfig.wanted))
+	},
+		Entry("given an instance without NodeAffinity, set the default",
+			setSyntheticsWorkerInstanceDefaultsTestConfig{
+				instances: []dash0v1alpha1.SyntheticsWorkerInstance{
+					{LocationID: "location-1"},
+				},
+				wanted: []dash0v1alpha1.SyntheticsWorkerInstance{
+					{LocationID: "location-1", NodeAffinity: defaultSyntheticsWorkerNodeAffinity()},
+				},
+			}),
+		Entry("given an instance with an explicit NodeAffinity, leave it unchanged",
+			setSyntheticsWorkerInstanceDefaultsTestConfig{
+				instances: []dash0v1alpha1.SyntheticsWorkerInstance{
+					{
+						LocationID: "location-1",
+						NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{Key: "custom", Operator: corev1.NodeSelectorOpExists},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				wanted: []dash0v1alpha1.SyntheticsWorkerInstance{
+					{
+						LocationID: "location-1",
+						NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{Key: "custom", Operator: corev1.NodeSelectorOpExists},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}),
+		Entry("given multiple instances, default only the ones missing NodeAffinity",
+			setSyntheticsWorkerInstanceDefaultsTestConfig{
+				instances: []dash0v1alpha1.SyntheticsWorkerInstance{
+					{LocationID: "location-1"},
+					{
+						LocationID: "location-2",
+						NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{Key: "custom", Operator: corev1.NodeSelectorOpExists},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				wanted: []dash0v1alpha1.SyntheticsWorkerInstance{
+					{LocationID: "location-1", NodeAffinity: defaultSyntheticsWorkerNodeAffinity()},
+					{
+						LocationID: "location-2",
+						NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{Key: "custom", Operator: corev1.NodeSelectorOpExists},
+										},
+									},
+								},
+							},
 						},
 					},
 				},

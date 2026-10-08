@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cisco-open/k8s-objectmatcher/patch"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -17,8 +18,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/agent0connector/a0cresources"
+	"github.com/dash0hq/dash0-operator/internal/syntheticsworker/swresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
@@ -153,6 +157,32 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(isNew).To(BeFalse())
 			Expect(isChanged).To(BeFalse())
 			verifyObject(ctx, testResource)
+		})
+
+		It("should replace a controller owner reference with a non-controller owner reference", func() {
+			existing := testResource.DeepCopy()
+			Expect(controllerutil.SetControllerReference(&appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: OperatorManagerDeployment.Namespace,
+					Name:      OperatorManagerDeployment.Name,
+					UID:       OperatorManagerDeployment.UID,
+				},
+			}, existing, k8sClient.Scheme())).To(Succeed())
+			Expect(patch.DefaultAnnotator.SetLastAppliedAnnotation(existing)).To(Succeed())
+			Expect(k8sClient.Create(ctx, existing)).To(Succeed())
+
+			isNew, isChanged, err := oTelColResourceManager.createOrUpdateResource(ctx, testResource.DeepCopy(), logger)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(isNew).To(BeFalse())
+			Expect(isChanged).To(BeTrue())
+			object := &corev1.ConfigMap{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(testResource), object)).To(Succeed())
+			ownerReferences := object.GetOwnerReferences()
+			Expect(ownerReferences).To(HaveLen(1))
+			Expect(ownerReferences[0].UID).To(Equal(OperatorManagerDeployment.UID))
+			Expect(ownerReferences[0].Controller).To(BeNil())
+			Expect(*ownerReferences[0].BlockOwnerDeletion).To(BeTrue())
 		})
 	})
 
@@ -367,6 +397,128 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 		})
 	})
 
+	Context("when the agent0-connector is enabled via the Helm chart", func() {
+		var managerWithAgent0Connector *OTelColResourceManager
+
+		BeforeEach(func() {
+			managerWithAgent0Connector = NewOTelColResourceManager(
+				k8sClient,
+				k8sClient.Scheme(),
+				OperatorManagerDeployment,
+				util.CollectorConfig{
+					Images:                         TestImages,
+					OperatorNamespace:              OperatorNamespace,
+					OTelCollectorNamePrefix:        OTelCollectorNamePrefixTest,
+					KubeletStatsAutoDetectEndpoint: true,
+					DevelopmentMode:                true,
+					Agent0ConnectorEnabledViaHelm:  true,
+				},
+			)
+		})
+
+		DescribeTable("should collect and forward the agent0-connector's pod logs unless the resource opts out",
+			func(enabledInResource *bool, expectPodLogsToBeCollected bool) {
+				operatorConfiguration := DefaultOperatorConfigurationResource()
+				operatorConfiguration.Spec.Agent0Connector.Enabled = enabledInResource
+				_, _, err := managerWithAgent0Connector.CreateOrUpdateOpenTelemetryCollectorResources(
+					ctx,
+					util.ExtraConfigDefaults,
+					operatorConfiguration,
+					nil,
+					nil,
+					logger,
+				)
+				Expect(err).ToNot(HaveOccurred())
+
+				configMap := VerifyResourceExists(
+					ctx,
+					k8sClient,
+					OperatorNamespace,
+					ExpectedDaemonSetCollectorConfigMapName,
+					&corev1.ConfigMap{},
+				).(*corev1.ConfigMap)
+				podLogsPath := fmt.Sprintf(
+					"- /var/log/pods/%s_%s*/*/*.log",
+					OperatorNamespace,
+					a0cresources.DeploymentName(OTelCollectorNamePrefixTest),
+				)
+				// The receiver alone collects nothing: the pipeline that forwards its records has to be rendered as
+				// well, otherwise the collected pod logs never leave the collector.
+				selfMonitoringLogsPipeline := "logs/selfmonitoring-filelog-to-forwarder:"
+				if expectPodLogsToBeCollected {
+					Expect(configMap.Data["config.yaml"]).To(ContainSubstring(podLogsPath))
+					Expect(configMap.Data["config.yaml"]).To(ContainSubstring(selfMonitoringLogsPipeline))
+				} else {
+					Expect(configMap.Data["config.yaml"]).ToNot(ContainSubstring(podLogsPath))
+					Expect(configMap.Data["config.yaml"]).ToNot(ContainSubstring(selfMonitoringLogsPipeline))
+				}
+			},
+			Entry("with no explicit setting in the resource, following the Helm value", nil, true),
+			Entry("when explicitly enabled in the resource", new(true), true),
+			Entry("when explicitly disabled in the resource", new(false), false),
+		)
+	})
+
+	DescribeTable("should exclude the synthetics-worker deployments from the namespace filter if the synthetics-worker is enabled",
+		func(enabledViaHelm bool, enabledInResource *bool, expectExclusion bool) {
+			manager := NewOTelColResourceManager(
+				k8sClient,
+				k8sClient.Scheme(),
+				OperatorManagerDeployment,
+				util.CollectorConfig{
+					Images:                         TestImages,
+					OperatorNamespace:              OperatorNamespace,
+					OTelCollectorNamePrefix:        OTelCollectorNamePrefixTest,
+					KubeletStatsAutoDetectEndpoint: true,
+					DevelopmentMode:                true,
+					SyntheticsWorkerEnabledViaHelm: enabledViaHelm,
+				},
+			)
+			locationIds := []string{"location-a", "location-b"}
+			operatorConfiguration := DefaultOperatorConfigurationResource()
+			operatorConfiguration.Spec.SyntheticsWorker = dash0v1alpha1.SyntheticsWorker{
+				Enabled: enabledInResource,
+				Instances: []dash0v1alpha1.SyntheticsWorkerInstance{
+					{LocationID: locationIds[0]},
+					{LocationID: locationIds[1]},
+				},
+			}
+			_, _, err := manager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx,
+				util.ExtraConfigDefaults,
+				operatorConfiguration,
+				nil,
+				nil,
+				logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			configMap := VerifyResourceExists(
+				ctx,
+				k8sClient,
+				OperatorNamespace,
+				ExpectedDaemonSetCollectorConfigMapName,
+				&corev1.ConfigMap{},
+			).(*corev1.ConfigMap)
+			for _, locationId := range locationIds {
+				exclusion := fmt.Sprintf(
+					"(resource.attributes[\"k8s.deployment.name\"] != \"%s\" or resource.attributes[\"k8s.namespace.name\"] != \"%s\")",
+					swresources.DeploymentName(OTelCollectorNamePrefixTest, locationId),
+					OperatorNamespace,
+				)
+				if expectExclusion {
+					Expect(configMap.Data["config.yaml"]).To(ContainSubstring(exclusion))
+				} else {
+					Expect(configMap.Data["config.yaml"]).ToNot(ContainSubstring(exclusion))
+				}
+			}
+		},
+		Entry("when enabled via Helm, with no explicit setting in the resource", true, nil, true),
+		Entry("when enabled via Helm and explicitly enabled in the resource", true, new(true), true),
+		Entry("when enabled via Helm and explicitly disabled in the resource", true, new(false), false),
+		Entry("when disabled via Helm", false, nil, false),
+	)
+
 	Context("when OpenTelemetry collector resources have been modified externally", func() {
 		It("should reconcile the resources back into the desired state", func() {
 			operatorConfiguration := DefaultOperatorConfigurationResource()
@@ -425,6 +577,63 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(resourcesHaveBeenUpdated).To(BeTrue())
 
 			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
+		})
+	})
+
+	Context("when GKE Autopilot has adjusted the resources of the collector workloads", func() {
+		It("should not revert the adjustments, but still apply changed resource settings", func() {
+			operatorConfiguration := DefaultOperatorConfigurationResource()
+			createOrUpdate := func(extraConfig util.ExtraConfig) bool {
+				resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
+					oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+						ctx,
+						extraConfig,
+						operatorConfiguration,
+						nil,
+						nil,
+						logger,
+					)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(resourcesHaveBeenCreated).To(BeFalse())
+				return resourcesHaveBeenUpdated
+			}
+
+			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx,
+				util.ExtraConfigDefaults,
+				operatorConfiguration,
+				nil,
+				nil,
+				logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			// adds the self-reference UID env vars
+			Expect(createOrUpdate(util.ExtraConfigDefaults)).To(BeTrue())
+
+			daemonSet := GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace)
+			SimulateGkeAutopilotResourceAdjustment(daemonSet, &daemonSet.Spec.Template.Spec)
+			Expect(k8sClient.Update(ctx, daemonSet)).To(Succeed())
+			deployment := GetOTelColDeployment(ctx, k8sClient, OperatorNamespace)
+			SimulateGkeAutopilotResourceAdjustment(deployment, &deployment.Spec.Template.Spec)
+			Expect(k8sClient.Update(ctx, deployment)).To(Succeed())
+
+			Expect(createOrUpdate(util.ExtraConfigDefaults)).To(BeFalse())
+			Expect(GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace).Spec.Template.Spec).To(
+				Equal(daemonSet.Spec.Template.Spec))
+			Expect(GetOTelColDeployment(ctx, k8sClient, OperatorNamespace).Spec.Template.Spec).To(
+				Equal(deployment.Spec.Template.Spec))
+
+			changedMemory := resource.MustParse("1Gi")
+			extraConfig := util.ExtraConfigDefaults
+			extraConfig.CollectorDaemonSetCollectorContainerResources = util.ResourceRequirementsWithGoMemLimit{
+				Limits:   corev1.ResourceList{corev1.ResourceMemory: changedMemory},
+				Requests: corev1.ResourceList{corev1.ResourceMemory: changedMemory},
+			}
+			Expect(createOrUpdate(extraConfig)).To(BeTrue())
+			collectorContainerResources :=
+				GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace).Spec.Template.Spec.Containers[0].Resources
+			Expect(collectorContainerResources.Limits.Memory().Equal(changedMemory)).To(BeTrue())
+			Expect(collectorContainerResources.Requests.Memory().Equal(changedMemory)).To(BeTrue())
 		})
 	})
 
@@ -889,6 +1098,7 @@ var _ = Describe("signalControlConfigFromResource", func() {
 		Expect(config.SamplingReservoirMaxDiskBytes).To(Equal(int64(1024 * 1024 * 1024)))
 		Expect(config.SamplingReservoirMaxMemoryBytes).To(Equal(int64(0)))
 		Expect(config.SamplingReservoirMetricLevel).To(Equal("basic"))
+		Expect(config.SamplingReservoirBufferDuration).To(Equal(""))
 	})
 
 	It("should use the configured reservoir type and max memory bytes", func() {
@@ -909,6 +1119,23 @@ var _ = Describe("signalControlConfigFromResource", func() {
 		config := signalControlConfigFromResource(edge, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.SamplingReservoirType).To(Equal("serialized_memory"))
 		Expect(config.SamplingReservoirMaxMemoryBytes).To(Equal(int64(512 * 1024 * 1024)))
+	})
+
+	It("should use the configured reservoir buffer duration", func() {
+		bufferDuration := metav1.Duration{Duration: 90 * time.Second}
+		edge := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+				Sampling: dash0v1alpha1.SamplingConfig{
+					Reservoir: &dash0v1alpha1.ReservoirConfig{
+						BufferDuration: &bufferDuration,
+					},
+				},
+			},
+		}
+		config := signalControlConfigFromResource(edge, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.SamplingReservoirBufferDuration).To(Equal("1m30s"))
 	})
 
 	It("should use the configured reservoir max disk bytes and metric level", func() {
@@ -1126,6 +1353,60 @@ var _ = Describe("signalControlConfigFromResource", func() {
 		}
 		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.SpamFilterCacheExpiration).To(BeEmpty())
+	})
+
+	It("should have log enrichment disabled by default", func() {
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+			},
+		}
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.LogEnrichmentEnabled).To(BeFalse())
+		Expect(config.LogPatternRefreshInterval).To(BeEmpty())
+		Expect(config.LogParserCacheExpiration).To(BeEmpty())
+		Expect(config.LogGroupingCacheExpiration).To(BeEmpty())
+	})
+
+	It("should enable log enrichment and pass tunables through when set", func() {
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+				LogEnrichment: dash0v1alpha1.LogEnrichmentConfig{
+					Enabled:                 boolPtr(true),
+					PatternRefreshInterval:  &metav1.Duration{Duration: 30 * time.Second},
+					ParserCacheExpiration:   &metav1.Duration{Duration: 45 * time.Second},
+					GroupingCacheExpiration: &metav1.Duration{Duration: 90 * time.Second},
+				},
+			},
+		}
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.LogEnrichmentEnabled).To(BeTrue())
+		Expect(config.LogPatternRefreshInterval).To(Equal("30s"))
+		Expect(config.LogParserCacheExpiration).To(Equal("45s"))
+		Expect(config.LogGroupingCacheExpiration).To(Equal("1m30s"))
+	})
+
+	It("should drop non-positive log enrichment duration knobs rather than forward them", func() {
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+				LogEnrichment: dash0v1alpha1.LogEnrichmentConfig{
+					Enabled:                 boolPtr(true),
+					PatternRefreshInterval:  &metav1.Duration{Duration: 0},
+					ParserCacheExpiration:   &metav1.Duration{Duration: 0},
+					GroupingCacheExpiration: &metav1.Duration{Duration: 0},
+				},
+			},
+		}
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.LogEnrichmentEnabled).To(BeTrue())
+		Expect(config.LogPatternRefreshInterval).To(BeEmpty())
+		Expect(config.LogParserCacheExpiration).To(BeEmpty())
+		Expect(config.LogGroupingCacheExpiration).To(BeEmpty())
 	})
 
 	It("should default sampling tunables to empty fallback ratio and debug off", func() {

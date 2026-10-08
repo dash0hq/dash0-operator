@@ -3,117 +3,107 @@
 
 package kubectl
 
-import "slices"
-
 // kubectlArguments is the resolved form of the argument list of a kubectl invocation. It is produced once per command
-// request (see parser.go#parseArguments) and is the basis for validating the request as well as for redacting the
-// response, so that the rules for interpreting an argument list live in a single place.
+// request (see parser.go#parseKubectlArguments) and is the basis for validating the request as well as for redacting
+// the response, so that the rules for interpreting an argument list live in a single place.
 type kubectlArguments struct {
-	// kubectlCommand is the kubectl command, that is, the first positional argument. It may be preceded by global
-	// flags. Example: In `kubectl -n foo get pods`, the kubectlCommand is "get". This mirrors how kubectl/Cobra resolves
-	// it. It is empty when the invocation has no positional argument at all, e.g. a bare `kubectl`, or only flags such as
+	// kubectlCommand is the kubectl command to which kubectl resolves the argument list, by its canonical name.
+	// Example: In `kubectl -n foo get pods`, the kubectlCommand is "get", in `kubectl auth can-i --list` it is "auth". It
+	// is empty when the argument list resolves to the root command, e.g. a bare `kubectl`, or only flags such as
 	// `kubectl --help`. The term used throughout the images/agent0-connector is "kubectl command" to distinguish it from
 	// the actual executable or shell command of a command request (e.g. the string "kubectl" itself); and to also
 	// distinguish it from kubectl subcommands, e.g. the "can-i" in `kubectl auth can-i`.
 	kubectlCommand string
 
-	// flags holds the flag tokens of the argument list, in the order they occur.
+	// subcommand is the rest of the resolved command path below the kubectlCommand, by its canonical names, e.g. "can-i"
+	// for `kubectl auth can-i`, or "dump" for `kubectl cluster-info dump`. It is empty if the argument list resolves to
+	// the kubectlCommand itself. An argument that does not name a subcommand of the kubectlCommand is a positional
+	// argument.
+	subcommand string
+
+	// flags holds the flags the argument list sets, sorted by name. A flag that is set more than once is listed once,
+	// with the value kubectl applies (the last one).
 	flags []parsedFlag
 
-	// disallowedFlags holds the tokens referencing a flag that is not in the allowedFlags allowlist. When it is
-	// non-empty, the other fields must be ignored. Whether a disallowed flag consumes the following argument as its value
-	// is unknown. The request has to be rejected since it includes a disallowed flag.
-	disallowedFlags []string
+	// hasEndOfFlagsSeparator is true if the argument list contains the end-of-flags separator "--".
+	hasEndOfFlagsSeparator bool
 
-	// resourceTypes holds the normalized resource types referenced by the positional arguments that follow the
-	// kubectlCommand, in the order they occur.
+	// resourceTypes holds the normalized resource types referenced by the positional arguments, in the order they occur.
+	// The raw strings are also additionally available in positionalArguments.
 	resourceTypes []string
 
-	// positionalArguments holds the positional arguments that follow the kubectlCommand, verbatim and in the order they
-	// occur.
+	// positionalArguments holds the positional arguments of the resolved command, verbatim and in the order they occur.
 	positionalArguments []string
 }
 
-// parsedFlag is a single flag token of an argument list, resolved against the allowedFlags allowlist.
+// parsedFlag is a single flag that an argument list sets.
 type parsedFlag struct {
-	// token is the flag as written, e.g. "-Aoyaml" or "--output=yaml".
-	token string
+	// longName is the long name of the flag (without leading dashes), whether the argument list sets it via its long name
+	// or via its shorthand.
+	longName string
 
-	// booleanNames holds the long names or shorthands (without leading dashes) of the flags in this token that take no
-	// value. A single token can group several boolean shorthands (pflag accepts "-Aw").
-	booleanNames []string
+	// shorthand is the shorthand of the flag (without the leading dash), or "" if the flag has none.
+	shorthand string
 
-	// valueTakingName is the long name or shorthand (without leading dashes) of the value-taking flag in this token, or
-	// "" if the token holds no value-taking flag.
-	valueTakingName string
-
-	// value is the value assigned to valueTakingName, be it within the token itself ("-oyaml", "--output=yaml") or as the
-	// following argument ("-o yaml"). It is empty for a token that holds no value-taking flag, and for a value-taking
-	// flag at the very end of the argument list (e.g. not followed by an actual value).
+	// value is the value kubectl applies to the flag, rendered as a string.
+	// The value for a boolean flag set without an explicit value is "true".
 	value string
 }
 
-// valuesOf returns the values assigned to the given flag names (long names or shorthands, without leading dashes), in
-// the order the flags occur. Every occurrence is reported, not just the effective (last) one, so that callers can
-// reject an argument list in which any occurrence is problematic.
-func (p kubectlArguments) valuesOf(names ...string) []string {
-	var values []string
+// valueOf returns the value of the flag with the given long name and whether the argument list sets that flag at all.
+func (p kubectlArguments) valueOf(name string) (string, bool) {
 	for _, flag := range p.flags {
-		if flag.valueTakingName != "" && slices.Contains(names, flag.valueTakingName) {
-			values = append(values, flag.value)
+		if flag.longName == name {
+			return flag.value, true
 		}
 	}
-	return values
+	return "", false
 }
 
-// outputFormats returns the normalized output formats requested via -o/--output (handling the "-o yaml", "-o=yaml",
-// "-oyaml", "-Aoyaml" and "--output=yaml" forms), or an empty slice if none is set. For composite formats it returns
-// the base type, e.g. "jsonpath" for "jsonpath={.data}". Repeating the flag yields one entry per occurrence: kubectl
-// applies the last one, but each occurrence is reported so callers do not have to replicate that precedence.
-func (p kubectlArguments) outputFormats() []string {
-	values := p.valuesOf("o", "output")
-	formats := make([]string, 0, len(values))
-	for _, value := range values {
-		formats = append(formats, normalizeOutputFormat(value))
+// outputFormat returns the normalized output format requested via -o/--output, and whether the flag is set at all. For
+// composite formats it returns the base type, e.g. "jsonpath" for "jsonpath={.data}".
+func (p kubectlArguments) outputFormat() (string, bool) {
+	value, isSet := p.valueOf("output")
+	if !isSet {
+		return "", false
 	}
-	return formats
+	return normalizeOutputFormat(value), true
 }
 
 // hasTemplateFlag reports whether the --template flag is set, which selects go-template output and can therefore expose
 // a resource's content.
 func (p kubectlArguments) hasTemplateFlag() bool {
-	return len(p.valuesOf("template")) > 0
+	_, isSet := p.valueOf("template")
+	return isSet
 }
 
 // parseableOutputFormat returns the output format with which the invocation renders the targeted resources, provided
 // that format is one the connector can parse itself (see parseableOutputFormats). It reports false for every other
-// output format, and also for an invocation that sets the output format more than once or combines it with --template,
-// so that kubectl's precedence rules do not have to be replicated here. Composite formats such as jsonpath are excluded
-// as well: their output can happen to parse as JSON or YAML while holding none of the structure of a resource document.
+// output format, and also for an invocation that combines it with --template. The caller is supposed to reject
+// executing the command request if this method returns false. Composite formats such as jsonpath are excluded/rejected
+// as well. Their output might be parseable as JSON or YAML, but we do not know the structure of the resulting document.
+// Do not call this for command requests that do not render any resource content at all - check that with
+// responseHasToBeRedacted before calling this method.
 func (p kubectlArguments) parseableOutputFormat() (string, bool) {
 	if p.hasTemplateFlag() {
 		return "", false
 	}
-	formats := p.outputFormats()
-	if len(formats) != 1 {
+	format, isSet := p.outputFormat()
+	if !isSet {
 		return "", false
 	}
-	if _, parseable := parseableOutputFormats[formats[0]]; !parseable {
+	if _, parseable := parseableOutputFormats[format]; !parseable {
 		return "", false
 	}
-	return formats[0], true
+	return format, true
 }
 
-// outputIsContentFree reports whether every requested output format is one that does not expose a resource's content.
+// outputIsContentFree reports whether the requested output format is one that does not expose a resource's content.
 // The --template flag selects go-template output and is therefore never content-free.
 func (p kubectlArguments) outputIsContentFree() bool {
 	if p.hasTemplateFlag() {
 		return false
 	}
-	for _, format := range p.outputFormats() {
-		if _, contentFree := contentFreeOutputFormats[format]; !contentFree {
-			return false
-		}
-	}
-	return true
+	format, _ := p.outputFormat()
+	return knownOutputFormats[format] == outputFormatContentFree
 }

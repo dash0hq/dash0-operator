@@ -47,10 +47,16 @@ wait_for_third_party_resource_deletion="false"
 if kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0syntheticcheck/dash0syntheticcheck.yaml; then
   wait_for_third_party_resource_deletion="true"
 fi
+if kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0slo/dash0slo.yaml; then
+  wait_for_third_party_resource_deletion="true"
+fi
 if kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0view/dash0view.yaml; then
   wait_for_third_party_resource_deletion="true"
 fi
 if kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0spamfilter/dash0spamfilter.yaml; then
+  wait_for_third_party_resource_deletion="true"
+fi
+if kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0timeseriesaggregation/dash0timeseriesaggregation.yaml; then
   wait_for_third_party_resource_deletion="true"
 fi
 if kubectl delete -n "$target_namespace" -f test-resources/customresources/persesdashboard/v1alpha2/persesdashboard.yaml; then

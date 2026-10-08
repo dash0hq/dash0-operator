@@ -87,6 +87,29 @@ var _ = Describe(
 					},
 				)
 
+				It(
+					"should send the default dataset if it has been set explicitly", func() {
+						oTelSdkStarter.SetOTelSdkParameters(
+							ctx,
+							*Dash0ExportWithEndpointTokenAndExplicitDefaultDataset(),
+							&AuthorizationTokenTest,
+							nil,
+							ClusterUidTest,
+							ClusterNameTest,
+							OperatorNamespace,
+							OperatorManagerDeploymentUID,
+							OperatorManagerDeploymentName,
+							OperatorVersionTest,
+							false,
+							logger,
+						)
+						config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
+						Expect(config).NotTo(BeNil())
+						Expect(config.Headers).To(HaveLen(2))
+						Expect(config.Headers[util.Dash0DatasetHeaderName]).To(Equal(util.DatasetDefault))
+					},
+				)
+
 				It("should include resolved gRPC export headers in the OTel SDK config", func() {
 					oTelSdkStarter.SetOTelSdkParameters(
 						ctx,

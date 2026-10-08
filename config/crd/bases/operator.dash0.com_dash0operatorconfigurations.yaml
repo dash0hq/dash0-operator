@@ -63,6 +63,129 @@ spec:
             description: Dash0OperatorConfigurationSpec describes cluster-wide configuration
               settings for the Dash0 operator.
             properties:
+              __dash0_internal__normalizedTransform:
+                description: Only used internally, this field must not be specified
+                  by users.
+                properties:
+                  error_mode:
+                    description: |-
+                      FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
+                      processing a condition.
+                    enum:
+                    - ignore
+                    - silent
+                    - propagate
+                    type: string
+                  log_statements:
+                    items:
+                      properties:
+                        conditions:
+                          items:
+                            type: string
+                          type: array
+                        context:
+                          type: string
+                        error_mode:
+                          description: |-
+                            FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
+                            processing a condition.
+                          enum:
+                          - ignore
+                          - silent
+                          - propagate
+                          type: string
+                        statements:
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                    type: array
+                  metric_statements:
+                    items:
+                      properties:
+                        conditions:
+                          items:
+                            type: string
+                          type: array
+                        context:
+                          type: string
+                        error_mode:
+                          description: |-
+                            FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
+                            processing a condition.
+                          enum:
+                          - ignore
+                          - silent
+                          - propagate
+                          type: string
+                        statements:
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                    type: array
+                  profile_statements:
+                    items:
+                      properties:
+                        conditions:
+                          items:
+                            type: string
+                          type: array
+                        context:
+                          type: string
+                        error_mode:
+                          description: |-
+                            FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
+                            processing a condition.
+                          enum:
+                          - ignore
+                          - silent
+                          - propagate
+                          type: string
+                        statements:
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                    type: array
+                  trace_statements:
+                    items:
+                      properties:
+                        conditions:
+                          items:
+                            type: string
+                          type: array
+                        context:
+                          type: string
+                        error_mode:
+                          description: |-
+                            FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
+                            processing a condition.
+                          enum:
+                          - ignore
+                          - silent
+                          - propagate
+                          type: string
+                        statements:
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                    type: array
+                type: object
+              agent0Connector:
+                description: Settings for the agent0-connector.
+                properties:
+                  enabled:
+                    description: |-
+                      An opt-out switch for the agent0-connector deployment. This setting is optional. Setting it to `false` prevents the
+                      operator from deploying the agent0-connector, even when the agent0-connector is enabled via the Helm chart. It is a
+                      validation error to set it to `true` when the agent0-connector is disabled via the Helm chart.
+
+                      Using this setting to disable agent0-connector when it is enabled via Helm and the Helm chart manages the
+                      Dash0OperatorConfiguration resource (operator.dash0Export.enabled=true) is not supported.
+                    type: boolean
+                type: object
               autoMonitorNamespaces:
                 default:
                   enabled: false
@@ -232,10 +355,12 @@ spec:
                             type: string
                         type: object
                       dataset:
-                        default: default
                         description: |-
-                          The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-                          dataset "default" will be used.
+                          The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
+                          identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
+                          identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
+                          optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
+                          authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                         type: string
                       endpoint:
                         description: |-
@@ -511,10 +636,12 @@ spec:
                               type: string
                           type: object
                         dataset:
-                          default: default
                           description: |-
-                            The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-                            dataset "default" will be used.
+                            The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
+                            identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
+                            identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
+                            optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
+                            authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                           type: string
                         endpoint:
                           description: |-
@@ -725,6 +852,138 @@ spec:
                       type: object
                   type: object
                 type: array
+              filter:
+                description: |-
+                  Optional filters for telemetry data that is collected in this cluster. This can be used to drop entire spans,
+                  span events, metrics, metric data points, or log records. See "Transform" for advanced transformations (e.g.
+                  removing span attributes, metric data point attributes, log record attributes etc.).
+
+                  In contrast to the filters in a Dash0 monitoring resource, which only apply to the telemetry collected in the
+                  namespace of that monitoring resource, these filters apply to all telemetry collected in the cluster, including
+                  telemetry that is not associated with a namespace, like node metrics or cluster-level metrics.
+
+                  The filters of monitoring resources and the filters configured here are evaluated by the same filter processor;
+                  telemetry is dropped if at least one condition of either matches.
+
+                  This setting is optional, by default, no filters are applied. It is a validation error to set
+                  `telemetryCollection.enabled=false` and set filters at the same time.
+                properties:
+                  error_mode:
+                    default: ignore
+                    description: |-
+                      An optional field which will determine how the filter processor reacts to errors that occur while processing a
+                      condition. Possible values:
+                      - ignore: ignore errors returned by conditions, log them, continue with to the next condition.
+                                This is the recommended mode and also the default mode if this property is omitted.
+                      - silent: ignore errors returned by conditions, do not log them, continue with to the next condition.
+                      - propagate: return the error up the processing pipeline. This will result in the payload being dropped from the
+                                collector. Not recommended.
+
+                      This is optional, default to "ignore", there is usually no reason to change this.
+
+                      Note that although this can be specified per namespace and cluster-wide, the filter conditions will be aggregated
+                      into one single filter processor in the resulting OpenTelemetry collector configuration; if different error modes
+                      are specified in different namespaces, or cluster-wide in the operator configuration resource, the "most severe"
+                      error mode will be used (propagate > ignore > silent).
+                    enum:
+                    - ignore
+                    - silent
+                    - propagate
+                    type: string
+                  logs:
+                    description: |-
+                      Filters for the logs signal.
+                      This can be used to drop _log records_.
+                    properties:
+                      log_records:
+                        description: |-
+                          A list of conditions for filtering log records.
+                          This is a list of OTTL conditions.
+                          All log records where at least one condition evaluates to true will be dropped.
+                          (That is, the conditions are implicitly connected by a logical OR.)
+                          Example:
+                          - 'IsMatch(body, ".*password.*")'
+                          - 'severity_number < SEVERITY_NUMBER_WARN'
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                  metrics:
+                    description: |-
+                      Filters for the metrics signal.
+                      This can be used to drop entire _metrics_, or individual _data points_.
+                    properties:
+                      datapoint:
+                        description: |-
+                          A list of conditions for filtering metrics data points.
+                          This is a list of OTTL conditions.
+                          All data points where at least one condition evaluates to true will be dropped.
+                          (That is, the conditions are implicitly connected by a logical OR.)
+                          Note: If all datapoints for a metric are dropped, the metric will also be dropped.
+                          Example:
+                          - 'metric.name == "a.noisy.metric.with.many.datapoints" and value_int == 0' # filter metrics by value
+                          - 'resource.attributes["service.name"] == "my_service_name"' # filter data points by resource attributes
+                        items:
+                          type: string
+                        type: array
+                      metric:
+                        description: |-
+                          A list of conditions for filtering metrics.
+                          This is a list of OTTL conditions.
+                          All metrics where at least one condition evaluates to true will be dropped.
+                          (That is, the conditions are implicitly connected by a logical OR.)
+                          Example:
+                          - 'name == "k8s.replicaset.available"'
+                          - 'name == "k8s.replicaset.desired"'
+                          - 'type == METRIC_DATA_TYPE_HISTOGRAM'
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                  profiles:
+                    description: |-
+                      Filters for the profiles signal.
+                      This can be used to drop _profiles_.
+                    properties:
+                      profile:
+                        description: |-
+                          A list of conditions for filtering profiles.
+                          This is a list of OTTL conditions.
+                          All profiles where at least one condition evaluates to true will be dropped.
+                          (That is, the conditions are implicitly connected by a logical OR.)
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                  traces:
+                    description: |-
+                      Filters for the traces signal.
+                      This can be used to drop _spans_ or _span events_.
+                    properties:
+                      span:
+                        description: |-
+                          A list of conditions for filtering spans.
+                          This is a list of OTTL conditions.
+                          All spans where at least one condition evaluates to true will be dropped.
+                          (That is, the conditions are implicitly connected by a logical OR.)
+                          Example:
+                          - 'attributes["http.route"] == "/ready"'
+                          - 'attributes["http.route"] == "/metrics"'
+                        items:
+                          type: string
+                        type: array
+                      spanevent:
+                        description: |-
+                          A list of conditions for filtering span events.
+                          This is a list of OTTL conditions.
+                          All span events where at least one condition evaluates to true will be dropped.
+                          (That is, the conditions are implicitly connected by a logical OR.)
+                          If all span events for a span are dropped, the span will be left intact.
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                type: object
               instrumentWorkloads:
                 default:
                   instrumentationDelivery: init-container
@@ -1000,10 +1259,12 @@ spec:
                                     type: string
                                 type: object
                               dataset:
-                                default: default
                                 description: |-
-                                  The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-                                  dataset "default" will be used.
+                                  The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
+                                  identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
+                                  identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
+                                  optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
+                                  authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                                 type: string
                               endpoint:
                                 description: |-
@@ -1285,10 +1546,12 @@ spec:
                                       type: string
                                   type: object
                                 dataset:
-                                  default: default
                                   description: |-
-                                    The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-                                    dataset "default" will be used.
+                                    The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
+                                    identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
+                                    identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
+                                    optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
+                                    authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                                   type: string
                                 endpoint:
                                   description: |-
@@ -1527,9 +1790,10 @@ spec:
 
                               This is optional, default to "ignore", there is usually no reason to change this.
 
-                              Note that although this can be specified per namespace, the filter conditions will be aggregated into one
-                              single filter processor in the resulting OpenTelemetry collector configuration; if different error modes are
-                              specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+                              Note that although this can be specified per namespace and cluster-wide, the filter conditions will be aggregated
+                              into one single filter processor in the resulting OpenTelemetry collector configuration; if different error modes
+                              are specified in different namespaces, or cluster-wide in the operator configuration resource, the "most severe"
+                              error mode will be used (propagate > ignore > silent).
                             enum:
                             - ignore
                             - silent
@@ -1842,9 +2106,10 @@ spec:
 
                               This is optional, default to "ignore".
 
-                              Note that although this can be specified per namespace, the transform statements will be aggregated into one
-                              single transform processor in the resulting OpenTelemetry collector configuration; if different error modes are
-                              specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+                              Note that although this can be specified per namespace and cluster-wide, the transform statements will be
+                              aggregated into one single transform processor in the resulting OpenTelemetry collector configuration; if
+                              different error modes are specified in different namespaces, or cluster-wide in the operator configuration
+                              resource, the "most severe" error mode will be used (propagate > ignore > silent).
                             enum:
                             - ignore
                             - silent
@@ -1912,6 +2177,388 @@ spec:
                 required:
                 - enabled
                 type: object
+              syntheticsWorker:
+                description: Settings for the synthetics-worker.
+                properties:
+                  enabled:
+                    description: |-
+                      An opt-out switch for the synthetics-worker feature. This setting is optional. Setting it to `false` prevents
+                      the operator from deploying any synthetics-worker instance, even when the synthetics-worker is enabled via the
+                      Helm chart. It is a validation error to set it to `true` when the synthetics-worker is disabled via the Helm
+                      chart.
+                    type: boolean
+                  instances:
+                    description: |-
+                      Instances lists the synthetics-worker deployments the operator manages, one per Dash0 private location. Each
+                      instance's LocationID must be unique within this list; it is also used to derive the names of that instance's
+                      Kubernetes resources. At least one instance is required when the synthetics-worker is enabled.
+                    items:
+                      description: SyntheticsWorkerInstance describes a single synthetics-worker
+                        Deployment, pinned to one Dash0 private location.
+                      properties:
+                        authorization:
+                          description: |-
+                            Authorization holds the Dash0 authorization token for this instance's workload, either as a literal token or as
+                            a reference to a Kubernetes secret. Required when the synthetics-worker is enabled. This is a pointer so that
+                            the field can be omitted entirely; the Authorization type itself requires at least one of its own properties to
+                            be set, which would reject an explicit empty object.
+                          maxProperties: 1
+                          minProperties: 1
+                          properties:
+                            secretRef:
+                              description: |-
+                                A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
+                                ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
+                                https://app.dash0.com -> organization settings -> "Auth Tokens".
+                              properties:
+                                key:
+                                  default: token
+                                  description: The key of the value which contains
+                                    the Dash0 authorization token. Defaults to "token"
+                                  type: string
+                                name:
+                                  default: dash0-authorization-secret
+                                  description: The name of the secret containing the
+                                    Dash0 authorization token. Defaults to "dash0-authorization-secret".
+                                  type: string
+                              required:
+                              - key
+                              - name
+                              type: object
+                            token:
+                              description: |-
+                                The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
+                                to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
+                                token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
+                                "Auth Tokens".
+                              type: string
+                          type: object
+                        locationId:
+                          description: |-
+                            LocationID is the customer-chosen identifier of the private location that this instance executes checks for.
+                            Dash0 resolves it to the location's identity. It must be unique within spec.syntheticsWorker.instances, and is
+                            used to derive the names of this instance's Kubernetes resources.
+                          maxLength: 40
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                          type: string
+                        nodeAffinity:
+                          description: |-
+                            NodeAffinity constrains which nodes this instance's pods can be scheduled on, e.g. to pin a private location's
+                            worker to nodes in a particular region or zone. This setting is optional.
+                          properties:
+                            preferredDuringSchedulingIgnoredDuringExecution:
+                              description: |-
+                                The scheduler will prefer to schedule pods to nodes that satisfy
+                                the affinity expressions specified by this field, but it may choose
+                                a node that violates one or more of the expressions. The node that is
+                                most preferred is the one with the greatest sum of weights, i.e.
+                                for each node that meets all of the scheduling requirements (resource
+                                request, requiredDuringScheduling affinity expressions, etc.),
+                                compute a sum by iterating through the elements of this field and adding
+                                "weight" to the sum if the node matches the corresponding matchExpressions; the
+                                node(s) with the highest sum are the most preferred.
+                              items:
+                                description: |-
+                                  An empty preferred scheduling term matches all objects with implicit weight 0
+                                  (i.e. it's a no-op). A null preferred scheduling term matches no objects (i.e. is also a no-op).
+                                properties:
+                                  preference:
+                                    description: A node selector term, associated
+                                      with the corresponding weight.
+                                    properties:
+                                      matchExpressions:
+                                        description: A list of node selector requirements
+                                          by node's labels.
+                                        items:
+                                          description: |-
+                                            A node selector requirement is a selector that contains values, a key, and an operator
+                                            that relates the key and values.
+                                          properties:
+                                            key:
+                                              description: The label key that the
+                                                selector applies to.
+                                              type: string
+                                            operator:
+                                              description: |-
+                                                Represents a key's relationship to a set of values.
+                                                Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                              type: string
+                                            values:
+                                              description: |-
+                                                An array of string values. If the operator is In or NotIn,
+                                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                                the values array must be empty. If the operator is Gt or Lt, the values
+                                                array must have a single element, which will be interpreted as an integer.
+                                                This array is replaced during a strategic merge patch.
+                                              items:
+                                                type: string
+                                              type: array
+                                              x-kubernetes-list-type: atomic
+                                          required:
+                                          - key
+                                          - operator
+                                          type: object
+                                        type: array
+                                        x-kubernetes-list-type: atomic
+                                      matchFields:
+                                        description: A list of node selector requirements
+                                          by node's fields.
+                                        items:
+                                          description: |-
+                                            A node selector requirement is a selector that contains values, a key, and an operator
+                                            that relates the key and values.
+                                          properties:
+                                            key:
+                                              description: The label key that the
+                                                selector applies to.
+                                              type: string
+                                            operator:
+                                              description: |-
+                                                Represents a key's relationship to a set of values.
+                                                Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                              type: string
+                                            values:
+                                              description: |-
+                                                An array of string values. If the operator is In or NotIn,
+                                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                                the values array must be empty. If the operator is Gt or Lt, the values
+                                                array must have a single element, which will be interpreted as an integer.
+                                                This array is replaced during a strategic merge patch.
+                                              items:
+                                                type: string
+                                              type: array
+                                              x-kubernetes-list-type: atomic
+                                          required:
+                                          - key
+                                          - operator
+                                          type: object
+                                        type: array
+                                        x-kubernetes-list-type: atomic
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                  weight:
+                                    description: Weight associated with matching the
+                                      corresponding nodeSelectorTerm, in the range
+                                      1-100.
+                                    format: int32
+                                    type: integer
+                                required:
+                                - preference
+                                - weight
+                                type: object
+                              type: array
+                              x-kubernetes-list-type: atomic
+                            requiredDuringSchedulingIgnoredDuringExecution:
+                              description: |-
+                                If the affinity requirements specified by this field are not met at
+                                scheduling time, the pod will not be scheduled onto the node.
+                                If the affinity requirements specified by this field cease to be met
+                                at some point during pod execution (e.g. due to an update), the system
+                                may or may not try to eventually evict the pod from its node.
+                              properties:
+                                nodeSelectorTerms:
+                                  description: Required. A list of node selector terms.
+                                    The terms are ORed.
+                                  items:
+                                    description: |-
+                                      A null or empty node selector term matches no objects. The requirements of
+                                      them are ANDed.
+                                      The TopologySelectorTerm type implements a subset of the NodeSelectorTerm.
+                                    properties:
+                                      matchExpressions:
+                                        description: A list of node selector requirements
+                                          by node's labels.
+                                        items:
+                                          description: |-
+                                            A node selector requirement is a selector that contains values, a key, and an operator
+                                            that relates the key and values.
+                                          properties:
+                                            key:
+                                              description: The label key that the
+                                                selector applies to.
+                                              type: string
+                                            operator:
+                                              description: |-
+                                                Represents a key's relationship to a set of values.
+                                                Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                              type: string
+                                            values:
+                                              description: |-
+                                                An array of string values. If the operator is In or NotIn,
+                                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                                the values array must be empty. If the operator is Gt or Lt, the values
+                                                array must have a single element, which will be interpreted as an integer.
+                                                This array is replaced during a strategic merge patch.
+                                              items:
+                                                type: string
+                                              type: array
+                                              x-kubernetes-list-type: atomic
+                                          required:
+                                          - key
+                                          - operator
+                                          type: object
+                                        type: array
+                                        x-kubernetes-list-type: atomic
+                                      matchFields:
+                                        description: A list of node selector requirements
+                                          by node's fields.
+                                        items:
+                                          description: |-
+                                            A node selector requirement is a selector that contains values, a key, and an operator
+                                            that relates the key and values.
+                                          properties:
+                                            key:
+                                              description: The label key that the
+                                                selector applies to.
+                                              type: string
+                                            operator:
+                                              description: |-
+                                                Represents a key's relationship to a set of values.
+                                                Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                              type: string
+                                            values:
+                                              description: |-
+                                                An array of string values. If the operator is In or NotIn,
+                                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                                the values array must be empty. If the operator is Gt or Lt, the values
+                                                array must have a single element, which will be interpreted as an integer.
+                                                This array is replaced during a strategic merge patch.
+                                              items:
+                                                type: string
+                                              type: array
+                                              x-kubernetes-list-type: atomic
+                                          required:
+                                          - key
+                                          - operator
+                                          type: object
+                                        type: array
+                                        x-kubernetes-list-type: atomic
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                  type: array
+                                  x-kubernetes-list-type: atomic
+                              required:
+                              - nodeSelectorTerms
+                              type: object
+                              x-kubernetes-map-type: atomic
+                          type: object
+                        replicas:
+                          default: 1
+                          description: Replicas is the number of pods this instance
+                            runs. This setting is optional, it defaults to 1.
+                          format: int32
+                          type: integer
+                        resources:
+                          description: Resources describes the compute resource requirements
+                            for this instance's container. This setting is optional.
+                          properties:
+                            claims:
+                              description: |-
+                                Claims lists the names of resources, defined in spec.resourceClaims,
+                                that are used by this container.
+
+                                This field depends on the
+                                DynamicResourceAllocation feature gate.
+
+                                This field is immutable. It can only be set for containers.
+                              items:
+                                description: ResourceClaim references one entry in
+                                  PodSpec.ResourceClaims.
+                                properties:
+                                  name:
+                                    description: |-
+                                      Name must match the name of one entry in pod.spec.resourceClaims of
+                                      the Pod where this field is used. It makes that resource available
+                                      inside a container.
+                                    type: string
+                                  request:
+                                    description: |-
+                                      Request is the name chosen for a request in the referenced claim.
+                                      If empty, everything from the claim is made available, otherwise
+                                      only the result of this request.
+                                    type: string
+                                required:
+                                - name
+                                type: object
+                              type: array
+                              x-kubernetes-list-map-keys:
+                              - name
+                              x-kubernetes-list-type: map
+                            limits:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: |-
+                                Limits describes the maximum amount of compute resources allowed.
+                                More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                              type: object
+                            requests:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: |-
+                                Requests describes the minimum amount of compute resources required.
+                                If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                                otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                                More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                              type: object
+                          type: object
+                        tolerations:
+                          description: Tolerations allow this instance's pods to be
+                            scheduled on nodes with matching taints. This setting
+                            is optional.
+                          items:
+                            description: |-
+                              The pod this Toleration is attached to tolerates any taint that matches
+                              the triple <key,value,effect> using the matching operator <operator>.
+                            properties:
+                              effect:
+                                description: |-
+                                  Effect indicates the taint effect to match. Empty means match all taint effects.
+                                  When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                                type: string
+                              key:
+                                description: |-
+                                  Key is the taint key that the toleration applies to. Empty means match all taint keys.
+                                  If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                                type: string
+                              operator:
+                                description: |-
+                                  Operator represents a key's relationship to the value.
+                                  Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                                  Exists is equivalent to wildcard for value, so that a pod can
+                                  tolerate all taints of a particular category.
+                                  Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
+                                type: string
+                              tolerationSeconds:
+                                description: |-
+                                  TolerationSeconds represents the period of time the toleration (which must be
+                                  of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+                                  it is not set, which means tolerate the taint forever (do not evict). Zero and
+                                  negative values will be treated as 0 (evict immediately) by the system.
+                                format: int64
+                                type: integer
+                              value:
+                                description: |-
+                                  Value is the taint value the toleration matches to.
+                                  If the operator is Exists, the value should be empty, otherwise just a regular string.
+                                type: string
+                            type: object
+                          type: array
+                      required:
+                      - locationId
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - locationId
+                    x-kubernetes-list-type: map
+                type: object
               telemetryCollection:
                 default:
                   enabled: true
@@ -1934,6 +2581,69 @@ spec:
                 required:
                 - enabled
                 type: object
+              transform:
+                description: |-
+                  Optional custom transformations for telemetry data that is collected in this cluster. This can be used to remove
+                  span attributes, metric data point attributes, log record attributes etc. See "Filter" for basic filters that can
+                  be used to drop entire spans, span events, metrics, metric data points, or log records.
+
+                  In contrast to the transformations in a Dash0 monitoring resource, which only apply to the telemetry collected in
+                  the namespace of that monitoring resource, these transformations apply to all telemetry collected in the cluster,
+                  including telemetry that is not associated with a namespace, like node metrics or cluster-level metrics.
+
+                  For each signal type (traces, metrics, logs, profiles), a list of OTTL statements can be defined. These will be
+                  applied to all telemetry collected in the cluster, following the order specified in the configuration. Each
+                  statement can access and transform telemetry using OTTL functions.
+                  See https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/transformprocessor
+                  for details and examples. Both the
+                  [basic config style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#basic-config)
+                  and the
+                  [advanced config style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#advanced-config)
+                  of the transform processor are supported.
+
+                  The transformations of monitoring resources are applied before the transformations configured here.
+
+                  This setting is optional, by default, no transformations are applied. It is a validation error to set
+                  `telemetryCollection.enabled=false` and set transformations at the same time.
+                properties:
+                  error_mode:
+                    default: ignore
+                    description: |-
+                      An optional field which will determine how the transform processor reacts to errors that occur while processing a
+                      statement. Possible values:
+                      - ignore: ignore errors returned by statements, log them, continue with to the next statement.
+                      - silent: ignore errors returned by statements, do not log them, continue with to the next statement.
+                      - propagate: return the error up the processing pipeline. This will result in the payload being dropped from the
+                        collector.
+
+                      This is optional, default to "ignore".
+
+                      Note that although this can be specified per namespace and cluster-wide, the transform statements will be
+                      aggregated into one single transform processor in the resulting OpenTelemetry collector configuration; if
+                      different error modes are specified in different namespaces, or cluster-wide in the operator configuration
+                      resource, the "most severe" error mode will be used (propagate > ignore > silent).
+                    enum:
+                    - ignore
+                    - silent
+                    - propagate
+                    type: string
+                  log_statements:
+                    description: Transform statements (or groups) for the log signal
+                      type.
+                    x-kubernetes-preserve-unknown-fields: true
+                  metric_statements:
+                    description: Transform statements (or groups) for the metric signal
+                      type.
+                    x-kubernetes-preserve-unknown-fields: true
+                  profile_statements:
+                    description: Transform statements (or groups) for the profile
+                      signal type.
+                    x-kubernetes-preserve-unknown-fields: true
+                  trace_statements:
+                    description: Transform statements (or groups) for the trace signal
+                      type.
+                    x-kubernetes-preserve-unknown-fields: true
+                type: object
             type: object
           status:
             description: Dash0OperatorConfigurationStatus defines the observed state
@@ -1941,8 +2651,11 @@ spec:
             properties:
               agent0Connector:
                 description: |-
-                  Agent0Connector reports whether the operator has deployed the agent0-connector. It is only present when the
-                  agent0-connector is enabled (Helm value operator.agent0Connector.enabled).
+                  Agent0Connector reports whether the operator has deployed the agent0-connector, and why not if it hasn't. A
+                  disabled agent0-connector is reported with deployed=false and reason=Disabled, which is what distinguishes it
+                  from one that failed to deploy. This is absent until the operator reconciles the agent0-connector for the first
+                  time, which it only does when the agent0-connector is enabled via the Helm chart
+                  (operator.agent0Connector.enabled).
                 properties:
                   deployed:
                     description: |-
@@ -1960,7 +2673,7 @@ spec:
                     type: string
                   reason:
                     description: Reason is a programmatic identifier for the last
-                      outcome, e.g. "InvalidClusterRoleRules".
+                      negative outcome, e.g. "InvalidClusterRoleRules".
                     type: string
                 required:
                 - deployed
@@ -2235,10 +2948,12 @@ spec:
                                     type: string
                                 type: object
                               dataset:
-                                default: default
                                 description: |-
-                                  The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-                                  dataset "default" will be used.
+                                  The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
+                                  identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
+                                  identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
+                                  optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
+                                  authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                                 type: string
                               endpoint:
                                 description: |-
@@ -2520,10 +3235,12 @@ spec:
                                       type: string
                                   type: object
                                 dataset:
-                                  default: default
                                   description: |-
-                                    The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-                                    dataset "default" will be used.
+                                    The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
+                                    identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
+                                    identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
+                                    optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
+                                    authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                                   type: string
                                 endpoint:
                                   description: |-
@@ -2762,9 +3479,10 @@ spec:
 
                               This is optional, default to "ignore", there is usually no reason to change this.
 
-                              Note that although this can be specified per namespace, the filter conditions will be aggregated into one
-                              single filter processor in the resulting OpenTelemetry collector configuration; if different error modes are
-                              specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+                              Note that although this can be specified per namespace and cluster-wide, the filter conditions will be aggregated
+                              into one single filter processor in the resulting OpenTelemetry collector configuration; if different error modes
+                              are specified in different namespaces, or cluster-wide in the operator configuration resource, the "most severe"
+                              error mode will be used (propagate > ignore > silent).
                             enum:
                             - ignore
                             - silent
@@ -3077,9 +3795,10 @@ spec:
 
                               This is optional, default to "ignore".
 
-                              Note that although this can be specified per namespace, the transform statements will be aggregated into one
-                              single transform processor in the resulting OpenTelemetry collector configuration; if different error modes are
-                              specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+                              Note that although this can be specified per namespace and cluster-wide, the transform statements will be
+                              aggregated into one single transform processor in the resulting OpenTelemetry collector configuration; if
+                              different error modes are specified in different namespaces, or cluster-wide in the operator configuration
+                              resource, the "most severe" error mode will be used (propagate > ignore > silent).
                             enum:
                             - ignore
                             - silent
@@ -3106,6 +3825,110 @@ spec:
                     - synchronizePersesDashboards
                     - synchronizePrometheusRules
                     type: object
+                type: object
+              syntheticsWorker:
+                description: |-
+                  SyntheticsWorker reports whether the operator has deployed the synthetics-worker, and why not if it hasn't. A
+                  disabled synthetics-worker is reported with deployed=false and reason=Disabled, which is what distinguishes it
+                  from one that failed to deploy. This is absent until the operator reconciles the synthetics-worker for the
+                  first time, which it only does when the synthetics-worker is enabled via the Helm chart
+                  (operator.syntheticsWorker.enabled).
+                properties:
+                  deployed:
+                    description: |-
+                      Deployed reports whether every configured instance was successfully created or updated the last time the
+                      operator tried. It is false if the feature is disabled, or if any single instance failed.
+                    type: boolean
+                  instances:
+                    description: Instances reports the individual outcome for each
+                      configured synthetics-worker instance.
+                    items:
+                      description: |-
+                        SyntheticsWorkerInstanceStatus reports whether the operator has deployed one synthetics-worker instance and
+                        whether its replicas are ready.
+                      properties:
+                        deployed:
+                          description: |-
+                            Deployed reports whether the operator has successfully created or updated this instance's resources the last
+                            time it tried.
+                          type: boolean
+                        desiredReplicas:
+                          description: DesiredReplicas is the number of replicas configured
+                            for this instance's Deployment.
+                          format: int32
+                          type: integer
+                        lastTransitionTime:
+                          description: LastTransitionTime is the time at which Deployed
+                            last changed for this instance.
+                          format: date-time
+                          type: string
+                        locationId:
+                          description: LocationID identifies the instance this status
+                            refers to, matching spec.syntheticsWorker.instances[].locationId.
+                          type: string
+                        message:
+                          description: Message describes the last outcome in a human-readable
+                            form.
+                          type: string
+                        ready:
+                          description: |-
+                            Ready reports whether every desired replica of this instance is ready, i.e. has an open task-dispatch stream to
+                            Dash0.
+                          type: boolean
+                        readyReason:
+                          description: |-
+                            ReadyReason is a programmatic identifier for the readiness outcome: "Ready", "NoReadyReplicas" or
+                            "PartiallyReady".
+                          type: string
+                        readyReplicas:
+                          description: ReadyReplicas is the number of ready replicas
+                            reported by this instance's Deployment.
+                          format: int32
+                          type: integer
+                        reason:
+                          description: Reason is a programmatic identifier for the
+                            last negative outcome, e.g. "NoAuthorizationToken".
+                          type: string
+                      required:
+                      - deployed
+                      - desiredReplicas
+                      - locationId
+                      - ready
+                      - readyReplicas
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - locationId
+                    x-kubernetes-list-type: map
+                  lastTransitionTime:
+                    description: LastTransitionTime is the time at which Deployed
+                      last changed.
+                    format: date-time
+                    type: string
+                  message:
+                    description: Message describes the last outcome in a human-readable
+                      form.
+                    type: string
+                  ready:
+                    description: |-
+                      Ready reports whether every configured instance has every desired replica ready. False if there are no
+                      instances or any single instance is not fully ready; see Instances for the per-instance state.
+                    type: boolean
+                  readyReason:
+                    description: |-
+                      ReadyReason is a programmatic identifier for the aggregate readiness outcome, e.g. "PartiallyReady". As with
+                      Deployed/Reason, "PartiallyReady" means the not-ready instances disagree on why, not that some are ready; see
+                      Instances for the per-instance reasons.
+                    type: string
+                  reason:
+                    description: |-
+                      Reason is a programmatic identifier for the last negative outcome, e.g. "NoAuthorizationToken". When multiple
+                      instances fail for different reasons, this reports "PartiallyDeployed"; see Instances for the per-instance
+                      reasons.
+                    type: string
+                required:
+                - deployed
+                - ready
                 type: object
             type: object
         type: object

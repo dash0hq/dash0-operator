@@ -4,6 +4,8 @@
 package webhooks
 
 import (
+	"encoding/json"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -284,6 +286,111 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			"profiling explicitly enabled, although telemetry collection is disabled")))
 	})
 
+	It("should reject a new operator configuration resource with telemetry collection disabled but filters set", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					Filter: &dash0common.Filter{
+						Traces: &dash0common.TraceFilter{
+							SpanFilter: []string{`attributes["http.route"] == "/ready"`},
+						},
+					},
+					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: new(false),
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(
+			"telemetry filters, although telemetry collection is disabled")))
+	})
+
+	It("should reject a new operator configuration resource with telemetry collection disabled but transformations set", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					Transform: &dash0common.Transform{
+						Traces: []json.RawMessage{
+							json.RawMessage(`"truncate_all(span.attributes, 128)"`),
+						},
+					},
+					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: new(false),
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(
+			"telemetry transformations, although telemetry collection is disabled")))
+	})
+
+	It("should reject a new operator configuration resource with an invalid filter condition", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					Filter: &dash0common.Filter{
+						Traces: &dash0common.TraceFilter{
+							SpanFilter: []string{`NoSuchFunction(attributes["http.route"])`},
+						},
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(`undefined function "NoSuchFunction"`)))
+	})
+
+	It("should reject a new operator configuration resource with an invalid transform statement", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					Transform: &dash0common.Transform{
+						Traces: []json.RawMessage{
+							json.RawMessage(`"no_such_function(span.attributes, 128)"`),
+						},
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(
+			`inferred context "span" does not support the function "no_such_function"`)))
+	})
+
+	It("should allow a new operator configuration resource with valid filters and transformations", func() {
+		operatorConfigurationResource, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					Filter: &dash0common.Filter{
+						Traces: &dash0common.TraceFilter{
+							SpanFilter: []string{`attributes["http.route"] == "/ready"`},
+						},
+					},
+					Transform: &dash0common.Transform{
+						Traces: []json.RawMessage{
+							json.RawMessage(`"truncate_all(span.attributes, 128)"`),
+						},
+					},
+				},
+			})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(operatorConfigurationResource).ToNot(BeNil())
+	})
+
 	It("should reject a new operator configuration resource with a GRPC export having both insecure and insecureSkipVerify set to true", func() {
 		_, err := CreateOperatorConfigurationResource(
 			ctx,
@@ -560,6 +667,318 @@ var _ = Describe("The validation webhook for the operator configuration resource
 					},
 				})
 			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Describe("agent0-connector", func() {
+		It("should reject enabling the agent0-connector when it is disabled via Helm", func() {
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						Agent0Connector: dash0v1alpha1.Agent0Connector{
+							Enabled: new(true),
+						},
+					},
+				})
+			Expect(err).To(MatchError(ContainSubstring(
+				"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The agent0-connector " +
+					"has been disabled via the Helm chart (operator.agent0Connector.enabled: false), but the provided Dash0 " +
+					"operator configuration resource has agent0Connector.enabled=true. The agent0-connector cannot be " +
+					"enabled via the operator configuration resource when it has been disabled via the Helm chart. Instead, " +
+					"run helm upgrade --install to set operator.agent0Connector.enabled: true via the Helm chart.")))
+		})
+
+		It("should allow disabling the agent0-connector when it is disabled via Helm", func() {
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						Agent0Connector: dash0v1alpha1.Agent0Connector{
+							Enabled: new(false),
+						},
+					},
+				})
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("should reject an update that enables the agent0-connector when it is disabled via Helm", func() {
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					},
+				})
+			Expect(err).ToNot(HaveOccurred())
+
+			operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+			operatorConfigurationResource.Spec.Agent0Connector.Enabled = new(true)
+
+			Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(
+				MatchError(ContainSubstring(ErrorMessageAgent0ConnectorDisabledViaHelm)))
+		})
+
+		It("should allow an unrelated update when the agent0-connector has been disabled via Helm after the fact", func() {
+			// Store agent0Connector.enabled=true while the agent0-connector is still enabled via Helm, ...
+			operatorConfigurationValidationWebhookHandler.agent0ConnectorEnabledViaHelm = true
+			DeferCleanup(func() {
+				operatorConfigurationValidationWebhookHandler.agent0ConnectorEnabledViaHelm = false
+			})
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						Agent0Connector: dash0v1alpha1.Agent0Connector{
+							Enabled: new(true),
+						},
+					},
+				})
+			Expect(err).ToNot(HaveOccurred())
+
+			// ... then disable it via Helm and update an unrelated field.
+			operatorConfigurationValidationWebhookHandler.agent0ConnectorEnabledViaHelm = false
+			operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+			operatorConfigurationResource.Spec.ClusterName = "cluster-name-set-after-the-fact"
+
+			Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
+		})
+
+		Describe("with the agent0-connector enabled via Helm", Ordered, func() {
+			BeforeAll(func() {
+				operatorConfigurationValidationWebhookHandler.agent0ConnectorEnabledViaHelm = true
+			})
+
+			AfterAll(func() {
+				operatorConfigurationValidationWebhookHandler.agent0ConnectorEnabledViaHelm = false
+			})
+
+			It("should allow enabling the agent0-connector", func() {
+				_, err := CreateOperatorConfigurationResource(
+					ctx,
+					k8sClient,
+					&dash0v1alpha1.Dash0OperatorConfiguration{
+						ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+						Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+							Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+							Agent0Connector: dash0v1alpha1.Agent0Connector{
+								Enabled: new(true),
+							},
+						},
+					})
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("should allow disabling the agent0-connector", func() {
+				_, err := CreateOperatorConfigurationResource(
+					ctx,
+					k8sClient,
+					&dash0v1alpha1.Dash0OperatorConfiguration{
+						ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+						Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+							Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+							Agent0Connector: dash0v1alpha1.Agent0Connector{
+								Enabled: new(false),
+							},
+						},
+					})
+				Expect(err).ToNot(HaveOccurred())
+			})
+		})
+	})
+
+	Describe("synthetics-worker", func() {
+		It("should reject enabling the synthetics-worker when it is disabled via Helm", func() {
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						SyntheticsWorker: dash0v1alpha1.SyntheticsWorker{
+							Enabled: new(true),
+						},
+					},
+				})
+			Expect(err).To(MatchError(ContainSubstring(
+				"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The " +
+					"synthetics-worker has been disabled via the Helm chart (operator.syntheticsWorker.enabled: false), " +
+					"but the provided Dash0 operator configuration resource has syntheticsWorker.enabled=true. The " +
+					"synthetics-worker cannot be enabled via the operator configuration resource when it has been " +
+					"disabled via the Helm chart. Instead, run helm upgrade --install to set " +
+					"operator.syntheticsWorker.enabled: true via the Helm chart.")))
+		})
+
+		It("should allow disabling the synthetics-worker when it is disabled via Helm", func() {
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						SyntheticsWorker: dash0v1alpha1.SyntheticsWorker{
+							Enabled: new(false),
+						},
+					},
+				})
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("should reject an update that enables the synthetics-worker when it is disabled via Helm", func() {
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					},
+				})
+			Expect(err).ToNot(HaveOccurred())
+
+			operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+			operatorConfigurationResource.Spec.SyntheticsWorker.Enabled = new(true)
+
+			Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(
+				MatchError(ContainSubstring(ErrorMessageSyntheticsWorkerDisabledViaHelm)))
+		})
+
+		It("should allow an unrelated update when the synthetics-worker has been disabled via Helm after the fact", func() {
+			// Store syntheticsWorker.enabled=true while the synthetics-worker is still enabled via Helm, ...
+			operatorConfigurationValidationWebhookHandler.syntheticsWorkerEnabledViaHelm = true
+			DeferCleanup(func() {
+				operatorConfigurationValidationWebhookHandler.syntheticsWorkerEnabledViaHelm = false
+			})
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						SyntheticsWorker: dash0v1alpha1.SyntheticsWorker{
+							Enabled: new(true),
+							Instances: []dash0v1alpha1.SyntheticsWorkerInstance{{
+								LocationID: "test-location",
+							}},
+						},
+					},
+				})
+			Expect(err).ToNot(HaveOccurred())
+
+			// ... then disable it via Helm and update an unrelated field.
+			operatorConfigurationValidationWebhookHandler.syntheticsWorkerEnabledViaHelm = false
+			operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+			operatorConfigurationResource.Spec.ClusterName = "cluster-name-set-after-the-fact"
+
+			Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
+		})
+
+		Describe("with the synthetics-worker enabled via Helm", Ordered, func() {
+			BeforeAll(func() {
+				operatorConfigurationValidationWebhookHandler.syntheticsWorkerEnabledViaHelm = true
+			})
+
+			AfterAll(func() {
+				operatorConfigurationValidationWebhookHandler.syntheticsWorkerEnabledViaHelm = false
+			})
+
+			It("should allow enabling the synthetics-worker", func() {
+				_, err := CreateOperatorConfigurationResource(
+					ctx,
+					k8sClient,
+					&dash0v1alpha1.Dash0OperatorConfiguration{
+						ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+						Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+							Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+							SyntheticsWorker: dash0v1alpha1.SyntheticsWorker{
+								Enabled: new(true),
+								Instances: []dash0v1alpha1.SyntheticsWorkerInstance{{
+									LocationID: "test-location",
+								}},
+							},
+						},
+					})
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("should allow disabling the synthetics-worker", func() {
+				_, err := CreateOperatorConfigurationResource(
+					ctx,
+					k8sClient,
+					&dash0v1alpha1.Dash0OperatorConfiguration{
+						ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+						Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+							Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+							SyntheticsWorker: dash0v1alpha1.SyntheticsWorker{
+								Enabled: new(false),
+							},
+						},
+					})
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("should reject enabling the synthetics-worker without any instances", func() {
+				_, err := CreateOperatorConfigurationResource(
+					ctx,
+					k8sClient,
+					&dash0v1alpha1.Dash0OperatorConfiguration{
+						ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+						Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+							Exports:          []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+							SyntheticsWorker: dash0v1alpha1.SyntheticsWorker{Enabled: new(true)},
+						},
+					})
+				Expect(err).To(MatchError(ContainSubstring(ErrorMessageSyntheticsWorkerEnabledWithoutInstances)))
+			})
+
+			It("should reject a resource with an unset enabled flag and no instances, since it defaults to enabled", func() {
+				_, err := CreateOperatorConfigurationResource(
+					ctx,
+					k8sClient,
+					&dash0v1alpha1.Dash0OperatorConfiguration{
+						ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+						Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+							Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						},
+					})
+				Expect(err).To(MatchError(ContainSubstring(ErrorMessageSyntheticsWorkerEnabledWithoutInstances)))
+			})
+
+			It("should allow an unrelated update to a pre-existing enabled-without-instances resource", func() {
+				// Simulates the operator's own auto-created configuration resource, which never sets
+				// syntheticsWorker.instances; only the request that first creates this state is rejected.
+				operatorConfigurationValidationWebhookHandler.syntheticsWorkerEnabledViaHelm = false
+				_, err := CreateOperatorConfigurationResource(
+					ctx,
+					k8sClient,
+					&dash0v1alpha1.Dash0OperatorConfiguration{
+						ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+						Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+							Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						},
+					})
+				Expect(err).ToNot(HaveOccurred())
+				operatorConfigurationValidationWebhookHandler.syntheticsWorkerEnabledViaHelm = true
+
+				operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+				operatorConfigurationResource.Spec.ClusterName = "cluster-name-set-after-the-fact"
+
+				Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
+			})
 		})
 	})
 })

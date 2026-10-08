@@ -16,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
@@ -33,6 +34,13 @@ const (
 	// maxConcurrentCommandsEnvVarName is the environment variable through which the agent0-connector workload receives
 	// how many command requests it may execute at the same time.
 	maxConcurrentCommandsEnvVarName = "DASH0_AGENT0_CONNECTOR_MAX_CONCURRENT_COMMANDS"
+
+	// allowedKubectlCommandsEnvVarName is the environment variable through which the agent0-connector workload
+	// receives the comma-separated list of kubectl commands it may execute (see the Helm value
+	// operator.agent0Connector.allowedKubectlCommands). The variable is required, the agent0-connector terminates with
+	// an error if it is absent, empty, cannot be parsed, or contains a kubectl command the agent0-connector does not
+	// support.
+	allowedKubectlCommandsEnvVarName = "DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS"
 
 	// defaultMaxConcurrentCommands is the number of command requests the agent0-connector executes at the same time when
 	// the extra config does not specify a value (e.g. an older config map). It is bounded by memory: a request that
@@ -59,6 +67,34 @@ var (
 		util.AppKubernetesIoNameLabel:     appKubernetesIoNameValue,
 		util.AppKubernetesIoInstanceLabel: appKubernetesIoInstanceValue,
 	}
+
+	// The environment variables from which the OpenTelemetry Go SDK of the agent0-connector workload derives the
+	// Kubernetes resource attributes of its self-monitoring telemetry, see images/pkg/common/otel.go#assembleResource.
+	// They are set no matter whether self-monitoring is enabled.
+	k8sNodeNameEnvVar = corev1.EnvVar{
+		Name: "K8S_NODE_NAME",
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"},
+		},
+	}
+	operatorNamespaceEnvVar = corev1.EnvVar{
+		Name: "DASH0_OPERATOR_NAMESPACE",
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"},
+		},
+	}
+	k8sPodUidEnvVar = corev1.EnvVar{
+		Name: "K8S_POD_UID",
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.uid"},
+		},
+	}
+	k8sPodNameEnvVar = corev1.EnvVar{
+		Name: "K8S_POD_NAME",
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"},
+		},
+	}
 )
 
 // This type just exists to ensure all created objects go through addCommonMetadata.
@@ -66,17 +102,30 @@ type clientObject struct {
 	object client.Object
 }
 
+// selfMonitoringInput carries everything the self-monitoring of the agent0-connector workload is derived from. In
+// contrast to util.Agent0ConnectorConfig, which is fixed when the operator manager starts, it comes from the
+// Dash0OperatorConfiguration resource and is therefore read again for every reconciliation.
+type selfMonitoringInput struct {
+	configuration selfmonitoringapiaccess.SelfMonitoringConfiguration
+	clusterName   string
+}
+
 func assembleDesiredState(
 	config *util.Agent0ConnectorConfig,
 	authTokenEnvVar *corev1.EnvVar,
 	extraConfig util.ExtraConfig,
-) []clientObject {
+	selfMonitoring selfMonitoringInput,
+) ([]clientObject, error) {
+	deployment, err := assembleDeployment(config, authTokenEnvVar, extraConfig, selfMonitoring)
+	if err != nil {
+		return nil, err
+	}
 	desiredState := make([]clientObject, 0, 4)
 	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccount(config)))
 	desiredState = append(desiredState, addCommonMetadata(assembleClusterRole(config, extraConfig)))
 	desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleBinding(config)))
-	desiredState = append(desiredState, addCommonMetadata(assembleDeployment(config, authTokenEnvVar, extraConfig)))
-	return desiredState
+	desiredState = append(desiredState, addCommonMetadata(deployment))
+	return desiredState, nil
 }
 
 func assembleServiceAccount(c *util.Agent0ConnectorConfig) *corev1.ServiceAccount {
@@ -122,7 +171,6 @@ var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 		Resources: []string{
 			"componentstatuses",
 			"endpoints",
-			"events",
 			"limitranges",
 			"namespaces",
 			"nodes",
@@ -130,8 +178,6 @@ var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 			"persistentvolumes",
 			"podtemplates",
 			"pods",
-			// required by "kubectl logs"
-			"pods/log",
 			"replicationcontrollers",
 			"resourcequotas",
 			"serviceaccounts",
@@ -236,11 +282,6 @@ var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 		Verbs: allowedVerbs,
 	},
 	{
-		APIGroups: []string{"events.k8s.io"},
-		Resources: []string{"events"},
-		Verbs:     allowedVerbs,
-	},
-	{
 		// required by "kubectl top"
 		APIGroups: []string{"metrics.k8s.io"},
 		Resources: []string{
@@ -311,9 +352,16 @@ var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 			"dash0signaltometrics",
 			"dash0spamfilters",
 			"dash0syntheticchecks",
+			"dash0timeseriesaggregations",
 			"dash0views",
 		},
 		Verbs: allowedVerbs,
+	},
+	{
+		// Dash0 CRDs
+		APIGroups: []string{"openslo.com"},
+		Resources: []string{"slos"},
+		Verbs:     allowedVerbs,
 	},
 	{
 		// The third-party resource types the operator itself reconciles, so that the agent0-connector can diagnose the
@@ -340,12 +388,25 @@ var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 	//  - /version - server version info
 	//  - /healthz, /livez, /readyz - health endpoints
 	//
-	// On a stock cluster this rule grants nothing new: Kubernetes binds the system:discovery cluster role, which covers
-	// exactly these URLs, to the group system:authenticated, and every service account is a member of that group. The
-	// rule keeps the agent0-connector working on a cluster that has revoked that default binding.
+	// The list is identical to the system:discovery cluster role, which Kubernetes binds to the group
+	// system:authenticated. Every service account is a member of that group - that is, these are permissions anyone has
+	// per default anyway. They are spelled out here to keep the agent0-connector working in clusters where that default
+	// binding has been revoked.
 	{
-		NonResourceURLs: []string{"*"},
-		Verbs:           []string{"get"},
+		NonResourceURLs: []string{
+			"/api",
+			"/api/*",
+			"/apis",
+			"/apis/*",
+			"/healthz",
+			"/livez",
+			"/openapi",
+			"/openapi/*",
+			"/readyz",
+			"/version",
+			"/version/",
+		},
+		Verbs: []string{"get"},
 	},
 }
 
@@ -520,12 +581,26 @@ func assembleClusterRoleBinding(c *util.Agent0ConnectorConfig) *rbacv1.ClusterRo
 	}
 }
 
+// joinAllowedKubectlCommands renders the enabled kubectl commands as a sorted, comma-separated list.
+func joinAllowedKubectlCommands(allowedKubectlCommands map[string]bool) string {
+	enabled := make([]string, 0, len(allowedKubectlCommands))
+	for kubectlCommand, allowed := range allowedKubectlCommands {
+		if allowed {
+			enabled = append(enabled, kubectlCommand)
+		}
+	}
+	slices.Sort(enabled)
+	return strings.Join(enabled, ",")
+}
+
 func assembleDeployment(
 	c *util.Agent0ConnectorConfig,
 	authTokenEnvVar *corev1.EnvVar,
 	extraConfig util.ExtraConfig,
-) *appsv1.Deployment {
+	selfMonitoring selfMonitoringInput,
+) (*appsv1.Deployment, error) {
 	replicas := int32(1)
+	deploymentName := DeploymentName(c.NamePrefix)
 
 	maxConcurrentCommands := extraConfig.Agent0ConnectorMaxConcurrentCommands
 	if maxConcurrentCommands < 1 {
@@ -538,7 +613,7 @@ func assembleDeployment(
 		Env: []corev1.EnvVar{
 			{
 				Name:  util.EnvVarGoMemLimit,
-				Value: extraConfig.Agent0ConnectorContainerResources.GoMemLimit,
+				Value: extraConfig.Agent0ConnectorContainerResources.EffectiveGoMemLimitPercent(util.Agent0ConnectorGoMemLimitPercent),
 			},
 			{
 				// The agent0-connector workload uses the pseudo cluster UID as its client ID when connecting to the
@@ -562,6 +637,18 @@ func assembleDeployment(
 				Name:  maxConcurrentCommandsEnvVarName,
 				Value: strconv.Itoa(int(maxConcurrentCommands)),
 			},
+			{
+				Name:  "K8S_CLUSTER_NAME",
+				Value: selfMonitoring.clusterName,
+			},
+			{
+				Name:  "K8S_DEPLOYMENT_NAME",
+				Value: deploymentName,
+			},
+			k8sNodeNameEnvVar,
+			operatorNamespaceEnvVar,
+			k8sPodUidEnvVar,
+			k8sPodNameEnvVar,
 		},
 		VolumeMounts: []corev1.VolumeMount{
 			{
@@ -588,6 +675,11 @@ func assembleDeployment(
 		// (where the token is irrelevant).
 		container.Env = append(container.Env, *authTokenEnvVar)
 	}
+
+	container.Env = append(container.Env, corev1.EnvVar{
+		Name:  allowedKubectlCommandsEnvVarName,
+		Value: joinAllowedKubectlCommands(extraConfig.Agent0ConnectorAllowedKubectlCommands),
+	})
 
 	if c.Insecure {
 		container.Env = append(container.Env, corev1.EnvVar{
@@ -621,8 +713,8 @@ func assembleDeployment(
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
-			RunAsUser:  new(defaultUser),
-			RunAsGroup: new(defaultGroup),
+			RunAsUser:  util.RunAsID(c.IsOpenShift, defaultUser),
+			RunAsGroup: util.RunAsID(c.IsOpenShift, defaultGroup),
 		},
 	}
 
@@ -637,13 +729,13 @@ func assembleDeployment(
 		}
 	}
 
-	return &appsv1.Deployment{
+	deployment := &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "apps/v1",
 			Kind:       "Deployment",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        DeploymentName(c.NamePrefix),
+			Name:        deploymentName,
 			Namespace:   c.OperatorNamespace,
 			Labels:      util.MergeMaps(labels(), extraConfig.Agent0ConnectorLabels),
 			Annotations: util.MergeMaps(nil, extraConfig.Agent0ConnectorAnnotations),
@@ -662,6 +754,20 @@ func assembleDeployment(
 			},
 		},
 	}
+
+	if selfMonitoring.configuration.SelfMonitoringEnabled {
+		if err := selfmonitoringapiaccess.EnableSelfMonitoringInDeployment(
+			deployment,
+			selfMonitoring.configuration,
+			c.Images.GetOperatorVersion(),
+			c.DevelopmentMode,
+			"",
+		); err != nil {
+			return nil, err
+		}
+	}
+
+	return deployment, nil
 }
 
 // ---utils---

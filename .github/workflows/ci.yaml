@@ -67,7 +67,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: '24.x'
+          node-version-file: images/instrumentation/test/.nvmrc
           cache: 'npm'
           cache-dependency-path: images/instrumentation/test/package-lock.json
 
@@ -105,6 +105,51 @@ jobs:
     needs: check_for_successful_builds_for_same_commit
     if: always() && needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
 
+  # Renders every collector configuration the operator can produce and hands each of them to the collector binary for
+  # validation. The collector rejects settings that the OpenTelemetry collector project has removed or renamed, which
+  # would otherwise only surface as crash-looping collectors in a customer cluster, and only for the configurations
+  # that actually render the affected setting.
+  #
+  # This job runs before build_and_push_images, so that no images are pushed when the check fails. It builds the
+  # collector image itself and writes the layers to the build cache, from which build_and_push_images then reads them.
+  # Both jobs need to run on Depot runners for that: Depot runners redirect the GitHub Actions cache to Depot's own
+  # cache store, a job on a GitHub-hosted runner would neither see nor write the layers in that store.
+  collector_configs_validation:
+    name: Collector Configuration Validation
+    runs-on: depot-ubuntu-24.04-4
+    needs: check_for_successful_builds_for_same_commit
+    if: always() && needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: set up docker buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+
+      - name: build collector image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
+        with:
+          context: images
+          file: images/collector/Dockerfile
+          tags: collector-config-validation:local
+          platforms: 'linux/amd64'
+          load: true
+          push: false
+          cache-from: type=gha,scope=collector
+          # Write to the Depot container image layer cache, so that build_and_push_images has access to the cached
+          # collector image layers.
+          cache-to: type=gha,mode=max,scope=collector
+
+      - name: validate collector configurations
+        run: |
+          make collector-configs-validate COLLECTOR_IMAGE=collector-config-validation:local
+
   # Builds and potentially pushes all container images. For pushes to PRs/branches, we simply verify that the image
   # build still works, the resulting image will not be pushed to any target registry. For pushes to the main branch, the
   # images are tagged with "main-dev", but not with a version x.y.z. Finally, for pushes to a tag (or when a tag is
@@ -115,12 +160,15 @@ jobs:
     name: Build Images
     runs-on: depot-ubuntu-24.04-4
     needs:
+      # only publish images if all validation steps have passed
       - verify
       - instrumentation_image_tests
+      - collector_configs_validation
     if: |
       always() &&
       (needs.verify.result == 'skipped' || needs.verify.result == 'success') &&
-      (needs.instrumentation_image_tests.result == 'skipped' || needs.instrumentation_image_tests.result == 'success')
+      (needs.instrumentation_image_tests.result == 'skipped' || needs.instrumentation_image_tests.result == 'success') &&
+      (needs.collector_configs_validation.result == 'skipped' || needs.collector_configs_validation.result == 'success')
 
     # Building all container images across architectures via qemu can take _really_ long, especially if the build cache
     # is empty.
@@ -159,7 +207,8 @@ jobs:
           imageTitle: Dash0 Kubernetes Collector
           imageDescription: the OpenTelemetry collector for the Dash0 operator for Kubernetes
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/collector
-          context: images/collector
+          context: images
+          file: images/collector/Dockerfile
 
       - name: build configuration reloader image
         uses: ./.github/actions/build-image
@@ -236,6 +285,24 @@ jobs:
     if: ${{ always() && github.ref == 'refs/heads/main' && needs.build_and_push_images.result == 'success' }}
     uses: ./.github/workflows/e2e.yaml
     secrets:
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+
+  # Runs the GKE Autopilot WorkloadAllowlist check for every commit pushed to main. The check uses the local Helm chart
+  # from this commit together with the official images that build_and_push_images just pushed with the "main-dev" tag.
+  gke_ap_workload_allowlist_check:
+    name: GKE Autopilot WorkloadAllowlist Check
+    needs:
+      - build_and_push_images
+    if: ${{ always() && github.ref == 'refs/heads/main' && needs.build_and_push_images.result == 'success' }}
+    uses: ./.github/workflows/gke-ap-workload-allowlist-check.yaml
+    with:
+      use_local_chart: true
+      image_repository_prefix: ghcr.io/dash0hq/
+      image_tag: main-dev
+    secrets:
+      GKE_SA_KEY: ${{ secrets.GKE_SA_KEY }}
+      GKE_PROJECT: ${{ secrets.GKE_PROJECT }}
       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
       SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
 

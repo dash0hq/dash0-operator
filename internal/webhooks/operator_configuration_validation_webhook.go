@@ -8,7 +8,10 @@ import (
 	"fmt"
 	"net/http"
 
+	"go.uber.org/multierr"
 	admissionv1 "k8s.io/api/admission/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -23,6 +26,22 @@ const ErrorMessageTelemetryCollectionDisabledViaHelm = "Telemetry collection has
 	"telemetryCollection.enabled=true. Telemetry collection cannot be enabled via the operator configuration resource " +
 	"when it has been disabled via the Helm chart. Instead, run helm upgrade --install to set " +
 	"operator.telemetryCollectionEnabled: true via the Helm chart."
+
+const ErrorMessageAgent0ConnectorDisabledViaHelm = "The agent0-connector has been disabled via the Helm chart " +
+	"(operator.agent0Connector.enabled: false), but the provided Dash0 operator configuration resource has " +
+	"agent0Connector.enabled=true. The agent0-connector cannot be enabled via the operator configuration resource " +
+	"when it has been disabled via the Helm chart. Instead, run helm upgrade --install to set " +
+	"operator.agent0Connector.enabled: true via the Helm chart."
+
+const ErrorMessageSyntheticsWorkerDisabledViaHelm = "The synthetics-worker has been disabled via the Helm chart " +
+	"(operator.syntheticsWorker.enabled: false), but the provided Dash0 operator configuration resource has " +
+	"syntheticsWorker.enabled=true. The synthetics-worker cannot be enabled via the operator configuration resource " +
+	"when it has been disabled via the Helm chart. Instead, run helm upgrade --install to set " +
+	"operator.syntheticsWorker.enabled: true via the Helm chart."
+
+const ErrorMessageSyntheticsWorkerEnabledWithoutInstances = "The synthetics-worker is enabled, but " +
+	"spec.syntheticsWorker.instances is empty. Configure at least one instance (locationId and authorization), or " +
+	"disable the synthetics-worker."
 
 const ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid = "The provided Dash0 operator configuration resource has Prometheus CRD support " +
 	"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
@@ -51,15 +70,21 @@ const ErrorMessageOperatorConfigurationDash0ExportRequiredBySignalControl = "The
 type OperatorConfigurationValidationWebhookHandler struct {
 	Client                            client.Client
 	telemetryCollectionEnabledViaHelm bool
+	agent0ConnectorEnabledViaHelm     bool
+	syntheticsWorkerEnabledViaHelm    bool
 }
 
 func NewOperatorConfigurationValidationWebhookHandler(
 	k8sClient client.Client,
 	telemetryCollectionEnabledViaHelm bool,
+	agent0ConnectorEnabledViaHelm bool,
+	syntheticsWorkerEnabledViaHelm bool,
 ) *OperatorConfigurationValidationWebhookHandler {
 	return &OperatorConfigurationValidationWebhookHandler{
 		Client:                            k8sClient,
 		telemetryCollectionEnabledViaHelm: telemetryCollectionEnabledViaHelm,
+		agent0ConnectorEnabledViaHelm:     agent0ConnectorEnabledViaHelm,
+		syntheticsWorkerEnabledViaHelm:    syntheticsWorkerEnabledViaHelm,
 	}
 }
 
@@ -93,6 +118,18 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	if !h.telemetryCollectionEnabledViaHelm && spec.TelemetryCollection.Enabled != nil && *spec.TelemetryCollection.Enabled {
 		logger.Warn(ErrorMessageTelemetryCollectionDisabledViaHelm)
 		return admission.Denied(ErrorMessageTelemetryCollectionDisabledViaHelm)
+	}
+
+	if response, denied := h.validateAgent0ConnectorEnabledConsistency(spec, request, logger); denied {
+		return response
+	}
+
+	if response, denied := h.validateSyntheticsWorkerEnabledConsistency(spec, request, logger); denied {
+		return response
+	}
+
+	if response, denied := h.validateSyntheticsWorkerHasInstances(spec, request, logger); denied {
+		return response
 	}
 
 	// Reject if both the deprecated export and the new exports field are set.
@@ -160,6 +197,11 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		}
 	}
 
+	if response, denied := validateOttlOfOperatorConfiguration(&spec); denied {
+		logger.Warn(response.Result.Message)
+		return response
+	}
+
 	if request.Operation == admissionv1.Create {
 		allOperatorConfigurationResources := &dash0v1alpha1.Dash0OperatorConfigurationList{}
 		if err := h.Client.List(ctx, allOperatorConfigurationResources); err != nil {
@@ -178,6 +220,113 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	}
 
 	return admission.Allowed("")
+}
+
+// isFeatureNewlyEnabled reports whether the request itself sets the given feature's enabled flag to true, as opposed
+// to carrying over a value the resource already had. Returns true for CREATE operations and for UPDATE operations
+// where wasEnabled reports false for the stored resource. Without this distinction, a resource that was stored with
+// the feature enabled before it was disabled via the Helm chart could no longer be updated at all, not even to change
+// unrelated fields. Returns an error response if the OldObject cannot be decoded.
+func isFeatureNewlyEnabled(
+	request admission.Request,
+	logger logd.Logger,
+	featureName string,
+	wasEnabled func(*dash0v1alpha1.Dash0OperatorConfiguration) bool,
+) (bool, *admission.Response) {
+	if request.Operation != admissionv1.Update {
+		return true, nil
+	}
+	if request.OldObject.Raw == nil {
+		return true, nil
+	}
+	oldResource := &dash0v1alpha1.Dash0OperatorConfiguration{}
+	if _, _, err := decoder.Decode(request.OldObject.Raw, nil, oldResource); err != nil {
+		msg := fmt.Sprintf("could not decode OldObject for the %s validation", featureName)
+		logger.Error(err, msg)
+		errResponse := admission.Errored(
+			http.StatusBadRequest,
+			fmt.Errorf("%s: %w", msg, err),
+		)
+		return false, &errResponse
+	}
+	return !wasEnabled(oldResource), nil
+}
+
+// validateAgent0ConnectorEnabledConsistency rejects enabling the agent0-connector via the operator configuration
+// resource when it has been disabled via the Helm chart. It returns denied=true together with the denial response
+// when that is the case.
+func (h *OperatorConfigurationValidationWebhookHandler) validateAgent0ConnectorEnabledConsistency(
+	spec dash0v1alpha1.Dash0OperatorConfigurationSpec,
+	request admission.Request,
+	logger logd.Logger,
+) (admission.Response, bool) {
+	if h.agent0ConnectorEnabledViaHelm || !pointers.ReadBoolPointerWithDefault(spec.Agent0Connector.Enabled, false) {
+		return admission.Response{}, false
+	}
+	newlyEnabled, errorResponse := isFeatureNewlyEnabled(request, logger, "agent0-connector",
+		func(r *dash0v1alpha1.Dash0OperatorConfiguration) bool {
+			return pointers.ReadBoolPointerWithDefault(r.Spec.Agent0Connector.Enabled, false)
+		})
+	if errorResponse != nil {
+		return *errorResponse, true
+	}
+	if !newlyEnabled {
+		return admission.Response{}, false
+	}
+	logger.Warn(ErrorMessageAgent0ConnectorDisabledViaHelm)
+	return admission.Denied(ErrorMessageAgent0ConnectorDisabledViaHelm), true
+}
+
+// validateSyntheticsWorkerEnabledConsistency rejects enabling the synthetics-worker via the operator configuration
+// resource when it has been disabled via the Helm chart. It returns denied=true together with the denial response
+// when that is the case.
+func (h *OperatorConfigurationValidationWebhookHandler) validateSyntheticsWorkerEnabledConsistency(
+	spec dash0v1alpha1.Dash0OperatorConfigurationSpec,
+	request admission.Request,
+	logger logd.Logger,
+) (admission.Response, bool) {
+	if h.syntheticsWorkerEnabledViaHelm || !pointers.ReadBoolPointerWithDefault(spec.SyntheticsWorker.Enabled, false) {
+		return admission.Response{}, false
+	}
+	newlyEnabled, errorResponse := isFeatureNewlyEnabled(request, logger, "synthetics-worker",
+		func(r *dash0v1alpha1.Dash0OperatorConfiguration) bool {
+			return pointers.ReadBoolPointerWithDefault(r.Spec.SyntheticsWorker.Enabled, false)
+		})
+	if errorResponse != nil {
+		return *errorResponse, true
+	}
+	if !newlyEnabled {
+		return admission.Response{}, false
+	}
+	logger.Warn(ErrorMessageSyntheticsWorkerDisabledViaHelm)
+	return admission.Denied(ErrorMessageSyntheticsWorkerDisabledViaHelm), true
+}
+
+// validateSyntheticsWorkerHasInstances rejects a request that newly enables the synthetics-worker, or newly clears
+// its instances, without configuring at least one instance. It does not reject a request that merely carries over an
+// already-enabled, instance-less configuration (e.g. the operator's auto-created resource), since that state already
+// surfaces as NoInstancesConfigured in the resource's status.
+func (h *OperatorConfigurationValidationWebhookHandler) validateSyntheticsWorkerHasInstances(
+	spec dash0v1alpha1.Dash0OperatorConfigurationSpec,
+	request admission.Request,
+	logger logd.Logger,
+) (admission.Response, bool) {
+	if !spec.SyntheticsWorker.IsEnabled(h.syntheticsWorkerEnabledViaHelm) || len(spec.SyntheticsWorker.Instances) > 0 {
+		return admission.Response{}, false
+	}
+	newlyEnabledWithoutInstances, errorResponse := isFeatureNewlyEnabled(request, logger, "synthetics-worker",
+		func(r *dash0v1alpha1.Dash0OperatorConfiguration) bool {
+			return r.Spec.SyntheticsWorker.IsEnabled(h.syntheticsWorkerEnabledViaHelm) &&
+				len(r.Spec.SyntheticsWorker.Instances) == 0
+		})
+	if errorResponse != nil {
+		return *errorResponse, true
+	}
+	if !newlyEnabledWithoutInstances {
+		return admission.Response{}, false
+	}
+	logger.Warn(ErrorMessageSyntheticsWorkerEnabledWithoutInstances)
+	return admission.Denied(ErrorMessageSyntheticsWorkerEnabledWithoutInstances), true
 }
 
 // validateTelemetryCollectionDisabledConsistency rejects operator configuration resources that keep individual
@@ -244,6 +393,41 @@ func validateTelemetryCollectionDisabledConsistency(
 		logger.Warn(msg)
 		return admission.Denied(msg), true
 	}
+	if spec.Filter != nil {
+		msg := "The provided Dash0 operator configuration resource has telemetry filters, although telemetry " +
+			"collection is disabled. This is an invalid combination. Please either set " +
+			"telemetryCollection.enabled=true or remove the filters."
+		logger.Warn(msg)
+		return admission.Denied(msg), true
+	}
+	if spec.Transform != nil {
+		msg := "The provided Dash0 operator configuration resource has telemetry transformations, although telemetry " +
+			"collection is disabled. This is an invalid combination. Please either set " +
+			"telemetryCollection.enabled=true or remove the transformations."
+		logger.Warn(msg)
+		return admission.Denied(msg), true
+	}
+	return admission.Response{}, false
+}
+
+// validateOttlOfOperatorConfiguration checks the cluster-wide filter conditions and transform statements of an operator
+// configuration resource by rendering them into the configuration of the collector's filter and transform processor and
+// running those processors' own validation.
+func validateOttlOfOperatorConfiguration(
+	spec *dash0v1alpha1.Dash0OperatorConfigurationSpec,
+) (admission.Response, bool) {
+	var errors error
+
+	if spec.Filter != nil {
+		errors = multierr.Append(errors, validateFilter(spec.Filter))
+	}
+	if spec.NormalizedTransformSpec != nil {
+		errors = multierr.Append(errors, validateTransform(spec.NormalizedTransformSpec))
+	}
+
+	if errors != nil {
+		return admission.Denied(errors.Error()), true
+	}
 	return admission.Response{}, false
 }
 
@@ -253,6 +437,11 @@ func validateTelemetryCollectionDisabledConsistency(
 func (h *OperatorConfigurationValidationWebhookHandler) hasEnabledSignalControl(ctx context.Context) (bool, string, error) {
 	allSignalControlResources := &dash0v1alpha1.Dash0SignalControlList{}
 	if err := h.Client.List(ctx, allSignalControlResources); err != nil {
+		// The Dash0SignalControl CRD is only installed when operator.signalControl.enabled is true. Without it, listing
+		// fails with a no-match error, which means no Signal Control resource can exist, not that the check failed.
+		if meta.IsNoMatchError(err) || apierrors.IsNotFound(err) {
+			return false, "", nil
+		}
 		return false, "", fmt.Errorf("failed to list all Dash0 Signal Control resources: %w", err)
 	}
 	for _, signalControlResource := range allSignalControlResources.Items {

@@ -45,7 +45,8 @@ var _ = Describe("operator manager startup", func() {
 				util.Images{},
 				&appsv1.Deployment{},
 				"cluster-uid",
-				new(commandLineArguments),
+				false,
+				false,
 				false,
 			)
 			Expect(err).NotTo(HaveOccurred())
@@ -66,7 +67,8 @@ var _ = Describe("operator manager startup", func() {
 				util.Images{},
 				&appsv1.Deployment{},
 				"cluster-uid",
-				new(commandLineArguments),
+				false,
+				false,
 				false,
 			)
 			Expect(err).NotTo(HaveOccurred())

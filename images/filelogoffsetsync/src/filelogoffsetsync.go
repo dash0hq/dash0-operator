@@ -86,6 +86,8 @@ func main() {
 		logger = slog.New(stdOutSlogHandler)
 	}
 
+	common.StartPprofServerIfConfigured(logger)
+
 	mode := flag.String("mode", "sync",
 		"if set to 'init', it will fetch the offset files from the configmap and store it to the "+
 			"path stored at ${FILELOG_OFFSET_DIRECTORY_PATH}; sync mode instead will persist the offset "+

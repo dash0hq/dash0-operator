@@ -4,9 +4,6 @@ metadata:
   name: spam-filter-e2e-test
   labels:
     app.kubernetes.io/name: spam-filter-e2e-test
-{{- if .Dash0ComEnabled }}
-    dash0.com/enabled: {{ .Dash0ComEnabled | quote }}
-{{- end }}
 spec:
   contexts:
     - log

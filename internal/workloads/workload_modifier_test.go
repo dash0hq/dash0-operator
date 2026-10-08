@@ -882,6 +882,48 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			}),
 		)
 
+		It("pins the init container runAsUser/runAsGroup to 13020 when not on OpenShift", func() {
+			modifier := NewResourceModifier(
+				clusterInstrumentationConfigWithInitContainer,
+				DefaultNamespaceInstrumentationConfig,
+				testActor,
+				logger,
+			)
+			podSpec := &corev1.PodSpec{Containers: []corev1.Container{{Name: "test-container-0"}}}
+			modifier.modifyPodSpec(podSpec, &metav1.ObjectMeta{}, &metav1.ObjectMeta{})
+
+			Expect(podSpec.InitContainers).To(HaveLen(1))
+			sc := podSpec.InitContainers[0].SecurityContext
+			Expect(sc).ToNot(BeNil())
+			Expect(*sc.RunAsUser).To(Equal(int64(13020)))
+			Expect(*sc.RunAsGroup).To(Equal(int64(13020)))
+		})
+
+		It("drops the init container runAsUser/runAsGroup on OpenShift so the SCC can assign an in-range UID", func() {
+			osConfig := util.NewClusterInstrumentationConfig(
+				TestImages,
+				PossibleCollectorUrlsTest,
+				OTelCollectorNodeLocalBaseUrlTest,
+				util.ExtraConfigDefaults,
+				dash0v1alpha1.InstrumentationDeliveryInitContainer,
+				nil,
+				false,
+				false,
+				false,
+			)
+			osConfig.IsOpenShift = true
+			modifier := NewResourceModifier(osConfig, DefaultNamespaceInstrumentationConfig, testActor, logger)
+
+			podSpec := &corev1.PodSpec{Containers: []corev1.Container{{Name: "test-container-0"}}}
+			modifier.modifyPodSpec(podSpec, &metav1.ObjectMeta{}, &metav1.ObjectMeta{})
+
+			Expect(podSpec.InitContainers).To(HaveLen(1))
+			sc := podSpec.InitContainers[0].SecurityContext
+			Expect(sc).ToNot(BeNil())
+			Expect(sc.RunAsUser).To(BeNil())
+			Expect(sc.RunAsGroup).To(BeNil())
+		})
+
 		type detectNonLinuxPodTest struct {
 			podSpec         corev1.PodSpec
 			expectedMessage *string
@@ -1212,7 +1254,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					container,
 					&metav1.ObjectMeta{},
 					&metav1.ObjectMeta{},
-					logger,
 				)
 
 				VerifyEnvVar(testConfig.ldPreloadExpectation, container.Env, envVarLdPreloadName, "")
@@ -1755,19 +1796,18 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}, clusterInstrumentationConfig)
 				Expect(preInstrumentationCheckResult).To(Equal(testConfig.expectedPreInstrumentationCheckResult))
 
+				capturingLogger, capturingLogSink := NewCapturingLogger()
 				modifier := NewResourceModifier(
 					clusterInstrumentationConfig,
 					DefaultNamespaceInstrumentationConfig,
 					testActor,
-					logger,
+					capturingLogger,
 				)
 
-				capturingLogger, capturingLogSink := NewCapturingLogger()
 				instrumentationIssues := modifier.addEnvironmentVariables(
 					container,
 					&metav1.ObjectMeta{},
 					&metav1.ObjectMeta{},
-					capturingLogger,
 				)
 
 				envVars := container.Env
@@ -2254,7 +2294,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					container,
 					&workloadMeta,
 					&podMeta,
-					logger,
 				)
 
 				envVars := container.Env
@@ -2651,7 +2690,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				container1,
 				&workloadMeta1,
 				&podMeta1,
-				logger,
 			)
 
 			// now re-order the annotations and generate the DASH0_RESOURCE_ATTRIBUTES value again
@@ -2674,7 +2712,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				container2,
 				&workloadMeta2,
 				&podMeta2,
-				logger,
 			)
 
 			// Verify that the value of DASH0_RESOURCE_ATTRIBUTES is independent of the order in which annotations
@@ -2715,7 +2752,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					container,
 					&metav1.ObjectMeta{},
 					&metav1.ObjectMeta{},
-					logger,
 				)
 
 				envVars := container.Env
@@ -2990,7 +3026,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					container,
 					&metav1.ObjectMeta{},
 					&metav1.ObjectMeta{},
-					logger,
 				)
 
 				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, container.Env)
@@ -3375,7 +3410,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					container,
 					&metav1.ObjectMeta{},
 					&metav1.ObjectMeta{},
-					logger,
 				)
 
 				envVars := container.Env

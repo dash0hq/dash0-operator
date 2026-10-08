@@ -638,7 +638,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSetConfigReloaderContainer).NotTo(BeNil())
 		Expect(daemonSetConfigReloaderContainer.Image).To(Equal(ConfigurationReloaderImageTest))
 		Expect(daemonSetConfigReloaderContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
-		Expect(daemonSetConfigReloaderContainer.Resources.Limits.Memory().String()).To(Equal("12Mi"))
+		Expect(daemonSetConfigReloaderContainer.Resources.Limits.Memory().String()).To(Equal("26Mi"))
 		Expect(daemonSetConfigReloaderContainer.Resources.Requests.Memory().String()).To(Equal("12Mi"))
 		configReloaderContainerArgs := daemonSetConfigReloaderContainer.Args
 		Expect(configReloaderContainerArgs).To(HaveLen(3))
@@ -692,7 +692,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(deploymentConfigReloaderContainer).NotTo(BeNil())
 		Expect(deploymentConfigReloaderContainer.Image).To(Equal(ConfigurationReloaderImageTest))
 		Expect(deploymentConfigReloaderContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
-		Expect(deploymentConfigReloaderContainer.Resources.Limits.Memory().String()).To(Equal("12Mi"))
+		Expect(deploymentConfigReloaderContainer.Resources.Limits.Memory().String()).To(Equal("26Mi"))
 		Expect(deploymentConfigReloaderContainer.Resources.Requests.Memory().String()).To(Equal("12Mi"))
 		deploymentConfigReloaderContainerArgs := deploymentConfigReloaderContainer.Args
 		Expect(deploymentConfigReloaderContainerArgs).To(HaveLen(3))
@@ -881,6 +881,62 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSetCollectorContainer.Args[1]).To(Equal("--feature-gates=service.profilesSupport"))
 	})
 
+	It("should not add the k8s_attributes ShareProcessorBetweenPipelines feature gate by default", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			Images: TestImages,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(getDaemonSet(desiredState).Spec.Template.Spec.Containers[0].Args).
+			To(Equal([]string{"--config=file:/etc/otelcol/conf/config.yaml"}))
+		Expect(getDeployment(desiredState).Spec.Template.Spec.Containers[0].Args).
+			To(Equal([]string{"--config=file:/etc/otelcol/conf/config.yaml"}))
+	})
+
+	It("should add the k8s_attributes ShareProcessorBetweenPipelines feature gate to the daemonset and deployment "+
+		"collector args when enabled", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			K8sAttributesShareProcessor:                      true,
+			Images:                                           TestImages,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		expectedArgs := []string{
+			"--config=file:/etc/otelcol/conf/config.yaml",
+			"--feature-gates=processor.k8sattributes.ShareProcessorBetweenPipelines",
+		}
+		Expect(getDaemonSet(desiredState).Spec.Template.Spec.Containers[0].Args).To(Equal(expectedArgs))
+		Expect(getDeployment(desiredState).Spec.Template.Spec.Containers[0].Args).To(Equal(expectedArgs))
+	})
+
+	It("should combine the profilesSupport and the k8s_attributes ShareProcessorBetweenPipelines feature gates in "+
+		"the daemonset collector args", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			ProfilingEnabled:                                 true,
+			K8sAttributesShareProcessor:                      true,
+			Images:                                           TestImages,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(getDaemonSet(desiredState).Spec.Template.Spec.Containers[0].Args).To(Equal([]string{
+			"--config=file:/etc/otelcol/conf/config.yaml",
+			"--feature-gates=service.profilesSupport,processor.k8sattributes.ShareProcessorBetweenPipelines",
+		}))
+	})
+
 	It("should not add the -processor.resourcedetection.propagateerrors feature gate to the collector args when Signal Control is disabled", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
@@ -903,7 +959,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	})
 
 	It("should not add the -processor.resourcedetection.propagateerrors feature gate to any collector, since none of "+
-		"them runs the resourcedetection processor on the Signal Control image", func() {
+		"them runs the resource_detection processor on the Signal Control image", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
@@ -1634,6 +1690,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				{Name: "net.ipv4.tcp_keepalive_time", Value: "200"},
 				{Name: "net.ipv4.tcp_keepalive_intvl", Value: "30"},
 			},
+			DaemonSetSELinuxOptions: &corev1.SELinuxOptions{Type: "spc_t"},
 			DeploymentTolerations: []corev1.Toleration{
 				{
 					Key:      "key3",
@@ -1713,6 +1770,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			{Name: "net.ipv4.tcp_keepalive_time", Value: "200"},
 			{Name: "net.ipv4.tcp_keepalive_intvl", Value: "30"},
 		}))
+		Expect(daemonSetPodSpec.SecurityContext.SELinuxOptions).To(Equal(&corev1.SELinuxOptions{Type: "spc_t"}))
 
 		deploymentPodSpec := getDeployment(desiredState).Spec.Template.Spec
 		Expect(deploymentPodSpec.Tolerations).To(HaveLen(2))
@@ -1747,9 +1805,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(deploymentPodSpec.SecurityContext.Sysctls).To(Equal([]corev1.Sysctl{
 			{Name: "net.ipv4.tcp_keepalive_time", Value: "200"},
 		}))
+		Expect(deploymentPodSpec.SecurityContext.SELinuxOptions).To(BeNil())
 	})
 
-	It("should not set pod sysctls on the collectors by default", func() {
+	It("should not set pod sysctls or seLinuxOptions on the collectors by default", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
@@ -1762,6 +1821,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		Expect(getDaemonSet(desiredState).Spec.Template.Spec.SecurityContext.Sysctls).To(BeNil())
 		Expect(getDeployment(desiredState).Spec.Template.Spec.SecurityContext.Sysctls).To(BeNil())
+		Expect(getDaemonSet(desiredState).Spec.Template.Spec.SecurityContext.SELinuxOptions).To(BeNil())
 	})
 
 	It("should render additional collector labels and annotations", func() {
@@ -2577,6 +2637,75 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(FindVolumeMountByName(deploymentConfigReloaderContainer.VolumeMounts, "opentelemetry-collector-configmap-decompressed")).NotTo(BeNil())
 	})
 
+	Context("pprof in the auxiliary containers of the collector pods", func() {
+		assemblePodSpecs := func(enableProfExtension bool) []corev1.PodSpec {
+			desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+				OperatorNamespace:   OperatorNamespace,
+				NamePrefix:          namePrefix,
+				Exporters:           defaultDash0ExportersWithToken(),
+				Images:              TestImages,
+				EnableProfExtension: enableProfExtension,
+				SignalControl: SignalControlConfig{
+					Enabled:     true,
+					Endpoint:    "decision-maker.example.com:443",
+					ApiEndpoint: "https://control-plane-api.dash0.com",
+					Dataset:     "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, nil, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+			return []corev1.PodSpec{
+				getDaemonSet(desiredState).Spec.Template.Spec,
+				getDeployment(desiredState).Spec.Template.Spec,
+				getSignalControlCollector(desiredState).Spec.Template.Spec,
+			}
+		}
+
+		It("should not set the pprof port env var when the pprof extension is disabled", func() {
+			for _, podSpec := range assemblePodSpecs(false) {
+				for _, container := range append(podSpec.Containers, podSpec.InitContainers...) {
+					Expect(FindEnvVarByName(container.Env, "DASH0_PPROF_PORT")).To(
+						BeNil(),
+						"unexpected pprof port env var in container %s",
+						container.Name,
+					)
+				}
+			}
+		})
+
+		It("should set a distinct pprof port env var per auxiliary container when the pprof extension is enabled",
+			func() {
+				podSpecs := assemblePodSpecs(true)
+
+				for _, podSpec := range podSpecs {
+					configReloaderContainer := FindContainerByName(podSpec.Containers, "configuration-reloader")
+					Expect(configReloaderContainer).NotTo(BeNil())
+					pprofPortEnvVar := FindEnvVarByName(configReloaderContainer.Env, "DASH0_PPROF_PORT")
+					Expect(pprofPortEnvVar).NotTo(BeNil())
+					Expect(pprofPortEnvVar.Value).To(Equal("1778"))
+				}
+
+				fileLogOffsetSyncContainer :=
+					FindContainerByName(podSpecs[0].Containers, "filelog-offset-sync")
+				Expect(fileLogOffsetSyncContainer).NotTo(BeNil())
+				pprofPortEnvVar := FindEnvVarByName(fileLogOffsetSyncContainer.Env, "DASH0_PPROF_PORT")
+				Expect(pprofPortEnvVar).NotTo(BeNil())
+				Expect(pprofPortEnvVar.Value).To(Equal("1779"))
+			})
+
+		It("should not set the pprof port env var on init containers when the pprof extension is enabled", func() {
+			for _, podSpec := range assemblePodSpecs(true) {
+				for _, initContainer := range podSpec.InitContainers {
+					Expect(FindEnvVarByName(initContainer.Env, "DASH0_PPROF_PORT")).To(
+						BeNil(),
+						"unexpected pprof port env var in init container %s",
+						initContainer.Name,
+					)
+				}
+			}
+		})
+	})
+
 	It("rendered objects must be stable", func() {
 		mr1 := dash0v1beta1.Dash0Monitoring{
 			ObjectMeta: metav1.ObjectMeta{
@@ -2765,7 +2894,29 @@ func verifySelfMonitoringSettings(
 	expectations collectorSelfMonitoringExpectations,
 ) {
 	for _, container := range collectorDaemonSet.Spec.Template.Spec.Containers {
+		if container.Name == openTelemetryCollector {
+			verifySelfMonitoringEnvVarsForOtelCollectorContainer(&container, expectations)
+			continue
+		}
 		verifySelfMonitoringEnvVarsForContainer(&container, expectations)
+	}
+}
+
+// verifySelfMonitoringEnvVarsForOtelCollectorContainer verifies the container running the OpenTelemetry collector,
+// which is configured via the service::telemetry section of the collector configuration and only needs the auth token
+// env var, but none of the env vars that only the OTel Go SDK reads.
+func verifySelfMonitoringEnvVarsForOtelCollectorContainer(
+	container *corev1.Container,
+	expectations collectorSelfMonitoringExpectations,
+) {
+	envVars := container.Env
+	Expect(slices.IndexFunc(envVars, matchOtelExporterOtlpEndpointEnvVar)).To(Equal(-1))
+	Expect(slices.IndexFunc(envVars, matchOtelExporterOtlpProtocolEnvVar)).To(Equal(-1))
+	Expect(slices.IndexFunc(envVars, matchOtelExporterOtlpHeadersEnvVar)).To(Equal(-1))
+	Expect(FindEnvVarByName(envVars, util.OtelResourceAttributesEnvVarName)).To(BeNil())
+
+	if expectations.exportIsDash0 {
+		verifyDash0SelfMonitoringEnvVars(envVars, expectations)
 	}
 }
 

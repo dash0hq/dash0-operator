@@ -297,6 +297,9 @@ tests:
         agent0Connector:
           enabled: true
           maxConcurrentCommands: 4
+          allowedKubectlCommands:
+            get: false
+            logs: true
           containerResources:
             limits:
               cpu: 300m
@@ -622,6 +625,7 @@ tests:
                     - value-07
                     - value-08
             edgeProxyReplicas: 2
+            edgeProxyEnablePprof: false
             edgeProxyContainerResources:
               gomemlimit: 200MiB
               limits:
@@ -671,6 +675,17 @@ tests:
                 cpu: 20m
                 memory: 64Mi
             agent0ConnectorMaxConcurrentCommands: 4
+            agent0ConnectorAllowedKubectlCommands:
+              api-resources: true
+              api-versions: true
+              auth: true
+              cluster-info: true
+              events: false
+              explain: true
+              get: false
+              logs: true
+              top: true
+              version: true
             agent0ConnectorTolerations:
               - effect: NoSchedule
                 key: key6
@@ -781,6 +796,50 @@ tests:
       - notMatchRegex:
           path: data['extra.yaml']
           pattern: deploymentSysctls
+
+  - it: should render collector daemonSet seLinuxOptions when set
+    set:
+      operator:
+        collectors:
+          daemonSetSeLinuxOptions:
+            user: system_u
+            role: system_r
+            type: container_t
+            level: s0:c1,c2
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            daemonSetSeLinuxOptions:
+              level: s0:c1,c2
+              role: system_r
+              type: container_t
+              user: system_u
+
+  - it: should not render collector daemonSet seLinuxOptions by default
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: daemonSetSeLinuxOptions
+
+  - it: should reject unknown collector daemonSet seLinuxOptions settings
+    set:
+      operator:
+        collectors:
+          daemonSetSeLinuxOptions:
+            typ: spc_t
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.daemonSetSeLinuxOptions.typ is not a valid setting. Valid settings are user, role, type and level."
+
+  - it: should reject a collector daemonSet seLinuxOptions value that is not a map
+    set:
+      operator:
+        collectors:
+          daemonSetSeLinuxOptions: spc_t
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.daemonSetSeLinuxOptions must be a map with the settings user, role, type and level."
 
   - it: should render collector labels and annotations when set
     set:
@@ -932,7 +991,7 @@ tests:
           path: data['extra.yaml']
           pattern: |-
             agent0ConnectorContainerResources:
-              gomemlimit: 150MiB
+              gomemlimit: ""
               limits:
                 memory: 256Mi
               requests:
@@ -1067,6 +1126,90 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: the verb "patch" is not allowed'
+
+  - it: should render the default allowed kubectl commands for the agent0-connector
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            agent0ConnectorAllowedKubectlCommands:
+              api-resources: true
+              api-versions: true
+              auth: true
+              cluster-info: true
+              events: false
+              explain: true
+              get: true
+              logs: false
+              top: true
+              version: true
+
+  - it: should reject unsetting allowedKubectlCommands for the agent0-connector
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          allowedKubectlCommands: null
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.allowedKubectlCommands must not be empty, at least one kubectl command needs to be enabled'
+
+  - it: should reject configurations where all kubectl commands are disabled
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          allowedKubectlCommands:
+            api-resources: false
+            api-versions: false
+            auth: false
+            cluster-info: false
+            events: false
+            explain: false
+            get: false
+            logs: false
+            top: false
+            version: false
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.allowedKubectlCommands does not enable any kubectl command, at least one kubectl command needs to be set to true'
+
+  - it: should reject an unknown kubectl command in the allowed kubectl commands for the agent0-connector
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          allowedKubectlCommands:
+            foo: true
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.allowedKubectlCommands.foo: "foo" is not a kubectl command supported by the agent0-connector'
+
+  - it: should reject a non-boolean value in the allowed kubectl commands for the agent0-connector
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          allowedKubectlCommands:
+            logs: "yes"
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.allowedKubectlCommands.logs: the value must be true or false, but it is "yes"'
+
+  - it: should reject enabling "kubectl describe" in the allowed kubectl commands for the agent0-connector
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          allowedKubectlCommands:
+            describe: true
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.allowedKubectlCommands.describe: "kubectl describe" cannot be enabled'
 
   - it: should render the default agent0-connector tolerations and node affinity
     set:
@@ -1264,15 +1407,15 @@ tests:
                 timeoutSeconds: 1
             signalControlCollectorReplicas: 2
             signalControlCollectorContainerResources:
-              gomemlimit: 800MiB
+              gomemlimit: ""
               limits:
                 memory: 1Gi
               requests:
                 memory: 1Gi
             signalControlCollectorConfigurationReloaderContainerResources:
-              gomemlimit: 18MiB
+              gomemlimit: ""
               limits:
-                memory: 24Mi
+                memory: 26Mi
               requests:
                 memory: 12Mi
             signalControlCollectorTolerations:
@@ -1310,7 +1453,7 @@ tests:
             targetAllocatorMtlsClientCertSecretName: ""
             targetAllocatorAllowInsecureAuthSecrets: false
             targetAllocatorContainerResources:
-              gomemlimit: 400MiB
+              gomemlimit: ""
               limits:
                 cpu: 200m
                 memory: 500Mi
@@ -1393,6 +1536,55 @@ tests:
                 memory: 406Mi
             .*
 
+  - it: should render cluster-wide filters and transformations
+    set:
+      operator:
+        filter:
+          error_mode: propagate
+          traces:
+            span:
+              - 'attributes["http.route"] == "/ready"'
+          metrics:
+            metric:
+              - 'name == "k8s.replicaset.available"'
+        transform:
+          error_mode: silent
+          trace_statements:
+            - truncate_all(span.attributes, 128)
+          metric_statements:
+            - context: datapoint
+              statements:
+                - truncate_all(attributes, 128)
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            filter:
+              error_mode: propagate
+              metrics:
+                metric:
+                - name == "k8s.replicaset.available"
+              traces:
+                span:
+                - attributes\["http.route"\] == "/ready"
+            transform:
+              error_mode: silent
+              metric_statements:
+              - context: datapoint
+                statements:
+                - truncate_all\(attributes, 128\)
+              trace_statements:
+              - truncate_all\(span.attributes, 128\)
+
+  - it: should not render cluster-wide filters and transformations by default
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: "^filter:"
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: "^transform:"
+
   - it: should disallow export in the monitoring template
     set:
       operator:
@@ -1432,3 +1624,110 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: "Error: operator.autoMonitorNamespaces.monitoringTemplate is not a valid setting. The monitoring template is a top-level operator setting; please use operator.monitoringTemplate instead."
+
+  - it: should render exports
+    set:
+      operator:
+        exports:
+          - grpc:
+              endpoint: otel-collector.other-namespace.svc.cluster.local:4317
+              insecure: true
+              balancer_name: pick_first
+              headers:
+                - name: x-tenant
+                  value: tenant-1
+          - http:
+              endpoint: https://otlp.example.com
+              encoding: json
+              headers:
+                - name: authorization
+                  valueFrom:
+                    secretKeyRef:
+                      name: my-backend-secret
+                      key: token
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            .*
+            exports:
+              - grpc:
+                  balancer_name: pick_first
+                  endpoint: otel-collector.other-namespace.svc.cluster.local:4317
+                  headers:
+                  - name: x-tenant
+                    value: tenant-1
+                  insecure: true
+              - http:
+                  encoding: json
+                  endpoint: https://otlp.example.com
+                  headers:
+                  - name: authorization
+                    valueFrom:
+                      secretKeyRef:
+                        key: token
+                        name: my-backend-secret
+
+  - it: should not render exports by default
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: "exports:"
+
+  - it: should disallow an export with none of dash0, grpc or http
+    set:
+      operator:
+        exports:
+          - grpc:
+              endpoint: otelcol:4317
+          - {}
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.exports[1] has none of dash0, grpc or http set, at least one of them is required."
+
+  - it: should disallow a dash0 export in operator.exports when operator.dash0Export.enabled is true
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: ingress.dash0.com:4317
+          token: very-secret-dash0-auth-token
+        exports:
+          - dash0:
+              endpoint: ingress.dash0.com:4317
+              authorization:
+                token: another-token
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.exports[0] defines a dash0 export while operator.dash0Export.enabled is true. Please configure the Dash0 export either via operator.dash0Export.* or via operator.exports, but not via both."
+
+  - it: should disallow a dash0 export without an endpoint
+    set:
+      operator:
+        exports:
+          - dash0:
+              authorization:
+                token: token
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.exports[0].dash0 has no endpoint."
+
+  - it: should disallow a grpc export without an endpoint
+    set:
+      operator:
+        exports:
+          - grpc:
+              insecure: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.exports[0].grpc has no endpoint."
+
+  - it: should disallow an http export without an endpoint
+    set:
+      operator:
+        exports:
+          - http:
+              encoding: proto
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.exports[0].http has no endpoint."

@@ -7,6 +7,8 @@ This document provides platform-specific guidance, compatibility notes, and work
 - [AWS EKS](#notes-on-aws-eks)
 - [GKE Autopilot](#notes-on-gke-autopilot)
   - [Managing the AllowlistSynchronizer Manually](#managing-the-allowlistsynchronizer-manually)
+- [OpenShift](#notes-on-openshift)
+- [SELinux-Enforcing Clusters](#notes-on-selinux-enforcing-clusters)
 - [Azure AKS](#notes-on-azure-aks)
 - [Open Policy Agent (OPA Gatekeeper)](#notes-on-the-open-policy-agent)
 - [Kyverno Admission Controller](#notes-on-kyverno-admission-controller)
@@ -56,6 +58,16 @@ clusters:
 - collecting the extra metadata labels `container.id` and `k8s.volume.type` for the `kubeletstats` receiver metrics is
   disabled, collecting these requires access to the `/pod` endpoint of the kubelet API which is not available in GKE
   autopilot due to the lack of the `nodes/proxy` permission
+- the [synthetics-worker](synthetics-worker.md) is not yet supported, since its container image has not been added to
+  the GKE Autopilot workload allowlist
+
+GKE Autopilot [adjusts](https://cloud.google.com/kubernetes-engine/docs/concepts/autopilot-resource-requests) the
+resource requests and limits of all workloads, including the OpenTelemetry collectors and the other workloads managed by
+the operator.
+The adjustment is recorded in the `autopilot.gke.io/resource-adjustment` annotation of the workload.
+The operator accepts the adjusted values and does not revert them.
+When the resource settings in the Helm values are changed, the operator applies the new values, which GKE Autopilot then
+adjusts again.
 
 Refer to <https://cloud.google.com/kubernetes-engine/docs/how-to/run-autopilot-partner-workloads> for more information
 on `AllowlistSynchronizer`, `WorkloadAllowlist`, and related concepts.
@@ -93,6 +105,34 @@ kubectl apply -f dash0-gke-autopilot-allowlist-synchronizer.yaml
 
 When managing the `AllowlistSynchronizer` manually, you might need to update it from time to time for future Dash0
 operator releases.
+
+## Notes on OpenShift
+
+When deploying the Dash0 operator to a Red Hat OpenShift cluster, provide the following additional setting when applying
+the Helm chart:
+
+```yaml
+operator:
+  openShift:
+    enabled: true
+```
+
+OpenShift enforces [Security Context Constraints](https://docs.openshift.com/container-platform/latest/authentication/managing-security-context-constraints.html)
+(SCCs) on every pod. The default `restricted-v2` SCC assigns each pod a random, in-range UID from the namespace's
+`openshift.io/sa.scc.uid-range` and rejects pods that pin a UID outside that range. With `operator.openShift.enabled`
+set to `true`, the Dash0 operator Helm chart and operator:
+
+- create a custom `SecurityContextConstraints` resource plus the RBAC that binds it to the OpenTelemetry collector
+  DaemonSet's service account, so the DaemonSet may use the host access it requires (host log directories via `hostPath`
+  and the OTLP host ports), and
+- drop the hard-coded pod-level `runAsUser`/`runAsGroup` from the operator-managed workloads (the agent0-connector, the
+  target-allocator, and the Signal Control edge-proxy) and from the injected instrumentation init container, so that the
+  namespace's SCC assigns an in-range UID instead of a pinned one that `restricted-v2` would reject.
+
+## Notes on SELinux-Enforcing Clusters
+
+For clusters that enforce SELinux, the SELinux options of the collector DaemonSet pods can be configured (see
+[Configuring SELinux Options for the Collector DaemonSet](advanced-configuration.md#configuring-selinux-options-for-the-collector-daemonset)).
 
 ## Notes on Azure AKS
 

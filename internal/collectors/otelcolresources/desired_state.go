@@ -24,6 +24,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
+	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/pointers"
@@ -39,6 +40,7 @@ type SignalControlConfig struct {
 	SamplingReservoirMaxDiskBytes      int64
 	SamplingReservoirMaxMemoryBytes    int64
 	SamplingReservoirMetricLevel       string
+	SamplingReservoirBufferDuration    string
 	SignalToMetricsEnabled             bool
 	SignalToMetricsMaxTimeSeries       *int32
 	SignalToMetricsFlushInterval       string
@@ -48,6 +50,10 @@ type SignalControlConfig struct {
 	SpamFilterEnabled                  bool
 	SpamFilterCacheExpiration          string
 	SpamFilterAllowNoSettingsExt       bool
+	LogEnrichmentEnabled               bool
+	LogPatternRefreshInterval          string
+	LogParserCacheExpiration           string
+	LogGroupingCacheExpiration         string
 	OperationPreferSpanName            bool
 	OperationCardinalityRules          []SignalControlCardinalityRule
 	Endpoint                           string
@@ -64,6 +70,15 @@ type SignalControlConfig struct {
 // Signal Control and tail-sampling are enabled and the reservoir type is "disk".
 func (c SignalControlConfig) UsesDiskReservoir() bool {
 	return c.Enabled && c.SamplingEnabled && c.SamplingReservoirType == "disk"
+}
+
+// durationStringOrEmpty renders a positive duration as a Go duration string, or "" for a nil or
+// non-positive value so the collector config omits it and the component keeps its own default.
+func durationStringOrEmpty(d *metav1.Duration) string {
+	if d == nil || d.Duration <= 0 {
+		return ""
+	}
+	return d.Duration.String()
 }
 
 type SignalControlCardinalityRule struct {
@@ -102,10 +117,12 @@ type oTelColConfig struct {
 	K8sAttributesDisableReplicasetInformer           bool
 	K8sAttributesWaitForMetadata                     bool
 	K8sAttributesWaitForMetadataTimeout              string
+	K8sAttributesShareProcessor                      bool
 	PrometheusCrdSupportEnabled                      bool
 	TargetAllocatorNamePrefix                        string
 	Agent0ConnectorEnabled                           bool
 	Agent0ConnectorDeploymentName                    string
+	SyntheticsWorkerDeploymentNames                  []string
 	KubeletStatsReceiverConfig                       util.KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
 	DisableHostPorts                                 bool
@@ -122,11 +139,22 @@ type oTelColConfig struct {
 	OffsetStorageVolume            *corev1.Volume
 	SignalControl                  SignalControlConfig
 	AutoNamespaceMonitoringEnabled bool
-	DevelopmentMode                bool
-	DebugVerbosityDetailed         bool
-	EnableProfExtension            bool
-	ProfilingEnabled               bool
-	CompressConfigMap              bool
+	// GlobalFilter and GlobalNormalizedTransform are the cluster-wide filters and transformations from the operator
+	// configuration resource. In contrast to the filters and transformations of monitoring resources, their conditions
+	// are not scoped to a namespace.
+	GlobalFilter              *dash0common.Filter
+	GlobalNormalizedTransform *dash0common.NormalizedTransformSpec
+	DevelopmentMode           bool
+	DebugVerbosityDetailed    bool
+	EnableProfExtension       bool
+	ProfilingEnabled          bool
+	CompressConfigMap         bool
+	// DaemonSetCollectorMemoryLimit, DeploymentCollectorMemoryLimit and SignalControlCollectorMemoryLimit are the
+	// container memory limits of the three collectors, used to derive the memory_limiter thresholds. A zero value
+	// makes the templates fall back to the percentage-based memory_limiter configuration.
+	DaemonSetCollectorMemoryLimit     resource.Quantity
+	DeploymentCollectorMemoryLimit    resource.Quantity
+	SignalControlCollectorMemoryLimit resource.Quantity
 }
 
 func (c *oTelColConfig) usesOffsetStorageVolume() bool {
@@ -226,6 +254,11 @@ const (
 	configReloader    = "configuration-reloader"
 	fileLogOffsetSync = "filelog-offset-sync"
 
+	// The pprof extension of the opentelemetry-collector container listens on its default port 1777. The auxiliary
+	// containers of the collector pod share the same network namespace, hence they need their own separate ports.
+	configReloaderPprofPort    = "1778"
+	fileLogOffsetSyncPprofPort = "1779"
+
 	// label keys
 	dash0OptOutLabelKey = "dash0.com/enable"
 
@@ -240,6 +273,10 @@ const (
 	collectorConfigurationFilePath    = collectorConfigDirPath + "/" + collectorConfigurationYaml
 	collectorConfigCompressedDirPath  = "/etc/otelcol/conf-compressed"
 	collectorConfigCompressedFilePath = collectorConfigCompressedDirPath + "/" + collectorConfigurationYaml
+
+	// collector feature gates
+	profilesSupportFeatureGate             = "service.profilesSupport"
+	k8sAttributesShareProcessorFeatureGate = "processor.k8sattributes.ShareProcessorBetweenPipelines"
 
 	// config volume names -- the collectors will either use only the collectorConfigMapVolumeNamePlainText (when config
 	// map compression is disabled), or collectorConfigMapCompressedVolumeName + collectorConfigMapDecompressedVolumeName
@@ -829,9 +866,10 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
-			RunAsUser:  new(defaultUser),
-			RunAsGroup: new(defaultGroup),
-			Sysctls:    extraConfig.DaemonSetSysctls,
+			RunAsUser:      new(defaultUser),
+			RunAsGroup:     new(defaultGroup),
+			Sysctls:        extraConfig.DaemonSetSysctls,
+			SELinuxOptions: extraConfig.DaemonSetSELinuxOptions,
 		},
 		// This setting is required to enable the configuration reloader process to send Unix signals to the
 		// collector process.
@@ -914,11 +952,12 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 	}
 
 	if config.SelfMonitoringConfiguration.SelfMonitoringEnabled {
-		err = selfmonitoringapiaccess.EnableSelfMonitoringInCollectorDaemonSet(
+		err = selfmonitoringapiaccess.EnableSelfMonitoringInDaemonSet(
 			collectorDaemonSet,
 			config.SelfMonitoringConfiguration,
 			config.Images.GetOperatorVersion(),
 			config.DevelopmentMode,
+			openTelemetryCollector,
 		)
 		if err != nil {
 			return nil, err
@@ -951,7 +990,7 @@ func assembleFileLogOffsetSyncContainer(
 		Env: []corev1.EnvVar{
 			{
 				Name:  "GOMEMLIMIT",
-				Value: resourceRequirements.GoMemLimit,
+				Value: resourceRequirements.EffectiveGoMemLimitPercent(util.GoMemLimitDefaultPercent),
 			},
 			{
 				Name:  "K8S_CONFIGMAP_NAMESPACE",
@@ -981,6 +1020,12 @@ func assembleFileLogOffsetSyncContainer(
 		},
 		Resources:    resourceRequirements.ToResourceRequirements(),
 		VolumeMounts: []corev1.VolumeMount{defaultFilelogReceiverOffsetsVolumeMount},
+	}
+	if config.EnableProfExtension {
+		filelogOffsetSyncContainer.Env = append(filelogOffsetSyncContainer.Env, corev1.EnvVar{
+			Name:  common.PprofPortEnvVarName,
+			Value: fileLogOffsetSyncPprofPort,
+		})
 	}
 	if config.Images.FilelogOffsetSyncImagePullPolicy != "" {
 		filelogOffsetSyncContainer.ImagePullPolicy = config.Images.FilelogOffsetSyncImagePullPolicy
@@ -1196,6 +1241,16 @@ func createVolumeMountForUserProvidedFileLogOffsetVolume(filelogOffsetsVolume co
 	}
 }
 
+func assembleCollectorArgs(featureGates []string) []string {
+	collectorArgs := []string{
+		"--config=file:" + collectorConfigurationFilePath,
+	}
+	if len(featureGates) > 0 {
+		collectorArgs = append(collectorArgs, "--feature-gates="+strings.Join(featureGates, ","))
+	}
+	return collectorArgs
+}
+
 // assembleCollectorEnvVars builds the environment for a collector container. withSignalControlAuthToken must only be
 // set for the Signal Control collector: it is the only workload whose configuration references
 // DASH0_SIGNAL_CONTROL_AUTH_TOKEN, and the token should not be spread to workloads that do not need it.
@@ -1279,7 +1334,7 @@ func assembleDaemonSetCollectorContainer(
 	probes util.CollectorProbes,
 ) (corev1.Container, error) {
 	collectorVolumeMounts := assembleCollectorDaemonSetVolumeMounts(config, filelogOffsetsVolume, targetAllocatorMtlsConfig)
-	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.GoMemLimit, false)
+	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.EffectiveGoMemLimit(), false)
 	if err != nil {
 		return corev1.Container{}, err
 	}
@@ -1301,12 +1356,14 @@ func assembleDaemonSetCollectorContainer(
 		httpPort.HostPort = config.OtlpHttpHostPort
 	}
 
-	collectorArgs := []string{
-		"--config=file:" + collectorConfigurationFilePath,
-	}
+	var featureGates []string
 	if config.ProfilingEnabled {
-		collectorArgs = append(collectorArgs, "--feature-gates=service.profilesSupport")
+		featureGates = append(featureGates, profilesSupportFeatureGate)
 	}
+	if config.K8sAttributesShareProcessor {
+		featureGates = append(featureGates, k8sAttributesShareProcessorFeatureGate)
+	}
+	collectorArgs := assembleCollectorArgs(featureGates)
 
 	collectorContainer := corev1.Container{
 		Name: openTelemetryCollector,
@@ -1396,7 +1453,7 @@ func assembleConfigurationReloaderContainer(
 		Env: []corev1.EnvVar{
 			{
 				Name:  util.EnvVarGoMemLimit,
-				Value: resourceRequirements.GoMemLimit,
+				Value: resourceRequirements.EffectiveGoMemLimitPercent(util.GoMemLimitDefaultPercent),
 			},
 			{
 				Name:  "K8S_CLUSTER_UID",
@@ -1414,6 +1471,12 @@ func assembleConfigurationReloaderContainer(
 		},
 		Resources:    resourceRequirements.ToResourceRequirements(),
 		VolumeMounts: reloaderVolumeMounts,
+	}
+	if config.EnableProfExtension {
+		configurationReloaderContainer.Env = append(configurationReloaderContainer.Env, corev1.EnvVar{
+			Name:  common.PprofPortEnvVarName,
+			Value: configReloaderPprofPort,
+		})
 	}
 	if config.Images.ConfigurationReloaderImagePullPolicy != "" {
 		configurationReloaderContainer.ImagePullPolicy = config.Images.ConfigurationReloaderImagePullPolicy
@@ -1444,7 +1507,7 @@ func assembleFileLogOffsetSyncInitContainer(
 		Env: []corev1.EnvVar{
 			{
 				Name:  util.EnvVarGoMemLimit,
-				Value: resourceRequirements.GoMemLimit,
+				Value: resourceRequirements.EffectiveGoMemLimitPercent(util.GoMemLimitDefaultPercent),
 			},
 			{
 				Name:  "K8S_CONFIGMAP_NAMESPACE",
@@ -1740,11 +1803,12 @@ func assembleCollectorDeployment(
 	}
 
 	if config.SelfMonitoringConfiguration.SelfMonitoringEnabled {
-		err = selfmonitoringapiaccess.EnableSelfMonitoringInCollectorDeployment(
+		err = selfmonitoringapiaccess.EnableSelfMonitoringInDeployment(
 			collectorDeployment,
 			config.SelfMonitoringConfiguration,
 			config.Images.GetOperatorVersion(),
 			config.DevelopmentMode,
+			openTelemetryCollector,
 		)
 		if err != nil {
 			return nil, err
@@ -1831,14 +1895,16 @@ func assembleDeploymentCollectorContainer(
 			collectorPidFileMountRW,
 		}
 	}
-	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.GoMemLimit, false)
+	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.EffectiveGoMemLimit(), false)
 	if err != nil {
 		return corev1.Container{}, err
 	}
 
-	collectorArgs := []string{
-		"--config=file:" + collectorConfigurationFilePath,
+	var featureGates []string
+	if config.K8sAttributesShareProcessor {
+		featureGates = append(featureGates, k8sAttributesShareProcessorFeatureGate)
 	}
+	collectorArgs := assembleCollectorArgs(featureGates)
 
 	collectorContainer := corev1.Container{
 		Name: openTelemetryCollector,
@@ -2036,11 +2102,12 @@ func assembleSignalControlCollectorDeployment(
 	}
 
 	if config.SelfMonitoringConfiguration.SelfMonitoringEnabled {
-		err = selfmonitoringapiaccess.EnableSelfMonitoringInCollectorDeployment(
+		err = selfmonitoringapiaccess.EnableSelfMonitoringInDeployment(
 			collectorDeployment,
 			config.SelfMonitoringConfiguration,
 			config.Images.GetOperatorVersion(),
 			config.DevelopmentMode,
+			openTelemetryCollector,
 		)
 		if err != nil {
 			return nil, err
@@ -2146,7 +2213,7 @@ func assembleSignalControlCollectorContainer(
 		}
 	}
 
-	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.GoMemLimit, true)
+	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.EffectiveGoMemLimit(), true)
 	if err != nil {
 		return corev1.Container{}, err
 	}

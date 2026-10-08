@@ -3,7 +3,7 @@
 
 # Note: This Dockerfile expects dash0-operator/images as the build context.
 
-FROM --platform=${BUILDPLATFORM} golang:1.27.0-alpine3.23 AS builder
+FROM --platform=${BUILDPLATFORM} golang:1.27.1-alpine3.24 AS builder
 
 WORKDIR /usr/local/go/src/filelogoffsetsync
 
@@ -28,7 +28,7 @@ RUN CGO_ENABLED=0 \
     -v \
     filelogoffsetsync
 
-FROM --platform=${BUILDPLATFORM} alpine:3.24.1 AS certs
+FROM --platform=${BUILDPLATFORM} alpine:3.24.2 AS certs
 RUN apk --update add ca-certificates && apk cache clean
 
 FROM scratch

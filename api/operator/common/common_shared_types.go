@@ -47,10 +47,11 @@ type Dash0Configuration struct {
 	// +kubebuilder:validation:MinLength=1
 	Endpoint string `json:"endpoint"`
 
-	// The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-	// dataset "default" will be used.
-	//
-	// +kubebuilder:default=default
+	// The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
+	// identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
+	// identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
+	// optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
+	// authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
 	Dataset string `json:"dataset,omitempty"`
 
 	// Mandatory authorization settings for sending data to Dash0.
@@ -288,11 +289,19 @@ func (e *Export) ToExports() []Export {
 	}
 }
 
+// Redact removes a literal authorization token, if any is set. The authorization is modified in place, make sure to
+// only call it on a resource that is not intended to be used for actual exporting/authentication later.
+func (a *Authorization) Redact() {
+	if a.Token != nil && len(*a.Token) > 0 {
+		a.Token = new(RedactedValue)
+	}
+}
+
 // Redact removes the authorization token and header values from the export. The export is modified in place, make sure
 // to only call it on exports that are not intended to be used for actual exporting later.
 func (e *Export) Redact() {
-	if e.Dash0 != nil && e.Dash0.Authorization.Token != nil && len(*e.Dash0.Authorization.Token) > 0 {
-		e.Dash0.Authorization.Token = new(RedactedValue)
+	if e.Dash0 != nil {
+		e.Dash0.Authorization.Redact()
 	}
 	if e.Http != nil {
 		// Any header value can potentially be a secret, so we redact all values. Headers whose values are sourced from a

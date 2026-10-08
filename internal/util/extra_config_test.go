@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -368,15 +369,15 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))
 					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
-					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.GoMemLimit).To(Equal("400MiB"))
+					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.GoMemLimit).To(BeEmpty())
 					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Requests.Memory().String()).To(Equal("500Mi"))
 					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 
 					Expect(extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
-					Expect(extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources.Limits.Memory().String()).To(Equal("12Mi"))
+					Expect(extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources.Limits.Memory().String()).To(Equal("26Mi"))
 					Expect(extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
-					Expect(extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources.GoMemLimit).To(Equal("8MiB"))
+					Expect(extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources.GoMemLimit).To(BeEmpty())
 					Expect(extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources.Requests.Memory().String()).To(Equal("12Mi"))
 					Expect(extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
@@ -385,13 +386,14 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Limits.Memory().String()).To(Equal("32Mi"))
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Limits.Storage().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
-					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.GoMemLimit).To(Equal("24MiB"))
+					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.GoMemLimit).To(BeEmpty())
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.Memory().String()).To(Equal("32Mi"))
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 
 					Expect(extraConfig.DaemonSetTolerations).To(HaveLen(0))
 					Expect(extraConfig.DaemonSetNodeAffinity).To(BeNil())
+					Expect(extraConfig.DaemonSetSELinuxOptions).To(BeNil())
 
 					Expect(extraConfig.CollectorDaemonSetPriorityClassName).To(Equal(""))
 
@@ -400,15 +402,15 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
-					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.GoMemLimit).To(Equal("400MiB"))
+					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.GoMemLimit).To(BeEmpty())
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Requests.Memory().String()).To(Equal("500Mi"))
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 
 					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
-					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Limits.Memory().String()).To(Equal("12Mi"))
+					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Limits.Memory().String()).To(Equal("26Mi"))
 					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
-					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.GoMemLimit).To(Equal("8MiB"))
+					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.GoMemLimit).To(BeEmpty())
 					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Requests.Memory().String()).To(Equal("12Mi"))
 					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
@@ -432,7 +434,7 @@ var _ = Describe("extra config map", func() {
 
 					Expect(extraConfig.Agent0ConnectorContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.Agent0ConnectorContainerResources.Limits.Memory().String()).To(Equal("256Mi"))
-					Expect(extraConfig.Agent0ConnectorContainerResources.GoMemLimit).To(Equal("150MiB"))
+					Expect(extraConfig.Agent0ConnectorContainerResources.GoMemLimit).To(BeEmpty())
 					Expect(extraConfig.Agent0ConnectorContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.Agent0ConnectorContainerResources.Requests.Memory().String()).To(Equal("64Mi"))
 					Expect(extraConfig.Agent0ConnectorClusterRoleRules).To(BeNil())
@@ -575,6 +577,9 @@ daemonSetNodeAffinity:
         operator: In
         values:
         - linux
+daemonSetSeLinuxOptions:
+  type: container_t
+  level: s0:c1,c2
 collectorDeploymentPriorityClassName: deployment-priority
 deploymentProbes:
   liveness:
@@ -753,6 +758,11 @@ monitoringTemplate:
 					Expect(daemonSetAffinityNodeSelectorReqTerms[0].MatchExpressions[1].Values).To(HaveLen(1))
 					Expect(daemonSetAffinityNodeSelectorReqTerms[0].MatchExpressions[1].Values[0]).To(Equal("linux"))
 
+					Expect(extraConfig.DaemonSetSELinuxOptions).To(Equal(&corev1.SELinuxOptions{
+						Type:  "container_t",
+						Level: "s0:c1,c2",
+					}))
+
 					Expect(extraConfig.CollectorDeploymentPriorityClassName).To(Equal("deployment-priority"))
 
 					Expect(extraConfig.DeploymentProbes.Liveness.FailureThreshold).To(Equal(int32(16)))
@@ -865,7 +875,7 @@ collectorDaemonSetPriorityClassName: daemon-set-priority
 					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Cpu().String()).To(Equal("900m"))
 					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))
 					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
-					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.GoMemLimit).To(Equal("400MiB"))
+					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.GoMemLimit).To(BeEmpty())
 					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Requests.Cpu().String()).To(Equal("500m"))
 					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Requests.Memory().String()).To(Equal("500Mi"))
 					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
@@ -881,7 +891,7 @@ collectorDaemonSetPriorityClassName: daemon-set-priority
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Limits.Memory().String()).To(Equal("32Mi"))
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
-					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.GoMemLimit).To(Equal("24MiB"))
+					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.GoMemLimit).To(BeEmpty())
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.Memory().String()).To(Equal("32Mi"))
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
@@ -895,15 +905,15 @@ collectorDaemonSetPriorityClassName: daemon-set-priority
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
-					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.GoMemLimit).To(Equal("400MiB"))
+					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.GoMemLimit).To(BeEmpty())
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Requests.Memory().String()).To(Equal("500Mi"))
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 
 					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
-					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Limits.Memory().String()).To(Equal("12Mi"))
+					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Limits.Memory().String()).To(Equal("26Mi"))
 					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
-					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.GoMemLimit).To(Equal("8MiB"))
+					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.GoMemLimit).To(BeEmpty())
 					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Requests.Memory().String()).To(Equal("12Mi"))
 					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
@@ -933,7 +943,7 @@ collectorDaemonSetPriorityClassName: daemon-set-priority
 
 					containerResources = extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources.ToResourceRequirements()
 					Expect(containerResources.Limits.Cpu().IsZero()).To(BeTrue())
-					Expect(containerResources.Limits.Memory().String()).To(Equal("12Mi"))
+					Expect(containerResources.Limits.Memory().String()).To(Equal("26Mi"))
 					Expect(containerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
 					Expect(containerResources.Requests.Cpu().IsZero()).To(BeTrue())
 					Expect(containerResources.Requests.Memory().String()).To(Equal("12Mi"))
@@ -958,7 +968,7 @@ collectorDaemonSetPriorityClassName: daemon-set-priority
 
 					containerResources = extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.ToResourceRequirements()
 					Expect(containerResources.Limits.Cpu().IsZero()).To(BeTrue())
-					Expect(containerResources.Limits.Memory().String()).To(Equal("12Mi"))
+					Expect(containerResources.Limits.Memory().String()).To(Equal("26Mi"))
 					Expect(containerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
 					Expect(containerResources.Requests.Cpu().IsZero()).To(BeTrue())
 					Expect(containerResources.Requests.Memory().String()).To(Equal("12Mi"))
@@ -1151,11 +1161,100 @@ collectorDaemonSetConfigurationReloaderContainerResources:
 
 					containerResources = extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.ToResourceRequirements()
 					Expect(containerResources.Limits.Cpu().IsZero()).To(BeTrue())
-					Expect(containerResources.Limits.Memory().String()).To(Equal("12Mi"))
+					Expect(containerResources.Limits.Memory().String()).To(Equal("26Mi"))
 					Expect(containerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
 					Expect(containerResources.Requests.Cpu().IsZero()).To(BeTrue())
 					Expect(containerResources.Requests.Memory().String()).To(Equal("12Mi"))
 					Expect(containerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
+				})
+
+				It("should have no exports if the config map has none", func() {
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name())
+					Expect(err).ToNot(HaveOccurred())
+					Expect(extraConfig.Exports).To(BeEmpty())
+				})
+
+				It("should parse grpc and http exports", func() {
+					_, err := tmpFile.WriteString(`
+exports:
+  - grpc:
+      endpoint: otel-collector.other-namespace.svc.cluster.local:4317
+      insecure: true
+      balancer_name: pick_first
+      keepalive:
+        time: 30s
+        timeout: 10s
+        permit_without_stream: true
+      headers:
+        - name: x-tenant
+          value: tenant-1
+  - http:
+      endpoint: https://otlp.example.com
+      encoding: json
+      insecureSkipVerify: true
+      headers:
+        - name: authorization
+          valueFrom:
+            secretKeyRef:
+              name: my-backend-secret
+              key: token
+`)
+					Expect(err).ToNot(HaveOccurred())
+
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name())
+					Expect(err).ToNot(HaveOccurred())
+					Expect(extraConfig.Exports).To(HaveLen(2))
+
+					grpcExport := extraConfig.Exports[0].Grpc
+					Expect(grpcExport).ToNot(BeNil())
+					Expect(grpcExport.Endpoint).To(Equal("otel-collector.other-namespace.svc.cluster.local:4317"))
+					Expect(*grpcExport.Insecure).To(BeTrue())
+					Expect(grpcExport.BalancerName).To(Equal(dash0common.PickFirst))
+					Expect(*grpcExport.Keepalive.Time).To(Equal("30s"))
+					Expect(*grpcExport.Keepalive.Timeout).To(Equal("10s"))
+					Expect(*grpcExport.Keepalive.PermitWithoutStream).To(BeTrue())
+					Expect(grpcExport.Headers).To(HaveLen(1))
+					Expect(grpcExport.Headers[0].Name).To(Equal("x-tenant"))
+					Expect(grpcExport.Headers[0].Value).To(Equal("tenant-1"))
+
+					httpExport := extraConfig.Exports[1].Http
+					Expect(httpExport).ToNot(BeNil())
+					Expect(httpExport.Endpoint).To(Equal("https://otlp.example.com"))
+					Expect(httpExport.Encoding).To(Equal(dash0common.Json))
+					Expect(*httpExport.InsecureSkipVerify).To(BeTrue())
+					Expect(httpExport.Headers).To(HaveLen(1))
+					Expect(httpExport.Headers[0].Name).To(Equal("authorization"))
+					Expect(httpExport.Headers[0].Value).To(BeEmpty())
+					Expect(httpExport.Headers[0].ValueFrom.SecretKeyRef.Name).To(Equal("my-backend-secret"))
+					Expect(httpExport.Headers[0].ValueFrom.SecretKeyRef.Key).To(Equal("token"))
+				})
+
+				It("should parse a dash0 export", func() {
+					_, err := tmpFile.WriteString(`
+exports:
+  - dash0:
+      endpoint: ingress.dash0.com:4317
+      dataset: my-dataset
+      apiEndpoint: https://api.dash0.com
+      authorization:
+        secretRef:
+          name: dash0-authorization-secret
+          key: token
+`)
+					Expect(err).ToNot(HaveOccurred())
+
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name())
+					Expect(err).ToNot(HaveOccurred())
+					Expect(extraConfig.Exports).To(HaveLen(1))
+
+					dash0Export := extraConfig.Exports[0].Dash0
+					Expect(dash0Export).ToNot(BeNil())
+					Expect(dash0Export.Endpoint).To(Equal("ingress.dash0.com:4317"))
+					Expect(dash0Export.Dataset).To(Equal("my-dataset"))
+					Expect(dash0Export.ApiEndpoint).To(Equal("https://api.dash0.com"))
+					Expect(dash0Export.Authorization.Token).To(BeNil())
+					Expect(dash0Export.Authorization.SecretRef.Name).To(Equal("dash0-authorization-secret"))
+					Expect(dash0Export.Authorization.SecretRef.Key).To(Equal("token"))
 				})
 			})
 		})

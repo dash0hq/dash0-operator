@@ -15,40 +15,35 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/resources"
-	"github.com/dash0hq/dash0-operator/internal/signalcontrol/enablement"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 const (
 	updateStatusFailedMessageSignalControl = "Failed to update Dash0 Signal Control status conditions, requeuing reconcile request."
 
-	reasonSignalControlNotEnabledForOrganization = "SignalControlNotEnabledForOrganization"
-	reasonSignalControlEnablementCheckFailed     = "SignalControlEnablementCheckFailed"
-	reasonSignalControlNoDash0Export             = "NoDash0ExportConfigured"
+	reasonSignalControlNoDash0Export = "NoDash0ExportConfigured"
 )
 
-// errNoDash0Export is returned from verifyEnablement to requeue the reconcile request when Signal Control is enabled
-// but the operator configuration has no Dash0 export, so the resource recovers once a Dash0 export is configured.
+// errNoDash0Export is returned from verifyDash0ExportConfigured to requeue the reconcile request when Signal Control
+// is enabled but the operator configuration has no Dash0 export, so the resource recovers once a Dash0 export is
+// configured.
 var errNoDash0Export = errors.New("no Dash0 export configured in the operator configuration while Signal Control is enabled")
 
 type SignalControlReconciler struct {
 	client.Client
 	signalControlManager *SignalControlManager
 	collectorManager     *collectors.CollectorManager
-	enablementChecker    *enablement.EnablementChecker
 }
 
 func NewSignalControlReconciler(
 	k8sClient client.Client,
 	signalControlManager *SignalControlManager,
 	collectorManager *collectors.CollectorManager,
-	enablementChecker *enablement.EnablementChecker,
 ) *SignalControlReconciler {
 	return &SignalControlReconciler{
 		Client:               k8sClient,
 		signalControlManager: signalControlManager,
 		collectorManager:     collectorManager,
-		enablementChecker:    enablementChecker,
 	}
 }
 
@@ -110,10 +105,10 @@ func (r *SignalControlReconciler) Reconcile(
 		return ctrl.Result{}, err
 	}
 
-	// When Signal Control is enabled via the resource, verify the organization is entitled to use it before applying
-	// any Signal Control components to the collector or deploying the Edge Proxy.
+	// When Signal Control is enabled via the resource, verify a Dash0 export is configured before applying any Signal
+	// Control components to the collector or deploying the Edge Proxy.
 	if signalControlResource.Spec.Enabled == nil || *signalControlResource.Spec.Enabled {
-		if handled, err := r.verifyEnablement(ctx, signalControlResource, logger); handled {
+		if handled, err := r.verifyDash0ExportConfigured(ctx, signalControlResource, logger); handled {
 			return reconcile.Result{}, err
 		}
 	}
@@ -155,15 +150,15 @@ func (r *SignalControlReconciler) Reconcile(
 	return reconcile.Result{}, nil
 }
 
-// verifyEnablement checks the preconditions for applying Signal Control: a Dash0 export must be configured in the
-// operator configuration, and the organization must be entitled to use Signal Control. It returns handled=false when
-// both hold, so the caller proceeds with the normal reconcile flow. It returns handled=true when Signal Control must
-// not be applied (no Dash0 export, the organization is not entitled, or the entitlement could not be verified); in
-// that case it has already removed the Signal Control components, reconciled the collector into a plain collector, and
-// marked the resource as degraded, and the caller should stop reconciling and return the provided error. For the
-// no-Dash0-export and unverifiable-entitlement cases it returns a non-nil error so the request is requeued and the
-// resource recovers once the precondition is met (the controller does not watch the operator configuration).
-func (r *SignalControlReconciler) verifyEnablement(
+// verifyDash0ExportConfigured checks the precondition for applying Signal Control: a Dash0 export must be configured
+// in the operator configuration, because Signal Control needs the export's auth token for the Decision Maker
+// connection. It returns handled=false when the export is configured, so the caller proceeds with the normal reconcile
+// flow. It returns handled=true when Signal Control must not be applied (no Dash0 export); in that case it has already
+// removed the Signal Control components, reconciled the collector into a plain collector, and marked the resource as
+// degraded, and the caller should stop reconciling and return the provided error. It returns a non-nil error so the
+// request is requeued and the resource recovers once the export is configured (the controller does not watch the
+// operator configuration).
+func (r *SignalControlReconciler) verifyDash0ExportConfigured(
 	ctx context.Context,
 	signalControlResource *dash0v1alpha1.Dash0SignalControl,
 	logger logd.Logger,
@@ -174,9 +169,9 @@ func (r *SignalControlReconciler) verifyEnablement(
 	}
 
 	// Signal Control requires a Dash0 export in the operator configuration for the Decision Maker auth token; without
-	// it, Signal Control cannot function. Verify this before the entitlement check, which also depends on the export's
-	// auth token. This covers cases the operator configuration validation webhook cannot (webhook bypass, or the
-	// operator configuration being deleted entirely), the latter reaching here as a nil operator configuration.
+	// it, Signal Control cannot function. This covers cases the operator configuration validation webhook cannot
+	// (webhook bypass, or the operator configuration being deleted entirely), the latter reaching here as a nil
+	// operator configuration.
 	if operatorConfig == nil || !operatorConfig.HasDash0ExportConfigured() {
 		message := "Signal Control is enabled, but the operator configuration has no Dash0 export. Signal Control " +
 			"requires a Dash0 export with an auth token for the Decision Maker connection. Signal Control components " +
@@ -196,34 +191,8 @@ func (r *SignalControlReconciler) verifyEnablement(
 		)
 	}
 
-	checkResult, checkErr := r.enablementChecker.Check(ctx, operatorConfig, logger)
-	if checkResult == enablement.ResultAllowed {
-		// The organization is entitled to use Signal Control; proceed with the normal reconcile flow.
-		return false, nil
-	}
-
-	var reason, message string
-	if checkResult == enablement.ResultNotAllowed {
-		reason = reasonSignalControlNotEnabledForOrganization
-		message = "The organization is not entitled to use Signal Control. Signal Control components will not be " +
-			"added to the collector and the Edge Proxy will not be deployed."
-		logger.WarnTelemetryCollectionIssue(message)
-	} else {
-		reason = reasonSignalControlEnablementCheckFailed
-		message = "The Signal Control entitlement for the organization could not be verified. Signal Control " +
-			"components will not be added to the collector and the Edge Proxy will not be deployed until the " +
-			"entitlement is confirmed."
-		logger.WarnTelemetryCollectionIssue(message, "error", checkErr)
-	}
-
-	// When the entitlement could not be verified (Unknown due to a check error), requeue to retry until the
-	// entitlement is confirmed. A definitive NotAllowed does not requeue; it is re-evaluated on the next change to
-	// the Signal Control resource.
-	var requeueErr error
-	if checkResult != enablement.ResultNotAllowed && checkErr != nil {
-		requeueErr = checkErr
-	}
-	return r.disableSignalControlAsDegraded(ctx, signalControlResource, reason, message, requeueErr, logger)
+	// The Dash0 export is configured; proceed with the normal reconcile flow.
+	return false, nil
 }
 
 // disableSignalControlAsDegraded removes the Edge Proxy and reconciles the collector so it drops the Signal Control

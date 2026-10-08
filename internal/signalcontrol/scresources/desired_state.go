@@ -18,6 +18,7 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
@@ -47,6 +48,12 @@ var (
 	}
 )
 
+// EdgeProxyDefaultReplicas is used when the extra config map does not specify a replica count (e.g. older config
+// maps). The Helm chart ships a higher default; this only backstops a missing value. The topology spread constraints
+// bias replicas onto separate zones and nodes (see edgeProxyTopologySpreadConstraints), and the operator warns when
+// there are fewer replicas than availability zones.
+const EdgeProxyDefaultReplicas int32 = 1
+
 type clientObject struct {
 	object client.Object
 }
@@ -60,9 +67,11 @@ func assembleDesiredState(
 	edgeProxyImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
 	otlpGrpcHostPort int32,
+	kubernetesApiServerVersion cluster.KubernetesVersionInfo,
 	extraConfig util.ExtraConfig,
-	isGkeAutopilot bool,
 	forDeletion bool,
+	isGkeAutopilot bool,
+	isOpenShift bool,
 	logger logd.Logger,
 ) []clientObject {
 	edgeProxyEnabled := !forDeletion &&
@@ -77,9 +86,10 @@ func assembleDesiredState(
 	var desiredState []clientObject
 	if forDeletion || edgeProxyEnabled {
 		if edgeProxyEnabled {
+			trafficDistribution := cluster.ResolveServiceTrafficDistribution(kubernetesApiServerVersion, logger)
 			desiredState = append(desiredState,
-				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, signalControlResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, otlpGrpcHostPort, extraConfig, isGkeAutopilot, logger)),
-				addCommonMetadata(assembleEdgeProxyService(operatorNamespace, namePrefix)),
+				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, signalControlResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, otlpGrpcHostPort, extraConfig, isGkeAutopilot, isOpenShift, logger)),
+				addCommonMetadata(assembleEdgeProxyService(operatorNamespace, namePrefix, trafficDistribution)),
 				addCommonMetadata(assembleEdgeProxyPodDisruptionBudget(operatorNamespace, namePrefix)),
 			)
 		} else {
@@ -98,7 +108,7 @@ func assembleDesiredStateForDelete(
 	namePrefix string,
 	logger logd.Logger,
 ) []clientObject {
-	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", 0, util.ExtraConfig{}, false, true, logger)
+	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", 0, cluster.KubernetesVersionInfo{}, util.ExtraConfig{}, true, false, false, logger)
 }
 
 func assembleEdgeProxyDeployment(
@@ -112,12 +122,12 @@ func assembleEdgeProxyDeployment(
 	otlpGrpcHostPort int32,
 	extraConfig util.ExtraConfig,
 	isGkeAutopilot bool,
+	isOpenShift bool,
 	logger logd.Logger,
 ) *appsv1.Deployment {
 	replicas := extraConfig.EdgeProxyReplicas
 	if replicas < 1 {
-		// Default to a single replica when the extra config does not specify a value (e.g. older config maps).
-		replicas = 1
+		replicas = EdgeProxyDefaultReplicas
 	}
 
 	dmEndpoint, authorization, dataset, apiEndpoint := deriveUpstreamConfig(operatorConfig)
@@ -146,6 +156,14 @@ func assembleEdgeProxyDeployment(
 	}
 	authTokenEnvVar := assembleAuthTokenEnvVar(authorization, logger)
 
+	// The Edge Proxy serves pprof on its internal admin server, gated by LISTENADDRESSINTERNAL: an empty value keeps
+	// the server off. When opted in, bind loopback only, so it is reachable via kubectl port-forward but not from
+	// other pods.
+	listenAddressInternal := ""
+	if extraConfig.EdgeProxyEnablePprof {
+		listenAddressInternal = fmt.Sprintf("127.0.0.1:%d", edgeProxyInternalPort)
+	}
+
 	edgeProxyContainer := corev1.Container{
 		Name:  edgeProxyComponentName,
 		Image: edgeProxyImage,
@@ -166,16 +184,11 @@ func assembleEdgeProxyDeployment(
 				ContainerPort: edgeProxyGrpcPort,
 				Protocol:      corev1.ProtocolTCP,
 			},
-			{
-				Name:          "internal",
-				ContainerPort: edgeProxyInternalPort,
-				Protocol:      corev1.ProtocolTCP,
-			},
 		},
 		Env: []corev1.EnvVar{
 			{
 				Name:  util.EnvVarGoMemLimit,
-				Value: extraConfig.EdgeProxyContainerResources.GoMemLimit,
+				Value: extraConfig.EdgeProxyContainerResources.EffectiveGoMemLimitPercent(util.GoMemLimitDefaultPercent),
 			},
 			authTokenEnvVar,
 			{
@@ -190,7 +203,7 @@ func assembleEdgeProxyDeployment(
 			},
 			{
 				Name:  "LISTENADDRESSINTERNAL",
-				Value: fmt.Sprintf(":%d", edgeProxyInternalPort),
+				Value: listenAddressInternal,
 			},
 		},
 		Resources: extraConfig.EdgeProxyContainerResources.ToResourceRequirements(),
@@ -227,6 +240,14 @@ func assembleEdgeProxyDeployment(
 
 	if edgeProxyImagePullPolicy != "" {
 		edgeProxyContainer.ImagePullPolicy = edgeProxyImagePullPolicy
+	}
+
+	if extraConfig.EdgeProxyEnablePprof {
+		edgeProxyContainer.Ports = append(edgeProxyContainer.Ports, corev1.ContainerPort{
+			Name:          "internal",
+			ContainerPort: edgeProxyInternalPort,
+			Protocol:      corev1.ProtocolTCP,
+		})
 	}
 
 	if tailSamplingEnabled {
@@ -292,6 +313,20 @@ func assembleEdgeProxyDeployment(
 				Value: spec.EdgeProxy.SettingsRefreshInterval.Duration.String(),
 			})
 		}
+		// Log enrichment polls patterns on the shared settings stream, so it rides the same edge-settings
+		// upstream and requires it to be enabled.
+		if pointers.ReadBoolPointerWithDefault(spec.LogEnrichment.Enabled, false) {
+			edgeProxyContainer.Env = append(edgeProxyContainer.Env, corev1.EnvVar{
+				Name:  "UPSTREAM_EDGESETTINGS_LOGPATTERNS_ENABLED",
+				Value: "true",
+			})
+			if d := spec.LogEnrichment.PatternRefreshInterval; d != nil && d.Duration > 0 {
+				edgeProxyContainer.Env = append(edgeProxyContainer.Env, corev1.EnvVar{
+					Name:  "UPSTREAM_EDGESETTINGS_LOGPATTERNS_REFRESHINTERVAL",
+					Value: d.Duration.String(),
+				})
+			}
+		}
 	}
 	if operatorConfig != nil && pointers.ReadBoolPointerWithDefault(operatorConfig.Spec.SelfMonitoring.Enabled, true) {
 		edgeProxyContainer.Env = append(
@@ -304,7 +339,7 @@ func assembleEdgeProxyDeployment(
 		TerminationGracePeriodSeconds: new(int64(30)),
 		SecurityContext: &corev1.PodSecurityContext{
 			RunAsNonRoot: new(true),
-			RunAsUser:    new(edgeProxyUserID),
+			RunAsUser:    util.RunAsID(isOpenShift, edgeProxyUserID),
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
@@ -424,10 +459,16 @@ func assembleEdgeProxyDeploymentForDeletion(operatorNamespace string, namePrefix
 	}
 }
 
-func assembleEdgeProxyService(operatorNamespace string, namePrefix string) *corev1.Service {
+func assembleEdgeProxyService(operatorNamespace string, namePrefix string, trafficDistribution *string) *corev1.Service {
 	service := assembleEdgeProxyServiceForDeletion(operatorNamespace, namePrefix)
 	service.Spec = corev1.ServiceSpec{
 		Selector: edgeProxyMatchLabels,
+		// Prefer endpoints in the sender's own availability zone, so the collectors' decision stream to the Edge Proxy
+		// does not cross zones. This only takes effect when the sender's zone has a ready Edge Proxy endpoint;
+		// otherwise kube-proxy falls back to the full endpoint set for that node, which costs cross-zone traffic but
+		// never drops it. That is also why the operator warns when there are fewer Edge Proxy replicas than zones, see
+		// SignalControlManager.warnAboutInsufficientZoneCoverage.
+		TrafficDistribution: trafficDistribution,
 		Ports: []corev1.ServicePort{
 			{
 				Name:        "grpc",

@@ -1,8 +1,9 @@
 module github.com/dash0hq/dash0-operator/images/pkg/common
 
-go 1.27.0
+go 1.27.1
 
 require (
+	github.com/dash0hq/dash0-operator/images/pkg/nodeuid v0.0.0
 	go.opentelemetry.io/contrib/bridges/otelzap v0.20.1
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.22.0
@@ -33,6 +34,8 @@ require (
 	golang.org/x/text v0.41.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260819154853-08b0e4226688 // indirect
-	google.golang.org/grpc v1.83.2 // indirect
+	google.golang.org/grpc v1.84.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
+
+replace github.com/dash0hq/dash0-operator/images/pkg/nodeuid => ../nodeuid

@@ -130,7 +130,7 @@ On its own, the operator will only collect Kubernetes metrics.
 To actually have the operator properly monitor your workloads, two more things need to be set up:
 
 1. A [Dash0 backend connection](configuration.md#configuring-the-dash0-backend-connection) has to be configured (unless you did that
-   already with the Helm values `operator.dash0Export.*`), and
+   already with the Helm values `operator.dash0Export.*` or `operator.exports`), and
 2. Monitoring namespaces and their workloads to collect logs, traces and metrics has to be
    [enabled per namespace](configuration.md#enable-dash0-monitoring-for-a-namespace), or configure namespace auto-monitoring.
 

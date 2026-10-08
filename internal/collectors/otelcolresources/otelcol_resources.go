@@ -22,10 +22,12 @@ import (
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/agent0connector/a0cresources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
+	"github.com/dash0hq/dash0-operator/internal/syntheticsworker/swresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -140,6 +142,17 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 				operatorConfigurationResource.Spec.Profiling.Enabled,
 				false,
 			)
+	agent0ConnectorEnabled :=
+		operatorConfigurationResource.Spec.Agent0Connector.IsEnabled(m.collectorConfig.Agent0ConnectorEnabledViaHelm)
+	var syntheticsWorkerDeploymentNames []string
+	if operatorConfigurationResource.Spec.SyntheticsWorker.IsEnabled(m.collectorConfig.SyntheticsWorkerEnabledViaHelm) {
+		for _, instance := range operatorConfigurationResource.Spec.SyntheticsWorker.Instances {
+			syntheticsWorkerDeploymentNames = append(
+				syntheticsWorkerDeploymentNames,
+				swresources.DeploymentName(m.collectorConfig.OTelCollectorNamePrefix, instance.LocationID),
+			)
+		}
+	}
 	clusterName = operatorConfigurationResource.Spec.ClusterName
 	kubeletStatsReceiverConfig :=
 		m.determineKubeletstatsReceiverEndpoint(
@@ -174,10 +187,12 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		K8sAttributesDisableReplicasetInformer:           m.collectorConfig.K8sAttributesDisableReplicasetInformer,
 		K8sAttributesWaitForMetadata:                     m.collectorConfig.K8sAttributesWaitForMetadata,
 		K8sAttributesWaitForMetadataTimeout:              m.collectorConfig.K8sAttributesWaitForMetadataTimeout,
+		K8sAttributesShareProcessor:                      m.collectorConfig.K8sAttributesShareProcessor,
 		PrometheusCrdSupportEnabled:                      prometheusCrdSupportEnabled,
 		TargetAllocatorNamePrefix:                        m.collectorConfig.TargetAllocatorNamePrefix,
-		Agent0ConnectorEnabled:                           m.collectorConfig.Agent0ConnectorEnabled,
+		Agent0ConnectorEnabled:                           agent0ConnectorEnabled,
 		Agent0ConnectorDeploymentName:                    a0cresources.DeploymentName(m.collectorConfig.OTelCollectorNamePrefix),
+		SyntheticsWorkerDeploymentNames:                  syntheticsWorkerDeploymentNames,
 		KubeletStatsReceiverConfig:                       kubeletStatsReceiverConfig,
 		AutoNamespaceMonitoringEnabled:                   operatorConfigurationResource.Spec.AutoMonitorNamespaces.IsEnabled(),
 		// The hostmetrics receiver requires mapping the root file system as a volume mount, see
@@ -200,16 +215,21 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			m.collectorConfig.KubernetesApiServerVersion,
 			logger,
 		),
-		SignalControl:          signalControlConfigFromResource(signalControlResource, operatorConfigurationResource, m.collectorConfig.OperatorNamespace, m.collectorConfig.OTelCollectorNamePrefix, logger),
-		DevelopmentMode:        m.collectorConfig.DevelopmentMode,
-		DebugVerbosityDetailed: m.collectorConfig.DebugVerbosityDetailed,
-		EnableProfExtension:    m.collectorConfig.EnableProfExtension,
-		ProfilingEnabled:       profilingEnabled,
-		CompressConfigMap:      m.collectorConfig.CompressConfigMap,
+		GlobalFilter:              globalFilter(operatorConfigurationResource),
+		GlobalNormalizedTransform: globalNormalizedTransform(operatorConfigurationResource),
+		SignalControl:             signalControlConfigFromResource(signalControlResource, operatorConfigurationResource, m.collectorConfig.OperatorNamespace, m.collectorConfig.OTelCollectorNamePrefix, logger),
+		DevelopmentMode:           m.collectorConfig.DevelopmentMode,
+		DebugVerbosityDetailed:    m.collectorConfig.DebugVerbosityDetailed,
+		EnableProfExtension:       m.collectorConfig.EnableProfExtension,
+		ProfilingEnabled:          profilingEnabled,
+		CompressConfigMap:         m.collectorConfig.CompressConfigMap,
 	}
 	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
 		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume
 	}
+	config.DaemonSetCollectorMemoryLimit = *extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Memory()
+	config.DeploymentCollectorMemoryLimit = *extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory()
+	config.SignalControlCollectorMemoryLimit = *extraConfig.SignalControlCollectorContainerResources.Limits.Memory()
 	if config.signalControlGatewayActive() {
 		logger.Debug(fmt.Sprintf("Deploying the Signal Control collector (image %s), since Signal Control is enabled "+
 			"via the Dash0SignalControl resource. The daemonset and the cluster-metrics collector export their "+
@@ -340,9 +360,11 @@ func (m *OTelColResourceManager) updateResource(
 	// environment variable, and modifying the containers will automatically restart them.
 	m.amendDeploymentAndDaemonSetWithSelfReferenceUIDs(existingResource, desiredResource)
 
+	desiredResourceForComparison := desiredResource.DeepCopyObject().(client.Object)
+	resources.AdoptGkeAutopilotResourceAdjustments(existingResource, desiredResourceForComparison, logger)
 	patchResult, err := patch.DefaultPatchMaker.Calculate(
 		existingResource,
-		desiredResource,
+		desiredResourceForComparison,
 		patch.IgnoreField("kind"),
 		patch.IgnoreField("apiVersion"),
 	)
@@ -677,6 +699,28 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 	return kubeletStatsReceiverConfig
 }
 
+// globalFilter returns the cluster-wide filters of the operator configuration resource, or nil if it has none.
+func globalFilter(operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration) *dash0common.Filter {
+	filter := operatorConfigurationResource.Spec.Filter
+	if filter == nil || !filter.HasAnyFilters() {
+		return nil
+	}
+	return filter
+}
+
+// globalNormalizedTransform returns the cluster-wide transformations of the operator configuration resource in their
+// normalized form, or nil if it has none. The normalized form is written by the operator configuration mutating
+// webhook.
+func globalNormalizedTransform(
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+) *dash0common.NormalizedTransformSpec {
+	transform := operatorConfigurationResource.Spec.NormalizedTransformSpec
+	if transform == nil || !transform.HasAnyStatements() {
+		return nil
+	}
+	return transform
+}
+
 func signalControlConfigFromResource(
 	resource *dash0v1alpha1.Dash0SignalControl,
 	operatorConfig *dash0v1alpha1.Dash0OperatorConfiguration,
@@ -706,6 +750,7 @@ func signalControlConfigFromResource(
 	// applies for the memory/serialized_memory reservoir types.
 	var samplingReservoirMaxMemoryBytes int64
 	samplingReservoirMetricLevel := string(dash0v1alpha1.ReservoirMetricLevelBasic)
+	var samplingReservoirBufferDuration string
 	if r := resource.Spec.Sampling.Reservoir; r != nil {
 		if r.Type != nil && *r.Type != "" {
 			samplingReservoirType = string(*r.Type)
@@ -725,25 +770,24 @@ func signalControlConfigFromResource(
 		if r.MaxMemoryBytes != nil {
 			samplingReservoirMaxMemoryBytes = r.MaxMemoryBytes.Value()
 		}
+		if d := r.BufferDuration; d != nil && d.Duration > 0 {
+			samplingReservoirBufferDuration = d.Duration.String()
+		}
 		if r.MetricLevel != nil && *r.MetricLevel != "" {
 			samplingReservoirMetricLevel = string(*r.MetricLevel)
 		}
 	}
 	signalToMetricsEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.SignalToMetrics.Enabled, true)
-	var signalToMetricsFlushInterval string
-	if d := resource.Spec.SignalToMetrics.FlushInterval; d != nil && d.Duration > 0 {
-		signalToMetricsFlushInterval = d.Duration.String()
-	}
-	var signalToMetricsCacheExpiration string
-	if d := resource.Spec.SignalToMetrics.CacheExpiration; d != nil && d.Duration > 0 {
-		signalToMetricsCacheExpiration = d.Duration.String()
-	}
+	signalToMetricsFlushInterval := durationStringOrEmpty(resource.Spec.SignalToMetrics.FlushInterval)
+	signalToMetricsCacheExpiration := durationStringOrEmpty(resource.Spec.SignalToMetrics.CacheExpiration)
 	spamFilterEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.SpamFilter.Enabled, true)
-	var spamFilterCacheExpiration string
-	if d := resource.Spec.SpamFilter.CacheExpiration; d != nil && d.Duration > 0 {
-		spamFilterCacheExpiration = d.Duration.String()
-	}
+	spamFilterCacheExpiration := durationStringOrEmpty(resource.Spec.SpamFilter.CacheExpiration)
 	spamFilterAllowNoSettingsExt := pointers.ReadBoolPointerWithDefault(resource.Spec.SpamFilter.AllowNoSettingsExt, false)
+
+	logEnrichmentEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.LogEnrichment.Enabled, false)
+	logPatternRefreshInterval := durationStringOrEmpty(resource.Spec.LogEnrichment.PatternRefreshInterval)
+	logParserCacheExpiration := durationStringOrEmpty(resource.Spec.LogEnrichment.ParserCacheExpiration)
+	logGroupingCacheExpiration := durationStringOrEmpty(resource.Spec.LogEnrichment.GroupingCacheExpiration)
 
 	operationPreferSpanName := pointers.ReadBoolPointerWithDefault(resource.Spec.OperationProcessor.PreferSpanName, false)
 	var operationCardinalityRules []SignalControlCardinalityRule
@@ -804,6 +848,7 @@ func signalControlConfigFromResource(
 		SamplingReservoirMaxDiskBytes:      samplingReservoirMaxDiskBytes,
 		SamplingReservoirMaxMemoryBytes:    samplingReservoirMaxMemoryBytes,
 		SamplingReservoirMetricLevel:       samplingReservoirMetricLevel,
+		SamplingReservoirBufferDuration:    samplingReservoirBufferDuration,
 		SignalToMetricsEnabled:             signalToMetricsEnabled,
 		SignalToMetricsMaxTimeSeries:       resource.Spec.SignalToMetrics.MaxTimeSeries,
 		SignalToMetricsFlushInterval:       signalToMetricsFlushInterval,
@@ -813,6 +858,10 @@ func signalControlConfigFromResource(
 		SpamFilterEnabled:                  spamFilterEnabled,
 		SpamFilterCacheExpiration:          spamFilterCacheExpiration,
 		SpamFilterAllowNoSettingsExt:       spamFilterAllowNoSettingsExt,
+		LogEnrichmentEnabled:               logEnrichmentEnabled,
+		LogPatternRefreshInterval:          logPatternRefreshInterval,
+		LogParserCacheExpiration:           logParserCacheExpiration,
+		LogGroupingCacheExpiration:         logGroupingCacheExpiration,
 		OperationPreferSpanName:            operationPreferSpanName,
 		OperationCardinalityRules:          operationCardinalityRules,
 		Endpoint:                           endpoint,

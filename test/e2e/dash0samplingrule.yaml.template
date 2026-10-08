@@ -4,9 +4,6 @@ metadata:
   name: sampling-rule-e2e-test
   labels:
     app.kubernetes.io/name: sampling-rule-e2e-test
-{{- if .Dash0ComEnabled }}
-    dash0.com/enabled: {{ .Dash0ComEnabled | quote }}
-{{- end }}
 spec:
   enabled: true
   display:

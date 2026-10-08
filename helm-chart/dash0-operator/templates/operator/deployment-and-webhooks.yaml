@@ -112,6 +112,8 @@ spec:
         - --health-probe-bind-address=:8081
         - --metrics-bind-address=127.0.0.1:8080
         - --leader-elect
+{{- if include "dash0-operator.createOperatorConfigurationResource" . }}
+        - --operator-configuration-managed-via-helm=true
 {{- if .Values.operator.dash0Export.enabled }}
 {{- if not .Values.operator.dash0Export.endpoint }}
 {{- fail "Error: operator.dash0Export.enabled is set to true, but you did not provide a value for operator.dash0Export.endpoint. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
@@ -128,6 +130,7 @@ spec:
 {{- if .Values.operator.dash0Export.apiEndpoint }}
         - --operator-configuration-api-endpoint={{ .Values.operator.dash0Export.apiEndpoint }}
 {{- end }}{{/*closes "if .Values.operator.dash0Export.apiEndpoint" */}}
+{{- end }}{{/*closes the first "if .Values.operator.dash0Export.enabled" */}}
         - --operator-configuration-self-monitoring-enabled={{ .Values.operator.selfMonitoringEnabled }}
         - --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled={{ .Values.operator.kubernetesInfrastructureMetricsCollectionEnabled }}
         - --operator-configuration-collect-pod-labels-and-annotations-enabled={{ .Values.operator.collectPodLabelsAndAnnotationsEnabled }}
@@ -138,6 +141,7 @@ spec:
 {{- if .Values.operator.clusterName }}
         - --operator-configuration-cluster-name={{ .Values.operator.clusterName }}
 {{- end }}{{/*closes "if .Values.operator.clusterName" */}}
+{{- if .Values.operator.dash0Export.enabled }}
 {{- if .Values.operator.dash0Export.dataset }}
         - --operator-configuration-dataset={{ .Values.operator.dash0Export.dataset }}
 {{- end }}{{/*closes "if .Values.operator.dash0Export.dataset" */}}
@@ -150,19 +154,21 @@ spec:
 {{- if .Values.operator.dash0Export.keepalive.permit_without_stream }}
         - --operator-configuration-keepalive-permit-without-stream={{ .Values.operator.dash0Export.keepalive.permit_without_stream }}
 {{- end }}{{/*closes "if .Values.operator.dash0Export.keepalive.permit_without_stream" */}}
+{{- end }}{{/*closes the second "if .Values.operator.dash0Export.enabled" */}}
         - --operator-configuration-auto-monitor-namespaces-enabled={{ .Values.operator.autoMonitorNamespaces.enabled }}
         - --operator-configuration-auto-monitor-namespaces-label-selector={{ .Values.operator.autoMonitorNamespaces.labelSelector }}
 {{- if not (or (eq .Values.operator.instrumentation.delivery "auto") (eq .Values.operator.instrumentation.delivery "image-volume") (eq .Values.operator.instrumentation.delivery "init-container")) }}
 {{- fail (printf "Error: operator.instrumentation.delivery must be one of \"auto\", \"image-volume\" or \"init-container\", but was %q." .Values.operator.instrumentation.delivery) -}}
 {{- end }}
         - --operator-configuration-instrumentation-delivery={{ .Values.operator.instrumentation.delivery }}
-{{- end }}{{/*closes "if .Values.operator.dash0Export.enabled" */}}
+{{- end }}{{/*closes "if include dash0-operator.createOperatorConfigurationResource" */}}
         - --dash0-telemetry-collection-enabled={{ .Values.operator.telemetryCollectionEnabled }}
 {{- if .Values.operator.signalControl.enabled }}
         - --dash0-feature-signal-control-enabled=true
 {{- end }}
         - --dash0-force-use-otel-collector-service-url={{ .Values.operator.collectors.forceUseServiceUrl }}
         - --dash0-gke-autopilot={{ .Values.operator.gke.autopilot.enabled }}
+        - --dash0-openshift={{ .Values.operator.openShift.enabled }}
         - --dash0-disable-otel-collector-host-ports={{ .Values.operator.collectors.disableHostPorts }}
 {{- $otlpGrpcHostPort := int .Values.operator.collectors.otlpGrpcHostPort }}
 {{- $otlpHttpHostPort := int .Values.operator.collectors.otlpHttpHostPort }}
@@ -296,6 +302,29 @@ spec:
           value: "true"
         {{- end }}{{/* closes "if .Values.operator.agent0Connector.insecure" */}}
         {{- end }}{{/* closes "if .Values.operator.agent0Connector.enabled" */}}
+        - name: DASH0_SYNTHETICS_WORKER_IMAGE
+          value: {{ include "dash0-operator.syntheticsWorkerImage" . | quote }}
+        {{- if .Values.operator.syntheticsWorkerImage.pullPolicy }}
+        - name: DASH0_SYNTHETICS_WORKER_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.syntheticsWorkerImage.pullPolicy }}
+        {{- end }}
+        {{- if .Values.operator.syntheticsWorker.enabled }}
+        {{- if not .Values.operator.syntheticsWorker.serverAddress }}
+        {{- fail "Error: operator.syntheticsWorker.enabled is set to true, but you did not provide a value for operator.syntheticsWorker.serverAddress. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
+        {{- end }}{{/* closes "not .Values.operator.syntheticsWorker.serverAddress" */}}
+        - name: DASH0_SYNTHETICS_WORKER_ENABLED
+          value: "true"
+        - name: DASH0_SYNTHETICS_WORKER_SERVER_ADDRESS
+          value: {{ .Values.operator.syntheticsWorker.serverAddress | quote }}
+        {{- if .Values.operator.syntheticsWorker.insecure }}
+        - name: DASH0_SYNTHETICS_WORKER_INSECURE
+          value: "true"
+        {{- end }}{{/* closes "if .Values.operator.syntheticsWorker.insecure" */}}
+        {{- if .Values.operator.syntheticsWorker.priorityClassName }}
+        - name: DASH0_SYNTHETICS_WORKER_PRIORITY_CLASS_NAME
+          value: {{ .Values.operator.syntheticsWorker.priorityClassName | quote }}
+        {{- end }}{{/* closes "if .Values.operator.syntheticsWorker.priorityClassName" */}}
+        {{- end }}{{/* closes "if .Values.operator.syntheticsWorker.enabled" */}}
         {{- if .Values.operator.developmentMode }}
         - name: DASH0_DEVELOPMENT_MODE
           value: {{ .Values.operator.developmentMode | toString | quote }}
@@ -356,9 +385,13 @@ spec:
         - name: OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA_TIMEOUT
           value: {{ .Values.operator.collectors.k8s_attributes.wait_for_metadata_timeout | toString | quote }}
         {{- end }}
-        {{- if .Values.operator.collectors.enablePprofExtension }}
+        {{- if .Values.operator.collectors.k8s_attributes.shareProcessorBetweenPipelines }}
+        - name: OTEL_COLLECTOR_K8SATTRIBUTES_SHARE_PROCESSOR_BETWEEN_PIPELINES
+          value: "true"
+        {{- end }}
+        {{- if or .Values.operator.collectors.enablePprof .Values.operator.collectors.enablePprofExtension }}
         - name: OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION
-          value: {{ .Values.operator.collectors.enablePprofExtension | toString | quote }}
+          value: "true"
         {{- end }}
         {{- if .Values.operator.collectors.compressConfigMaps }}
         - name: OTEL_COLLECTOR_COMPRESS_CONFIG_MAPS
@@ -1093,10 +1126,12 @@ spec:
                             type: string
                         type: object
                       dataset:
-                        default: default
                         description: |-
-                          The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-                          dataset "default" will be used.
+                          The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
+                          identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
+                          identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
+                          optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
+                          authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                         type: string
                       endpoint:
                         description: |-
@@ -1370,10 +1405,12 @@ spec:
                               type: string
                           type: object
                         dataset:
-                          default: default
                           description: |-
-                            The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-                            dataset "default" will be used.
+                            The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
+                            identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
+                            identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
+                            optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
+                            authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                           type: string
                         endpoint:
                           description: |-
@@ -1605,9 +1642,10 @@ spec:
 
                       This is optional, default to "ignore", there is usually no reason to change this.
 
-                      Note that although this can be specified per namespace, the filter conditions will be aggregated into one
-                      single filter processor in the resulting OpenTelemetry collector configuration; if different error modes are
-                      specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+                      Note that although this can be specified per namespace and cluster-wide, the filter conditions will be aggregated
+                      into one single filter processor in the resulting OpenTelemetry collector configuration; if different error modes
+                      are specified in different namespaces, or cluster-wide in the operator configuration resource, the "most severe"
+                      error mode will be used (propagate > ignore > silent).
                     enum:
                     - ignore
                     - silent
@@ -1852,9 +1890,10 @@ spec:
 
                       This is optional, default to "ignore".
 
-                      Note that although this can be specified per namespace, the transform statements will be aggregated into one
-                      single transform processor in the resulting OpenTelemetry collector configuration; if different error modes are
-                      specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+                      Note that although this can be specified per namespace and cluster-wide, the transform statements will be
+                      aggregated into one single transform processor in the resulting OpenTelemetry collector configuration; if
+                      different error modes are specified in different namespaces, or cluster-wide in the operator configuration
+                      resource, the "most severe" error mode will be used (propagate > ignore > silent).
                     enum:
                     - ignore
                     - silent
@@ -2311,10 +2350,12 @@ spec:
                             type: string
                         type: object
                       dataset:
-                        default: default
                         description: |-
-                          The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-                          dataset "default" will be used.
+                          The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
+                          identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
+                          identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
+                          optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
+                          authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                         type: string
                       endpoint:
                         description: |-
@@ -2588,10 +2629,12 @@ spec:
                               type: string
                           type: object
                         dataset:
-                          default: default
                           description: |-
-                            The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-                            dataset "default" will be used.
+                            The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
+                            identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
+                            identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
+                            optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
+                            authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                           type: string
                         endpoint:
                           description: |-
@@ -2823,9 +2866,10 @@ spec:
 
                       This is optional, default to "ignore", there is usually no reason to change this.
 
-                      Note that although this can be specified per namespace, the filter conditions will be aggregated into one
-                      single filter processor in the resulting OpenTelemetry collector configuration; if different error modes are
-                      specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+                      Note that although this can be specified per namespace and cluster-wide, the filter conditions will be aggregated
+                      into one single filter processor in the resulting OpenTelemetry collector configuration; if different error modes
+                      are specified in different namespaces, or cluster-wide in the operator configuration resource, the "most severe"
+                      error mode will be used (propagate > ignore > silent).
                     enum:
                     - ignore
                     - silent
@@ -3138,9 +3182,10 @@ spec:
 
                       This is optional, default to "ignore".
 
-                      Note that although this can be specified per namespace, the transform statements will be aggregated into one
-                      single transform processor in the resulting OpenTelemetry collector configuration; if different error modes are
-                      specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+                      Note that although this can be specified per namespace and cluster-wide, the transform statements will be
+                      aggregated into one single transform processor in the resulting OpenTelemetry collector configuration; if
+                      different error modes are specified in different namespaces, or cluster-wide in the operator configuration
+                      resource, the "most severe" error mode will be used (propagate > ignore > silent).
                     enum:
                     - ignore
                     - silent

@@ -11,6 +11,7 @@ import (
 	"reflect"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -174,10 +175,72 @@ func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigura
 		patchRequired = true
 	}
 
+	// spec.agent0Connector.enabled is deliberately not defaulted: an unset flag means "follow the Helm value", which
+	// Agent0Connector#IsEnabled resolves against the Helm value the operator holds for the lifetime of the process.
+	// Persisting that Helm value here would keep a later helm upgrade from changing it.
+
 	patchRequiredForMonitoringTemplate := h.setMonitoringTemplateDefaults(spec)
 	patchRequired = patchRequired || patchRequiredForMonitoringTemplate
 
+	// Normalize spec.transform to the transform processors "advanced" config format.
+	if spec.Transform != nil {
+		normalizedTransformSpec, responseStatus, err := normalizeTransform(spec.Transform, logger)
+		if err != nil {
+			errorResponse := admission.Errored(responseStatus, err)
+			return false, &errorResponse
+		}
+		spec.NormalizedTransformSpec = normalizedTransformSpec
+		patchRequired = true
+	} else if spec.NormalizedTransformSpec != nil {
+		// The normalized spec is derived from spec.transform; a merge-style update that removes spec.transform leaves
+		// it behind, so it has to be cleared explicitly.
+		spec.NormalizedTransformSpec = nil
+		patchRequired = true
+	}
+
+	patchRequiredForSyntheticsWorker := setSyntheticsWorkerInstanceDefaults(spec)
+	patchRequired = patchRequired || patchRequiredForSyntheticsWorker
+
 	return patchRequired, nil
+}
+
+// setSyntheticsWorkerInstanceDefaults defaults each synthetics-worker instance's NodeAffinity to the same
+// dash0.com/enable=false exclusion and Linux-only node selection used by every other workload the operator manages
+// (see values.yaml's deploymentNodeAffinity and friends). Instances are not configured via the Helm chart, so unlike
+// those other workloads this default cannot be expressed as a Helm value and must be applied here instead.
+func setSyntheticsWorkerInstanceDefaults(spec *dash0v1alpha1.Dash0OperatorConfigurationSpec) bool {
+	patchRequired := false
+	for i := range spec.SyntheticsWorker.Instances {
+		instance := &spec.SyntheticsWorker.Instances[i]
+		if instance.NodeAffinity == nil {
+			instance.NodeAffinity = defaultSyntheticsWorkerNodeAffinity()
+			patchRequired = true
+		}
+	}
+	return patchRequired
+}
+
+func defaultSyntheticsWorkerNodeAffinity() *corev1.NodeAffinity {
+	return &corev1.NodeAffinity{
+		RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+			NodeSelectorTerms: []corev1.NodeSelectorTerm{
+				{
+					MatchExpressions: []corev1.NodeSelectorRequirement{
+						{
+							Key:      "dash0.com/enable",
+							Operator: corev1.NodeSelectorOpNotIn,
+							Values:   []string{"false"},
+						},
+						{
+							Key:      "kubernetes.io/os",
+							Operator: corev1.NodeSelectorOpIn,
+							Values:   []string{"linux"},
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 func (h *OperatorConfigurationMutatingWebhookHandler) setMonitoringTemplateDefaults(

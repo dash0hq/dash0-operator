@@ -209,6 +209,14 @@ cat \
 
 # shellcheck disable=SC2002
 cat \
+  test-resources/customresources/dash0timeseriesaggregation/dash0timeseriesaggregation.yaml.template | \
+  DASH0_DATASET="$DASH0_DATASET_RESOLVED" \
+  TARGET_NAMESPACE="$target_namespace" \
+  envsubst > \
+  test-resources/customresources/dash0timeseriesaggregation/dash0timeseriesaggregation.yaml
+
+# shellcheck disable=SC2002
+cat \
   test-resources/customresources/dash0signaltometrics/logs.yaml.template | \
   DASH0_DATASET="$DASH0_DATASET_RESOLVED" \
   envsubst > \

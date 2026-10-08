@@ -956,7 +956,7 @@ func (i *Instrumenter) handleJobOnUninstrumentation(
 	// Note: In contrast to the instrumentation logic, there is no need to check for dash0.com/enable=false to determine
 	// the required action here: If dash0.com/enable=false is set, the workload would not have been instrumented in the
 	// first place, hence the label selector filter looking for dash0.com/instrumented=true would not have matched. Or
-	// if the workload is actually instrumented, although it has dash0.com/enabled=false it must have been set after the
+	// if the workload is actually instrumented, although it has dash0.com/enable=false it must have been set after the
 	// instrumentation, in which case uninstrumenting it is the correct thing to do.
 
 	createImmutableWorkloadsError := false
@@ -1123,7 +1123,7 @@ func (i *Instrumenter) revertWorkloadInstrumentation(
 	// Note: In contrast to the instrumentation logic, there is no need to check for dash0.com/enable=false here:
 	// If it is set, the workload would not have been instrumented in the first place, hence the label selector filter
 	// looking for dash0.com/instrumented=true would not have matched. Or if the workload is actually instrumented,
-	// although it has dash0.com/enabled=false it must have been set after the instrumentation, in which case
+	// although it has dash0.com/enable=false it must have been set after the instrumentation, in which case
 	// uninstrumenting it is the correct thing to do.
 
 	logger.Debug("reverting instrumentation for workload")

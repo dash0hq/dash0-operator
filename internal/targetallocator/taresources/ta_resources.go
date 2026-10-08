@@ -52,6 +52,7 @@ func (m *TargetAllocatorResourceManager) CreateOrUpdateTargetAllocatorResources(
 		CollectorComponent: m.targetAllocatorConfig.CollectorComponent,
 		Images:             m.targetAllocatorConfig.Images,
 		IsGkeAutopilot:     m.targetAllocatorConfig.IsGkeAutopilot,
+		IsOpenShift:        m.targetAllocatorConfig.IsOpenShift,
 	}
 
 	desiredState, err := assembleDesiredStateForUpsert(config, namespacesWithPrometheusScraping, extraConfig)
@@ -143,9 +144,11 @@ func (m *TargetAllocatorResourceManager) updateResource(
 		return false, err
 	}
 
+	desiredResourceForComparison := desiredResource.DeepCopyObject().(client.Object)
+	resources.AdoptGkeAutopilotResourceAdjustments(existingResource, desiredResourceForComparison, logger)
 	patchResult, err := patch.DefaultPatchMaker.Calculate(
 		existingResource,
-		desiredResource,
+		desiredResourceForComparison,
 		patch.IgnoreField("kind"),
 		patch.IgnoreField("apiVersion"),
 	)
@@ -194,6 +197,7 @@ func (m *TargetAllocatorResourceManager) DeleteResources(
 		OperatorNamespace: m.targetAllocatorConfig.OperatorNamespace,
 		NamePrefix:        m.targetAllocatorConfig.TargetAllocatorNamePrefix,
 		IsGkeAutopilot:    m.targetAllocatorConfig.IsGkeAutopilot,
+		IsOpenShift:       m.targetAllocatorConfig.IsOpenShift,
 	}
 	desiredResources, err := assembleDesiredStateForDelete(config, extraConfig)
 	if err != nil {

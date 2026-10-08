@@ -30,10 +30,52 @@ func TestKubectlEnv(t *testing.T) {
 		}
 	})
 
-	t.Run("preserves the ambient environment", func(t *testing.T) {
+	t.Run("passes the variables kubectl needs through", func(t *testing.T) {
 		t.Setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
-		if !slices.Contains(kubectlEnv("/tmp"), "KUBERNETES_SERVICE_HOST=10.0.0.1") {
-			t.Error("expected the ambient KUBERNETES_SERVICE_HOST variable to be preserved")
+		t.Setenv("KUBERNETES_SERVICE_PORT", "443")
+		t.Setenv("HTTPS_PROXY", "http://proxy.example.com:3128")
+		env := kubectlEnv("/tmp")
+		for _, expected := range []string{
+			"KUBERNETES_SERVICE_HOST=10.0.0.1",
+			"KUBERNETES_SERVICE_PORT=443",
+			"HTTPS_PROXY=http://proxy.example.com:3128",
+		} {
+			if !slices.Contains(env, expected) {
+				t.Errorf("expected %q to be passed through, got %v", expected, env)
+			}
+		}
+	})
+
+	t.Run("drops every variable kubectl does not need, including the auth token", func(t *testing.T) {
+		const authToken = "auth_the-connectors-own-token"
+		t.Setenv("DASH0_AGENT0_CONNECTOR_AUTH_TOKEN", authToken)
+		t.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization=Bearer "+authToken)
+		for _, entry := range kubectlEnv("/tmp") {
+			if strings.Contains(entry, authToken) {
+				t.Errorf("expected the auth token not to reach the kubectl subprocess, got the entry %q", entry)
+			}
+			name, _, _ := strings.Cut(entry, "=")
+			if name != "HOME" && name != kubercEnvVarName && !slices.Contains(kubectlEnvPassThrough, name) {
+				t.Errorf("expected only allowlisted variables in the environment, got %q", name)
+			}
+		}
+	})
+
+	t.Run("omits a variable that is not set", func(t *testing.T) {
+		t.Setenv("NO_PROXY", "")
+		if err := os.Unsetenv("NO_PROXY"); err != nil {
+			t.Fatalf("could not unset NO_PROXY: %v", err)
+		}
+		for _, entry := range kubectlEnv("/tmp") {
+			if strings.HasPrefix(entry, "NO_PROXY=") {
+				t.Errorf("expected an unset variable to be omitted rather than passed as empty, got %q", entry)
+			}
+		}
+	})
+
+	t.Run("disables kuberc preferences", func(t *testing.T) {
+		if !slices.Contains(kubectlEnv("/tmp"), "KUBERC=off") {
+			t.Errorf("expected KUBERC=off in the environment, got %v", kubectlEnv("/tmp"))
 		}
 	})
 }
@@ -131,7 +173,7 @@ func TestExecuteCommandRequest(t *testing.T) {
 	logger := discardLogger()
 
 	t.Run("rejects an invalid command without executing it", func(t *testing.T) {
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-1",
 			Command:   "helm",
 			Arguments: []string{"list"},
@@ -158,7 +200,7 @@ func TestExecuteCommandRequest(t *testing.T) {
 		// A fake "kubectl" that writes to stdout and stderr and exits successfully stands in for the real binary.
 		fakeKubectlOnPath(t, "#!/bin/sh\necho stdout-line\necho stderr-line >&2\nexit 0\n")
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-ok",
 			Command:   "kubectl",
 			Arguments: []string{"get", "pods"},
@@ -187,7 +229,7 @@ func TestExecuteCommandRequest(t *testing.T) {
 		fakeKubectlOnPath(t, "#!/bin/sh\nsleep 1\n")
 		setCommandTimeout(t, 10*time.Millisecond)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-timeout",
 			Command:   "kubectl",
 			Arguments: []string{"get", "pods"},

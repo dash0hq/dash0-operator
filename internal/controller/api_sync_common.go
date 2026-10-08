@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 
+	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/resources"
@@ -126,6 +127,28 @@ func NewResourceToRequestsResultSingleItemSuccess(
 	)
 }
 
+// NewResourceToRequestsResultSingleItemApiClientCall creates a result with a single call via the Dash0 API client.
+func NewResourceToRequestsResultSingleItemApiClientCall(
+	apiConfig ApiConfig,
+	apiClientCall *ApiClientCall,
+	itemName string,
+	origin string,
+) *ResourceToRequestsResult {
+	return NewResourceToRequestsResult(
+		apiConfig,
+		[]WrappedApiRequest{
+			{
+				ApiClientCall: apiClientCall,
+				ItemName:      itemName,
+				Origin:        origin,
+			},
+		},
+		nil,
+		nil,
+		nil,
+	)
+}
+
 func NewResourceToRequestsResultSingleItemValidationIssue(
 	apiConfig ApiConfig,
 	itemName string,
@@ -220,12 +243,37 @@ type OwnedResourceReconciler interface {
 	)
 }
 
-// WrappedApiRequest bundles an http.Request for the Dash0 API with additional metadata.
+// WrappedApiRequest bundles a request for the Dash0 API with additional metadata. The request is either a raw
+// http.Request (Request) or a call via the Dash0 API client (ApiClientCall), exactly one of the two is set.
 type WrappedApiRequest struct {
-	Request   *http.Request
-	ItemName  string
-	Origin    string
-	ApiConfig ApiConfig
+	Request       *http.Request
+	ApiClientCall *ApiClientCall
+	ItemName      string
+	Origin        string
+	ApiConfig     ApiConfig
+}
+
+// ApiClientCall is a deferred call to the Dash0 API via the Dash0 API client. Method and Url describe the HTTP request
+// the call will issue, they are only used for logging and error messages.
+type ApiClientCall struct {
+	Method string
+	Url    string
+	// Execute performs the call and returns the Dash0 id of the synchronized object, if available.
+	Execute func(ctx context.Context) (string, error)
+}
+
+func (r *WrappedApiRequest) method() string {
+	if r.ApiClientCall != nil {
+		return r.ApiClientCall.Method
+	}
+	return r.Request.Method
+}
+
+func (r *WrappedApiRequest) url() string {
+	if r.ApiClientCall != nil {
+		return r.ApiClientCall.Url
+	}
+	return r.Request.URL.String()
 }
 
 type Dash0ApiObjectWithOrigin struct {
@@ -459,7 +507,7 @@ func synchronizeViaApiAndUpdateStatus(
 		var httpErrorStatusCodes map[string]int
 		if len(resourceToRequestsResult.ApiRequests) > 0 {
 			successfullySynchronized, httpErrors, httpErrorStatusCodes =
-				executeAllHttpRequests(apiSyncReconciler, resourceToRequestsResult.ApiRequests, logger)
+				executeAllHttpRequests(ctx, apiSyncReconciler, resourceToRequestsResult.ApiRequests, logger)
 		}
 		if len(httpErrors) > 0 {
 			if resourceToRequestsResult.SynchronizationErrors == nil {
@@ -1076,6 +1124,7 @@ func addAuthorizationHeader(req *http.Request, token string) {
 // name to HTTP status code for the failed items (0 if the failure was a transport-level error where no HTTP response
 // was received). The keys of the two maps are identical.
 func executeAllHttpRequests(
+	ctx context.Context,
 	apiSyncReconciler ApiSyncReconciler,
 	allRequests []WrappedApiRequest,
 	logger logd.Logger,
@@ -1088,35 +1137,33 @@ func executeAllHttpRequests(
 			"synchronize the %s \"%s\": %s %s",
 			apiSyncReconciler.ShortName(),
 			apiRequest.ItemName,
-			apiRequest.Request.Method,
-			apiRequest.Request.URL.String(),
+			apiRequest.method(),
+			apiRequest.url(),
 		)
-		isDelete := apiRequest.Request.Method == http.MethodDelete
-		if responseBytes, err :=
-			executeSingleHttpRequest(
-				apiSyncReconciler,
-				apiRequest.Request,
-				actionLabel,
-				!isDelete,
-				logger,
-			); err != nil {
+		isDelete := apiRequest.method() == http.MethodDelete
+		var id string
+		var err error
+		if apiRequest.ApiClientCall != nil {
+			id, err = executeApiClientCall(ctx, apiRequest.ApiClientCall, actionLabel, isDelete, logger)
+		} else {
+			var responseBytes []byte
+			responseBytes, err = executeSingleHttpRequest(apiSyncReconciler, apiRequest.Request, actionLabel, !isDelete, logger)
+			if err == nil && !isDelete {
+				id, _ = apiSyncReconciler.ExtractIdFromResponseBody(responseBytes, logger)
+			}
+		}
+		if err != nil {
 			httpErrors[apiRequest.ItemName] = err.Error()
 			httpErrorStatusCodes[apiRequest.ItemName] = httpStatusCodeFromError(err)
 		} else {
 			// The Dash0ApiObjectLabels will be used to provide additional information in the resources status when
 			// we write the synchronization results, like the object's Dash0 id, origin and dataset.
+			// We do not receive a response body from HTTP DELETE requests, so the id will be omitted for deletes.
 			labels := Dash0ApiObjectLabels{
+				Id:          id,
 				Origin:      apiRequest.Origin,
 				ApiEndpoint: apiRequest.ApiConfig.Endpoint,
 				Dataset:     apiRequest.ApiConfig.Dataset,
-			}
-
-			if isDelete {
-				// We do not receive a response body from HTTP DELETE requests. The id is not available, so it will be omitted.
-				labels.Id = ""
-			} else {
-				id, _ := apiSyncReconciler.ExtractIdFromResponseBody(responseBytes, logger)
-				labels.Id = id
 			}
 			syncResponse := SuccessfulSynchronizationResult{
 				ItemName: apiRequest.ItemName,
@@ -1186,6 +1233,64 @@ func executeSingleHttpRequest(
 		return nil, fmt.Errorf("unexpected nil/empty response body")
 	}
 	return make([]byte, 0), nil
+}
+
+// executeApiClientCall executes a single call via the Dash0 API client and returns the Dash0 id of the synchronized
+// object. Errors are converted to the same format and status code semantics as errors from executeSingleHttpRequest.
+func executeApiClientCall(
+	ctx context.Context,
+	apiClientCall *ApiClientCall,
+	actionLabel string,
+	isDelete bool,
+	logger logd.Logger,
+) (string, error) {
+	logger.Info(fmt.Sprintf("executing HTTP request to %s", actionLabel))
+	id, err := apiClientCall.Execute(ctx)
+	if err == nil {
+		return id, nil
+	}
+	err = convertApiClientError(err, actionLabel, isDelete)
+	if err == nil {
+		return "", nil
+	}
+	logger.Error(err, fmt.Sprintf("unable to %s", actionLabel))
+	return "", err
+}
+
+// convertApiClientError maps an error returned by the Dash0 API client to an apiSyncHttpError. It returns nil for a
+// 404 response to a delete request, since the object to delete is already gone. An invalid auth token is reported with
+// status code 401, so it is not retried.
+func convertApiClientError(err error, actionLabel string, isDelete bool) error {
+	var invalidTokenErr *invalidAuthTokenError
+	if errors.As(err, &invalidTokenErr) {
+		return &apiSyncHttpError{
+			statusCode: http.StatusUnauthorized,
+			err:        fmt.Errorf("unable to %s: %w", actionLabel, err),
+		}
+	}
+	var apiErr *dash0apiclient.APIError
+	if !errors.As(err, &apiErr) {
+		return &apiSyncHttpError{statusCode: 0, err: err}
+	}
+	if isDelete && apiErr.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	return &apiSyncHttpError{
+		statusCode: apiErr.StatusCode,
+		err: fmt.Errorf(
+			"unexpected status code %d when trying to %s, response body is %s",
+			apiErr.StatusCode,
+			actionLabel,
+			apiErr.Body,
+		),
+	}
+}
+
+// datasetInOrigin returns the dataset as it is contained in the origin of objects the operator synchronizes to Dash0.
+// The origins are defined as the path-unescaped form of url.QueryEscape(dataset), which is the dataset itself except
+// that spaces are replaced by "+".
+func datasetInOrigin(dataset string) string {
+	return strings.ReplaceAll(dataset, " ", "+")
 }
 
 // apiSyncHttpError wraps an error that occurred while synchronizing a resource to the Dash0 API together with the HTTP

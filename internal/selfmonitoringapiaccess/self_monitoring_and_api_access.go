@@ -112,9 +112,9 @@ func ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 ) (SelfMonitoringConfiguration, error) {
 	// Maintenance note: ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration is called from
 	// operator_configuration_controller.go#Reconcile to create the in-process OTel SDK config for the operator manager,
-	// and also from otelcol_resources.go#CreateOrUpdateOpenTelemetryCollectorResources to create the OTel SDK config for
-	// managed pods/containers. Secrets (the Dash0 Auth token and arbitrary secret-backed header values for plain
-	// HTTP/gRPC exports) need to be handled differently, depending on the code path.
+	// and also from (among others) otelcol_resources.go#CreateOrUpdateOpenTelemetryCollectorResources to create the OTel
+	// SDK config for managed pods/containers. Secrets (the Dash0 Auth token and arbitrary secret-backed header values for
+	// plain HTTP/gRPC exports) need to be handled differently, depending on the code path.
 	if resource == nil {
 		return SelfMonitoringConfiguration{}, nil
 	}
@@ -327,39 +327,89 @@ func resolveSelfMonitoringHeaderSecrets(
 	return resolved, nil
 }
 
-func EnableSelfMonitoringInCollectorDaemonSet(
-	collectorDaemonSet *appsv1.DaemonSet,
+// EnableSelfMonitoringInDaemonSet enables self-monitoring for all containers in the given DaemonSet. It sets the
+// environment variables the OpenTelemetry Go SDK needs on all containers, with one exception - the container with the
+// name otelCollectorContainerName (if this argument is provided) is assumed to run the OpenTelemetry collector and
+// receives a different set of environment variables (since it does not use the OpenTelemetry Go SDK), see
+// enableSelfMonitoringInContainers. Pass an empty otelCollectorContainerName for pod specs without a collector
+// container.
+func EnableSelfMonitoringInDaemonSet(
+	daemonSet *appsv1.DaemonSet,
 	selfMonitoringConfiguration SelfMonitoringConfiguration,
 	operatorVersion string,
 	developmentMode bool,
+	otelCollectorContainerName string,
 ) error {
-	return enableSelfMonitoringInCollector(
-		collectorDaemonSet.Spec.Template.Spec.Containers,
+	return enableSelfMonitoringInPodSpec(
+		&daemonSet.Spec.Template.Spec,
 		selfMonitoringConfiguration,
 		operatorVersion,
 		developmentMode,
+		otelCollectorContainerName,
 	)
 }
 
-func EnableSelfMonitoringInCollectorDeployment(
-	collectorDeployment *appsv1.Deployment,
+// EnableSelfMonitoringInDeployment enables self-monitoring for all containers in the given Deployment. It sets the
+// environment variables the OpenTelemetry Go SDK needs on all containers, with one exception - the container with the
+// name otelCollectorContainerName (if this argument is provided) is assumed to run the OpenTelemetry collector and
+// receives a different set of environment variables (since it does not use the OpenTelemetry Go SDK), see
+// enableSelfMonitoringInContainers. Pass an empty otelCollectorContainerName for pod specs without a collector
+// container.
+func EnableSelfMonitoringInDeployment(
+	deployment *appsv1.Deployment,
 	selfMonitoringConfiguration SelfMonitoringConfiguration,
 	operatorVersion string,
 	developmentMode bool,
+	otelCollectorContainerName string,
 ) error {
-	return enableSelfMonitoringInCollector(
-		collectorDeployment.Spec.Template.Spec.Containers,
+	return enableSelfMonitoringInPodSpec(
+		&deployment.Spec.Template.Spec,
 		selfMonitoringConfiguration,
 		operatorVersion,
 		developmentMode,
+		otelCollectorContainerName,
 	)
 }
 
-func enableSelfMonitoringInCollector(
-	collectorContainers []corev1.Container,
+// enableSelfMonitoringInPodSpec enables self-monitoring for all containers in the given podSpec. It sets the
+// environment variables the OpenTelemetry Go SDK needs on all containers, with one exception - the container with the
+// name otelCollectorContainerName (if this argument is provided) is assumed to run the OpenTelemetry collector and
+// receives a different set of environment variables (since it does not use the OpenTelemetry Go SDK), see
+// enableSelfMonitoringInContainers. Pass an empty otelCollectorContainerName for pod specs without a collector
+// container.
+func enableSelfMonitoringInPodSpec(
+	podSpec *corev1.PodSpec,
 	selfMonitoringConfiguration SelfMonitoringConfiguration,
 	operatorVersion string,
 	developmentMode bool,
+	otelCollectorContainerName string,
+) error {
+	// Note: We do not instrument init containers, that is, we only pass podSpec.Containers but not
+	// podSpec.InitContainers to enableSelfMonitoringInContainers. Init containers are short-lived. Trying to flush
+	// all internal telemetry at the end of an init container process might lead to the init container running longer than
+	// necessary. The alternative would be not flushing telemetry at the process end. This is also not very useful,
+	// because we often would lose most or all of the init containers telemetry anyway.
+	return enableSelfMonitoringInContainers(
+		podSpec.Containers,
+		selfMonitoringConfiguration,
+		operatorVersion,
+		developmentMode,
+		otelCollectorContainerName,
+	)
+}
+
+// enableSelfMonitoringInContainers enables self-monitoring for the given containers. The container named
+// otelCollectorContainerName is assumed to run the OpenTelemetry collector, which configures its internal telemetry via
+// the service::telemetry section of the collector configuration; it only needs the environment variable holding the
+// auth token, which the rendered self-monitoring pipeline refers to via  ${env:SELF_MONITORING_AUTH_TOKEN}. All other
+// containers are assumed to use the OpenTelemetry Go SDK, which is configured exclusively via environment variables.
+// Pass an empty otelCollectorContainerName for pod specs without a collector container.
+func enableSelfMonitoringInContainers(
+	containers []corev1.Container,
+	selfMonitoringConfiguration SelfMonitoringConfiguration,
+	operatorVersion string,
+	developmentMode bool,
+	otelCollectorContainerName string,
 ) error {
 	selfMonitoringExport := selfMonitoringConfiguration.Export
 	var authTokenEnvVar *corev1.EnvVar
@@ -374,38 +424,41 @@ func enableSelfMonitoringInCollector(
 		authTokenEnvVar = &envVar
 	}
 
-	// For now, we do not instrument init containers. The filelogoffsetsync init container fails with:
-	//     filelog-offset-init 2024/08/29 21:45:48
-	//     Failed to shutdown metrics provider, metrics data nay have been lost: failed to upload metrics:
-	//     failed to exit idle mode: dns resolver: missing address
-	// making the collector pod go into CrashLoopBackoff.
-	//
-	// This is probably due to a misconfiguration of the endpoint, but ultimately it won't do if selfmonitoring issues
-	// prevent the collector from starting. We probably need to remove the log.Fatalln calls entirely there.
-	//
-	// for i, container := range collectorDaemonSet.Spec.Template.Spec.InitContainers {
-	//	enableSelfMonitoringInCollectorContainer(
-	// 	  &container, selfMonitoringExport, authTokenEnvVar, operatorVersion, developmentMode)
-	//	collectorDaemonSet.Spec.Template.Spec.InitContainers[i] = container
-	// }
-
-	for i, container := range collectorContainers {
-		enableSelfMonitoringInCollectorContainer(
+	for i, container := range containers {
+		if otelCollectorContainerName != "" && container.Name == otelCollectorContainerName {
+			enableSelfMonitoringInOpenTelemetryCollectorContainer(&container, authTokenEnvVar)
+			containers[i] = container
+			continue
+		}
+		enableSelfMonitoringInOTelSdkContainer(
 			&container,
 			selfMonitoringExport,
 			authTokenEnvVar,
 			operatorVersion,
 			developmentMode,
 		)
-		collectorContainers[i] = container
+		containers[i] = container
 	}
 
 	return nil
 }
 
-// enableSelfMonitoringInCollectorContainer is called for all collector containers (e.g. configuration-reloader,
-// filelog-offset-sync etc.) to set the required environment variables for the Go OTel SDK.
-func enableSelfMonitoringInCollectorContainer(
+// enableSelfMonitoringInOpenTelemetryCollectorContainer is called for the containers that run the
+// opentelemetry-collector process, to set the environment variables that the self-monitoring configuration via
+// pipelines.telemetry requires.
+func enableSelfMonitoringInOpenTelemetryCollectorContainer(
+	container *corev1.Container,
+	authTokenEnvVar *corev1.EnvVar,
+) {
+	if authTokenEnvVar != nil {
+		addAuthTokenToContainer(container, authTokenEnvVar)
+	}
+}
+
+// enableSelfMonitoringInOTelSdkContainer is called for all containers that run a Go OTel SDK (the collector pods'
+// sidecar containers configuration-reloader and filelog-offset-sync, and the agent0-connector), to set the environment
+// variables the SDK requires.
+func enableSelfMonitoringInOTelSdkContainer(
 	container *corev1.Container,
 	selfMonitoringExport dash0common.Export,
 	authTokenEnvVar *corev1.EnvVar,
@@ -588,7 +641,7 @@ func ConvertExportConfigurationToEnvVarSettings(selfMonitoringExport dash0common
 				Value: selfMonitoringAuthHeaderValue,
 			},
 		}
-		if dash0Export.Dataset != "" && dash0Export.Dataset != util.DatasetDefault {
+		if dash0Export.Dataset != "" {
 			headers = append(
 				headers, dash0common.Header{
 					Name:  util.Dash0DatasetHeaderName,
@@ -694,7 +747,7 @@ func convertDash0ExportConfigurationToCollectorLogSelfMonitoringPipelineString(
                     value: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"`,
 		util.AuthorizationHeaderName,
 	)
-	if dash0Export.Dataset != "" && dash0Export.Dataset != util.DatasetDefault {
+	if dash0Export.Dataset != "" {
 		pipeline += fmt.Sprintf(
 			`
                   - name: %s
@@ -795,7 +848,7 @@ func addInsecureFlagIfNecessary(pipeline string, endpoint string) string {
 	return pipeline
 }
 
-// getAuthTokenForDash0Export takes a Dash0 export configuration and returns the configured token by either
+// GetAuthTokenForDash0Export takes a Dash0 export configuration and returns the configured token by either
 // resolving the provided secretRef or returning the token literal.
 func GetAuthTokenForDash0Export(
 	ctx context.Context,

@@ -12,12 +12,15 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"os"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/dash0hq/dash0-operator/images/agent0-connector/kubectl"
+	"github.com/dash0hq/dash0-operator/images/agent0-connector/selfmonitoring"
+	"github.com/dash0hq/dash0-operator/images/agent0-connector/tracecontext"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -71,6 +74,10 @@ const (
 	// default memory limit of the pod.
 	defaultMaxConcurrentCommands = 2
 
+	// exitCodePanicked is reported for a command request whose execution panicked, mirroring the exit code the kubectl
+	// package reports for a request it rejects: the connector returns no output either way.
+	exitCodePanicked int32 = 1
+
 	// commandQueueCapacity is how many received command requests wait for a free worker. (A queued request holds only
 	// the command and its arguments, so items in the queue are cheap with regard to memory consumption.)
 	commandQueueCapacity = 16
@@ -88,35 +95,57 @@ const (
 	healthyStreamThreshold = 1 * time.Minute
 )
 
+// exit terminates the process with the given exit code. Tests replace it to observe the termination without ending the
+// test process.
+var exit = os.Exit
+
+// toleratedSchemePrefixes are the protocol prefixes that resolveServerAddress accepts and removes from the configured
+// server address. Any other scheme is left alone, in particular the schemes of gRPC's own target syntax (dns://,
+// passthrough:, unix:), which grpc.NewClient understands.
+var toleratedSchemePrefixes = []string{"https://", "http://"}
+
+// Subscriber subscribes to command requests from the Dash0 backend and executes them. Create it with NewSubscriber.
+type Subscriber struct {
+	serverAddress          string
+	transportCredentials   credentials.TransportCredentials
+	clientID               string
+	authToken              string
+	kubectlTmpDir          string
+	maxConcurrentCommands  int
+	allowedKubectlCommands kubectl.AllowedKubectlCommands
+	execute                commandExecutor
+}
+
+// NewSubscriber creates a Subscriber, resolving its configuration from the environment. It exits the process if a
+// mandatory environment variable is not set.
+func NewSubscriber(logger *slog.Logger) *Subscriber {
+	return &Subscriber{
+		serverAddress:          resolveServerAddress(logger),
+		transportCredentials:   resolveTransportCredentials(logger),
+		clientID:               resolveClientID(logger),
+		authToken:              resolveAuthToken(logger),
+		kubectlTmpDir:          resolveKubectlTmpDir(logger),
+		maxConcurrentCommands:  resolveMaxConcurrentCommands(logger),
+		allowedKubectlCommands: resolveAllowedKubectlCommands(logger),
+		execute:                kubectl.ExecuteCommandRequest,
+	}
+}
+
 // RunSubscriber opens the SubscribeToCommandRequests stream to the backend and keeps it open, reconnecting
 // whenever the stream drops, until the provided context is cancelled (e.g. on shutdown).
-func RunSubscriber(ctx context.Context, logger *slog.Logger) {
-	serverAddress := resolveServerAddress(logger)
-	transportCredentials := resolveTransportCredentials(logger)
-	clientID := resolveClientID(logger)
-	authToken := resolveAuthToken(logger)
-	kubectlTmpDir := resolveKubectlTmpDir(logger)
-	maxConcurrentCommands := resolveMaxConcurrentCommands(logger)
+func (s *Subscriber) RunSubscriber(ctx context.Context, logger *slog.Logger) {
 	logger.Info(
 		"connecting to the Dash0 backend",
-		"address", serverAddress,
-		"clientId", clientID,
-		"maxConcurrentCommands", maxConcurrentCommands,
+		"address", s.serverAddress,
+		"clientId", s.clientID,
+		"maxConcurrentCommands", s.maxConcurrentCommands,
+		"allowedKubectlCommands", s.allowedKubectlCommands.String(),
 	)
 
 	reconnectDelay := initialReconnectDelay
 	for ctx.Err() == nil {
 		streamStart := time.Now()
-		err := runStream(
-			ctx,
-			logger,
-			serverAddress,
-			transportCredentials,
-			clientID,
-			authToken,
-			kubectlTmpDir,
-			maxConcurrentCommands,
-		)
+		err := s.runStream(ctx, logger)
 		if ctx.Err() != nil {
 			return
 		}
@@ -167,7 +196,8 @@ func jitter(d time.Duration) time.Duration {
 // resolveServerAddress returns the address of the Dash0 backend service, read from the
 // DASH0_AGENT0_CONNECTOR_SERVER_ADDRESS environment variable. The address is mandatory; if it is not set the process
 // logs an error and exits, since the client has nothing to connect to. (When the operator deploys this workload, the
-// address is always provided via the Helm value operator.agent0Connector.serverAddress.)
+// address is always provided via the Helm value operator.agent0Connector.serverAddress.) An address that is configured
+// as a URL is reduced to its host and port, see normalizeServerAddress.
 func resolveServerAddress(logger *slog.Logger) string {
 	serverAddress := os.Getenv(serverAddressEnvVarName)
 	if serverAddress == "" {
@@ -175,9 +205,57 @@ func resolveServerAddress(logger *slog.Logger) string {
 			"the server address environment variable is not set, cannot connect to the Dash0 backend",
 			"envVar", serverAddressEnvVarName,
 		)
-		os.Exit(1)
+		exit(1)
+		return ""
+	}
+	serverAddress = normalizeServerAddress(logger, serverAddress)
+	if serverAddress == "" {
+		logger.Error(
+			"the server address environment variable has no host, cannot connect to the Dash0 backend",
+			"envVar", serverAddressEnvVarName,
+			"value", os.Getenv(serverAddressEnvVarName),
+		)
+		exit(1)
+		return ""
 	}
 	return serverAddress
+}
+
+// normalizeServerAddress turns a server address that is configured as a URL into a gRPC target, by removing a leading
+// http:// or https:// prefix together with everything that follows the host and port. Note that the scheme has no say
+// in whether the connection uses TLS, only the DASH0_AGENT0_CONNECTOR_INSECURE environment variable does. An address
+// without one of the two prefixes is returned unchanged.
+func normalizeServerAddress(logger *slog.Logger, serverAddress string) string {
+	prefixLength := 0
+	for _, prefix := range toleratedSchemePrefixes {
+		if len(serverAddress) >= len(prefix) && strings.EqualFold(serverAddress[:len(prefix)], prefix) {
+			prefixLength = len(prefix)
+			break
+		}
+	}
+	if prefixLength == 0 {
+		return serverAddress
+	}
+
+	normalized := serverAddress[prefixLength:]
+	if index := strings.IndexAny(normalized, "/?#"); index >= 0 {
+		if normalized[index:] != "/" {
+			logger.Warn(
+				"the configured server address has a path, a query or a fragment, ignoring everything after the host "+
+					"and the port",
+				"envVar", serverAddressEnvVarName,
+				"value", serverAddress,
+			)
+		}
+		normalized = normalized[:index]
+	}
+	logger.Info(
+		"the configured server address has a protocol prefix, using its host and port as the gRPC target",
+		"envVar", serverAddressEnvVarName,
+		"value", serverAddress,
+		"target", normalized,
+	)
+	return normalized
 }
 
 // resolveTransportCredentials returns the gRPC transport credentials used to connect to the Dash0 backend. By default
@@ -205,7 +283,8 @@ func resolveClientID(logger *slog.Logger) string {
 			"the cluster UID environment variable is not set, cannot connect to the Dash0 backend",
 			"envVar", clusterUidEnvVarName,
 		)
-		os.Exit(1)
+		exit(1)
+		return ""
 	}
 	return clientID
 }
@@ -222,7 +301,8 @@ func resolveAuthToken(logger *slog.Logger) string {
 			"the authorization token environment variable is not set, cannot connect to the Dash0 backend",
 			"envVar", authTokenEnvVarName,
 		)
-		os.Exit(1)
+		exit(1)
+		return ""
 	}
 	return authToken
 }
@@ -240,7 +320,8 @@ func resolveKubectlTmpDir(logger *slog.Logger) string {
 			"the kubectl tmp directory environment variable is not set, cannot run kubectl with a writable cache directory",
 			"envVar", kubectl.KubectlTmpEnvVarName,
 		)
-		os.Exit(1)
+		exit(1)
+		return ""
 	}
 	return tmpDir
 }
@@ -266,22 +347,32 @@ func resolveMaxConcurrentCommands(logger *slog.Logger) int {
 	return maxConcurrentCommands
 }
 
+// resolveAllowedKubectlCommands returns the kubectl commands the connector executes, read from the
+// DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS environment variable. The variable is mandatory; if it is not set,
+// cannot be parsed, contains a kubectl command the connector does not support or rejects unconditionally, or does not
+// allow any kubectl command, the process logs an error and exits. (When the operator deploys this workload, the
+// variable is always provided, from the Helm value operator.agent0Connector.allowedKubectlCommands.)
+func resolveAllowedKubectlCommands(logger *slog.Logger) kubectl.AllowedKubectlCommands {
+	allowedKubectlCommands, err := kubectl.ParseAllowedKubectlCommands(os.Getenv(kubectl.AllowedKubectlCommandsEnvVarName))
+	if err != nil {
+		logger.Error(
+			"invalid list of allowed kubectl commands",
+			"envVar", kubectl.AllowedKubectlCommandsEnvVarName,
+			"error", err,
+		)
+		exit(1)
+		return kubectl.AllowedKubectlCommands{}
+	}
+	return allowedKubectlCommands
+}
+
 // runStream opens a single SubscribeToCommandRequests stream and listens to incoming CommandRequest, until the stream
 // fails or the context is cancelled. For every received CommandRequest it executes the requested (read-only) kubectl
 // command and sends back the CommandResponse.
-func runStream(
-	ctx context.Context,
-	logger *slog.Logger,
-	serverAddress string,
-	transportCredentials credentials.TransportCredentials,
-	clientID string,
-	authToken string,
-	kubectlTmpDir string,
-	maxConcurrentCommands int,
-) error {
+func (s *Subscriber) runStream(ctx context.Context, logger *slog.Logger) error {
 	conn, err := grpc.NewClient(
-		serverAddress,
-		grpc.WithTransportCredentials(transportCredentials),
+		s.serverAddress,
+		grpc.WithTransportCredentials(s.transportCredentials),
 		// The command request stream is mostly idle (commands arrive sporadically). Without keepalive, cloud NAT
 		// gateways and load balancers might silently drop the idle TCP connection after their idle timeout; stream.Recv
 		// would then block indefinitely and commands would never be delivered. Keepalive pings keep the connection alive
@@ -303,8 +394,8 @@ func runStream(
 
 	streamCtx := metadata.AppendToOutgoingContext(
 		ctx,
-		metadataClientID, clientID,
-		metadataAuthorization, "Bearer "+authToken,
+		metadataClientID, s.clientID,
+		metadataAuthorization, "Bearer "+s.authToken,
 	)
 	stream, err := client.SubscribeToCommandRequests(streamCtx)
 	if err != nil {
@@ -313,14 +404,7 @@ func runStream(
 
 	logger.Info("subscribed to command requests")
 
-	return listenToCommandRequests(
-		ctx,
-		logger,
-		stream,
-		kubectlTmpDir,
-		maxConcurrentCommands,
-		kubectl.ExecuteCommandRequest,
-	)
+	return s.listenToCommandRequests(ctx, logger, stream)
 }
 
 // commandRequestStream is the subset of the gRPC bidirectional stream that listenToCommandRequests needs: receiving
@@ -337,6 +421,7 @@ type commandExecutor func(
 	ctx context.Context,
 	logger *slog.Logger,
 	kubectlTmpDir string,
+	allowedKubectlCommands kubectl.AllowedKubectlCommands,
 	req *pb.CommandRequest,
 ) *pb.CommandResponse
 
@@ -347,13 +432,10 @@ type commandExecutor func(
 //
 // It returns nil when the backend closed the stream cleanly (io.EOF) and a wrapped error on any receive or send
 // failure.
-func listenToCommandRequests(
+func (s *Subscriber) listenToCommandRequests(
 	ctx context.Context,
 	logger *slog.Logger,
 	stream commandRequestStream,
-	kubectlTmpDir string,
-	maxConcurrentCommands int,
-	execute commandExecutor,
 ) error {
 	workerCtx, cancelWorkers := context.WithCancel(ctx)
 	defer cancelWorkers()
@@ -365,12 +447,12 @@ func listenToCommandRequests(
 	responses := make(chan *pb.CommandResponse)
 
 	var workers sync.WaitGroup
-	for range maxConcurrentCommands {
+	for range s.maxConcurrentCommands {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
 			for req := range requests {
-				responses <- execute(workerCtx, logger, kubectlTmpDir, req)
+				responses <- s.executeWithPanicBoundary(workerCtx, req, logger)
 			}
 		}()
 	}
@@ -430,6 +512,42 @@ func listenToCommandRequests(
 	return recvErr
 }
 
+// executeWithPanicBoundary executes a single CommandRequest in a panic-safe way. It turns a panic of the executor
+// into a response, instead of letting it end the process. The executor runs in a worker goroutine, where an unrecovered
+// panic is fatal: one malformed response of one request results in a termination of the connector, which loses every
+// command in flight.
+//
+// The response in case of a panic is synthesized here, it does not use any result from the actual execution.
+func (s *Subscriber) executeWithPanicBoundary(
+	ctx context.Context,
+	req *pb.CommandRequest,
+	logger *slog.Logger,
+) (resp *pb.CommandResponse) {
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			return
+		}
+		// The kubectl command is not known here - resolving it is part of what may have panicked - so the error is
+		// recorded without one.
+		selfmonitoring.RecordCommandError(ctx, selfmonitoring.CommandUnknown, selfmonitoring.ErrorTypePanicked)
+		logger.ErrorContext(
+			ctx,
+			"recovered from a panic while executing a command request",
+			"requestId", req.GetRequestId(),
+			"panic", fmt.Sprintf("%v", recovered),
+			"stack", string(debug.Stack()),
+		)
+		resp = &pb.CommandResponse{
+			RequestId: req.GetRequestId(),
+			ExitCode:  exitCodePanicked,
+			Stderr: "dash0 agent0-connector could not execute the command: it failed in a way the connector does " +
+				"not handle",
+		}
+	}()
+	return s.execute(ctx, logger, s.kubectlTmpDir, s.allowedKubectlCommands, req)
+}
+
 // receiveCommandRequests reads CommandRequests from the stream and hands them to the worker queue, until the stream is
 // closed or fails, or until the context is cancelled. It returns nil when the backend closed the stream cleanly
 // (io.EOF) and a wrapped error on a receive failure.
@@ -448,7 +566,14 @@ func receiveCommandRequests(
 			return fmt.Errorf("stream receive failed: %w", err)
 		}
 
-		logger.Info(
+		requestCtx, tc := tracecontext.Extract(ctx, req.GetTraceparent())
+		requestLogger := logger
+		if tc.TraceID != "" {
+			requestLogger = logger.With("traceID", tc.TraceID, "spanID", tc.SpanID)
+		}
+
+		requestLogger.InfoContext(
+			requestCtx,
 			"received command request",
 			"requestId", req.GetRequestId(),
 			"command", req.GetCommand(),
@@ -460,7 +585,8 @@ func receiveCommandRequests(
 		case <-ctx.Done():
 			// Either the process is shutting down, or sending a response failed and the stream is broken. In both cases
 			// the request cannot be answered any more.
-			logger.Warn(
+			requestLogger.WarnContext(
+				requestCtx,
 				"dropping a command request, it cannot be answered any more",
 				"requestId", req.GetRequestId(),
 			)

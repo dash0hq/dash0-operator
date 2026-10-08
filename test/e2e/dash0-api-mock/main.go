@@ -48,14 +48,6 @@ var (
 
 	responseOverrides     []responseOverride
 	responseOverrideMutex sync.Mutex
-
-	// signalControlEnabled is the entitlement the mock reports at GET /api/signal-control/edge/settings, i.e. whether
-	// the organization is entitled to use Signal Control. It defaults to true so the operator applies Signal Control as
-	// usual; a test flips it via PUT /control/signal-control-enabled to exercise the "not entitled" path. It is
-	// intentionally NOT reset by DELETE /requests, so a per-test request cleanup does not change the entitlement
-	// mid-test; tests reset it explicitly.
-	signalControlEnabled      = true
-	signalControlEnabledMutex sync.RWMutex
 )
 
 func main() {
@@ -70,6 +62,9 @@ func main() {
 	router.PUT("/api/synthetic-checks/:origin", handleSyntheticCheckRequest)
 	router.DELETE("/api/synthetic-checks/:origin", handleSyntheticCheckRequest)
 
+	router.PUT("/api/slos/:origin", handleSloRequest)
+	router.DELETE("/api/slos/:origin", handleSloRequest)
+
 	router.PUT("/api/views/:origin", handleViewRequest)
 	router.DELETE("/api/views/:origin", handleViewRequest)
 
@@ -81,6 +76,9 @@ func main() {
 
 	router.PUT("/api/spam-filters/:origin", handleSpamFilterRequest)
 	router.DELETE("/api/spam-filters/:origin", handleSpamFilterRequest)
+
+	router.PUT("/api/time-series-aggregations/:origin", handleTimeSeriesAggregationRequest)
+	router.DELETE("/api/time-series-aggregations/:origin", handleTimeSeriesAggregationRequest)
 
 	router.PUT("/api/dashboards/:origin", handleDashboardRequest)
 	router.DELETE("/api/dashboards/:origin", handleDashboardRequest)
@@ -99,15 +97,11 @@ func main() {
 	router.PUT("/api/alerting/check-rules/:origin", handlePutCheckRuleRequest)
 	router.DELETE("/api/alerting/check-rules/:origin", handleDeleteCheckRuleRequest)
 
-	router.GET("/api/signal-control/edge/settings", handleSignalControlEdgeSettingsRequest)
-
 	router.GET("/requests", getAllRequests)
 	router.DELETE("/requests", deleteStoredRequests)
 
 	router.PUT("/control/response-overrides", setResponseOverrides)
 	router.DELETE("/control/response-overrides", clearResponseOverrides)
-
-	router.PUT("/control/signal-control-enabled", setSignalControlEnabled)
 
 	server := &http.Server{
 		Addr:    ":8001",
@@ -121,6 +115,11 @@ func main() {
 }
 
 func handleSyntheticCheckRequest(ginCtx *gin.Context) {
+	storeRequest(ginCtx)
+	respondWithOverrideOrOK(ginCtx)
+}
+
+func handleSloRequest(ginCtx *gin.Context) {
 	storeRequest(ginCtx)
 	respondWithOverrideOrOK(ginCtx)
 }
@@ -223,16 +222,9 @@ func handleSpamFilterRequest(ginCtx *gin.Context) {
 	respondWithOverrideOrOK(ginCtx)
 }
 
-func handleSignalControlEdgeSettingsRequest(ginCtx *gin.Context) {
+func handleTimeSeriesAggregationRequest(ginCtx *gin.Context) {
 	storeRequest(ginCtx)
-	if statusCode, ok := consumeResponseOverride(ginCtx.Request); ok {
-		ginCtx.JSON(statusCode, map[string]any{"message": "simulated failure"})
-		return
-	}
-	signalControlEnabledMutex.RLock()
-	enabled := signalControlEnabled
-	signalControlEnabledMutex.RUnlock()
-	ginCtx.JSON(http.StatusOK, map[string]any{"enabled": enabled})
+	respondWithOverrideOrOK(ginCtx)
 }
 
 func handleGetCheckRuleOriginsRequest(ginCtx *gin.Context) {
@@ -463,21 +455,6 @@ func clearResponseOverrides(ginCtx *gin.Context) {
 	responseOverrideMutex.Lock()
 	responseOverrides = nil
 	responseOverrideMutex.Unlock()
-	ginCtx.Status(http.StatusNoContent)
-}
-
-func setSignalControlEnabled(ginCtx *gin.Context) {
-	fmt.Printf("setting Signal Control entitlement: %s %s\n", ginCtx.Request.Method, ginCtx.Request.URL.String())
-	var payload struct {
-		Enabled bool `json:"enabled"`
-	}
-	if err := ginCtx.ShouldBindJSON(&payload); err != nil {
-		ginCtx.JSON(http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("invalid request body: %v", err)})
-		return
-	}
-	signalControlEnabledMutex.Lock()
-	signalControlEnabled = payload.Enabled
-	signalControlEnabledMutex.Unlock()
 	ginCtx.Status(http.StatusNoContent)
 }
 

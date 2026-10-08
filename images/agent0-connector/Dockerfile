@@ -5,9 +5,9 @@
 
 # agent0-connector executes read-only kubectl commands, so a statically-linked kubectl binary has to be present in the
 # final (scratch) image. We source it from the official Kubernetes-published kubectl image.
-FROM registry.k8s.io/kubectl:v1.37.0 AS kubectl
+FROM registry.k8s.io/kubectl:v1.37.1 AS kubectl
 
-FROM --platform=${BUILDPLATFORM} golang:1.27.0-alpine3.24 AS builder
+FROM --platform=${BUILDPLATFORM} golang:1.27.1-alpine3.24 AS builder
 
 WORKDIR /usr/local/go/src/agent0-connector
 
@@ -16,6 +16,7 @@ RUN apk add --no-cache ca-certificates
 # Copy go.mod and go.sum and run go mod download separately before copying the actual sources, to improve container
 # build caching.
 COPY agent0-connector/src/go.mod agent0-connector/src/go.sum /usr/local/go/src/agent0-connector/
+COPY pkg /usr/local/go/pkg
 RUN go mod download
 
 # now copy the actual go sources (including the proto/ subpackage) and compile them
@@ -28,7 +29,8 @@ RUN CGO_ENABLED=0 \
     GOOS=${TARGETOS:-linux} \
     GOARCH=${TARGETARCH} \
     go build \
-    -ldflags '-extldflags "-static"' \
+    -ldflags '-s -w -extldflags "-static"' \
+    -trimpath \
     -v \
     agent0-connector
 
