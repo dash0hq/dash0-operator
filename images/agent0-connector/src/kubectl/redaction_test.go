@@ -1209,6 +1209,293 @@ func TestRedactionPreservesNumbers(t *testing.T) {
 	}
 }
 
+const (
+	logTailStateMessage     = "panic: connecting to postgres://app:s3cr3t-state@db:5432 failed"
+	logTailLastStateMessage = "panic: connecting to postgres://app:s3cr3t-last-state@db:5432 failed"
+)
+
+// terminatedContainerStatus returns the status of a container that has terminated with an error, and that was
+// terminated with an error before its last restart, with the given messages as termination messages.
+func terminatedContainerStatus(name string, stateMessage string, lastStateMessage string) map[string]any {
+	return map[string]any{
+		"name": name,
+		"state": map[string]any{
+			"terminated": map[string]any{"exitCode": 2, "reason": "Error", "message": stateMessage},
+		},
+		"lastState": map[string]any{
+			"terminated": map[string]any{"exitCode": 2, "reason": "Error", "message": lastStateMessage},
+		},
+	}
+}
+
+// terminatedPod renders a pod whose container "app" has terminated, see terminatedContainerStatus. The pod spec lists
+// the given containers; with a nil spec, the pod has no spec at all.
+func terminatedPod(t *testing.T, kind string, spec map[string]any, statusField string) string {
+	t.Helper()
+	pod := map[string]any{
+		"apiVersion": "v1",
+		"kind":       kind,
+		"metadata":   map[string]any{"name": "my-pod"},
+		"status": map[string]any{
+			statusField: []any{terminatedContainerStatus("app", logTailStateMessage, logTailLastStateMessage)},
+		},
+	}
+	if spec != nil {
+		pod["spec"] = spec
+	}
+	rendered, err := json.Marshal(pod)
+	if err != nil {
+		t.Fatalf("cannot render the test pod: %v", err)
+	}
+	return string(rendered)
+}
+
+func containerSpecWithPolicy(name string, policy string) map[string]any {
+	container := map[string]any{"name": name, "image": "app:1.0"}
+	if policy != "" {
+		container["terminationMessagePolicy"] = policy
+	}
+	return container
+}
+
+// redactTerminationMessagesIn redacts the given document with the redaction of termination messages enabled or
+// disabled, and returns the rendered document together with the values that were replaced.
+func redactTerminationMessagesIn(t *testing.T, document string, enabled bool) (string, []string) {
+	t.Helper()
+	var parsed any
+	if err := unmarshalPreservingNumbers(document, &parsed); err != nil {
+		t.Fatalf("cannot parse the test document: %v", err)
+	}
+	redacted := &redactor{values: make(map[string]struct{}), redactTerminationMessages: enabled}
+	if err := redactResourceList(parsed, redacted); err != nil {
+		t.Fatalf("cannot redact the test document: %v", err)
+	}
+	rendered, err := renderResponseDocument(outputFormatJson, parsed)
+	if err != nil {
+		t.Fatalf("cannot render the redacted test document: %v", err)
+	}
+	return rendered, redacted.valuesToScrubFromStderr()
+}
+
+func TestRedactTerminationMessages(t *testing.T) {
+	for _, tt := range []struct {
+		name           string
+		kind           string
+		spec           map[string]any
+		statusField    string
+		enabled        bool
+		expectRedacted bool
+	}{
+		{
+			name:           "redacts the messages of a container with the policy FallbackToLogsOnError",
+			kind:           podKind,
+			spec:           map[string]any{"containers": []any{containerSpecWithPolicy("app", "FallbackToLogsOnError")}},
+			statusField:    "containerStatuses",
+			enabled:        true,
+			expectRedacted: true,
+		},
+		{
+			name: "redacts the messages of an init container with the policy FallbackToLogsOnError",
+			kind: podKind,
+			spec: map[string]any{
+				"initContainers": []any{containerSpecWithPolicy("app", "FallbackToLogsOnError")},
+			},
+			statusField:    "initContainerStatuses",
+			enabled:        true,
+			expectRedacted: true,
+		},
+		{
+			name: "redacts the messages of an ephemeral container with the policy FallbackToLogsOnError",
+			kind: podKind,
+			spec: map[string]any{
+				"ephemeralContainers": []any{containerSpecWithPolicy("app", "FallbackToLogsOnError")},
+			},
+			statusField:    "ephemeralContainerStatuses",
+			enabled:        true,
+			expectRedacted: true,
+		},
+		{
+			name:           "keeps the messages of a container with the policy File",
+			kind:           podKind,
+			spec:           map[string]any{"containers": []any{containerSpecWithPolicy("app", "File")}},
+			statusField:    "containerStatuses",
+			enabled:        true,
+			expectRedacted: false,
+		},
+		{
+			name:           "redacts the messages when the pod has no spec",
+			kind:           podKind,
+			spec:           nil,
+			statusField:    "containerStatuses",
+			enabled:        true,
+			expectRedacted: true,
+		},
+		{
+			name:           "redacts the messages when the spec does not list the container",
+			kind:           podKind,
+			spec:           map[string]any{"containers": []any{containerSpecWithPolicy("other", "File")}},
+			statusField:    "containerStatuses",
+			enabled:        true,
+			expectRedacted: true,
+		},
+		{
+			name: "redacts the messages when only another container list of the spec has the policy File",
+			kind: podKind,
+			spec: map[string]any{
+				"initContainers": []any{containerSpecWithPolicy("app", "File")},
+			},
+			statusField:    "containerStatuses",
+			enabled:        true,
+			expectRedacted: true,
+		},
+		{
+			name:           "redacts the messages when the container has no policy",
+			kind:           podKind,
+			spec:           map[string]any{"containers": []any{containerSpecWithPolicy("app", "")}},
+			statusField:    "containerStatuses",
+			enabled:        true,
+			expectRedacted: true,
+		},
+		{
+			name:           "keeps the messages when the redaction is disabled",
+			kind:           podKind,
+			spec:           map[string]any{"containers": []any{containerSpecWithPolicy("app", "FallbackToLogsOnError")}},
+			statusField:    "containerStatuses",
+			enabled:        false,
+			expectRedacted: false,
+		},
+		{
+			name:           "keeps the messages of a resource that is not a pod",
+			kind:           "SomethingElse",
+			spec:           map[string]any{"containers": []any{containerSpecWithPolicy("app", "FallbackToLogsOnError")}},
+			statusField:    "containerStatuses",
+			enabled:        true,
+			expectRedacted: false,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			rendered, scrubbed := redactTerminationMessagesIn(
+				t,
+				terminatedPod(t, tt.kind, tt.spec, tt.statusField),
+				tt.enabled,
+			)
+
+			for _, message := range []string{logTailStateMessage, logTailLastStateMessage} {
+				if tt.expectRedacted {
+					if strings.Contains(rendered, message) {
+						t.Errorf("expected the termination message %q to be redacted, got %s", message, rendered)
+					}
+					if !slices.Contains(scrubbed, message) {
+						t.Errorf("expected the termination message %q to be scrubbed from stderr, got %v", message, scrubbed)
+					}
+				} else if !strings.Contains(rendered, message) {
+					t.Errorf("expected the termination message %q to be kept, got %s", message, rendered)
+				}
+			}
+			if tt.expectRedacted && strings.Count(rendered, `"message": "`+redactedValue+`"`) != 2 {
+				t.Errorf("expected both termination messages to be replaced with the placeholder, got %s", rendered)
+			}
+			// The rest of the termination state stays readable, so that a crash can still be diagnosed.
+			for _, expected := range []string{`"reason": "Error"`, `"exitCode": 2`} {
+				if strings.Count(rendered, expected) != 2 {
+					t.Errorf("expected %s to be kept in both termination states, got %s", expected, rendered)
+				}
+			}
+		})
+	}
+
+	t.Run("matches the policies by container name", func(t *testing.T) {
+		pod := map[string]any{
+			"apiVersion": "v1",
+			"kind":       podKind,
+			"metadata":   map[string]any{"name": "my-pod"},
+			"spec": map[string]any{
+				"containers": []any{
+					containerSpecWithPolicy("logs-tail", "FallbackToLogsOnError"),
+					containerSpecWithPolicy("file", "File"),
+				},
+			},
+			"status": map[string]any{
+				"containerStatuses": []any{
+					terminatedContainerStatus("file", "written on purpose", "also written on purpose"),
+					terminatedContainerStatus("logs-tail", logTailStateMessage, logTailLastStateMessage),
+				},
+			},
+		}
+		document, err := json.Marshal(map[string]any{"apiVersion": "v1", "kind": "List", "items": []any{pod}})
+		if err != nil {
+			t.Fatalf("cannot render the test document: %v", err)
+		}
+
+		rendered, _ := redactTerminationMessagesIn(t, string(document), true)
+
+		for _, message := range []string{logTailStateMessage, logTailLastStateMessage} {
+			if strings.Contains(rendered, message) {
+				t.Errorf("expected the termination message %q to be redacted, got %s", message, rendered)
+			}
+		}
+		for _, message := range []string{"written on purpose", "also written on purpose"} {
+			if !strings.Contains(rendered, `"`+message+`"`) {
+				t.Errorf("expected the termination message %q to be kept, got %s", message, rendered)
+			}
+		}
+	})
+}
+
+func TestRedactTerminationMessagesInCommandResponse(t *testing.T) {
+	logger := discardLogger()
+	response := terminatedPod(
+		t,
+		podKind,
+		map[string]any{"containers": []any{containerSpecWithPolicy("app", "FallbackToLogsOnError")}},
+		"containerStatuses",
+	)
+
+	t.Run("redacts the termination messages if kubectl logs is not allowed", func(t *testing.T) {
+		fakeKubectlEchoing(t, response)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
+			RequestId: "req-termination-message-redacted",
+			Command:   "kubectl",
+			Arguments: []string{"get", "pod", "my-pod", "-o", "yaml"},
+		})
+
+		if resp.GetExitCode() != 0 {
+			t.Fatalf("expected exit code 0, got %d (stderr: %q)", resp.GetExitCode(), resp.GetStderr())
+		}
+		for _, message := range []string{logTailStateMessage, logTailLastStateMessage} {
+			if strings.Contains(resp.GetStdout(), message) {
+				t.Errorf("expected the termination message %q to be redacted, got %q", message, resp.GetStdout())
+			}
+		}
+	})
+
+	t.Run("keeps the termination messages if kubectl logs is allowed", func(t *testing.T) {
+		fakeKubectlEchoing(t, response)
+
+		resp := ExecuteCommandRequest(
+			context.Background(),
+			logger,
+			"/tmp",
+			mustParseAllowedKubectlCommands("get,logs"),
+			&pb.CommandRequest{
+				RequestId: "req-termination-message-kept",
+				Command:   "kubectl",
+				Arguments: []string{"get", "pod", "my-pod", "-o", "yaml"},
+			},
+		)
+
+		if resp.GetExitCode() != 0 {
+			t.Fatalf("expected exit code 0, got %d (stderr: %q)", resp.GetExitCode(), resp.GetStderr())
+		}
+		for _, message := range []string{logTailStateMessage, logTailLastStateMessage} {
+			if !strings.Contains(resp.GetStdout(), message) {
+				t.Errorf("expected the termination message %q to be kept, got %q", message, resp.GetStdout())
+			}
+		}
+	})
+}
+
 // TestParseResponseDocumentRejectsTrailingContent pins that a response holding more than one JSON document is not
 // parsed, so that everything after the first document cannot be handed out unwalked.
 func TestParseResponseDocumentRejectsTrailingContent(t *testing.T) {

@@ -9,11 +9,12 @@ package kubectl
 import (
 	"errors"
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 
+	"k8s.io/client-go/util/jsonpath"
 	kubectlcmd "k8s.io/kubectl/pkg/cmd"
+	"k8s.io/kubectl/pkg/cmd/get"
 
 	pb "github.com/dash0hq/dash0-operator/images/agent0-connector/proto"
 )
@@ -37,17 +38,17 @@ import (
 // operator.agent0Connector.allowedKubectlCommands in helm-chart/dash0-operator/values.yaml, see
 // TestHelmChartListsEverySupportedKubectlCommand.
 var supportedKubectlCommands = map[string]struct{}{
-	"api-resources":   {},
-	"auth":            {},
-	"api-versions":    {},
-	"cluster-info":    {},
-	"describe":        {}, // describe is not actually supported, see unconditionallyRejectedKubectlCommands
-	"events":          {},
-	"explain":         {},
-	kubectlCommandGet: {},
-	"logs":            {},
-	"top":             {},
-	"version":         {},
+	"api-resources":    {},
+	"auth":             {},
+	"api-versions":     {},
+	"cluster-info":     {},
+	"describe":         {}, // describe is not actually supported, see unconditionallyRejectedKubectlCommands
+	"events":           {},
+	"explain":          {},
+	kubectlCommandGet:  {},
+	kubectlCommandLogs: {},
+	"top":              {},
+	"version":          {},
 }
 
 // unconditionallyRejectedKubectlCommands are kubectl commands that are listed in supportedKubectlCommands so that a
@@ -142,13 +143,14 @@ var knownOutputFormats = map[string]outputFormatHandling{
 
 // safeSortByPathPrefixes are the top-level fields a --sort-by expression may address. Neither the metadata nor the
 // status of a resource holds a credential, while its spec holds every field the response redacts, and the data of a
-// secret sits outside both prefixes.
-var safeSortByPathPrefixes = []string{"metadata", "status"}
+// secret sits outside both prefixes. The termination messages in the status of a pod are the one exception, they are
+// guarded separately, see terminationMessageSortByRequested.
+var safeSortByPathPrefixes = [][]string{{"metadata"}, {"status"}}
 
 var safeSortByPathPrefixesHumanReadable = func() string {
 	quoted := make([]string, 0, len(safeSortByPathPrefixes))
 	for _, prefix := range safeSortByPathPrefixes {
-		quoted = append(quoted, fmt.Sprintf("%q", prefix))
+		quoted = append(quoted, fmt.Sprintf("%q", strings.Join(prefix, ".")))
 	}
 	return strings.Join(quoted, " or ")
 }()
@@ -156,7 +158,7 @@ var safeSortByPathPrefixesHumanReadable = func() string {
 // unsafeSortByPathPrefix is the one field below safeSortByPathPrefixes that a --sort-by expression may not address:
 // kubectl apply stores a verbatim copy of the applied manifest, credentials included, in the
 // "kubectl.kubernetes.io/last-applied-configuration" annotation, see redactAnnotationValues.
-const unsafeSortByPathPrefix = "metadata.annotations"
+var unsafeSortByPathPrefix = []string{"metadata", "annotations"}
 
 // sensitiveResource describes how a resource type whose contents must not be exposed is guarded.
 type sensitiveResource struct {
@@ -176,6 +178,7 @@ var sensitiveResourceTypes = map[string]sensitiveResource{
 const (
 	kubectlCommandGet    = "get"
 	kubectlCommandEvents = "events"
+	kubectlCommandLogs   = "logs"
 )
 
 // eventResourceTypes are the normalized resource types under which "kubectl get" reads Kubernetes events, from the core
@@ -237,6 +240,9 @@ func validateCommandAndParseArguments(
 		return kubectlArguments{}, errors.New(reason)
 	}
 	if reason, blocked := unsafeSortByRequested(arguments); blocked {
+		return kubectlArguments{}, errors.New(reason)
+	}
+	if reason, blocked := terminationMessageSortByRequested(arguments, allowedKubectlCommands); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
 	return arguments, nil
@@ -498,66 +504,124 @@ func unsafeSortByRequested(parsed kubectlArguments) (string, bool) {
 			"(e.g. --sort-by=.metadata.name or --sort-by=.status.startTime)",
 		expression,
 		safeSortByPathPrefixesHumanReadable,
-		unsafeSortByPathPrefix,
+		strings.Join(unsafeSortByPathPrefix, "."),
 	), true
+}
+
+// terminationMessageSortByPaths are the paths of the termination messages in the container statuses of a pod, without
+// list indices, see redactTerminationMessages.
+var terminationMessageSortByPaths = func() [][]string {
+	paths := make([][]string, 0, 2*len(containerSpecFieldsPerStatusField))
+	for statusField := range containerSpecFieldsPerStatusField {
+		for _, stateField := range []string{"state", "lastState"} {
+			paths = append(paths, []string{"status", statusField, stateField, "terminated", "message"})
+		}
+	}
+	return paths
+}()
+
+// terminationMessageSortByRequested reports whether the "kubectl get" arguments sort by the termination messages of
+// containers while "kubectl logs" has been disabled in the configuration, returning a human-readable reason when they
+// do. Since the response redacts these messages in that case (see redactTerminationMessages), sorting by them would
+// leak their order, see unsafeSortByRequested. An expression is rejected when it addresses a termination message or
+// any field that contains one. The check runs after unsafeSortByRequested, which has already rejected every expression
+// that is not a plain path.
+func terminationMessageSortByRequested(
+	parsed kubectlArguments,
+	allowedKubectlCommands AllowedKubectlCommands,
+) (string, bool) {
+	if parsed.kubectlCommand != kubectlCommandGet || allowedKubectlCommands.Allows(kubectlCommandLogs) {
+		return "", false
+	}
+	expression, isSet := parsed.valueOf("sort-by")
+	if !isSet {
+		return "", false
+	}
+	path, isPlainPath := parseSortByPath(expression)
+	if !isPlainPath {
+		return "", false
+	}
+	for _, messagePath := range terminationMessageSortByPaths {
+		if isSortByPathBelow(messagePath, path) || isSortByPathBelow(path, messagePath) {
+			return fmt.Sprintf(
+				"the --sort-by expression %q is not allowed, because it addresses the termination messages of "+
+					"containers, which can hold log output, and the kubectl command \"logs\" has been disabled in the "+
+					"configuration of the agent0-connector (via the Helm value "+
+					"operator.agent0Connector.allowedKubectlCommands)",
+				expression,
+			), true
+		}
+	}
+	return "", false
 }
 
 // sortByExpressionIsSafe reports whether a --sort-by JSONPath expression addresses only fields that cannot hold a
 // credential. It fails closed: anything it does not recognize as a plain path below safeSortByPathPrefixes is unsafe.
 func sortByExpressionIsSafe(expression string) bool {
-	path, normalized := normalizeSortByPath(expression)
-	if !normalized || path == "" {
-		return false
-	}
-	// A filter expression, a wildcard, a recursive descent or a second path can address any field of the resource,
-	// including the ones the response redacts.
-	if strings.ContainsAny(path, "?*{}") || strings.Contains(path, "..") {
+	path, isPlainPath := parseSortByPath(expression)
+	if !isPlainPath {
 		return false
 	}
 	if isSortByPathBelow(path, unsafeSortByPathPrefix) {
 		return false
 	}
-	return slices.ContainsFunc(safeSortByPathPrefixes, func(prefix string) bool {
+	return slices.ContainsFunc(safeSortByPathPrefixes, func(prefix []string) bool {
 		return isSortByPathBelow(path, prefix)
 	})
 }
 
-// isSortByPathBelow reports whether a normalized --sort-by path addresses the given field or anything below it.
-func isSortByPathBelow(path string, prefix string) bool {
-	return path == prefix ||
-		strings.HasPrefix(path, prefix+".") ||
-		strings.HasPrefix(path, prefix+"[")
+// isSortByPathBelow reports whether a parsed --sort-by path addresses the given field or anything below it.
+func isSortByPathBelow(path []string, prefix []string) bool {
+	return len(path) >= len(prefix) && slices.Equal(path[:len(prefix)], prefix)
 }
 
-// quotedSortByBracketSegment matches a quoted bracket segment of a JSONPath expression, e.g. ['annotations'] or
-// ["annotations"], so that it can be rewritten to its dotted form.
-var quotedSortByBracketSegment = regexp.MustCompile(`\[\s*'([^']*)'\s*\]|\[\s*"([^"]*)"\s*\]`)
-
-// numericSortByIndexSegment matches a plain numeric index segment of a JSONPath expression, e.g. [0]. Such a segment
-// selects an element of a list and cannot widen which field the expression addresses.
-var numericSortByIndexSegment = regexp.MustCompile(`\[\d+\]`)
-
-// normalizeSortByPath reduces a --sort-by expression to a plain dotted path: it strips the optional surrounding braces
-// and the leading dot, and rewrites the quoted bracket segments of the JSONPath notation to their dotted form. So
-// "{.metadata.name}", ".metadata.name" and "metadata.name" all yield "metadata.name", and "metadata['annotations']"
-// yields "metadata.annotations".
+// parseSortByPath reduces a --sort-by expression to the field names of the plain path it addresses, e.g.
+// ".status.containerStatuses[0].state" yields ["status", "containerStatuses", "state"].
 //
-// The bracket form has to be resolved because kubectl accepts it: it hands the expression to client-go's JSONPath
-// parser (see RelaxedJSONPathExpression), which treats ['annotations'] and .annotations as the same step. Comparing
-// only the dotted form let the bracket form address a field the dotted form is rejected for -
-// "{.metadata['annotations']['kubectl.kubernetes.io/last-applied-configuration']}" passed the check for
-// "metadata.annotations" and sorted by the very annotation that guard exists for.
+// It interprets the expression exactly like kubectl does, by handing it to the same functions: kubectl's
+// RelaxedJSONPathExpression and client-go's JSONPath parser. That parser is more lenient than a plain dotted path
+// suggests: it removes backslashes from field names, treats spaces, "$" and "@" between fields as separators, and reads
+// ['annotations'] as .annotations. A string comparison would not recognize "terminated.mes\sage" or
+// "terminated$.message" as the path of the termination message, although kubectl sorts by exactly that field.
 //
-// It reports false for an expression holding a bracket segment that is neither a quoted key nor a numeric index, since
-// such a segment can address anything and the prefix comparison would not see what it resolves to.
-func normalizeSortByPath(expression string) (string, bool) {
-	path := strings.TrimSpace(expression)
-	path = strings.TrimPrefix(path, "{")
-	path = strings.TrimSuffix(path, "}")
-	path = quotedSortByBracketSegment.ReplaceAllString(path, ".$1$2")
-	path = strings.TrimPrefix(path, ".")
-	if strings.ContainsAny(numericSortByIndexSegment.ReplaceAllString(path, ""), "[]") {
-		return "", false
+// It reports false for anything but a sequence of named fields and single-element list indices, i.e. for a filter, a
+// wildcard, a recursive descent, a union, a slice, a quoted literal, and for an expression kubectl cannot parse. Any of
+// these can address fields other than the ones a prefix comparison would see. List indices are left out of the
+// result, since selecting one element of a list cannot widen which field the expression addresses.
+func parseSortByPath(expression string) ([]string, bool) {
+	relaxed, err := get.RelaxedJSONPathExpression(expression)
+	if err != nil || relaxed == "" {
+		return nil, false
 	}
-	return path, true
+	parser, err := jsonpath.Parse("sort-by", relaxed)
+	if err != nil || len(parser.Root.Nodes) != 1 {
+		return nil, false
+	}
+	list, isList := parser.Root.Nodes[0].(*jsonpath.ListNode)
+	if !isList {
+		return nil, false
+	}
+	path := make([]string, 0, len(list.Nodes))
+	for _, node := range list.Nodes {
+		switch typedNode := node.(type) {
+		case *jsonpath.FieldNode:
+			if typedNode.Value == "" {
+				return nil, false
+			}
+			path = append(path, typedNode.Value)
+		case *jsonpath.ArrayNode:
+			if !selectsSingleListElement(typedNode) {
+				return nil, false
+			}
+		default:
+			return nil, false
+		}
+	}
+	return path, len(path) > 0
+}
+
+// selectsSingleListElement reports whether a parsed array node is a plain index like [0], as opposed to a slice like
+// [0:2] or [*]. The parser marks the end of a plain index as derived from its start.
+func selectsSingleListElement(node *jsonpath.ArrayNode) bool {
+	return node.Params[0].Known && node.Params[1].Derived && !node.Params[2].Known
 }

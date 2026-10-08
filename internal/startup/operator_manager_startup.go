@@ -1830,6 +1830,7 @@ func startDash0Controllers(
 			OTelCollectorNamePrefix:                envVars.oTelCollectorNamePrefix,
 			TargetAllocatorNamePrefix:              envVars.targetAllocatorNamePrefix,
 			Agent0ConnectorEnabledViaHelm:          envVars.agent0ConnectorEnabled,
+			SyntheticsWorkerEnabledViaHelm:         envVars.syntheticsWorkerEnabled,
 			SendBatchSize:                          envVars.sendBatchSize,
 			SendBatchMaxSize:                       envVars.sendBatchMaxSize,
 			K8sAttributesDisableReplicasetInformer: envVars.k8sAttributesDisableReplicasetInformer,
@@ -2013,7 +2014,7 @@ func startDash0Controllers(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err := notificationChannelReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the notification channel reconciler: %w", err)
