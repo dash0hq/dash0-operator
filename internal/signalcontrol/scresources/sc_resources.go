@@ -32,6 +32,7 @@ type SignalControlResourceManager struct {
 	operatorVersion            string
 	otlpGrpcHostPort           int32
 	kubernetesApiServerVersion cluster.KubernetesVersionInfo
+	isGkeAutopilot             bool
 	isOpenShift                bool
 }
 
@@ -46,6 +47,7 @@ func NewSignalControlResourceManager(
 	operatorVersion string,
 	otlpGrpcHostPort int32,
 	kubernetesApiServerVersion cluster.KubernetesVersionInfo,
+	isGkeAutopilot bool,
 	isOpenShift bool,
 ) *SignalControlResourceManager {
 	return &SignalControlResourceManager{
@@ -59,6 +61,7 @@ func NewSignalControlResourceManager(
 		operatorVersion:            operatorVersion,
 		otlpGrpcHostPort:           otlpGrpcHostPort,
 		kubernetesApiServerVersion: kubernetesApiServerVersion,
+		isGkeAutopilot:             isGkeAutopilot,
 		isOpenShift:                isOpenShift,
 	}
 }
@@ -70,7 +73,7 @@ func (m *SignalControlResourceManager) CreateOrUpdateResources(
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) (bool, bool, error) {
-	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, signalControlResource, operatorConfig, m.edgeProxyImage, m.edgeProxyImagePullPolicy, m.operatorVersion, m.otlpGrpcHostPort, m.kubernetesApiServerVersion, extraConfig, false, m.isOpenShift, logger)
+	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, signalControlResource, operatorConfig, m.edgeProxyImage, m.edgeProxyImagePullPolicy, m.operatorVersion, m.otlpGrpcHostPort, m.kubernetesApiServerVersion, extraConfig, false, m.isGkeAutopilot, m.isOpenShift, logger)
 
 	resourcesHaveBeenCreated := false
 	resourcesHaveBeenUpdated := false

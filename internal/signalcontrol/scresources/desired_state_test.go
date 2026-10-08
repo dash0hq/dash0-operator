@@ -54,7 +54,7 @@ var _ = Describe("Edge Proxy deployment self-monitoring env vars", func() {
 
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, opConfig,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, false, logd.Discard(),
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
@@ -67,7 +67,7 @@ var _ = Describe("Edge Proxy deployment self-monitoring env vars", func() {
 
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, opConfig,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, false, logd.Discard(),
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
@@ -81,7 +81,7 @@ var _ = Describe("Edge Proxy deployment self-monitoring env vars", func() {
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, opConfig,
 			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion,
-			int32(4317), util.ExtraConfig{}, false, logd.Discard(),
+			int32(4317), util.ExtraConfig{}, false, false, logd.Discard(),
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
@@ -94,7 +94,7 @@ var _ = Describe("Edge Proxy deployment self-monitoring env vars", func() {
 
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, opConfig,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, false, logd.Discard(),
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
@@ -104,7 +104,7 @@ var _ = Describe("Edge Proxy deployment self-monitoring env vars", func() {
 	It("does not inject OTel exporter env vars when operator config is nil", func() {
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, nil,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, false, logd.Discard(),
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
@@ -149,7 +149,7 @@ var _ = Describe("Edge Proxy deployment pprof", func() {
 	It("keeps the pprof/internal admin server disabled by default", func() {
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, false, logd.Discard(),
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
@@ -163,7 +163,7 @@ var _ = Describe("Edge Proxy deployment pprof", func() {
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
 			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort,
-			util.ExtraConfig{EdgeProxyEnablePprof: true}, false, logd.Discard(),
+			util.ExtraConfig{EdgeProxyEnablePprof: true}, false, false, logd.Discard(),
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
@@ -217,7 +217,7 @@ var _ = Describe("Edge Proxy deployment scheduling and resources", func() {
 
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, extraConfig, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, extraConfig, false, false, logd.Discard(),
 		)
 
 		podSpec := dep.Spec.Template.Spec
@@ -242,7 +242,7 @@ var _ = Describe("Edge Proxy deployment scheduling and resources", func() {
 	It("leaves Affinity unset when EdgeProxyNodeAffinity is nil", func() {
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, false, logd.Discard(),
 		)
 
 		Expect(dep.Spec.Template.Spec.Affinity).To(BeNil())
@@ -252,7 +252,7 @@ var _ = Describe("Edge Proxy deployment scheduling and resources", func() {
 	It("defaults to a single replica when EdgeProxyReplicas is unset", func() {
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, false, logd.Discard(),
 		)
 
 		Expect(dep.Spec.Replicas).ToNot(BeNil())
@@ -263,11 +263,34 @@ var _ = Describe("Edge Proxy deployment scheduling and resources", func() {
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
 			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion,
-			testOtlpGrpcHostPort, util.ExtraConfig{EdgeProxyReplicas: 3}, false, logd.Discard(),
+			testOtlpGrpcHostPort, util.ExtraConfig{EdgeProxyReplicas: 3}, false, false, logd.Discard(),
 		)
 
 		Expect(dep.Spec.Replicas).ToNot(BeNil())
 		Expect(*dep.Spec.Replicas).To(Equal(int32(3)))
+	})
+})
+
+var _ = Describe("Edge Proxy deployment GKE Autopilot allowlist label", func() {
+	It("adds the matching-allowlist label to the pod template on GKE Autopilot", func() {
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, true, false, logd.Discard(),
+		)
+
+		value, ok := dep.Spec.Template.Labels[gkeAutopilotAllowlistLabelKey]
+		Expect(ok).To(BeTrue())
+		Expect(value).To(Equal(gkeAutopilotAllowlistLabelEdgeProxyValue))
+	})
+
+	It("does not add the matching-allowlist label when not on GKE Autopilot", func() {
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, false, logd.Discard(),
+		)
+
+		_, ok := dep.Spec.Template.Labels[gkeAutopilotAllowlistLabelKey]
+		Expect(ok).To(BeFalse())
 	})
 })
 
@@ -291,7 +314,7 @@ var _ = Describe("Edge Proxy tail-sampling gating", func() {
 
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", sc, opConfig,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, false, logd.Discard(),
 		)
 
 		env := envNames(dep.Spec.Template.Spec.Containers[0])
@@ -307,7 +330,7 @@ var _ = Describe("Edge Proxy tail-sampling gating", func() {
 
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, opConfig,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, false, logd.Discard(),
 		)
 
 		env := envNames(dep.Spec.Template.Spec.Containers[0])
@@ -324,7 +347,7 @@ var _ = Describe("Edge Proxy tail-sampling gating", func() {
 
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", sc, operatorConfigWithDash0Export,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, false, logd.Discard(),
 		)
 
 		env := envNames(dep.Spec.Template.Spec.Containers[0])
@@ -356,7 +379,7 @@ var _ = Describe("Edge Proxy log-pattern polling", func() {
 
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", sc, opConfig,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, false, logd.Discard(),
 		)
 
 		env := envNames(dep.Spec.Template.Spec.Containers[0])
@@ -375,7 +398,7 @@ var _ = Describe("Edge Proxy log-pattern polling", func() {
 
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", sc, opConfig,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, false, logd.Discard(),
 		)
 
 		env := envNames(dep.Spec.Template.Spec.Containers[0])
@@ -389,7 +412,7 @@ var _ = Describe("Edge Proxy log-pattern polling", func() {
 
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, opConfig,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, false, logd.Discard(),
 		)
 
 		env := envNames(dep.Spec.Template.Spec.Containers[0])
@@ -410,7 +433,7 @@ var _ = Describe("Edge Proxy deployment labels and annotations", func() {
 
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, extraConfig, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, extraConfig, false, false, logd.Discard(),
 		)
 
 		Expect(dep.Labels).To(HaveKeyWithValue("team", "obs"))
@@ -428,7 +451,7 @@ var _ = Describe("Edge Proxy pod security context", func() {
 	It("pins the pod-level runAsUser when not on OpenShift", func() {
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, nil,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, false, logd.Discard(),
 		)
 		sc := dep.Spec.Template.Spec.SecurityContext
 		Expect(sc).ToNot(BeNil())
@@ -439,7 +462,7 @@ var _ = Describe("Edge Proxy pod security context", func() {
 	It("omits the pod-level runAsUser on OpenShift so the SCC can assign an in-range UID", func() {
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, nil,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, true, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, true, logd.Discard(),
 		)
 		sc := dep.Spec.Template.Spec.SecurityContext
 		Expect(sc).ToNot(BeNil())
@@ -467,7 +490,7 @@ var _ = Describe("Edge Proxy service zone-aware routing", func() {
 			desiredState := assembleDesiredState(
 				OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
 				"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort,
-				versionInfo, util.ExtraConfig{}, false, false, logd.Discard(),
+				versionInfo, util.ExtraConfig{}, false, false, false, logd.Discard(),
 			)
 			service := edgeProxyServiceFrom(desiredState)
 			Expect(service).ToNot(BeNil())

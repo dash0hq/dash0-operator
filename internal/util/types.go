@@ -166,6 +166,7 @@ type Agent0ConnectorConfig struct {
 	// value operator.agent0Connector.secretRef). It is passed to the workload via the DASH0_AGENT0_CONNECTOR_AUTH_TOKEN
 	// environment variable.
 	Authorization   dash0common.Authorization
+	IsGkeAutopilot  bool
 	IsOpenShift     bool
 	DevelopmentMode bool
 }
