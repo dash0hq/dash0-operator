@@ -512,6 +512,9 @@ func createUnstructuredGvk(crdReconciler ThirdPartyCrdReconciler, crdVersion str
 	return unstructuredGvkForThirdPartyResourceType
 }
 
+// upsertViaApi enqueues a synchronization job for the given resource when it has been created or updated. It is
+// triggered when the reconciler receives individual Create or Update events, and it delegates to
+// upsertViaApiWithOriginsInNamespace, passing nil for originsInNamespace.
 func upsertViaApi(
 	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
 	dash0ApiResource *unstructured.Unstructured,
@@ -519,8 +522,10 @@ func upsertViaApi(
 	upsertViaApiWithOriginsInNamespace(thirdPartyResourceReconciler, dash0ApiResource, nil)
 }
 
-// upsertViaApiWithOriginsInNamespace enqueues a synchronization job for the given resource. The existing origins
-// in originsInNamespace (if not nil) are shared by all resources of one namespace-wide synchronization run.
+// upsertViaApiWithOriginsInNamespace enqueues a synchronization job for the given resource. It is used directly by the
+// reconciler (without going through upsertViaApi) when a resync of all resources in a namespace is triggered. The
+// existing origins in originsInNamespace (if not nil) are shared by all resources of one namespace-wide synchronization
+// run.
 func upsertViaApiWithOriginsInNamespace(
 	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
 	dash0ApiResource *unstructured.Unstructured,
@@ -544,6 +549,7 @@ func upsertViaApiWithOriginsInNamespace(
 	)
 }
 
+// deleteViaApi enqueues a synchronization job for the given resource when it has been deleted.
 func deleteViaApi(
 	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
 	dash0ApiResource *unstructured.Unstructured,

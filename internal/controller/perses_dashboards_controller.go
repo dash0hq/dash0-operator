@@ -636,11 +636,11 @@ func (r *PersesDashboardReconciler) Delete(
 }
 
 func (r *PersesDashboardReconciler) Generic(
-	ctx context.Context,
-	e event.TypedGenericEvent[*unstructured.Unstructured],
-	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
+	context.Context,
+	event.TypedGenericEvent[*unstructured.Unstructured],
+	workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
-	r.resyncViaApi(ctx, e.Object, nil)
+	// Should not be called, the watch is backed by source.Kind, which never emits generic events.
 }
 
 func (r *PersesDashboardReconciler) resyncViaApi(
