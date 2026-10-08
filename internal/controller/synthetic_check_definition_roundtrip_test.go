@@ -29,7 +29,71 @@ var _ = Describe("Converting a Dash0SyntheticCheck to the API client's Synthetic
 		Expect(json.Unmarshal(serialized, &roundTripped)).To(Succeed())
 
 		Expect(roundTripped["kind"]).To(Equal("Dash0SyntheticCheck"))
-		Expect(roundTripped["spec"]).To(Equal(unstructuredSyntheticCheck.Object["spec"]))
+		Expect(roundTripped["spec"]).To(Equal(map[string]any{
+			"display": map[string]any{"name": "Full Synthetic Check"},
+			"enabled": true,
+			"labels":  map[string]any{"team": "checkout"},
+			"notifications": map[string]any{
+				"channels": []any{
+					"0f3c6a8e-1d2b-4c5d-8e9f-0a1b2c3d4e5f",
+					"7a6b5c4d-3e2f-4a1b-9c8d-7e6f5a4b3c2d",
+				},
+			},
+			"plugin": map[string]any{
+				"kind": "http",
+				"spec": map[string]any{
+					"assertions": map[string]any{
+						"criticalAssertions": []any{
+							map[string]any{
+								"kind": "status_code",
+								"spec": map[string]any{"operator": "is", "value": "200"},
+							},
+							map[string]any{
+								"kind": "json_body",
+								"spec": map[string]any{"jsonPath": "$.status", "operator": "is", "value": "ok"},
+							},
+						},
+						"degradedAssertions": []any{
+							map[string]any{
+								"kind": "response_header",
+								"spec": map[string]any{"key": "Content-Type", "operator": "is", "value": "application/json"},
+							},
+							map[string]any{
+								"kind": "timing",
+								"spec": map[string]any{"operator": "lte", "type": "total", "value": "500ms"},
+							},
+						},
+					},
+					"request": map[string]any{
+						"basicAuthentication": map[string]any{"password": "password", "username": "user"},
+						"body": map[string]any{
+							"kind": "json",
+							"spec": map[string]any{"content": `{"items":[]}`},
+						},
+						"headers": []any{
+							map[string]any{"name": "Accept", "value": "application/json"},
+						},
+						"method": "post",
+						"queryParameters": []any{
+							map[string]any{"name": "dryRun", "value": "true"},
+						},
+						"redirects": "follow",
+						"tls":       map[string]any{"allowInsecure": true},
+						"tracing":   map[string]any{"addTracingHeaders": true},
+						"url":       "https://shop.example.com/api/checkout",
+					},
+				},
+			},
+			"retries": map[string]any{
+				"kind": "exponential",
+				"spec": map[string]any{"attempts": float64(3), "delay": "1s", "maximumDelay": "10s"},
+			},
+			"schedule": map[string]any{
+				"interval":  "1m",
+				"locations": []any{"de-frankfurt", "us-oregon"},
+				"strategy":  "all_locations",
+			},
+		}))
 		Expect(roundTripped["metadata"]).To(Equal(map[string]any{
 			"name": "full-synthetic-check",
 			"annotations": map[string]any{

@@ -1609,7 +1609,9 @@ operator:
       # * all credential fields in any of the Dash0 custom resources,
       # * the values of the fields token and password, and header and query parameter values, wherever they occur,
       # * the same fields in a copy of a resource that a tool embeds in its annotations, such as the copy
-      #   "kubectl apply" stores in kubectl.kubernetes.io/last-applied-configuration.
+      #   "kubectl apply" stores in kubectl.kubernetes.io/last-applied-configuration,
+      # * the termination messages in the container statuses of pods, while "kubectl logs" is disabled (see
+      #   allowedKubectlCommands.logs), and the terminationMessagePolicy is set to FallbackToLogsOnError.
       #
       # The redaction of resource types that are not accessible under the default RBAC rules is best-effort: A
       # credential in a field of a resource type the connector does not know about is returned unredacted. Granting
