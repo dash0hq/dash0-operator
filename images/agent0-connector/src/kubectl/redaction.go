@@ -69,6 +69,12 @@ const (
 	// configMapKind is the kind the data of a config map is redacted for, see redactConfigMapData.
 	configMapKind = "ConfigMap"
 
+	podKind = "Pod"
+
+	// terminationMessagePolicyFile is the termination message policy that does _not_ require redacting the termination
+	// message. The only other known value is FallbackToLogsOnError which requires its redaction.
+	terminationMessagePolicyFile = "File"
+
 	// yamlDocumentSeparator starts a new document in a YAML stream.
 	yamlDocumentSeparator = "---"
 )
@@ -176,6 +182,14 @@ var parseableOutputFormats = map[string]struct{}{
 	outputFormatYaml: {},
 }
 
+// containerSpecFieldsPerStatusField maps the container status lists of a pod's status to the container lists of its
+// spec that hold the termination message policies of the same containers, see redactTerminationMessages.
+var containerSpecFieldsPerStatusField = map[string]string{
+	"containerStatuses":          "containers",
+	"initContainerStatuses":      "initContainers",
+	"ephemeralContainerStatuses": "ephemeralContainers",
+}
+
 // redactSecretsInResponse redacts secrets in a command response, in place. The response is parsed into a document, the
 // credential values (Dash0 auth tokens, third-party credentials, the literal values of environment variables) are
 // replaced within that document - including in the copy of the spec that kubectl apply leaves behind in the
@@ -188,7 +202,12 @@ var parseableOutputFormats = map[string]struct{}{
 // (see knownOutputFormats).
 //
 // A non-nil error means the response could not be redacted and must not be sent to the backend, see withholdResponse.
-func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, stdoutTruncated bool) error {
+func redactSecretsInResponse(
+	parsed kubectlArguments,
+	resp *pb.CommandResponse,
+	stdoutTruncated bool,
+	allowedKubectlCommands AllowedKubectlCommands,
+) error {
 	// If there is no output at all, there is nothing to redact.
 	if resp.GetStdout() == "" && resp.GetStderr() == "" {
 		return nil
@@ -227,7 +246,10 @@ func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, 
 		return fmt.Errorf("the response is not a single %s document that could be parsed for redaction", format)
 	}
 
-	redacted := &redactor{values: make(map[string]struct{})}
+	redacted := &redactor{
+		values:                    make(map[string]struct{}),
+		redactTerminationMessages: !allowedKubectlCommands.Allows(kubectlCommandLogs),
+	}
 	if err := redactResourceList(document, redacted); err != nil {
 		return err
 	}
@@ -337,6 +359,10 @@ func hasYamlDocumentSeparator(stdout string) bool {
 type redactor struct {
 	values map[string]struct{}
 	count  int
+
+	// redactTerminationMessages enables the redaction of the termination messages of containers, see
+	// redactTerminationMessages.
+	redactTerminationMessages bool
 
 	// err holds the first failure that leaves a credential in the document, e.g. an annotation that was redacted but
 	// could not be rendered again. The walk cannot return an error - it recurses through every node of a document - so
@@ -621,7 +647,9 @@ func isWalkableNode(node any) bool {
 //     the elements of its command line (see redactArgumentValues),
 //   - the header values of the HTTP probes and lifecycle hooks of a pod spec, which have the same shape as the header
 //     values of an export,
-//   - the credentials within the values of the data of a config map (see redactConfigMapData).
+//   - the credentials within the values of the data of a config map (see redactConfigMapData),
+//   - the termination messages of the containers of a pod that uses terminationMessagePolicy=FallbackToLogsOnError, if
+//     enabled (see redactTerminationMessages).
 //
 // The user name of the basic authentication of a synthetic check is not a credential and is left in place. Values
 // sourced via valueFrom are ignored. Apart from the fields that are only credentials within a particular
@@ -637,6 +665,7 @@ func redactDocumentNodeRecursively(node any, redacted *redactor) {
 	case map[string]any:
 		redactConfigMapData(typedNode, redacted)
 		redactQueryParameterFields(typedNode, redacted)
+		redactTerminationMessages(typedNode, redacted)
 		// Only the values of existing keys are replaced, never new ones added, so the map may be modified while it is
 		// ranged over.
 		for key, value := range typedNode {
@@ -850,6 +879,76 @@ func redactQueryParameterFields(resource map[string]any, redacted *redactor) {
 			redactHeaderValues(enclosingObject, path[len(path)-1], redacted)
 		})
 	}
+}
+
+// redactTerminationMessages redacts the termination messages (state.terminated.message and
+// lastState.terminated.message) in the container statuses of a pod, if the redactor has been configured to do so. With
+// the termination message policy FallbackToLogsOnError, the kubelet copies the tail of the log of a container that
+// exited with an error into its termination message, which would hand out log content although "kubectl logs" is not
+// allowed.
+//
+// The termination message of a container is kept when the spec of the same pod states the policy File for it.
+// When the policy cannot be determined - the response holds no spec, the spec lists no container of that name, or the
+// container has no policy - the message is redacted. (In an actual cluster, the policy is always defaulted to File, so
+// it will only be redacted if the pod spec explicitly sets FallbackToLogsOnError.)
+func redactTerminationMessages(resource map[string]any, redacted *redactor) {
+	if !redacted.redactTerminationMessages {
+		return
+	}
+	if kind, isString := resource["kind"].(string); !isString || kind != podKind {
+		return
+	}
+	status, isMap := resource["status"].(map[string]any)
+	if !isMap {
+		return
+	}
+	spec, _ := resource["spec"].(map[string]any)
+	for statusField, specField := range containerSpecFieldsPerStatusField {
+		containerStatuses, isList := status[statusField].([]any)
+		if !isList {
+			continue
+		}
+		policies := terminationMessagePolicies(spec, specField)
+		for _, item := range containerStatuses {
+			containerStatus, isMap := item.(map[string]any)
+			if !isMap {
+				continue
+			}
+			name, _ := containerStatus["name"].(string)
+			// Under normal circumstances, the termination policy should always be set. The setting only has two
+			// values, "File" and "FallbackToLogsOnError", and "File" is the default. We check for policy == "File"
+			// here and skip redaction for that case. Otherwise, we assume it is "FallbackToLogsOnError" and redact.
+			// This also fails closed if the policy cannot be determined.
+			if policy, known := policies[name]; known && policy == terminationMessagePolicyFile {
+				continue
+			}
+			for _, stateField := range []string{"state", "lastState"} {
+				state, _ := containerStatus[stateField].(map[string]any)
+				if terminated, isMap := state["terminated"].(map[string]any); isMap {
+					redactValueOf(terminated, "message", redacted)
+				}
+			}
+		}
+	}
+}
+
+// terminationMessagePolicies returns the termination message policies of the containers in the given container list
+// of a pod spec, by container name. A container without a name or without a policy is left out.
+func terminationMessagePolicies(spec map[string]any, specField string) map[string]string {
+	policies := make(map[string]string)
+	containers, _ := spec[specField].([]any)
+	for _, item := range containers {
+		container, isMap := item.(map[string]any)
+		if !isMap {
+			continue
+		}
+		name, hasName := container["name"].(string)
+		policy, hasPolicy := container["terminationMessagePolicy"].(string)
+		if hasName && hasPolicy {
+			policies[name] = policy
+		}
+	}
+	return policies
 }
 
 // resolveFieldPath calls onEnclosingObject for every object the given path of keys resolves to within node. A key that

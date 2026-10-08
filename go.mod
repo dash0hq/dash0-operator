@@ -193,3 +193,7 @@ require (
 replace github.com/dash0hq/dash0-operator/images/pkg/common => ./images/pkg/common
 
 replace github.com/dash0hq/dash0-operator/images/pkg/nodeuid => ./images/pkg/nodeuid
+
+// Directories created by npm (e.g. in images/instrumentation/test) can contain Go sources that are not part of this
+// module.
+ignore node_modules

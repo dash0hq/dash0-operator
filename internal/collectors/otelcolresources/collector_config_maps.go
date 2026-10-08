@@ -530,8 +530,20 @@ func renderOttlNamespaceFilter(
 			config.OperatorNamespace,
 		)
 	}
+	// Do not drop metrics about the synthetics-worker pods (kubeletstats / k8s_cluster receivers) when self-monitoring is
+	// enabled. There is one deployment per configured synthetics-worker instance.
+	var syntheticsWorkerExclusion strings.Builder
+	if selfMonitoringEnabled {
+		for _, deploymentName := range config.SyntheticsWorkerDeploymentNames {
+			fmt.Fprintf(&syntheticsWorkerExclusion, "(resource.attributes[\"k8s.deployment.name\"] != \"%s\" or "+
+				"resource.attributes[\"k8s.namespace.name\"] != \"%s\") and\n          ",
+				deploymentName,
+				config.OperatorNamespace,
+			)
+		}
+	}
 	selfMonitoringExclusions := operatorManagerExclusion + taExclusion + signalControlCollectorExclusion +
-		edgeProxyExclusion + agent0ConnectorExclusion
+		edgeProxyExclusion + agent0ConnectorExclusion + syntheticsWorkerExclusion.String()
 
 	// Drop all metrics that have a namespace resource attribute but are from a namespace that is not in the
 	// list of monitored namespaces.
