@@ -419,4 +419,13 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 			"spec.ottl": samplingConditionVariantReason,
 		}),
 	)
+
+	It("finds no unexpected drift between Dash0SpamFilter and the API client's spam filter type", func() {
+		expectNoUnexpectedApiTypeDrift(
+			reflect.TypeFor[dash0v1alpha1.Dash0SpamFilterSpec](),
+			reflect.TypeFor[dash0apiclient.SpamFilterSpec](),
+			nil,
+			nil,
+		)
+	})
 })

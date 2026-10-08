@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -575,11 +574,11 @@ var _ = Describe(
 						Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(1))
 						apiRequest := resourceToRequestsResult.ApiRequests[0]
 						Expect(apiRequest.ItemName).To(Equal("dash0-spam-filter"))
-						req := apiRequest.Request
-						defer func() {
-							_ = req.Body.Close()
-						}()
-						body, err := io.ReadAll(req.Body)
+						Expect(apiRequest.ApiClientCall).ToNot(BeNil())
+						Expect(apiRequest.ApiClientCall.Method).To(Equal(http.MethodPut))
+						spamFilterDefinition, err := mapToSpamFilterDefinition(spamFilter)
+						Expect(err).ToNot(HaveOccurred())
+						body, err := json.Marshal(spamFilterDefinition)
 						Expect(err).ToNot(HaveOccurred())
 						resultingSpamFilterInRequest := map[string]any{}
 						Expect(json.Unmarshal(body, &resultingSpamFilterInRequest)).To(Succeed())
@@ -639,15 +638,15 @@ spec:
 						},
 					),
 					Entry(
-						"should send annotations", spamFilterToRequestTestConfig{
+						"should send the dash0.com/enabled annotation and drop all other annotations", spamFilterToRequestTestConfig{
 							spamFilter: `
 apiVersion: operator.dash0.com/v1alpha1
 kind: Dash0SpamFilter
 metadata:
   name: dash0-spam-filter
   annotations:
-    dash0com/annotation1: value1
-    dash0com/annotation2: value2
+    dash0.com/enabled: "false"
+    example.com/not-part-of-the-api: dropped
 spec:
   contexts:
     - log
@@ -657,11 +656,38 @@ spec:
       value: kube-system
 `,
 							expectedAnnotations: map[string]string{
-								"dash0com/annotation1": "value1",
-								"dash0com/annotation2": "value2",
+								"dash0.com/enabled": "false",
 							},
 						},
 					),
+				)
+
+				It(
+					"reports a non-retryable synchronization error for a spam filter that cannot be converted", func() {
+						spamFilter := map[string]any{}
+						Expect(yaml.Unmarshal([]byte(`
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SpamFilter
+metadata:
+  name: dash0-spam-filter
+spec:
+  contexts: log
+  filter:
+    - key: k8s.namespace.name
+      operator: is
+      value: kube-system
+`), &spamFilter)).To(Succeed())
+						apiConfig := ApiConfig{Endpoint: ApiEndpointTest, Dataset: DatasetCustomTest, Token: AuthorizationTokenTest}
+						resourceToRequestsResult :=
+							spamFilterReconciler.MapResourceToHttpRequests(
+								&preconditionValidationResult{k8sName: "dash0-spam-filter", k8sNamespace: TestNamespaceName, resource: spamFilter},
+								apiConfig, upsertAction, logger)
+						Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())
+						synchronizationError, httpStatusCode := firstSynchronizationErrorAndStatusCode(resourceToRequestsResult)
+						Expect(synchronizationError).To(ContainSubstring("unable to convert the spam filter"))
+						Expect(httpStatusCode).To(Equal(http.StatusBadRequest))
+						Expect(isRetryableSynchronizationError(synchronizationError, httpStatusCode)).To(BeFalse())
+					},
 				)
 			},
 		)
@@ -673,7 +699,7 @@ func createSpamFilterReconciler(clusterId string) *SpamFilterReconciler {
 		k8sClient,
 		types.UID(clusterId),
 		spamFilterLeaderElectionAware,
-		TestHTTPClient(),
+		testApiClientPool(),
 	)
 	return spamFilterReconciler
 }
