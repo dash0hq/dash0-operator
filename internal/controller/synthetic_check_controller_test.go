@@ -822,6 +822,44 @@ spec:
 						},
 					),
 				)
+
+				It(
+					"reports a non-retryable synchronization error for a synthetic check that cannot be converted", func() {
+						syntheticCheck := map[string]any{}
+						Expect(yaml.Unmarshal([]byte(`
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SyntheticCheck
+metadata:
+  name: dash0-synthetic-check
+spec:
+  enabled: true
+  notifications:
+    channels:
+      - not-a-uuid
+`), &syntheticCheck)).To(Succeed())
+						apiConfig := ApiConfig{
+							Endpoint: ApiEndpointTest,
+							Dataset:  DatasetCustomTest,
+							Token:    AuthorizationTokenTest,
+						}
+						resourceToRequestsResult :=
+							syntheticCheckReconciler.MapResourceToHttpRequests(
+								&preconditionValidationResult{
+									k8sName:      "dash0-synthetic-check",
+									k8sNamespace: TestNamespaceName,
+									resource:     syntheticCheck,
+								},
+								apiConfig,
+								upsertAction,
+								logger,
+							)
+						Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())
+						synchronizationError, httpStatusCode := firstSynchronizationErrorAndStatusCode(resourceToRequestsResult)
+						Expect(synchronizationError).To(ContainSubstring("unable to convert the synthetic check"))
+						Expect(httpStatusCode).To(Equal(http.StatusBadRequest))
+						Expect(isRetryableSynchronizationError(synchronizationError, httpStatusCode)).To(BeFalse())
+					},
+				)
 			},
 		)
 	},
