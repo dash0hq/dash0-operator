@@ -1041,6 +1041,198 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			)
 
 			It(
+				"synchronizeViaApiAndUpdateStatusWithOriginsInNamespace: fetches the existing dashboards only once, "+
+					"only deletes dashboards that exist",
+				func() {
+					EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+					dashboardOrigin := func(name string) string {
+						return fmt.Sprintf("dash0-operator_%s_%s_%s_%s", clusterId, DatasetCustomTest, TestNamespaceName, name)
+					}
+					gock.New(ApiEndpointTest).
+						Get("/api/dashboards").
+						MatchHeader("Authorization", AuthorizationHeaderTest).
+						MatchParam("dataset", DatasetCustomTest).
+						Times(1).
+						Reply(http.StatusOK).
+						JSON([]map[string]string{
+							{"id": "1", "origin": dashboardOrigin("test-dashboard-2")},
+							// This origin must not be attributed to the resource test-dashboard-2.
+							{"id": "2", "origin": dashboardOrigin("test-dashboard-20")},
+							{"id": "3", "origin": "dashboard-not-managed-by-the-operator"},
+							{"id": "4"},
+						})
+					gock.New(ApiEndpointTest).
+						Delete(dashboardApiBasePath+dashboardOrigin("test-dashboard-2")).
+						MatchHeader("Authorization", AuthorizationHeaderTest).
+						MatchParam("dataset", DatasetCustomTest).
+						Times(1).
+						Reply(http.StatusOK)
+					defer gock.Off()
+
+					originsInNamespace := newExistingOriginsInNamespace(TestNamespaceName)
+					for _, name := range []string{"test-dashboard-1", "test-dashboard-2", "test-dashboard-3"} {
+						dashboardResource := createDashboardResourceWithEnableLabel("false")
+						dashboardResource.SetName(name)
+						synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
+							ctx,
+							persesDashboardReconciler,
+							&dashboardResource,
+							nil,
+							upsertAction,
+							originsInNamespace,
+							logger,
+						)
+					}
+
+					Expect(gock.IsDone()).To(BeTrue())
+					monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+					results := monRes.Status.PersesDashboardSynchronizationResults
+					Expect(results).To(HaveLen(3))
+					for _, name := range []string{"test-dashboard-1", "test-dashboard-2", "test-dashboard-3"} {
+						result := results[fmt.Sprintf("%s/%s", TestNamespaceName, name)]
+						Expect(result.SynchronizationStatus).To(
+							Equal(dash0common.ThirdPartySynchronizationStatusSuccessful),
+						)
+					}
+					Expect(results[fmt.Sprintf("%s/test-dashboard-2", TestNamespaceName)].
+						SynchronizationResults[0].Dash0Origin).To(Equal(dashboardOrigin("test-dashboard-2")))
+				},
+			)
+
+			It(
+				"synchronizeViaApiAndUpdateStatusWithOriginsInNamespace: tries to fetch the existing dashboards only once, "+
+					"records an error and does not send DELETE requests if fetching them fails",
+				func() {
+					EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+					gock.New(ApiEndpointTest).
+						Get("/api/dashboards").
+						MatchHeader("Authorization", AuthorizationHeaderTest).
+						MatchParam("dataset", DatasetCustomTest).
+						Times(1).
+						Reply(http.StatusForbidden)
+					defer gock.Off()
+
+					resourceNames := []string{"test-dashboard-1", "test-dashboard-2", "test-dashboard-3"}
+					originsInNamespace := newExistingOriginsInNamespace(TestNamespaceName)
+					for _, name := range resourceNames {
+						dashboardResource := createDashboardResourceWithEnableLabel("false")
+						dashboardResource.SetName(name)
+						synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
+							ctx,
+							persesDashboardReconciler,
+							&dashboardResource,
+							nil,
+							upsertAction,
+							originsInNamespace,
+							logger,
+						)
+					}
+
+					Expect(gock.IsDone()).To(BeTrue())
+					monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+					results := monRes.Status.PersesDashboardSynchronizationResults
+					Expect(results).To(HaveLen(len(resourceNames)))
+					for _, name := range resourceNames {
+						result := results[fmt.Sprintf("%s/%s", TestNamespaceName, name)]
+						Expect(result.SynchronizationStatus).To(Equal(dash0common.ThirdPartySynchronizationStatusFailed))
+						Expect(result.SynchronizationResults).To(HaveLen(1))
+						Expect(result.SynchronizationResults[0].SynchronizationError).To(
+							MatchRegexp("^unexpected status code 403 when trying to fetch existing origins: GET .*"),
+						)
+						Expect(result.SynchronizationResults[0].HttpStatusCode).To(Equal(http.StatusForbidden))
+					}
+				},
+			)
+
+			It(
+				"synchronizeNamespacedResources: fetches the existing dashboards only once in a namespace-wide resync, "+
+					"only deletes dashboards that exist",
+				func() {
+					EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+					resourceNames := []string{"test-dashboard-1", "test-dashboard-2", "test-dashboard-3"}
+					dashboardOrigin := func(name string) string {
+						return fmt.Sprintf("dash0-operator_%s_%s_%s_%s", clusterId, DatasetCustomTest, TestNamespaceName, name)
+					}
+					gock.New(ApiEndpointTest).
+						Get("/api/dashboards").
+						MatchHeader("Authorization", AuthorizationHeaderTest).
+						MatchParam("dataset", DatasetCustomTest).
+						Times(1).
+						Reply(http.StatusOK).
+						JSON([]map[string]string{{"id": "1", "origin": dashboardOrigin("test-dashboard-2")}})
+					expectDashboardDeleteRequest(dashboardApiBasePath + dashboardOrigin("test-dashboard-2"))
+					defer gock.Off()
+
+					deleteDashboardResources := createDisabledDashboardResourcesInKubernetes(
+						ctx,
+						persesDashboardCrdReconciler.Version(),
+						resourceNames,
+					)
+					defer deleteDashboardResources()
+
+					persesDashboardReconciler.synchronizeNamespacedResources(ctx, TestNamespaceName, logger)
+
+					Eventually(func(g Gomega) {
+						monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, g)
+						results := monRes.Status.PersesDashboardSynchronizationResults
+						g.Expect(results).To(HaveLen(len(resourceNames)))
+						for _, name := range resourceNames {
+							g.Expect(results[fmt.Sprintf("%s/%s", TestNamespaceName, name)].SynchronizationStatus).To(
+								Equal(dash0common.ThirdPartySynchronizationStatusSuccessful),
+							)
+						}
+					}, 5*time.Second, 50*time.Millisecond).Should(Succeed())
+					Expect(gock.IsDone()).To(BeTrue())
+				},
+			)
+
+			It(
+				"synchronizeNamespacedResources: tries to fetch the existing dashboards only once in a namespace-wide "+
+					"resync when fetching them fails",
+				func() {
+					EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+					resourceNames := []string{"test-dashboard-1", "test-dashboard-2", "test-dashboard-3"}
+					gock.New(ApiEndpointTest).
+						Get("/api/dashboards").
+						MatchHeader("Authorization", AuthorizationHeaderTest).
+						MatchParam("dataset", DatasetCustomTest).
+						Times(1).
+						Reply(http.StatusForbidden)
+					defer gock.Off()
+
+					deleteDashboardResources := createDisabledDashboardResourcesInKubernetes(
+						ctx,
+						persesDashboardCrdReconciler.Version(),
+						resourceNames,
+					)
+					defer deleteDashboardResources()
+
+					persesDashboardReconciler.synchronizeNamespacedResources(ctx, TestNamespaceName, logger)
+
+					Eventually(func(g Gomega) {
+						monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, g)
+						results := monRes.Status.PersesDashboardSynchronizationResults
+						g.Expect(results).To(HaveLen(len(resourceNames)))
+						for _, name := range resourceNames {
+							result := results[fmt.Sprintf("%s/%s", TestNamespaceName, name)]
+							g.Expect(result.SynchronizationStatus).To(
+								Equal(dash0common.ThirdPartySynchronizationStatusFailed),
+							)
+							g.Expect(result.SynchronizationResults).To(HaveLen(1))
+							g.Expect(result.SynchronizationResults[0].SynchronizationError).To(
+								MatchRegexp("^unexpected status code 403 when trying to fetch existing origins: GET .*"),
+							)
+						}
+					}, 5*time.Second, 50*time.Millisecond).Should(Succeed())
+					Expect(gock.IsDone()).To(BeTrue())
+				},
+			)
+
+			It(
 				"reports validation issues for a dashboard", func() {
 					EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
@@ -1482,6 +1674,44 @@ func createDashboardResourceWithEnableLabel(dash0EnableLabelValue string) unstru
 	err = json.Unmarshal(marshalled, &unstructuredObject)
 	Expect(err).NotTo(HaveOccurred())
 	return unstructuredObject
+}
+
+// createDisabledDashboardResourcesInKubernetes creates PersesDashboard resources of the given perses.dev API version
+// with the label dash0.com/enable=false in the test namespace, and returns a function that deletes them again.
+func createDisabledDashboardResourcesInKubernetes(ctx context.Context, version string, names []string) func() {
+	dashboardSpec := map[string]any{
+		"duration": "5m",
+		"layouts":  []any{},
+		"panels":   map[string]any{},
+	}
+	if version != "v1alpha1" {
+		dashboardSpec = map[string]any{"config": dashboardSpec}
+	}
+	dashboardResources := make([]*unstructured.Unstructured, 0, len(names))
+	for _, name := range names {
+		dashboardResource := &unstructured.Unstructured{
+			Object: map[string]any{
+				"apiVersion": "perses.dev/" + version,
+				"kind":       "PersesDashboard",
+				"metadata": map[string]any{
+					"name":      name,
+					"namespace": TestNamespaceName,
+					"labels":    map[string]any{"dash0.com/enable": "false"},
+				},
+				"spec": dashboardSpec,
+			},
+		}
+		// The client's REST mapper might not have discovered the freshly created PersesDashboard CRD yet.
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Create(ctx, dashboardResource)).To(Succeed())
+		}, 5*time.Second, 50*time.Millisecond).Should(Succeed())
+		dashboardResources = append(dashboardResources, dashboardResource)
+	}
+	return func() {
+		for _, dashboardResource := range dashboardResources {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, dashboardResource))).To(Succeed())
+		}
+	}
 }
 
 func ensurePersesDashboardCrdExists(ctx context.Context) {

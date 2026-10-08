@@ -401,6 +401,22 @@ func setOptOutLabelInPrometheusRule(namespace string, value string) {
 	).To(Succeed())
 }
 
+func addLabelToPrometheusRule(namespace string, label string) {
+	By(fmt.Sprintf("adding the label %s to the Prometheus rule resource", label))
+	Expect(
+		runAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"label",
+			"-n",
+			namespace,
+			"--overwrite",
+			"PrometheusRule",
+			prometheusRuleName,
+			label,
+		)),
+	).To(Succeed())
+}
+
 func removePrometheusRuleResource(namespace string) {
 	_ = runAndIgnoreOutput(exec.Command(
 		"kubectl",
