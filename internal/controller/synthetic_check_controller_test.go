@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -754,11 +753,11 @@ var _ = Describe(
 						Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(1))
 						apiRequest := resourceToRequestsResult.ApiRequests[0]
 						Expect(apiRequest.ItemName).To(Equal("dash0-synthetic-check"))
-						req := apiRequest.Request
-						defer func() {
-							_ = req.Body.Close()
-						}()
-						body, err := io.ReadAll(req.Body)
+						Expect(apiRequest.ApiClientCall).ToNot(BeNil())
+						Expect(apiRequest.ApiClientCall.Method).To(Equal(http.MethodPut))
+						syntheticCheckDefinition, err := mapToSyntheticCheckDefinition(syntheticCheck)
+						Expect(err).ToNot(HaveOccurred())
+						body, err := json.Marshal(syntheticCheckDefinition)
 						Expect(err).ToNot(HaveOccurred())
 						resultingSyntheticCheckInRequest := map[string]any{}
 						Expect(json.Unmarshal(body, &resultingSyntheticCheckInRequest)).To(Succeed())
@@ -808,19 +807,58 @@ kind: Dash0SyntheticCheck
 metadata:
   name: dash0-synthetic-check
   annotations:
-    dash0com/annotation1: value1
-    dash0com/annotation2: value2
+    dash0.com/folder-path: /shop/checkout
+    dash0.com/sharing: team:team_01abc
+    dash0com/not-part-of-the-api: dropped
 spec:
   enabled: true
   notifications:
     channels: []
 `,
 							expectedAnnotations: map[string]string{
-								"dash0com/annotation1": "value1",
-								"dash0com/annotation2": "value2",
+								"dash0.com/folder-path": "/shop/checkout",
+								"dash0.com/sharing":     "team:team_01abc",
 							},
 						},
 					),
+				)
+
+				It(
+					"reports a non-retryable synchronization error for a synthetic check that cannot be converted", func() {
+						syntheticCheck := map[string]any{}
+						Expect(yaml.Unmarshal([]byte(`
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SyntheticCheck
+metadata:
+  name: dash0-synthetic-check
+spec:
+  enabled: true
+  notifications:
+    channels:
+      - not-a-uuid
+`), &syntheticCheck)).To(Succeed())
+						apiConfig := ApiConfig{
+							Endpoint: ApiEndpointTest,
+							Dataset:  DatasetCustomTest,
+							Token:    AuthorizationTokenTest,
+						}
+						resourceToRequestsResult :=
+							syntheticCheckReconciler.MapResourceToHttpRequests(
+								&preconditionValidationResult{
+									k8sName:      "dash0-synthetic-check",
+									k8sNamespace: TestNamespaceName,
+									resource:     syntheticCheck,
+								},
+								apiConfig,
+								upsertAction,
+								logger,
+							)
+						Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())
+						synchronizationError, httpStatusCode := firstSynchronizationErrorAndStatusCode(resourceToRequestsResult)
+						Expect(synchronizationError).To(ContainSubstring("unable to convert the synthetic check"))
+						Expect(httpStatusCode).To(Equal(http.StatusBadRequest))
+						Expect(isRetryableSynchronizationError(synchronizationError, httpStatusCode)).To(BeFalse())
+					},
 				)
 			},
 		)
@@ -832,7 +870,7 @@ func createSyntheticCheckReconciler(clusterId string) *SyntheticCheckReconciler 
 		k8sClient,
 		types.UID(clusterId),
 		leaderElectionAware,
-		TestHTTPClient(),
+		testApiClientPool(),
 	)
 	return syntheticCheckReconciler
 }

@@ -4,9 +4,9 @@
 package controller
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,7 +37,7 @@ type SyntheticCheckReconciler struct {
 	client.Client
 	pseudoClusterUid      types.UID
 	leaderElectionAware   util.LeaderElectionAware
-	httpClient            *http.Client
+	apiClientPool         *ApiClientPool
 	defaultApiConfigs     selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs  selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	initialSyncMutex      sync.Mutex
@@ -53,13 +54,13 @@ func NewSyntheticCheckReconciler(
 	k8sClient client.Client,
 	pseudoClusterUid types.UID,
 	leaderElectionAware util.LeaderElectionAware,
-	httpClient *http.Client,
+	apiClientPool *ApiClientPool,
 ) *SyntheticCheckReconciler {
 	return &SyntheticCheckReconciler{
 		Client:               k8sClient,
 		pseudoClusterUid:     pseudoClusterUid,
 		leaderElectionAware:  leaderElectionAware,
-		httpClient:           httpClient,
+		apiClientPool:        apiClientPool,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
 		namespacedSyncMutex:  *selfmonitoringapiaccess.NewNamespaceMutex(),
@@ -114,8 +115,9 @@ func (r *SyntheticCheckReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
+// HttpClient returns nil, the synthetic check reconciler talks to the Dash0 API via the API client pool.
 func (r *SyntheticCheckReconciler) HttpClient() *http.Client {
-	return r.httpClient
+	return nil
 }
 
 func (r *SyntheticCheckReconciler) SetDefaultApiConfigs(
@@ -364,56 +366,79 @@ func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
 		apiConfig.Dataset,
 	)
 
-	var req *http.Request
-	var method string
-	var err error
+	dataset := apiConfig.Dataset
 
+	var apiClientCall *ApiClientCall
 	switch action {
 	case upsertAction:
-		syntheticCheck := preconditionChecksResult.resource
-		serializedSyntheticCheck, _ := json.Marshal(syntheticCheck)
-		requestPayload := bytes.NewBuffer(serializedSyntheticCheck)
-		method = http.MethodPut
-		req, err = http.NewRequest(
-			method,
-			syntheticCheckUrl,
-			requestPayload,
-		)
+		syntheticCheckDefinition, err := mapToSyntheticCheckDefinition(preconditionChecksResult.resource)
+		if err != nil {
+			conversionErr := fmt.Errorf("unable to convert the synthetic check to the Dash0 API format: %w", err)
+			logger.Error(conversionErr, "error converting synthetic check")
+			return NewResourceToRequestsResultSingleItemConversionError(apiConfig, itemName, conversionErr.Error())
+		}
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodPut,
+			Url:    syntheticCheckUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				updatedSyntheticCheck, err := apiClient.UpdateSyntheticCheck(
+					ctx,
+					syntheticCheckOrigin,
+					syntheticCheckDefinition,
+					&dataset,
+				)
+				if err != nil {
+					return "", err
+				}
+				if updatedSyntheticCheck == nil {
+					return "", errors.New("unexpected nil/empty response body")
+				}
+				return dash0apiclient.GetSyntheticCheckID(updatedSyntheticCheck), nil
+			},
+		}
 	case deleteAction:
-		method = http.MethodDelete
-		req, err = http.NewRequest(
-			method,
-			syntheticCheckUrl,
-			nil,
-		)
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodDelete,
+			Url:    syntheticCheckUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				return "", apiClient.DeleteSyntheticCheck(ctx, syntheticCheckOrigin, &dataset)
+			},
+		}
 	default:
 		unknownActionErr := fmt.Errorf("unknown API action: %d", action)
 		logger.Error(unknownActionErr, "unknown API action")
 		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, unknownActionErr.Error())
 	}
 
-	if err != nil {
-		httpError := fmt.Errorf(
-			"unable to create a new HTTP request to synchronize the synthetic check: %s %s: %w",
-			method,
-			syntheticCheckUrl,
-			err,
-		)
-		logger.Error(httpError, "error creating http request")
-		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, httpError.Error())
-	}
-
-	addAuthorizationHeader(req, apiConfig.Token)
-	if action == upsertAction {
-		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
-	}
-
-	return NewResourceToRequestsResultSingleItemSuccess(
+	return NewResourceToRequestsResultSingleItemApiClientCall(
 		apiConfig,
-		req,
+		apiClientCall,
 		itemName,
 		syntheticCheckOrigin,
 	)
+}
+
+// mapToSyntheticCheckDefinition converts the synthetic check resource to the typed synthetic check definition of the
+// Dash0 API client. Fields that the Dash0 API does not define for synthetic checks (for example metadata.namespace,
+// status, Kubernetes labels and annotations other than dash0.com/*) are dropped.
+func mapToSyntheticCheckDefinition(syntheticCheck map[string]any) (*dash0apiclient.SyntheticCheckDefinition, error) {
+	serializedSyntheticCheck, err := json.Marshal(syntheticCheck)
+	if err != nil {
+		return nil, err
+	}
+	syntheticCheckDefinition := &dash0apiclient.SyntheticCheckDefinition{}
+	if err = json.Unmarshal(serializedSyntheticCheck, syntheticCheckDefinition); err != nil {
+		return nil, err
+	}
+	return syntheticCheckDefinition, nil
 }
 
 func (r *SyntheticCheckReconciler) renderSyntheticCheckUrl(
@@ -421,21 +446,20 @@ func (r *SyntheticCheckReconciler) renderSyntheticCheckUrl(
 	endpoint string,
 	dataset string,
 ) (string, string) {
-	datasetUrlEncoded := url.QueryEscape(dataset)
 	syntheticCheckOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s",
 		r.pseudoClusterUid,
-		datasetUrlEncoded,
+		datasetInOrigin(dataset),
 		preconditionChecksResult.k8sNamespace,
 		preconditionChecksResult.k8sName,
 	)
 	return fmt.Sprintf(
 		"%sapi/synthetic-checks/%s?dataset=%s",
 		endpoint,
-		syntheticCheckOrigin,
-		datasetUrlEncoded,
+		url.PathEscape(syntheticCheckOrigin),
+		url.QueryEscape(dataset),
 	), syntheticCheckOrigin
 }
 
