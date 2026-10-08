@@ -1027,18 +1027,37 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					}
 
 					setOptOutLabelInPrometheusRule(applicationUnderTestNamespace, "false")
-					By("verifying the rules have been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
-					requests = fetchCapturedApiRequests(6, 4)
-					Expect(requests).To(HaveLen(4))
+					By("verifying the rules have been deleted via the Dash0 API (after setting dash0.com/enable=false)")
+					requests = fetchCapturedApiRequests(6, 6)
+					Expect(requests).To(HaveLen(6))
+					for i := 0; i < 2; i++ {
+						Expect(requests[i].Method).To(Equal("GET"))
+						Expect(requests[i].Url).To(MatchRegexp(listRouteRegexes[i]))
+					}
 					for i := 0; i < 4; i++ {
-						req := requests[i]
+						req := requests[i+2]
 						Expect(req.Method).To(Equal("DELETE"))
 						Expect(req.Url).To(MatchRegexp(ruleRouteRegexes[i]))
 					}
 
+					addLabelToPrometheusRule(applicationUnderTestNamespace, "e2e-test/trigger-update=1")
+					//nolint:lll
+					By("verifying no DELETE requests are sent for rules that do not exist in Dash0 (after updating the resource while dash0.com/enable=false is set)")
+					requests = fetchCapturedApiRequests(12, 2)
+					Expect(requests).To(HaveLen(2))
+					for i := 0; i < 2; i++ {
+						Expect(requests[i].Method).To(Equal("GET"))
+						Expect(requests[i].Url).To(MatchRegexp(listRouteRegexes[i]))
+					}
+					Consistently(func(g Gomega) {
+						storedRequests := getStoredApiRequests(g)
+						g.Expect(storedRequests).NotTo(BeNil())
+						g.Expect(storedRequests.Requests).To(HaveLen(14))
+					}, 5*time.Second, 1*time.Second).Should(Succeed())
+
 					setOptOutLabelInPrometheusRule(applicationUnderTestNamespace, "true")
 					By("verifying the rules have been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					requests = fetchCapturedApiRequests(10, 6)
+					requests = fetchCapturedApiRequests(14, 6)
 					Expect(requests).To(HaveLen(6))
 					for i := 0; i < 2; i++ {
 						Expect(requests[i].Method).To(Equal("GET"))
@@ -1054,10 +1073,14 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 
 					removePrometheusRuleResource(applicationUnderTestNamespace)
 					By("verifying the rules have been deleted via the Dash0 API (after removing the resource)")
-					requests = fetchCapturedApiRequests(16, 4)
-					Expect(requests).To(HaveLen(4))
+					requests = fetchCapturedApiRequests(20, 6)
+					Expect(requests).To(HaveLen(6))
+					for i := 0; i < 2; i++ {
+						Expect(requests[i].Method).To(Equal("GET"))
+						Expect(requests[i].Url).To(MatchRegexp(listRouteRegexes[i]))
+					}
 					for i := 0; i < 4; i++ {
-						req := requests[i]
+						req := requests[i+2]
 						Expect(req.Method).To(Equal("DELETE"))
 						Expect(req.Url).To(MatchRegexp(ruleRouteRegexes[i]))
 					}
@@ -1065,9 +1088,10 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 
 				//nolint:lll
 				It("should resync Prometheus rules when synchronizePrometheusRules transitions from false to true", func() {
+					// A namespace-wide resync fetches the existing origins once for the whole namespace.
 					listRouteRegexes := []string{
-						"/api/alerting/check-rules\\?dataset=default&originPrefix=dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_",
-						"/api/recording-rules\\?dataset=default&originPrefix=dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_",
+						"/api/alerting/check-rules\\?dataset=default&originPrefix=dash0-operator_.*_default_e2e-test-ns_$",
+						"/api/recording-rules\\?dataset=default&originPrefix=dash0-operator_.*_default_e2e-test-ns_$",
 					}
 					ruleRouteRegexes := []string{
 						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ck8s_K8s%20Deployment%20replicas%20mismatch\\?dataset=default",
