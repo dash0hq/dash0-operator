@@ -13,10 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
-	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/controller"
-	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -156,43 +153,6 @@ var _ = Describe("Uninstalling the Dash0 operator (pre-delete hook)", Ordered, f
 		}, testTimeout, pollingInterval).Should(Succeed())
 		Eventually(handlerHasFinished, testTimeout).Should(BeClosed())
 	})
-
-	It("should disable automatic namespace monitoring and wait for auto-monitoring resources to be removed before "+
-		"deleting the remaining resources", func() {
-		enableAutoNamespaceMonitoring(ctx)
-		markAsAutoMonitoringResource(ctx, dash0MonitoringResourceName1)
-
-		manualResourceWasDeletedPrematurely := make(chan bool, 1)
-		go func() {
-			defer GinkgoRecover()
-			simulateOperatorRemovingAutoMonitoringResourceAfterAutoMonitoringHasBeenDisabled(
-				ctx,
-				manualResourceWasDeletedPrematurely,
-			)
-		}()
-
-		handlerHasFinished := runPreDeleteHandler()
-
-		waitForDeletionRequest(ctx, dash0MonitoringResourceName2)
-		triggerReconcileRequestForName(ctx, reconciler, dash0MonitoringResourceName2)
-
-		var deletedPrematurely bool
-		Eventually(manualResourceWasDeletedPrematurely, testTimeout).Should(Receive(&deletedPrematurely))
-		Expect(deletedPrematurely).To(BeFalse())
-		Eventually(func(g Gomega) {
-			operatorConfiguration := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, g)
-			g.Expect(operatorConfiguration.Spec.AutoMonitorNamespaces.IsEnabled()).To(BeFalse())
-
-			VerifyMonitoringResourceByNameDoesNotExist(ctx, k8sClient, g, dash0MonitoringResourceName1)
-			VerifyMonitoringResourceByNameDoesNotExist(ctx, k8sClient, g, dash0MonitoringResourceName2)
-
-			deployment1 := GetDeploymentEventually(ctx, k8sClient, g, deployment1.Namespace, deployment1.Name)
-			VerifyUnmodifiedDeploymentEventually(g, deployment1)
-			deployment2 := GetDeploymentEventually(ctx, k8sClient, g, deployment2.Namespace, deployment2.Name)
-			VerifyUnmodifiedDeploymentEventually(g, deployment2)
-		}, testTimeout, pollingInterval).Should(Succeed())
-		Eventually(handlerHasFinished, testTimeout).Should(BeClosed())
-	})
 })
 
 func runPreDeleteHandler() <-chan struct{} {
@@ -211,45 +171,6 @@ func waitForDeletionRequest(ctx context.Context, name types.NamespacedName) {
 		g.Expect(resource).ToNot(BeNil())
 		g.Expect(resource.DeletionTimestamp).ToNot(BeNil())
 	}, testTimeout, pollingInterval).Should(Succeed())
-}
-
-func enableAutoNamespaceMonitoring(ctx context.Context) {
-	operatorConfiguration := &dash0v1alpha1.Dash0OperatorConfiguration{}
-	Expect(k8sClient.Get(ctx, types.NamespacedName{Name: OperatorConfigurationResourceName}, operatorConfiguration)).
-		To(Succeed())
-	operatorConfiguration.Spec.AutoMonitorNamespaces.Enabled = new(true)
-	Expect(k8sClient.Update(ctx, operatorConfiguration)).To(Succeed())
-}
-
-func markAsAutoMonitoringResource(ctx context.Context, name types.NamespacedName) {
-	monitoringResource := &dash0v1beta1.Dash0Monitoring{}
-	Expect(k8sClient.Get(ctx, name, monitoringResource)).To(Succeed())
-	if monitoringResource.Labels == nil {
-		monitoringResource.Labels = map[string]string{}
-	}
-	monitoringResource.Labels[util.AutoMonitoredNamespaceLabel] = util.TrueString
-	Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
-}
-
-// simulateOperatorRemovingAutoMonitoringResourceAfterAutoMonitoringHasBeenDisabled mimics the auto-namespace
-// monitoring controller and reports whether the manually created resource was already being deleted at that point.
-func simulateOperatorRemovingAutoMonitoringResourceAfterAutoMonitoringHasBeenDisabled(
-	ctx context.Context,
-	manualResourceWasDeletedPrematurely chan<- bool,
-) {
-	Eventually(func(g Gomega) {
-		operatorConfiguration := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, g)
-		g.Expect(operatorConfiguration.Spec.AutoMonitorNamespaces.IsEnabled()).To(BeFalse())
-	}, testTimeout, pollingInterval).Should(Succeed())
-
-	manualResource := &dash0v1beta1.Dash0Monitoring{}
-	Expect(k8sClient.Get(ctx, dash0MonitoringResourceName2, manualResource)).To(Succeed())
-	manualResourceWasDeletedPrematurely <- manualResource.DeletionTimestamp != nil
-
-	autoMonitoringResource := &dash0v1beta1.Dash0Monitoring{}
-	Expect(k8sClient.Get(ctx, dash0MonitoringResourceName1, autoMonitoringResource)).To(Succeed())
-	Expect(k8sClient.Delete(ctx, autoMonitoringResource)).To(Succeed())
-	triggerReconcileRequestForName(ctx, reconciler, dash0MonitoringResourceName1)
 }
 
 func setupNamespaceWithDash0MonitoringResourceAndWorkload(

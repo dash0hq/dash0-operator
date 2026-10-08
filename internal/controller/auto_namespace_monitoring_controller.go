@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	otelmetric "go.opentelemetry.io/otel/metric"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -61,7 +62,7 @@ func NewAutoNamespaceMonitoringReconciler(
 
 func (r *AutoNamespaceMonitoringReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.manager = mgr
-	r.namespaceWatcher = NewNamespaceWatcher(r.Client, r.operatorNamespace)
+	r.namespaceWatcher = NewNamespaceWatcher(r.Client, mgr.GetAPIReader(), r.operatorNamespace)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dash0v1alpha1.Dash0OperatorConfiguration{}).
 		Named("autoNamespaceMonitoring").
@@ -528,14 +529,23 @@ func (r *AutoNamespaceMonitoringReconciler) updateOperatorConfigurationStatus(
 
 type NamespaceWatcher struct {
 	client.Client
+	apiReader                  client.Reader
 	operatorNamespace          string
 	controllerStopFunctionLock sync.Mutex
 	controllerStopFunction     *context.CancelFunc
 }
 
-func NewNamespaceWatcher(k8sClient client.Client, operatorNamespace string) *NamespaceWatcher {
+// NewNamespaceWatcher creates a NamespaceWatcher. The apiReader must read directly from the API server (not from the
+// informer cache), so that a just-created pre-delete hook job is guaranteed to be visible, see
+// isOperatorBeingUninstalled.
+func NewNamespaceWatcher(
+	k8sClient client.Client,
+	apiReader client.Reader,
+	operatorNamespace string,
+) *NamespaceWatcher {
 	return &NamespaceWatcher{
 		Client:            k8sClient,
+		apiReader:         apiReader,
 		operatorNamespace: operatorNamespace,
 	}
 }
@@ -740,6 +750,25 @@ func (w *NamespaceWatcher) createMonitoringResource(
 		resourceAnnotations[k] = v
 	}
 
+	operatorIsBeingUninstalled, err := w.isOperatorBeingUninstalled(ctx)
+	if err != nil {
+		logger.Error(
+			err,
+			"cannot check whether the operator is being uninstalled, not creating the auto Dash0Monitoring resource",
+			"namespace",
+			namespaceName,
+		)
+		return err
+	}
+	if operatorIsBeingUninstalled {
+		logger.Info(
+			"the operator is being uninstalled, not creating the auto Dash0Monitoring resource",
+			"namespace",
+			namespaceName,
+		)
+		return nil
+	}
+
 	monitoring := &dash0v1beta1.Dash0Monitoring{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
@@ -756,6 +785,41 @@ func (w *NamespaceWatcher) createMonitoringResource(
 	}
 	logger.Info("created auto Dash0Monitoring resource", "namespace", namespaceName, "name", name)
 	return nil
+}
+
+// isOperatorBeingUninstalled checks whether the Helm chart's pre-delete hook job is currently running in the operator
+// namespace. The hook deletes all Dash0Monitoring resources, auto-monitoring resources must not be recreated while it
+// runs. Helm creates the job before the hook deletes anything, and the check reads from the API server directly, so the
+// job is always visible by the time a deletion triggers a recreation attempt. A finished job (in particular a failed
+// one, which Helm leaves behind) does not count. If the uninstallation is aborted, resources skipped in the meantime
+// are only recreated with the next reconcile of the namespace (a namespace change, an operator restart or a cache
+// resync).
+func (w *NamespaceWatcher) isOperatorBeingUninstalled(ctx context.Context) (bool, error) {
+	preDeleteHookJobs := &batchv1.JobList{}
+	if err := w.apiReader.List(
+		ctx,
+		preDeleteHookJobs,
+		client.InNamespace(w.operatorNamespace),
+		client.MatchingLabels{util.AppKubernetesIoComponentLabel: util.UninstallationProcessComponent},
+	); err != nil {
+		return false, err
+	}
+	for i := range preDeleteHookJobs.Items {
+		if !isJobFinished(&preDeleteHookJobs.Items[i]) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func isJobFinished(job *batchv1.Job) bool {
+	for _, condition := range job.Status.Conditions {
+		if (condition.Type == batchv1.JobComplete || condition.Type == batchv1.JobFailed) &&
+			condition.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }
 
 // reconcileResourceWithMonitoringTemplate makes sure the monitoring resource reflects the current monitoring template.
