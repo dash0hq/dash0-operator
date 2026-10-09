@@ -15,6 +15,8 @@
 #   Testing with arbitrary container image repositories is not supported due to allowlist restrictions on the container images.)
 #   IMPORTANT: Make sure the ghcr.io/dash0hq/gke-ap-xxx repositories have up-to-date images that represent your current
 #   branch. This script does not build or push images.
+#   The Signal Control collector and Edge Proxy images are not built in this repository, they are always pulled from the
+#   official ghcr.io/dash0hq repositories.
 # - Use IMAGE_REPOSITORY_PREFIX to control the prefix of the container image repositories used with a local Helm chart
 #   (defaults to "ghcr.io/dash0hq/gke-ap-"). For example, set it to "ghcr.io/dash0hq/" to use the official image
 #   repositories (both prefixes are allow-listed on the GKE Autopilot cluster).
@@ -94,6 +96,8 @@ collect_diagnostics() {
   dump dash0monitorings-describe.txt kubectl describe dash0monitorings.operator.dash0.com --all-namespaces
   dump dash0operatorconfigurations-get.txt kubectl get dash0operatorconfigurations.operator.dash0.com -o wide
   dump dash0operatorconfigurations-describe.txt kubectl describe dash0operatorconfigurations.operator.dash0.com
+  dump dash0signalcontrols-get.txt kubectl get dash0signalcontrols.operator.dash0.com -o wide
+  dump dash0signalcontrols-describe.txt kubectl describe dash0signalcontrols.operator.dash0.com
 
   # Cluster-wide events (scheduling and allowlist rejections often show up here).
   dump events-all-namespaces.txt kubectl get events --all-namespaces --sort-by=.lastTimestamp
@@ -185,6 +189,27 @@ retry_command() {
   done
 }
 
+# Verifies that the running pods in the operator namespace that match the label selector $1 carry the GKE Autopilot
+# WorkloadAllowlist match label. $2 is the name of the workload used in log messages.
+verify_matching_allowlist() {
+  local selector=$1
+  local workload=$2
+  local all_matching_allowlists
+  local matching_allowlist
+  all_matching_allowlists=$(kubectl get pods \
+    --namespace "$operator_namespace" \
+    --selector "$selector" \
+    --field-selector status.phase=Running \
+    -o jsonpath="{.items[*].metadata.labels['cloud\.google\.com/matching-allowlist']}")
+  read -r matching_allowlist _ <<< "$all_matching_allowlists"
+  if [[ -z "$matching_allowlist" ]]; then
+    log "ERROR: the $workload pods did not match any GKE Autopilot WorkloadAllowlist,"
+    log "the WorkloadAllowlists probably need to be updated for the current Helm chart."
+    exit 1
+  fi
+  log "the $workload pods matched the WorkloadAllowlist \"$matching_allowlist\""
+}
+
 log "kubectl version:"
 kubectl version
 echo
@@ -247,6 +272,14 @@ helm_command+=" --set operator.dash0Export.apiEndpoint=https://api.dummy-url.aws
 helm_command+=" --set operator.prometheusCrdSupportEnabled=true"
 helm_command+=" --set operator.clusterName=dummy-cluster-name"
 helm_command+=" --set operator.collectors.k8s_attributes.shareProcessorBetweenPipelines=true"
+# Signal Control: the pull policies add optional env vars to the operator manager, enablePprof adds the optional pprof
+# port to the Edge Proxy. A single replica is enough for the check and reduces the capacity GKE Autopilot has to add.
+helm_command+=" --set operator.signalControl.enabled=true"
+helm_command+=" --set operator.signalControl.edgeProxy.enablePprof=true"
+helm_command+=" --set operator.signalControl.edgeProxy.replicas=1"
+helm_command+=" --set operator.collectors.signalControlCollectorReplicas=1"
+helm_command+=" --set operator.signalControlCollectorImage.pullPolicy=IfNotPresent"
+helm_command+=" --set operator.edgeProxyImage.pullPolicy=IfNotPresent"
 if [[ "$use_local_chart" = "true" ]]; then
   helm_command+=" --set operator.image.repository=${image_repository_prefix}operator-controller"
   helm_command+=" --set operator.image.tag=$image_tag"
@@ -294,19 +327,9 @@ until [[ "$(kubectl get daemonset "${helm_release_name}-opentelemetry-collector-
   fi
   sleep 5
 done
+log "at least one daemonset collector pod is ready now"
 # Verify that the GKE Autopilot warden has added the WorkloadAllowlist match label to the daemonset pod.
-all_matching_allowlists=$(kubectl get pods \
-  --namespace "$operator_namespace" \
-  --selector app.kubernetes.io/component=agent-collector \
-  --field-selector status.phase=Running \
-  -o jsonpath="{.items[*].metadata.labels['cloud\.google\.com/matching-allowlist']}")
-read -r matching_allowlist _ <<< "$all_matching_allowlists"
-if [[ -z "$matching_allowlist" ]]; then
-  log "ERROR: the daemonset collector pods did not match any GKE Autopilot WorkloadAllowlist,"
-  log "the WorkloadAllowlists probably need to be updated for the current Helm chart."
-  exit 1
-fi
-log "at least one daemonset collector pod is ready now, and the daemonset pods matched the WorkloadAllowlist \"$matching_allowlist\""
+verify_matching_allowlist app.kubernetes.io/component=agent-collector "daemonset collector"
 
 log "waiting for the deployment collector to be created"
 set -x
@@ -359,6 +382,129 @@ kubectl \
 set +x
 
 log "the target-allocator is ready now"
+
+# The optional settings make the operator render the optional env vars and volumes of the Signal Control collector and
+# the Edge Proxy, so that they are checked against the WorkloadAllowlists as well. This uses create instead of apply, so
+# that a leftover resource from an earlier run (e.g. with tail sampling disabled) fails the check instead of being reused.
+log "deploying a Signal Control resource to trigger deploying the Signal Control collector and the Edge Proxy"
+kubectl create -f - <<EOF
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SignalControl
+metadata:
+  name: dash0-signal-control-resource
+spec:
+  edgeProxy:
+    logLevel: debug
+    debug: true
+    insecure: true
+    settingsRefreshInterval: 30s
+  sampling:
+    reservoir:
+      type: disk
+  logEnrichment:
+    enabled: true
+    patternRefreshInterval: 30s
+EOF
+log "waiting for the Signal Control resource to show up"
+retry_command kubectl get dash0signalcontrols.operator.dash0.com/dash0-signal-control-resource
+log "waiting for the Signal Control resource to become available"
+kubectl wait dash0signalcontrols.operator.dash0.com/dash0-signal-control-resource --for condition=Available --timeout 30s
+
+log "waiting for the Signal Control collector to be created"
+set -x
+kubectl wait \
+  --for=create \
+  deployment "${helm_release_name}-signal-control-collector-deployment" \
+  --namespace "$operator_namespace" \
+  --timeout=60s
+set +x
+log "waiting for the Signal Control collector rollout to finish"
+set -x
+kubectl \
+  rollout status \
+  deployment "${helm_release_name}-signal-control-collector-deployment" \
+  --namespace "$operator_namespace" \
+  --timeout 120s
+set +x
+log "the Signal Control collector is ready now"
+verify_matching_allowlist app.kubernetes.io/component=signal-control-collector "Signal Control collector"
+
+log "waiting for the Edge Proxy to be created"
+set -x
+kubectl wait \
+  --for=create \
+  deployment "${helm_release_name}-edge-proxy" \
+  --namespace "$operator_namespace" \
+  --timeout=60s
+set +x
+# With tail sampling enabled, the Edge Proxy only becomes ready once it is connected to the Decision Maker, which never
+# happens with the dummy endpoint used here. A running pod is sufficient, it shows that GKE Autopilot has admitted it.
+log "waiting for at least one pod of the Edge Proxy to be running"
+deadline=$((SECONDS + 120))
+until [[ -n "$(kubectl get pods \
+  --namespace "$operator_namespace" \
+  --selector app.kubernetes.io/component=edge-proxy \
+  --field-selector status.phase=Running \
+  -o name)" ]]; do
+  if (( SECONDS >= deadline )); then
+    log "ERROR: no pod of the Edge Proxy was running within 120 seconds"
+    exit 1
+  fi
+  sleep 5
+done
+log "at least one Edge Proxy pod is running now"
+verify_matching_allowlist app.kubernetes.io/component=edge-proxy "Edge Proxy"
+
+# Without tail sampling, the Edge Proxy runs with the alternative settings-only configuration and becomes ready without
+# a Decision Maker connection.
+log "disabling tail sampling to switch the Edge Proxy to its settings-only configuration"
+kubectl patch dash0signalcontrols.operator.dash0.com/dash0-signal-control-resource \
+  --type merge \
+  --patch '{"spec":{"sampling":{"enabled":false}}}'
+log "waiting for the operator to update the Edge Proxy deployment"
+deadline=$((SECONDS + 60))
+until [[ "$(kubectl get deployment "${helm_release_name}-edge-proxy" \
+  --namespace "$operator_namespace" \
+  -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="UPSTREAM_TAILSAMPLING_ENABLED")].value}')" == "false" ]]; do
+  if (( SECONDS >= deadline )); then
+    log "ERROR: the operator did not update the Edge Proxy deployment within 60 seconds"
+    exit 1
+  fi
+  sleep 5
+done
+log "waiting for the Edge Proxy rollout to finish"
+set -x
+kubectl \
+  rollout status \
+  deployment "${helm_release_name}-edge-proxy" \
+  --namespace "$operator_namespace" \
+  --timeout 120s
+set +x
+log "the Edge Proxy is ready now"
+
+# The patch also removes the trace reservoir volume from the Signal Control collector. Updating the deployment makes the
+# operator add the env var K8S_DEPLOYMENT_UID, which it cannot set when creating the deployment.
+log "waiting for the operator to update the Signal Control collector deployment"
+deadline=$((SECONDS + 60))
+until [[ -z "$(kubectl get deployment "${helm_release_name}-signal-control-collector-deployment" \
+  --namespace "$operator_namespace" \
+  -o jsonpath='{.spec.template.spec.volumes[?(@.name=="trace-reservoir")].name}')" ]]; do
+  if (( SECONDS >= deadline )); then
+    log "ERROR: the operator did not update the Signal Control collector deployment within 60 seconds"
+    exit 1
+  fi
+  sleep 5
+done
+log "waiting for the Signal Control collector rollout to finish"
+set -x
+kubectl \
+  rollout status \
+  deployment "${helm_release_name}-signal-control-collector-deployment" \
+  --namespace "$operator_namespace" \
+  --timeout 120s
+set +x
+log "the Signal Control collector is ready now"
+
 echo
 log "success: all checks have passed"
 echo
