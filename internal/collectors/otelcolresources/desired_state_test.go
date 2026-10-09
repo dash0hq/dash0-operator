@@ -8,6 +8,8 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -620,8 +622,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSetCollectorContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
 		Expect(daemonSetCollectorContainer.Resources.Limits.Memory().String()).To(Equal("500Mi"))
 		Expect(daemonSetCollectorContainer.Resources.Requests.Memory().String()).To(Equal("500Mi"))
-		Expect(daemonSetCollectorContainerArgs).To(HaveLen(1))
+		Expect(daemonSetCollectorContainerArgs).To(HaveLen(2))
 		Expect(daemonSetCollectorContainerArgs[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
+		Expect(daemonSetCollectorContainerArgs[1]).To(Equal("--feature-gates=-processor.k8sattributes.DontEmitV0K8sConventions"))
 		Expect(daemonSetCollectorContainer.VolumeMounts).To(HaveLen(6))
 		Expect(daemonSetCollectorContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
@@ -681,8 +684,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(deploymentCollectorContainer.Resources.Limits.Memory().String()).To(Equal("500Mi"))
 		Expect(deploymentCollectorContainer.Resources.Requests.Memory().String()).To(Equal("500Mi"))
 		deploymentCollectorContainerArgs := deploymentCollectorContainer.Args
-		Expect(deploymentCollectorContainerArgs).To(HaveLen(1))
+		Expect(deploymentCollectorContainerArgs).To(HaveLen(2))
 		Expect(deploymentCollectorContainerArgs[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
+		Expect(deploymentCollectorContainerArgs[1]).To(Equal("--feature-gates=-processor.k8sattributes.DontEmitV0K8sConventions"))
 		Expect(deploymentCollectorContainer.VolumeMounts).To(HaveLen(2))
 		Expect(deploymentCollectorContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
@@ -878,10 +882,12 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSetCollectorContainer.Name).To(Equal("opentelemetry-collector"))
 		Expect(daemonSetCollectorContainer.Args).To(HaveLen(2))
 		Expect(daemonSetCollectorContainer.Args[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
-		Expect(daemonSetCollectorContainer.Args[1]).To(Equal("--feature-gates=service.profilesSupport"))
+		Expect(daemonSetCollectorContainer.Args[1]).To(Equal(
+			"--feature-gates=service.profilesSupport,-processor.k8sattributes.DontEmitV0K8sConventions"))
 	})
 
-	It("should not add the k8s_attributes ShareProcessorBetweenPipelines feature gate by default", func() {
+	It("should only add the -processor.k8sattributes.DontEmitV0K8sConventions feature gate to the daemonset and "+
+		"deployment collector args by default", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
@@ -891,10 +897,15 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		}, nil, util.ExtraConfigDefaults)
 		Expect(err).ToNot(HaveOccurred())
 
-		Expect(getDaemonSet(desiredState).Spec.Template.Spec.Containers[0].Args).
-			To(Equal([]string{"--config=file:/etc/otelcol/conf/config.yaml"}))
-		Expect(getDeployment(desiredState).Spec.Template.Spec.Containers[0].Args).
-			To(Equal([]string{"--config=file:/etc/otelcol/conf/config.yaml"}))
+		expectedArgs := []string{
+			"--config=file:/etc/otelcol/conf/config.yaml",
+			"--feature-gates=-processor.k8sattributes.DontEmitV0K8sConventions",
+		}
+		Expect(getDaemonSet(desiredState).Spec.Template.Spec.Containers[0].Args).To(Equal(expectedArgs))
+		deploymentCollectorContainer := getDeployment(desiredState).Spec.Template.Spec.Containers[0]
+		Expect(deploymentCollectorContainer.Args).To(Equal(expectedArgs))
+		Expect(FindEnvVarByName(deploymentCollectorContainer.Env, gkeAutopilotWorkaroundEmitV0K8sConventionsEnvVarName)).
+			To(BeNil())
 	})
 
 	It("should add the k8s_attributes ShareProcessorBetweenPipelines feature gate to the daemonset and deployment "+
@@ -911,7 +922,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		expectedArgs := []string{
 			"--config=file:/etc/otelcol/conf/config.yaml",
-			"--feature-gates=processor.k8sattributes.ShareProcessorBetweenPipelines",
+			"--feature-gates=processor.k8sattributes.ShareProcessorBetweenPipelines," +
+				"-processor.k8sattributes.DontEmitV0K8sConventions",
 		}
 		Expect(getDaemonSet(desiredState).Spec.Template.Spec.Containers[0].Args).To(Equal(expectedArgs))
 		Expect(getDeployment(desiredState).Spec.Template.Spec.Containers[0].Args).To(Equal(expectedArgs))
@@ -933,7 +945,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		Expect(getDaemonSet(desiredState).Spec.Template.Spec.Containers[0].Args).To(Equal([]string{
 			"--config=file:/etc/otelcol/conf/config.yaml",
-			"--feature-gates=service.profilesSupport,processor.k8sattributes.ShareProcessorBetweenPipelines",
+			"--feature-gates=service.profilesSupport,processor.k8sattributes.ShareProcessorBetweenPipelines," +
+				"-processor.k8sattributes.DontEmitV0K8sConventions",
 		}))
 	})
 
@@ -949,13 +962,12 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		Expect(err).ToNot(HaveOccurred())
 
-		daemonSetCollectorContainer := getDaemonSet(desiredState).Spec.Template.Spec.Containers[0]
-		Expect(daemonSetCollectorContainer.Args).
-			ToNot(ContainElement("--feature-gates=-processor.resourcedetection.propagateerrors"))
-
-		deploymentCollectorContainer := getDeployment(desiredState).Spec.Template.Spec.Containers[0]
-		Expect(deploymentCollectorContainer.Args).
-			ToNot(ContainElement("--feature-gates=-processor.resourcedetection.propagateerrors"))
+		expectedArgs := []string{
+			"--config=file:/etc/otelcol/conf/config.yaml",
+			"--feature-gates=-processor.k8sattributes.DontEmitV0K8sConventions",
+		}
+		Expect(getDaemonSet(desiredState).Spec.Template.Spec.Containers[0].Args).To(Equal(expectedArgs))
+		Expect(getDeployment(desiredState).Spec.Template.Spec.Containers[0].Args).To(Equal(expectedArgs))
 	})
 
 	It("should not add the -processor.resourcedetection.propagateerrors feature gate to any collector, since none of "+
@@ -980,10 +992,16 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(signalControlCollectorContainer.Args).To(ConsistOf("--config=file:/etc/otelcol/conf/config.yaml"))
 
 		daemonSetCollectorContainer := getDaemonSet(desiredState).Spec.Template.Spec.Containers[0]
-		Expect(daemonSetCollectorContainer.Args).To(ConsistOf("--config=file:/etc/otelcol/conf/config.yaml"))
+		Expect(daemonSetCollectorContainer.Args).To(ConsistOf(
+			"--config=file:/etc/otelcol/conf/config.yaml",
+			"--feature-gates=-processor.k8sattributes.DontEmitV0K8sConventions",
+		))
 
 		deploymentCollectorContainer := getDeployment(desiredState).Spec.Template.Spec.Containers[0]
-		Expect(deploymentCollectorContainer.Args).To(ConsistOf("--config=file:/etc/otelcol/conf/config.yaml"))
+		Expect(deploymentCollectorContainer.Args).To(ConsistOf(
+			"--config=file:/etc/otelcol/conf/config.yaml",
+			"--feature-gates=-processor.k8sattributes.DontEmitV0K8sConventions",
+		))
 	})
 
 	It("should omit all resources related to the collector deployment if collecting cluster metrics is disabled", func() {
@@ -2226,6 +2244,43 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		deploymentValue, ok := deploymentTemplateLabels[gkeAutopilotAllowlistLabelKey]
 		Expect(ok).To(BeTrue())
 		Expect(deploymentValue).To(Equal(gkeAutopilotAllowlistLabelDeploymentValue))
+	})
+
+	It("should request the -processor.k8sattributes.DontEmitV0K8sConventions feature gate for the deployment "+
+		"collector via an environment variable instead of an arg on GKE Autopilot", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			Images:         TestImages,
+			IsGkeAutopilot: true,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		daemonSetCollectorContainer := getDaemonSet(desiredState).Spec.Template.Spec.Containers[0]
+		Expect(daemonSetCollectorContainer.Args).To(Equal([]string{
+			"--config=file:/etc/otelcol/conf/config.yaml",
+			"--feature-gates=-processor.k8sattributes.DontEmitV0K8sConventions",
+		}))
+		Expect(FindEnvVarByName(daemonSetCollectorContainer.Env, gkeAutopilotWorkaroundEmitV0K8sConventionsEnvVarName)).
+			To(BeNil())
+
+		deploymentCollectorContainer := getDeployment(desiredState).Spec.Template.Spec.Containers[0]
+		Expect(deploymentCollectorContainer.Args).To(Equal([]string{"--config=file:/etc/otelcol/conf/config.yaml"}))
+		Expect(deploymentCollectorContainer.Env).
+			To(ContainElement(MatchEnvVar(gkeAutopilotWorkaroundEmitV0K8sConventionsEnvVarName, "true")))
+	})
+
+	It("drift protection: the collector image's entrypoint adds the feature gate requested via the GKE Autopilot "+
+		"workaround environment variable", func() {
+		entrypoint, err := os.ReadFile(
+			filepath.Join("..", "..", "..", "images", "collector", "src", "image", "entrypoint.sh"),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(string(entrypoint)).To(ContainSubstring(gkeAutopilotWorkaroundEmitV0K8sConventionsEnvVarName))
+		Expect(string(entrypoint)).To(ContainSubstring(
+			`"--feature-gates=` + disableK8sAttributesDontEmitV0K8sConventionsFeatureGate + `"`))
 	})
 
 	It("should omit the filelog offset container but add the volume ownership container if a host volume is provided for filelog offset storage", func() {

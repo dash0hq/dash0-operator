@@ -664,10 +664,11 @@ processors:
       - k8s.replicaset.uid
       - k8s.statefulset.name
       - k8s.statefulset.uid
-      # The following three work only if k8s.pod.uid and k8s.container.name are set
+      # The following four work only if k8s.pod.uid and k8s.container.name are set
       - container.id
       - container.image.name
       - container.image.tag
+      - container.image.tags
       {{- if or .CollectNamespaceLabelsAndAnnotationsEnabled .CollectPodLabelsAndAnnotationsEnabled .CollectNodeLabelsAndAnnotationsEnabled }}
       labels:
         {{- if .CollectNamespaceLabelsAndAnnotationsEnabled }}
@@ -748,10 +749,11 @@ processors:
       - k8s.replicaset.uid
       - k8s.statefulset.name
       - k8s.statefulset.uid
-      # The following three work only if k8s.pod.uid and k8s.container.name are set
+      # The following four work only if k8s.pod.uid and k8s.container.name are set
       - container.id
       - container.image.name
       - container.image.tag
+      - container.image.tags
       {{- if or .CollectNamespaceLabelsAndAnnotationsEnabled .CollectPodLabelsAndAnnotationsEnabled .CollectNodeLabelsAndAnnotationsEnabled }}
       labels:
         {{- if .CollectNamespaceLabelsAndAnnotationsEnabled }}
