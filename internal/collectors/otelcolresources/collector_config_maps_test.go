@@ -11,7 +11,10 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/contexts/ottldatapoint"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/contexts/ottlmetric"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/ottlfuncs"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
@@ -4278,6 +4281,43 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}),
 	)
 
+	type containerImageTagTest struct {
+		cmTypeDef                  configMapTypeDefinition
+		profilingEnabled           bool
+		k8sAttributesProcessorName string
+	}
+
+	DescribeTable("should extract container.image.tag and container.image.tags", func(testConfig containerImageTagTest) {
+		configMap, err := testConfig.cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         cmTestSingleDefaultOtlpExporter(),
+			ProfilingEnabled:  testConfig.profilingEnabled,
+		}, monitoredNamespaces, nil, nil, false)
+		Expect(err).ToNot(HaveOccurred())
+		collectorConfig := parseConfigMapContent(configMap)
+		metadataListRaw := ReadFromMap(
+			collectorConfig,
+			[]string{"processors", testConfig.k8sAttributesProcessorName, "extract", "metadata"},
+		)
+		Expect(metadataListRaw).ToNot(BeNil())
+		Expect(metadataListRaw.([]any)).To(ContainElements("container.image.tag", "container.image.tags"))
+	},
+		Entry("daemonset/k8s_attributes", containerImageTagTest{
+			cmTypeDef:                  cmTypeDefDaemonSet,
+			k8sAttributesProcessorName: "k8s_attributes",
+		}),
+		Entry("deployment/k8s_attributes", containerImageTagTest{
+			cmTypeDef:                  cmTypeDefDeployment,
+			k8sAttributesProcessorName: "k8s_attributes",
+		}),
+		Entry("daemonset/k8s_attributes/profiles", containerImageTagTest{
+			cmTypeDef:                  cmTypeDefDaemonSet,
+			profilingEnabled:           true,
+			k8sAttributesProcessorName: "k8s_attributes/profiles",
+		}),
+	)
+
 	Describe("should enable/disable wait_for_metadata", func() {
 		DescribeTable("should configure the k8s_attributes processor to wait for metadata if enabled", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
@@ -5368,6 +5408,141 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(ReadFromMap(collectorConfig, []string{"receivers", "prometheus"})).ToNot(BeNil())
 			Expect(ReadFromMap(collectorConfig, []string{"receivers", "prometheus", "api_server"})).To(BeNil())
 		})
+
+		type prometheusServiceAttributesTestConfig struct {
+			resourceAttributes         map[string]string
+			dataPointAttributes        map[string]string
+			expectedResourceAttributes map[string]any
+		}
+
+		DescribeTable("should derive the service attributes of scraped metrics", func(testConfig prometheusServiceAttributesTestConfig) {
+			configMap, err := assembleDaemonSetCollectorConfigMap(
+				config,
+				[]string{namespace1},
+				nil,
+				[]string{namespace1},
+				nil,
+				nil,
+				emptyTargetAllocatorMtlsConfig,
+				false,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			transformProcessor := ReadFromMap(collectorConfig, []string{
+				"processors",
+				"transform/metrics/prometheus_service_attributes",
+			}).(map[string]any)
+			Expect(transformProcessor["error_mode"]).To(Equal("ignore"))
+			var statements []string
+			for _, group := range transformProcessor["metric_statements"].([]any) {
+				groupMap := group.(map[string]any)
+				Expect(groupMap["context"]).To(Equal("datapoint"))
+				for _, statement := range groupMap["statements"].([]any) {
+					statements = append(statements, statement.(string))
+				}
+			}
+
+			settings := component.TelemetrySettings{Logger: zap.NewNop()}
+			parser, err := ottldatapoint.NewParser(ottlfuncs.StandardFuncs[*ottldatapoint.TransformContext](), settings)
+			Expect(err).NotTo(HaveOccurred())
+			parsedStatements, err := parser.ParseStatements(statements)
+			Expect(err).NotTo(HaveOccurred())
+			statementSeq := ottldatapoint.NewStatementSequence(
+				parsedStatements,
+				settings,
+				ottldatapoint.WithStatementSequenceErrorMode(ottl.IgnoreError),
+			)
+
+			resourceMetrics := pmetric.NewResourceMetrics()
+			for k, v := range testConfig.resourceAttributes {
+				resourceMetrics.Resource().Attributes().PutStr(k, v)
+			}
+			scopeMetrics := resourceMetrics.ScopeMetrics().AppendEmpty()
+			metric := scopeMetrics.Metrics().AppendEmpty()
+			dataPoint := metric.SetEmptyGauge().DataPoints().AppendEmpty()
+			for k, v := range testConfig.dataPointAttributes {
+				dataPoint.Attributes().PutStr(k, v)
+			}
+			tCtx := ottldatapoint.NewTransformContext(resourceMetrics, scopeMetrics, metric, dataPoint)
+			defer tCtx.Close()
+
+			Expect(statementSeq.Execute(context.Background(), tCtx)).To(Succeed())
+			Expect(resourceMetrics.Resource().Attributes().AsRaw()).To(Equal(testConfig.expectedResourceAttributes))
+		},
+			Entry("service attributes are derived from app.kubernetes.io labels if there is no target_info",
+				prometheusServiceAttributesTestConfig{
+					resourceAttributes: map[string]string{
+						"service.name":        "dash0-kubernetes-pods-scrape-config",
+						"service.instance.id": "10.1.2.3:8080",
+					},
+					dataPointAttributes: map[string]string{
+						"app_kubernetes_io_name":    "my-app",
+						"app_kubernetes_io_version": "1.2.3",
+						"app_kubernetes_io_part_of": "my-system",
+					},
+					expectedResourceAttributes: map[string]any{
+						"service.name":        "my-app",
+						"service.version":     "1.2.3",
+						"service.namespace":   "my-system",
+						"service.instance.id": "10.1.2.3:8080",
+					},
+				}),
+			Entry("service attributes are derived from app.kubernetes.io labels for the slow scrape job",
+				prometheusServiceAttributesTestConfig{
+					resourceAttributes: map[string]string{
+						"service.name":        "dash0-kubernetes-pods-scrape-config-slow",
+						"service.instance.id": "10.1.2.3:8080",
+					},
+					dataPointAttributes: map[string]string{
+						"app_kubernetes_io_name": "my-app",
+					},
+					expectedResourceAttributes: map[string]any{
+						"service.name":        "my-app",
+						"service.instance.id": "10.1.2.3:8080",
+					},
+				}),
+			Entry("the scrape job name is removed if there is neither target_info nor an app.kubernetes.io/name label",
+				prometheusServiceAttributesTestConfig{
+					resourceAttributes: map[string]string{
+						"service.name":        "dash0-kubernetes-pods-scrape-config",
+						"service.instance.id": "10.1.2.3:8080",
+					},
+					dataPointAttributes: map[string]string{
+						"app": "my-app",
+					},
+					expectedResourceAttributes: map[string]any{},
+				}),
+			Entry("service_name from target_info takes precedence over app.kubernetes.io labels",
+				prometheusServiceAttributesTestConfig{
+					resourceAttributes: map[string]string{
+						"service.name":        "dash0-kubernetes-pods-scrape-config",
+						"service.instance.id": "10.1.2.3:8080",
+						"service_name":        "from-target-info",
+					},
+					dataPointAttributes: map[string]string{
+						"app_kubernetes_io_name": "my-app",
+					},
+					expectedResourceAttributes: map[string]any{
+						"service.name":        "from-target-info",
+						"service.instance.id": "10.1.2.3:8080",
+						"service_name":        "from-target-info",
+					},
+				}),
+			Entry("metrics from other scrape jobs are left untouched",
+				prometheusServiceAttributesTestConfig{
+					resourceAttributes: map[string]string{
+						"service.name":        "serviceMonitor/namespace-1/service-monitor/0",
+						"service.instance.id": "10.1.2.3:8080",
+					},
+					dataPointAttributes: map[string]string{
+						"app_kubernetes_io_name": "my-app",
+					},
+					expectedResourceAttributes: map[string]any{
+						"service.name":        "serviceMonitor/namespace-1/service-monitor/0",
+						"service.instance.id": "10.1.2.3:8080",
+					},
+				}),
+		)
 	})
 
 	Describe("log collection", func() {

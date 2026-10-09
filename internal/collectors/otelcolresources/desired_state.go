@@ -275,8 +275,11 @@ const (
 	collectorConfigCompressedFilePath = collectorConfigCompressedDirPath + "/" + collectorConfigurationYaml
 
 	// collector feature gates
-	profilesSupportFeatureGate             = "service.profilesSupport"
-	k8sAttributesShareProcessorFeatureGate = "processor.k8sattributes.ShareProcessorBetweenPipelines"
+	profilesSupportFeatureGate                              = "service.profilesSupport"
+	k8sAttributesShareProcessorFeatureGate                  = "processor.k8sattributes.ShareProcessorBetweenPipelines"
+	disableK8sAttributesDontEmitV0K8sConventionsFeatureGate = "-processor.k8sattributes.DontEmitV0K8sConventions"
+	// read by images/collector/src/image/entrypoint.sh
+	gkeAutopilotWorkaroundEmitV0K8sConventionsEnvVarName = "DASH0_GKE_AUTOPILOT_WORKAROUND_EMIT_V0_K8S_CONVENTIONS"
 
 	// config volume names -- the collectors will either use only the collectorConfigMapVolumeNamePlainText (when config
 	// map compression is disabled), or collectorConfigMapCompressedVolumeName + collectorConfigMapDecompressedVolumeName
@@ -1363,6 +1366,8 @@ func assembleDaemonSetCollectorContainer(
 	if config.K8sAttributesShareProcessor {
 		featureGates = append(featureGates, k8sAttributesShareProcessorFeatureGate)
 	}
+	// Keeps the legacy container.image.tag attribute next to container.image.tags.
+	featureGates = append(featureGates, disableK8sAttributesDontEmitV0K8sConventionsFeatureGate)
 	collectorArgs := assembleCollectorArgs(featureGates)
 
 	collectorContainer := corev1.Container{
@@ -1903,6 +1908,16 @@ func assembleDeploymentCollectorContainer(
 	var featureGates []string
 	if config.K8sAttributesShareProcessor {
 		featureGates = append(featureGates, k8sAttributesShareProcessorFeatureGate)
+	}
+	// Keeps the legacy container.image.tag attribute next to container.image.tags. The GKE Autopilot WorkloadAllowlist
+	// of this collector permits no --feature-gates argument, so there the image's entrypoint adds the gate instead.
+	if config.IsGkeAutopilot {
+		collectorEnv = append(collectorEnv, corev1.EnvVar{
+			Name:  gkeAutopilotWorkaroundEmitV0K8sConventionsEnvVarName,
+			Value: "true",
+		})
+	} else {
+		featureGates = append(featureGates, disableK8sAttributesDontEmitV0K8sConventionsFeatureGate)
 	}
 	collectorArgs := assembleCollectorArgs(featureGates)
 

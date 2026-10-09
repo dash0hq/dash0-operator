@@ -1258,13 +1258,13 @@ func setupTimeSeriesAggregationReconciler(
 	k8sClient client.Client,
 	clusterUid types.UID,
 	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
-	httpClient *http.Client,
+	apiClientPool *controller.ApiClientPool,
 ) (*controller.TimeSeriesAggregationReconciler, error) {
 	timeSeriesAggregationReconciler := controller.NewTimeSeriesAggregationReconciler(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err := timeSeriesAggregationReconciler.SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("unable to set up the time series aggregation reconciler: %w", err)
@@ -2051,7 +2051,7 @@ func startDash0Controllers(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err != nil {
 		return err
