@@ -377,7 +377,7 @@ func (r *TimeSeriesAggregationReconciler) MapResourceToHttpRequests(
 		timeSeriesAggregationDefinition, err := mapToTimeSeriesAggregationDefinition(preconditionChecksResult.resource)
 		if err != nil {
 			logger.Error(err, "error converting time series aggregation")
-			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, err.Error())
+			return NewResourceToRequestsResultSingleItemConversionError(apiConfig, itemName, err.Error())
 		}
 		apiClientCall = &ApiClientCall{
 			Method: http.MethodPut,
