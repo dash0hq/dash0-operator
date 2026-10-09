@@ -3,13 +3,11 @@
 # SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-# Runs "go mod tidy" for every Go module that replaces another module of this repository with a local path, and commits
-# the result to the branch of a Dependabot pull request.
+# Runs "go mod tidy" for images/agent0-connector/src and commits the result to the branch of a Dependabot pull request.
 #
-# Dependabot updates the directories of the gomod update blocks in .github/dependabot.yml independently of each other. A
-# module that replaces another module of this repository with a local path (for example images/agent0-connector/src,
-# which replaces images/pkg/common) becomes untidy when Dependabot raises the requirements of the replaced module but
-# not its own, and then fails to build with "go: updates to go.mod needed".
+# Dependabot updates the directories of the gomod update blocks in .github/dependabot.yml independently of each other.
+# images/agent0-connector/src replaces images/pkg/common with a local path. It becomes untidy when Dependabot raises the
+# requirements of images/pkg/common but not its own, and then fails to build with "go: updates to go.mod needed".
 #
 # This is invoked from the dependabot-go-mod-tidy.yaml workflow.
 
@@ -36,28 +34,12 @@ if [[ "$(git rev-parse HEAD)" != "$PR_HEAD_SHA" ]]; then
   exit 1
 fi
 
-# Matches a replace directive with a local path as its target, both as a single line ("replace a => ../b") and inside a
-# replace block ("a => ./b").
-local_replace_regex='=>[[:space:]]*\.\.?/'
+module_dir=images/agent0-connector/src
 
-module_dirs=()
-while IFS= read -r go_mod; do
-  if grep -qE "$local_replace_regex" "$go_mod"; then
-    module_dirs+=("$(dirname "$go_mod")")
-  fi
-done < <(git ls-files -- go.mod '*/go.mod')
+echo "running go mod tidy in ${module_dir}"
+(cd "$module_dir" && go mod tidy)
 
-if [[ ${#module_dirs[@]} -eq 0 ]]; then
-  echo "There are no Go modules with a local replace directive, nothing to do."
-  exit 0
-fi
-
-for module_dir in "${module_dirs[@]}"; do
-  echo "running go mod tidy in ${module_dir}"
-  (cd "$module_dir" && go mod tidy)
-done
-
-go_mod_files=(go.mod go.sum '*/go.mod' '*/go.sum')
+go_mod_files=("${module_dir}/go.mod" "${module_dir}/go.sum")
 
 changed_files=()
 while IFS= read -r file; do
@@ -70,25 +52,17 @@ while IFS= read -r file; do
 done < <(git diff --name-only --diff-filter=D -- "${go_mod_files[@]}")
 
 if [[ ${#changed_files[@]} -eq 0 && ${#deleted_files[@]} -eq 0 ]]; then
-  echo "All Go modules with a local replace directive are tidy, nothing to commit."
+  echo "${module_dir} is tidy, nothing to commit."
   exit 0
 fi
 
 echo git diff:
 git --no-pager diff -- "${go_mod_files[@]}"
 
-changed_module_list=$(
-  for file in "${changed_files[@]}" "${deleted_files[@]}"; do
-    dirname "$file"
-  done | sort -u | while IFS= read -r module_dir; do
-    printf "* \`%s\`\n" "$module_dir"
-  done
-)
-
-commit_message="chore(deps): run go mod tidy for modules with local replace directives"
+commit_message="chore(deps): run go mod tidy for ${module_dir}"
 commit_body=$(cat <<EOF
-Dependabot has updated the requirements of a module that other modules of this repository replace with a local path,
-without updating those modules. This commit runs "go mod tidy" for them.
+Dependabot has updated the requirements of images/pkg/common, which ${module_dir} replaces with a local path, without
+updating ${module_dir}. This commit runs "go mod tidy" for it.
 EOF
 )
 
@@ -139,12 +113,11 @@ commit_oid=$(
 echo "created commit ${commit_oid} on ${PR_HEAD_REF}"
 
 comment_body=$(cat <<EOF
-Pushed ${commit_oid}, which runs \`go mod tidy\` for the following Go modules:
+Pushed ${commit_oid}, which runs \`go mod tidy\` for \`${module_dir}\`.
 
-${changed_module_list}
-
-These modules replace another module of this repository with a local path. Dependabot has updated the requirements of
-the replaced module without updating them, which makes them fail to build with \`go: updates to go.mod needed\`.
+\`${module_dir}\` replaces \`images/pkg/common\` with a local path. Dependabot has updated the requirements of
+\`images/pkg/common\` without updating \`${module_dir}\`, which makes it fail to build with
+\`go: updates to go.mod needed\`.
 
 **CI has not run for ${commit_oid}**: the commit has been created with the workflow's \`GITHUB_TOKEN\`, and commits
 created with the \`GITHUB_TOKEN\` do not trigger workflow runs. To run CI, amend the commit and force-push it, for

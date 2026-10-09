@@ -1,7 +1,7 @@
 name: Tidy Go Modules (Dependabot)
 
-# Runs "go mod tidy" for the Go modules with a local replace directive on Dependabot pull requests and commits the result
-# to the pull request branch, see .github/workflows/scripts/dependabot-go-mod-tidy.sh.
+# Runs "go mod tidy" for images/agent0-connector/src on Dependabot pull requests and commits the result to the pull
+# request branch, see .github/workflows/scripts/dependabot-go-mod-tidy.sh.
 #
 # The job only runs "go mod tidy", which downloads modules but does not execute their code. Do not add steps that build
 # or test the updated code to this job, they would run with a token that can write to the repository.
