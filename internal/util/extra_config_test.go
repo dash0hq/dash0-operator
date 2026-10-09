@@ -1429,7 +1429,7 @@ exports:
 
 		It("without clients", func() {
 			watcher = NewExtraConfigWatcher()
-			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), ExtraConfigDefaults, logger))
+			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), ExtraConfigDefaults, logger)).To(Succeed())
 
 			_, err := tmpFile.WriteString(`
 collectorFilelogOffsetStorageVolume:
@@ -1450,7 +1450,7 @@ collectorFilelogOffsetStorageVolume:
 			clients := []*DummyExtraConfigClient{
 				client1, client2,
 			}
-			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), ExtraConfigDefaults, logger))
+			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), ExtraConfigDefaults, logger)).To(Succeed())
 
 			for _, c := range clients {
 				Expect(c.updatedConfig).To(BeNil())
@@ -1485,7 +1485,7 @@ collectorFilelogOffsetStorageVolume:
 			watcher = NewExtraConfigWatcher()
 			client := &DummyExtraConfigClient{}
 			watcher.AddClient(client)
-			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), ExtraConfigDefaults, logger))
+			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), ExtraConfigDefaults, logger)).To(Succeed())
 
 			// Make three file updates in quick succession, the code to read and parse the new config map should only be
 			// called once, after the last update.
@@ -1544,7 +1544,7 @@ collectorFilelogOffsetStorageVolume:
 			watcher = NewExtraConfigWatcher()
 			client := &DummyExtraConfigClient{}
 			watcher.AddClient(client)
-			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), ExtraConfigDefaults, logger))
+			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), ExtraConfigDefaults, logger)).To(Succeed())
 
 			// deliberately write invalid yaml to the file
 			_, err := tmpFile.WriteString(`
