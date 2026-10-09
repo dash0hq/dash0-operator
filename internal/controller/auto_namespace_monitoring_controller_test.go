@@ -547,7 +547,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			Expect(autoMonitoringResources[0].Name).To(Equal(util.MonitoringAutoResourceDefaultName))
 		})
 
-		It("deletes the auto Dash0Monitoring resource when the namespace opt-out label is added", func() {
+		It("deletes the auto-monitoring resource when the namespace opt-out label is added", func() {
 			// first: namespace does not have the opt-out label, hence the monitoring resource is created
 			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)

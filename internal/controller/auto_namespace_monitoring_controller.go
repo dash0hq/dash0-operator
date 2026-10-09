@@ -701,7 +701,7 @@ func (w *NamespaceWatcher) ensureNamespaceIsMonitored(
 		)
 	}
 	logger.Warn(
-		"There already is a Dash0Monitoring resource in this namespace that has not been created via auto-namespace "+
+		"There already is a monitoring resource in this namespace that has not been created via auto-namespace "+
 			"monitoring, skipping this namespace.",
 		"namespace",
 		ns.Name,
@@ -763,7 +763,7 @@ func (w *NamespaceWatcher) createMonitoringResource(
 	if err != nil {
 		logger.Error(
 			err,
-			"cannot check whether the operator is being uninstalled, not creating the auto Dash0Monitoring resource",
+			"cannot check whether the operator is being uninstalled, not creating the auto-monitoring resource",
 			"namespace",
 			namespaceName,
 		)
@@ -771,7 +771,7 @@ func (w *NamespaceWatcher) createMonitoringResource(
 	}
 	if operatorIsBeingUninstalled {
 		logger.Info(
-			"the operator is being uninstalled, not creating the auto Dash0Monitoring resource",
+			"the operator is being uninstalled, not creating the auto-monitoring resource",
 			"namespace",
 			namespaceName,
 		)
@@ -789,10 +789,10 @@ func (w *NamespaceWatcher) createMonitoringResource(
 	}
 
 	if err := w.Create(ctx, monitoring); err != nil {
-		logger.Error(err, "failed to create auto Dash0Monitoring resource", "namespace", namespaceName)
+		logger.Error(err, "failed to create auto-monitoring resource", "namespace", namespaceName)
 		return err
 	}
-	logger.Info("created auto Dash0Monitoring resource", "namespace", namespaceName, "name", name)
+	logger.Info("created auto-monitoring resource", "namespace", namespaceName, "name", name)
 	return nil
 }
 
@@ -865,21 +865,21 @@ func (w *NamespaceWatcher) reconcileResourceWithMonitoringTemplate(
 	}
 
 	logger.Debug(
-		"auto Dash0Monitoring resource does not match the monitoring template, updating",
+		"auto-monitoring resource does not match the monitoring template, updating",
 		"namespace", monitoringResource.Namespace,
 		"name", monitoringResource.Name,
 	)
 	if err := w.Update(ctx, &monitoringResource); err != nil {
 		logger.Error(
 			err,
-			"failed to update auto Dash0Monitoring resource to match the monitoring template",
+			"failed to update auto-monitoring resource to match the monitoring template",
 			"namespace", monitoringResource.Namespace,
 			"name", monitoringResource.Name,
 		)
 		return err
 	}
 	logger.Info(
-		"updated auto Dash0Monitoring resource to match the monitoring template",
+		"updated auto-monitoring resource to match the monitoring template",
 		"namespace", monitoringResource.Namespace,
 		"name", monitoringResource.Name,
 	)
