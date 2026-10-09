@@ -11,8 +11,10 @@ import (
 	appv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/controller"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -136,16 +138,19 @@ var _ = Describe("Uninstalling the Dash0 operator (pre-delete hook)", Ordered, f
 
 		waitForDeletionRequest(ctx, dash0MonitoringResourceName1)
 		waitForDeletionRequest(ctx, dash0MonitoringResourceName2)
-		triggerReconcileRequestForName(ctx, reconciler, dash0MonitoringResourceName1)
 		triggerReconcileRequestForName(ctx, reconciler, dash0MonitoringResourceName2)
 		Eventually(func(g Gomega) {
 			VerifyMonitoringResourceByNameDoesNotExist(ctx, k8sClient, g, dash0MonitoringResourceName2)
 		}, testTimeout, pollingInterval).Should(Succeed())
 
-		EnsureMonitoringResourceExistsInNamespaceAndIsAvailable(ctx, k8sClient, dash0MonitoringResourceName2)
-		triggerReconcileRequestForName(ctx, reconciler, dash0MonitoringResourceName2)
+		// The resource in namespace 1 is still pending deletion, which keeps the handler waiting. The recreated
+		// resource carries the finalizer from the start, so the handler's deletion request cannot remove it right away.
+		recreatedMonitoringResource := DefaultMonitoringResourceWithName(dash0MonitoringResourceName2)
+		controllerutil.AddFinalizer(recreatedMonitoringResource, dash0common.MonitoringFinalizerId)
+		CreateMonitoringResource(ctx, k8sClient, recreatedMonitoringResource)
 
 		waitForDeletionRequest(ctx, dash0MonitoringResourceName2)
+		triggerReconcileRequestForName(ctx, reconciler, dash0MonitoringResourceName1)
 		triggerReconcileRequestForName(ctx, reconciler, dash0MonitoringResourceName2)
 		Eventually(func(g Gomega) {
 			VerifyMonitoringResourceByNameDoesNotExist(ctx, k8sClient, g, dash0MonitoringResourceName1)
