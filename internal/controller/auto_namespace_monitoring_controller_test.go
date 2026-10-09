@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"time"
 
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -41,7 +42,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			autoNamespaceMonitoringReconciler = &AutoNamespaceMonitoringReconciler{
 				Client:           k8sClient,
 				manager:          mgr,
-				namespaceWatcher: NewNamespaceWatcher(k8sClient, OperatorNamespace),
+				namespaceWatcher: NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace, time.Time{}),
 			}
 		})
 
@@ -174,7 +175,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 		})
 
 		BeforeEach(func() {
-			namespaceWatcher = NewNamespaceWatcher(k8sClient, OperatorNamespace)
+			namespaceWatcher = NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace, time.Time{})
 		})
 
 		AfterEach(func() {
@@ -361,6 +362,46 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace1)
 		})
 
+		It("does not recreate the auto-monitoring resource while the pre-delete hook job is running", func() {
+			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
+			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace1)
+
+			preDeleteHookJob := createPreDeleteHookJob(ctx)
+			defer deletePreDeleteHookJob(ctx, preDeleteHookJob)
+			DeleteMonitoringResourceByName(ctx, k8sClient, types.NamespacedName{
+				Name:      util.MonitoringAutoResourceDefaultName,
+				Namespace: testAutoNamespace1,
+			}, false)
+
+			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+
+			Expect(listMonitoringResources(ctx, Default, testAutoNamespace1)).To(BeEmpty())
+		})
+
+		It("ignores a pre-delete hook job that has been created before the operator", func() {
+			namespaceWatcher = NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace, time.Now().Add(time.Hour))
+			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
+			preDeleteHookJob := createPreDeleteHookJob(ctx)
+			defer deletePreDeleteHookJob(ctx, preDeleteHookJob)
+
+			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+
+			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace1)
+		})
+
+		It("creates auto-monitoring resources again once the pre-delete hook job is gone", func() {
+			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
+			preDeleteHookJob := createPreDeleteHookJob(ctx)
+			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+			Expect(listMonitoringResources(ctx, Default, testAutoNamespace1)).To(BeEmpty())
+
+			deletePreDeleteHookJob(ctx, preDeleteHookJob)
+			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+
+			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace1)
+		})
+
 		It("uses custom settings from the MonitoringTemplate when set", func() {
 			createOperatorConfigurationResourceWithAutoMonitorNamespaces(
 				ctx,
@@ -506,7 +547,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			Expect(autoMonitoringResources[0].Name).To(Equal(util.MonitoringAutoResourceDefaultName))
 		})
 
-		It("deletes the auto Dash0Monitoring resource when the namespace opt-out label is added", func() {
+		It("deletes the auto-monitoring resource when the namespace opt-out label is added", func() {
 			// first: namespace does not have the opt-out label, hence the monitoring resource is created
 			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
@@ -542,7 +583,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 		})
 
 		BeforeEach(func() {
-			namespaceWatcher = NewNamespaceWatcher(k8sClient, OperatorNamespace)
+			namespaceWatcher = NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace, time.Time{})
 			autoNamespaceMonitoringReconciler = &AutoNamespaceMonitoringReconciler{
 				Client:           k8sClient,
 				manager:          mgr,
@@ -1066,6 +1107,34 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 		})
 	})
 
+	Context("indicatesUninstallation", func() {
+		operatorCreatedAt := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+
+		DescribeTable("detects pre-delete hook jobs of an ongoing uninstallation",
+			func(createdAt time.Time, conditions []batchv1.JobCondition, expected bool) {
+				job := &batchv1.Job{
+					ObjectMeta: metav1.ObjectMeta{CreationTimestamp: metav1.NewTime(createdAt)},
+					Status:     batchv1.JobStatus{Conditions: conditions},
+				}
+				Expect(indicatesUninstallation(job, operatorCreatedAt)).To(Equal(expected))
+			},
+			Entry("running", operatorCreatedAt.Add(time.Hour), nil, true),
+			Entry("complete", operatorCreatedAt.Add(time.Hour), []batchv1.JobCondition{
+				{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
+			}, true),
+			Entry("failed", operatorCreatedAt.Add(time.Hour), []batchv1.JobCondition{
+				{Type: batchv1.JobFailed, Status: corev1.ConditionTrue},
+			}, false),
+			Entry("failed condition not true", operatorCreatedAt.Add(time.Hour), []batchv1.JobCondition{
+				{Type: batchv1.JobFailed, Status: corev1.ConditionFalse},
+			}, true),
+			Entry("created in the same second as the operator", operatorCreatedAt, nil, true),
+			Entry("created before the operator", operatorCreatedAt.Add(-time.Second), []batchv1.JobCondition{
+				{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
+			}, false),
+		)
+	})
+
 	Context("monitoringResourceDeletePredicate", func() {
 		var p monitoringResourceDeletePredicate
 
@@ -1214,4 +1283,39 @@ func createManualMonitoringResource(ctx context.Context, namespaceName string) {
 		},
 	}
 	Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+}
+
+func createPreDeleteHookJob(ctx context.Context) *batchv1.Job {
+	EnsureOperatorNamespaceExists(ctx, k8sClient)
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "dash0-operator-pre-delete",
+			Namespace: OperatorNamespace,
+			Labels: map[string]string{
+				util.AppKubernetesIoComponentLabel: util.UninstallationProcessComponent,
+			},
+		},
+		Spec: batchv1.JobSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					RestartPolicy: corev1.RestartPolicyOnFailure,
+					Containers: []corev1.Container{{
+						Name:  "pre-delete-job",
+						Image: "operator-controller:test",
+					}},
+				},
+			},
+		},
+	}
+	Expect(k8sClient.Create(ctx, job)).To(Succeed())
+	return job
+}
+
+func deletePreDeleteHookJob(ctx context.Context, job *batchv1.Job) {
+	Expect(client.IgnoreNotFound(
+		k8sClient.Delete(ctx, job, client.PropagationPolicy(metav1.DeletePropagationBackground)),
+	)).To(Succeed())
+	Eventually(func(g Gomega) {
+		g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(job), &batchv1.Job{})).ToNot(Succeed())
+	}).Should(Succeed())
 }

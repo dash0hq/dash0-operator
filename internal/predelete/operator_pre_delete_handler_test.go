@@ -11,8 +11,10 @@ import (
 	appv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/controller"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -95,10 +97,7 @@ var _ = Describe("Uninstalling the Dash0 operator (pre-delete hook)", Ordered, f
 	})
 
 	It("should delete all Dash0 monitoring resources and uninstrument workloads", func() {
-		go func() {
-			defer GinkgoRecover()
-			Expect(preDeleteHandler.DeleteAllMonitoringResources()).To(Succeed())
-		}()
+		handlerHasFinished := runPreDeleteHandler()
 
 		// Triggering reconcile requests for both Dash0 monitoring resources to run cleanup actions and remove the
 		// finalizer, so that the resources actually get deleted.
@@ -131,8 +130,53 @@ var _ = Describe("Uninstalling the Dash0 operator (pre-delete hook)", Ordered, f
 			VerifyUnmodifiedDeploymentEventually(g, deployment2)
 			VerifyWebhookIgnoreOnceLabelIsPresentEventually(g, &deployment2.ObjectMeta)
 		}, testTimeout, pollingInterval).Should(Succeed())
+		Eventually(handlerHasFinished, testTimeout).Should(BeClosed())
+	})
+
+	It("should delete monitoring resources again that have been recreated while waiting", func() {
+		handlerHasFinished := runPreDeleteHandler()
+
+		waitForDeletionRequest(ctx, dash0MonitoringResourceName1)
+		waitForDeletionRequest(ctx, dash0MonitoringResourceName2)
+		triggerReconcileRequestForName(ctx, reconciler, dash0MonitoringResourceName2)
+		Eventually(func(g Gomega) {
+			VerifyMonitoringResourceByNameDoesNotExist(ctx, k8sClient, g, dash0MonitoringResourceName2)
+		}, testTimeout, pollingInterval).Should(Succeed())
+
+		// The resource in namespace 1 is still pending deletion, which keeps the handler waiting. The recreated
+		// resource carries the finalizer from the start, so the handler's deletion request cannot remove it right away.
+		recreatedMonitoringResource := DefaultMonitoringResourceWithName(dash0MonitoringResourceName2)
+		controllerutil.AddFinalizer(recreatedMonitoringResource, dash0common.MonitoringFinalizerId)
+		CreateMonitoringResource(ctx, k8sClient, recreatedMonitoringResource)
+
+		waitForDeletionRequest(ctx, dash0MonitoringResourceName2)
+		triggerReconcileRequestForName(ctx, reconciler, dash0MonitoringResourceName1)
+		triggerReconcileRequestForName(ctx, reconciler, dash0MonitoringResourceName2)
+		Eventually(func(g Gomega) {
+			VerifyMonitoringResourceByNameDoesNotExist(ctx, k8sClient, g, dash0MonitoringResourceName1)
+			VerifyMonitoringResourceByNameDoesNotExist(ctx, k8sClient, g, dash0MonitoringResourceName2)
+		}, testTimeout, pollingInterval).Should(Succeed())
+		Eventually(handlerHasFinished, testTimeout).Should(BeClosed())
 	})
 })
+
+func runPreDeleteHandler() <-chan struct{} {
+	handlerHasFinished := make(chan struct{})
+	go func() {
+		defer GinkgoRecover()
+		defer close(handlerHasFinished)
+		Expect(preDeleteHandler.DeleteAllMonitoringResources()).To(Succeed())
+	}()
+	return handlerHasFinished
+}
+
+func waitForDeletionRequest(ctx context.Context, name types.NamespacedName) {
+	Eventually(func(g Gomega) {
+		resource := LoadMonitoringResourceByNameIfItExists(ctx, k8sClient, g, name)
+		g.Expect(resource).ToNot(BeNil())
+		g.Expect(resource.DeletionTimestamp).ToNot(BeNil())
+	}, testTimeout, pollingInterval).Should(Succeed())
+}
 
 func setupNamespaceWithDash0MonitoringResourceAndWorkload(
 	ctx context.Context,

@@ -5,7 +5,7 @@ pre-delete hook job should match snapshot:
     metadata:
       annotations:
         helm.sh/hook: pre-delete
-        helm.sh/hook-delete-policy: hook-succeeded
+        helm.sh/hook-delete-policy: before-hook-creation
       labels:
         app.kubernetes.io/component: uninstallation-process
         app.kubernetes.io/managed-by: Helm
@@ -75,3 +75,4 @@ pre-delete hook job should match snapshot:
           securityContext:
             runAsNonRoot: true
           serviceAccountName: dash0-operator-controller
+      ttlSecondsAfterFinished: 300

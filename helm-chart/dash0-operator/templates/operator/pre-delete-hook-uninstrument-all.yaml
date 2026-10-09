@@ -5,13 +5,22 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: dash0-operator
+    {{- /*
+    The operator looks for a job with this label to detect that it is being uninstalled, see
+    UninstallationProcessComponent in internal/util/constants.go. Do not change it without changing the operator.
+    */}}
     app.kubernetes.io/component: uninstallation-process
     {{- include "dash0-operator.labels" . | nindent 4 }}
     dash0.com/enable: "false"
   annotations:
     helm.sh/hook: pre-delete
-    helm.sh/hook-delete-policy: hook-succeeded
+    {{- /*
+    The job is not deleted when it succeeds but only after ttlSecondsAfterFinished, so that it outlives the operator
+    manager pod. Otherwise the operator would recreate auto-monitoring resources after the hook has finished.
+    */}}
+    helm.sh/hook-delete-policy: before-hook-creation
 spec:
+  ttlSecondsAfterFinished: 300
   template:
     metadata:
       name: {{ .Release.Name }}-pre-delete-job
