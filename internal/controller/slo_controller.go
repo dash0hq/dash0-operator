@@ -526,7 +526,7 @@ func (r *SLOReconciler) MapResourceToHttpRequests(
 		if err != nil {
 			conversionErr := fmt.Errorf("unable to convert the SLO to the Dash0 API format: %w", err)
 			logger.Error(conversionErr, "error converting SLO")
-			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, conversionErr.Error())
+			return NewResourceToRequestsResultSingleItemConversionError(apiConfig, itemName, conversionErr.Error())
 		}
 		apiClientCall = &ApiClientCall{
 			Method: http.MethodPut,
