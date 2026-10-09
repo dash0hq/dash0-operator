@@ -360,6 +360,48 @@ var _ = Describe(
 						Expect(apiClientCall.Url).To(ContainSubstring("/api/teams/"))
 					},
 				)
+
+				It(
+					"reports a non-retryable synchronization error for a team that cannot be converted", func() {
+						resource := map[string]any{
+							"metadata": map[string]any{
+								"name":      teamName,
+								"namespace": TestNamespaceName,
+							},
+							"spec": map[string]any{
+								"display": map[string]any{
+									"name": teamDisplayName,
+									"color": map[string]any{
+										"from": teamColorFrom,
+										"to":   teamColorTo,
+									},
+								},
+								"members": teamMemberAlice,
+							},
+						}
+						apiConfig := ApiConfig{
+							Endpoint: ApiEndpointStandardizedTest,
+							Dataset:  DatasetCustomTest,
+							Token:    AuthorizationTokenTest,
+						}
+						result := teamReconciler.MapResourceToHttpRequests(
+							&preconditionValidationResult{
+								k8sName:      teamName,
+								k8sNamespace: TestNamespaceName,
+								resource:     resource,
+							},
+							apiConfig,
+							upsertAction,
+							logger,
+						)
+
+						Expect(result.ApiRequests).To(BeEmpty())
+						synchronizationError, httpStatusCode := firstSynchronizationErrorAndStatusCode(result)
+						Expect(synchronizationError).To(ContainSubstring("unable to convert the team"))
+						Expect(httpStatusCode).To(Equal(http.StatusBadRequest))
+						Expect(isRetryableSynchronizationError(synchronizationError, httpStatusCode)).To(BeFalse())
+					},
+				)
 			},
 		)
 	},

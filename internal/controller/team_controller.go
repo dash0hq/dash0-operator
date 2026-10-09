@@ -377,7 +377,7 @@ func (r *TeamReconciler) MapResourceToHttpRequests(
 		teamDefinition, err := mapToTeamDefinition(preconditionChecksResult.resource, preconditionChecksResult.k8sName)
 		if err != nil {
 			logger.Error(err, "error converting team")
-			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, err.Error())
+			return NewResourceToRequestsResultSingleItemConversionError(apiConfig, itemName, err.Error())
 		}
 		apiClientCall = &ApiClientCall{
 			Method: http.MethodPut,
