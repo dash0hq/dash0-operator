@@ -494,7 +494,8 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 		false,
 		"If set, the process will remove all Dash0 monitoring resources from all namespaces in the cluster, then "+
 			"exit. This will trigger the Dash0 monitoring resources' finalizers in each namespace, which in turn will "+
-			"revert the instrumentation of all workloads in all namespaces.",
+			"revert the instrumentation of all workloads in all namespaces. It also removes the cluster roles and "+
+			"cluster role bindings created by the operator manager.",
 	)
 	fs.BoolVar(
 		&cliArgs.autoOperatorConfigurationResourceAvailableCheck,
@@ -1860,6 +1861,7 @@ func startDash0Controllers(
 			mgr.GetScheme(),
 			operatorDeploymentSelfReference,
 			collectorConfig,
+			newUninstallationDetector(mgr, envVars, operatorDeploymentSelfReference),
 		)
 		collectorManager = collectors.NewCollectorManager(
 			k8sClient,
@@ -1891,6 +1893,7 @@ func startDash0Controllers(
 			mgr.GetScheme(),
 			operatorDeploymentSelfReference,
 			targetAllocatorConfig,
+			newUninstallationDetector(mgr, envVars, operatorDeploymentSelfReference),
 		)
 		targetallocatorManager = targetallocator.NewTargetAllocatorManager(
 			k8sClient, clientset, extraConfig, developmentMode, targetallocatorResourceManager,
@@ -2434,6 +2437,18 @@ func setupCollectorReconciler(
 	return nil
 }
 
+func newUninstallationDetector(
+	mgr ctrl.Manager,
+	envVars environmentVariables,
+	operatorDeploymentSelfReference *appsv1.Deployment,
+) *util.UninstallationDetector {
+	return util.NewUninstallationDetector(
+		mgr.GetAPIReader(),
+		envVars.operatorNamespace,
+		operatorDeploymentSelfReference.CreationTimestamp.Time,
+	)
+}
+
 func setupAgent0ConnectorManager(
 	mgr ctrl.Manager,
 	k8sClient client.Client,
@@ -2467,6 +2482,7 @@ func setupAgent0ConnectorManager(
 		mgr.GetScheme(),
 		operatorDeploymentSelfReference,
 		agent0ConnectorConfig,
+		newUninstallationDetector(mgr, envVars, operatorDeploymentSelfReference),
 	)
 	agent0ConnectorManager := agent0connector.NewAgent0ConnectorManager(
 		k8sClient,
@@ -2621,7 +2637,7 @@ func deleteMonitoringResourcesInAllNamespaces(logger logd.Logger) error {
 		logger.Error(err, "Failed to create the pre-delete handler.")
 		return err
 	}
-	if err = handler.DeleteAllMonitoringResources(); err != nil {
+	if err = handler.CleanUp(); err != nil {
 		logger.Error(err, "Failed to delete all monitoring resources.")
 		return err
 	}

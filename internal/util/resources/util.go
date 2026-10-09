@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/dash0hq/dash0-operator/internal/resources"
+	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -116,6 +117,35 @@ func SetOwnerReference(
 		return err
 	}
 	return nil
+}
+
+// SkipCreationDuringUninstallation reports whether the creation of the given object must be skipped because the
+// operator is being uninstalled. This only applies to cluster-scoped objects: they have no owner reference (see
+// SetOwnerReference), so the Helm chart's pre-delete hook deletes them explicitly, and the operator must not recreate
+// them afterwards. Namespace-scoped objects are garbage collected together with the operator manager deployment.
+func SkipCreationDuringUninstallation(
+	ctx context.Context,
+	uninstallationDetector *util.UninstallationDetector,
+	object client.Object,
+	logger logd.Logger,
+) (bool, error) {
+	if object.GetNamespace() != "" {
+		return false, nil
+	}
+	operatorIsBeingUninstalled, err := uninstallationDetector.IsOperatorBeingUninstalled(ctx)
+	if err != nil {
+		return false, err
+	}
+	if operatorIsBeingUninstalled {
+		logger.Info(
+			"the operator is being uninstalled, not creating the cluster-scoped resource",
+			"kind",
+			object.GetObjectKind().GroupVersionKind().Kind,
+			"name",
+			object.GetName(),
+		)
+	}
+	return operatorIsBeingUninstalled, nil
 }
 
 func RenderName(prefix string, parts ...string) string {

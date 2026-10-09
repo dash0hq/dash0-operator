@@ -9,6 +9,9 @@ import (
 	"time"
 
 	appv1 "k8s.io/api/apps/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -16,6 +19,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/controller"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -83,7 +87,7 @@ var _ = Describe("Uninstalling the Dash0 operator (pre-delete hook)", Ordered, f
 
 		go func() {
 			defer GinkgoRecover()
-			Expect(preDeleteHandler.DeleteAllMonitoringResources()).To(Succeed())
+			Expect(preDeleteHandler.CleanUp()).To(Succeed())
 			elapsedTimeNanoseconds = time.Since(startTime).Nanoseconds()
 		}()
 
@@ -160,12 +164,64 @@ var _ = Describe("Uninstalling the Dash0 operator (pre-delete hook)", Ordered, f
 	})
 })
 
+var _ = Describe("Uninstalling the Dash0 operator (pre-delete hook), cluster-scoped resources", func() {
+
+	ctx := context.Background()
+
+	var createdObjects []client.Object
+
+	AfterEach(func() {
+		createdObjects = DeleteAllCreatedObjects(ctx, k8sClient, createdObjects)
+	})
+
+	It("should delete the cluster roles and cluster role bindings managed by the operator, and only those", func() {
+		managedByOperator := map[string]string{util.AppKubernetesIoManagedByLabel: util.OperatorManagedByLabelValue}
+		managedByHelm := map[string]string{util.AppKubernetesIoManagedByLabel: "Helm"}
+		operatorClusterRole := createClusterRole(ctx, "pre-delete-test-operator-cr", managedByOperator)
+		operatorClusterRoleBinding := createClusterRoleBinding(ctx, "pre-delete-test-operator-crb", managedByOperator)
+		helmClusterRole := createClusterRole(ctx, "pre-delete-test-helm-cr", managedByHelm)
+		helmClusterRoleBinding := createClusterRoleBinding(ctx, "pre-delete-test-helm-crb", managedByHelm)
+		createdObjects = append(createdObjects, helmClusterRole, helmClusterRoleBinding)
+
+		Expect(preDeleteHandler.CleanUp()).To(Succeed())
+
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(operatorClusterRole), &rbacv1.ClusterRole{})).To(
+			MatchError(apierrors.IsNotFound, "IsNotFound"))
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(operatorClusterRoleBinding), &rbacv1.ClusterRoleBinding{})).To(
+			MatchError(apierrors.IsNotFound, "IsNotFound"))
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(helmClusterRole), &rbacv1.ClusterRole{})).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(helmClusterRoleBinding), &rbacv1.ClusterRoleBinding{})).To(
+			Succeed())
+	})
+})
+
+func createClusterRole(ctx context.Context, name string, labels map[string]string) *rbacv1.ClusterRole {
+	clusterRole := &rbacv1.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels},
+	}
+	Expect(k8sClient.Create(ctx, clusterRole)).To(Succeed())
+	return clusterRole
+}
+
+func createClusterRoleBinding(ctx context.Context, name string, labels map[string]string) *rbacv1.ClusterRoleBinding {
+	clusterRoleBinding := &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: rbacv1.GroupName,
+			Kind:     "ClusterRole",
+			Name:     name,
+		},
+	}
+	Expect(k8sClient.Create(ctx, clusterRoleBinding)).To(Succeed())
+	return clusterRoleBinding
+}
+
 func runPreDeleteHandler() <-chan struct{} {
 	handlerHasFinished := make(chan struct{})
 	go func() {
 		defer GinkgoRecover()
 		defer close(handlerHasFinished)
-		Expect(preDeleteHandler.DeleteAllMonitoringResources()).To(Succeed())
+		Expect(preDeleteHandler.CleanUp()).To(Succeed())
 	}()
 	return handlerHasFinished
 }
