@@ -23,6 +23,7 @@ yaml_key="syntheticsWorkerImage"
 # Resolve the highest published MAJOR.MINOR.PATCH tag for a ghcr.io/dash0hq image via the OCI
 # registry tags/list endpoint. Prints the tag to stdout; all diagnostics go to stderr.
 # Legacy v-prefixed build tags (e.g. v2.0.3005) are ignored; only unprefixed semver releases count.
+# Keep in sync with the copy in update-sce-images-create-pr.sh.
 resolve_latest_tag() {
   local token
   token=$(curl -fsSL "https://ghcr.io/token?scope=repository:dash0hq/${img}:pull" | jq -r '.token')
@@ -84,12 +85,13 @@ update_expected_tag_in_tests() {
 }
 
 # Aborts if any file other than values.yaml and the Helm chart unit tests pins the image tag, since this script would
-# leave such a reference behind and the bump would break the build. Go tests are excluded: they assert against their own
-# fixture image reference and never read values.yaml.
+# leave such a reference behind and the bump would break the build. The one Go test excluded below pins a fixture tag it
+# asserts against; it never reads values.yaml. Excluded by path rather than by *_test.go, so that a future Go test which
+# does pin the real tag still trips this guard.
 assert_no_other_pinned_references() {
   local other_files
   other_files=$(git grep -lE "ghcr\.io/dash0hq/${img}:v?[0-9]+" -- . ":!${values_file}" ":!${test_file}" \
-    ":!${snapshot_file}" ":!*_test.go" || true)
+    ":!${snapshot_file}" ":!internal/syntheticsworker/swresources/desired_state_test.go" || true)
   if [[ -n "$other_files" ]]; then
     echo "Error: ${img} is pinned to a tag in unexpected files, update this script to rewrite them, too:" >&2
     echo "$other_files" >&2
