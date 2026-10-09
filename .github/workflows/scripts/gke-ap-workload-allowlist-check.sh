@@ -246,6 +246,7 @@ helm_command+=" --set operator.dash0Export.secretRef.key=token"
 helm_command+=" --set operator.dash0Export.apiEndpoint=https://api.dummy-url.aws.dash0.com"
 helm_command+=" --set operator.prometheusCrdSupportEnabled=true"
 helm_command+=" --set operator.clusterName=dummy-cluster-name"
+helm_command+=" --set operator.collectors.k8s_attributes.shareProcessorBetweenPipelines=true"
 if [[ "$use_local_chart" = "true" ]]; then
   helm_command+=" --set operator.image.repository=${image_repository_prefix}operator-controller"
   helm_command+=" --set operator.image.tag=$image_tag"
