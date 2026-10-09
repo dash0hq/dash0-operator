@@ -41,15 +41,11 @@ echo "running go mod tidy in ${module_dir}"
 
 go_mod_files=("${module_dir}/go.mod" "${module_dir}/go.sum")
 
-changed_files=()
-while IFS= read -r file; do
-  changed_files+=("$file")
-done < <(git diff --name-only --diff-filter=d -- "${go_mod_files[@]}"; git ls-files --others --exclude-standard -- "${go_mod_files[@]}")
-
-deleted_files=()
-while IFS= read -r file; do
-  deleted_files+=("$file")
-done < <(git diff --name-only --diff-filter=D -- "${go_mod_files[@]}")
+mapfile -t changed_files < <(
+  git diff --name-only --diff-filter=d -- "${go_mod_files[@]}"
+  git ls-files --others --exclude-standard -- "${go_mod_files[@]}"
+)
+mapfile -t deleted_files < <(git diff --name-only --diff-filter=D -- "${go_mod_files[@]}")
 
 if [[ ${#changed_files[@]} -eq 0 && ${#deleted_files[@]} -eq 0 ]]; then
   echo "${module_dir} is tidy, nothing to commit."
