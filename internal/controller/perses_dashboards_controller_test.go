@@ -1353,6 +1353,49 @@ spec:
 					},
 				),
 			)
+
+			It(
+				"reports a non-retryable synchronization error for a dashboard that cannot be converted", func() {
+					dashboard := map[string]any{}
+					Expect(yaml.Unmarshal([]byte(`
+apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: perses-dashboard
+  labels:
+    version: 2
+spec:
+  display:
+    name: Perses Dashboard Example
+  duration: 5m
+`), &dashboard)).To(Succeed())
+					apiConfig := ApiConfig{Endpoint: ApiEndpointTest, Dataset: DatasetCustomTest, Token: AuthorizationTokenTest}
+					resourceToRequestsResult :=
+						persesDashboardReconciler.MapResourceToHttpRequests(
+							&preconditionValidationResult{
+								k8sName:      "perses-dashboard",
+								k8sNamespace: TestNamespaceName,
+								resource:     dashboard,
+							},
+							apiConfig,
+							upsertAction,
+							logger,
+						)
+					Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())
+					synchronizationError, httpStatusCode := firstSynchronizationErrorAndStatusCode(resourceToRequestsResult)
+					Expect(synchronizationError).To(ContainSubstring("unable to convert the dashboard to the Dash0 API format"))
+					Expect(httpStatusCode).To(Equal(http.StatusBadRequest))
+					Expect(
+						persesDashboardSynchronizationResultHasRetryableError(
+							dash0common.PersesDashboardSynchronizationResults{
+								SynchronizationResults: []dash0common.PersesDashboardSynchronizationResultPerEndpointAndDataset{
+									{SynchronizationError: synchronizationError, HttpStatusCode: httpStatusCode},
+								},
+							},
+						),
+					).To(BeFalse())
+				},
+			)
 		},
 	)
 },

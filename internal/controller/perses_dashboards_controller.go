@@ -710,7 +710,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 		if err != nil {
 			conversionErr := fmt.Errorf("unable to convert the dashboard to the Dash0 API format: %w", err)
 			logger.Error(conversionErr, "error converting dashboard")
-			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, conversionErr.Error())
+			return NewResourceToRequestsResultSingleItemConversionError(apiConfig, itemName, conversionErr.Error())
 		}
 		apiClientCall = &ApiClientCall{
 			Method: http.MethodPut,
