@@ -546,6 +546,34 @@ var _ = Describe(
 						}))
 					},
 				)
+
+				It(
+					"reports a non-retryable synchronization error for an SLO that cannot be converted", func() {
+						slo := map[string]any{}
+						Expect(yaml.Unmarshal([]byte(`
+apiVersion: openslo.com/v1
+kind: SLO
+metadata:
+  name: test-slo
+spec:
+  service: checkout
+  budgetingMethod: Occurrences
+  objectives:
+    - displayName: 99% availability
+      target: 99%
+`), &slo)).To(Succeed())
+						apiConfig := ApiConfig{Endpoint: ApiEndpointTest, Dataset: DatasetCustomTest, Token: AuthorizationTokenTest}
+						resourceToRequestsResult :=
+							sloReconciler.MapResourceToHttpRequests(
+								&preconditionValidationResult{k8sName: sloName, k8sNamespace: TestNamespaceName, resource: slo},
+								apiConfig, upsertAction, logger)
+						Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())
+						synchronizationError, httpStatusCode := firstSynchronizationErrorAndStatusCode(resourceToRequestsResult)
+						Expect(synchronizationError).To(ContainSubstring("unable to convert the SLO"))
+						Expect(httpStatusCode).To(Equal(http.StatusBadRequest))
+						Expect(isRetryableSynchronizationError(synchronizationError, httpStatusCode)).To(BeFalse())
+					},
+				)
 			},
 		)
 
