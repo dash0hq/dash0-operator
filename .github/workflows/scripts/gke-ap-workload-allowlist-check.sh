@@ -15,6 +15,8 @@
 #   Testing with arbitrary container image repositories is not supported due to allowlist restrictions on the container images.)
 #   IMPORTANT: Make sure the ghcr.io/dash0hq/gke-ap-xxx repositories have up-to-date images that represent your current
 #   branch. This script does not build or push images.
+#   With a local Helm chart, all images built in this repository are deployed with the image pull policy Always, so that
+#   a node does not reuse an image it has cached for the same tag in an earlier run.
 #   The Signal Control collector and Edge Proxy images are not built in this repository, they are always pulled from the
 #   official ghcr.io/dash0hq repositories.
 # - Use IMAGE_REPOSITORY_PREFIX to control the prefix of the container image repositories used with a local Helm chart
@@ -280,21 +282,39 @@ helm_command+=" --set operator.signalControl.edgeProxy.replicas=1"
 helm_command+=" --set operator.collectors.signalControlCollectorReplicas=1"
 helm_command+=" --set operator.signalControlCollectorImage.pullPolicy=IfNotPresent"
 helm_command+=" --set operator.edgeProxyImage.pullPolicy=IfNotPresent"
+# agent0-connector: insecure adds the optional env var DASH0_AGENT0_CONNECTOR_INSECURE to the operator manager and the
+# agent0-connector.
+helm_command+=" --set operator.agent0Connector.enabled=true"
+helm_command+=" --set operator.agent0Connector.serverAddress=agent0.dummy-url.aws.dash0.com:4317"
+helm_command+=" --set operator.agent0Connector.secretRef.name=dash0-authorization-secret"
+helm_command+=" --set operator.agent0Connector.secretRef.key=token"
+helm_command+=" --set operator.agent0Connector.insecure=true"
 if [[ "$use_local_chart" = "true" ]]; then
+  # Image tags of local builds are mutable, hence the pull policy Always, see the comment at the top of the file.
   helm_command+=" --set operator.image.repository=${image_repository_prefix}operator-controller"
   helm_command+=" --set operator.image.tag=$image_tag"
+  helm_command+=" --set operator.image.pullPolicy=Always"
   helm_command+=" --set operator.instrumentationImage.repository=${image_repository_prefix}instrumentation"
   helm_command+=" --set operator.instrumentationImage.tag=$image_tag"
+  helm_command+=" --set operator.instrumentationImage.pullPolicy=Always"
   helm_command+=" --set operator.collectorImage.repository=${image_repository_prefix}collector"
   helm_command+=" --set operator.collectorImage.tag=$image_tag"
+  helm_command+=" --set operator.collectorImage.pullPolicy=Always"
   helm_command+=" --set operator.configurationReloaderImage.repository=${image_repository_prefix}configuration-reloader"
   helm_command+=" --set operator.configurationReloaderImage.tag=$image_tag"
+  helm_command+=" --set operator.configurationReloaderImage.pullPolicy=Always"
   helm_command+=" --set operator.filelogOffsetSyncImage.repository=${image_repository_prefix}filelog-offset-sync"
   helm_command+=" --set operator.filelogOffsetSyncImage.tag=$image_tag"
+  helm_command+=" --set operator.filelogOffsetSyncImage.pullPolicy=Always"
   helm_command+=" --set operator.filelogOffsetVolumeOwnershipImage.repository=${image_repository_prefix}filelog-offset-volume-ownership"
   helm_command+=" --set operator.filelogOffsetVolumeOwnershipImage.tag=$image_tag"
+  helm_command+=" --set operator.filelogOffsetVolumeOwnershipImage.pullPolicy=Always"
   helm_command+=" --set operator.targetAllocatorImage.repository=${image_repository_prefix}target-allocator"
   helm_command+=" --set operator.targetAllocatorImage.tag=$image_tag"
+  helm_command+=" --set operator.targetAllocatorImage.pullPolicy=Always"
+  helm_command+=" --set operator.agent0ConnectorImage.repository=${image_repository_prefix}agent0-connector"
+  helm_command+=" --set operator.agent0ConnectorImage.tag=$image_tag"
+  helm_command+=" --set operator.agent0ConnectorImage.pullPolicy=Always"
 fi
 helm_command+=" $helm_release_name"
 helm_command+=" $chart"
@@ -382,6 +402,27 @@ kubectl \
 set +x
 
 log "the target-allocator is ready now"
+
+log "waiting for the agent0-connector to be created"
+set -x
+kubectl wait \
+  --for=create \
+  deployment "${helm_release_name}-agent0-connector" \
+  --namespace "$operator_namespace" \
+  --timeout=60s
+set +x
+# The agent0-connector cannot connect to the dummy server address, but it keeps reconnecting instead of exiting, and it
+# has no readiness probe.
+log "waiting for the agent0-connector rollout to finish"
+set -x
+kubectl \
+  rollout status \
+  deployment "${helm_release_name}-agent0-connector" \
+  --namespace "$operator_namespace" \
+  --timeout 120s
+set +x
+log "the agent0-connector is ready now"
+verify_matching_allowlist app.kubernetes.io/name=dash0-agent0-connector "agent0-connector"
 
 # The optional settings make the operator render the optional env vars and volumes of the Signal Control collector and
 # the Edge Proxy, so that they are checked against the WorkloadAllowlists as well. This uses create instead of apply, so
