@@ -4,9 +4,9 @@
 package controller
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,7 +37,7 @@ type SignalToMetricsReconciler struct {
 	client.Client
 	pseudoClusterUid      types.UID
 	leaderElectionAware   util.LeaderElectionAware
-	httpClient            *http.Client
+	apiClientPool         *ApiClientPool
 	defaultApiConfigs     selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs  selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	initialSyncMutex      sync.Mutex
@@ -53,13 +54,13 @@ func NewSignalToMetricsReconciler(
 	k8sClient client.Client,
 	pseudoClusterUid types.UID,
 	leaderElectionAware util.LeaderElectionAware,
-	httpClient *http.Client,
+	apiClientPool *ApiClientPool,
 ) *SignalToMetricsReconciler {
 	return &SignalToMetricsReconciler{
 		Client:               k8sClient,
 		pseudoClusterUid:     pseudoClusterUid,
 		leaderElectionAware:  leaderElectionAware,
-		httpClient:           httpClient,
+		apiClientPool:        apiClientPool,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
 		namespacedSyncMutex:  *selfmonitoringapiaccess.NewNamespaceMutex(),
@@ -113,8 +114,9 @@ func (r *SignalToMetricsReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
+// HttpClient returns nil, the signal-to-metrics reconciler talks to the Dash0 API via the API client pool.
 func (r *SignalToMetricsReconciler) HttpClient() *http.Client {
-	return r.httpClient
+	return nil
 }
 
 func (r *SignalToMetricsReconciler) SetDefaultApiConfigs(
@@ -358,56 +360,79 @@ func (r *SignalToMetricsReconciler) MapResourceToHttpRequests(
 		apiConfig.Dataset,
 	)
 
-	var req *http.Request
-	var method string
-	var err error
+	dataset := apiConfig.Dataset
 
+	var apiClientCall *ApiClientCall
 	switch action {
 	case upsertAction:
-		signalToMetrics := preconditionChecksResult.resource
-		serialized, _ := json.Marshal(signalToMetrics)
-		requestPayload := bytes.NewBuffer(serialized)
-		method = http.MethodPut
-		req, err = http.NewRequest(
-			method,
-			signalToMetricsUrl,
-			requestPayload,
-		)
+		signalToMetricsDefinition, err := mapToSignalToMetricsDefinition(preconditionChecksResult.resource)
+		if err != nil {
+			logger.Error(err, "error converting signal-to-metrics rule")
+			return NewResourceToRequestsResultSingleItemConversionError(apiConfig, itemName, err.Error())
+		}
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodPut,
+			Url:    signalToMetricsUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				updatedSignalToMetrics, err := apiClient.UpdateSignalToMetrics(
+					ctx,
+					signalToMetricsOrigin,
+					signalToMetricsDefinition,
+					&dataset,
+				)
+				if err != nil {
+					return "", err
+				}
+				if updatedSignalToMetrics == nil {
+					return "", errors.New("unexpected nil/empty response body")
+				}
+				return dash0apiclient.GetSignalToMetricsID(updatedSignalToMetrics), nil
+			},
+		}
 	case deleteAction:
-		method = http.MethodDelete
-		req, err = http.NewRequest(
-			method,
-			signalToMetricsUrl,
-			nil,
-		)
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodDelete,
+			Url:    signalToMetricsUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				return "", apiClient.DeleteSignalToMetrics(ctx, signalToMetricsOrigin, &dataset)
+			},
+		}
 	default:
 		unknownActionErr := fmt.Errorf("unknown API action: %d", action)
 		logger.Error(unknownActionErr, "unknown API action")
 		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, unknownActionErr.Error())
 	}
 
-	if err != nil {
-		httpError := fmt.Errorf(
-			"unable to create a new HTTP request to synchronize the signal-to-metrics rule: %s %s: %w",
-			method,
-			signalToMetricsUrl,
-			err,
-		)
-		logger.Error(httpError, "error creating http request")
-		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, httpError.Error())
-	}
-
-	addAuthorizationHeader(req, apiConfig.Token)
-	if action == upsertAction {
-		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
-	}
-
-	return NewResourceToRequestsResultSingleItemSuccess(
+	return NewResourceToRequestsResultSingleItemApiClientCall(
 		apiConfig,
-		req,
+		apiClientCall,
 		itemName,
 		signalToMetricsOrigin,
 	)
+}
+
+// mapToSignalToMetricsDefinition converts the signal-to-metrics resource to the typed signal-to-metrics definition of
+// the Dash0 API client. Fields that the Dash0 API does not define for signal-to-metrics rules (for example apiVersion,
+// metadata.namespace, status, Kubernetes labels and annotations other than the dash0.com/ annotations of the API) are
+// dropped.
+func mapToSignalToMetricsDefinition(resource map[string]any) (*dash0apiclient.SignalToMetricsDefinition, error) {
+	serializedResource, err := json.Marshal(resource)
+	if err != nil {
+		return nil, err
+	}
+	signalToMetricsDefinition := &dash0apiclient.SignalToMetricsDefinition{}
+	if err = json.Unmarshal(serializedResource, signalToMetricsDefinition); err != nil {
+		return nil, fmt.Errorf("unable to convert the signal-to-metrics rule to the Dash0 API format: %w", err)
+	}
+	return signalToMetricsDefinition, nil
 }
 
 func (r *SignalToMetricsReconciler) renderSignalToMetricsUrl(
@@ -415,21 +440,20 @@ func (r *SignalToMetricsReconciler) renderSignalToMetricsUrl(
 	endpoint string,
 	dataset string,
 ) (string, string) {
-	datasetUrlEncoded := url.QueryEscape(dataset)
 	signalToMetricsOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s",
 		r.pseudoClusterUid,
-		datasetUrlEncoded,
+		datasetInOrigin(dataset),
 		preconditionChecksResult.k8sNamespace,
 		preconditionChecksResult.k8sName,
 	)
 	return fmt.Sprintf(
 		"%sapi/signal-to-metrics/%s?dataset=%s",
 		endpoint,
-		signalToMetricsOrigin,
-		datasetUrlEncoded,
+		url.PathEscape(signalToMetricsOrigin),
+		url.QueryEscape(dataset),
 	), signalToMetricsOrigin
 }
 

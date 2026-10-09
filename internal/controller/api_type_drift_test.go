@@ -260,6 +260,7 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 				"retries.spec": syntheticCheckUnionReason,
 			},
 			map[string]string{
+				"annotations":                        "not supported by Dash0SyntheticCheck yet",
 				"notifications.onlyCriticalChannels": "not supported by Dash0SyntheticCheck yet",
 				"permissions":                        "not supported by Dash0SyntheticCheck yet",
 			},
@@ -426,6 +427,18 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 			reflect.TypeFor[dash0apiclient.SpamFilterSpec](),
 			nil,
 			nil,
+		)
+	})
+
+	It("finds no unexpected drift between Dash0SignalToMetrics and the API client's signal-to-metrics type", func() {
+		expectNoUnexpectedApiTypeDrift(
+			reflect.TypeFor[dash0v1alpha1.Dash0SignalToMetricsSpec](),
+			reflect.TypeFor[dash0apiclient.SignalToMetricsSpec](),
+			nil,
+			map[string]string{
+				"alternativeDatasetId": "not supported by Dash0SignalToMetrics yet",
+				"targetDatasetMode":    "not supported by Dash0SignalToMetrics yet",
+			},
 		)
 	})
 })

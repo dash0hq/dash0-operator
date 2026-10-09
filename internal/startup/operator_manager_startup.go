@@ -2075,7 +2075,7 @@ func startDash0Controllers(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err := signalToMetricsReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the signal-to-metrics reconciler: %w", err)
