@@ -1,0 +1,31 @@
+name: Check for Synthetics Worker Image Updates
+
+on:
+  schedule:
+    # Offset from update-sce-images.yaml so the two runs do not race for the same checkout runner minute.
+    - cron: "15 09 * * MON-FRI"
+
+  workflow_dispatch:
+
+jobs:
+  check-and-update:
+    name: check for a new synthetics-worker image tag and update the Helm chart values
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: check if open PR already exists
+        id: open_pr_exists
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/workflows/scripts/update-synthetics-worker-image-check-if-pr-exists.sh
+
+      - name: update image tag and create PR
+        if: steps.open_pr_exists.outputs.pr_exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: .github/workflows/scripts/update-synthetics-worker-image-create-pr.sh
