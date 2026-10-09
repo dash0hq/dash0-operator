@@ -926,7 +926,11 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				"-processor.k8sattributes.DontEmitV0K8sConventions",
 		}
 		Expect(getDaemonSet(desiredState).Spec.Template.Spec.Containers[0].Args).To(Equal(expectedArgs))
-		Expect(getDeployment(desiredState).Spec.Template.Spec.Containers[0].Args).To(Equal(expectedArgs))
+		deploymentCollectorContainer := getDeployment(desiredState).Spec.Template.Spec.Containers[0]
+		Expect(deploymentCollectorContainer.Args).To(Equal(expectedArgs))
+		Expect(
+			FindEnvVarByName(deploymentCollectorContainer.Env, gkeAutopilotWorkaroundShareK8sAttributesProcessorEnvVarName),
+		).To(BeNil())
 	})
 
 	It("should combine the profilesSupport and the k8s_attributes ShareProcessorBetweenPipelines feature gates in "+
@@ -2272,15 +2276,48 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			To(ContainElement(MatchEnvVar(gkeAutopilotWorkaroundEmitV0K8sConventionsEnvVarName, "true")))
 	})
 
-	It("drift protection: the collector image's entrypoint adds the feature gate requested via the GKE Autopilot "+
-		"workaround environment variable", func() {
+	It("should request the k8s_attributes ShareProcessorBetweenPipelines feature gate for the deployment collector "+
+		"via an environment variable instead of an arg on GKE Autopilot", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			K8sAttributesShareProcessor:                      true,
+			Images:                                           TestImages,
+			IsGkeAutopilot:                                   true,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		daemonSetCollectorContainer := getDaemonSet(desiredState).Spec.Template.Spec.Containers[0]
+		Expect(daemonSetCollectorContainer.Args).To(Equal([]string{
+			"--config=file:/etc/otelcol/conf/config.yaml",
+			"--feature-gates=processor.k8sattributes.ShareProcessorBetweenPipelines," +
+				"-processor.k8sattributes.DontEmitV0K8sConventions",
+		}))
+		Expect(
+			FindEnvVarByName(daemonSetCollectorContainer.Env, gkeAutopilotWorkaroundShareK8sAttributesProcessorEnvVarName),
+		).To(BeNil())
+
+		deploymentCollectorContainer := getDeployment(desiredState).Spec.Template.Spec.Containers[0]
+		Expect(deploymentCollectorContainer.Args).To(Equal([]string{"--config=file:/etc/otelcol/conf/config.yaml"}))
+		Expect(deploymentCollectorContainer.Env).To(ContainElements(
+			MatchEnvVar(gkeAutopilotWorkaroundShareK8sAttributesProcessorEnvVarName, "true"),
+			MatchEnvVar(gkeAutopilotWorkaroundEmitV0K8sConventionsEnvVarName, "true"),
+		))
+	})
+
+	It("drift protection: the collector image's entrypoint adds the feature gates requested via the GKE Autopilot "+
+		"workaround environment variables", func() {
 		entrypoint, err := os.ReadFile(
 			filepath.Join("..", "..", "..", "images", "collector", "src", "image", "entrypoint.sh"),
 		)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(string(entrypoint)).To(ContainSubstring(gkeAutopilotWorkaroundEmitV0K8sConventionsEnvVarName))
-		Expect(string(entrypoint)).To(ContainSubstring(
-			`"--feature-gates=` + disableK8sAttributesDontEmitV0K8sConventionsFeatureGate + `"`))
+		Expect(string(entrypoint)).To(ContainSubstring(disableK8sAttributesDontEmitV0K8sConventionsFeatureGate))
+		Expect(string(entrypoint)).To(ContainSubstring(gkeAutopilotWorkaroundShareK8sAttributesProcessorEnvVarName))
+		Expect(string(entrypoint)).To(ContainSubstring(k8sAttributesShareProcessorFeatureGate))
+		Expect(string(entrypoint)).To(ContainSubstring(`"--feature-gates=${feature_gates}"`))
 	})
 
 	It("should omit the filelog offset container but add the volume ownership container if a host volume is provided for filelog offset storage", func() {

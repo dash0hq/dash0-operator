@@ -271,6 +271,7 @@ helm_command+=" --set operator.dash0Export.secretRef.key=token"
 helm_command+=" --set operator.dash0Export.apiEndpoint=https://api.dummy-url.aws.dash0.com"
 helm_command+=" --set operator.prometheusCrdSupportEnabled=true"
 helm_command+=" --set operator.clusterName=dummy-cluster-name"
+helm_command+=" --set operator.collectors.k8s_attributes.shareProcessorBetweenPipelines=true"
 # Signal Control: the pull policies add optional env vars to the operator manager, enablePprof adds the optional pprof
 # port to the Edge Proxy. A single replica is enough for the check and reduces the capacity GKE Autopilot has to add.
 helm_command+=" --set operator.signalControl.enabled=true"
