@@ -2,8 +2,40 @@ apiVersion: v1
 entries:
   dash0-operator:
   - apiVersion: v2
+    appVersion: 0.157.0
+    created: "2026-10-09T14:14:42.372537111Z"
+    description: The Dash0 Operator makes observability easy for every Kubernetes
+      setup, simply install the operator into your cluster to get OpenTelemetry data
+      flowing from your applications and infrastructure to Dash0.
+    digest: 3e1a74a2e3e373db3943414d28523bd1653968d8448b747dd5529e0e6160a615
+    home: https://www.dash0.com/
+    icon: https://www.dash0.com/shared/logo_colors_128x128.png
+    keywords:
+    - OpenTelemetry
+    - Observability
+    - Monitoring
+    - Dash0
+    - Node.js
+    - Java
+    - JVM
+    - .NET
+    - Python
+    - Ruby
+    maintainers:
+    - email: bastian.krol@dash0.com
+      name: Bastian Krol
+    - email: petra.bierleutgeb@dash0.com
+      name: Petra Bierleutgeb
+    name: dash0-operator
+    sources:
+    - https://github.com/dash0hq/dash0-operator
+    type: application
+    urls:
+    - dash0-operator-0.157.0.tgz
+    version: 0.157.0
+  - apiVersion: v2
     appVersion: 0.156.0
-    created: "2026-10-06T16:40:17.420429923Z"
+    created: "2026-10-09T14:14:42.36576366Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -35,7 +67,7 @@ entries:
     version: 0.156.0
   - apiVersion: v2
     appVersion: 0.155.1
-    created: "2026-10-06T16:40:17.413777903Z"
+    created: "2026-10-09T14:14:42.359373084Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -67,7 +99,7 @@ entries:
     version: 0.155.1
   - apiVersion: v2
     appVersion: 0.155.0
-    created: "2026-10-06T16:40:17.407954337Z"
+    created: "2026-10-09T14:14:42.353552339Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -99,7 +131,7 @@ entries:
     version: 0.155.0
   - apiVersion: v2
     appVersion: 0.154.0
-    created: "2026-10-06T16:40:17.402845964Z"
+    created: "2026-10-09T14:14:42.347626507Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -131,7 +163,7 @@ entries:
     version: 0.154.0
   - apiVersion: v2
     appVersion: 0.153.0
-    created: "2026-10-06T16:40:17.397037629Z"
+    created: "2026-10-09T14:14:42.342315497Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -163,7 +195,7 @@ entries:
     version: 0.153.0
   - apiVersion: v2
     appVersion: 0.152.0
-    created: "2026-10-06T16:40:17.391180875Z"
+    created: "2026-10-09T14:14:42.336581657Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -195,7 +227,7 @@ entries:
     version: 0.152.0
   - apiVersion: v2
     appVersion: 0.151.0
-    created: "2026-10-06T16:40:17.386137795Z"
+    created: "2026-10-09T14:14:42.330890848Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -227,7 +259,7 @@ entries:
     version: 0.151.0
   - apiVersion: v2
     appVersion: 0.150.0
-    created: "2026-10-06T16:40:17.381180141Z"
+    created: "2026-10-09T14:14:42.325902188Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -257,7 +289,7 @@ entries:
     version: 0.150.0
   - apiVersion: v2
     appVersion: 0.149.0
-    created: "2026-10-06T16:40:17.37524259Z"
+    created: "2026-10-09T14:14:42.320585627Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -287,7 +319,7 @@ entries:
     version: 0.149.0
   - apiVersion: v2
     appVersion: 0.148.0
-    created: "2026-10-06T16:40:17.369971345Z"
+    created: "2026-10-09T14:14:42.315319607Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -317,7 +349,7 @@ entries:
     version: 0.148.0
   - apiVersion: v2
     appVersion: 0.147.0
-    created: "2026-10-06T16:40:17.364650296Z"
+    created: "2026-10-09T14:14:42.310058759Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -347,7 +379,7 @@ entries:
     version: 0.147.0
   - apiVersion: v2
     appVersion: 0.146.0
-    created: "2026-10-06T16:40:17.360221619Z"
+    created: "2026-10-09T14:14:42.305004625Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -377,7 +409,7 @@ entries:
     version: 0.146.0
   - apiVersion: v2
     appVersion: 0.145.0
-    created: "2026-10-06T16:40:17.355004943Z"
+    created: "2026-10-09T14:14:42.300877256Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -407,7 +439,7 @@ entries:
     version: 0.145.0
   - apiVersion: v2
     appVersion: 0.144.0
-    created: "2026-10-06T16:40:17.349921215Z"
+    created: "2026-10-09T14:14:42.295961633Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -437,7 +469,7 @@ entries:
     version: 0.144.0
   - apiVersion: v2
     appVersion: 0.143.0
-    created: "2026-10-06T16:40:17.345223655Z"
+    created: "2026-10-09T14:14:42.291459575Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -467,7 +499,7 @@ entries:
     version: 0.143.0
   - apiVersion: v2
     appVersion: 0.142.0
-    created: "2026-10-06T16:40:17.341471797Z"
+    created: "2026-10-09T14:14:42.287470312Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -497,7 +529,7 @@ entries:
     version: 0.142.0
   - apiVersion: v2
     appVersion: 0.141.0
-    created: "2026-10-06T16:40:17.33713147Z"
+    created: "2026-10-09T14:14:42.282998313Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -527,7 +559,7 @@ entries:
     version: 0.141.0
   - apiVersion: v2
     appVersion: 0.140.0
-    created: "2026-10-06T16:40:17.333220103Z"
+    created: "2026-10-09T14:14:42.27809872Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -557,7 +589,7 @@ entries:
     version: 0.140.0
   - apiVersion: v2
     appVersion: 0.139.0
-    created: "2026-10-06T16:40:17.328122158Z"
+    created: "2026-10-09T14:14:42.273195693Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -587,7 +619,7 @@ entries:
     version: 0.139.0
   - apiVersion: v2
     appVersion: 0.138.1
-    created: "2026-10-06T16:40:17.32365499Z"
+    created: "2026-10-09T14:14:42.269342796Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -617,7 +649,7 @@ entries:
     version: 0.138.1
   - apiVersion: v2
     appVersion: 0.138.0
-    created: "2026-10-06T16:40:17.31986279Z"
+    created: "2026-10-09T14:14:42.264905376Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -647,7 +679,7 @@ entries:
     version: 0.138.0
   - apiVersion: v2
     appVersion: 0.137.0
-    created: "2026-10-06T16:40:17.315736888Z"
+    created: "2026-10-09T14:14:42.260377923Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -677,7 +709,7 @@ entries:
     version: 0.137.0
   - apiVersion: v2
     appVersion: 0.136.0
-    created: "2026-10-06T16:40:17.311412161Z"
+    created: "2026-10-09T14:14:42.256784633Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -707,7 +739,7 @@ entries:
     version: 0.136.0
   - apiVersion: v2
     appVersion: 0.135.0
-    created: "2026-10-06T16:40:17.307158877Z"
+    created: "2026-10-09T14:14:42.252527376Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -737,7 +769,7 @@ entries:
     version: 0.135.0
   - apiVersion: v2
     appVersion: 0.134.1
-    created: "2026-10-06T16:40:17.303949386Z"
+    created: "2026-10-09T14:14:42.248607839Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -767,7 +799,7 @@ entries:
     version: 0.134.1
   - apiVersion: v2
     appVersion: 0.134.0
-    created: "2026-10-06T16:40:17.300133298Z"
+    created: "2026-10-09T14:14:42.245409462Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -797,7 +829,7 @@ entries:
     version: 0.134.0
   - apiVersion: v2
     appVersion: 0.133.0
-    created: "2026-10-06T16:40:17.296895895Z"
+    created: "2026-10-09T14:14:42.241167773Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -827,7 +859,7 @@ entries:
     version: 0.133.0
   - apiVersion: v2
     appVersion: 0.133.0-rc2
-    created: "2026-10-06T16:40:17.292962226Z"
+    created: "2026-10-09T14:14:42.238032363Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -857,7 +889,7 @@ entries:
     version: 0.133.0-rc2
   - apiVersion: v2
     appVersion: 0.133.0-rc1
-    created: "2026-10-06T16:40:17.28804743Z"
+    created: "2026-10-09T14:14:42.233882464Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -887,7 +919,7 @@ entries:
     version: 0.133.0-rc1
   - apiVersion: v2
     appVersion: 0.132.3-rc6-1.53.0-0.147.0-0.147.0-k8sattributes-0.144.0
-    created: "2026-10-06T16:40:17.284889837Z"
+    created: "2026-10-09T14:14:42.230089662Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -917,7 +949,7 @@ entries:
     version: 0.132.3-rc6-1.53.0-0.147.0-0.147.0-k8sattributes-0.144.0
   - apiVersion: v2
     appVersion: 0.132.3-rc5-k8sattributes-0.145.0
-    created: "2026-10-06T16:40:17.280956774Z"
+    created: "2026-10-09T14:14:42.227078231Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -947,7 +979,7 @@ entries:
     version: 0.132.3-rc5-k8sattributes-0.145.0
   - apiVersion: v2
     appVersion: 0.132.3-rc4-k8sattributes-0.146.0
-    created: "2026-10-06T16:40:17.277941247Z"
+    created: "2026-10-09T14:14:42.223283651Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -977,7 +1009,7 @@ entries:
     version: 0.132.3-rc4-k8sattributes-0.146.0
   - apiVersion: v2
     appVersion: 0.132.3-rc3-1.52.0-0.146.1-0.146.0
-    created: "2026-10-06T16:40:17.273904192Z"
+    created: "2026-10-09T14:14:42.22025045Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1007,7 +1039,7 @@ entries:
     version: 0.132.3-rc3-1.52.0-0.146.1-0.146.0
   - apiVersion: v2
     appVersion: 0.132.3-rc2-1.51.0-0.145.0-0.144.0
-    created: "2026-10-06T16:40:17.270114153Z"
+    created: "2026-10-09T14:14:42.216136575Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1037,7 +1069,7 @@ entries:
     version: 0.132.3-rc2-1.51.0-0.145.0-0.144.0
   - apiVersion: v2
     appVersion: 0.132.3-rc1-1.51.0-0.145.0-0.144.0
-    created: "2026-10-06T16:40:17.267090691Z"
+    created: "2026-10-09T14:14:42.212391392Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1067,7 +1099,7 @@ entries:
     version: 0.132.3-rc1-1.51.0-0.145.0-0.144.0
   - apiVersion: v2
     appVersion: 0.132.2
-    created: "2026-10-06T16:40:17.263263961Z"
+    created: "2026-10-09T14:14:42.209342962Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1097,7 +1129,7 @@ entries:
     version: 0.132.2
   - apiVersion: v2
     appVersion: 0.132.1
-    created: "2026-10-06T16:40:17.260196266Z"
+    created: "2026-10-09T14:14:42.205432855Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1127,7 +1159,7 @@ entries:
     version: 0.132.1
   - apiVersion: v2
     appVersion: 0.132.0
-    created: "2026-10-06T16:40:17.256184721Z"
+    created: "2026-10-09T14:14:42.202430121Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1157,7 +1189,7 @@ entries:
     version: 0.132.0
   - apiVersion: v2
     appVersion: 0.131.0
-    created: "2026-10-06T16:40:17.25206208Z"
+    created: "2026-10-09T14:14:42.198481996Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1187,7 +1219,7 @@ entries:
     version: 0.131.0
   - apiVersion: v2
     appVersion: 0.130.0
-    created: "2026-10-06T16:40:17.249256969Z"
+    created: "2026-10-09T14:14:42.195800005Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1217,7 +1249,7 @@ entries:
     version: 0.130.0
   - apiVersion: v2
     appVersion: 0.130.0-rc2
-    created: "2026-10-06T16:40:17.245812269Z"
+    created: "2026-10-09T14:14:42.192329621Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1247,7 +1279,7 @@ entries:
     version: 0.130.0-rc2
   - apiVersion: v2
     appVersion: 0.103.0
-    created: "2026-10-06T16:40:17.240140217Z"
+    created: "2026-10-09T14:14:42.18639777Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1277,7 +1309,7 @@ entries:
     version: 0.103.0
   - apiVersion: v2
     appVersion: 0.103.0-rc2
-    created: "2026-10-06T16:40:17.237463876Z"
+    created: "2026-10-09T14:14:42.183618188Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1307,7 +1339,7 @@ entries:
     version: 0.103.0-rc2
   - apiVersion: v2
     appVersion: 0.103.0-rc1
-    created: "2026-10-06T16:40:17.233929925Z"
+    created: "2026-10-09T14:14:42.179892233Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1337,7 +1369,7 @@ entries:
     version: 0.103.0-rc1
   - apiVersion: v2
     appVersion: 0.102.1
-    created: "2026-10-06T16:40:17.231280295Z"
+    created: "2026-10-09T14:14:42.177190827Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1367,7 +1399,7 @@ entries:
     version: 0.102.1
   - apiVersion: v2
     appVersion: 0.102.0
-    created: "2026-10-06T16:40:17.227890085Z"
+    created: "2026-10-09T14:14:42.173866786Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1397,7 +1429,7 @@ entries:
     version: 0.102.0
   - apiVersion: v2
     appVersion: 0.101.1
-    created: "2026-10-06T16:40:17.225117595Z"
+    created: "2026-10-09T14:14:42.171193833Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1427,7 +1459,7 @@ entries:
     version: 0.101.1
   - apiVersion: v2
     appVersion: 0.101.0
-    created: "2026-10-06T16:40:17.221595655Z"
+    created: "2026-10-09T14:14:42.167705427Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1457,7 +1489,7 @@ entries:
     version: 0.101.0
   - apiVersion: v2
     appVersion: 0.100.0
-    created: "2026-10-06T16:40:17.218969549Z"
+    created: "2026-10-09T14:14:42.164981199Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1487,7 +1519,7 @@ entries:
     version: 0.100.0
   - apiVersion: v2
     appVersion: 0.99.1
-    created: "2026-10-06T16:40:17.662602336Z"
+    created: "2026-10-09T14:14:42.613978928Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1517,7 +1549,7 @@ entries:
     version: 0.99.1
   - apiVersion: v2
     appVersion: 0.99.0
-    created: "2026-10-06T16:40:17.659801228Z"
+    created: "2026-10-09T14:14:42.610287376Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1547,7 +1579,7 @@ entries:
     version: 0.99.0
   - apiVersion: v2
     appVersion: 0.98.0
-    created: "2026-10-06T16:40:17.657238641Z"
+    created: "2026-10-09T14:14:42.607513896Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1577,7 +1609,7 @@ entries:
     version: 0.98.0
   - apiVersion: v2
     appVersion: 0.97.0
-    created: "2026-10-06T16:40:17.653969661Z"
+    created: "2026-10-09T14:14:42.604327057Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1607,7 +1639,7 @@ entries:
     version: 0.97.0
   - apiVersion: v2
     appVersion: 0.96.0
-    created: "2026-10-06T16:40:17.651444394Z"
+    created: "2026-10-09T14:14:42.601506232Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1637,7 +1669,7 @@ entries:
     version: 0.96.0
   - apiVersion: v2
     appVersion: 0.95.1
-    created: "2026-10-06T16:40:17.648210337Z"
+    created: "2026-10-09T14:14:42.598977325Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1667,7 +1699,7 @@ entries:
     version: 0.95.1
   - apiVersion: v2
     appVersion: 0.95.0
-    created: "2026-10-06T16:40:17.645607886Z"
+    created: "2026-10-09T14:14:42.595306008Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1697,7 +1729,7 @@ entries:
     version: 0.95.0
   - apiVersion: v2
     appVersion: 0.94.0
-    created: "2026-10-06T16:40:17.643096545Z"
+    created: "2026-10-09T14:14:42.592774166Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1727,7 +1759,7 @@ entries:
     version: 0.94.0
   - apiVersion: v2
     appVersion: 0.93.2
-    created: "2026-10-06T16:40:17.639472146Z"
+    created: "2026-10-09T14:14:42.589539043Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1757,7 +1789,7 @@ entries:
     version: 0.93.2
   - apiVersion: v2
     appVersion: 0.93.1
-    created: "2026-10-06T16:40:17.636991373Z"
+    created: "2026-10-09T14:14:42.587105082Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1787,7 +1819,7 @@ entries:
     version: 0.93.1
   - apiVersion: v2
     appVersion: 0.93.0
-    created: "2026-10-06T16:40:17.633731273Z"
+    created: "2026-10-09T14:14:42.58405539Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1817,7 +1849,7 @@ entries:
     version: 0.93.0
   - apiVersion: v2
     appVersion: 0.92.1
-    created: "2026-10-06T16:40:17.631307646Z"
+    created: "2026-10-09T14:14:42.581579421Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1847,7 +1879,7 @@ entries:
     version: 0.92.1
   - apiVersion: v2
     appVersion: 0.92.0
-    created: "2026-10-06T16:40:17.628021492Z"
+    created: "2026-10-09T14:14:42.579132717Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1877,7 +1909,7 @@ entries:
     version: 0.92.0
   - apiVersion: v2
     appVersion: 0.91.0
-    created: "2026-10-06T16:40:17.625475016Z"
+    created: "2026-10-09T14:14:42.575776873Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1907,7 +1939,7 @@ entries:
     version: 0.91.0
   - apiVersion: v2
     appVersion: 0.90.0
-    created: "2026-10-06T16:40:17.623054355Z"
+    created: "2026-10-09T14:14:42.573090203Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1937,7 +1969,7 @@ entries:
     version: 0.90.0
   - apiVersion: v2
     appVersion: 0.89.0
-    created: "2026-10-06T16:40:17.619173064Z"
+    created: "2026-10-09T14:14:42.569190403Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1967,7 +1999,7 @@ entries:
     version: 0.89.0
   - apiVersion: v2
     appVersion: 0.88.2
-    created: "2026-10-06T16:40:17.616962558Z"
+    created: "2026-10-09T14:14:42.567029699Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -1997,7 +2029,7 @@ entries:
     version: 0.88.2
   - apiVersion: v2
     appVersion: 0.88.1
-    created: "2026-10-06T16:40:17.613973573Z"
+    created: "2026-10-09T14:14:42.564857293Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2027,7 +2059,7 @@ entries:
     version: 0.88.1
   - apiVersion: v2
     appVersion: 0.88.0
-    created: "2026-10-06T16:40:17.611695079Z"
+    created: "2026-10-09T14:14:42.561826879Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2057,7 +2089,7 @@ entries:
     version: 0.88.0
   - apiVersion: v2
     appVersion: 0.87.0
-    created: "2026-10-06T16:40:17.609535408Z"
+    created: "2026-10-09T14:14:42.559565758Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2087,7 +2119,7 @@ entries:
     version: 0.87.0
   - apiVersion: v2
     appVersion: 0.86.1
-    created: "2026-10-06T16:40:17.606618065Z"
+    created: "2026-10-09T14:14:42.557397951Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2117,7 +2149,7 @@ entries:
     version: 0.86.1
   - apiVersion: v2
     appVersion: 0.86.0
-    created: "2026-10-06T16:40:17.604512235Z"
+    created: "2026-10-09T14:14:42.554424635Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2147,7 +2179,7 @@ entries:
     version: 0.86.0
   - apiVersion: v2
     appVersion: 0.85.1
-    created: "2026-10-06T16:40:17.602343607Z"
+    created: "2026-10-09T14:14:42.552293295Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2177,7 +2209,7 @@ entries:
     version: 0.85.1
   - apiVersion: v2
     appVersion: 0.85.0
-    created: "2026-10-06T16:40:17.59935531Z"
+    created: "2026-10-09T14:14:42.550173857Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2207,7 +2239,7 @@ entries:
     version: 0.85.0
   - apiVersion: v2
     appVersion: 0.84.0
-    created: "2026-10-06T16:40:17.597229572Z"
+    created: "2026-10-09T14:14:42.547259488Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2237,7 +2269,7 @@ entries:
     version: 0.84.0
   - apiVersion: v2
     appVersion: 0.83.0
-    created: "2026-10-06T16:40:17.595050845Z"
+    created: "2026-10-09T14:14:42.54513477Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2265,7 +2297,7 @@ entries:
     version: 0.83.0
   - apiVersion: v2
     appVersion: 0.82.0
-    created: "2026-10-06T16:40:17.592148427Z"
+    created: "2026-10-09T14:14:42.543035279Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2293,7 +2325,7 @@ entries:
     version: 0.82.0
   - apiVersion: v2
     appVersion: 0.81.0
-    created: "2026-10-06T16:40:17.590099284Z"
+    created: "2026-10-09T14:14:42.540261647Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2321,7 +2353,7 @@ entries:
     version: 0.81.0
   - apiVersion: v2
     appVersion: 0.80.0
-    created: "2026-10-06T16:40:17.588043858Z"
+    created: "2026-10-09T14:14:42.538214042Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2349,7 +2381,7 @@ entries:
     version: 0.80.0
   - apiVersion: v2
     appVersion: 0.79.1
-    created: "2026-10-06T16:40:17.579502131Z"
+    created: "2026-10-09T14:14:42.52978721Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2377,7 +2409,7 @@ entries:
     version: 0.79.1
   - apiVersion: v2
     appVersion: 0.79.0
-    created: "2026-10-06T16:40:17.576602907Z"
+    created: "2026-10-09T14:14:42.527684062Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2405,7 +2437,7 @@ entries:
     version: 0.79.0
   - apiVersion: v2
     appVersion: 0.78.0
-    created: "2026-10-06T16:40:17.574545988Z"
+    created: "2026-10-09T14:14:42.524243926Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2433,7 +2465,7 @@ entries:
     version: 0.78.0
   - apiVersion: v2
     appVersion: 0.77.0
-    created: "2026-10-06T16:40:17.572499539Z"
+    created: "2026-10-09T14:14:42.522204627Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2461,7 +2493,7 @@ entries:
     version: 0.77.0
   - apiVersion: v2
     appVersion: 0.76.0
-    created: "2026-10-06T16:40:17.569843247Z"
+    created: "2026-10-09T14:14:42.520193229Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2489,7 +2521,7 @@ entries:
     version: 0.76.0
   - apiVersion: v2
     appVersion: 0.75.0
-    created: "2026-10-06T16:40:17.567877229Z"
+    created: "2026-10-09T14:14:42.517573135Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2517,7 +2549,7 @@ entries:
     version: 0.75.0
   - apiVersion: v2
     appVersion: 0.74.0
-    created: "2026-10-06T16:40:17.565931819Z"
+    created: "2026-10-09T14:14:42.515112926Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2545,7 +2577,7 @@ entries:
     version: 0.74.0
   - apiVersion: v2
     appVersion: 0.73.0
-    created: "2026-10-06T16:40:17.564043337Z"
+    created: "2026-10-09T14:14:42.513278336Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2573,7 +2605,7 @@ entries:
     version: 0.73.0
   - apiVersion: v2
     appVersion: 0.72.0
-    created: "2026-10-06T16:40:17.561435032Z"
+    created: "2026-10-09T14:14:42.511468892Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2601,7 +2633,7 @@ entries:
     version: 0.72.0
   - apiVersion: v2
     appVersion: 0.71.0
-    created: "2026-10-06T16:40:17.559701971Z"
+    created: "2026-10-09T14:14:42.508958452Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2629,7 +2661,7 @@ entries:
     version: 0.71.0
   - apiVersion: v2
     appVersion: 0.70.3
-    created: "2026-10-06T16:40:17.557953241Z"
+    created: "2026-10-09T14:14:42.507254524Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2657,7 +2689,7 @@ entries:
     version: 0.70.3
   - apiVersion: v2
     appVersion: 0.70.2
-    created: "2026-10-06T16:40:17.556404496Z"
+    created: "2026-10-09T14:14:42.50573616Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2685,7 +2717,7 @@ entries:
     version: 0.70.2
   - apiVersion: v2
     appVersion: 0.70.1
-    created: "2026-10-06T16:40:17.553887494Z"
+    created: "2026-10-09T14:14:42.504161542Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2713,7 +2745,7 @@ entries:
     version: 0.70.1
   - apiVersion: v2
     appVersion: 0.70.0
-    created: "2026-10-06T16:40:17.552397269Z"
+    created: "2026-10-09T14:14:42.50172167Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2741,7 +2773,7 @@ entries:
     version: 0.70.0
   - apiVersion: v2
     appVersion: 0.69.1
-    created: "2026-10-06T16:40:17.547269816Z"
+    created: "2026-10-09T14:14:42.49747493Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2769,7 +2801,7 @@ entries:
     version: 0.69.1
   - apiVersion: v2
     appVersion: 0.69.0
-    created: "2026-10-06T16:40:17.545739606Z"
+    created: "2026-10-09T14:14:42.495064388Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2797,7 +2829,7 @@ entries:
     version: 0.69.0
   - apiVersion: v2
     appVersion: 0.68.0
-    created: "2026-10-06T16:40:17.544244331Z"
+    created: "2026-10-09T14:14:42.493591868Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2825,7 +2857,7 @@ entries:
     version: 0.68.0
   - apiVersion: v2
     appVersion: 0.67.0
-    created: "2026-10-06T16:40:17.542788179Z"
+    created: "2026-10-09T14:14:42.492143624Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2852,7 +2884,7 @@ entries:
     version: 0.67.0
   - apiVersion: v2
     appVersion: 0.66.0
-    created: "2026-10-06T16:40:17.541132023Z"
+    created: "2026-10-09T14:14:42.490674572Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2879,7 +2911,7 @@ entries:
     version: 0.66.0
   - apiVersion: v2
     appVersion: 0.65.0
-    created: "2026-10-06T16:40:17.538808164Z"
+    created: "2026-10-09T14:14:42.488452173Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2906,7 +2938,7 @@ entries:
     version: 0.65.0
   - apiVersion: v2
     appVersion: 0.64.0
-    created: "2026-10-06T16:40:17.537393861Z"
+    created: "2026-10-09T14:14:42.487027613Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2933,7 +2965,7 @@ entries:
     version: 0.64.0
   - apiVersion: v2
     appVersion: 0.63.0
-    created: "2026-10-06T16:40:17.535920667Z"
+    created: "2026-10-09T14:14:42.485597382Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2960,7 +2992,7 @@ entries:
     version: 0.63.0
   - apiVersion: v2
     appVersion: 0.62.0
-    created: "2026-10-06T16:40:17.534218815Z"
+    created: "2026-10-09T14:14:42.484172131Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -2987,7 +3019,7 @@ entries:
     version: 0.62.0
   - apiVersion: v2
     appVersion: 0.61.1
-    created: "2026-10-06T16:40:17.532087757Z"
+    created: "2026-10-09T14:14:42.481872153Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3014,7 +3046,7 @@ entries:
     version: 0.61.1
   - apiVersion: v2
     appVersion: 0.61.0
-    created: "2026-10-06T16:40:17.530710454Z"
+    created: "2026-10-09T14:14:42.480470104Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3041,7 +3073,7 @@ entries:
     version: 0.61.0
   - apiVersion: v2
     appVersion: 0.60.0
-    created: "2026-10-06T16:40:17.529299617Z"
+    created: "2026-10-09T14:14:42.479061704Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3068,7 +3100,7 @@ entries:
     version: 0.60.0
   - apiVersion: v2
     appVersion: 0.59.0
-    created: "2026-10-06T16:40:17.524141115Z"
+    created: "2026-10-09T14:14:42.474182281Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3095,7 +3127,7 @@ entries:
     version: 0.59.0
   - apiVersion: v2
     appVersion: 0.58.0
-    created: "2026-10-06T16:40:17.522775824Z"
+    created: "2026-10-09T14:14:42.472833892Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3122,7 +3154,7 @@ entries:
     version: 0.58.0
   - apiVersion: v2
     appVersion: 0.57.1
-    created: "2026-10-06T16:40:17.521432364Z"
+    created: "2026-10-09T14:14:42.471441241Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3149,7 +3181,7 @@ entries:
     version: 0.57.1
   - apiVersion: v2
     appVersion: 0.57.0
-    created: "2026-10-06T16:40:17.519248586Z"
+    created: "2026-10-09T14:14:42.470057677Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3176,7 +3208,7 @@ entries:
     version: 0.57.0
   - apiVersion: v2
     appVersion: 0.56.3
-    created: "2026-10-06T16:40:17.517929411Z"
+    created: "2026-10-09T14:14:42.467882784Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3203,7 +3235,7 @@ entries:
     version: 0.56.3
   - apiVersion: v2
     appVersion: 0.56.2
-    created: "2026-10-06T16:40:17.51659585Z"
+    created: "2026-10-09T14:14:42.466490954Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3230,7 +3262,7 @@ entries:
     version: 0.56.2
   - apiVersion: v2
     appVersion: 0.56.1
-    created: "2026-10-06T16:40:17.515161299Z"
+    created: "2026-10-09T14:14:42.465152934Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3257,7 +3289,7 @@ entries:
     version: 0.56.1
   - apiVersion: v2
     appVersion: 0.56.0
-    created: "2026-10-06T16:40:17.512982874Z"
+    created: "2026-10-09T14:14:42.463734105Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3284,7 +3316,7 @@ entries:
     version: 0.56.0
   - apiVersion: v2
     appVersion: 0.55.1
-    created: "2026-10-06T16:40:17.511666455Z"
+    created: "2026-10-09T14:14:42.46144784Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3311,7 +3343,7 @@ entries:
     version: 0.55.1
   - apiVersion: v2
     appVersion: 0.55.0
-    created: "2026-10-06T16:40:17.510343914Z"
+    created: "2026-10-09T14:14:42.460171084Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3338,7 +3370,7 @@ entries:
     version: 0.55.0
   - apiVersion: v2
     appVersion: 0.54.2
-    created: "2026-10-06T16:40:17.508988111Z"
+    created: "2026-10-09T14:14:42.458852851Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3365,7 +3397,7 @@ entries:
     version: 0.54.2
   - apiVersion: v2
     appVersion: 0.54.1
-    created: "2026-10-06T16:40:17.507018324Z"
+    created: "2026-10-09T14:14:42.457445423Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3392,7 +3424,7 @@ entries:
     version: 0.54.1
   - apiVersion: v2
     appVersion: 0.53.0
-    created: "2026-10-06T16:40:17.505697105Z"
+    created: "2026-10-09T14:14:42.455250921Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3419,7 +3451,7 @@ entries:
     version: 0.53.0
   - apiVersion: v2
     appVersion: 0.52.1
-    created: "2026-10-06T16:40:17.504389282Z"
+    created: "2026-10-09T14:14:42.453970798Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3444,7 +3476,7 @@ entries:
     version: 0.52.1
   - apiVersion: v2
     appVersion: 0.52.0
-    created: "2026-10-06T16:40:17.502988374Z"
+    created: "2026-10-09T14:14:42.452636596Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3469,7 +3501,7 @@ entries:
     version: 0.52.0
   - apiVersion: v2
     appVersion: 0.51.0
-    created: "2026-10-06T16:40:17.50076617Z"
+    created: "2026-10-09T14:14:42.45129021Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3494,7 +3526,7 @@ entries:
     version: 0.51.0
   - apiVersion: v2
     appVersion: 0.50.1
-    created: "2026-10-06T16:40:17.499469187Z"
+    created: "2026-10-09T14:14:42.449236785Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3519,7 +3551,7 @@ entries:
     version: 0.50.1
   - apiVersion: v2
     appVersion: 0.50.0
-    created: "2026-10-06T16:40:17.498161985Z"
+    created: "2026-10-09T14:14:42.447962072Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3544,7 +3576,7 @@ entries:
     version: 0.50.0
   - apiVersion: v2
     appVersion: 0.49.0
-    created: "2026-10-06T16:40:17.490524853Z"
+    created: "2026-10-09T14:14:42.44034207Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3569,7 +3601,7 @@ entries:
     version: 0.49.0
   - apiVersion: v2
     appVersion: 0.48.0
-    created: "2026-10-06T16:40:17.489179048Z"
+    created: "2026-10-09T14:14:42.439085291Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3594,7 +3626,7 @@ entries:
     version: 0.48.0
   - apiVersion: v2
     appVersion: 0.47.2
-    created: "2026-10-06T16:40:17.487904748Z"
+    created: "2026-10-09T14:14:42.437871141Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3619,7 +3651,7 @@ entries:
     version: 0.47.2
   - apiVersion: v2
     appVersion: 0.47.1
-    created: "2026-10-06T16:40:17.485912988Z"
+    created: "2026-10-09T14:14:42.43617938Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3644,7 +3676,7 @@ entries:
     version: 0.47.1
   - apiVersion: v2
     appVersion: 0.47.0
-    created: "2026-10-06T16:40:17.484649238Z"
+    created: "2026-10-09T14:14:42.4345712Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3669,7 +3701,7 @@ entries:
     version: 0.47.0
   - apiVersion: v2
     appVersion: 0.46.0
-    created: "2026-10-06T16:40:17.483261805Z"
+    created: "2026-10-09T14:14:42.433408335Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3694,7 +3726,7 @@ entries:
     version: 0.46.0
   - apiVersion: v2
     appVersion: 0.45.1
-    created: "2026-10-06T16:40:17.481907244Z"
+    created: "2026-10-09T14:14:42.432220944Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3719,7 +3751,7 @@ entries:
     version: 0.45.1
   - apiVersion: v2
     appVersion: 0.45.0
-    created: "2026-10-06T16:40:17.480563203Z"
+    created: "2026-10-09T14:14:42.431065132Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3744,7 +3776,7 @@ entries:
     version: 0.45.0
   - apiVersion: v2
     appVersion: 0.44.0
-    created: "2026-10-06T16:40:17.479132339Z"
+    created: "2026-10-09T14:14:42.429913668Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3769,7 +3801,7 @@ entries:
     version: 0.44.0
   - apiVersion: v2
     appVersion: 0.43.1
-    created: "2026-10-06T16:40:17.476974571Z"
+    created: "2026-10-09T14:14:42.427996557Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3794,7 +3826,7 @@ entries:
     version: 0.43.1
   - apiVersion: v2
     appVersion: 0.43.0
-    created: "2026-10-06T16:40:17.475845764Z"
+    created: "2026-10-09T14:14:42.426798134Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3819,7 +3851,7 @@ entries:
     version: 0.43.0
   - apiVersion: v2
     appVersion: 0.42.0
-    created: "2026-10-06T16:40:17.474742524Z"
+    created: "2026-10-09T14:14:42.425708324Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3844,7 +3876,7 @@ entries:
     version: 0.42.0
   - apiVersion: v2
     appVersion: 0.41.0
-    created: "2026-10-06T16:40:17.473649584Z"
+    created: "2026-10-09T14:14:42.424576426Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3869,7 +3901,7 @@ entries:
     version: 0.41.0
   - apiVersion: v2
     appVersion: 0.40.1
-    created: "2026-10-06T16:40:17.472546755Z"
+    created: "2026-10-09T14:14:42.423475215Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3894,7 +3926,7 @@ entries:
     version: 0.40.1
   - apiVersion: v2
     appVersion: 0.40.0
-    created: "2026-10-06T16:40:17.471435681Z"
+    created: "2026-10-09T14:14:42.422372462Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3919,7 +3951,7 @@ entries:
     version: 0.40.0
   - apiVersion: v2
     appVersion: 0.39.0
-    created: "2026-10-06T16:40:17.46672378Z"
+    created: "2026-10-09T14:14:42.417751107Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3944,7 +3976,7 @@ entries:
     version: 0.39.0
   - apiVersion: v2
     appVersion: 0.38.0
-    created: "2026-10-06T16:40:17.465637382Z"
+    created: "2026-10-09T14:14:42.416650747Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3969,7 +4001,7 @@ entries:
     version: 0.38.0
   - apiVersion: v2
     appVersion: 0.37.2
-    created: "2026-10-06T16:40:17.464535425Z"
+    created: "2026-10-09T14:14:42.41556734Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -3994,7 +4026,7 @@ entries:
     version: 0.37.2
   - apiVersion: v2
     appVersion: 0.37.1
-    created: "2026-10-06T16:40:17.463335585Z"
+    created: "2026-10-09T14:14:42.414357668Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -4019,7 +4051,7 @@ entries:
     version: 0.37.1
   - apiVersion: v2
     appVersion: 0.37.0
-    created: "2026-10-06T16:40:17.461334784Z"
+    created: "2026-10-09T14:14:42.412540325Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -4044,7 +4076,7 @@ entries:
     version: 0.37.0
   - apiVersion: v2
     appVersion: 0.36.1
-    created: "2026-10-06T16:40:17.460263795Z"
+    created: "2026-10-09T14:14:42.411466114Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -4069,7 +4101,7 @@ entries:
     version: 0.36.1
   - apiVersion: v2
     appVersion: 0.36.0
-    created: "2026-10-06T16:40:17.459202193Z"
+    created: "2026-10-09T14:14:42.410377707Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -4094,7 +4126,7 @@ entries:
     version: 0.36.0
   - apiVersion: v2
     appVersion: 0.35.3
-    created: "2026-10-06T16:40:17.458119703Z"
+    created: "2026-10-09T14:14:42.409296293Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -4119,7 +4151,7 @@ entries:
     version: 0.35.3
   - apiVersion: v2
     appVersion: 0.35.2
-    created: "2026-10-06T16:40:17.456970537Z"
+    created: "2026-10-09T14:14:42.408127697Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -4144,7 +4176,7 @@ entries:
     version: 0.35.2
   - apiVersion: v2
     appVersion: 0.35.1
-    created: "2026-10-06T16:40:17.454946911Z"
+    created: "2026-10-09T14:14:42.406362773Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -4169,7 +4201,7 @@ entries:
     version: 0.35.1
   - apiVersion: v2
     appVersion: 0.35.0
-    created: "2026-10-06T16:40:17.453879499Z"
+    created: "2026-10-09T14:14:42.405296197Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -4194,7 +4226,7 @@ entries:
     version: 0.35.0
   - apiVersion: v2
     appVersion: 0.34.0
-    created: "2026-10-06T16:40:17.452835731Z"
+    created: "2026-10-09T14:14:42.404271748Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -4219,7 +4251,7 @@ entries:
     version: 0.34.0
   - apiVersion: v2
     appVersion: 0.33.1
-    created: "2026-10-06T16:40:17.451823602Z"
+    created: "2026-10-09T14:14:42.403261195Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -4244,7 +4276,7 @@ entries:
     version: 0.33.1
   - apiVersion: v2
     appVersion: 0.33.0
-    created: "2026-10-06T16:40:17.450782009Z"
+    created: "2026-10-09T14:14:42.402207152Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -4269,7 +4301,7 @@ entries:
     version: 0.33.0
   - apiVersion: v2
     appVersion: 0.32.1
-    created: "2026-10-06T16:40:17.449679891Z"
+    created: "2026-10-09T14:14:42.401076656Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -4294,7 +4326,7 @@ entries:
     version: 0.32.1
   - apiVersion: v2
     appVersion: 0.32.0
-    created: "2026-10-06T16:40:17.447731073Z"
+    created: "2026-10-09T14:14:42.399146494Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
       setup, simply install the operator into your cluster to get OpenTelemetry data
       flowing from your applications and infrastructure to Dash0.
@@ -4319,7 +4351,7 @@ entries:
     version: 0.32.0
   - apiVersion: v2
     appVersion: 0.31.0
-    created: "2026-10-06T16:40:17.446716149Z"
+    created: "2026-10-09T14:14:42.398135661Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4344,7 +4376,7 @@ entries:
     version: 0.31.0
   - apiVersion: v2
     appVersion: 0.30.0
-    created: "2026-10-06T16:40:17.445706415Z"
+    created: "2026-10-09T14:14:42.397106493Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4369,7 +4401,7 @@ entries:
     version: 0.30.0
   - apiVersion: v2
     appVersion: 0.29.0
-    created: "2026-10-06T16:40:17.441197585Z"
+    created: "2026-10-09T14:14:42.392522573Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4394,7 +4426,7 @@ entries:
     version: 0.29.0
   - apiVersion: v2
     appVersion: 0.28.0
-    created: "2026-10-06T16:40:17.440198702Z"
+    created: "2026-10-09T14:14:42.391537457Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4419,7 +4451,7 @@ entries:
     version: 0.28.0
   - apiVersion: v2
     appVersion: 0.27.0
-    created: "2026-10-06T16:40:17.439235295Z"
+    created: "2026-10-09T14:14:42.390548514Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4444,7 +4476,7 @@ entries:
     version: 0.27.0
   - apiVersion: v2
     appVersion: 0.26.0
-    created: "2026-10-06T16:40:17.438271937Z"
+    created: "2026-10-09T14:14:42.389578697Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4469,7 +4501,7 @@ entries:
     version: 0.26.0
   - apiVersion: v2
     appVersion: 0.25.0
-    created: "2026-10-06T16:40:17.437251654Z"
+    created: "2026-10-09T14:14:42.388678789Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4494,7 +4526,7 @@ entries:
     version: 0.25.0
   - apiVersion: v2
     appVersion: 0.24.3
-    created: "2026-10-06T16:40:17.436158463Z"
+    created: "2026-10-09T14:14:42.387761579Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4519,7 +4551,7 @@ entries:
     version: 0.24.3
   - apiVersion: v2
     appVersion: 0.24.2
-    created: "2026-10-06T16:40:17.434264986Z"
+    created: "2026-10-09T14:14:42.386637984Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4544,7 +4576,7 @@ entries:
     version: 0.24.2
   - apiVersion: v2
     appVersion: 0.24.1
-    created: "2026-10-06T16:40:17.433373313Z"
+    created: "2026-10-09T14:14:42.385447057Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4569,7 +4601,7 @@ entries:
     version: 0.24.1
   - apiVersion: v2
     appVersion: 0.24.0
-    created: "2026-10-06T16:40:17.432462905Z"
+    created: "2026-10-09T14:14:42.383771417Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4594,7 +4626,7 @@ entries:
     version: 0.24.0
   - apiVersion: v2
     appVersion: 0.23.0
-    created: "2026-10-06T16:40:17.431556976Z"
+    created: "2026-10-09T14:14:42.382820826Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4619,7 +4651,7 @@ entries:
     version: 0.23.0
   - apiVersion: v2
     appVersion: 0.22.0
-    created: "2026-10-06T16:40:17.430646598Z"
+    created: "2026-10-09T14:14:42.381923563Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4644,7 +4676,7 @@ entries:
     version: 0.22.0
   - apiVersion: v2
     appVersion: 0.21.1
-    created: "2026-10-06T16:40:17.429733645Z"
+    created: "2026-10-09T14:14:42.380936303Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4669,7 +4701,7 @@ entries:
     version: 0.21.1
   - apiVersion: v2
     appVersion: 0.21.0
-    created: "2026-10-06T16:40:17.428758907Z"
+    created: "2026-10-09T14:14:42.380131662Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4694,7 +4726,7 @@ entries:
     version: 0.21.0
   - apiVersion: v2
     appVersion: 0.20.0
-    created: "2026-10-06T16:40:17.427067069Z"
+    created: "2026-10-09T14:14:42.379314016Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4719,7 +4751,7 @@ entries:
     version: 0.20.0
   - apiVersion: v2
     appVersion: 0.18.0
-    created: "2026-10-06T16:40:17.42363427Z"
+    created: "2026-10-09T14:14:42.374729244Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4744,7 +4776,7 @@ entries:
     version: 0.18.0
   - apiVersion: v2
     appVersion: 0.17.0
-    created: "2026-10-06T16:40:17.422889002Z"
+    created: "2026-10-09T14:14:42.37400389Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4769,7 +4801,7 @@ entries:
     version: 0.17.0
   - apiVersion: v2
     appVersion: 0.16.0
-    created: "2026-10-06T16:40:17.421716607Z"
+    created: "2026-10-09T14:14:42.373280579Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4794,7 +4826,7 @@ entries:
     version: 0.16.0
   - apiVersion: v2
     appVersion: 0.15.0
-    created: "2026-10-06T16:40:17.375988419Z"
+    created: "2026-10-09T14:14:42.321363137Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4819,7 +4851,7 @@ entries:
     version: 0.15.0
   - apiVersion: v2
     appVersion: 0.14.0
-    created: "2026-10-06T16:40:17.329005224Z"
+    created: "2026-10-09T14:14:42.273984616Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4844,7 +4876,7 @@ entries:
     version: 0.14.0
   - apiVersion: v2
     appVersion: 0.13.0
-    created: "2026-10-06T16:40:17.243124397Z"
+    created: "2026-10-09T14:14:42.189321085Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4869,7 +4901,7 @@ entries:
     version: 0.13.0
   - apiVersion: v2
     appVersion: 0.12.0
-    created: "2026-10-06T16:40:17.242205203Z"
+    created: "2026-10-09T14:14:42.187825556Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4894,7 +4926,7 @@ entries:
     version: 0.12.0
   - apiVersion: v2
     appVersion: 0.11.0
-    created: "2026-10-06T16:40:17.240838457Z"
+    created: "2026-10-09T14:14:42.187103197Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4919,7 +4951,7 @@ entries:
     version: 0.11.0
   - apiVersion: v2
     appVersion: 0.10.0
-    created: "2026-10-06T16:40:17.215647924Z"
+    created: "2026-10-09T14:14:42.161226628Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4944,7 +4976,7 @@ entries:
     version: 0.10.0
   - apiVersion: v2
     appVersion: 0.9.0
-    created: "2026-10-06T16:40:17.619842911Z"
+    created: "2026-10-09T14:14:42.57000193Z"
     description: The Dash0 Kubernetes Operator makes observability easy for every
       Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
       data flowing from your applications and infrastructure to Dash0.
@@ -4969,7 +5001,7 @@ entries:
     version: 0.9.0
   - apiVersion: v2
     appVersion: 0.8.1
-    created: "2026-10-06T16:40:17.58500879Z"
+    created: "2026-10-09T14:14:42.536137193Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -4999,7 +5031,7 @@ entries:
     version: 0.8.1
   - apiVersion: v2
     appVersion: 0.8.0
-    created: "2026-10-06T16:40:17.582272267Z"
+    created: "2026-10-09T14:14:42.532470813Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -5029,7 +5061,7 @@ entries:
     version: 0.8.0
   - apiVersion: v2
     appVersion: 0.7.0
-    created: "2026-10-06T16:40:17.550819479Z"
+    created: "2026-10-09T14:14:42.500206172Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -5059,7 +5091,7 @@ entries:
     version: 0.7.0
   - apiVersion: v2
     appVersion: 0.6.0
-    created: "2026-10-06T16:40:17.527588131Z"
+    created: "2026-10-09T14:14:42.47765103Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -5089,7 +5121,7 @@ entries:
     version: 0.6.0
   - apiVersion: v2
     appVersion: 0.5.1
-    created: "2026-10-06T16:40:17.49683707Z"
+    created: "2026-10-09T14:14:42.446647777Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -5119,7 +5151,7 @@ entries:
     version: 0.5.1
   - apiVersion: v2
     appVersion: 0.5.0
-    created: "2026-10-06T16:40:17.493401358Z"
+    created: "2026-10-09T14:14:42.443620741Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -5149,7 +5181,7 @@ entries:
     version: 0.5.0
   - apiVersion: v2
     appVersion: 0.4.0
-    created: "2026-10-06T16:40:17.469961484Z"
+    created: "2026-10-09T14:14:42.421009325Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -5179,7 +5211,7 @@ entries:
     version: 0.4.0
   - apiVersion: v2
     appVersion: 0.3.0
-    created: "2026-10-06T16:40:17.444698304Z"
+    created: "2026-10-09T14:14:42.396105208Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -5209,7 +5241,7 @@ entries:
     version: 0.3.0
   - apiVersion: v2
     appVersion: 0.2.0
-    created: "2026-10-06T16:40:17.426260596Z"
+    created: "2026-10-09T14:14:42.378498845Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -5239,7 +5271,7 @@ entries:
     version: 0.2.0
   - apiVersion: v2
     appVersion: 0.1.3
-    created: "2026-10-06T16:40:17.214961616Z"
+    created: "2026-10-09T14:14:42.160534906Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -5269,7 +5301,7 @@ entries:
     version: 0.1.3
   - apiVersion: v2
     appVersion: 0.1.2
-    created: "2026-10-06T16:40:17.212285025Z"
+    created: "2026-10-09T14:14:42.15759137Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -5299,7 +5331,7 @@ entries:
     version: 0.1.2
   - apiVersion: v2
     appVersion: 0.1.1
-    created: "2026-10-06T16:40:17.208697887Z"
+    created: "2026-10-09T14:14:42.14957032Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -5329,7 +5361,7 @@ entries:
     version: 0.1.1
   - apiVersion: v2
     appVersion: 0.1.0
-    created: "2026-10-06T16:40:17.205953759Z"
+    created: "2026-10-09T14:14:42.146876548Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -5357,4 +5389,4 @@ entries:
     urls:
     - dash0-operator-0.1.0.tgz
     version: 0.1.0
-generated: "2026-10-06T16:40:17.201630333Z"
+generated: "2026-10-09T14:14:42.142689295Z"
