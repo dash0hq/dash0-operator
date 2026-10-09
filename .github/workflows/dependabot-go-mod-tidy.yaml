@@ -9,8 +9,8 @@ name: Tidy Go Modules (Dependabot)
 on:
   pull_request:
     paths:
-      - '**/go.mod'
-      - '**/go.sum'
+      - 'images/pkg/common/go.mod'
+      - 'images/pkg/common/go.sum'
 
 permissions:
   contents: read
