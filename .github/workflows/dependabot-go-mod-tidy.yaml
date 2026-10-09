@@ -40,7 +40,9 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: true
-          cache-dependency-path: '**/go.sum'
+          cache-dependency-path: |
+            images/agent0-connector/src/go.sum
+            images/pkg/common/go.sum
 
       - name: run go mod tidy and commit the result
         env:
