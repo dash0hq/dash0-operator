@@ -48,10 +48,10 @@ var (
 	}
 )
 
-// EdgeProxyDefaultReplicas is used when the extra config map does not specify a replica count (e.g. older config
-// maps). The Helm chart ships a higher default; this only backstops a missing value. The topology spread constraints
-// bias replicas onto separate zones and nodes (see edgeProxyTopologySpreadConstraints), and the operator warns when
-// there are fewer replicas than availability zones.
+// EdgeProxyDefaultReplicas is used when the extra config map specifies a replica count below 1. The Helm chart ships a
+// higher default; this only backstops an invalid value. The topology spread constraints bias replicas onto separate
+// zones and nodes (see edgeProxyTopologySpreadConstraints), and the operator warns when there are fewer replicas than
+// availability zones.
 const EdgeProxyDefaultReplicas int32 = 1
 
 type clientObject struct {

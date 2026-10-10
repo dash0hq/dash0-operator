@@ -1,0 +1,9 @@
+# The init container resources on GKE Autopilot if operator.initContainerResources is not set. A copy lives in
+# gkeAutopilotInstrumentationInitContainerResources (internal/util/extra_config.go). A drift protection test in
+# internal/util/extra_config_test.go fails when the two disagree.
+limits:
+  ephemeral-storage: 500Mi
+requests:
+  cpu: 100m
+  memory: 128Mi
+  ephemeral-storage: 500Mi
