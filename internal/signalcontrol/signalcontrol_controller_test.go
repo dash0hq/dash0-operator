@@ -71,6 +71,7 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 				OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
 				TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 			},
+			nil,
 		)
 		collectorManager := collectors.NewCollectorManager(
 			k8sClient,

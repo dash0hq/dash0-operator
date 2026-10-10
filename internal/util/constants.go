@@ -16,6 +16,10 @@ const (
 	DatasetDefault           = "default"
 	FieldManager             = "dash0-operator"
 
+	// OperatorManagedByLabelValue is the app.kubernetes.io/managed-by label value of all resources the operator manager
+	// creates itself (as opposed to resources created by the Helm chart).
+	OperatorManagedByLabelValue = "dash0-operator"
+
 	OperatorConfigurationAutoResourceName = "dash0-operator-configuration-auto-resource"
 	MonitoringAutoResourceDefaultName     = "dash0-monitoring-auto-resource"
 	AutoMonitoredNamespaceLabel           = "dash0.com/auto-monitored-namespace"

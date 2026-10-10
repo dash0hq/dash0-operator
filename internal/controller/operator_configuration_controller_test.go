@@ -1402,6 +1402,7 @@ func createReconcilerWithManagers(
 			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
 			TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 		},
+		nil,
 	)
 	collectorManager := collectors.NewCollectorManager(
 		k8sClient,
@@ -1421,6 +1422,7 @@ func createReconcilerWithManagers(
 			TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 			CollectorComponent:        otelcolresources.CollectorDaemonSetServiceComponent(),
 		},
+		nil,
 	)
 	targetallocatorManager := targetallocator.NewTargetAllocatorManager(
 		k8sClient, clientset, util.ExtraConfigDefaults, false, targetallocatorResourceManager,
@@ -1501,6 +1503,7 @@ func newAgent0ConnectorManagerWithInvalidClusterRoleRules() *agent0connector.Age
 			ServerAddress:     Agent0ConnectorServerAddress,
 			Authorization:     dash0common.Authorization{Token: &authToken},
 		},
+		nil,
 	)
 	extraConfig := util.ExtraConfigDefaults
 	extraConfig.Agent0ConnectorClusterRoleRules = []rbacv1.PolicyRule{

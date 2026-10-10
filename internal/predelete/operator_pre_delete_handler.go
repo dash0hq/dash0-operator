@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -19,6 +20,7 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
@@ -48,6 +50,9 @@ func NewOperatorPreDeleteHandlerFromConfig(config *rest.Config) (*OperatorPreDel
 	if err := dash0v1beta1.AddToScheme(s); err != nil {
 		return nil, err
 	}
+	if err := rbacv1.AddToScheme(s); err != nil {
+		return nil, err
+	}
 	k8sClient, err := client.New(config, client.Options{
 		Scheme: s,
 	})
@@ -67,9 +72,16 @@ func (h *OperatorPreDeleteHandler) setTimeout(timeout time.Duration) {
 	h.timeout = timeout
 }
 
-func (h *OperatorPreDeleteHandler) DeleteAllMonitoringResources() error {
+func (h *OperatorPreDeleteHandler) CleanUp() error {
 	ctx := context.Background()
+	if err := h.deleteMonitoringResources(ctx); err != nil {
+		return err
+	}
+	h.deleteClusterScopedResources(ctx)
+	return nil
+}
 
+func (h *OperatorPreDeleteHandler) deleteMonitoringResources(ctx context.Context) error {
 	allDash0MonitoringResources := &dash0v1beta1.Dash0MonitoringList{}
 	if err := h.client.List(ctx, allDash0MonitoringResources); err != nil {
 		if isResourceDefinitionMissing(err) {
@@ -93,6 +105,47 @@ func (h *OperatorPreDeleteHandler) DeleteAllMonitoringResources() error {
 	// to actually do work (uninstrumenting workloads, potentially remove the otel collector) before the resource can be
 	// deleted. The operator configuration resource does not have a finalizer and can be deleted without any cleanup.
 	return nil
+}
+
+// deleteClusterScopedResources deletes the cluster roles and cluster role bindings the operator manager has created
+// (for the OpenTelemetry collectors, the target-allocator and the agent0-connector). Namespace-scoped resources are
+// garbage collected via their owner reference to the operator manager deployment, but cluster-scoped resources cannot
+// have a namespace-scoped owner. The operator manager does not recreate them while the pre-delete hook job exists, see
+// util.UninstallationDetector. Failures are logged but do not fail the uninstallation.
+func (h *OperatorPreDeleteHandler) deleteClusterScopedResources(ctx context.Context) {
+	managedByOperator := client.MatchingLabels{util.AppKubernetesIoManagedByLabel: util.OperatorManagedByLabelValue}
+
+	clusterRoleBindings := &rbacv1.ClusterRoleBindingList{}
+	if err := h.client.List(ctx, clusterRoleBindings, managedByOperator); err != nil {
+		h.logger.Error(err, "failed to list the cluster role bindings managed by the Dash0 operator")
+	} else {
+		for i := range clusterRoleBindings.Items {
+			h.deleteClusterScopedResource(ctx, "cluster role binding", &clusterRoleBindings.Items[i])
+		}
+	}
+
+	clusterRoles := &rbacv1.ClusterRoleList{}
+	if err := h.client.List(ctx, clusterRoles, managedByOperator); err != nil {
+		h.logger.Error(err, "failed to list the cluster roles managed by the Dash0 operator")
+	} else {
+		for i := range clusterRoles.Items {
+			h.deleteClusterScopedResource(ctx, "cluster role", &clusterRoles.Items[i])
+		}
+	}
+}
+
+func (h *OperatorPreDeleteHandler) deleteClusterScopedResource(
+	ctx context.Context,
+	kind string,
+	object client.Object,
+) {
+	if err := h.client.Delete(ctx, object); err != nil {
+		if !apierrors.IsNotFound(err) {
+			h.logger.Error(err, fmt.Sprintf("Failed to delete %s %s.", kind, object.GetName()))
+		}
+		return
+	}
+	h.logger.Info(fmt.Sprintf("Deleted %s %s.", kind, object.GetName()))
 }
 
 // deleteAndWaitUntilNoMonitoringResourcesAreLeft requests the deletion of every Dash0 monitoring resource that is not
