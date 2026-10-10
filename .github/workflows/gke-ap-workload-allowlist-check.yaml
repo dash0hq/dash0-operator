@@ -236,6 +236,7 @@ jobs:
           - gke-ap-filelog-offset-sync
           - gke-ap-filelog-offset-volume-ownership
           - gke-ap-target-allocator
+          - gke-ap-agent0-connector
 
     steps:
       - name: delete branch image tag
