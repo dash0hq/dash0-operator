@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
@@ -220,6 +221,16 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	}
 
 	return admission.Allowed("")
+}
+
+// componentSettingsCheckResponse allows the request with one admission warning per setting in spec.components that
+// overrides a different value provided via the Helm chart.
+func componentSettingsCheckResponse(check util.ComponentSettingsCheck) admission.Response {
+	warnings := make([]string, 0, len(check.Conflicts))
+	for _, conflict := range check.Conflicts {
+		warnings = append(warnings, conflict.String())
+	}
+	return admission.Allowed("").WithWarnings(warnings...)
 }
 
 // isFeatureNewlyEnabled reports whether the request itself sets the given feature's enabled flag to true, as opposed

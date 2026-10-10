@@ -60,7 +60,8 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 			false,
 			false,
 		)
-		scManager := NewSignalControlManager(k8sClient, scResourceManager, nodeMetadataClient, util.ExtraConfigDefaults)
+		scManager := NewSignalControlManager(
+			k8sClient, scResourceManager, nodeMetadataClient, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 		oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
 			k8sClient,
 			k8sClient.Scheme(),
@@ -75,6 +76,7 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 		collectorManager := collectors.NewCollectorManager(
 			k8sClient,
 			nodeMetadataClient,
+			util.ExtraConfigDefaults,
 			util.ExtraConfigDefaults,
 			false,
 			true,
@@ -151,6 +153,23 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 		Expect(apierrors.IsNotFound(err)).To(BeTrue())
 	})
 
+	It("applies the component settings of the Signal Control resource instead of the Helm values", func() {
+		signalControlResource := loadSignalControlResource(ctx)
+		signalControlResource.Spec.Components = &dash0v1alpha1.SignalControlComponents{
+			EdgeProxy: &dash0v1alpha1.EdgeProxySettings{Replicas: ptr.To(int32(3))},
+		}
+		Expect(k8sClient.Update(ctx, signalControlResource)).To(Succeed())
+		fileConfig := util.ExtraConfigDefaults
+		fileConfig.EdgeProxyReplicas = 4
+		reconciler.signalControlManager.extraConfig.Store(&fileConfig)
+
+		_, err := reconciler.Reconcile(ctx, scRequest)
+		Expect(err).ToNot(HaveOccurred())
+
+		edgeProxy := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx, edgeProxyName, edgeProxy)).To(Succeed())
+		Expect(edgeProxy.Spec.Replicas).To(Equal(ptr.To(int32(3))))
+	})
 })
 
 func loadSignalControlResource(ctx context.Context) *dash0v1alpha1.Dash0SignalControl {

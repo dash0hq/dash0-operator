@@ -631,6 +631,9 @@ run_helm() {
   if [[ "${TA_ALLOW_INSECURE_AUTH_SECRETS:-}" = "true" ]]; then
     helm_install_command+=" --set operator.targetAllocator.allowInsecureAuthSecrets=true"
   fi
+  if [[ "${COMPONENT_SETTINGS_VIA_HELM:-}" = "true" ]]; then
+    helm_install_command+=" --values test-resources/component-settings/helm-values.yaml"
+  fi
   if [[ "${DEVELOPMENT_MODE:-}" != "false" ]]; then
   helm_install_command+=" --set operator.developmentMode=true"
   fi
@@ -1287,11 +1290,12 @@ deploy_signal_control_resource() {
   if [[ "${FEATURE_SIGNAL_CONTROL_ENABLED:-}" != "true" ]]; then
     return
   fi
+  local signal_control_resource="${1:-test-resources/customresources/dash0signalcontrol/dash0signalcontrol.yaml}"
   echo "STEP $step_counter: deploy the Dash0 Signal Control resource"
   # helm install --wait does not wait for CRDs to reach the "Established" condition, so we need to do that
   # explicitly before applying the custom resource.
   kubectl wait --for=condition=Established --timeout=60s crd/dash0signalcontrols.operator.dash0.com
-  kubectl apply -f test-resources/customresources/dash0signalcontrol/dash0signalcontrol.yaml
+  kubectl apply -f "$signal_control_resource"
   finish_step
 }
 
