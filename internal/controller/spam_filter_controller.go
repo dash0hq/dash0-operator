@@ -351,7 +351,7 @@ func (r *SpamFilterReconciler) MapResourceToHttpRequests(
 		spamFilterDefinition, err := mapToSpamFilterDefinition(preconditionChecksResult.resource)
 		if err != nil {
 			logger.Error(err, "error converting spam filter")
-			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, err.Error())
+			return NewResourceToRequestsResultSingleItemConversionError(apiConfig, itemName, err.Error())
 		}
 		apiClientCall = &ApiClientCall{
 			Method: http.MethodPut,

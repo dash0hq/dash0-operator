@@ -121,7 +121,7 @@ jobs:
       always() &&
       (needs.build_and_push_images.result == 'success' || needs.build_and_push_images.result == 'skipped') &&
       (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: write
@@ -236,6 +236,7 @@ jobs:
           - gke-ap-filelog-offset-sync
           - gke-ap-filelog-offset-volume-ownership
           - gke-ap-target-allocator
+          - gke-ap-agent0-connector
 
     steps:
       - name: delete branch image tag

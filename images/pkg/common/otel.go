@@ -20,7 +20,6 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	otellog "go.opentelemetry.io/otel/log"
-	"go.opentelemetry.io/otel/log/global"
 	lognoop "go.opentelemetry.io/otel/log/noop"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
@@ -159,7 +158,7 @@ func InitOTelSdkFromEnvVars(
 	}
 
 	otel.SetMeterProvider(meterProvider)
-	global.SetLoggerProvider(loggerProvider)
+	otel.SetLoggerProvider(loggerProvider)
 
 	return meterProvider.Meter(meterName)
 }
@@ -309,7 +308,7 @@ func InitOTelSdkWithConfig(
 	}
 
 	otel.SetMeterProvider(meterProvider)
-	global.SetLoggerProvider(loggerProvider)
+	otel.SetLoggerProvider(loggerProvider)
 	otelZapBridge := otelzap.NewCore(
 		"dash0-operator",
 		otelzap.WithLoggerProvider(loggerProvider),

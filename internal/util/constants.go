@@ -31,6 +31,10 @@ const (
 	AppKubernetesIoVersionLabel   = "app.kubernetes.io/version"
 	KubernetesIoOs                = "kubernetes.io/os"
 
+	// UninstallationProcessComponent is the app.kubernetes.io/component label value of the Helm chart's pre-delete hook
+	// job. The operator checks for a running job with this label to detect that it is being uninstalled.
+	UninstallationProcessComponent = "uninstallation-process"
+
 	EnvVarDash0NodeIp = "DASH0_NODE_IP"
 	EnvVarGoMemLimit  = "GOMEMLIMIT"
 

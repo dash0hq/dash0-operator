@@ -275,8 +275,12 @@ const (
 	collectorConfigCompressedFilePath = collectorConfigCompressedDirPath + "/" + collectorConfigurationYaml
 
 	// collector feature gates
-	profilesSupportFeatureGate             = "service.profilesSupport"
-	k8sAttributesShareProcessorFeatureGate = "processor.k8sattributes.ShareProcessorBetweenPipelines"
+	profilesSupportFeatureGate                              = "service.profilesSupport"
+	k8sAttributesShareProcessorFeatureGate                  = "processor.k8sattributes.ShareProcessorBetweenPipelines"
+	disableK8sAttributesDontEmitV0K8sConventionsFeatureGate = "-processor.k8sattributes.DontEmitV0K8sConventions"
+	// read by images/collector/src/image/entrypoint.sh
+	gkeAutopilotWorkaroundEmitV0K8sConventionsEnvVarName        = "DASH0_GKE_AUTOPILOT_WORKAROUND_EMIT_V0_K8S_CONVENTIONS"
+	gkeAutopilotWorkaroundShareK8sAttributesProcessorEnvVarName = "DASH0_GKE_AUTOPILOT_WORKAROUND_SHARE_K8S_ATTRIBUTES_PROCESSOR"
 
 	// config volume names -- the collectors will either use only the collectorConfigMapVolumeNamePlainText (when config
 	// map compression is disabled), or collectorConfigMapCompressedVolumeName + collectorConfigMapDecompressedVolumeName
@@ -294,9 +298,9 @@ const (
 	traceReservoirDirPath    = "/var/lib/dash0/trace-reservoir"
 
 	gkeAutopilotAllowlistLabelKey                = "cloud.google.com/matching-allowlist"
-	gkeAutopilotAllowlistLabelDaemonsetValue     = "dash0-opentelemetry-collector-agent-v1.0.3"
-	gkeAutopilotAllowlistLabelDeploymentValue    = "dash0-opentelemetry-cluster-metrics-collector-v1.0.3"
-	gkeAutopilotAllowlistLabelSignalControlValue = "dash0-opentelemetry-signal-control-collector-v1.0.3"
+	gkeAutopilotAllowlistLabelDaemonsetValue     = "dash0-opentelemetry-collector-agent-v1.0.4"
+	gkeAutopilotAllowlistLabelDeploymentValue    = "dash0-opentelemetry-cluster-metrics-collector-v1.0.4"
+	gkeAutopilotAllowlistLabelSignalControlValue = "dash0-opentelemetry-signal-control-collector-v1.0.4"
 
 	targetAllocatorCertsVolumeName = "ta-mtls-certs"
 	targetAllocatorCertsVolumeDir  = "/etc/certs/ta-client"
@@ -1005,10 +1009,6 @@ func assembleFileLogOffsetSyncContainer(
 				Value: offsetsDirPath,
 			},
 			{
-				Name:  "SERVICE_VERSION",
-				Value: config.Images.GetOperatorVersion(),
-			},
-			{
 				Name:  "K8S_CLUSTER_UID",
 				Value: string(config.PseudoClusterUid),
 			},
@@ -1367,6 +1367,8 @@ func assembleDaemonSetCollectorContainer(
 	if config.K8sAttributesShareProcessor {
 		featureGates = append(featureGates, k8sAttributesShareProcessorFeatureGate)
 	}
+	// Keeps the legacy container.image.tag attribute next to container.image.tags.
+	featureGates = append(featureGates, disableK8sAttributesDontEmitV0K8sConventionsFeatureGate)
 	collectorArgs := assembleCollectorArgs(featureGates)
 
 	collectorContainer := corev1.Container{
@@ -1904,9 +1906,27 @@ func assembleDeploymentCollectorContainer(
 		return corev1.Container{}, err
 	}
 
+	// The GKE Autopilot WorkloadAllowlist of this collector permits no --feature-gates argument, so there the image's
+	// entrypoint adds the gates instead.
 	var featureGates []string
 	if config.K8sAttributesShareProcessor {
-		featureGates = append(featureGates, k8sAttributesShareProcessorFeatureGate)
+		if config.IsGkeAutopilot {
+			collectorEnv = append(collectorEnv, corev1.EnvVar{
+				Name:  gkeAutopilotWorkaroundShareK8sAttributesProcessorEnvVarName,
+				Value: "true",
+			})
+		} else {
+			featureGates = append(featureGates, k8sAttributesShareProcessorFeatureGate)
+		}
+	}
+	// Keeps the legacy container.image.tag attribute next to container.image.tags.
+	if config.IsGkeAutopilot {
+		collectorEnv = append(collectorEnv, corev1.EnvVar{
+			Name:  gkeAutopilotWorkaroundEmitV0K8sConventionsEnvVarName,
+			Value: "true",
+		})
+	} else {
+		featureGates = append(featureGates, disableK8sAttributesDontEmitV0K8sConventionsFeatureGate)
 	}
 	collectorArgs := assembleCollectorArgs(featureGates)
 

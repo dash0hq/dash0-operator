@@ -58,6 +58,7 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 			otelcolresources.DefaultOtlpGrpcHostPort,
 			cluster.KubernetesVersionInfo{},
 			false,
+			false,
 		)
 		scManager := NewSignalControlManager(k8sClient, scResourceManager, nodeMetadataClient, util.ExtraConfigDefaults)
 		oTelColResourceManager := otelcolresources.NewOTelColResourceManager(

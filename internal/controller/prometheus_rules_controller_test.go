@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -823,6 +824,15 @@ var _ = Describe(
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 						// Expect DELETE requests for both API configs
+						expectFetchExistingOriginsForDefaultRuleResource(clusterId)
+						expectFetchExistingOriginsForDefaultRuleResourceCustom(
+							clusterId,
+							ApiEndpointTestAlternative,
+							AuthorizationHeaderTestAlternative,
+							DatasetCustomTestAlternative,
+							defaultCheckRuleRequests(),
+							defaultRecordingRuleRequests(),
+						)
 						expectCheckRuleDeleteRequests(clusterId, defaultCheckRuleRequests())
 						expectRecordingRuleDeleteRequests(clusterId, defaultRecordingRuleRequests())
 						expectCheckRuleDeleteRequestsCustom(
@@ -943,6 +953,7 @@ var _ = Describe(
 					func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
+						expectFetchExistingOriginsForDefaultRuleResource(clusterId)
 						expectCheckRuleDeleteRequestsWithHttpStatus(clusterId, defaultCheckRuleRequests(), http.StatusNotFound)
 						expectRecordingRuleDeleteRequests(clusterId, defaultRecordingRuleRequests())
 						defer gock.Off()
@@ -970,6 +981,7 @@ var _ = Describe(
 					func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
+						expectFetchExistingOriginsForDefaultRuleResource(clusterId)
 						expectCheckRuleDeleteRequests(clusterId, defaultCheckRuleRequests())
 						expectRecordingRuleDeleteRequests(clusterId, defaultRecordingRuleRequests())
 						defer gock.Off()
@@ -988,6 +1000,560 @@ var _ = Describe(
 							k8sClient,
 							defaultExpectedPrometheusSyncResult(clusterId),
 						)
+						Expect(gock.IsDone()).To(BeTrue())
+					},
+				)
+
+				It(
+					"does not send DELETE requests on Create if labelled with dash0.com/enable=false and none of the "+
+						"rules exist in Dash0",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						expectFetchExistingOriginsForDefaultRuleResourceCustom(
+							clusterId,
+							ApiEndpointTest,
+							AuthorizationHeaderTest,
+							DatasetCustomTest,
+							nil,
+							nil,
+						)
+						defer gock.Off()
+
+						ruleResource := createDefaultPrometheusRuleResourceWithEnableLabel("false")
+						prometheusRuleReconciler.Create(
+							ctx,
+							event.TypedCreateEvent[*unstructured.Unstructured]{
+								Object: &ruleResource,
+							},
+							&controllertest.TypedQueue[reconcile.Request]{},
+						)
+
+						expectedResult := defaultExpectedPrometheusSyncResult(clusterId)
+						expectedResult.SynchronizationResults[0].SynchronizedRulesTotal = 0
+						expectedResult.SynchronizationResults[0].SynchronizedRulesAttributes = nil
+						verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+							ctx,
+							k8sClient,
+							expectedResult,
+						)
+						Expect(gock.IsDone()).To(BeTrue())
+					},
+				)
+
+				It(
+					"Update only deletes the rules that exist in Dash0 if labelled with dash0.com/enable=false",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						existingCheckRules := defaultCheckRuleRequests()[1:3]
+						expectFetchExistingOriginsForDefaultRuleResourceCustom(
+							clusterId,
+							ApiEndpointTest,
+							AuthorizationHeaderTest,
+							DatasetCustomTest,
+							existingCheckRules,
+							nil,
+						)
+						expectCheckRuleDeleteRequests(clusterId, existingCheckRules)
+						defer gock.Off()
+
+						ruleResource := createDefaultPrometheusRuleResourceWithEnableLabel("false")
+						prometheusRuleReconciler.Create(
+							ctx,
+							event.TypedCreateEvent[*unstructured.Unstructured]{
+								Object: &ruleResource,
+							},
+							&controllertest.TypedQueue[reconcile.Request]{},
+						)
+
+						expectedResult := defaultExpectedPrometheusSyncResult(clusterId)
+						expectedResult.SynchronizationResults[0].SynchronizedRulesTotal = 2
+						expectedResult.SynchronizationResults[0].SynchronizedRulesAttributes =
+							map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
+								"dash0/group-1 - rule-1-2": {
+									Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-1", "rule-1-2"),
+								},
+								"dash0/group-2 - rule-2-1": {
+									Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-2", "rule-2-1"),
+								},
+							}
+						verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+							ctx,
+							k8sClient,
+							expectedResult,
+						)
+						Expect(gock.IsDone()).To(BeTrue())
+					},
+				)
+
+				It(
+					"Create records an error and does not send DELETE requests if the existing rules cannot be fetched",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						gock.New(ApiEndpointTest).
+							Get("/api/alerting/check-rules").
+							MatchHeader("Authorization", AuthorizationHeaderTest).
+							MatchParam("dataset", DatasetCustomTest).
+							Times(1).
+							Reply(http.StatusForbidden)
+						defer gock.Off()
+
+						ruleResource := createDefaultPrometheusRuleResourceWithEnableLabel("false")
+						prometheusRuleReconciler.Create(
+							ctx,
+							event.TypedCreateEvent[*unstructured.Unstructured]{
+								Object: &ruleResource,
+							},
+							&controllertest.TypedQueue[reconcile.Request]{},
+						)
+
+						verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+							ctx,
+							k8sClient,
+							dash0common.PrometheusRuleSynchronizationResult{
+								SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusFailed,
+								SynchronizationResults: []dash0common.PrometheusRuleSynchronizationResultPerEndpointAndDataset{
+									{
+										Dash0ApiEndpoint:           ApiEndpointStandardizedTest,
+										Dash0Dataset:               DatasetCustomTest,
+										SynchronizationErrorsTotal: 1,
+										SynchronizationErrors: map[string]string{
+											"*": "^unexpected status code 403 when trying to fetch existing origins: GET .*",
+										},
+										SynchronizationErrorHttpStatusCodes: map[string]int{
+											"*": http.StatusForbidden,
+										},
+									},
+								},
+							},
+						)
+						Expect(gock.IsDone()).To(BeTrue())
+					},
+				)
+
+				It(
+					"Create till creates check rules but does not delete orphaned rules if the existing rules cannot be "+
+						"fetched, and records the error",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						gock.New(ApiEndpointTest).
+							Get("/api/alerting/check-rules").
+							MatchHeader("Authorization", AuthorizationHeaderTest).
+							MatchParam("dataset", DatasetCustomTest).
+							Times(1).
+							Reply(http.StatusForbidden)
+						expectCheckRulePutRequests(clusterId, defaultCheckRuleRequests())
+						expectRecordingRulePutRequests(clusterId, defaultRecordingRuleRequests())
+						defer gock.Off()
+
+						ruleResource := createDefaultPrometheusRuleResource()
+						prometheusRuleReconciler.Create(
+							ctx,
+							event.TypedCreateEvent[*unstructured.Unstructured]{
+								Object: &ruleResource,
+							},
+							&controllertest.TypedQueue[reconcile.Request]{},
+						)
+
+						expectedResult := defaultExpectedPrometheusSyncResult(clusterId)
+						expectedResult.SynchronizationStatus = dash0common.ThirdPartySynchronizationStatusPartiallySuccessful
+						expectedResult.SynchronizationResults[0].SynchronizationErrorsTotal = 1
+						expectedResult.SynchronizationResults[0].SynchronizationErrors = map[string]string{
+							"*": "^unexpected status code 403 when trying to fetch existing origins: GET .*",
+						}
+						expectedResult.SynchronizationResults[0].SynchronizationErrorHttpStatusCodes = map[string]int{
+							"*": http.StatusForbidden,
+						}
+						verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+							ctx,
+							k8sClient,
+							expectedResult,
+						)
+						Expect(gock.IsDone()).To(BeTrue())
+					},
+				)
+
+				It(
+					"synchronizeViaApiAndUpdateStatusWithOriginsInNamespace: fetches the existing rules only once "+
+						"for resources with sync disabled, only deletes rules that exist",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						namespaceOriginPrefix := fmt.Sprintf(
+							"dash0-operator_%s_%s_%s_",
+							clusterId,
+							DatasetCustomTest,
+							TestNamespaceName,
+						)
+						expectFetchExistingRuleOriginsGetRequests(
+							ApiEndpointTest,
+							AuthorizationHeaderTest,
+							DatasetCustomTest,
+							namespaceOriginPrefix,
+							[]string{
+								ruleOriginForResource(clusterId, DatasetCustomTest, "test-rule-2", defaultCheckRuleRequests()[0]),
+								// This origin must not be attributed to the resource test-rule-2.
+								ruleOriginForResource(clusterId, DatasetCustomTest, "test-rule-20", defaultCheckRuleRequests()[0]),
+							},
+							[]string{
+								ruleOriginForResource(clusterId, DatasetCustomTest, "test-rule-2", defaultRecordingRuleRequests()[0]),
+							},
+						)
+						gock.New(ApiEndpointTest).
+							Delete(checkRuleApiBasePath+ruleOriginForResource(
+								clusterId, DatasetCustomTest, "test-rule-2", defaultCheckRuleRequests()[0],
+							)).
+							MatchHeader("Authorization", AuthorizationHeaderTest).
+							MatchParam("dataset", DatasetCustomTest).
+							Times(1).
+							Reply(http.StatusOK)
+						gock.New(ApiEndpointTest).
+							Delete(recordingRuleApiBasePath+ruleOriginForResource(
+								clusterId, DatasetCustomTest, "test-rule-2", defaultRecordingRuleRequests()[0],
+							)).
+							MatchHeader("Authorization", AuthorizationHeaderTest).
+							MatchParam("dataset", DatasetCustomTest).
+							Times(1).
+							Reply(http.StatusOK)
+						defer gock.Off()
+
+						originsInNamespace := newExistingOriginsInNamespace(TestNamespaceName)
+						for _, name := range []string{"test-rule-1", "test-rule-2", "test-rule-3"} {
+							objectMeta := defaultRuleObjectMeta
+							objectMeta.Name = name
+							objectMeta.Labels = map[string]string{"dash0.com/enable": "false"}
+							ruleResource := createPrometheusRuleResourceWithObjectMeta(createDefaultSpec(), objectMeta)
+							synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
+								ctx,
+								prometheusRuleReconciler,
+								&ruleResource,
+								nil,
+								upsertAction,
+								originsInNamespace,
+								logger,
+							)
+						}
+
+						Expect(gock.IsDone()).To(BeTrue())
+						monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+						results := monRes.Status.PrometheusRuleSynchronizationResults
+						Expect(results).To(HaveLen(3))
+						for _, name := range []string{"test-rule-1", "test-rule-2", "test-rule-3"} {
+							result := results[fmt.Sprintf("%s/%s", TestNamespaceName, name)]
+							Expect(result.SynchronizationStatus).To(
+								Equal(dash0common.ThirdPartySynchronizationStatusSuccessful),
+							)
+						}
+						Expect(results[fmt.Sprintf("%s/test-rule-2", TestNamespaceName)].
+							SynchronizationResults[0].SynchronizedRulesTotal).To(Equal(2))
+					},
+				)
+
+				It(
+					"synchronizeViaApiAndUpdateStatusWithOriginsInNamespace: fetches the existing rules only once "+
+						"for resources with sync enabled, only deletes rules that have been removed from the "+
+						"respective resource",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						resourceNames := []string{"test-rule-1", "test-rule-2"}
+						orphanedCheckRuleOfTestRule2 := checkRuleRequestExpectation{
+							group: "dash0/group-9",
+							alert: "orphaned-check-rule",
+						}
+						orphanedRecordingRuleOfTestRule1 := checkRuleRequestExpectation{
+							group: "dash0/group-9",
+							alert: "orphaned-recording-rule",
+						}
+						expectFetchExistingRuleOriginsGetRequests(
+							ApiEndpointTest,
+							AuthorizationHeaderTest,
+							DatasetCustomTest,
+							fmt.Sprintf("dash0-operator_%s_%s_%s_", clusterId, DatasetCustomTest, TestNamespaceName),
+							[]string{
+								ruleOriginForResource(clusterId, DatasetCustomTest, "test-rule-1", defaultCheckRuleRequests()[0]),
+								ruleOriginForResource(clusterId, DatasetCustomTest, "test-rule-2", defaultCheckRuleRequests()[0]),
+								ruleOriginForResource(clusterId, DatasetCustomTest, "test-rule-2", orphanedCheckRuleOfTestRule2),
+								// This origin must neither be attributed to the resource test-rule-2 nor be deleted.
+								ruleOriginForResource(clusterId, DatasetCustomTest, "test-rule-20", orphanedCheckRuleOfTestRule2),
+							},
+							[]string{
+								ruleOriginForResource(clusterId, DatasetCustomTest, "test-rule-1", orphanedRecordingRuleOfTestRule1),
+								// This origin must neither be attributed to the resource test-rule-1 nor be deleted.
+								ruleOriginForResource(clusterId, DatasetCustomTest, "test-rule-10", orphanedRecordingRuleOfTestRule1),
+							},
+						)
+						for _, resourceName := range resourceNames {
+							expectRulePutRequestsForResource(clusterId, resourceName, checkRuleApiBasePath, defaultCheckRuleRequests())
+							expectRulePutRequestsForResource(
+								clusterId, resourceName, recordingRuleApiBasePath, defaultRecordingRuleRequests(),
+							)
+						}
+						// The origin of an orphaned rule does not tell whether it is a check rule or a recording rule, so the
+						// DELETE request is sent to both APIs; the API that does not have the rule responds with 404.
+						for _, orphan := range []struct {
+							origin                     string
+							checkRuleApiHttpStatus     int
+							recordingRuleApiHttpStatus int
+						}{
+							{
+								origin: ruleOriginForResource(
+									clusterId, DatasetCustomTest, "test-rule-2", orphanedCheckRuleOfTestRule2,
+								),
+								checkRuleApiHttpStatus:     http.StatusOK,
+								recordingRuleApiHttpStatus: http.StatusNotFound,
+							},
+							{
+								origin: ruleOriginForResource(
+									clusterId, DatasetCustomTest, "test-rule-1", orphanedRecordingRuleOfTestRule1,
+								),
+								checkRuleApiHttpStatus:     http.StatusNotFound,
+								recordingRuleApiHttpStatus: http.StatusOK,
+							},
+						} {
+							gock.New(ApiEndpointTest).
+								Delete(checkRuleApiBasePath+orphan.origin).
+								MatchHeader("Authorization", AuthorizationHeaderTest).
+								MatchParam("dataset", DatasetCustomTest).
+								Times(1).
+								Reply(orphan.checkRuleApiHttpStatus)
+							gock.New(ApiEndpointTest).
+								Delete(recordingRuleApiBasePath+orphan.origin).
+								MatchHeader("Authorization", AuthorizationHeaderTest).
+								MatchParam("dataset", DatasetCustomTest).
+								Times(1).
+								Reply(orphan.recordingRuleApiHttpStatus)
+						}
+						defer gock.Off()
+
+						originsInNamespace := newExistingOriginsInNamespace(TestNamespaceName)
+						for _, name := range resourceNames {
+							objectMeta := defaultRuleObjectMeta
+							objectMeta.Name = name
+							ruleResource := createPrometheusRuleResourceWithObjectMeta(createDefaultSpec(), objectMeta)
+							synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
+								ctx,
+								prometheusRuleReconciler,
+								&ruleResource,
+								nil,
+								upsertAction,
+								originsInNamespace,
+								logger,
+							)
+						}
+
+						Expect(gock.IsDone()).To(BeTrue())
+						monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+						results := monRes.Status.PrometheusRuleSynchronizationResults
+						Expect(results).To(HaveLen(len(resourceNames)))
+						for _, name := range resourceNames {
+							result := results[fmt.Sprintf("%s/%s", TestNamespaceName, name)]
+							Expect(result.SynchronizationStatus).To(
+								Equal(dash0common.ThirdPartySynchronizationStatusSuccessful),
+							)
+						}
+					},
+				)
+
+				It(
+					"synchronizeViaApiAndUpdateStatusWithOriginsInNamespace: tries to fetch the existing rules "+
+						"only once for resources with sync disabled, records an error and does not send DELETE "+
+						"requests if fetching them fails",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						gock.New(ApiEndpointTest).
+							Get("/api/alerting/check-rules").
+							MatchHeader("Authorization", AuthorizationHeaderTest).
+							MatchParam("dataset", DatasetCustomTest).
+							Times(1).
+							Reply(http.StatusForbidden)
+						defer gock.Off()
+
+						resourceNames := []string{"test-rule-1", "test-rule-2", "test-rule-3"}
+						originsInNamespace := newExistingOriginsInNamespace(TestNamespaceName)
+						for _, name := range resourceNames {
+							objectMeta := defaultRuleObjectMeta
+							objectMeta.Name = name
+							objectMeta.Labels = map[string]string{"dash0.com/enable": "false"}
+							ruleResource := createPrometheusRuleResourceWithObjectMeta(createDefaultSpec(), objectMeta)
+							synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
+								ctx,
+								prometheusRuleReconciler,
+								&ruleResource,
+								nil,
+								upsertAction,
+								originsInNamespace,
+								logger,
+							)
+						}
+
+						Expect(gock.IsDone()).To(BeTrue())
+						monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+						results := monRes.Status.PrometheusRuleSynchronizationResults
+						Expect(results).To(HaveLen(len(resourceNames)))
+						for _, name := range resourceNames {
+							result := results[fmt.Sprintf("%s/%s", TestNamespaceName, name)]
+							Expect(result.SynchronizationStatus).To(Equal(dash0common.ThirdPartySynchronizationStatusFailed))
+							Expect(result.SynchronizationResults).To(HaveLen(1))
+							Expect(result.SynchronizationResults[0].SynchronizationErrors["*"]).To(
+								MatchRegexp("^unexpected status code 403 when trying to fetch existing origins: GET .*"),
+							)
+							Expect(result.SynchronizationResults[0].SynchronizationErrorHttpStatusCodes["*"]).To(
+								Equal(http.StatusForbidden),
+							)
+						}
+					},
+				)
+
+				It(
+					"synchronizeViaApiAndUpdateStatusWithOriginsInNamespace: tries to fetch the existing rules "+
+						"only once for resources with sync enabled, and still updates the rules if fetching them fails",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						gock.New(ApiEndpointTest).
+							Get("/api/alerting/check-rules").
+							MatchHeader("Authorization", AuthorizationHeaderTest).
+							MatchParam("dataset", DatasetCustomTest).
+							Times(1).
+							Reply(http.StatusForbidden)
+						resourceNames := []string{"test-rule-1", "test-rule-2"}
+						for _, resourceName := range resourceNames {
+							expectRulePutRequestsForResource(clusterId, resourceName, checkRuleApiBasePath, defaultCheckRuleRequests())
+							expectRulePutRequestsForResource(
+								clusterId, resourceName, recordingRuleApiBasePath, defaultRecordingRuleRequests(),
+							)
+						}
+						defer gock.Off()
+
+						originsInNamespace := newExistingOriginsInNamespace(TestNamespaceName)
+						for _, name := range resourceNames {
+							objectMeta := defaultRuleObjectMeta
+							objectMeta.Name = name
+							ruleResource := createPrometheusRuleResourceWithObjectMeta(createDefaultSpec(), objectMeta)
+							synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
+								ctx,
+								prometheusRuleReconciler,
+								&ruleResource,
+								nil,
+								upsertAction,
+								originsInNamespace,
+								logger,
+							)
+						}
+
+						Expect(gock.IsDone()).To(BeTrue())
+						monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+						results := monRes.Status.PrometheusRuleSynchronizationResults
+						Expect(results).To(HaveLen(len(resourceNames)))
+						for _, name := range resourceNames {
+							result := results[fmt.Sprintf("%s/%s", TestNamespaceName, name)]
+							Expect(result.SynchronizationStatus).To(
+								Equal(dash0common.ThirdPartySynchronizationStatusPartiallySuccessful),
+							)
+							Expect(result.SynchronizationResults).To(HaveLen(1))
+							Expect(result.SynchronizationResults[0].SynchronizedRulesTotal).To(Equal(5))
+							Expect(result.SynchronizationResults[0].SynchronizationErrors["*"]).To(
+								MatchRegexp("^unexpected status code 403 when trying to fetch existing origins: GET .*"),
+							)
+							Expect(result.SynchronizationResults[0].SynchronizationErrorHttpStatusCodes["*"]).To(
+								Equal(http.StatusForbidden),
+							)
+						}
+					},
+				)
+
+				It(
+					"synchronizeNamespacedResources: fetches the existing rules only once when a namespace-wide "+
+						"resync is triggered, and only deletes rules that exist",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						resourceNames := []string{"test-rule-1", "test-rule-2", "test-rule-3"}
+						namespaceOriginPrefix := fmt.Sprintf(
+							"dash0-operator_%s_%s_%s_",
+							clusterId,
+							DatasetCustomTest,
+							TestNamespaceName,
+						)
+						expectFetchExistingRuleOriginsGetRequests(
+							ApiEndpointTest,
+							AuthorizationHeaderTest,
+							DatasetCustomTest,
+							namespaceOriginPrefix,
+							[]string{
+								ruleOriginForResource(clusterId, DatasetCustomTest, "test-rule-2", defaultCheckRuleRequests()[0]),
+							},
+							[]string{},
+						)
+						gock.New(ApiEndpointTest).
+							Delete(checkRuleApiBasePath+ruleOriginForResource(
+								clusterId, DatasetCustomTest, "test-rule-2", defaultCheckRuleRequests()[0],
+							)).
+							MatchHeader("Authorization", AuthorizationHeaderTest).
+							MatchParam("dataset", DatasetCustomTest).
+							Times(1).
+							Reply(http.StatusOK)
+						defer gock.Off()
+
+						deleteRuleResources := createDisabledPrometheusRuleResourcesInKubernetes(ctx, resourceNames)
+						defer deleteRuleResources()
+
+						prometheusRuleReconciler.synchronizeNamespacedResources(ctx, TestNamespaceName, logger)
+
+						Eventually(func(g Gomega) {
+							monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, g)
+							results := monRes.Status.PrometheusRuleSynchronizationResults
+							g.Expect(results).To(HaveLen(len(resourceNames)))
+							for _, name := range resourceNames {
+								g.Expect(results[fmt.Sprintf("%s/%s", TestNamespaceName, name)].SynchronizationStatus).To(
+									Equal(dash0common.ThirdPartySynchronizationStatusSuccessful),
+								)
+							}
+						}, 5*time.Second, 50*time.Millisecond).Should(Succeed())
+						Expect(gock.IsDone()).To(BeTrue())
+					},
+				)
+
+				It(
+					"synchronizeNamespacedResources: tries to fetch the existing rules only once when a "+
+						"namespace-wide resync is triggered and fetching them fails",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						resourceNames := []string{"test-rule-1", "test-rule-2", "test-rule-3"}
+						gock.New(ApiEndpointTest).
+							Get("/api/alerting/check-rules").
+							MatchHeader("Authorization", AuthorizationHeaderTest).
+							MatchParam("dataset", DatasetCustomTest).
+							Times(1).
+							Reply(http.StatusForbidden)
+						defer gock.Off()
+
+						deleteRuleResources := createDisabledPrometheusRuleResourcesInKubernetes(ctx, resourceNames)
+						defer deleteRuleResources()
+
+						prometheusRuleReconciler.synchronizeNamespacedResources(ctx, TestNamespaceName, logger)
+
+						Eventually(func(g Gomega) {
+							monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, g)
+							results := monRes.Status.PrometheusRuleSynchronizationResults
+							g.Expect(results).To(HaveLen(len(resourceNames)))
+							for _, name := range resourceNames {
+								result := results[fmt.Sprintf("%s/%s", TestNamespaceName, name)]
+								g.Expect(result.SynchronizationStatus).To(
+									Equal(dash0common.ThirdPartySynchronizationStatusFailed),
+								)
+								g.Expect(result.SynchronizationResults).To(HaveLen(1))
+								g.Expect(result.SynchronizationResults[0].SynchronizationErrors["*"]).To(
+									MatchRegexp("^unexpected status code 403 when trying to fetch existing origins: GET .*"),
+								)
+							}
+						}, 5*time.Second, 50*time.Millisecond).Should(Succeed())
 						Expect(gock.IsDone()).To(BeTrue())
 					},
 				)
@@ -1271,8 +1837,43 @@ var _ = Describe(
 					"deletes all check rules when the whole PrometheusRule resource has been deleted", func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
+						expectFetchExistingOriginsForDefaultRuleResource(clusterId)
 						expectCheckRuleDeleteRequestsWithHttpStatus(clusterId, defaultCheckRuleRequests(), http.StatusNotFound)
 						expectRecordingRuleDeleteRequestsWithHttpStatus(clusterId, defaultRecordingRuleRequests(), http.StatusNotFound)
+						defer gock.Off()
+
+						ruleResource := createDefaultPrometheusRuleResource()
+						prometheusRuleReconciler.Delete(
+							ctx,
+							event.TypedDeleteEvent[*unstructured.Unstructured]{
+								Object: &ruleResource,
+							},
+							&controllertest.TypedQueue[reconcile.Request]{},
+						)
+
+						verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+							ctx,
+							k8sClient,
+							defaultExpectedPrometheusSyncResult(clusterId),
+						)
+						Expect(gock.IsDone()).To(BeTrue())
+					},
+				)
+
+				It(
+					"sends DELETE requests for all check rules when the whole PrometheusRule resource has been deleted, "+
+						"even if the existing rules cannot be fetched",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						gock.New(ApiEndpointTest).
+							Get("/api/alerting/check-rules").
+							MatchHeader("Authorization", AuthorizationHeaderTest).
+							MatchParam("dataset", DatasetCustomTest).
+							Times(1).
+							Reply(http.StatusForbidden)
+						expectCheckRuleDeleteRequests(clusterId, defaultCheckRuleRequests())
+						expectRecordingRuleDeleteRequests(clusterId, defaultRecordingRuleRequests())
 						defer gock.Off()
 
 						ruleResource := createDefaultPrometheusRuleResource()
@@ -2488,6 +3089,104 @@ func expectFetchOriginsGetRequestCustom(clusterId string, endpoint string, authH
 		JSON([]map[string]string{})
 }
 
+func ruleOriginForResource(
+	clusterId string,
+	dataset string,
+	resourceName string,
+	rule checkRuleRequestExpectation,
+) string {
+	return fmt.Sprintf(
+		"dash0-operator_%s_%s_%s_%s_%s_%s",
+		clusterId,
+		dataset,
+		TestNamespaceName,
+		resourceName,
+		strings.ReplaceAll(rule.group, "/", "|"),
+		rule.alert,
+	)
+}
+
+// expectFetchExistingRuleOriginsGetRequests expects one request to each list endpoint (check rules and recording rules)
+// with exactly the given origin prefix, and responds with the given origins.
+func expectFetchExistingRuleOriginsGetRequests(
+	endpoint string,
+	authHeader string,
+	dataset string,
+	originPrefix string,
+	checkRuleOrigins []string,
+	recordingRuleOrigins []string,
+) {
+	checkRules := make([]map[string]string, 0, len(checkRuleOrigins))
+	for _, origin := range checkRuleOrigins {
+		checkRules = append(checkRules, map[string]string{"origin": origin})
+	}
+	recordingRules := make([]map[string]any, 0, len(recordingRuleOrigins))
+	for _, origin := range recordingRuleOrigins {
+		recordingRules = append(recordingRules, map[string]any{
+			"metadata": map[string]any{
+				"labels": map[string]string{"dash0.com/origin": origin},
+			},
+		})
+	}
+	originPrefixRegex := "^" + regexp.QuoteMeta(originPrefix) + "$"
+	gock.New(endpoint).
+		Get("/api/alerting/check-rules").
+		MatchHeader("Authorization", authHeader).
+		MatchParam("dataset", dataset).
+		MatchParam("originPrefix", originPrefixRegex).
+		Times(1).
+		Reply(200).
+		JSON(checkRules)
+	gock.New(endpoint).
+		Get("/api/recording-rules").
+		MatchHeader("Authorization", authHeader).
+		MatchParam("dataset", dataset).
+		MatchParam("originPrefix", originPrefixRegex).
+		Times(1).
+		Reply(200).
+		JSON(recordingRules)
+}
+
+// expectFetchExistingOriginsForDefaultRuleResource expects the requests for fetching the existing origins of the
+// resource test-rule, and responds with the origins of all rules in the default spec.
+func expectFetchExistingOriginsForDefaultRuleResource(clusterId string) {
+	expectFetchExistingOriginsForDefaultRuleResourceCustom(
+		clusterId,
+		ApiEndpointTest,
+		AuthorizationHeaderTest,
+		DatasetCustomTest,
+		defaultCheckRuleRequests(),
+		defaultRecordingRuleRequests(),
+	)
+}
+
+func expectFetchExistingOriginsForDefaultRuleResourceCustom(
+	clusterId string,
+	endpoint string,
+	authHeader string,
+	dataset string,
+	existingCheckRules []checkRuleRequestExpectation,
+	existingRecordingRules []checkRuleRequestExpectation,
+) {
+	resourceName := defaultRuleObjectMeta.Name
+	checkRuleOrigins := make([]string, 0, len(existingCheckRules))
+	for _, rule := range existingCheckRules {
+		checkRuleOrigins = append(checkRuleOrigins, ruleOriginForResource(clusterId, dataset, resourceName, rule))
+	}
+	recordingRuleOrigins := make([]string, 0, len(existingRecordingRules))
+	for _, rule := range existingRecordingRules {
+		recordingRuleOrigins = append(recordingRuleOrigins, ruleOriginForResource(clusterId, dataset, resourceName, rule))
+	}
+	expectFetchExistingRuleOriginsGetRequests(
+		endpoint,
+		authHeader,
+		dataset,
+		fmt.Sprintf("dash0-operator_%s_%s_%s_%s_", clusterId, dataset, TestNamespaceName, resourceName),
+		checkRuleOrigins,
+		recordingRuleOrigins,
+	)
+}
+
 func expectFetchOriginsGetRequest(clusterId string) {
 	expectFetchOriginsGetRequestCustom(clusterId, ApiEndpointTest, AuthorizationHeaderTest, DatasetCustomTest)
 }
@@ -2562,6 +3261,31 @@ func expectRecordingRulePutRequestsCustom(
 
 func expectRecordingRulePutRequests(clusterId string, expectedRequests []checkRuleRequestExpectation) {
 	expectRecordingRulePutRequestsCustom(clusterId, ApiEndpointTest, AuthorizationHeaderTest, DatasetCustomTest, expectedRequests)
+}
+
+// expectRulePutRequestsForResource expects one PUT request per given rule, derived from the PrometheusRule resource
+// with the given name, to the given API base path (check rules or recording rules).
+func expectRulePutRequestsForResource(
+	clusterId string,
+	resourceName string,
+	apiBasePath string,
+	expectedRequests []checkRuleRequestExpectation,
+) {
+	for _, expectedRequest := range expectedRequests {
+		origin := ruleOriginForResource(clusterId, DatasetCustomTest, resourceName, expectedRequest)
+		gock.New(ApiEndpointTest).
+			Put("^"+regexp.QuoteMeta(apiBasePath+origin)+"$").
+			MatchHeader("Authorization", AuthorizationHeaderTest).
+			MatchParam("dataset", DatasetCustomTest).
+			Times(1).
+			Reply(200).
+			JSON(
+				map[string]any{
+					"id":      origin,
+					"dataset": DatasetCustomTest,
+				},
+			)
+	}
 }
 
 func defaultRecordingRuleRequests() []checkRuleRequestExpectation {
@@ -2643,6 +3367,25 @@ func createDefaultPrometheusRuleResourceWithEnableLabel(dash0EnableLabelValue st
 
 func createPrometheusRuleResource(spec prometheusv1.PrometheusRuleSpec) unstructured.Unstructured {
 	return createPrometheusRuleResourceWithObjectMeta(spec, defaultRuleObjectMeta)
+}
+
+// createDisabledPrometheusRuleResourcesInKubernetes creates PrometheusRule resources with the label
+// dash0.com/enable=false and the default spec in the test namespace, and returns a function that deletes them again.
+func createDisabledPrometheusRuleResourcesInKubernetes(ctx context.Context, names []string) func() {
+	ruleResources := make([]*unstructured.Unstructured, 0, len(names))
+	for _, name := range names {
+		objectMeta := defaultRuleObjectMeta
+		objectMeta.Name = name
+		objectMeta.Labels = map[string]string{"dash0.com/enable": "false"}
+		ruleResource := createPrometheusRuleResourceWithObjectMeta(createDefaultSpec(), objectMeta)
+		Expect(k8sClient.Create(ctx, &ruleResource)).To(Succeed())
+		ruleResources = append(ruleResources, &ruleResource)
+	}
+	return func() {
+		for _, ruleResource := range ruleResources {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, ruleResource))).To(Succeed())
+		}
+	}
 }
 
 func createPrometheusRuleResourceWithObjectMeta(

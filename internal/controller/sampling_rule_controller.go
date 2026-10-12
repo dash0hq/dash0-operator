@@ -369,7 +369,7 @@ func (r *SamplingRuleReconciler) MapResourceToHttpRequests(
 		samplingDefinition, err := mapToSamplingDefinition(preconditionChecksResult.resource, itemName, dataset)
 		if err != nil {
 			logger.Error(err, "error converting sampling rule")
-			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, err.Error())
+			return NewResourceToRequestsResultSingleItemConversionError(apiConfig, itemName, err.Error())
 		}
 		apiClientCall = &ApiClientCall{
 			Method: http.MethodPut,

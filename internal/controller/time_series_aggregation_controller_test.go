@@ -687,6 +687,42 @@ spec:
 						},
 					),
 				)
+
+				It(
+					"reports a non-retryable synchronization error for a time series aggregation that cannot be converted",
+					func() {
+						timeSeriesAggregation := map[string]any{}
+						Expect(yaml.Unmarshal([]byte(`
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0TimeSeriesAggregation
+metadata:
+  name: dash0-time-series-aggregation
+spec:
+  enabled: true
+  priority: high
+  match:
+    metricNameMatcher:
+      operator: is
+      value: http.server.duration
+  sample:
+    interval: 60s
+`), &timeSeriesAggregation)).To(Succeed())
+						apiConfig := ApiConfig{Endpoint: ApiEndpointTest, Dataset: DatasetCustomTest, Token: AuthorizationTokenTest}
+						resourceToRequestsResult :=
+							timeSeriesAggregationReconciler.MapResourceToHttpRequests(
+								&preconditionValidationResult{
+									k8sName:      "dash0-time-series-aggregation",
+									k8sNamespace: TestNamespaceName,
+									resource:     timeSeriesAggregation,
+								},
+								apiConfig, upsertAction, logger)
+						Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())
+						synchronizationError, httpStatusCode := firstSynchronizationErrorAndStatusCode(resourceToRequestsResult)
+						Expect(synchronizationError).To(ContainSubstring("unable to convert the time series aggregation"))
+						Expect(httpStatusCode).To(Equal(http.StatusBadRequest))
+						Expect(isRetryableSynchronizationError(synchronizationError, httpStatusCode)).To(BeFalse())
+					},
+				)
 			},
 		)
 	},

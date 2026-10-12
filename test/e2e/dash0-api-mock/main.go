@@ -233,8 +233,12 @@ func handleGetCheckRuleOriginsRequest(ginCtx *gin.Context) {
 	checkRuleOriginMutex.RLock()
 	defer checkRuleOriginMutex.RUnlock()
 
+	originPrefix := ginCtx.Query("originPrefix")
 	responsePayload := make([]any, 0, len(checkRuleOrigins))
 	for _, checkRuleOrigin := range checkRuleOrigins {
+		if !strings.HasPrefix(checkRuleOrigin, originPrefix) {
+			continue
+		}
 		responsePayload = append(responsePayload, map[string]any{
 			"origin": checkRuleOrigin,
 		})
@@ -296,8 +300,12 @@ func handleGetRecordingRuleOriginsRequest(ginCtx *gin.Context) {
 	recordingRuleOriginMutex.RLock()
 	defer recordingRuleOriginMutex.RUnlock()
 
+	originPrefix := ginCtx.Query("originPrefix")
 	responsePayload := make([]any, 0, len(recordingRuleOrigins))
 	for _, recordingRuleOrigin := range recordingRuleOrigins {
+		if !strings.HasPrefix(recordingRuleOrigin, originPrefix) {
+			continue
+		}
 		responsePayload = append(responsePayload, map[string]any{
 			"origin": recordingRuleOrigin,
 		})

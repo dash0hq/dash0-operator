@@ -636,9 +636,17 @@ func (r *PersesDashboardReconciler) Delete(
 }
 
 func (r *PersesDashboardReconciler) Generic(
+	context.Context,
+	event.TypedGenericEvent[*unstructured.Unstructured],
+	workqueue.TypedRateLimitingInterface[reconcile.Request],
+) {
+	// Should not be called, the watch is backed by source.Kind, which never emits generic events.
+}
+
+func (r *PersesDashboardReconciler) resyncViaApi(
 	ctx context.Context,
-	e event.TypedGenericEvent[*unstructured.Unstructured],
-	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
+	dashboardResource *unstructured.Unstructured,
+	originsInNamespace *existingOriginsInNamespace,
 ) {
 	if persesDashboardReconcileRequestMetric != nil {
 		persesDashboardReconcileRequestMetric.Add(ctx, 1)
@@ -648,12 +656,12 @@ func (r *PersesDashboardReconciler) Generic(
 	logger.Info(
 		"Reconciling dashboard triggered by config event (updated API config or authorization).",
 		"namespace",
-		e.Object.GetNamespace(),
+		dashboardResource.GetNamespace(),
 		"name",
-		e.Object.GetName(),
+		dashboardResource.GetName(),
 	)
 
-	upsertViaApi(r, e.Object)
+	upsertViaApiWithOriginsInNamespace(r, dashboardResource, originsInNamespace)
 }
 
 func (r *PersesDashboardReconciler) Reconcile(
@@ -666,6 +674,10 @@ func (r *PersesDashboardReconciler) Reconcile(
 	return reconcile.Result{}, nil
 }
 
+func (r *PersesDashboardReconciler) MapsToMultipleApiObjects() bool {
+	return false
+}
+
 func (r *PersesDashboardReconciler) FetchExistingResourceOriginsRequests(
 	_ *preconditionValidationResult,
 	_ ApiConfig,
@@ -675,6 +687,34 @@ func (r *PersesDashboardReconciler) FetchExistingResourceOriginsRequests(
 	// multiple objects that are synchronized (as it is the case for PrometheusRule). Thus, this controller does not
 	// need to implement this method.
 	return nil, nil
+}
+
+func (r *PersesDashboardReconciler) FetchExistingNamespaceOriginsRequests(
+	_ string,
+	apiConfig ApiConfig,
+) ([]*http.Request, error) {
+	// The Dash0 API does not support filtering the list of dashboards by origin, so this fetches the origins of all
+	// dashboards in the dataset. IsOriginOfResource is used to pick the origins that belong to a particular resource.
+	req, err := http.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf("%sapi/dashboards?dataset=%s", apiConfig.Endpoint, url.QueryEscape(apiConfig.Dataset)),
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	addAuthorizationHeader(req, apiConfig.Token)
+	req.Header.Set(util.AcceptHeaderName, util.ApplicationJsonMediaType)
+	return []*http.Request{req}, nil
+}
+
+func (r *PersesDashboardReconciler) IsOriginOfResource(
+	origin string,
+	preconditionValidationResult *preconditionValidationResult,
+	apiConfig ApiConfig,
+) bool {
+	_, dashboardOrigin := r.renderDashboardUrl(preconditionValidationResult, apiConfig.Endpoint, apiConfig.Dataset)
+	return origin == dashboardOrigin
 }
 
 func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
@@ -922,12 +962,9 @@ func (r *PersesDashboardReconciler) synchronizeNamespacedResources(
 			return
 		}
 
+		originsInNamespace := newExistingOriginsInNamespace(namespace)
 		for i := range allDashboardResourcesInNamespace.Items {
-			dashboardResource := &allDashboardResourcesInNamespace.Items[i]
-			evt := event.TypedGenericEvent[*unstructured.Unstructured]{
-				Object: dashboardResource,
-			}
-			r.Generic(ctx, evt, nil)
+			r.resyncViaApi(ctx, &allDashboardResourcesInNamespace.Items[i], originsInNamespace)
 
 			// stagger API requests a bit
 			time.Sleep(50 * time.Millisecond)

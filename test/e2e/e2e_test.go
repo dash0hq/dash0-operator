@@ -1027,18 +1027,37 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					}
 
 					setOptOutLabelInPrometheusRule(applicationUnderTestNamespace, "false")
-					By("verifying the rules have been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
-					requests = fetchCapturedApiRequests(6, 4)
-					Expect(requests).To(HaveLen(4))
+					By("verifying the rules have been deleted via the Dash0 API (after setting dash0.com/enable=false)")
+					requests = fetchCapturedApiRequests(6, 6)
+					Expect(requests).To(HaveLen(6))
+					for i := 0; i < 2; i++ {
+						Expect(requests[i].Method).To(Equal("GET"))
+						Expect(requests[i].Url).To(MatchRegexp(listRouteRegexes[i]))
+					}
 					for i := 0; i < 4; i++ {
-						req := requests[i]
+						req := requests[i+2]
 						Expect(req.Method).To(Equal("DELETE"))
 						Expect(req.Url).To(MatchRegexp(ruleRouteRegexes[i]))
 					}
 
+					addLabelToPrometheusRule(applicationUnderTestNamespace, "e2e-test/trigger-update=1")
+					//nolint:lll
+					By("verifying no DELETE requests are sent for rules that do not exist in Dash0 (after updating the resource while dash0.com/enable=false is set)")
+					requests = fetchCapturedApiRequests(12, 2)
+					Expect(requests).To(HaveLen(2))
+					for i := 0; i < 2; i++ {
+						Expect(requests[i].Method).To(Equal("GET"))
+						Expect(requests[i].Url).To(MatchRegexp(listRouteRegexes[i]))
+					}
+					Consistently(func(g Gomega) {
+						storedRequests := getStoredApiRequests(g)
+						g.Expect(storedRequests).NotTo(BeNil())
+						g.Expect(storedRequests.Requests).To(HaveLen(14))
+					}, 5*time.Second, 1*time.Second).Should(Succeed())
+
 					setOptOutLabelInPrometheusRule(applicationUnderTestNamespace, "true")
 					By("verifying the rules have been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					requests = fetchCapturedApiRequests(10, 6)
+					requests = fetchCapturedApiRequests(14, 6)
 					Expect(requests).To(HaveLen(6))
 					for i := 0; i < 2; i++ {
 						Expect(requests[i].Method).To(Equal("GET"))
@@ -1054,10 +1073,14 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 
 					removePrometheusRuleResource(applicationUnderTestNamespace)
 					By("verifying the rules have been deleted via the Dash0 API (after removing the resource)")
-					requests = fetchCapturedApiRequests(16, 4)
-					Expect(requests).To(HaveLen(4))
+					requests = fetchCapturedApiRequests(20, 6)
+					Expect(requests).To(HaveLen(6))
+					for i := 0; i < 2; i++ {
+						Expect(requests[i].Method).To(Equal("GET"))
+						Expect(requests[i].Url).To(MatchRegexp(listRouteRegexes[i]))
+					}
 					for i := 0; i < 4; i++ {
-						req := requests[i]
+						req := requests[i+2]
 						Expect(req.Method).To(Equal("DELETE"))
 						Expect(req.Url).To(MatchRegexp(ruleRouteRegexes[i]))
 					}
@@ -1065,9 +1088,10 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 
 				//nolint:lll
 				It("should resync Prometheus rules when synchronizePrometheusRules transitions from false to true", func() {
+					// A namespace-wide resync fetches the existing origins once for the whole namespace.
 					listRouteRegexes := []string{
-						"/api/alerting/check-rules\\?dataset=default&originPrefix=dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_",
-						"/api/recording-rules\\?dataset=default&originPrefix=dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_",
+						"/api/alerting/check-rules\\?dataset=default&originPrefix=dash0-operator_.*_default_e2e-test-ns_$",
+						"/api/recording-rules\\?dataset=default&originPrefix=dash0-operator_.*_default_e2e-test-ns_$",
 					}
 					ruleRouteRegexes := []string{
 						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ck8s_K8s%20Deployment%20replicas%20mismatch\\?dataset=default",
@@ -4289,83 +4313,113 @@ spec:
 				},
 			}
 
-			Describe("when uninstalling the operator via helm", func() {
-				It("should remove all Dash0 monitoring resources and uninstrument all workloads", func() {
-					By("deploying workloads")
-					testIds := make(map[string]string)
-					for _, config := range configs {
-						testIds[config.workloadType.workloadTypeString] =
-							generateNewTestId(config.runtime, config.workloadType)
+			deployWorkloadsAndOperatorThenUninstallAndVerify := func(autoNamespaceMonitoring bool) {
+				monitoringResourceName := dash0MonitoringResourceName
+				var additionalHelmParameters map[string]string
+				if autoNamespaceMonitoring {
+					monitoringResourceName = util.MonitoringAutoResourceDefaultName
+					additionalHelmParameters = map[string]string{
+						"operator.autoMonitorNamespaces.enabled":                    "true",
+						"operator.autoMonitorNamespaces.labelSelector":              "dash0.com/e2e-removal-auto-opt-in==true",
+						"operator.monitoringTemplate.spec.instrumentWorkloads.mode": "all",
 					}
-
-					runInParallel(configs, func(config removalTestNamespaceConfig) {
-						By(fmt.Sprintf("deploying the %s %s to namespace %s",
-							config.runtime.runtimeTypeLabel,
-							config.workloadType.workloadTypeString,
+					for _, config := range configs {
+						recreateNamespaceWithLabel(
 							config.namespace,
-						))
-						Expect(installTestAppWorkload(
-							config.runtime,
-							config.workloadType,
-							config.namespace,
-							testIds[config.workloadType.workloadTypeString],
-							nil,
-							nil,
-						)).To(Succeed())
-					})
+							map[string]string{"dash0.com/e2e-removal-auto-opt-in": "\"true\""},
+						)
+					}
+				}
 
-					deployOperatorWithDefaultAutoOperationConfiguration(
-						operatorNamespace,
-						operatorHelmChart,
-						operatorHelmChartUrl,
-						"",
-						&images,
-						true,
+				By("deploying workloads")
+				testIds := make(map[string]string)
+				for _, config := range configs {
+					testIds[config.workloadType.workloadTypeString] =
+						generateNewTestId(config.runtime, config.workloadType)
+				}
+
+				runInParallel(configs, func(config removalTestNamespaceConfig) {
+					By(fmt.Sprintf("deploying the %s %s to namespace %s",
+						config.runtime.runtimeTypeLabel,
+						config.workloadType.workloadTypeString,
+						config.namespace,
+					))
+					Expect(installTestAppWorkload(
+						config.runtime,
+						config.workloadType,
+						config.namespace,
+						testIds[config.workloadType.workloadTypeString],
 						nil,
-					)
-					runInParallel(configs, func(config removalTestNamespaceConfig) {
+						nil,
+					)).To(Succeed())
+				})
+
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					true,
+					additionalHelmParameters,
+				)
+				runInParallel(configs, func(config removalTestNamespaceConfig) {
+					if autoNamespaceMonitoring {
+						waitForMonitoringResourceToBecomeAvailable(config.namespace, monitoringResourceName)
+					} else {
 						deployDash0MonitoringResourceWithRetry(
 							config.namespace,
 							dash0MonitoringValuesDefault,
 							operatorNamespace,
 						)
-					})
+					}
+				})
 
-					runInParallel(configs, func(config removalTestNamespaceConfig) {
-						By(fmt.Sprintf("verifying that the %s %s has been instrumented by the controller",
-							config.runtime.runtimeTypeLabel,
-							config.workloadType.workloadTypeString,
-						))
-						verifyThatWorkloadHasBeenInstrumented(
-							config.namespace,
-							config.runtime,
-							config.workloadType,
-							testIds[config.workloadType.workloadTypeString],
-							images,
-							"controller",
-						)
-					})
+				runInParallel(configs, func(config removalTestNamespaceConfig) {
+					By(fmt.Sprintf("verifying that the %s %s has been instrumented by the controller",
+						config.runtime.runtimeTypeLabel,
+						config.workloadType.workloadTypeString,
+					))
+					verifyThatWorkloadHasBeenInstrumented(
+						config.namespace,
+						config.runtime,
+						config.workloadType,
+						testIds[config.workloadType.workloadTypeString],
+						images,
+						"controller",
+					)
+				})
 
-					undeployOperator(operatorNamespace)
+				undeployOperator(operatorNamespace)
 
-					runInParallel(configs, func(config removalTestNamespaceConfig) {
-						verifyThatInstrumentationHasBeenReverted(
-							config.namespace,
-							config.runtime,
-							config.workloadType,
-							testIds[config.workloadType.workloadTypeString],
-							"controller",
-						)
-					})
+				runInParallel(configs, func(config removalTestNamespaceConfig) {
+					verifyThatInstrumentationHasBeenReverted(
+						config.namespace,
+						config.runtime,
+						config.workloadType,
+						testIds[config.workloadType.workloadTypeString],
+						"controller",
+					)
+				})
 
-					Eventually(func(g Gomega) {
-						for _, config := range configs {
-							verifyDash0MonitoringResourceDoesNotExist(g, config.namespace, dash0MonitoringResourceName)
-						}
-						verifyDash0OperatorReleaseIsNotInstalled(g, operatorNamespace)
-					}).Should(Succeed())
+				Eventually(func(g Gomega) {
+					for _, config := range configs {
+						verifyDash0MonitoringResourceDoesNotExist(g, config.namespace, monitoringResourceName)
+					}
+					verifyDash0OperatorReleaseIsNotInstalled(g, operatorNamespace)
+				}).Should(Succeed())
 
-					verifyThatCollectorIsRemovedEventually()
+				verifyThatCollectorIsRemovedEventually()
+			}
+
+			Describe("when uninstalling the operator via helm", func() {
+				It("should remove all Dash0 monitoring resources and uninstrument all workloads", func() {
+					deployWorkloadsAndOperatorThenUninstallAndVerify(false)
+				})
+
+				It("should remove all auto-monitoring resources and uninstrument all workloads when automatic "+
+					"namespace monitoring is enabled", func() {
+					deployWorkloadsAndOperatorThenUninstallAndVerify(true)
 				})
 			})
 		})

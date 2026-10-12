@@ -72,6 +72,20 @@ coverage:
     - docs/*.md
   ignore: []
 
+# Generates navigation definition in the target repository. The navigation entries follow the order of `files` below.
+# Each entry is labeled with the file's `navTitle` (falling back to `title`).
+nav:
+  target: dash0-operator/nav.json
+  # `order` must stay above the Kubernetes' nav entry's order  so the placeholder exists when this fragment is merged.
+  order: 52.5
+  id: monitoring-kubernetes-dash0-operator
+  # The entries listed here are attached via `parentPath`, which must match the placeholder title of the parent item
+  # exactly.
+  parentPath: Dash0 Operator for Kubernetes
+  # `pathPrefix` determines how the website resolves nav paths against its docs content root, while `target` is
+  # relative to target-directory.
+  pathPrefix: dash0/monitoring/kubernetes
+
 files:
   - source: README.md
     target: dash0-operator/overview.md
@@ -115,6 +129,11 @@ files:
     title: Metrics Collection and Prometheus Scraping
     description: Collect Kubernetes metrics and scrape Prometheus endpoints with the Dash0 operator.
 
+  - source: docs/profiling.md
+    target: dash0-operator/profiling.md
+    title: Profiling
+    description: Support for profiling telemetry & collecting profiles with the OpenTelemetry eBPF Profiler.
+
   - source: docs/managing-dash0-resources.md
     target: dash0-operator/managing-dash0-resources.md
     title: Managing Dash0 Resources
@@ -125,32 +144,29 @@ files:
     title: Advanced Configuration
     description: Advanced Dash0 operator configuration, including cert-manager, collector pod scheduling, sysctls, SELinux options, and filelog offset volumes.
 
+  - source: docs/signal-control-edge.md
+    target: dash0-operator/signal-control-edge.md
+    title: Dash0 SignalControl Edge
+    navTitle: SignalControl Edge
+    description: Configure SignalControl Edge in the Dash0 operator.
+
+  - source: docs/synthetics-worker.md
+    target: dash0-operator/synthetics-worker.md
+    title: Dash0 Synthetics Worker
+    navTitle: Synthetics Worker
+    description: Run Dash0 synthetic checks against private locations from inside your own Kubernetes cluster.
+
   - source: docs/platform-specific.md
     target: dash0-operator/platform-specific.md
     title: Platform-Specific Notes and Compatibility
     description: Platform-specific guidance and compatibility notes for running the Dash0 operator on various Kubernetes distributions.
-
-  - source: docs/profiling.md
-    target: dash0-operator/profiling.md
-    title: Profiling
-    description: Support for profiling telemetry & collecting profiles with the OpenTelemetry eBPF Profiler.
-
-  - source: docs/upgrading.md
-    target: dash0-operator/upgrading.md
-    title: Upgrading and Uninstallation
-    description: Upgrade the Dash0 operator, migrate CRD versions, and uninstall the operator from your cluster.
 
   - source: docs/troubleshooting.md
     target: dash0-operator/troubleshooting.md
     title: Troubleshooting
     description: Troubleshoot and debug the Dash0 operator.
 
-  - source: docs/signal-control-edge.md
-    target: dash0-operator/signal-control-edge.md
-    title: Dash0 SignalControl Edge
-    description: Configure SignalControl Edge in the Dash0 operator.
-
-  - source: docs/synthetics-worker.md
-    target: dash0-operator/synthetics-worker.md
-    title: Dash0 Synthetics Worker
-    description: Run Dash0 synthetic checks against private locations from inside your own Kubernetes cluster.
+  - source: docs/upgrading.md
+    target: dash0-operator/upgrading.md
+    title: Upgrading and Uninstallation
+    description: Upgrade the Dash0 operator, migrate CRD versions, and uninstall the operator from your cluster.

@@ -672,6 +672,38 @@ spec:
 					rate := ReadFromMap(payload, []string{"spec", "conditions", "spec", "rate"})
 					Expect(rate).To(BeNumerically("==", 0.5))
 				})
+
+				It(
+					"reports a non-retryable synchronization error for a sampling rule that cannot be converted", func() {
+						samplingRule := map[string]interface{}{}
+						Expect(yaml.Unmarshal([]byte(`
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SamplingRule
+metadata:
+  name: dash0-sampling-rule
+spec:
+  enabled: "yes"
+  conditions:
+    kind: probabilistic
+    spec:
+      rate: "0.5"
+`), &samplingRule)).To(Succeed())
+						apiConfig := ApiConfig{Endpoint: ApiEndpointTest, Dataset: DatasetCustomTest, Token: AuthorizationTokenTest}
+						resourceToRequestsResult :=
+							samplingRuleReconciler.MapResourceToHttpRequests(
+								&preconditionValidationResult{
+									k8sName:      "dash0-sampling-rule",
+									k8sNamespace: TestNamespaceName,
+									resource:     samplingRule,
+								},
+								apiConfig, upsertAction, logger)
+						Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())
+						synchronizationError, httpStatusCode := firstSynchronizationErrorAndStatusCode(resourceToRequestsResult)
+						Expect(synchronizationError).To(ContainSubstring("unable to convert the sampling rule"))
+						Expect(httpStatusCode).To(Equal(http.StatusBadRequest))
+						Expect(isRetryableSynchronizationError(synchronizationError, httpStatusCode)).To(BeFalse())
+					},
+				)
 			},
 		)
 	},

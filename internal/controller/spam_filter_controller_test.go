@@ -661,6 +661,34 @@ spec:
 						},
 					),
 				)
+
+				It(
+					"reports a non-retryable synchronization error for a spam filter that cannot be converted", func() {
+						spamFilter := map[string]any{}
+						Expect(yaml.Unmarshal([]byte(`
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SpamFilter
+metadata:
+  name: dash0-spam-filter
+spec:
+  contexts: log
+  filter:
+    - key: k8s.namespace.name
+      operator: is
+      value: kube-system
+`), &spamFilter)).To(Succeed())
+						apiConfig := ApiConfig{Endpoint: ApiEndpointTest, Dataset: DatasetCustomTest, Token: AuthorizationTokenTest}
+						resourceToRequestsResult :=
+							spamFilterReconciler.MapResourceToHttpRequests(
+								&preconditionValidationResult{k8sName: "dash0-spam-filter", k8sNamespace: TestNamespaceName, resource: spamFilter},
+								apiConfig, upsertAction, logger)
+						Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())
+						synchronizationError, httpStatusCode := firstSynchronizationErrorAndStatusCode(resourceToRequestsResult)
+						Expect(synchronizationError).To(ContainSubstring("unable to convert the spam filter"))
+						Expect(httpStatusCode).To(Equal(http.StatusBadRequest))
+						Expect(isRetryableSynchronizationError(synchronizationError, httpStatusCode)).To(BeFalse())
+					},
+				)
 			},
 		)
 	},
