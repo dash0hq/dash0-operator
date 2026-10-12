@@ -23,9 +23,10 @@ import (
 
 type SignalControlManager struct {
 	client.Client
-	resourceManager  *scresources.SignalControlResourceManager
-	extraConfig      atomic.Pointer[util.ExtraConfig]
-	updateInProgress atomic.Bool
+	resourceManager     *scresources.SignalControlResourceManager
+	extraConfig         atomic.Pointer[util.ExtraConfig]
+	extraConfigDefaults util.ExtraConfig
+	updateInProgress    atomic.Bool
 	// zoneCoverageReporter warns when the Edge Proxy has fewer replicas than the cluster has availability zones. See
 	// cluster.ZoneCoverageReporter.
 	zoneCoverageReporter *cluster.ZoneCoverageReporter
@@ -36,10 +37,12 @@ func NewSignalControlManager(
 	resourceManager *scresources.SignalControlResourceManager,
 	nodeMetadataClient metadata.Interface,
 	extraConfig util.ExtraConfig,
+	extraConfigDefaults util.ExtraConfig,
 ) *SignalControlManager {
 	m := &SignalControlManager{
 		Client:               k8sClient,
 		resourceManager:      resourceManager,
+		extraConfigDefaults:  extraConfigDefaults,
 		zoneCoverageReporter: cluster.NewZoneCoverageReporter(nodeMetadataClient),
 	}
 	m.extraConfig.Store(&extraConfig)
@@ -134,19 +137,20 @@ func (m *SignalControlManager) createOrUpdateSignalControl(
 ) (bool, error) {
 	logger := logd.FromContext(ctx)
 
-	extraConfig := m.extraConfig.Load()
-	if extraConfig == nil {
+	fileExtraConfig := m.extraConfig.Load()
+	if fileExtraConfig == nil {
 		return false, fmt.Errorf("extra config is nil in SignalControlManager#createOrUpdateSignalControl")
 	}
+	extraConfig := util.EffectiveExtraConfig(*fileExtraConfig, m.extraConfigDefaults, signalControlResource)
 
 	// Only relevant when the Edge Proxy is actually deployed: with it disabled there is nothing to spread over
 	// availability zones.
 	if pointers.ReadBoolPointerWithDefault(signalControlResource.Spec.EdgeProxy.Enabled, true) {
-		m.warnAboutInsufficientZoneCoverage(ctx, *extraConfig, logger)
+		m.warnAboutInsufficientZoneCoverage(ctx, extraConfig, logger)
 	}
 
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
-		m.resourceManager.CreateOrUpdateResources(ctx, signalControlResource, operatorConfig, *extraConfig, logger)
+		m.resourceManager.CreateOrUpdateResources(ctx, signalControlResource, operatorConfig, extraConfig, logger)
 	if err != nil {
 		logger.Error(err, "failed to create/update Signal Control resources")
 		return false, err
@@ -183,8 +187,9 @@ func (m *SignalControlManager) warnAboutInsufficientZoneCoverage(
 			return fmt.Sprintf(
 				"The cluster has %d availability zones but the Edge Proxy runs with %d replicas, so at least one zone "+
 					"has no Edge Proxy pod. Collectors in those zones connect to an Edge Proxy in another zone, which "+
-					"works but incurs cross-zone traffic cost. Set operator.signalControl.edgeProxy.replicas to at "+
-					"least %d to avoid that.",
+					"works but incurs cross-zone traffic cost. Set operator.signalControl.edgeProxy.replicas (or "+
+					"spec.components.edgeProxy.replicas in the Dash0SignalControl resource) to at least %d to avoid "+
+					"that.",
 				zoneCount, replicaCount, zoneCount,
 			)
 		},

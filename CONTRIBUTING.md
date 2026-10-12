@@ -175,6 +175,10 @@ Moving beyond the quickstart instructions, here are more details on the test scr
 * `test-resources/bin/test-scenario-02-operator-cr-aum.sh`: Deploys the operator to `operator-namespace`, then the
   Dash0 monitoring resource to namespace `test-namespace`, and finally an application under monitoring to the namespace
   `test-namespace`. This is a test scenario for instrumenting _new_ workloads at deploy time via the admission webhook.
+* `test-resources/bin/test-scenario-12-component-settings.sh`: Deploys the operator with Signal Control, then sets the
+  component settings via `spec.components` of the Signal Control resource (see `test-resources/component-settings`).
+  Some of them are also set to different values via Helm, which the operator reports with a warning ("overrides the
+  custom Helm value").
 * `test-resources/bin/test-cleanup.sh`: This script removes all resources created by the other scripts. **You should
   always run this script after running any of the scenario scripts, when you are done with your tests, otherwise the
   e2e tests will fail the next time you start them.** Note that all scenario scripts call the cleanup at the beginning,
@@ -198,6 +202,10 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       This defaults to `$TELEMETRY_COLLECTION_ENABLED`, which in turn defaults to "true".
     * `COLLECTOR_ENABLE_PPROF`: Set to "true" to enable the pprof extension in all containers of the collector pods.
       See [Creatig Heap Profiles](helm-chart/dash0-operator/docs/troubleshooting.md#create-heap-profiles) for instructions on creating heap profiles.
+    * `COMPONENT_SETTINGS_VIA_HELM`: Set this to "true" to add the Helm values from
+      `test-resources/component-settings/helm-values.yaml`, which set some of the settings that test scenario 12 sets
+      via `spec.components` to different values.
+      This defaults to "false", except in test scenario 12, where it defaults to "true".
     * `EDGE_PROXY_ENABLE_PPROF`: Set to "true" to enable pprof for the Edge Proxy pods (only relevant when Signal Control
       is enabled).
       See [Creatig Heap Profiles](helm-chart/dash0-operator/docs/troubleshooting.md#create-heap-profiles) for instructions on creating heap profiles.

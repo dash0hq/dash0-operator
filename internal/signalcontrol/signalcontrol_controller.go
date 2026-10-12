@@ -14,6 +14,7 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
+	"github.com/dash0hq/dash0-operator/internal/componentsettings"
 	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
@@ -33,6 +34,9 @@ type SignalControlReconciler struct {
 	client.Client
 	signalControlManager *SignalControlManager
 	collectorManager     *collectors.CollectorManager
+	// ComponentSettingsConflictReporter (optional) logs settings that are configured both via Helm and via
+	// spec.components.
+	ComponentSettingsConflictReporter *componentsettings.ConflictReporter
 }
 
 func NewSignalControlReconciler(
@@ -75,6 +79,7 @@ func (r *SignalControlReconciler) Reconcile(
 		return ctrl.Result{}, err
 	} else if checkResourceResult.ResourceDoesNotExist {
 		// Signal Control resource has been deleted: remove the Edge Proxy & reconcile the collector.
+		r.ComponentSettingsConflictReporter.Report(ctx, logger)
 		hasBeenReconciled, reconcileErr := r.signalControlManager.ReconcileSignalControl(ctx, nil)
 		if reconcileErr != nil {
 			logger.Error(reconcileErr, "failed to reconcile Signal Control deletion")
@@ -94,6 +99,7 @@ func (r *SignalControlReconciler) Reconcile(
 	}
 
 	signalControlResource := checkResourceResult.Resource.(*dash0v1alpha1.Dash0SignalControl)
+	r.ComponentSettingsConflictReporter.Report(ctx, logger)
 
 	if _, err := resources.InitStatusConditions(
 		ctx,
