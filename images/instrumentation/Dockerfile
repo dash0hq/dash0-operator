@@ -1,25 +1,23 @@
 # SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-# download the opentelemetry-injector binary for the target architecture
+# download the opentelemetry-injector binary for the target architecture and verify it against the SHA-256 pinned in
+# opentelemetry-injector/version (KEY=value lines sourced by this stage, written by opentelemetry-injector/update.sh)
 FROM alpine:3.24.2 AS download-injector-binary
 
-RUN apk add --no-cache curl jq wget
+RUN apk add --no-cache wget
 
 COPY opentelemetry-injector/version /tmp/opentelemetry-injector-version
 
 ARG TARGETARCH
-RUN injector_version=$(cat /tmp/opentelemetry-injector-version) && \
+RUN . /tmp/opentelemetry-injector-version && \
   case ${TARGETARCH} in \
-    amd64) export injector_binary="libotelinject_amd64.so" ;; \
-    arm64) export injector_binary="libotelinject_arm64.so" ;; \
+    amd64) injector_binary="libotelinject_amd64.so"; expected_sha256="${OPENTELEMETRY_INJECTOR_SHA256_AMD64:?}" ;; \
+    arm64) injector_binary="libotelinject_arm64.so"; expected_sha256="${OPENTELEMETRY_INJECTOR_SHA256_ARM64:?}" ;; \
     *)     echo "architecture unsupported: ${TARGETARCH}" && exit 1 ;; \
   esac && \
-  wget -q -O /libotelinject.so "https://github.com/open-telemetry/opentelemetry-injector/releases/download/${injector_version}/${injector_binary}" && \
-  export checksum=$(curl "https://api.github.com/repos/open-telemetry/opentelemetry-injector/releases/tags/$injector_version" | jq -r ".assets[] | select(.name==\"$injector_binary\") | .digest") && \
-  export checksum=${checksum#sha256:} && \
-  echo "${checksum} libotelinject.so" > checksum.txt && \
-  sha256sum -c checksum.txt
+  wget -q -O /libotelinject.so "https://github.com/open-telemetry/opentelemetry-injector/releases/download/${OPENTELEMETRY_INJECTOR_VERSION:?}/${injector_binary}" && \
+  echo "${expected_sha256}  /libotelinject.so" | sha256sum -c -
 
 # download OpenTelemetry Java agent
 FROM eclipse-temurin:25-jdk-noble AS build-jvm
@@ -56,16 +54,21 @@ COPY dotnet/download-instrumentation.sh .
 RUN ./download-instrumentation.sh
 
 # download the Dash0 OpenTelemetry Python distribution source tree at a pinned version. The pin file
-# (images/instrumentation/python/dash0-python-distribution-version) holds a bare git ref of
-# github.com/dash0hq/opentelemetry-python-distribution — no comments, since it is inlined into the tarball URL. Prefer
-# a release tag (`vX.Y.Z`); use a commit SHA only when the operator needs to consume unreleased upstream work.
+# (images/instrumentation/python/dash0-python-distribution-version) holds a git ref of
+# github.com/dash0hq/opentelemetry-python-distribution plus the SHA-256 of the source tarball GitHub serves for that
+# ref, as KEY=value lines sourced by this stage; python/update.sh rewrites the whole file, so it must not contain
+# comments. Prefer a release tag (`vX.Y.Z`); use a commit SHA only when the operator needs to consume unreleased
+# upstream work, and compute its SHA-256 with `curl -sSfL <tarball url> | shasum -a 256`.
 FROM alpine:3.24.2 AS download-dash0-python-distribution
 RUN apk add --no-cache curl tar
 COPY python/dash0-python-distribution-version /tmp/dash0-python-distribution-version
-RUN distribution_version=$(cat /tmp/dash0-python-distribution-version) && \
+RUN . /tmp/dash0-python-distribution-version && \
+  curl -sSfL -o /tmp/dash0-python-distribution.tar.gz \
+    "https://github.com/dash0hq/opentelemetry-python-distribution/archive/${DASH0_PYTHON_DISTRIBUTION_VERSION:?}.tar.gz" && \
+  echo "${DASH0_PYTHON_DISTRIBUTION_SHA256:?}  /tmp/dash0-python-distribution.tar.gz" | sha256sum -c - && \
   mkdir -p /dash0-python-distribution && \
-  curl -sSL "https://github.com/dash0hq/opentelemetry-python-distribution/archive/${distribution_version}.tar.gz" | \
-    tar -xz --strip-components=1 -C /dash0-python-distribution
+  tar -xzf /tmp/dash0-python-distribution.tar.gz --strip-components=1 -C /dash0-python-distribution && \
+  rm /tmp/dash0-python-distribution.tar.gz
 
 # install Python artifacts (glibc)
 FROM python:3.14.7-trixie AS build-python-glibc
@@ -106,16 +109,21 @@ RUN pip install --quiet --root-user-action ignore --target . \
   cp dash0/opentelemetry/injector/sitecustomize.py sitecustomize.py
 
 # download the Dash0 OpenTelemetry Ruby distribution source tree at a pinned version. The pin file
-# (images/instrumentation/ruby/dash0-ruby-distribution-version) holds a bare git ref of
-# github.com/dash0hq/opentelemetry-ruby-distribution — no comments, since it is inlined into the tarball URL. Prefer a
-# release tag (`vX.Y.Z`); use a commit SHA only when the operator needs to consume unreleased upstream work.
+# (images/instrumentation/ruby/dash0-ruby-distribution-version) holds a git ref of
+# github.com/dash0hq/opentelemetry-ruby-distribution plus the SHA-256 of the source tarball GitHub serves for that
+# ref, as KEY=value lines sourced by this stage; ruby/update.sh rewrites the whole file, so it must not contain
+# comments. Prefer a release tag (`vX.Y.Z`); use a commit SHA only when the operator needs to consume unreleased
+# upstream work, and compute its SHA-256 with `curl -sSfL <tarball url> | shasum -a 256`.
 FROM alpine:3.24.2 AS download-dash0-ruby-distribution
 RUN apk add --no-cache curl tar
 COPY ruby/dash0-ruby-distribution-version /tmp/dash0-ruby-distribution-version
-RUN distribution_version=$(cat /tmp/dash0-ruby-distribution-version) && \
+RUN . /tmp/dash0-ruby-distribution-version && \
+  curl -sSfL -o /tmp/dash0-ruby-distribution.tar.gz \
+    "https://github.com/dash0hq/opentelemetry-ruby-distribution/archive/${DASH0_RUBY_DISTRIBUTION_VERSION:?}.tar.gz" && \
+  echo "${DASH0_RUBY_DISTRIBUTION_SHA256:?}  /tmp/dash0-ruby-distribution.tar.gz" | sha256sum -c - && \
   mkdir -p /dash0-ruby-distribution && \
-  curl -sSL "https://github.com/dash0hq/opentelemetry-ruby-distribution/archive/${distribution_version}.tar.gz" | \
-    tar -xz --strip-components=1 -C /dash0-ruby-distribution
+  tar -xzf /tmp/dash0-ruby-distribution.tar.gz --strip-components=1 -C /dash0-ruby-distribution && \
+  rm /tmp/dash0-ruby-distribution.tar.gz
 
 # install Ruby artifacts (glibc)
 FROM ruby:4.0.7-slim-trixie AS build-ruby-glibc
