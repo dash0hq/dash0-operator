@@ -8,7 +8,6 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -1339,14 +1338,14 @@ func setupSLOReconciler(
 	startupK8sClient client.Client,
 	clusterUid types.UID,
 	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
-	httpClient *http.Client,
+	apiClientPool *controller.ApiClientPool,
 	logger logd.Logger,
 ) (*controller.SLOReconciler, error) {
 	sloReconciler := controller.NewSLOReconciler(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err := sloReconciler.SetupWithManager(ctx, mgr, startupK8sClient, logger); err != nil {
 		return nil, fmt.Errorf("unable to set up the SLO reconciler: %w", err)
@@ -2010,7 +2009,7 @@ func startDash0Controllers(
 		startupTasksK8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 		setupLog,
 	)
 	if err != nil {
