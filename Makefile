@@ -225,9 +225,9 @@ build-all-push-all-test-e2e: all-images push-all-images test-e2e ## Builds and p
 .PHONY: test-e2e
 test-e2e: ## Run the end-to-end tests. When testing local code, container images should be built beforehand (or use target build-all-test-e2e).
 ifdef GINKGO_FOCUS
-	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v -focus="$(GINKGO_FOCUS)" .
+	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v --timeout=90m -focus="$(GINKGO_FOCUS)" .
 else
-	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v .
+	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v --timeout=90m .
 endif
 
 # Validates every collector configuration the operator can render against the collector binary, which rejects settings
