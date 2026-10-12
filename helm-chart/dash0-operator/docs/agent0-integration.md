@@ -5,7 +5,7 @@ telemetry across signals, and answers questions about your systems.
 
 Sometimes telemetry alone does not tell the full story though.
 When a pod is restarting, a workload is not receiving traffic, or a rollout is stuck, the answer is in the state of the
-cluster: resource limits, readiness probes, node conditions, Kubernetes events, and so on.
+cluster: resource limits, readiness probes, node conditions, service selectors, and so on.
 Without access to that state, Agent0 can describe the symptom, but it might not be able to find the root cause.
 
 The Dash0 operator's Agent0 integration closes that gap.
@@ -105,8 +105,8 @@ The agent0-connector is not restricted to the namespaces with a Dash0Monitoring 
 
 ### Customizable RBAC Rules
 
-By default, the operator grants read-only access to a fixed set of well-known resource types: pods and pod logs, the
-workload resource types, namespaces, nodes, services and other core resources, the networking and storage resource
+By default, the operator grants read-only access to a fixed set of well-known resource types: pods, the workload
+resource types, namespaces, nodes, services and other core resources, the networking and storage resource
 types, RBAC objects, resource metrics for `kubectl top`, the Dash0 custom resources, and the Prometheus and Perses
 custom resources the operator reconciles.
 You can review the default resource types it has access to
@@ -148,14 +148,16 @@ contract.
   No other executable can be invoked.
   There is no shell, no pipe, no redirection.
 * **Only read-only `kubectl` commands.**
-  The allowlist is `api-resources`, `api-versions`, `auth`, `cluster-info`, `events`, `explain`, `get`, `logs`, `top`
-  and `version`.
+  The allowlist is `api-resources`, `api-versions`, `auth`, `cluster-info`, `explain`, `get`, `top` and `version`.
+  `logs` and `events` are supported as well, but are disabled by default, because their output cannot be redacted (see
+  [Allowed kubectl Commands](#allowed-kubectl-commands)).
+  When `events` is disabled, reading events via `kubectl get events` is rejected as well.
   Everything else — `apply`, `delete`, `edit`, `exec`, `port-forward`, `scale`, `patch`, and any command a future
   `kubectl` release might add — is rejected.
   `kubectl describe` is rejected as well, although it only reads: it renders a resource in a text format that cannot be
   parsed, so the credentials the resource may hold cannot be removed from its output.
   Agent0 reads a resource with `kubectl get -o yaml` instead, which returns the same content with its credentials
-  redacted, and reads its events with `kubectl events --for`.
+  redacted.
 * **Subcommands are restricted where needed.**
   `auth` is only allowed as `auth can-i`, never as `auth reconcile`, which would write roles and role bindings.
   `cluster-info` is only allowed bare, never as `cluster-info dump`.
@@ -197,8 +199,13 @@ Redacted are:
 * the header values of HTTP probes and lifecycle hooks of any workload,
 * all credential fields of the Dash0 custom resources — the Dash0 authorization token, exporter headers, the
   credentials of notification channel integrations, and the credentials a synthetic check sends with its request,
+* the credentials of the Prometheus operator and Perses custom resources the default rules grant access to — for
+  example proxy URLs, OAuth2 token URLs and parameters, the query parameters of scrape and probe configurations, and
+  the access keys of service discovery configurations in `ScrapeConfig` resources,
 * the fields `token` and `password`, and header and query parameter values, wherever they occur — which is what covers
   a resource type the connector has no specific knowledge of,
+* the termination messages of containers with `terminationMessagePolicy: FallbackToLogsOnError`, while `kubectl logs`
+  is disabled, since these messages can contain the last lines of the container's log,
 * the `kubectl.kubernetes.io/last-applied-configuration` annotation, which holds a verbatim copy of the applied
   manifest, and the equivalent copies other tools embed in annotations, wherever in the resource they sit,
 * the JSON and YAML content of ConfigMaps, if you granted access to ConfigMaps via custom RBAC rules (best effort, see
@@ -225,9 +232,13 @@ is returned as-is.
 This is the limit of what it can do for a resource type it has no specific knowledge of: the fields listed above are
 covered everywhere, but a custom resource that stores an API key in a field of its own is not.
 
-**Pod logs** are not redacted at all, and the default rules grant access to them.
-The output of `kubectl logs` is whatever your application wrote, not a resource document that could be parsed and
-inspected, so if your applications log credentials, those log lines are visible to Agent0.
+**Pod logs and Kubernetes events** are not redacted at all.
+The output of `kubectl logs` is whatever your application wrote, and the message of an event is whatever a controller
+put into it — neither is a resource document that could be parsed and inspected.
+For that reason, `kubectl logs` and `kubectl events` are disabled by default, and the default RBAC rules do not grant access
+to pod logs or events.
+If you enable them (see [Allowed kubectl Commands](#allowed-kubectl-commands)) and your applications log credentials,
+or a controller quotes one into an event, these log lines and events are visible to Agent0.
 
 Likewise, if you grant access to additional resource types via custom RBAC rules, consider whether those resources can
 hold sensitive values — anything that leaves the cluster is accessible to everyone who has access to your Dash0
@@ -273,6 +284,7 @@ All values live under `operator.agent0Connector` and are ignored when `operator.
 | `maxConcurrentCommands`       | `2`                          | How many commands run at the same time               |
 | `containerResources`          | 256Mi limit / 64Mi request   | Resource settings for the agent0-connector container |
 | `clusterRole.rules`           | `[]` (the built-in defaults) | Custom read-only RBAC rules, replacing the defaults  |
+| `allowedKubectlCommands`      | all except `logs`, `events`  | The `kubectl` commands Agent0 may run, see below     |
 | `labels`, `annotations`       | `{}`                         | Additional labels and annotations for the deployment |
 | `podLabels`, `podAnnotations` | `{}`                         | Additional labels and annotations for the pod        |
 | `tolerations`                 | `[]`                         | Tolerations for the agent0-connector pod             |
@@ -314,8 +326,8 @@ To start from the current defaults, read them from the cluster and edit the copy
 kubectl get clusterrole dash0-operator-manager-agent0-connector-ro -o yaml
 ```
 
-A minimal, deliberately narrow example that only allows Agent0 to look at pods and their logs, the workload resources,
-and a few core resource types (namespaces, nodes, services, events):
+A minimal, deliberately narrow example that only allows Agent0 to look at pods, the workload resources, and a few core
+resource types (namespaces, nodes, services):
 
 ```yaml
 operator:
@@ -323,7 +335,7 @@ operator:
     clusterRole:
       rules:
         - apiGroups: [""]
-          resources: ["pods", "pods/log", "namespaces", "nodes", "services", "events"]
+          resources: ["pods", "namespaces", "nodes", "services"]
           verbs: ["get", "list"]
         - apiGroups: ["apps"]
           resources: ["daemonsets", "deployments", "replicasets", "statefulsets"]
@@ -357,6 +369,67 @@ A few things to keep in mind:
   API discovery.
   Carry that rule over, listing the URLs explicitly rather than granting `nonResourceURLs: ["*"]`.
   See [Customizable RBAC Rules](#customizable-rbac-rules) above.
+
+### Allowed kubectl Commands
+
+The Helm value `operator.agent0Connector.allowedKubectlCommands` controls which `kubectl` commands the agent0-connector
+executes on behalf of Agent0.
+The defaults are:
+
+```yaml
+operator:
+  agent0Connector:
+    allowedKubectlCommands:
+      api-resources: true
+      api-versions: true
+      auth: true
+      cluster-info: true
+      events: false
+      explain: true
+      get: true
+      logs: false
+      top: true
+      version: true
+```
+
+Helm merges the map you provide with these defaults.
+To disable a command that is enabled by default, set it to `false` explicitly; commands you do not list keep their
+default value.
+This setting can only restrict the set of commands, it cannot add new ones: commands the agent0-connector always rejects
+(like `kubectl describe`, or any command that modifies the cluster) cannot be enabled here.
+Listing a key that is not in the list above, or disabling all commands, makes the Helm installation fail.
+Disabling `get` is not recommended, it is the command Agent0 relies on most; to switch off the integration, set
+`operator.agent0Connector.enabled=false` instead.
+
+`kubectl logs` and `kubectl events` are disabled by default, because their output is not redacted (see
+[What Is Not Redacted](#what-is-not-redacted)).
+Only enable them if you are sure that no credentials, API tokens, secrets or customer PII end up in the logs or events
+in your cluster.
+Note that pod logs and Kubernetes events can also be collected as telemetry by the operator, which makes them available
+to Agent0 without enabling these commands.
+
+Allowing a command does not grant the RBAC permissions it needs, and the default rules do not include access to pod logs
+or events.
+To enable both commands, set the respective flags and add the required rules to your custom rules, on top of the
+[default rules](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/files/agent0-connector-default-cluster-role-rules.yaml)
+(or whichever rules you start from):
+
+```yaml
+operator:
+  agent0Connector:
+    allowedKubectlCommands:
+      logs: true
+      events: true
+    clusterRole:
+      rules:
+        # ... the default rules or your own custom rules ...
+        - apiGroups: [""]
+          resources: ["pods/log", "events"]
+          verbs: ["get", "list"]
+        - apiGroups: ["events.k8s.io"]
+          resources: ["events"]
+          verbs: ["get", "list"]
+```
 
 ### Concurrency and Sizing
 
