@@ -28,6 +28,7 @@ type Agent0ConnectorManager struct {
 	agent0ConnectorResourceManager *a0cresources.Agent0ConnectorResourceManager
 	eventRecorder                  events.EventRecorder
 	extraConfig                    atomic.Pointer[util.ExtraConfig]
+	extraConfigDefaults            util.ExtraConfig
 	developmentMode                bool
 	reconcileGuard                 util.ReconcileGuard
 }
@@ -45,12 +46,14 @@ const (
 func NewAgent0ConnectorManager(
 	k8sClient client.Client,
 	extraConfig util.ExtraConfig,
+	extraConfigDefaults util.ExtraConfig,
 	developmentMode bool,
 	agent0ConnectorResourceManager *a0cresources.Agent0ConnectorResourceManager,
 	eventRecorder events.EventRecorder,
 ) *Agent0ConnectorManager {
 	m := &Agent0ConnectorManager{
 		Client:                         k8sClient,
+		extraConfigDefaults:            extraConfigDefaults,
 		developmentMode:                developmentMode,
 		agent0ConnectorResourceManager: agent0ConnectorResourceManager,
 		eventRecorder:                  eventRecorder,
@@ -126,28 +129,29 @@ func (m *Agent0ConnectorManager) reconcileAgent0Connector(ctx context.Context, l
 		return false, err
 	}
 
-	extraConfig := m.extraConfig.Load()
-	if extraConfig == nil {
+	fileExtraConfig := m.extraConfig.Load()
+	if fileExtraConfig == nil {
 		return false, fmt.Errorf("extra config is nil in Agent0ConnectorManager#ReconcileAgent0Connector")
 	}
+	extraConfig := util.EffectiveExtraConfig(*fileExtraConfig, m.extraConfigDefaults, operatorConfigurationResource, nil)
 
 	if operatorConfigurationResource == nil {
 		logger.Debug("The Dash0OperatorConfiguration resource is missing or has been deleted, the agent0-connector " +
 			"deployment (if present) will be removed.")
-		err = m.removeAgent0Connector(ctx, *extraConfig, logger)
+		err = m.removeAgent0Connector(ctx, extraConfig, logger)
 		return err == nil, err
 	}
 
 	if !m.agent0ConnectorEnabled(operatorConfigurationResource) {
 		logger.Debug("The agent0-connector deployment is disabled, it (if present) will be removed.")
-		if err = m.removeAgent0Connector(ctx, *extraConfig, logger); err != nil {
+		if err = m.removeAgent0Connector(ctx, extraConfig, logger); err != nil {
 			return false, err
 		}
 		m.reportAgent0ConnectorDisabled(ctx, operatorConfigurationResource, logger)
 		return true, nil
 	}
 
-	hasBeenReconciled, err := m.createOrUpdateAgent0Connector(ctx, *extraConfig, operatorConfigurationResource, logger)
+	hasBeenReconciled, err := m.createOrUpdateAgent0Connector(ctx, extraConfig, operatorConfigurationResource, logger)
 	m.reportAgent0ConnectorStatus(ctx, operatorConfigurationResource, err, logger)
 	if errors.Is(err, a0cresources.ErrMisconfigured) {
 		// Requeuing the reconcile request cannot fix a Helm-level misconfiguration, and agent0-connector deployment must

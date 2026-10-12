@@ -141,7 +141,7 @@ func (m *SignalControlManager) createOrUpdateSignalControl(
 	if fileExtraConfig == nil {
 		return false, fmt.Errorf("extra config is nil in SignalControlManager#createOrUpdateSignalControl")
 	}
-	extraConfig := util.EffectiveExtraConfig(*fileExtraConfig, m.extraConfigDefaults, signalControlResource)
+	extraConfig := util.EffectiveExtraConfig(*fileExtraConfig, m.extraConfigDefaults, nil, signalControlResource)
 
 	// Only relevant when the Edge Proxy is actually deployed: with it disabled there is nothing to spread over
 	// availability zones.

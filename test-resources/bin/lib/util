@@ -838,9 +838,6 @@ run_helm() {
     if [[ "${TELEMETRY_COLLECTION_ENABLED:-}" = "false" ]]; then
       helm_install_command+=" --set operator.telemetryCollectionEnabled=false"
     fi
-    if [[ "${FEATURE_SIGNAL_CONTROL_ENABLED:-}" = "true" ]]; then
-      helm_install_command+=" --set operator.signalControl.enabled=true"
-    fi
     if [[ "${ENABLE_PYTHON_AUTO_INSTRUMENTATION:-}" = "true" ]]; then
       helm_install_command+=" --set operator.instrumentation.enablePythonAutoInstrumentation=true"
     fi
@@ -848,6 +845,9 @@ run_helm() {
       helm_install_command+=" --set operator.instrumentation.enableRubyAutoInstrumentation=true"
     fi
     helm_install_command+=" --set operator.clusterName=$(kubectl config current-context)"
+  fi
+  if [[ "${FEATURE_SIGNAL_CONTROL_ENABLED:-}" = "true" ]]; then
+    helm_install_command+=" --set operator.signalControl.enabled=true"
   fi
   if [[ -n "${OPERATOR_REPLICAS:-}" ]]; then
     helm_install_command+=" --set operator.replicaCount=${OPERATOR_REPLICAS:-1}"

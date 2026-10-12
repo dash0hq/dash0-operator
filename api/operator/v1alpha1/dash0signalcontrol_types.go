@@ -102,9 +102,9 @@ type Dash0SignalControlSpec struct {
 	// +kubebuilder:validation:Optional
 	ControlPlaneApiEndpoint string `json:"controlPlaneApiEndpoint,omitempty"`
 
-	// Settings for the Signal Control workloads the operator manages. Every setting is optional. An absent setting keeps
-	// the value provided via the Helm chart, a present one replaces it. Replacing a custom Helm value with a different
-	// one causes a warning in the operator log and an admission warning.
+	// Settings for the Signal Control workloads the operator manages. An absent or empty setting keeps the Helm value, a
+	// present one replaces it. Invalid settings are rejected. Replacing a custom Helm value with a different one causes a
+	// warning in the operator log, and an admission warning when spec.components is created or changed.
 	//
 	// +kubebuilder:validation:Optional
 	Components *SignalControlComponents `json:"components,omitempty"`

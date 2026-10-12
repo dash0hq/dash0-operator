@@ -162,6 +162,23 @@ func verifyCollectorHasOwnerReference(operatorNamespace string, operatorHelmChar
 	Expect(output).To(Equal(controllerDeploymentName))
 }
 
+// readCollectorDaemonSetComponentLabel returns the value of the label e2e-component-label of the collector DaemonSet,
+// which the specs for component settings set via Helm and via spec.components.
+func readCollectorDaemonSetComponentLabel(g Gomega, operatorNamespace string) string {
+	output, err := run(exec.Command(
+		"kubectl",
+		"get",
+		"daemonset",
+		collectorDaemonSetName,
+		"--namespace",
+		operatorNamespace,
+		"-o",
+		"jsonpath={.metadata.labels.e2e-component-label}",
+	), false)
+	g.Expect(err).ToNot(HaveOccurred())
+	return output
+}
+
 // verifyThatCollectorIsRemovedEventually assumes that the collector definitely has been deployed before this function
 // is called, otherwise the way the verification is implemented is not valid.
 func verifyThatCollectorIsRemovedEventually() {
