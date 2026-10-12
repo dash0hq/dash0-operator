@@ -180,7 +180,8 @@ Moving beyond the quickstart instructions, here are more details on the test scr
   e2e tests will fail the next time you start them.** Note that all scenario scripts call the cleanup at the beginning,
   so there is no need to clean up between individual invocations of the scenario scripts.
 * All scripts will, by default, use the target namespace `test-namespace` and the workload type `deployment`. They all
-  accept three command line parameters to override these defaults. For example, use
+  accept the target namespace as the first command line parameter, most of them also the workload type and the
+  runtime. For example, use
   `test-resources/bin/test-scenario-01-aum-operator-cr.sh another-namespace replicaset jvm` to run the scenario with
   the target namespace `another-namespace` and a JVM based replica set workload.
 * Additional parameterization can be achieved via environment variables. Here is a full list of all available variables.

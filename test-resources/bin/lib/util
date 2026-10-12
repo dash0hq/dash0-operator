@@ -530,16 +530,16 @@ deploy_filelog_offsets_pvc() {
   echo "STEP $step_counter: install filelog offset persistent volume claim ($FILELOG_OFFSETS_PVC)"
   if [[ "$FILELOG_OFFSETS_PVC" = "kind" ]]; then
     kubectl patch persistentvolume filelogreceiver-offsets --type=json -p='[{"op": "remove", "path": "/spec/claimRef"}]' || true
-    kubectl apply -f test-resources/filelog-offset-storage/offset-storage-pvc-kind.yaml
+    kubectl apply -n "$operator_namespace" -f test-resources/filelog-offset-storage/offset-storage-pvc-kind.yaml
   elif [[ "$FILELOG_OFFSETS_PVC" = "gke" ]]; then
-    kubectl apply -f test-resources/filelog-offset-storage/offset-storage-pvc-gke.yaml
+    kubectl apply -n "$operator_namespace" -f test-resources/filelog-offset-storage/offset-storage-pvc-gke.yaml
   elif [[ "$FILELOG_OFFSETS_PVC" = "gke-ap" ]]; then
-    kubectl apply -f test-resources/filelog-offset-storage/offset-storage-pvc-gke-ap.yaml
+    kubectl apply -n "$operator_namespace" -f test-resources/filelog-offset-storage/offset-storage-pvc-gke-ap.yaml
   elif [[ "$FILELOG_OFFSETS_PVC" = "aws-efs-dp" ]]; then
     if ! kubectl get storageclass efs-sc > /dev/null; then
       kubectl apply -f test-resources/filelog-offset-storage/aws-efs-dynamic-provisioning-storage-class.yaml
     fi
-    kubectl apply -f test-resources/filelog-offset-storage/offset-storage-pvc-aws-efs-dp.yaml
+    kubectl apply -n "$operator_namespace" -f test-resources/filelog-offset-storage/offset-storage-pvc-aws-efs-dp.yaml
   else
     echo "Error: Unsupported value for environment variable FILELOG_OFFSETS_PVC: $FILELOG_OFFSETS_PVC"
     exit 1
@@ -655,7 +655,7 @@ run_helm() {
   if [[ -n "${FILELOG_OFFSETS_PVC:-}" ]]; then
     helm_install_command+=" --values test-resources/filelog-offset-storage/volume-values-pvc.yaml"
   elif [[ "${FILELOG_OFFSETS_HOST_PATH_VOLUME:-}" = "true" ]]; then
-    helm_install_command+=" --values test-resources/filelog-offset-storage/volume-values-hostpath.yaml"
+    helm_install_command+=" --values test-resources/filelog-offset-storage/volume-value-hostpath.yaml"
   fi
   helm_install_command+=" --set operator.collectNamespaceLabelsAndAnnotationsEnabled=true"
   helm_install_command+=" --set operator.collectNodeLabelsAndAnnotationsEnabled=true"
