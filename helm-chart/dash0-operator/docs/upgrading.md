@@ -5,6 +5,7 @@ This guide covers upgrading the Dash0 operator, CRD version migrations, disablin
 ## Table of Contents
 
 - [Upgrading the Operator](#upgrading-the-operator)
+  - [Operator Version 0.158.0: Operator-Managed Webhook Certificates](#operator-version-01580-operator-managed-webhook-certificates)
 - [CRD Version Upgrades](#crd-version-upgrades)
   - [Operator Version 0.71.0: v1alpha1 to v1beta1 Migration](#operator-version-0710-v1alpha1-to-v1beta1-migration)
 - [Uninstallation](#uninstallation)
@@ -18,6 +19,56 @@ To upgrade the Dash0 operator to a newer version, run the following commands:
 helm repo update dash0-operator
 helm upgrade --wait --namespace dash0-system dash0-operator dash0-operator/dash0-operator
 ```
+
+The Helm hook that runs after `helm install` and `helm upgrade` waits up to four minutes per attempt until the rollout
+of the operator deployment has finished and the operator's webhooks are reachable.
+If the rollout takes longer, for example because pulling the images is slow, `helm install` or `helm upgrade` fails,
+also without `--wait`.
+Use a longer `--timeout` in this case, which allows up to three attempts of the hook.
+
+### Operator Version 0.158.0: Operator-Managed Webhook Certificates
+
+Starting with version 0.158.0, the operator manages the TLS certificates for its webhooks instead of the Helm chart, see
+[Webhook Certificates](advanced-configuration.md#webhook-certificates).
+This does not apply if you use [cert-manager](advanced-configuration.md#using-cert-manager).
+When upgrading from a version before 0.158.0:
+
+* **Helm CLI and Flux:** No preparation is needed.
+  Once the rollout has finished, you can delete the Secret `dash0-operator-certificates`.
+* **Flux with drift detection:** Add the following ignore rules to the `HelmRelease`, and keep them.
+  Otherwise, Flux resets the `caBundle` values to those of the last upgrade whenever the operator changes them, and
+  requests to the webhooks fail briefly each time.
+  ```yaml
+  spec:
+    driftDetection:
+      mode: enabled
+      ignore:
+        - paths: ["/webhooks/0/clientConfig/caBundle"]
+          target:
+            kind: MutatingWebhookConfiguration
+        - paths: ["/webhooks/0/clientConfig/caBundle"]
+          target:
+            kind: ValidatingWebhookConfiguration
+        - paths: ["/spec/conversion/webhook/clientConfig/caBundle"]
+          target:
+            kind: CustomResourceDefinition
+            name: dash0monitorings.operator.dash0.com
+  ```
+* **ArgoCD:** Prepare the ArgoCD application before the upgrade, see
+  [Notes on ArgoCD: Upgrading to Version 0.158.0](platform-specific.md#upgrading-to-version-01580).
+* **Pipelines that render the chart without access to the cluster**, for example `helm template` followed by
+  `kubectl apply`, or Kustomize's `helmCharts`: Requests to the operator's webhooks fail from applying the manifests
+  until the new operator pod has written the CA bundle, with the effects described for ArgoCD without preparation.
+* The operator image must have the same version as the Helm chart, or a later version.
+  If you set `operator.image.tag` to a version before 0.158.0, the operator pod does not start.
+
+Rolling back to a version before 0.158.0:
+
+* **Helm CLI and Flux:** `helm rollback` restores the certificates of that release.
+  Requests to the webhooks fail until the first operator pod of the old version is ready.
+  The certificate of the old release expires 365 days after it has been generated.
+* **ArgoCD:** Remove the `ignoreDifferences` entries for the certificates before syncing back, see
+  [Notes on ArgoCD: Upgrading to Version 0.158.0](platform-specific.md#upgrading-to-version-01580).
 
 ## CRD Version Upgrades
 
@@ -144,7 +195,7 @@ To rectify an improper uninstallation, follow these steps:
 
 1. Delete all Dash0 validating/mutating webhook configs manually (exact command depends on the Helm release name):
    ```console
-   kubectl delete validatingwebhookconfiguration dash0-operator-monitoring-validator dash0-operator-operator-configuration-validator
+   kubectl delete validatingwebhookconfiguration --ignore-not-found dash0-operator-monitoring-validator dash0-operator-operator-configuration-validator dash0-operator-signal-control-validator
    kubectl delete mutatingwebhookconfiguration dash0-operator-injector dash0-operator-monitoring-mutating dash0-operator-operator-configuration-mutating
    ```
 2. Remove the finalizer from all Dash0 monitoring resources:

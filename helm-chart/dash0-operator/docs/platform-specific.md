@@ -184,13 +184,27 @@ This recommendation does not apply to workloads that are [excluded from workload
 
 ## Notes on ArgoCD
 
-As many other Helm charts, the Dash0 operator Helm chart regenerates TLS certificates for in-cluster communication, that is, for its services and webhooks. The certificate will be regenerated every time the Dash0 operator Helm chart is applied.
+Unless [cert-manager](advanced-configuration.md#using-cert-manager) is used, the operator manages the TLS certificates
+for its webhooks, see [Webhook Certificates](advanced-configuration.md#webhook-certificates).
+The manifests that ArgoCD renders contain neither certificates nor `caBundle` values, so syncs and hard refreshes do not
+change the certificates, and they do not show up as a diff.
 
-For users deploying the Dash0 operator via ArgoCD, and in particular without using ArgoCD's auto-sync feature, the certificates and derived data (`ca.crt`, `tls.crt`, `tls.key`, `caBundle`) will show up as a diff in the ArgoCD UI. The certificate is also regenerated every time the hard refresh option is used in ArgoCD, since this action will trigger rendering the Helm chart templates again, even if nothing has changed in the git repository.
+### Upgrading to Version 0.158.0
 
-### Ignoring Certificate Diffs
+Up to version 0.157.0, the Helm chart generated new certificates every time it was rendered.
+When upgrading from such a version, ArgoCD removes the `caBundle` values from the webhook configurations and from the
+`dash0monitorings.operator.dash0.com` CRD.
+Until the new operator pod has written its own CA bundle, requests to the operator's webhooks fail: changes to
+`Dash0OperatorConfiguration`, `Dash0Monitoring` and `Dash0SignalControl` resources are rejected, and workloads that are
+created in this time might not be instrumented.
+With the instrumentation mode `all`, these workloads are instrumented once the new operator pod has started, otherwise
+at their next update.
+Jobs and pods without an owner that are created in this time need to be created again.
 
-To avoid this, you can instruct ArgoCD to ignore these particular differences. Here is an example for an `argoproj.io/v1alpha1.Application` resource with `ignoreDifferences`:
+To avoid this, add the following settings to the ArgoCD application together with the upgrade or shortly before it, and
+keep them afterwards.
+Do not add them months before the upgrade, since they stop ArgoCD from replacing the certificate of the old version,
+which expires 365 days after it has been generated.
 
 ```yaml
 ---
@@ -199,25 +213,20 @@ kind: Application
 metadata:
   name: dash0-operator
   namespace: argocd
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
 spec:
-
-  source:
-    chart: dash0-operator
-    repoURL: https://dash0hq.github.io/dash0-operator
-    targetRevision: ...
 
   # ... your current spec for the dash0-operator ArgoCD application
 
-  # Ignore certificates which are generated on the fly during Helm chart template rendering:
+  syncPolicy:
+    syncOptions:
+      # Without this option, ArgoCD removes the caBundle values despite ignoreDifferences.
+      - RespectIgnoreDifferences=true
+
   ignoreDifferences:
     - kind: Secret
       name: dash0-operator-certificates
       jsonPointers:
-        - /data/ca.crt
-        - /data/tls.crt
-        - /data/tls.key
+        - /data
     - group: admissionregistration.k8s.io
       kind: MutatingWebhookConfiguration
       name: dash0-operator-injector
@@ -243,7 +252,62 @@ spec:
       name: dash0-operator-operator-configuration-validator
       jsonPointers:
         - /webhooks/0/clientConfig/caBundle
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      name: dash0-operator-signal-control-validator
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      name: dash0monitorings.operator.dash0.com
+      jsonPointers:
+        - /spec/conversion/webhook/clientConfig/caBundle
 ```
+
+If the application already contains the `ignoreDifferences` entries from earlier versions of this documentation, add
+`RespectIgnoreDifferences=true` and the entries for `dash0-operator-signal-control-validator` and the
+`dash0monitorings.operator.dash0.com` CRD.
+If pruning is enabled, ArgoCD deletes the Secret `dash0-operator-certificates` during the upgrade.
+Should the new operator version not become ready, operator pods of the old version that are re-created then cannot
+start, and requests to the webhooks fail until the application is synced back.
+Once the upgrade has finished, you can delete the Secret `dash0-operator-certificates`.
+
+Before syncing back to a version before 0.158.0, remove the `ignoreDifferences` entries listed above.
+
+### Dash0 Resources in the Same Application
+
+If the ArgoCD application also contains Dash0 resources, like a `Dash0Monitoring` resource in a wrapper chart, ArgoCD
+can apply them before the operator's webhooks are ready, for example during the first installation, and the API server
+rejects them.
+To avoid this, assign the Dash0 resources to later sync waves and configure retries:
+
+```yaml
+# Dash0OperatorConfiguration resources
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+---
+# Dash0Monitoring resources and other Dash0 resources
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+```
+
+```yaml
+spec:
+  syncPolicy:
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+```
+
+### Unsupported Sync Options
+
+Do not use the sync options `Replace=true` or `Force=true` for the operator's resources, see
+[Webhook Certificates](advanced-configuration.md#webhook-certificates).
 
 ## Local Development Environments
 

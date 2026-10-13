@@ -20,6 +20,10 @@ const (
 	MonitoringAutoResourceDefaultName     = "dash0-monitoring-auto-resource"
 	AutoMonitoredNamespaceLabel           = "dash0.com/auto-monitored-namespace"
 
+	// WebhookReachabilityCheckResourceName is the name of the resources the Helm chart's post-install hook creates with
+	// dryRun=All to check that the operator's webhooks are reachable. The webhooks allow these requests right away.
+	WebhookReachabilityCheckResourceName = "dash0-webhook-reachability-check"
+
 	ActorController WorkloadModifierActor = "controller"
 	ActorWebhook    WorkloadModifierActor = "webhook"
 

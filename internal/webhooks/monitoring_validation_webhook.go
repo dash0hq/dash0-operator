@@ -85,6 +85,9 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 	// Note: The mutating webhook is called before the validating webhook, so we can assume the resource has already
 	// been normalized by the mutating webhook.
 	// See https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#admission-control-phases.
+	if isReachabilityCheck(request) {
+		return admission.Allowed("")
+	}
 	logger := logd.FromContext(ctx)
 
 	monitoringResource := &dash0v1beta1.Dash0Monitoring{}
