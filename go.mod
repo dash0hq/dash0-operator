@@ -1,6 +1,6 @@
 module github.com/dash0hq/dash0-operator
 
-go 1.27.1
+go 1.27.2
 
 require (
 	github.com/bep/debounce v1.2.1

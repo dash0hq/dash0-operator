@@ -1,6 +1,6 @@
 module github.com/dash0hq/dash0-operator/images/collector/src/telemetry
 
-go 1.27.1
+go 1.27.2
 
 require (
 	github.com/dash0hq/dash0-operator/images/pkg/nodeuid v0.0.0

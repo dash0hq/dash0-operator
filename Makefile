@@ -249,7 +249,7 @@ collector-configs-validate: ## Validate the collector configurations the operato
 	  -run TestCollectorConfigurationsAreAcceptedByTheCollector -count=1 -v
 
 GOLANGCI_LINT = $(shell pwd)/bin/golangci-lint
-GOLANGCI_LINT_VERSION ?= v2.13.1
+GOLANGCI_LINT_VERSION ?= v2.14.0
 golangci-lint-install:
 	@if test -x $(GOLANGCI_LINT) && [ "$$($(GOLANGCI_LINT) version --short)" != "$(GOLANGCI_LINT_VERSION:v%=%)" ]; then \
 		echo "$(GOLANGCI_LINT) version is not expected $(GOLANGCI_LINT_VERSION). Removing it before installing."; \
