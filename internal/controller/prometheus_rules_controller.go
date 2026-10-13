@@ -524,14 +524,21 @@ func (r *PrometheusRuleReconciler) FetchExistingResourceOriginsRequests(
 	)
 }
 
-func (r *PrometheusRuleReconciler) FetchExistingNamespaceOriginsRequests(
+func (r *PrometheusRuleReconciler) FetchExistingNamespaceOrigins(
+	_ context.Context,
 	namespace string,
 	apiConfig ApiConfig,
-) ([]*http.Request, error) {
-	return r.createFetchOriginsRequests(
+	logger logd.Logger,
+) ([]string, error) {
+	requests, err := r.createFetchOriginsRequests(
 		r.renderRuleOriginPrefixForNamespace(namespace, url.QueryEscape(apiConfig.Dataset)),
 		apiConfig,
 	)
+	if err != nil {
+		logger.Error(err, "cannot create request to fetch existing origins in namespace", "namespace", namespace)
+		return nil, err
+	}
+	return executeFetchExistingOriginsRequests(r, requests, logger)
 }
 
 // createFetchOriginsRequests creates the requests for fetching the origins of all existing alerting and recording

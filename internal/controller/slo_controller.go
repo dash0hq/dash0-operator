@@ -259,11 +259,6 @@ func (r *SLOReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
-// HttpClient returns nil, the SLO reconciler talks to the Dash0 API via the API client pool.
-func (r *SLOReconciler) HttpClient() *http.Client {
-	return nil
-}
-
 func (r *SLOReconciler) SetDefaultApiConfigs(
 	ctx context.Context,
 	apiConfigs []ApiConfig,

@@ -559,11 +559,6 @@ func (r *PersesDashboardReconciler) Queue() *workqueue.Typed[ThirdPartyResourceS
 	return r.queue
 }
 
-// HttpClient returns nil, the Perses dashboard reconciler talks to the Dash0 API via the API client pool.
-func (r *PersesDashboardReconciler) HttpClient() *http.Client {
-	return nil
-}
-
 func (r *PersesDashboardReconciler) IsSynchronizationEnabled(monitoringResource *dash0v1beta1.Dash0Monitoring) bool {
 	if monitoringResource == nil {
 		return false
@@ -692,23 +687,41 @@ func (r *PersesDashboardReconciler) FetchExistingResourceOriginsRequests(
 	return nil, nil
 }
 
-func (r *PersesDashboardReconciler) FetchExistingNamespaceOriginsRequests(
-	_ string,
+func (r *PersesDashboardReconciler) FetchExistingNamespaceOrigins(
+	ctx context.Context,
+	namespace string,
 	apiConfig ApiConfig,
-) ([]*http.Request, error) {
+	logger logd.Logger,
+) ([]string, error) {
 	// The Dash0 API does not support filtering the list of dashboards by origin, so this fetches the origins of all
 	// dashboards in the dataset. IsOriginOfResource is used to pick the origins that belong to a particular resource.
-	req, err := http.NewRequest(
+	dataset := apiConfig.Dataset
+	actionLabel := fmt.Sprintf(
+		"fetch existing origins: %s %sapi/dashboards?dataset=%s",
 		http.MethodGet,
-		fmt.Sprintf("%sapi/dashboards?dataset=%s", apiConfig.Endpoint, url.QueryEscape(apiConfig.Dataset)),
-		nil,
+		apiConfig.Endpoint,
+		url.QueryEscape(dataset),
 	)
+	logger.Info(fmt.Sprintf("executing HTTP request to %s", actionLabel))
+	apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
 	if err != nil {
+		err = convertApiClientError(err, actionLabel, false)
+		logger.Error(err, "cannot fetch existing origins", "namespace", namespace)
 		return nil, err
 	}
-	addAuthorizationHeader(req, apiConfig.Token)
-	req.Header.Set(util.AcceptHeaderName, util.ApplicationJsonMediaType)
-	return []*http.Request{req}, nil
+	dashboards, err := apiClient.ListDashboards(ctx, &dataset)
+	if err != nil {
+		err = convertApiClientError(err, actionLabel, false)
+		logger.Error(err, "cannot fetch existing origins", "namespace", namespace)
+		return nil, err
+	}
+	var origins []string
+	for _, dashboard := range dashboards {
+		if dashboard != nil && dashboard.Origin != nil && *dashboard.Origin != "" {
+			origins = append(origins, *dashboard.Origin)
+		}
+	}
+	return origins, nil
 }
 
 func (r *PersesDashboardReconciler) IsOriginOfResource(
@@ -792,18 +805,19 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 }
 
 // mapToDashboardDefinition converts the normalized Perses dashboard resource (spec.config already unwrapped, display
-// name already set) to the typed dashboard definition of the Dash0 API client. Metadata that the Dash0 API does not
-// define for dashboards (for example arbitrary annotations, metadata.namespace) is dropped.
+// name already set) to the typed dashboard definition of the Dash0 API client. The resource is decoded directly instead
+// of using dash0apiclient.ConvertPersesDashboardToDashboard, since that would replace kind with "Dashboard" and
+// metadata.name with the display name (which is often not a valid Kubernetes name). Metadata that the Dash0 API does
+// not define for dashboards (for example arbitrary annotations, metadata.namespace) is dropped.
 func mapToDashboardDefinition(dashboard map[string]any) (*dash0apiclient.DashboardDefinition, error) {
 	serializedDashboard, err := json.Marshal(dashboard)
 	if err != nil {
 		return nil, err
 	}
-	persesDashboard := &dash0apiclient.PersesDashboard{}
-	if err = json.Unmarshal(serializedDashboard, persesDashboard); err != nil {
+	dashboardDefinition := &dash0apiclient.DashboardDefinition{}
+	if err = json.Unmarshal(serializedDashboard, dashboardDefinition); err != nil {
 		return nil, err
 	}
-	dashboardDefinition := dash0apiclient.ConvertPersesDashboardToDashboard(persesDashboard)
 	dash0apiclient.StripDashboardServerFields(dashboardDefinition)
 	return dashboardDefinition, nil
 }

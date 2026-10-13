@@ -1378,9 +1378,9 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 						Expect(ReadFromMap(resultingDashboardInRequest, []string{"spec", "display", "description"})).To(BeNil())
 					}
 
-					Expect(resultingDashboardInRequest["kind"]).To(Equal("Dashboard"))
+					Expect(resultingDashboardInRequest["kind"]).To(Equal("PersesDashboard"))
 					Expect(resultingDashboardInRequest["metadata"]).ToNot(BeNil())
-					Expect(ReadFromMap(resultingDashboardInRequest, []string{"metadata", "name"})).To(Equal(testConfig.expectedName))
+					Expect(ReadFromMap(resultingDashboardInRequest, []string{"metadata", "name"})).To(Equal("perses-dashboard"))
 
 					if testConfig.expectedAnnotations != nil {
 						annotationsRaw := ReadFromMap(resultingDashboardInRequest, []string{"metadata", "annotations"})
@@ -1554,8 +1554,8 @@ apiVersion: perses.dev/v1alpha1
 kind: PersesDashboard
 metadata:
   name: perses-dashboard
-  labels:
-    version: 2
+  annotations:
+    dash0.com/folder-path: 2
 spec:
   display:
     name: Perses Dashboard Example
