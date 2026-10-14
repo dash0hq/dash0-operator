@@ -2,6 +2,8 @@ rules:
   # The release builds deliberately reuse the Docker layer cache written by the builds of the main branch, see the
   # concurrency comment in .github/workflows/ci.yaml.
   cache-poisoning: off
+  dependabot-cooldown:
+    days: 4
 
 self-hosted-runner:
   labels:

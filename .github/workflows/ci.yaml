@@ -34,6 +34,10 @@ jobs:
   check_for_successful_builds_for_same_commit:
     name: Check for existing successful builds for same commit
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
     if: github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
     outputs:
       should_skip: ${{ steps.skip_check.outputs.should_skip }}
@@ -45,12 +49,16 @@ jobs:
     name: Build & Test
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
 
     needs: check_for_successful_builds_for_same_commit
     if: always() && needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
@@ -112,6 +120,10 @@ jobs:
         run: |
           make test
 
+  # Intentionally without "permissions:": an explicit "packages: write" would also apply to Dependabot PRs, which get a
+  # read-only token otherwise. To push the test image for a Dependabot PR, amend and force-push its commit. Do not add a
+  # workflow-level "permissions:" block either, this job would inherit it instead of the default token.
+  # jactionlint ignore=missing-permissions
   instrumentation_image_tests:
     name: Instrumentation Image Tests
     uses: ./.github/workflows/instrumentation-image-tests.yaml
@@ -135,9 +147,13 @@ jobs:
     needs: check_for_successful_builds_for_same_commit
     if: always() && needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
     timeout-minutes: 20
+    permissions:
+      contents: read
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
@@ -171,6 +187,11 @@ jobs:
   # created), the images are tagged with the version indicated by the tag respectively, and also with latest. That is:
   # Creating a GitHub release (or creating a git tag via other means) will trigger building images tagged with x.y.z
   # meant for production use.
+  #
+  # Intentionally without "permissions:": the job needs "packages: write" on main and for tags, but an explicit block
+  # would also grant it to Dependabot PRs, which get a read-only token otherwise. Do not add a workflow-level
+  # "permissions:" block either, this job would inherit it instead of the default token.
+  # jactionlint ignore=missing-permissions
   build_and_push_images:
     name: Build Images
     runs-on: depot-ubuntu-24.04-4
@@ -193,6 +214,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: build operator controller image
         uses: ./.github/actions/build-image
@@ -240,15 +262,12 @@ jobs:
         uses: ./.github/actions/build-image
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
-          slackBotToken: ${{ secrets.SLACK_BOT_TOKEN }}
-          slackChannelId: ${{ secrets.SLACK_CHANNEL_ID }}
           imageName: filelog-offset-sync
           imageTitle: Dash0 Kubernetes Filelog Offset Sync
           imageDescription: the filelog offset sync for the Dash0 operator for Kubernetes
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main
           context: images
           file: images/filelogoffsetsync/Dockerfile
-          scan: 'true'
 
       - name: build filelog offset volume ownership image
         uses: ./.github/actions/build-image
@@ -298,6 +317,10 @@ jobs:
     needs:
       - build_and_push_images
     if: ${{ always() && github.ref == 'refs/heads/main' && needs.build_and_push_images.result == 'success' }}
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: write
     uses: ./.github/workflows/e2e.yaml
     secrets:
       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
@@ -310,6 +333,10 @@ jobs:
     needs:
       - build_and_push_images
     if: ${{ always() && github.ref == 'refs/heads/main' && needs.build_and_push_images.result == 'success' }}
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
     uses: ./.github/workflows/gke-ap-workload-allowlist-check.yaml
     with:
       use_local_chart: true
@@ -321,55 +348,49 @@ jobs:
       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
       SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
 
+  # The dry run neither calls the GitHub API nor uses secrets, so it also works with the read-only token of Dependabot
+  # PRs. Note that the name of this job is referenced by the branch protection rules as a required check.
   publish_helm_chart_dry_run:
     name: Publish Helm Chart (Dry Run)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     needs:
       - build_and_push_images
-    if: ${{ always() && ! contains(github.ref, 'refs/tags/') && github.actor != 'dependabot[bot]' && needs.build_and_push_images.result == 'success' }}
+    if: ${{ always() && ! contains(github.ref, 'refs/tags/') && needs.build_and_push_images.result == 'success' }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: publish helm chart (dry run)
         run: |
           echo "verifying that helm chart can be published"
           DRY_RUN=true helm-chart/bin/publish.sh 0.0.0
 
-  # By default, when a GH action run is triggered by dependabot, it will only get read-only permissions.
-  # See https://docs.github.com/en/code-security/dependabot/working-with-dependabot/automating-dependabot-with-github-actions#changing-github_token-permissions
-  # For that reason, we skip the check whether the Helm chart can still be published for Dependabot update PRs.
-  # Those PRs do not change the Helm chart anyway.
-  # Note that the value of the "name" attribute needs to be identical to the publish_helm_chart_dry_run job, since the
-  # branch protection rules reference this property, and it is a required check.
-  skip_publish_helm_chart_dry_run_for_dependabot:
-    name: Publish Helm Chart (Dry Run)
-    runs-on: ubuntu-latest
-    if: ${{ always() && ! contains(github.ref, 'refs/tags/') && github.actor == 'dependabot[bot]' && needs.build_and_push_images.result == 'success' }}
-    needs:
-      - build_and_push_images
-
-    steps:
-      - name: skipping publish helm chart (dry run)
-        run: |
-          echo skipping publish helm chart dry run for dependabot commit
-
   publish_helm_chart:
     name: Publish Helm Chart
     runs-on: ubuntu-latest
-    if: ${{ always() && contains(github.ref, 'refs/tags/') && github.actor != 'dependabot[bot]' && needs.build_and_push_images.result == 'success' }}
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    if: ${{ always() && contains(github.ref, 'refs/tags/') && needs.build_and_push_images.result == 'success' }}
     needs:
       - build_and_push_images
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: publish helm chart
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "publishing helm chart version ${{ github.ref_name }}"
-          helm-chart/bin/publish.sh ${{ github.ref_name }}
+          echo "publishing helm chart version ${GITHUB_REF_NAME}"
+          helm-chart/bin/publish.sh "${GITHUB_REF_NAME}"
 
   # Verify that docs sync (runs for each release build, see below) still works.
   sync_docs_to_website_dry_run:
@@ -378,6 +399,8 @@ jobs:
     # The dry run is skipped on release builds (tags), where the actual docs sync (see the sync_docs_to_website job
     # below) runs after the Helm chart has been published.
     if: always() && ! contains(github.ref, 'refs/tags/') && needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
+    permissions:
+      contents: read
     uses: ./.github/workflows/sync-docs-to-website.yaml
     with:
       dry-run: true
@@ -388,6 +411,8 @@ jobs:
     needs:
       - publish_helm_chart
     if: ${{ always() && contains(github.ref, 'refs/tags/') && needs.publish_helm_chart.result == 'success' }}
+    permissions:
+      contents: read
     uses: ./.github/workflows/sync-docs-to-website.yaml
     secrets:
       DASH0_DOCS_REPO_GITHUB_PAT: ${{ secrets.DASH0_DOCS_REPO_GITHUB_PAT }}
