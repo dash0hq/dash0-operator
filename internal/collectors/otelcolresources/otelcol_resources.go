@@ -236,6 +236,11 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			"Dash0-bound telemetry to it instead of exporting to Dash0 directly.",
 			config.signalControlCollectorImage()))
 	}
+	if config.ProfilingEnabled && len(otlpExporters.Namespaced) > 0 {
+		logger.Debug(fmt.Sprintf("Profiles from the namespaces %v are exported via the default exporters, although "+
+			"these namespaces have a namespace-specific export, since the routing connector does not support profiles.",
+			otlpExporters.AllNamespaceKeys()))
+	}
 	desiredState, err := assembleDesiredStateForUpsert(
 		config,
 		allMonitoringResources,
