@@ -94,6 +94,7 @@ This README provides a quick overview. Detailed documentation is organized by to
 * **[Platform Specific](docs/platform-specific.md)** - Notes for AWS EKS, GKE Autopilot, OpenShift, SELinux-enforcing clusters, Azure AKS, Docker Desktop, Minikube, Apple Silicon, and compatibility with OPA and Kyverno
 * **[SignalControl Edge](docs/signal-control-edge.md)** - How to configure Signal Control, which offers in-cluster tail-sampling, RED metrics, signal-to-metrics, and spam filters to reduce egress costs, as well as log enrichment.
 * **[Synthetics Worker](docs/synthetics-worker.md)** - How to run Dash0 synthetic checks against private locations from inside your own cluster.
+* **[Agent0 Integration](docs/agent0-integration.md)** - Letting Agent0, Dash0's observability and SRE assistant, run read-only `kubectl` commands in your cluster, and the security mechanisms around it
 
 ### Operations
 
