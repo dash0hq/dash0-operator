@@ -1,0 +1,9 @@
+rules:
+  # The release builds deliberately reuse the Docker layer cache written by the builds of the main branch, see the
+  # concurrency comment in .github/workflows/ci.yaml.
+  cache-poisoning: off
+
+self-hosted-runner:
+  labels:
+    - depot-ubuntu-24.04-4
+    - depot-ubuntu-24.04-arm-4
