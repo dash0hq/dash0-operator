@@ -12,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
@@ -115,7 +116,23 @@ func (m *SignalControlResourceManager) createOrUpdateResource(
 		}
 		return true, false, nil
 	}
-	hasChanged, err := m.updateResource(ctx, existingResource, desiredResource, logger)
+	// The read is served by the controller-runtime cache, so the update can be rejected with a conflict. Every attempt
+	// re-reads the object and starts from an untouched copy of the desired object, since updateResource modifies it.
+	pristineDesiredResource := desiredResource.DeepCopyObject().(client.Object)
+	hasChanged := false
+	err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		currentResource, receiverErr := resources.CreateEmptyReceiverFor(pristineDesiredResource)
+		if receiverErr != nil {
+			return receiverErr
+		}
+		if getErr := m.Get(ctx, client.ObjectKeyFromObject(pristineDesiredResource), currentResource); getErr != nil {
+			return getErr
+		}
+		attempt := pristineDesiredResource.DeepCopyObject().(client.Object)
+		var updateErr error
+		hasChanged, updateErr = m.updateResource(ctx, currentResource, attempt, logger)
+		return updateErr
+	})
 	if err != nil {
 		return false, false, err
 	}
@@ -166,6 +183,7 @@ func (m *SignalControlResourceManager) updateResource(
 	if err = patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
 		return false, err
 	}
+	resources.PreserveKubectlRestartedAtAnnotation(existingResource, desiredResource, logger)
 	// Carry over the live resource version; some kinds (PodDisruptionBudget) reject an update without it
 	// ("resourceVersion: Invalid value: 0: must be specified for an update") and it adds optimistic locking.
 	desiredResource.SetResourceVersion(existingResource.GetResourceVersion())

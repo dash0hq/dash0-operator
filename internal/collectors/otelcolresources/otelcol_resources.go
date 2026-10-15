@@ -379,6 +379,7 @@ func (m *OTelColResourceManager) updateResource(
 	if err = patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
 		return false, err
 	}
+	resources.PreserveKubectlRestartedAtAnnotation(existingResource, desiredResource, logger)
 
 	// Carry over the resource version of the live object. Most resource kinds accept an unconditional update (an
 	// update without a resource version), but some - PodDisruptionBudget among them - reject it with
