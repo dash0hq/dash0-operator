@@ -452,7 +452,6 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 
 	sloMetricSourceSpecReason := "an untyped map in the API client, see slo_definition_roundtrip_test.go"
 	sloNotSupportedByApiReason := "accepted for OpenSLO compatibility, but ignored or rejected by the Dash0 API"
-	sloNotSupportedByCrdReason := "not supported by SLO yet"
 
 	It("finds no unexpected drift between SLO and the API client's SLO type", func() {
 		expectNoUnexpectedApiTypeDrift(
@@ -460,14 +459,18 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 			reflect.TypeFor[dash0apiclient.SloSpec](),
 			map[string]string{
 				"indicator.spec.ratioMetric.good.metricSource.spec.query":  sloMetricSourceSpecReason,
+				"indicator.spec.ratioMetric.bad.metricSource.spec.query":   sloMetricSourceSpecReason,
 				"indicator.spec.ratioMetric.total.metricSource.spec.query": sloMetricSourceSpecReason,
+				"indicator.spec.ratioMetric.raw.metricSource.spec.query":   sloMetricSourceSpecReason,
 			},
 			map[string]string{
 				"alertPolicies":                  sloNotSupportedByApiReason,
 				"indicatorRef":                   sloNotSupportedByApiReason,
 				"indicator.spec.thresholdMetric": sloNotSupportedByApiReason,
 				"indicator.spec.ratioMetric.good.metricSource.metricSourceRef":  sloNotSupportedByApiReason,
+				"indicator.spec.ratioMetric.bad.metricSource.metricSourceRef":   sloNotSupportedByApiReason,
 				"indicator.spec.ratioMetric.total.metricSource.metricSourceRef": sloNotSupportedByApiReason,
+				"indicator.spec.ratioMetric.raw.metricSource.metricSourceRef":   sloNotSupportedByApiReason,
 				"objectives.compositeWeight":                                    sloNotSupportedByApiReason,
 				"objectives.indicator":                                          sloNotSupportedByApiReason,
 				"objectives.indicatorRef":                                       sloNotSupportedByApiReason,
@@ -476,10 +479,6 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 				"objectives.timeSliceWindow":                                    sloNotSupportedByApiReason,
 				"objectives.value":                                              sloNotSupportedByApiReason,
 				"timeWindow.calendar":                                           sloNotSupportedByApiReason,
-				"indicator.spec.description":                                    sloNotSupportedByCrdReason,
-				"indicator.spec.ratioMetric.bad":                                sloNotSupportedByCrdReason,
-				"indicator.spec.ratioMetric.raw":                                sloNotSupportedByCrdReason,
-				"indicator.spec.ratioMetric.rawType":                            sloNotSupportedByCrdReason,
 			},
 		)
 	})

@@ -44,6 +44,7 @@ var _ = Describe("Converting an SLO to the API client's SloDefinition", func() {
 					"displayName": "Checkout success ratio",
 				},
 				"spec": map[string]any{
+					"description": "Share of checkout requests that succeed.",
 					"ratioMetric": map[string]any{
 						"counter": true,
 						"good": map[string]any{
@@ -113,15 +114,16 @@ func fullyPopulatedSLO() *openslov1.SLO {
 					DisplayName: "Checkout success ratio",
 				},
 				Spec: openslov1.SLOIndicatorSpec{
+					Description: "Share of checkout requests that succeed.",
 					RatioMetric: openslov1.SLORatioMetric{
 						Counter: ptr.To(true),
-						Good: openslov1.SLOMetricSourceWrapper{
+						Good: &openslov1.SLOMetricSourceWrapper{
 							MetricSource: openslov1.SLOMetricSource{
 								Type: "Prometheus",
 								Spec: openslov1.SLOMetricSourceSpec{Query: "good_requests"},
 							},
 						},
-						Total: openslov1.SLOMetricSourceWrapper{
+						Total: &openslov1.SLOMetricSourceWrapper{
 							MetricSource: openslov1.SLOMetricSource{
 								Type: "Prometheus",
 								Spec: openslov1.SLOMetricSourceSpec{Query: "all_requests"},
