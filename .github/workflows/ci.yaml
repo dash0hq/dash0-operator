@@ -376,7 +376,9 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
-    if: ${{ always() && contains(github.ref, 'refs/tags/') && needs.build_and_push_images.result == 'success' }}
+    # Second safeguard next to the tag check: a run triggered by Dependabot must never publish the Helm chart.
+    # jactionlint ignore=bot-conditions
+    if: ${{ always() && contains(github.ref, 'refs/tags/') && github.actor != 'dependabot[bot]' && needs.build_and_push_images.result == 'success' }}
     needs:
       - build_and_push_images
 
