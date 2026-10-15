@@ -234,13 +234,17 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 		spec.Components = &dash0v1alpha1.OperatorConfigurationComponents{
 			Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{
 				WorkloadSettings: dash0v1alpha1.WorkloadSettings{
-					Labels: map[string]string{"resource-label": "resource"},
+					Tolerations: []corev1.Toleration{
+						{Key: "resource-key", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule},
+					},
 				},
 			},
 		}
 		CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, spec)
 		manager := newManagerWithExtraConfig(util.ExtraConfig{
-			Agent0ConnectorLabels: map[string]string{"helm-label": "helm"},
+			Agent0ConnectorTolerations: []corev1.Toleration{
+				{Key: "helm-key", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule},
+			},
 		})
 
 		_, err := manager.ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
@@ -250,8 +254,8 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 		Expect(k8sClient.Get(ctx,
 			client.ObjectKey{Namespace: OperatorNamespace, Name: a0cresources.DeploymentName(agent0ConnectorTestNamePrefix)},
 			deployment)).To(Succeed())
-		Expect(deployment.Labels).To(HaveKeyWithValue("resource-label", "resource"))
-		Expect(deployment.Labels).ToNot(HaveKey("helm-label"))
+		Expect(deployment.Spec.Template.Spec.Tolerations).To(HaveLen(1))
+		Expect(deployment.Spec.Template.Spec.Tolerations[0].Key).To(Equal("resource-key"))
 	})
 
 	It("does not report an error when the agent0-connector is misconfigured", func() {
