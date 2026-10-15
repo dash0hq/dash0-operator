@@ -319,69 +319,82 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 			)
 		})
 
+	resolvedFromSecret := "replaced by the value from the secret before sending, see resolveSecretKeyRefs"
 	DescribeTable("finds no drift between the notification channel config types",
-		func(crdType reflect.Type, clientType reflect.Type) {
-			expectNoUnexpectedApiTypeDrift(crdType, clientType, nil, nil)
+		func(crdType reflect.Type, clientType reflect.Type, allowedOnlyInCrd map[string]string) {
+			expectNoUnexpectedApiTypeDrift(crdType, clientType, allowedOnlyInCrd, nil)
 		},
 		Entry(
 			"slack",
 			reflect.TypeFor[dash0v1beta1.SlackConfig](),
 			reflect.TypeFor[dash0apiclient.SlackConfig](),
+			map[string]string{"webhookURLFrom": resolvedFromSecret},
 		),
 		Entry(
 			"slack_bot",
 			reflect.TypeFor[dash0v1beta1.SlackBotConfig](),
 			reflect.TypeFor[dash0apiclient.SlackBotConfig](),
+			nil,
 		),
 		Entry(
 			"email_v2",
 			reflect.TypeFor[dash0v1beta1.EmailV2Config](),
 			reflect.TypeFor[dash0apiclient.EmailV2Config](),
+			nil,
 		),
 		Entry(
 			"webhook",
 			reflect.TypeFor[dash0v1beta1.WebhookConfig](),
 			reflect.TypeFor[dash0apiclient.WebhookConfig](),
+			map[string]string{"urlFrom": resolvedFromSecret, "headersFrom": resolvedFromSecret},
 		),
 		Entry(
 			"incidentio",
 			reflect.TypeFor[dash0v1beta1.IncidentioConfig](),
 			reflect.TypeFor[dash0apiclient.IncidentIOConfig](),
+			map[string]string{"urlFrom": resolvedFromSecret, "headersFrom": resolvedFromSecret},
 		),
 		Entry(
 			"opsgenie",
 			reflect.TypeFor[dash0v1beta1.OpsgenieConfig](),
 			reflect.TypeFor[dash0apiclient.OpsgenieConfig](),
+			map[string]string{"apiKeyFrom": resolvedFromSecret},
 		),
 		Entry(
 			"pagerduty",
 			reflect.TypeFor[dash0v1beta1.PagerdutyConfig](),
 			reflect.TypeFor[dash0apiclient.PagerDutyConfig](),
+			map[string]string{"keyFrom": resolvedFromSecret},
 		),
 		Entry(
 			"teams_webhook",
 			reflect.TypeFor[dash0v1beta1.TeamsWebhookConfig](),
 			reflect.TypeFor[dash0apiclient.TeamsWebhookConfig](),
+			map[string]string{"urlFrom": resolvedFromSecret},
 		),
 		Entry(
 			"discord_webhook",
 			reflect.TypeFor[dash0v1beta1.DiscordWebhookConfig](),
 			reflect.TypeFor[dash0apiclient.DiscordWebhookConfig](),
+			map[string]string{"urlFrom": resolvedFromSecret},
 		),
 		Entry(
 			"google_chat_webhook",
 			reflect.TypeFor[dash0v1beta1.GoogleChatWebhookConfig](),
 			reflect.TypeFor[dash0apiclient.GoogleChatWebhookConfig](),
+			map[string]string{"urlFrom": resolvedFromSecret},
 		),
 		Entry(
 			"ilert",
 			reflect.TypeFor[dash0v1beta1.IlertConfig](),
 			reflect.TypeFor[dash0apiclient.IlertConfig](),
+			map[string]string{"urlFrom": resolvedFromSecret},
 		),
 		Entry(
 			"all_quiet",
 			reflect.TypeFor[dash0v1beta1.AllQuietConfig](),
 			reflect.TypeFor[dash0apiclient.AllQuietConfig](),
+			map[string]string{"urlFrom": resolvedFromSecret},
 		),
 	)
 

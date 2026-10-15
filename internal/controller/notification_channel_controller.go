@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"sync"
@@ -18,6 +19,7 @@ import (
 	otelmetric "go.opentelemetry.io/otel/metric"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -33,6 +35,7 @@ import (
 
 type NotificationChannelReconciler struct {
 	client.Client
+	secretReader          client.Reader
 	pseudoClusterUid      types.UID
 	leaderElectionAware   util.LeaderElectionAware
 	apiClientPool         *ApiClientPool
@@ -50,12 +53,14 @@ var (
 
 func NewNotificationChannelReconciler(
 	k8sClient client.Client,
+	secretReader client.Reader,
 	pseudoClusterUid types.UID,
 	leaderElectionAware util.LeaderElectionAware,
 	apiClientPool *ApiClientPool,
 ) *NotificationChannelReconciler {
 	return &NotificationChannelReconciler{
 		Client:               k8sClient,
+		secretReader:         secretReader,
 		pseudoClusterUid:     pseudoClusterUid,
 		leaderElectionAware:  leaderElectionAware,
 		apiClientPool:        apiClientPool,
@@ -373,8 +378,9 @@ func (r *NotificationChannelReconciler) MapResourceToHttpRequests(
 	var apiClientCall *ApiClientCall
 	switch action {
 	case upsertAction:
-		notificationChannelDefinition, err := mapToNotificationChannelDefinition(preconditionChecksResult.resource)
-		if err != nil {
+		spec := dash0v1beta1.Dash0NotificationChannelSpec{}
+		unstructuredSpec, _ := preconditionChecksResult.resource["spec"].(map[string]any)
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredSpec, &spec); err != nil {
 			conversionErr := fmt.Errorf("unable to convert the notification channel to the Dash0 API format: %w", err)
 			logger.Error(conversionErr, "error converting notification channel")
 			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, conversionErr.Error())
@@ -383,6 +389,27 @@ func (r *NotificationChannelReconciler) MapResourceToHttpRequests(
 			Method: http.MethodPut,
 			Url:    notificationChannelUrl,
 			Execute: func(ctx context.Context) (string, error) {
+				resolvedSpec := spec.DeepCopy()
+				resolvedValues, err := resolveSecretKeyRefs(
+					ctx,
+					r.secretReader,
+					preconditionChecksResult.k8sNamespace,
+					resolvedSpec,
+					logger,
+				)
+				if err != nil {
+					return "", err
+				}
+				unstructuredResolvedSpec, err := runtime.DefaultUnstructuredConverter.ToUnstructured(resolvedSpec)
+				if err != nil {
+					return "", err
+				}
+				resource := maps.Clone(preconditionChecksResult.resource)
+				resource["spec"] = unstructuredResolvedSpec
+				notificationChannelDefinition, err := mapToNotificationChannelDefinition(resource)
+				if err != nil {
+					return "", fmt.Errorf("unable to convert the notification channel to the Dash0 API format: %w", err)
+				}
 				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
 				if err != nil {
 					return "", err
@@ -393,6 +420,7 @@ func (r *NotificationChannelReconciler) MapResourceToHttpRequests(
 					notificationChannelDefinition,
 				)
 				if err != nil {
+					redactResolvedValues(err, resolvedValues)
 					return "", err
 				}
 				if updatedNotificationChannel == nil {

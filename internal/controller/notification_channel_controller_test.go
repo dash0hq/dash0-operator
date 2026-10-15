@@ -4,12 +4,16 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -39,6 +43,10 @@ const (
 	notificationChannelOriginPatternExtra = "dash0-operator_%s_extra-namespace-nc_test-notification-channel-2"
 	testK8sName                           = "test-nc"
 	testDisplayName                       = "Test Channel"
+
+	ncSecretName           = "slack-webhook"
+	ncSecretKey            = "webhook-url"
+	ncWebhookUrlFromSecret = "https://hooks.slack.com/services/T00/B00/from-secret"
 )
 
 var (
@@ -329,6 +337,224 @@ var _ = Describe(
 						Expect(gock.IsDone()).To(BeTrue())
 					},
 				)
+
+				Describe("with a credential from a Kubernetes secret", func() {
+					AfterEach(func() {
+						deleteNotificationChannelSecretIfItExists(ctx, k8sClient)
+					})
+
+					It("sends the value from the secret and keeps only the reference in the resource", func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+						createNotificationChannelSecret(ctx, k8sClient, map[string][]byte{
+							ncSecretKey: []byte(ncWebhookUrlFromSecret),
+						})
+
+						gock.New(ApiEndpointTest).
+							Put(defaultExpectedPathNotificationChannel).
+							MatchHeader("Authorization", AuthorizationHeaderTest).
+							AddMatcher(func(req *http.Request, _ *gock.Request) (bool, error) {
+								body, err := io.ReadAll(req.Body)
+								if err != nil {
+									return false, err
+								}
+								req.Body = io.NopCloser(bytes.NewReader(body))
+								return strings.Contains(string(body), `"webhookURL":"`+ncWebhookUrlFromSecret+`"`) &&
+									!strings.Contains(string(body), "webhookURLFrom"), nil
+							}).
+							Times(1).
+							Reply(200).
+							JSON(notificationChannelPutResponse(clusterId, notificationChannelOriginPattern))
+						defer gock.Off()
+
+						ncResource := createNotificationChannelResourceWithSecretRef("")
+						Expect(k8sClient.Create(ctx, ncResource)).To(Succeed())
+
+						reconcileNotificationChannel(ctx, ncReconciler)
+
+						verifyNotificationChannelSynchronizationStatus(
+							ctx,
+							k8sClient,
+							TestNamespaceName,
+							notificationChannelName,
+							dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
+							testStartedAt,
+							notificationChannelId,
+							fmt.Sprintf(notificationChannelOriginPattern, clusterId),
+							ApiEndpointStandardizedTest,
+							"",
+						)
+						Expect(gock.IsDone()).To(BeTrue())
+
+						storedResource := &dash0v1beta1.Dash0NotificationChannel{}
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(ncResource), storedResource)).To(Succeed())
+						Expect(storedResource.Spec.SlackConfig.WebhookURL).To(BeEmpty())
+						Expect(storedResource.Spec.SlackConfig.WebhookURLFrom).ToNot(BeNil())
+						serializedResource, err := json.Marshal(storedResource)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(string(serializedResource)).ToNot(ContainSubstring(ncWebhookUrlFromSecret))
+					})
+
+					It("reports a missing secret as a retryable synchronization error", func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						ncResource := createNotificationChannelResourceWithSecretRef("")
+						Expect(k8sClient.Create(ctx, ncResource)).To(Succeed())
+
+						reconcileNotificationChannel(ctx, ncReconciler)
+
+						verifyNotificationChannelSynchronizationStatus(
+							ctx,
+							k8sClient,
+							TestNamespaceName,
+							notificationChannelName,
+							dash0common.Dash0ApiResourceSynchronizationStatusFailed,
+							testStartedAt,
+							"",
+							"",
+							ApiEndpointStandardizedTest,
+							fmt.Sprintf("failed to fetch secret with name %s in namespace %s", ncSecretName, TestNamespaceName),
+						)
+						storedResource := &dash0v1beta1.Dash0NotificationChannel{}
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(ncResource), storedResource)).To(Succeed())
+						syncResult := storedResource.Status.SynchronizationResults[0]
+						Expect(isRetryableSynchronizationError(syncResult.SynchronizationError, syncResult.HttpStatusCode)).
+							To(BeTrue())
+					})
+
+					It("reports a secret without the referenced key", func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+						createNotificationChannelSecret(ctx, k8sClient, map[string][]byte{
+							"other-key": []byte(ncWebhookUrlFromSecret),
+						})
+
+						ncResource := createNotificationChannelResourceWithSecretRef("")
+						Expect(k8sClient.Create(ctx, ncResource)).To(Succeed())
+
+						reconcileNotificationChannel(ctx, ncReconciler)
+
+						verifyNotificationChannelSynchronizationStatus(
+							ctx,
+							k8sClient,
+							TestNamespaceName,
+							notificationChannelName,
+							dash0common.Dash0ApiResourceSynchronizationStatusFailed,
+							testStartedAt,
+							"",
+							"",
+							ApiEndpointStandardizedTest,
+							fmt.Sprintf(
+								"secret \"%s/%s\" does not contain key \"%s\"",
+								TestNamespaceName,
+								ncSecretName,
+								ncSecretKey,
+							),
+						)
+					})
+
+					It("fails every call of the API client call when the secret does not exist", func() {
+						apiConfig := ApiConfig{
+							Endpoint: ApiEndpointStandardizedTest,
+							Dataset:  DatasetCustomTest,
+							Token:    AuthorizationTokenTest,
+						}
+						result := ncReconciler.MapResourceToHttpRequests(
+							&preconditionValidationResult{
+								k8sName:      notificationChannelName,
+								k8sNamespace: TestNamespaceName,
+								resource: map[string]any{
+									"metadata": map[string]any{"name": notificationChannelName},
+									"spec": map[string]any{
+										"display": map[string]any{"name": "Notification Channel"},
+										"type":    "slack",
+										"slackConfig": map[string]any{
+											"webhookURLFrom": map[string]any{
+												"secretKeyRef": map[string]any{"name": ncSecretName, "key": ncSecretKey},
+											},
+										},
+									},
+								},
+							},
+							apiConfig,
+							upsertAction,
+							logger,
+						)
+						Expect(result.ApiRequests).To(HaveLen(1))
+						for range 2 {
+							_, err := result.ApiRequests[0].ApiClientCall.Execute(ctx)
+							Expect(err).To(MatchError(ContainSubstring("failed to fetch secret with name " + ncSecretName)))
+						}
+					})
+
+					It("deletes a notification channel when the secret does not exist", func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						expectNotificationChannelDeleteRequest(defaultExpectedPathNotificationChannel)
+						defer gock.Off()
+
+						ncResource := createNotificationChannelResourceWithSecretRef("")
+						Expect(k8sClient.Create(ctx, ncResource)).To(Succeed())
+						Expect(k8sClient.Delete(ctx, ncResource)).To(Succeed())
+
+						reconcileNotificationChannel(ctx, ncReconciler)
+
+						Expect(gock.IsDone()).To(BeTrue())
+					})
+
+					It("deletes a notification channel labelled with dash0.com/enable=false when the secret does not exist",
+						func() {
+							EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+							expectNotificationChannelDeleteRequestWithHttpStatus(
+								defaultExpectedPathNotificationChannel,
+								http.StatusNotFound,
+							)
+							defer gock.Off()
+
+							ncResource := createNotificationChannelResourceWithSecretRef("false")
+							Expect(k8sClient.Create(ctx, ncResource)).To(Succeed())
+
+							reconcileNotificationChannel(ctx, ncReconciler)
+
+							Expect(gock.IsDone()).To(BeTrue())
+						})
+
+					It("removes the value from the secret from API errors", func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+						createNotificationChannelSecret(ctx, k8sClient, map[string][]byte{
+							ncSecretKey: []byte(ncWebhookUrlFromSecret),
+						})
+
+						gock.New(ApiEndpointTest).
+							Put(defaultExpectedPathNotificationChannel).
+							Times(1).
+							Reply(400).
+							JSON(map[string]string{"error": "invalid webhook URL " + ncWebhookUrlFromSecret})
+						defer gock.Off()
+
+						ncResource := createNotificationChannelResourceWithSecretRef("")
+						Expect(k8sClient.Create(ctx, ncResource)).To(Succeed())
+
+						reconcileNotificationChannel(ctx, ncReconciler)
+
+						verifyNotificationChannelSynchronizationStatus(
+							ctx,
+							k8sClient,
+							TestNamespaceName,
+							notificationChannelName,
+							dash0common.Dash0ApiResourceSynchronizationStatusFailed,
+							testStartedAt,
+							"",
+							"",
+							ApiEndpointStandardizedTest,
+							"invalid webhook URL <redacted>",
+						)
+						storedResource := &dash0v1beta1.Dash0NotificationChannel{}
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(ncResource), storedResource)).To(Succeed())
+						Expect(storedResource.Status.SynchronizationResults[0].SynchronizationError).
+							ToNot(ContainSubstring(ncWebhookUrlFromSecret))
+						Expect(gock.IsDone()).To(BeTrue())
+					})
+				})
 
 				type maybeDoInitialSynchronizationOfAllResourcesTest struct {
 					disableSync func()
@@ -643,6 +869,7 @@ var _ = Describe(
 func createNotificationChannelReconciler(clusterId string) *NotificationChannelReconciler {
 	ncReconciler := NewNotificationChannelReconciler(
 		k8sClient,
+		k8sClient,
 		types.UID(clusterId),
 		notificationChannelLeaderElectionAware,
 		testApiClientPool(),
@@ -718,6 +945,52 @@ func createNotificationChannelResourceWithEnableLabel(
 			Frequency: "10m",
 		},
 	}
+}
+
+func createNotificationChannelResourceWithSecretRef(
+	dash0EnableLabelValue string,
+) *dash0v1beta1.Dash0NotificationChannel {
+	nc := createNotificationChannelResourceWithEnableLabel(
+		TestNamespaceName,
+		notificationChannelName,
+		dash0EnableLabelValue,
+	)
+	nc.Spec.SlackConfig = &dash0v1beta1.SlackConfig{
+		WebhookURLFrom: &dash0v1beta1.CredentialValueFrom{
+			SecretKeyRef: &dash0common.SecretKeySelector{Name: ncSecretName, Key: ncSecretKey},
+		},
+		Channel: "#alerts",
+	}
+	return nc
+}
+
+func createNotificationChannelSecret(ctx context.Context, k8sClient client.Client, data map[string][]byte) {
+	Expect(k8sClient.Create(ctx, &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: ncSecretName},
+		Data:       data,
+	})).To(Succeed())
+}
+
+func deleteNotificationChannelSecretIfItExists(ctx context.Context, k8sClient client.Client) {
+	err := k8sClient.Delete(ctx, &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: ncSecretName},
+	})
+	if err != nil && !apierrors.IsNotFound(err) {
+		Expect(err).NotTo(HaveOccurred())
+	}
+}
+
+func reconcileNotificationChannel(ctx context.Context, ncReconciler *NotificationChannelReconciler) {
+	result, err := ncReconciler.Reconcile(
+		ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: TestNamespaceName,
+				Name:      notificationChannelName,
+			},
+		},
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(result).To(Equal(reconcile.Result{}))
 }
 
 func deleteNotificationChannelResourceIfItExists(

@@ -1469,13 +1469,13 @@ func startOperatorManager(
 	}
 
 	if !cliArgs.telemetryCollectionEnabled {
-		// If telemetry collection is disabled, we do not have the RBAC permissions to read secrects in arbitrary
+		// If telemetry collection is disabled, we do not have the RBAC permissions to list or watch secrets in arbitrary
 		// namespaces. As a consequence, we need to instruct controller-runtime to only list/watch secrets in the operator
 		// namespace. Otherwise, any k8sClient.Get call to fetch a secret (in particular, the Dash0 auth token secret for
 		// self-monitoring) will make controller-runtime execute a list and watch for secrets in the entire cluster, just
 		// to build its internal cache. This fails with
 		// 'User ... cannot list resource "secrets" in API group "" at the cluster scope.'
-		// if we do not have cluster-wide permissions for secrets.
+		// if we do not have cluster-wide list/watch permissions for secrets.
 		options.Cache = cache.Options{
 			ByObject: map[client.Object]cache.ByObject{
 				&corev1.Secret{}: {
@@ -2030,6 +2030,7 @@ func startDash0Controllers(
 
 	notificationChannelReconciler := controller.NewNotificationChannelReconciler(
 		k8sClient,
+		mgr.GetAPIReader(),
 		clusterUid,
 		leaderElectionAwareRunnable,
 		apiClientPool,

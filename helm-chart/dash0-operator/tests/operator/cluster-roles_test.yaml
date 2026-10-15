@@ -29,6 +29,24 @@ tests:
           path: metadata.name
           value: dash0-operator-manager-base
 
+  - it: should grant get on secrets for notification channel credentials if telemetry collection is disabled
+    set:
+      operator:
+        telemetryCollectionEnabled: false
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - ""
+            resources:
+              - secrets
+            verbs:
+              - get
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-iac
+
   - it: should grant permissions for telemetry collection if telemetry collection is enabled
     asserts:
       - hasDocuments:
