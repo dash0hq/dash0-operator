@@ -299,5 +299,5 @@ func verifyOwnerReference(object client.Object) {
 	Expect(ownerReference.Kind).To(Equal("Deployment"))
 	Expect(ownerReference.Name).To(Equal(testutil.OperatorManagerDeployment.Name))
 	Expect(*ownerReference.BlockOwnerDeletion).To(BeTrue())
-	Expect(*ownerReference.Controller).To(BeTrue())
+	Expect(ownerReference.Controller).To(BeNil())
 }

@@ -44,7 +44,7 @@ jobs:
   run-e2e-tests-on-kind:
     name: Set up cluster and run e2e tests
     runs-on: depot-ubuntu-24.04-4
-    timeout-minutes: 90
+    timeout-minutes: 120
     permissions:
       contents: read
       pull-requests: write
@@ -163,7 +163,7 @@ jobs:
       - name: Upload Kubernetes cluster information and pod logs for failed tests
         id: upload-k8s-logs
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: e2e-cluster-info-and-logs
           path: test-resources/e2e/logs

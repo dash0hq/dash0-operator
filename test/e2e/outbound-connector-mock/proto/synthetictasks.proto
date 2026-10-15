@@ -1,0 +1,224 @@
+// SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Vendored from the dash0 monorepo (modules/proto/internal/synthetictasks/synthetictasks.proto). Only the go_package
+// option differs (it points at the e2e mock module).
+//
+// To re-vendor: copy the upstream file, set the go_package option below to the
+// outbound-connector-mock module path, then run `make proto-gen-outbound-connector-mock-synthetics` from the repo root.
+
+syntax = "proto3";
+
+package synthetictasks;
+
+import "google/protobuf/duration.proto";
+
+option go_package = "outbound-connector-mock/proto";
+
+// Compatibility policy. This file ships in the public edge-proxy image, so workers run it
+// on the customer's upgrade schedule and a fleet can lag the server by months. An old
+// worker against a new server must work, and the reverse.
+//
+// Additive-only. You may add a field with an unused number, an arm to an existing oneof,
+// or a value to an existing enum. You may not reuse or renumber a field number, remove a
+// field or enum value (reserve it, name and number), rename anything (the wire survives a
+// rename, the generated code a worker builds from this file does not), move a field into
+// or out of a oneof, or add or remove `optional`. A field added later must tolerate being
+// unset by the other side, an optional field never becomes required, and a `MUST` already
+// written against a released field is never tightened.
+//
+// Negotiation is by capability, not by version. A worker announces what it can decode in
+// Hello: the kinds in supported_task_kinds, and per kind the payload apiVersions in
+// supported_api_versions. The server dispatches only what the receiving worker announced
+// and never gates dispatch on Hello.worker_version, so an older worker is never sent a kind
+// or an apiVersion it lacks, and a newer worker's unrecognized kinds are ignored.
+// TASK_FAILURE_REASON_UNSUPPORTED_TASK_KIND and TASK_FAILURE_REASON_INVALID_PAYLOAD remain
+// as backstops for a server that gets this wrong; they are not the mechanism. Result
+// apiVersions need no negotiation, because the server is always at least as new as the
+// worker: it MUST accept every result apiVersion it has released.
+//
+// A payload apiVersion is a Kubernetes-style `group/version` string, matching the CRD
+// envelope the rest of the Dash0 API uses (see the control-plane-api API design doc). It
+// versions the JSON schema the `params` and `result` bytes carry, never this proto.
+//
+// Deprecate before removing: mark it here (`[deprecated = true]` where proto allows it),
+// say what replaces it, hold the behavior for the whole window, then remove it under the
+// rules above. The unit of compatibility is the worker image tag. Two open decisions: how
+// long a window runs, and the oldest tag the server supports.
+
+// SyntheticTaskService dispatches synthetic check tasks to workers running in a
+// customer network (a "private location"). It ships in the public edge-proxy image,
+// so this is a customer-facing contract.
+service SyntheticTaskService {
+  // Subscribe is opened by a private-location worker; connectivity is outbound-only.
+  // The worker authenticates with an organization-scoped bearer token in the
+  // `authorization` gRPC metadata header, in the form `Bearer <token>`.
+  //
+  // The first WorkerMessage MUST be a Hello; the server rejects the stream otherwise.
+  // The worker MUST then send Heartbeat at a fixed interval for as long as the stream
+  // is open, including while it executes a task. It MUST answer every TaskRequest with
+  // exactly one TaskResult carrying the same task_id.
+  //
+  // Delivery is at-least-once and scoped to one stream. A worker MUST abandon any task
+  // still outstanding when its stream closes, and MUST NOT send that task's result on a
+  // later stream; the server ignores a task_id it did not dispatch on the stream the
+  // result arrives on. The server may dispatch the same underlying work again as a new
+  // task with a new task_id, so a task can execute more than once.
+  rpc Subscribe(stream WorkerMessage) returns (stream ServerMessage);
+}
+
+// WorkerMessage is everything a worker can send on the stream.
+message WorkerMessage {
+  oneof message {
+    Hello hello = 1;
+    Heartbeat heartbeat = 2;
+    TaskResult task_result = 3;
+  }
+}
+
+// ServerMessage is everything the server can send on the stream.
+message ServerMessage {
+  oneof message {
+    TaskRequest task_request = 1;
+  }
+}
+
+// Hello identifies the worker and its capabilities. It MUST be the first message on
+// the stream and MUST NOT be sent again on the same stream.
+message Hello {
+  // The customer-chosen location this worker belongs to, unique only within the
+  // worker's organization. The server resolves it to the location's Dash0-assigned
+  // identity, which a worker never learns.
+  //
+  // This is a client assertion, not a proven identity: the bearer token authenticates
+  // the organization and nothing finer, so any worker holding it can name any location
+  // in that organization. Treat it as a routing key within the authenticated
+  // organization, never as an authorization decision.
+  string location_id = 1;
+
+  // Unique per worker instance. A worker MUST derive it from something that changes on
+  // every restart, such as the Kubernetes pod UID or a UUID generated at startup.
+  string worker_id = 2;
+
+  // Free-form version of the worker build, for diagnostics. The server MUST NOT make
+  // dispatch decisions from it.
+  string worker_version = 3;
+
+  // The task kinds the server may dispatch to this worker. A worker MUST NOT advertise
+  // a kind it cannot run. A kind the server does not recognize is ignored.
+  repeated TaskKind supported_task_kinds = 4;
+
+  // The payload apiVersions this worker can decode, per task kind. A worker SHOULD announce
+  // an entry for every kind it lists in supported_task_kinds; an entry for a kind it did
+  // not list is ignored.
+  //
+  // Empty means the worker predates this field, not that it decodes nothing: a worker
+  // built before this field existed cannot announce anything. The server MUST then fall
+  // back to the oldest apiVersion whose deprecation window is still open.
+  repeated SupportedApiVersions supported_api_versions = 5;
+}
+
+// SupportedApiVersions announces the payload apiVersions a worker can decode for one task
+// kind.
+message SupportedApiVersions {
+  TaskKind kind = 1;
+
+  // The apiVersions of the kind's params schema this worker can decode, for example
+  // "dash0.com/v1alpha1". The server MUST dispatch only a version present here.
+  repeated string api_versions = 2;
+}
+
+// Heartbeat reports that the worker is alive. It carries no fields; capacity and
+// readiness signals are deferred.
+message Heartbeat {}
+
+// TaskKind enumerates the kinds of task a worker can execute. It is the unit of capability
+// negotiation, so a kind is deprecated before dispatch stops and a removed value stays
+// reserved.
+enum TaskKind {
+  TASK_KIND_UNSPECIFIED = 0;
+
+  // An HTTP synthetic check, carried as TaskRequest.http_check.
+  TASK_KIND_HTTP_CHECK = 1;
+}
+
+// TaskRequest asks a worker to execute one task.
+message TaskRequest {
+  // Correlates this request with its TaskResult. Unique per dispatch and opaque to the
+  // worker: re-dispatched work arrives as a new task_id, never a reused one.
+  string task_id = 1;
+
+  // W3C traceparent header. The worker MUST use it as the parent of the spans it
+  // produces for this task.
+  string traceparent = 2;
+
+  // Bounds the whole task, separate from any timeout inside the payload. The worker
+  // MUST answer with TASK_FAILURE_REASON_TIMEOUT once it elapses.
+  google.protobuf.Duration timeout = 3;
+
+  // The server only sets an arm the worker advertised in Hello. A worker that receives
+  // an arm it does not know MUST answer with TASK_FAILURE_REASON_UNSUPPORTED_TASK_KIND.
+  oneof payload {
+    HttpCheckTask http_check = 4;
+  }
+}
+
+// HttpCheckTask carries the parameters of an HTTP synthetic check.
+message HttpCheckTask {
+  // The JSON encoding of the Dash0 OpenAPI schema `syntheticchecks.HttpRequestParams`.
+  bytes params = 1;
+
+  // The apiVersion of the `params` schema, for example "dash0.com/v1alpha1". The server
+  // MUST pick one the receiving worker announced in Hello.supported_api_versions. A worker
+  // that cannot handle the apiVersion it receives MUST still answer with
+  // TASK_FAILURE_REASON_INVALID_PAYLOAD.
+  string api_version = 2;
+}
+
+// TaskResult reports the outcome of exactly one TaskRequest.
+message TaskResult {
+  // The task_id of the TaskRequest this answers.
+  string task_id = 1;
+
+  // A check that ran and observed a failing response is a successful task; that failure
+  // belongs in the check result. Set `failure` only for a task the worker could not
+  // execute at all.
+  oneof result {
+    HttpCheckResult http_check = 2;
+    TaskFailure failure = 3;
+  }
+}
+
+// HttpCheckResult carries the outcome of an executed HTTP synthetic check.
+message HttpCheckResult {
+  // The JSON encoding of the Dash0 OpenAPI schema `syntheticchecks.HttpRequestResult`.
+  bytes result = 1;
+
+  // The apiVersion of the `result` schema, for example "dash0.com/v1alpha1".
+  string api_version = 2;
+}
+
+// TaskFailure reports that the worker could not execute the task.
+message TaskFailure {
+  TaskFailureReason reason = 1;
+
+  // Detail for diagnostics. Callers MUST NOT parse it; branch on `reason`.
+  string message = 2;
+}
+
+// TaskFailureReason categorizes why a worker could not execute a task.
+enum TaskFailureReason {
+  TASK_FAILURE_REASON_UNSPECIFIED = 0;
+
+  // The worker does not implement the payload kind it received.
+  TASK_FAILURE_REASON_UNSUPPORTED_TASK_KIND = 1;
+
+  // The payload did not decode, or its schema version is one the worker cannot handle.
+  TASK_FAILURE_REASON_INVALID_PAYLOAD = 2;
+
+  // The worker hit TaskRequest.timeout before the task finished.
+  TASK_FAILURE_REASON_TIMEOUT = 3;
+
+  // The worker failed for a reason the other values do not cover.
+  TASK_FAILURE_REASON_INTERNAL = 4;
+}

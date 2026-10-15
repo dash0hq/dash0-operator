@@ -4,25 +4,30 @@
 package controller
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	otelmetric "go.opentelemetry.io/otel/metric"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
@@ -36,7 +41,8 @@ type ViewReconciler struct {
 	client.Client
 	pseudoClusterUid      types.UID
 	leaderElectionAware   util.LeaderElectionAware
-	httpClient            *http.Client
+	recorder              events.EventRecorder
+	apiClientPool         *ApiClientPool
 	defaultApiConfigs     selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs  selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	initialSyncMutex      sync.Mutex
@@ -44,6 +50,8 @@ type ViewReconciler struct {
 	initialSyncHasHappend atomic.Bool
 	namespacedSyncMutex   selfmonitoringapiaccess.NamespaceMutex
 }
+
+const viewFolderPathAnnotation = "dash0.com/folder-path"
 
 var (
 	viewReconcileRequestMetric otelmetric.Int64Counter
@@ -53,13 +61,15 @@ func NewViewReconciler(
 	k8sClient client.Client,
 	pseudoClusterUid types.UID,
 	leaderElectionAware util.LeaderElectionAware,
-	httpClient *http.Client,
+	recorder events.EventRecorder,
+	apiClientPool *ApiClientPool,
 ) *ViewReconciler {
 	return &ViewReconciler{
 		Client:               k8sClient,
 		pseudoClusterUid:     pseudoClusterUid,
 		leaderElectionAware:  leaderElectionAware,
-		httpClient:           httpClient,
+		recorder:             recorder,
+		apiClientPool:        apiClientPool,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
 		namespacedSyncMutex:  *selfmonitoringapiaccess.NewNamespaceMutex(),
@@ -69,8 +79,8 @@ func NewViewReconciler(
 func (r *ViewReconciler) SetupWithManager(mgr manager.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dash0v1alpha1.Dash0View{}).
-		// ignore changes in the status subresource, but react on changes to spec, label and annotations
-		WithEventFilter(generationOrLabelChangePredicate).
+		// ignore changes in the status subresource, but react on changes to spec, labels and dash0.com/ annotations
+		WithEventFilter(generationLabelOrDash0AnnotationChangePredicate).
 		Complete(r)
 }
 
@@ -114,8 +124,9 @@ func (r *ViewReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
+// HttpClient returns nil, the view reconciler talks to the Dash0 API via the API client pool.
 func (r *ViewReconciler) HttpClient() *http.Client {
-	return r.httpClient
+	return nil
 }
 
 func (r *ViewReconciler) SetDefaultApiConfigs(ctx context.Context, apiConfigs []ApiConfig, logger logd.Logger) {
@@ -309,6 +320,10 @@ func (r *ViewReconciler) Reconcile(ctx context.Context, req reconcile.Request) (
 		}
 	}
 
+	if action == upsertAction {
+		r.warnAboutDeprecatedFolderField(viewResource, logger)
+	}
+
 	unstructuredResource, err := structToMap(viewResource)
 	if err != nil {
 		msg := "cannot serialize the view resource"
@@ -331,6 +346,29 @@ func (r *ViewReconciler) Reconcile(ctx context.Context, req reconcile.Request) (
 	return reconcile.Result{}, nil
 }
 
+func (r *ViewReconciler) warnAboutDeprecatedFolderField(viewResource *dash0v1alpha1.Dash0View, logger logd.Logger) {
+	folder := viewResource.Spec.Display.Folder //nolint:staticcheck
+	if len(folder) == 0 {
+		return
+	}
+	message := fmt.Sprintf(
+		"The field spec.display.folder is deprecated and ignored by Dash0. Use the annotation %s: \"/%s\" instead.",
+		viewFolderPathAnnotation,
+		strings.Join(folder, "/"),
+	)
+	logger.Warn(message, "namespace", viewResource.Namespace, "name", viewResource.Name)
+	if r.recorder != nil {
+		r.recorder.Eventf(
+			viewResource,
+			nil,
+			corev1.EventTypeWarning,
+			string(util.ReasonDeprecatedFieldUsed),
+			string(util.ActionSynchronization),
+			message,
+		)
+	}
+}
+
 func (r *ViewReconciler) MapResourceToHttpRequests(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
@@ -340,57 +378,73 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 	itemName := preconditionChecksResult.k8sName
 
 	viewUrl, viewOrigin := r.renderViewUrl(preconditionChecksResult, apiConfig.Endpoint, apiConfig.Dataset)
+	dataset := apiConfig.Dataset
 
-	var req *http.Request
-	var method string
-	var err error
-
+	var apiClientCall *ApiClientCall
 	switch action {
 	case upsertAction:
-		view := preconditionChecksResult.resource
-		serializedView, _ := json.Marshal(view)
-		requestPayload := bytes.NewBuffer(serializedView)
-		method = http.MethodPut
-		req, err = http.NewRequest(
-			method,
-			viewUrl,
-			requestPayload,
-		)
+		viewDefinition, err := mapToViewDefinition(preconditionChecksResult.resource)
+		if err != nil {
+			conversionErr := fmt.Errorf("unable to convert the view to the Dash0 API format: %w", err)
+			logger.Error(conversionErr, "error converting view")
+			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, conversionErr.Error())
+		}
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodPut,
+			Url:    viewUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				updatedView, err := apiClient.UpdateView(ctx, viewOrigin, viewDefinition, &dataset)
+				if err != nil {
+					return "", err
+				}
+				if updatedView == nil {
+					return "", errors.New("unexpected nil/empty response body")
+				}
+				return dash0apiclient.GetViewID(updatedView), nil
+			},
+		}
 	case deleteAction:
-		method = http.MethodDelete
-		req, err = http.NewRequest(
-			method,
-			viewUrl,
-			nil,
-		)
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodDelete,
+			Url:    viewUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				return "", apiClient.DeleteView(ctx, viewOrigin, &dataset)
+			},
+		}
 	default:
 		unknownActionErr := fmt.Errorf("unknown API action: %d", action)
 		logger.Error(unknownActionErr, "unknown API action")
 		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, unknownActionErr.Error())
 	}
 
-	if err != nil {
-		httpError := fmt.Errorf(
-			"unable to create a new HTTP request to synchronize the view: %s %s: %w",
-			method,
-			viewUrl,
-			err,
-		)
-		logger.Error(httpError, "error creating http request")
-		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, httpError.Error())
-	}
-
-	addAuthorizationHeader(req, apiConfig.Token)
-	if action == upsertAction {
-		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
-	}
-
-	return NewResourceToRequestsResultSingleItemSuccess(
+	return NewResourceToRequestsResultSingleItemApiClientCall(
 		apiConfig,
-		req,
+		apiClientCall,
 		itemName,
 		viewOrigin,
 	)
+}
+
+// mapToViewDefinition converts the view resource to the typed view definition of the Dash0 API client. Fields that
+// the Dash0 API does not define for views (for example metadata.namespace, status) are dropped.
+func mapToViewDefinition(view map[string]any) (*dash0apiclient.ViewDefinition, error) {
+	serializedView, err := json.Marshal(view)
+	if err != nil {
+		return nil, err
+	}
+	viewDefinition := &dash0apiclient.ViewDefinition{}
+	if err = json.Unmarshal(serializedView, viewDefinition); err != nil {
+		return nil, err
+	}
+	return viewDefinition, nil
 }
 
 func (r *ViewReconciler) renderViewUrl(
@@ -398,21 +452,20 @@ func (r *ViewReconciler) renderViewUrl(
 	endpoint string,
 	dataset string,
 ) (string, string) {
-	datasetUrlEncoded := url.QueryEscape(dataset)
 	viewOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s",
 		r.pseudoClusterUid,
-		datasetUrlEncoded,
+		datasetInOrigin(dataset),
 		preconditionChecksResult.k8sNamespace,
 		preconditionChecksResult.k8sName,
 	)
 	return fmt.Sprintf(
 		"%sapi/views/%s?dataset=%s",
 		endpoint,
-		viewOrigin,
-		datasetUrlEncoded,
+		url.PathEscape(viewOrigin),
+		url.QueryEscape(dataset),
 	), viewOrigin
 }
 

@@ -11,7 +11,10 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/contexts/ottldatapoint"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/contexts/ottlmetric"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/ottlfuncs"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
@@ -4278,6 +4281,43 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}),
 	)
 
+	type containerImageTagTest struct {
+		cmTypeDef                  configMapTypeDefinition
+		profilingEnabled           bool
+		k8sAttributesProcessorName string
+	}
+
+	DescribeTable("should extract container.image.tag and container.image.tags", func(testConfig containerImageTagTest) {
+		configMap, err := testConfig.cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         cmTestSingleDefaultOtlpExporter(),
+			ProfilingEnabled:  testConfig.profilingEnabled,
+		}, monitoredNamespaces, nil, nil, false)
+		Expect(err).ToNot(HaveOccurred())
+		collectorConfig := parseConfigMapContent(configMap)
+		metadataListRaw := ReadFromMap(
+			collectorConfig,
+			[]string{"processors", testConfig.k8sAttributesProcessorName, "extract", "metadata"},
+		)
+		Expect(metadataListRaw).ToNot(BeNil())
+		Expect(metadataListRaw.([]any)).To(ContainElements("container.image.tag", "container.image.tags"))
+	},
+		Entry("daemonset/k8s_attributes", containerImageTagTest{
+			cmTypeDef:                  cmTypeDefDaemonSet,
+			k8sAttributesProcessorName: "k8s_attributes",
+		}),
+		Entry("deployment/k8s_attributes", containerImageTagTest{
+			cmTypeDef:                  cmTypeDefDeployment,
+			k8sAttributesProcessorName: "k8s_attributes",
+		}),
+		Entry("daemonset/k8s_attributes/profiles", containerImageTagTest{
+			cmTypeDef:                  cmTypeDefDaemonSet,
+			profilingEnabled:           true,
+			k8sAttributesProcessorName: "k8s_attributes/profiles",
+		}),
+	)
+
 	Describe("should enable/disable wait_for_metadata", func() {
 		DescribeTable("should configure the k8s_attributes processor to wait for metadata if enabled", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
@@ -4528,12 +4568,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 	Describe("discard metrics from unmonitored namespaces", func() {
 
 		type ottlFilterExpressionTestConfig struct {
-			monitoredNamespaces           []string
-			selfMonitoringEnabled         bool
-			prometheusCrdSupportEnabled   bool
-			operatorManagerDeploymentName string
-			signalControl                 SignalControlConfig
-			expectedExpression            string
+			monitoredNamespaces             []string
+			selfMonitoringEnabled           bool
+			prometheusCrdSupportEnabled     bool
+			operatorManagerDeploymentName   string
+			signalControl                   SignalControlConfig
+			syntheticsWorkerDeploymentNames []string
+			expectedExpression              string
 		}
 
 		DescribeTable("should render the namespace filter ottl expression correctly", func(testConfig ottlFilterExpressionTestConfig) {
@@ -4544,9 +4585,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 					SelfMonitoringEnabled: testConfig.selfMonitoringEnabled,
 				},
-				PrometheusCrdSupportEnabled: testConfig.prometheusCrdSupportEnabled,
-				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
-				SignalControl:               testConfig.signalControl,
+				PrometheusCrdSupportEnabled:     testConfig.prometheusCrdSupportEnabled,
+				TargetAllocatorNamePrefix:       TargetAllocatorPrefixTest,
+				SignalControl:                   testConfig.signalControl,
+				SyntheticsWorkerDeploymentNames: testConfig.syntheticsWorkerDeploymentNames,
 			}
 			expression := renderOttlNamespaceFilter(
 				testConfig.monitoredNamespaces,
@@ -4720,16 +4762,48 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				},
 				expectedExpression: "resource.attributes[\"k8s.namespace.name\"] != nil\n",
 			}),
+			Entry("with no namespaces, self-monitoring enabled, two synthetics-worker instances", ottlFilterExpressionTestConfig{
+				monitoredNamespaces:           nil,
+				selfMonitoringEnabled:         true,
+				prometheusCrdSupportEnabled:   false,
+				operatorManagerDeploymentName: OperatorManagerDeploymentName,
+				syntheticsWorkerDeploymentNames: []string{
+					namePrefix + "-synthetics-worker-location-a",
+					namePrefix + "-synthetics-worker-location-b",
+				},
+				expectedExpression: "(resource.attributes[\"k8s.deployment.name\"] != \"" + OperatorManagerDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.daemonset.name\"] != \"" + ExpectedDaemonSetName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + ExpectedDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + namePrefix + "-synthetics-worker-location-a\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + namePrefix + "-synthetics-worker-location-b\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          resource.attributes[\"k8s.namespace.name\"] != nil\n",
+			}),
+			Entry("self-monitoring disabled - synthetics-worker exclusions not added", ottlFilterExpressionTestConfig{
+				monitoredNamespaces:           nil,
+				selfMonitoringEnabled:         false,
+				prometheusCrdSupportEnabled:   false,
+				operatorManagerDeploymentName: OperatorManagerDeploymentName,
+				syntheticsWorkerDeploymentNames: []string{
+					namePrefix + "-synthetics-worker-location-a",
+				},
+				expectedExpression: "resource.attributes[\"k8s.namespace.name\"] != nil\n",
+			}),
 		)
 
 		type ottlFilterEvaluationTestConfig struct {
-			monitoredNamespaces           []string
-			selfMonitoringEnabled         bool
-			prometheusCrdSupportEnabled   bool
-			operatorManagerDeploymentName string
-			signalControl                 SignalControlConfig
-			resourceAttributes            map[string]string
-			expectedToBeDropped           bool
+			monitoredNamespaces             []string
+			selfMonitoringEnabled           bool
+			prometheusCrdSupportEnabled     bool
+			operatorManagerDeploymentName   string
+			signalControl                   SignalControlConfig
+			syntheticsWorkerDeploymentNames []string
+			resourceAttributes              map[string]string
+			expectedToBeDropped             bool
 		}
 
 		DescribeTable("should let self-monitoring metrics pass through the OTTL namespace filter", func(testConfig ottlFilterEvaluationTestConfig) {
@@ -4740,9 +4814,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 					SelfMonitoringEnabled: testConfig.selfMonitoringEnabled,
 				},
-				PrometheusCrdSupportEnabled: testConfig.prometheusCrdSupportEnabled,
-				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
-				SignalControl:               testConfig.signalControl,
+				PrometheusCrdSupportEnabled:     testConfig.prometheusCrdSupportEnabled,
+				TargetAllocatorNamePrefix:       TargetAllocatorPrefixTest,
+				SignalControl:                   testConfig.signalControl,
+				SyntheticsWorkerDeploymentNames: testConfig.syntheticsWorkerDeploymentNames,
 			}
 			expression := renderOttlNamespaceFilter(testConfig.monitoredNamespaces, colConfig)
 
@@ -4993,6 +5068,37 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					resourceAttributes: map[string]string{
 						"k8s.deployment.name": namePrefix + "-edge-proxy",
 						"k8s.namespace.name":  OperatorNamespace,
+					},
+					expectedToBeDropped: true,
+				}),
+			Entry("synthetics-worker metrics are not dropped when self-monitoring is enabled",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   false,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					syntheticsWorkerDeploymentNames: []string{
+						namePrefix + "-synthetics-worker-location-a",
+						namePrefix + "-synthetics-worker-location-b",
+					},
+					resourceAttributes: map[string]string{
+						"k8s.deployment.name": namePrefix + "-synthetics-worker-location-b",
+						"k8s.namespace.name":  OperatorNamespace,
+					},
+					expectedToBeDropped: false,
+				}),
+			Entry("synthetics-worker metrics in a different namespace are still dropped",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   false,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					syntheticsWorkerDeploymentNames: []string{
+						namePrefix + "-synthetics-worker-location-a",
+					},
+					resourceAttributes: map[string]string{
+						"k8s.deployment.name": namePrefix + "-synthetics-worker-location-a",
+						"k8s.namespace.name":  "some-namespace",
 					},
 					expectedToBeDropped: true,
 				}),
@@ -5302,6 +5408,141 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(ReadFromMap(collectorConfig, []string{"receivers", "prometheus"})).ToNot(BeNil())
 			Expect(ReadFromMap(collectorConfig, []string{"receivers", "prometheus", "api_server"})).To(BeNil())
 		})
+
+		type prometheusServiceAttributesTestConfig struct {
+			resourceAttributes         map[string]string
+			dataPointAttributes        map[string]string
+			expectedResourceAttributes map[string]any
+		}
+
+		DescribeTable("should derive the service attributes of scraped metrics", func(testConfig prometheusServiceAttributesTestConfig) {
+			configMap, err := assembleDaemonSetCollectorConfigMap(
+				config,
+				[]string{namespace1},
+				nil,
+				[]string{namespace1},
+				nil,
+				nil,
+				emptyTargetAllocatorMtlsConfig,
+				false,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			transformProcessor := ReadFromMap(collectorConfig, []string{
+				"processors",
+				"transform/metrics/prometheus_service_attributes",
+			}).(map[string]any)
+			Expect(transformProcessor["error_mode"]).To(Equal("ignore"))
+			var statements []string
+			for _, group := range transformProcessor["metric_statements"].([]any) {
+				groupMap := group.(map[string]any)
+				Expect(groupMap["context"]).To(Equal("datapoint"))
+				for _, statement := range groupMap["statements"].([]any) {
+					statements = append(statements, statement.(string))
+				}
+			}
+
+			settings := component.TelemetrySettings{Logger: zap.NewNop()}
+			parser, err := ottldatapoint.NewParser(ottlfuncs.StandardFuncs[*ottldatapoint.TransformContext](), settings)
+			Expect(err).NotTo(HaveOccurred())
+			parsedStatements, err := parser.ParseStatements(statements)
+			Expect(err).NotTo(HaveOccurred())
+			statementSeq := ottldatapoint.NewStatementSequence(
+				parsedStatements,
+				settings,
+				ottldatapoint.WithStatementSequenceErrorMode(ottl.IgnoreError),
+			)
+
+			resourceMetrics := pmetric.NewResourceMetrics()
+			for k, v := range testConfig.resourceAttributes {
+				resourceMetrics.Resource().Attributes().PutStr(k, v)
+			}
+			scopeMetrics := resourceMetrics.ScopeMetrics().AppendEmpty()
+			metric := scopeMetrics.Metrics().AppendEmpty()
+			dataPoint := metric.SetEmptyGauge().DataPoints().AppendEmpty()
+			for k, v := range testConfig.dataPointAttributes {
+				dataPoint.Attributes().PutStr(k, v)
+			}
+			tCtx := ottldatapoint.NewTransformContext(resourceMetrics, scopeMetrics, metric, dataPoint)
+			defer tCtx.Close()
+
+			Expect(statementSeq.Execute(context.Background(), tCtx)).To(Succeed())
+			Expect(resourceMetrics.Resource().Attributes().AsRaw()).To(Equal(testConfig.expectedResourceAttributes))
+		},
+			Entry("service attributes are derived from app.kubernetes.io labels if there is no target_info",
+				prometheusServiceAttributesTestConfig{
+					resourceAttributes: map[string]string{
+						"service.name":        "dash0-kubernetes-pods-scrape-config",
+						"service.instance.id": "10.1.2.3:8080",
+					},
+					dataPointAttributes: map[string]string{
+						"app_kubernetes_io_name":    "my-app",
+						"app_kubernetes_io_version": "1.2.3",
+						"app_kubernetes_io_part_of": "my-system",
+					},
+					expectedResourceAttributes: map[string]any{
+						"service.name":        "my-app",
+						"service.version":     "1.2.3",
+						"service.namespace":   "my-system",
+						"service.instance.id": "10.1.2.3:8080",
+					},
+				}),
+			Entry("service attributes are derived from app.kubernetes.io labels for the slow scrape job",
+				prometheusServiceAttributesTestConfig{
+					resourceAttributes: map[string]string{
+						"service.name":        "dash0-kubernetes-pods-scrape-config-slow",
+						"service.instance.id": "10.1.2.3:8080",
+					},
+					dataPointAttributes: map[string]string{
+						"app_kubernetes_io_name": "my-app",
+					},
+					expectedResourceAttributes: map[string]any{
+						"service.name":        "my-app",
+						"service.instance.id": "10.1.2.3:8080",
+					},
+				}),
+			Entry("the scrape job name is removed if there is neither target_info nor an app.kubernetes.io/name label",
+				prometheusServiceAttributesTestConfig{
+					resourceAttributes: map[string]string{
+						"service.name":        "dash0-kubernetes-pods-scrape-config",
+						"service.instance.id": "10.1.2.3:8080",
+					},
+					dataPointAttributes: map[string]string{
+						"app": "my-app",
+					},
+					expectedResourceAttributes: map[string]any{},
+				}),
+			Entry("service_name from target_info takes precedence over app.kubernetes.io labels",
+				prometheusServiceAttributesTestConfig{
+					resourceAttributes: map[string]string{
+						"service.name":        "dash0-kubernetes-pods-scrape-config",
+						"service.instance.id": "10.1.2.3:8080",
+						"service_name":        "from-target-info",
+					},
+					dataPointAttributes: map[string]string{
+						"app_kubernetes_io_name": "my-app",
+					},
+					expectedResourceAttributes: map[string]any{
+						"service.name":        "from-target-info",
+						"service.instance.id": "10.1.2.3:8080",
+						"service_name":        "from-target-info",
+					},
+				}),
+			Entry("metrics from other scrape jobs are left untouched",
+				prometheusServiceAttributesTestConfig{
+					resourceAttributes: map[string]string{
+						"service.name":        "serviceMonitor/namespace-1/service-monitor/0",
+						"service.instance.id": "10.1.2.3:8080",
+					},
+					dataPointAttributes: map[string]string{
+						"app_kubernetes_io_name": "my-app",
+					},
+					expectedResourceAttributes: map[string]any{
+						"service.name":        "serviceMonitor/namespace-1/service-monitor/0",
+						"service.instance.id": "10.1.2.3:8080",
+					},
+				}),
+		)
 	})
 
 	Describe("log collection", func() {
@@ -5527,6 +5768,148 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Entry("without Kubernetes infra metrics collection", false),
 			Entry("together with Kubernetes infra metrics collection", true),
 		)
+	})
+
+	Describe("Signal Control log enrichment [SignalControl]", func() {
+		logEnrichmentSC := func() SignalControlConfig {
+			return SignalControlConfig{
+				Enabled:              true,
+				LogEnrichmentEnabled: true,
+				Endpoint:             "decision-maker.example.com:443",
+				ApiEndpoint:          "https://control-plane-api.dash0.com",
+				Dataset:              "default",
+			}
+		}
+
+		assembleWith := func(sc SignalControlConfig, exporters otlpExporters) map[string]interface{} {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         exporters,
+				SignalControl:     sc,
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, false)
+			Expect(err).ToNot(HaveOccurred())
+			return parseConfigMapContent(configMap)
+		}
+
+		It("runs the parser then grouping before the filter on the default logs pipeline [SignalControl]", func() {
+			sc := logEnrichmentSC()
+			sc.SpamFilterEnabled = true
+			collectorConfig := assembleWith(sc, cmTestSingleDefaultOtlpExporter())
+			pipelines := readPipelines(collectorConfig)
+
+			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0logparser",
+				"dash0loggrouping",
+				"dash0filter",
+			}))
+
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors["dash0logparser"].(map[string]interface{})["enable"]).
+				To(HaveKeyWithValue("default", true))
+			Expect(processors["dash0loggrouping"].(map[string]interface{})["enable"]).
+				To(HaveKeyWithValue("default", true))
+
+			assertCollectorConfigStructurallyValid(collectorConfig, "signal-control/log-enrichment-default")
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/log-enrichment-default")
+		})
+
+		It("runs enrichment even when no spam filter or metering is present [SignalControl]", func() {
+			collectorConfig := assembleWith(logEnrichmentSC(), cmTestSingleDefaultOtlpExporter())
+			pipelines := readPipelines(collectorConfig)
+
+			// No spam filter and no signal-to-metrics, so no metering and no filter; enrichment still runs.
+			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0logparser",
+				"dash0loggrouping",
+			}))
+		})
+
+		It("enables log-pattern polling on the settings extension in direct mode [SignalControl]", func() {
+			collectorConfig := assembleWith(logEnrichmentSC(), cmTestSingleDefaultOtlpExporter())
+			extensions := collectorConfig["extensions"].(map[string]interface{})
+			settingsOnEdge := extensions["dash0settingsonedgeextension"].(map[string]interface{})
+			logPatterns := settingsOnEdge["log_patterns"].(map[string]interface{})
+			Expect(logPatterns).To(HaveKeyWithValue("enabled", true))
+		})
+
+		It("renders parser and grouping tunables and the pattern refresh interval when set [SignalControl]", func() {
+			sc := logEnrichmentSC()
+			sc.LogPatternRefreshInterval = "30s"
+			sc.LogParserCacheExpiration = "2m"
+			sc.LogGroupingCacheExpiration = "3m"
+			collectorConfig := assembleWith(sc, cmTestSingleDefaultOtlpExporter())
+
+			processors := collectorConfig["processors"].(map[string]interface{})
+			parser := processors["dash0logparser"].(map[string]interface{})
+			Expect(parser).To(HaveKeyWithValue("edge_cache_expiration", "2m"))
+			grouping := processors["dash0loggrouping"].(map[string]interface{})
+			Expect(grouping).To(HaveKeyWithValue("cache_expiration", "3m"))
+
+			extensions := collectorConfig["extensions"].(map[string]interface{})
+			settingsOnEdge := extensions["dash0settingsonedgeextension"].(map[string]interface{})
+			logPatterns := settingsOnEdge["log_patterns"].(map[string]interface{})
+			Expect(logPatterns).To(HaveKeyWithValue("refresh_interval", "30s"))
+		})
+
+		It("declares no log processors and no pattern polling when disabled [SignalControl]", func() {
+			sc := logEnrichmentSC()
+			sc.LogEnrichmentEnabled = false
+			sc.SpamFilterEnabled = true
+			collectorConfig := assembleWith(sc, cmTestSingleDefaultOtlpExporter())
+
+			processors := topLevelComponentKeys(collectorConfig, "processors")
+			Expect(processors).ToNot(HaveKey("dash0logparser"))
+			Expect(processors).ToNot(HaveKey("dash0loggrouping"))
+			verifyProcessorDoesNotAppearInAnyPipeline(collectorConfig, "dash0logparser")
+			verifyProcessorDoesNotAppearInAnyPipeline(collectorConfig, "dash0loggrouping")
+
+			extensions := collectorConfig["extensions"].(map[string]interface{})
+			settingsOnEdge := extensions["dash0settingsonedgeextension"].(map[string]interface{})
+			Expect(settingsOnEdge).ToNot(HaveKey("log_patterns"))
+		})
+
+		It("does not put log_patterns on the extension in Edge Proxy mode [SignalControl]", func() {
+			sc := logEnrichmentSC()
+			sc.EdgeProxyEnabled = true
+			sc.Endpoint = namePrefix + "-edge-proxy." + OperatorNamespace + ".svc.cluster.local:8011"
+			collectorConfig := assembleWith(sc, cmTestSingleDefaultOtlpExporter())
+
+			extensions := collectorConfig["extensions"].(map[string]interface{})
+			settingsOnEdge := extensions["dash0settingsonedgeextension"].(map[string]interface{})
+			// In Edge Proxy mode the extension subscribes over gRPC and patterns ride that stream, so the
+			// log_patterns block would be ignored; the operator does not render it (the Edge Proxy gates polling).
+			Expect(settingsOnEdge).To(HaveKey("proxy"))
+			Expect(settingsOnEdge).ToNot(HaveKey("log_patterns"))
+			Expect(readPipelineProcessors(readPipelines(collectorConfig), "logs/sc/default")).
+				To(ContainElement("dash0logparser"))
+		})
+
+		It("wires enrichment into namespaced logs pipelines before the namespaced filter [SignalControl]", func() {
+			sc := logEnrichmentSC()
+			sc.SpamFilterEnabled = true
+			collectorConfig := assembleWith(sc, cmTestNamespacedMultiDatasetExporters())
+			pipelines := readPipelines(collectorConfig)
+
+			for _, idx := range []string{"0", "1"} {
+				branch := namespace1 + "/" + idx
+				Expect(readPipelineProcessors(pipelines, "logs/sc/ns/"+branch)).To(Equal([]any{
+					"resource/signal_control_attributes/ns/" + branch,
+					"dash0resource",
+					"dash0metering/ns/" + branch,
+					"dash0logparser",
+					"dash0loggrouping",
+					"dash0filter/ns/" + branch,
+				}), branch)
+			}
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/log-enrichment-ns")
+		})
 	})
 
 	Describe("Signal Control metering [SignalControl]", func() {

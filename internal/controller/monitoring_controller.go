@@ -235,6 +235,8 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
+	r.warnIfInOperatorNamespace(monitoringResource, logger)
+
 	var requiredAction util.ModificationMode
 	monitoringResource, requiredAction, statusUpdate :=
 		r.manageInstrumentWorkloadsChanges(monitoringResource, isFirstReconcile, logger)
@@ -274,6 +276,23 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	logger.Debug("reconciliations triggered by monitoring resource were successful")
 	return ctrl.Result{}, nil
+}
+
+func (r *MonitoringReconciler) warnIfInOperatorNamespace(
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+	logger logd.Logger,
+) {
+	if monitoringResource.Namespace != r.operatorNamespace {
+		return
+	}
+	logger.Warn(
+		fmt.Sprintf(
+			"The Dash0 monitoring resource %s has been deployed to the namespace of the Dash0 operator (%s). "+
+				"Deploying a monitoring resource to the operator namespace is not necessary and not recommended. "+
+				"Collecting the operator's own telemetry is handled via self-monitoring.",
+			monitoringResource.Name,
+			r.operatorNamespace,
+		))
 }
 
 func (r *MonitoringReconciler) applyApiAccessSettings(

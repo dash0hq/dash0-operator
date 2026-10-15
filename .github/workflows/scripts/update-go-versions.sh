@@ -261,24 +261,28 @@ gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
   -f ref="refs/heads/${branch_name}" \
   -f sha="${base_sha}" >/dev/null
 
+# The base64-encoded file contents and the additions are passed to jq via --rawfile and --slurpfile, not via --arg and
+# --argjson: they can exceed the maximum length of a single command line argument (MAX_ARG_STRLEN, 128 KiB).
+contents_file=$(mktemp)
+additions_file=$(mktemp)
+trap 'rm -f "$contents_file" "$additions_file"' EXIT
+for file in "${changed_files[@]}"; do
+  # Reading from stdin and stripping the line breaks afterwards keeps this working with both GNU base64 (which wraps
+  # at 76 characters unless -w0 is given) and BSD base64 (which has no -w and needs -i for a file argument).
+  base64 < "$file" | tr -d '\n' > "$contents_file"
+  jq -n --arg path "$file" --rawfile contents "$contents_file" '{path: $path, contents: $contents}' >> "$additions_file"
+done
+
 # Let "gh api graphql"/createCommitOnBranch create the commit via the GitHub API rather than "git commit"/"git push", so
 # commits are automatically signed.
 # Note: expectedHeadOid is an optimistic lock: the branch tip must still be at base_sha (it is, we just created it).
-additions=$(
-  for file in "${changed_files[@]}"; do
-    # Reading from stdin and stripping the line breaks afterwards keeps this working with both GNU base64 (which wraps
-    # at 76 characters unless -w0 is given) and BSD base64 (which has no -w and needs -i for a file argument).
-    jq -n --arg path "$file" --arg contents "$(base64 < "$file" | tr -d '\n')" '{path: $path, contents: $contents}'
-  done | jq -s '.'
-)
-
-jq -n \
+payload=$(jq -n \
   --arg repo "$GITHUB_REPOSITORY" \
   --arg branch "$branch_name" \
   --arg headline "$commit_message" \
   --arg body "$pr_body" \
   --arg oid "$base_sha" \
-  --argjson additions "$additions" \
+  --slurpfile additions "$additions_file" \
   '{
     query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
     variables: {
@@ -289,7 +293,8 @@ jq -n \
         fileChanges:     { additions: $additions }
       }
     }
-  }' | gh api graphql --input - >/dev/null
+  }')
+echo "$payload" | gh api graphql --input - >/dev/null
 
 gh pr create \
   -B main \

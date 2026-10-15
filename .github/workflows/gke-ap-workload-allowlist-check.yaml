@@ -121,7 +121,7 @@ jobs:
       always() &&
       (needs.build_and_push_images.result == 'success' || needs.build_and_push_images.result == 'skipped') &&
       (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: write
@@ -154,7 +154,7 @@ jobs:
 
       - name: Upload cluster diagnostics on failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: gke-ap-allowlist-check-diagnostics
           path: gke-ap-allowlist-check-diagnostics
@@ -236,6 +236,7 @@ jobs:
           - gke-ap-filelog-offset-sync
           - gke-ap-filelog-offset-volume-ownership
           - gke-ap-target-allocator
+          - gke-ap-agent0-connector
 
     steps:
       - name: delete branch image tag

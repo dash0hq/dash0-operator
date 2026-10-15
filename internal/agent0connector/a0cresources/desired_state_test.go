@@ -753,6 +753,17 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue(util.AppKubernetesIoNameLabel, appKubernetesIoNameValue))
 		})
 
+		It("adds GKE Autopilot allowlist match labels", func() {
+			config := testConfig()
+			config.IsGkeAutopilot = true
+			deployment := getDeployment(assembleDesiredStateOrFail(config, authTokenEnvVar, util.ExtraConfig{}))
+
+			deploymentTemplateLabels := deployment.Spec.Template.Labels
+			value, ok := deploymentTemplateLabels[gkeAutopilotAllowlistKey]
+			Expect(ok).To(BeTrue())
+			Expect(value).To(Equal(gkeAutopilotAllowlistValue))
+		})
+
 		Describe("self-monitoring", func() {
 			It("passes the Kubernetes resource attributes of the workload to the OTel SDK", func() {
 				container := deploymentContainer(selfMonitoringInput{clusterName: "cluster-name-test"})

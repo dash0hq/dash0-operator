@@ -1,0 +1,42 @@
+suite: test synthetics-worker role binding
+templates:
+  - operator/role-binding-synthetics-worker.yaml
+tests:
+  - it: should not render by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render a namespaced role binding if the synthetics-worker is enabled
+    set:
+      operator:
+        syntheticsWorker:
+          enabled: true
+    asserts:
+      - matchSnapshot: {}
+      - containsDocument:
+          kind: RoleBinding
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-synthetics-worker
+          namespace: NAMESPACE
+      - equal:
+          path: roleRef
+          value:
+            apiGroup: rbac.authorization.k8s.io
+            kind: Role
+            name: dash0-operator-manager-synthetics-worker
+
+  - it: should render independently of telemetry collection
+    set:
+      operator:
+        telemetryCollectionEnabled: false
+        syntheticsWorker:
+          enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - containsDocument:
+          kind: RoleBinding
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-synthetics-worker
+          namespace: NAMESPACE

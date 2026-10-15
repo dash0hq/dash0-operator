@@ -6,6 +6,21 @@ tests:
     asserts:
       - matchSnapshot: {}
 
+  - it: should carry the component label the operator uses to detect that it is being uninstalled
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: uninstallation-process
+
+  - it: should keep the job after it has finished, so the operator can detect that it is being uninstalled
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/hook-delete-policy"]
+          value: before-hook-creation
+      - equal:
+          path: spec.ttlSecondsAfterFinished
+          value: 300
+
   - it: image tag should default to appVersion
     chart:
       version: 4.5.6

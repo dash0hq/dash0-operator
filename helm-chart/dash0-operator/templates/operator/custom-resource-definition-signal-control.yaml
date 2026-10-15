@@ -64,6 +64,39 @@ spec:
               dash0operation, dash0filter, dash0sampling processors, dash0redmetrics and dash0signaltometrics connectors)
               and optionally deploys the Edge Proxy.
             properties:
+              components:
+                description: |-
+                  Settings for the Signal Control workloads the operator manages. Every setting is optional. An absent setting keeps
+                  the value provided via the Helm chart, a present one replaces it. Replacing a custom Helm value with a different
+                  one causes a warning in the operator log and an admission warning.
+                properties:
+                  collector:
+                    description: Settings for the Signal Control collector Deployment.
+                    properties:
+                      replicas:
+                        description: |-
+                          The number of replicas of the Signal Control collector Deployment (Helm value
+                          operator.collectors.signalControlCollectorReplicas, default 2).
+                        format: int32
+                        minimum: 1
+                        type: integer
+                    type: object
+                  edgeProxy:
+                    description: Settings for the Edge Proxy Deployment.
+                    properties:
+                      enablePprof:
+                        description: |-
+                          Whether to enable pprof for the Edge Proxy pods (Helm value operator.signalControl.edgeProxy.enablePprof, default
+                          false). Only enable this if instructed by Dash0 support.
+                        type: boolean
+                      replicas:
+                        description: The number of Edge Proxy pods to run (Helm value
+                          operator.signalControl.edgeProxy.replicas, default 2).
+                        format: int32
+                        minimum: 1
+                        type: integer
+                    type: object
+                type: object
               controlPlaneApiEndpoint:
                 description: |-
                   The Dash0 API endpoint used by the dash0settingsonedge extension to fetch settings and rules (it queries
@@ -143,6 +176,37 @@ spec:
                   and no Signal Control resources (e.g. Edge Proxy) are deployed, regardless of other settings in this resource. This
                   setting is optional, it defaults to true.
                 type: boolean
+              logEnrichment:
+                description: |-
+                  Configuration for log enrichment, which applies centrally learned log patterns to this cluster's
+                  logs: it sets the OTLP severity, a normalized dash0.log.message, and the dash0.log.pattern that the
+                  record matched. Enrichment runs before the spam filter, so spam filter rules can match on the
+                  pattern and severity it adds. This setting is optional.
+                properties:
+                  enabled:
+                    default: false
+                    description: |-
+                      Whether to enrich logs with centrally learned log patterns. This setting is optional, it defaults
+                      to false.
+                    type: boolean
+                  groupingCacheExpiration:
+                    description: |-
+                      How long fetched log templates are cached before they are re-read. Go duration syntax. Must be
+                      between 10s and 1h. This setting is optional, it defaults to 1m.
+                    type: string
+                  parserCacheExpiration:
+                    description: |-
+                      How long fetched log patterns are cached before they are re-read. Go duration syntax. Must be
+                      between 10s and 1h. This setting is optional, it defaults to 1m.
+                    type: string
+                  patternRefreshInterval:
+                    description: |-
+                      How often learned log patterns are fetched from Dash0. Go duration syntax (e.g. "60s", "5m"). Must
+                      be between 10s and 1h. This setting is optional; when unset, the settings refresh interval applies.
+                    type: string
+                required:
+                - enabled
+                type: object
               operationProcessor:
                 description: |-
                   Configuration for the dash0operation processor. This processor derives dash0.operation.* and dash0.span.*

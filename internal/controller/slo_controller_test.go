@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"maps"
 	"net/http"
 	"strings"
@@ -94,7 +93,7 @@ var _ = Describe(
 							k8sClient,
 							types.UID(clusterId),
 							sloLeaderElectionAware,
-							TestHTTPClient(),
+							testApiClientPool(),
 						)
 						sloReconciler.defaultApiConfigs.Set(
 							[]ApiConfig{
@@ -468,7 +467,7 @@ var _ = Describe(
 							),
 						).To(Equal("Checkout availability"))
 
-						// Assert the whole spec, so that a field silently dropped by the round-trip in buildSLOApiBody
+						// Assert the whole spec, so that a field silently dropped by the round-trip in mapToSLODefinition
 						// fails here.
 						Expect(resultingSLO["spec"]).To(Equal(map[string]any{
 							"description":     "99 percent of checkout HTTP requests succeed over a rolling 28-day window.",
@@ -562,6 +561,34 @@ var _ = Describe(
 						}))
 					},
 				)
+
+				It(
+					"reports a non-retryable synchronization error for an SLO that cannot be converted", func() {
+						slo := map[string]any{}
+						Expect(yaml.Unmarshal([]byte(`
+apiVersion: openslo.com/v1
+kind: SLO
+metadata:
+  name: test-slo
+spec:
+  service: checkout
+  budgetingMethod: Occurrences
+  objectives:
+    - displayName: 99% availability
+      target: 99%
+`), &slo)).To(Succeed())
+						apiConfig := ApiConfig{Endpoint: ApiEndpointTest, Dataset: DatasetCustomTest, Token: AuthorizationTokenTest}
+						resourceToRequestsResult :=
+							sloReconciler.MapResourceToHttpRequests(
+								&preconditionValidationResult{k8sName: sloName, k8sNamespace: TestNamespaceName, resource: slo},
+								apiConfig, upsertAction, logger)
+						Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())
+						synchronizationError, httpStatusCode := firstSynchronizationErrorAndStatusCode(resourceToRequestsResult)
+						Expect(synchronizationError).To(ContainSubstring("unable to convert the SLO"))
+						Expect(httpStatusCode).To(Equal(http.StatusBadRequest))
+						Expect(isRetryableSynchronizationError(synchronizationError, httpStatusCode)).To(BeFalse())
+					},
+				)
 			},
 		)
 
@@ -639,7 +666,7 @@ var _ = Describe(
 							k8sClient,
 							types.UID(clusterId),
 							sloLeaderElectionAware,
-							TestHTTPClient(),
+							testApiClientPool(),
 						)
 						lookupError := fmt.Errorf("the cache is not started, can not read objects")
 						err := reconciler.SetupWithManager(
@@ -661,7 +688,7 @@ var _ = Describe(
 							k8sClient,
 							types.UID(clusterId),
 							sloLeaderElectionAware,
-							TestHTTPClient(),
+							testApiClientPool(),
 						)
 						Expect(reconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						Expect(reconciler.conflictingCrdDetected.Load()).To(BeTrue())
@@ -674,7 +701,7 @@ var _ = Describe(
 							k8sClient,
 							types.UID(clusterId),
 							sloLeaderElectionAware,
-							TestHTTPClient(),
+							testApiClientPool(),
 						)
 						reconciler.conflictingCrdDetected.Store(true)
 
@@ -693,7 +720,7 @@ var _ = Describe(
 							k8sClient,
 							types.UID(clusterId),
 							sloLeaderElectionAware,
-							TestHTTPClient(),
+							testApiClientPool(),
 						)
 
 						Expect(reconciler.setConflictingCrdDetected(false, logger)).To(BeFalse())
@@ -1100,11 +1127,11 @@ func mapSLOYamlToApiBody(sloReconciler *SLOReconciler, sloYaml string, logger lo
 
 	apiRequest := resourceToRequestsResult.ApiRequests[0]
 	Expect(apiRequest.ItemName).To(Equal(sloName))
-	req := apiRequest.Request
-	defer func() {
-		_ = req.Body.Close()
-	}()
-	body, err := io.ReadAll(req.Body)
+	Expect(apiRequest.ApiClientCall).ToNot(BeNil())
+	Expect(apiRequest.ApiClientCall.Method).To(Equal(http.MethodPut))
+	sloDefinition, err := mapToSLODefinition(slo)
+	Expect(err).ToNot(HaveOccurred())
+	body, err := json.Marshal(sloDefinition)
 	Expect(err).ToNot(HaveOccurred())
 	resultingSLO := map[string]any{}
 	Expect(json.Unmarshal(body, &resultingSLO)).To(Succeed())

@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-ARG NODE_VERSION=20.19.0
-ARG ALPINE_VERSION=3.21
+ARG NODE_VERSION=26.10.0
+ARG ALPINE_VERSION=3.24
 
 FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION}
 ENV NODE_ENV=production

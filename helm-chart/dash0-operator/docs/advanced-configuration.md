@@ -255,7 +255,7 @@ The following Helm values control the resource settings, all nested under the to
 | `collectors.signalControlCollectorContainerResources` | SignalControl collector container | `memory: 1Gi` | `memory: 1Gi` |
 | `collectors.signalControlCollectorConfigurationReloaderContainerResources` | SignalControl collector configuration reloader | `memory: 12Mi` | `memory: 26Mi` |
 | `targetAllocator.containerResources` | target-allocator container | `cpu: 200m`, `memory: 128Mi` | `cpu: 200m`, `memory: 500Mi` |
-| `agent0Connector.containerResources` | agent0-connector container | `memory: 32Mi` | `memory: 256Mi` |
+| `agent0Connector.containerResources` | agent0-connector container | `memory: 64Mi` | `memory: 256Mi` |
 
 For every container above except the operator manager, `gomemlimit` is left empty by default and the operator derives it
 from the container's memory limit (about 80%, or about 60% for the agent0-connector, which also runs `kubectl` as a

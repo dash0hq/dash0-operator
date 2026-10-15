@@ -4,10 +4,17 @@
 package controller
 
 import (
-	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
 
+	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
 var _ = Describe("The API Sync", Ordered, func() {
@@ -274,4 +281,70 @@ var _ = Describe("The API Sync", Ordered, func() {
 			))
 		})
 	})
+})
+
+var _ = Describe("Converting API client errors", func() {
+	const actionLabel = "synchronize the view \"v\": PUT https://api.dash0.com/api/views/o?dataset=d"
+
+	It("treats 404 for a delete as success", func() {
+		err := convertApiClientError(&dash0apiclient.APIError{StatusCode: http.StatusNotFound}, actionLabel, true)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	DescribeTable("keeps the status code and renders the operator's error message",
+		func(statusCode int, isDelete bool) {
+			err := convertApiClientError(
+				&dash0apiclient.APIError{StatusCode: statusCode, Body: `{"error":"x"}`},
+				actionLabel,
+				isDelete,
+			)
+			Expect(err).To(HaveOccurred())
+			Expect(httpStatusCodeFromError(err)).To(Equal(statusCode))
+			Expect(err.Error()).To(Equal(fmt.Sprintf(
+				`unexpected status code %d when trying to %s, response body is {"error":"x"}`,
+				statusCode,
+				actionLabel,
+			)))
+		},
+		Entry("404 for a put", http.StatusNotFound, false),
+		Entry("400", http.StatusBadRequest, false),
+		Entry("429", http.StatusTooManyRequests, false),
+		Entry("503", http.StatusServiceUnavailable, false),
+		Entry("500 for a delete", http.StatusInternalServerError, true),
+	)
+
+	It("maps an invalid auth token to status code 401, which is not retried", func() {
+		_, poolErr := testApiClientPool().Get(ApiEndpointStandardizedTest, "not-a-dash0-token")
+		err := convertApiClientError(poolErr, actionLabel, false)
+		Expect(err).To(HaveOccurred())
+		Expect(httpStatusCodeFromError(err)).To(Equal(http.StatusUnauthorized))
+		Expect(isRetryableHttpStatusCode(httpStatusCodeFromError(err))).To(BeFalse())
+		Expect(err.Error()).To(Equal(
+			"unable to " + actionLabel + `: the Dash0 auth token is invalid, it must start with "auth_" or "dash0_at_"`,
+		))
+	})
+
+	It("maps errors without an HTTP response to status code 0", func() {
+		transportErr := errors.New("connection refused")
+		err := convertApiClientError(transportErr, actionLabel, false)
+		Expect(err).To(HaveOccurred())
+		Expect(httpStatusCodeFromError(err)).To(Equal(0))
+		Expect(errors.Is(err, transportErr)).To(BeTrue())
+		Expect(isRetryableHttpStatusCode(httpStatusCodeFromError(err))).To(BeTrue())
+	})
+})
+
+var _ = Describe("The dataset in the origin", func() {
+	DescribeTable("is the path-unescaped form of the query-escaped dataset",
+		func(dataset string) {
+			expected, err := url.PathUnescape(url.QueryEscape(dataset))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(datasetInOrigin(dataset)).To(Equal(expected))
+		},
+		Entry("plain dataset", "default"),
+		Entry("dataset with a space", "my dataset"),
+		Entry("dataset with a slash", "a/b"),
+		Entry("dataset with a percent sign", "100%"),
+		Entry("dataset with non-ASCII and reserved characters", "ä+ö&x=y;z,?#"),
+	)
 })

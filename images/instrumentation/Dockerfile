@@ -89,7 +89,7 @@ RUN pip install --quiet --root-user-action ignore --target . \
   cp dash0/opentelemetry/injector/sitecustomize.py sitecustomize.py
 
 # install Python artifacts (musl)
-FROM python:3.14.7-alpine3.24 AS build-python-musl
+FROM python:3.14.8-alpine3.24 AS build-python-musl
 RUN mkdir -p /dash0-instrumentation/python
 WORKDIR /dash0-instrumentation/python
 COPY python/extract-flattened-requirements.sh .

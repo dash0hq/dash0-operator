@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
@@ -39,6 +40,11 @@ type setMonitoringTemplateDefaultsTestConfig struct {
 	autoMonitorNamespacesEnabled bool
 	template                     *dash0v1alpha1.MonitoringTemplate
 	wanted                       *dash0v1alpha1.MonitoringTemplate
+}
+
+type setSyntheticsWorkerInstanceDefaultsTestConfig struct {
+	instances []dash0v1alpha1.SyntheticsWorkerInstance
+	wanted    []dash0v1alpha1.SyntheticsWorkerInstance
 }
 
 var _ = Describe("The mutating webhook for the operator configuration resource", func() {
@@ -744,6 +750,103 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 						},
 						PrometheusScraping: dash0common.PrometheusScraping{
 							Enabled: new(false),
+						},
+					},
+				},
+			}),
+	)
+
+	DescribeTable("should default synthetics-worker instance NodeAffinity", func(testConfig setSyntheticsWorkerInstanceDefaultsTestConfig) {
+		spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
+			SyntheticsWorker: dash0v1alpha1.SyntheticsWorker{
+				Instances: testConfig.instances,
+			},
+		}
+		_, errorResponse := operatorConfigurationMutatingWebhookHandler.normalizeOperatorConfigurationResourceSpec(
+			admission.Request{},
+			&spec,
+			logger,
+		)
+		Expect(errorResponse).To(BeNil())
+		Expect(spec.SyntheticsWorker.Instances).To(Equal(testConfig.wanted))
+	},
+		Entry("given an instance without NodeAffinity, set the default",
+			setSyntheticsWorkerInstanceDefaultsTestConfig{
+				instances: []dash0v1alpha1.SyntheticsWorkerInstance{
+					{LocationID: "location-1"},
+				},
+				wanted: []dash0v1alpha1.SyntheticsWorkerInstance{
+					{LocationID: "location-1", NodeAffinity: defaultSyntheticsWorkerNodeAffinity()},
+				},
+			}),
+		Entry("given an instance with an explicit NodeAffinity, leave it unchanged",
+			setSyntheticsWorkerInstanceDefaultsTestConfig{
+				instances: []dash0v1alpha1.SyntheticsWorkerInstance{
+					{
+						LocationID: "location-1",
+						NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{Key: "custom", Operator: corev1.NodeSelectorOpExists},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				wanted: []dash0v1alpha1.SyntheticsWorkerInstance{
+					{
+						LocationID: "location-1",
+						NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{Key: "custom", Operator: corev1.NodeSelectorOpExists},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}),
+		Entry("given multiple instances, default only the ones missing NodeAffinity",
+			setSyntheticsWorkerInstanceDefaultsTestConfig{
+				instances: []dash0v1alpha1.SyntheticsWorkerInstance{
+					{LocationID: "location-1"},
+					{
+						LocationID: "location-2",
+						NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{Key: "custom", Operator: corev1.NodeSelectorOpExists},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				wanted: []dash0v1alpha1.SyntheticsWorkerInstance{
+					{LocationID: "location-1", NodeAffinity: defaultSyntheticsWorkerNodeAffinity()},
+					{
+						LocationID: "location-2",
+						NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{Key: "custom", Operator: corev1.NodeSelectorOpExists},
+										},
+									},
+								},
+							},
 						},
 					},
 				},

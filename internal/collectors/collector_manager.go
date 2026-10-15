@@ -31,6 +31,7 @@ type CollectorManager struct {
 	client.Client
 	oTelColResourceManager      *otelcolresources.OTelColResourceManager
 	extraConfig                 atomic.Pointer[util.ExtraConfig]
+	extraConfigDefaults         util.ExtraConfig
 	developmentMode             bool
 	signalControlFeatureEnabled bool
 	reconcileGuard              util.ReconcileGuard
@@ -56,12 +57,14 @@ func NewCollectorManager(
 	k8sClient client.Client,
 	nodeMetadataClient metadata.Interface,
 	extraConfig util.ExtraConfig,
+	extraConfigDefaults util.ExtraConfig,
 	developmentMode bool,
 	signalControlFeatureEnabled bool,
 	oTelColResourceManager *otelcolresources.OTelColResourceManager,
 ) *CollectorManager {
 	m := &CollectorManager{
 		Client:                      k8sClient,
+		extraConfigDefaults:         extraConfigDefaults,
 		developmentMode:             developmentMode,
 		signalControlFeatureEnabled: signalControlFeatureEnabled,
 		oTelColResourceManager:      oTelColResourceManager,
@@ -171,36 +174,37 @@ func (m *CollectorManager) reconcileOpenTelemetryCollector(ctx context.Context, 
 		}
 	}
 
-	extraConfig := m.extraConfig.Load()
-	if extraConfig == nil {
+	fileExtraConfig := m.extraConfig.Load()
+	if fileExtraConfig == nil {
 		return false, fmt.Errorf("extra config is nil in CollectorManager#ReconcileOpenTelemetryCollector")
 	}
+	extraConfig := util.EffectiveExtraConfig(*fileExtraConfig, m.extraConfigDefaults, signalControlResource)
 
 	if operatorConfigurationResource == nil {
 		logger.WarnTelemetryCollectionIssue(logMsgOperatorConfigMissing)
-		err = m.removeOpenTelemetryCollector(ctx, *extraConfig, logger)
+		err = m.removeOpenTelemetryCollector(ctx, extraConfig, logger)
 		return err == nil, err
 	} else if !pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.TelemetryCollection.Enabled, true) {
 		logger.Info(fmt.Sprintf(logMsgTelemetryDisabled, operatorConfigurationResource.Name))
-		err = m.removeOpenTelemetryCollector(ctx, *extraConfig, logger)
+		err = m.removeOpenTelemetryCollector(ctx, extraConfig, logger)
 		return err == nil, err
 	} else if !operatorConfigurationResource.HasExportsConfigured() {
 		logger.Info(fmt.Sprintf(logMsgDefaultExportMissing, operatorConfigurationResource.Name))
-		err = m.removeOpenTelemetryCollector(ctx, *extraConfig, logger)
+		err = m.removeOpenTelemetryCollector(ctx, extraConfig, logger)
 		return err == nil, err
 	} else {
 		// Only relevant when a Signal Control collector is actually deployed: the resource may exist while being
 		// explicitly disabled or without a Dash0 export, in which case there is nothing to spread over
 		// availability zones.
 		if signalControlResource != nil && signalControlEnabled {
-			m.warnAboutInsufficientZoneCoverage(ctx, *extraConfig, logger)
+			m.warnAboutInsufficientZoneCoverage(ctx, extraConfig, logger)
 		}
 		err = m.createOrUpdateOpenTelemetryCollector(
 			ctx,
 			operatorConfigurationResource,
 			allMonitoringResources,
 			signalControlResource,
-			*extraConfig,
+			extraConfig,
 			logger,
 		)
 		return err == nil, err
@@ -230,7 +234,8 @@ func (m *CollectorManager) warnAboutInsufficientZoneCoverage(
 				"The cluster has %d availability zones but the Signal Control collector runs with %d replicas, so at least "+
 					"one zone has no Signal Control collector pod. Telemetry from those zones is sent to a collector in "+
 					"another zone, which works but incurs cross-zone traffic cost. Set "+
-					"operator.collectors.signalControlCollectorReplicas to at least %d to avoid that.",
+					"operator.collectors.signalControlCollectorReplicas (or spec.components.collector.replicas in the "+
+					"Dash0SignalControl resource) to at least %d to avoid that.",
 				zoneCount, replicaCount, zoneCount,
 			)
 		},

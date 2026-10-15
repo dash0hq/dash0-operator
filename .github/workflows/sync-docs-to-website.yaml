@@ -66,7 +66,7 @@ jobs:
       # unconditionally. The operator's pages live under dash0-operator/ within the target directory; each
       # transformations.yaml `target:` (dash0-operator/<page>.md) is resolved relative to target-directory.
       - name: synchronize docs to the website
-        uses: dash0hq/sync-docs-action@v0.4.0
+        uses: dash0hq/sync-docs-action@v0.5.0
         with:
           dry-run: ${{ inputs.dry-run }}
           source-root: helm-chart/dash0-operator

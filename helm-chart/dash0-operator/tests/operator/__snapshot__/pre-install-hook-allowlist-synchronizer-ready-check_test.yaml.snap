@@ -91,7 +91,7 @@ should install the GKE Autopilot AllowlistSynchronizer ready check if operator.g
           containers:
             - args:
                 - --allowlist-synchronizer-ready-check
-                - --allowlist-version=v1.0.3
+                - --allowlist-version=v1.0.4
               command:
                 - /manager
               env:

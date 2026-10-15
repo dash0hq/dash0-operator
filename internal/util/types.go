@@ -22,9 +22,11 @@ import (
 type Action string
 
 const (
-	ActionInstrumentation       Action = "Instrumentation"
-	ActionUninstrumentation     Action = "Uninstrumentation"
-	ActionAgent0ConnectorDeploy Action = "Agent0ConnectorDeployment"
+	ActionInstrumentation        Action = "Instrumentation"
+	ActionUninstrumentation      Action = "Uninstrumentation"
+	ActionAgent0ConnectorDeploy  Action = "Agent0ConnectorDeployment"
+	ActionSyntheticsWorkerDeploy Action = "SyntheticsWorkerDeployment"
+	ActionSynchronization        Action = "Synchronization"
 )
 
 type Reason string
@@ -46,6 +48,12 @@ const (
 	ReasonAgent0ConnectorDeployed    Reason = "Agent0ConnectorDeployed"
 	ReasonAgent0ConnectorNotDeployed Reason = "Agent0ConnectorNotDeployed"
 	ReasonAgent0ConnectorDisabled    Reason = "Agent0ConnectorDisabled"
+
+	ReasonSyntheticsWorkerDeployed    Reason = "SyntheticsWorkerDeployed"
+	ReasonSyntheticsWorkerNotDeployed Reason = "SyntheticsWorkerNotDeployed"
+	ReasonSyntheticsWorkerDisabled    Reason = "SyntheticsWorkerDisabled"
+
+	ReasonDeprecatedFieldUsed Reason = "DeprecatedFieldUsed"
 )
 
 // AllInstrumentationEvents lists the events the instrumentation webhook queues for a workload. The webhook cannot set
@@ -73,6 +81,7 @@ type CollectorConfig struct {
 	// config of the prometheus_receiver
 	TargetAllocatorNamePrefix              string
 	Agent0ConnectorEnabledViaHelm          bool
+	SyntheticsWorkerEnabledViaHelm         bool
 	SendBatchSize                          *uint32
 	SendBatchMaxSize                       *uint32
 	K8sAttributesDisableReplicasetInformer bool
@@ -157,8 +166,35 @@ type Agent0ConnectorConfig struct {
 	// value operator.agent0Connector.secretRef). It is passed to the workload via the DASH0_AGENT0_CONNECTOR_AUTH_TOKEN
 	// environment variable.
 	Authorization   dash0common.Authorization
+	IsGkeAutopilot  bool
 	IsOpenShift     bool
 	DevelopmentMode bool
+}
+
+// SyntheticsWorkerConfig holds the settings of the synthetics-worker workload that are fixed for the lifetime of the
+// operator manager process, that is, everything set via the Helm chart. In contrast to util.Agent0ConnectorConfig,
+// this deliberately has no Authorization field: the synthetics-worker's authorization and location ID are per-cluster
+// settings that live on the Dash0OperatorConfiguration resource (spec.syntheticsWorker), read again on every
+// reconciliation, instead of being fixed at Helm-install time.
+type SyntheticsWorkerConfig struct {
+	Images            Images
+	OperatorNamespace string
+	// NamePrefix is used as a prefix for the synthetics-worker Kubernetes resources created by the operator. It is the
+	// same prefix that is used for the collector workloads and the target-allocator, that is, the Helm release name.
+	NamePrefix string
+	// ServerAddress is the address of the Dash0 backend service the synthetics-worker workload connects to. It is set
+	// from the Helm value operator.syntheticsWorker.serverAddress and passed to the workload via the
+	// SYNTHETICS_ADDRESS environment variable.
+	ServerAddress string
+	// Insecure disables TLS for the synthetics-worker workload's connection to the Dash0 backend. It is set from the
+	// Helm value operator.syntheticsWorker.insecure and passed to the workload via the SYNTHETICS_INSECURE
+	// environment variable. It is only intended for local development.
+	Insecure bool
+	// PriorityClassName is the priority class applied to every synthetics-worker pod, regardless of instance. It is
+	// set from the Helm value operator.syntheticsWorker.priorityClassName.
+	PriorityClassName string
+	IsOpenShift       bool
+	DevelopmentMode   bool
 }
 
 type Images struct {
@@ -181,6 +217,8 @@ type Images struct {
 	EdgeProxyImagePullPolicy                    corev1.PullPolicy
 	Agent0ConnectorImage                        string
 	Agent0ConnectorImagePullPolicy              corev1.PullPolicy
+	SyntheticsWorkerImage                       string
+	SyntheticsWorkerImagePullPolicy             corev1.PullPolicy
 }
 
 func (i Images) GetOperatorVersion() string {

@@ -664,10 +664,11 @@ processors:
       - k8s.replicaset.uid
       - k8s.statefulset.name
       - k8s.statefulset.uid
-      # The following three work only if k8s.pod.uid and k8s.container.name are set
+      # The following four work only if k8s.pod.uid and k8s.container.name are set
       - container.id
       - container.image.name
       - container.image.tag
+      - container.image.tags
       {{- if or .CollectNamespaceLabelsAndAnnotationsEnabled .CollectPodLabelsAndAnnotationsEnabled .CollectNodeLabelsAndAnnotationsEnabled }}
       labels:
         {{- if .CollectNamespaceLabelsAndAnnotationsEnabled }}
@@ -748,10 +749,11 @@ processors:
       - k8s.replicaset.uid
       - k8s.statefulset.name
       - k8s.statefulset.uid
-      # The following three work only if k8s.pod.uid and k8s.container.name are set
+      # The following four work only if k8s.pod.uid and k8s.container.name are set
       - container.id
       - container.image.name
       - container.image.tag
+      - container.image.tags
       {{- if or .CollectNamespaceLabelsAndAnnotationsEnabled .CollectPodLabelsAndAnnotationsEnabled .CollectNodeLabelsAndAnnotationsEnabled }}
       labels:
         {{- if .CollectNamespaceLabelsAndAnnotationsEnabled }}
@@ -854,7 +856,7 @@ processors:
       # https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/compatibility/prometheus_and_openmetrics.md#resource-attributes
       # This enables workloads to determine their service name on their own. We give this rule precedence over the
       # service.name rule that uses app.kubernetes.io/name
-      - set(resource.attributes["service.name"], resource.attributes["service_name"]) where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*") and resource.attributes["service_name"] != "dash0-kubernetes-pods-scrape-config"
+      - set(resource.attributes["service.name"], resource.attributes["service_name"]) where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*") and resource.attributes["service_name"] != nil and resource.attributes["service_name"] != "dash0-kubernetes-pods-scrape-config"
 
       # If the previous rule did not yield a good service name (e.g. there is no target_info metric available), we try
       # to get service attributes from the Kubernetes labels (app.kubernetes.io/name and friends) next. These three

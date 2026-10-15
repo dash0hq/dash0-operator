@@ -27,6 +27,7 @@ import (
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/agent0connector/a0cresources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
+	"github.com/dash0hq/dash0-operator/internal/syntheticsworker/swresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -143,6 +144,15 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			)
 	agent0ConnectorEnabled :=
 		operatorConfigurationResource.Spec.Agent0Connector.IsEnabled(m.collectorConfig.Agent0ConnectorEnabledViaHelm)
+	var syntheticsWorkerDeploymentNames []string
+	if operatorConfigurationResource.Spec.SyntheticsWorker.IsEnabled(m.collectorConfig.SyntheticsWorkerEnabledViaHelm) {
+		for _, instance := range operatorConfigurationResource.Spec.SyntheticsWorker.Instances {
+			syntheticsWorkerDeploymentNames = append(
+				syntheticsWorkerDeploymentNames,
+				swresources.DeploymentName(m.collectorConfig.OTelCollectorNamePrefix, instance.LocationID),
+			)
+		}
+	}
 	clusterName = operatorConfigurationResource.Spec.ClusterName
 	kubeletStatsReceiverConfig :=
 		m.determineKubeletstatsReceiverEndpoint(
@@ -182,6 +192,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		TargetAllocatorNamePrefix:                        m.collectorConfig.TargetAllocatorNamePrefix,
 		Agent0ConnectorEnabled:                           agent0ConnectorEnabled,
 		Agent0ConnectorDeploymentName:                    a0cresources.DeploymentName(m.collectorConfig.OTelCollectorNamePrefix),
+		SyntheticsWorkerDeploymentNames:                  syntheticsWorkerDeploymentNames,
 		KubeletStatsReceiverConfig:                       kubeletStatsReceiverConfig,
 		AutoNamespaceMonitoringEnabled:                   operatorConfigurationResource.Spec.AutoMonitorNamespaces.IsEnabled(),
 		// The hostmetrics receiver requires mapping the root file system as a volume mount, see
@@ -767,20 +778,16 @@ func signalControlConfigFromResource(
 		}
 	}
 	signalToMetricsEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.SignalToMetrics.Enabled, true)
-	var signalToMetricsFlushInterval string
-	if d := resource.Spec.SignalToMetrics.FlushInterval; d != nil && d.Duration > 0 {
-		signalToMetricsFlushInterval = d.Duration.String()
-	}
-	var signalToMetricsCacheExpiration string
-	if d := resource.Spec.SignalToMetrics.CacheExpiration; d != nil && d.Duration > 0 {
-		signalToMetricsCacheExpiration = d.Duration.String()
-	}
+	signalToMetricsFlushInterval := durationStringOrEmpty(resource.Spec.SignalToMetrics.FlushInterval)
+	signalToMetricsCacheExpiration := durationStringOrEmpty(resource.Spec.SignalToMetrics.CacheExpiration)
 	spamFilterEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.SpamFilter.Enabled, true)
-	var spamFilterCacheExpiration string
-	if d := resource.Spec.SpamFilter.CacheExpiration; d != nil && d.Duration > 0 {
-		spamFilterCacheExpiration = d.Duration.String()
-	}
+	spamFilterCacheExpiration := durationStringOrEmpty(resource.Spec.SpamFilter.CacheExpiration)
 	spamFilterAllowNoSettingsExt := pointers.ReadBoolPointerWithDefault(resource.Spec.SpamFilter.AllowNoSettingsExt, false)
+
+	logEnrichmentEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.LogEnrichment.Enabled, false)
+	logPatternRefreshInterval := durationStringOrEmpty(resource.Spec.LogEnrichment.PatternRefreshInterval)
+	logParserCacheExpiration := durationStringOrEmpty(resource.Spec.LogEnrichment.ParserCacheExpiration)
+	logGroupingCacheExpiration := durationStringOrEmpty(resource.Spec.LogEnrichment.GroupingCacheExpiration)
 
 	operationPreferSpanName := pointers.ReadBoolPointerWithDefault(resource.Spec.OperationProcessor.PreferSpanName, false)
 	var operationCardinalityRules []SignalControlCardinalityRule
@@ -851,6 +858,10 @@ func signalControlConfigFromResource(
 		SpamFilterEnabled:                  spamFilterEnabled,
 		SpamFilterCacheExpiration:          spamFilterCacheExpiration,
 		SpamFilterAllowNoSettingsExt:       spamFilterAllowNoSettingsExt,
+		LogEnrichmentEnabled:               logEnrichmentEnabled,
+		LogPatternRefreshInterval:          logPatternRefreshInterval,
+		LogParserCacheExpiration:           logParserCacheExpiration,
+		LogGroupingCacheExpiration:         logGroupingCacheExpiration,
 		OperationPreferSpanName:            operationPreferSpanName,
 		OperationCardinalityRules:          operationCardinalityRules,
 		Endpoint:                           endpoint,

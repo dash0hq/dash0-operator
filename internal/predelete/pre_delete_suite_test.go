@@ -131,6 +131,7 @@ var _ = BeforeSuite(func() {
 		k8sClient,
 		nodeMetadataClient,
 		util.ExtraConfigDefaults,
+		util.ExtraConfigDefaults,
 		false,
 		false,
 		oTelColResourceManager,

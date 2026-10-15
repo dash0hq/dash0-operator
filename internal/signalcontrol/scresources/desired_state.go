@@ -35,6 +35,9 @@ const (
 	edgeProxyUserID int64 = 10001
 
 	defaultDataset = "default"
+
+	gkeAutopilotAllowlistLabelKey            = "cloud.google.com/matching-allowlist"
+	gkeAutopilotAllowlistLabelEdgeProxyValue = "dash0-edge-proxy-v1.0.4"
 )
 
 var (
@@ -45,10 +48,10 @@ var (
 	}
 )
 
-// EdgeProxyDefaultReplicas is used when the extra config map does not specify a replica count (e.g. older config
-// maps). The Helm chart ships a higher default; this only backstops a missing value. The topology spread constraints
-// bias replicas onto separate zones and nodes (see edgeProxyTopologySpreadConstraints), and the operator warns when
-// there are fewer replicas than availability zones.
+// EdgeProxyDefaultReplicas is used when the extra config map specifies a replica count below 1. The Helm chart ships a
+// higher default; this only backstops an invalid value. The topology spread constraints bias replicas onto separate
+// zones and nodes (see edgeProxyTopologySpreadConstraints), and the operator warns when there are fewer replicas than
+// availability zones.
 const EdgeProxyDefaultReplicas int32 = 1
 
 type clientObject struct {
@@ -67,6 +70,7 @@ func assembleDesiredState(
 	kubernetesApiServerVersion cluster.KubernetesVersionInfo,
 	extraConfig util.ExtraConfig,
 	forDeletion bool,
+	isGkeAutopilot bool,
 	isOpenShift bool,
 	logger logd.Logger,
 ) []clientObject {
@@ -84,7 +88,7 @@ func assembleDesiredState(
 		if edgeProxyEnabled {
 			trafficDistribution := cluster.ResolveServiceTrafficDistribution(kubernetesApiServerVersion, logger)
 			desiredState = append(desiredState,
-				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, signalControlResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, otlpGrpcHostPort, extraConfig, isOpenShift, logger)),
+				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, signalControlResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, otlpGrpcHostPort, extraConfig, isGkeAutopilot, isOpenShift, logger)),
 				addCommonMetadata(assembleEdgeProxyService(operatorNamespace, namePrefix, trafficDistribution)),
 				addCommonMetadata(assembleEdgeProxyPodDisruptionBudget(operatorNamespace, namePrefix)),
 			)
@@ -104,7 +108,7 @@ func assembleDesiredStateForDelete(
 	namePrefix string,
 	logger logd.Logger,
 ) []clientObject {
-	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", 0, cluster.KubernetesVersionInfo{}, util.ExtraConfig{}, true, false, logger)
+	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", 0, cluster.KubernetesVersionInfo{}, util.ExtraConfig{}, true, false, false, logger)
 }
 
 func assembleEdgeProxyDeployment(
@@ -117,6 +121,7 @@ func assembleEdgeProxyDeployment(
 	operatorVersion string,
 	otlpGrpcHostPort int32,
 	extraConfig util.ExtraConfig,
+	isGkeAutopilot bool,
 	isOpenShift bool,
 	logger logd.Logger,
 ) *appsv1.Deployment {
@@ -308,6 +313,20 @@ func assembleEdgeProxyDeployment(
 				Value: spec.EdgeProxy.SettingsRefreshInterval.Duration.String(),
 			})
 		}
+		// Log enrichment polls patterns on the shared settings stream, so it rides the same edge-settings
+		// upstream and requires it to be enabled.
+		if pointers.ReadBoolPointerWithDefault(spec.LogEnrichment.Enabled, false) {
+			edgeProxyContainer.Env = append(edgeProxyContainer.Env, corev1.EnvVar{
+				Name:  "UPSTREAM_EDGESETTINGS_LOGPATTERNS_ENABLED",
+				Value: "true",
+			})
+			if d := spec.LogEnrichment.PatternRefreshInterval; d != nil && d.Duration > 0 {
+				edgeProxyContainer.Env = append(edgeProxyContainer.Env, corev1.EnvVar{
+					Name:  "UPSTREAM_EDGESETTINGS_LOGPATTERNS_REFRESHINTERVAL",
+					Value: d.Duration.String(),
+				})
+			}
+		}
 	}
 	if operatorConfig != nil && pointers.ReadBoolPointerWithDefault(operatorConfig.Spec.SelfMonitoring.Enabled, true) {
 		edgeProxyContainer.Env = append(
@@ -337,6 +356,11 @@ func assembleEdgeProxyDeployment(
 		}
 	}
 
+	templateLabels := edgeProxyLabels()
+	if isGkeAutopilot {
+		templateLabels[gkeAutopilotAllowlistLabelKey] = gkeAutopilotAllowlistLabelEdgeProxyValue
+	}
+
 	deployment := assembleEdgeProxyDeploymentForDeletion(operatorNamespace, namePrefix)
 	deployment.Labels = util.MergeMaps(edgeProxyLabels(), extraConfig.EdgeProxyLabels)
 	deployment.Annotations = util.MergeMaps(nil, extraConfig.EdgeProxyAnnotations)
@@ -357,7 +381,7 @@ func assembleEdgeProxyDeployment(
 		},
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
-				Labels:      util.MergeMaps(edgeProxyLabels(), extraConfig.EdgeProxyPodLabels),
+				Labels:      util.MergeMaps(templateLabels, extraConfig.EdgeProxyPodLabels),
 				Annotations: util.MergeMaps(nil, extraConfig.EdgeProxyPodAnnotations),
 			},
 			Spec: podSpec,

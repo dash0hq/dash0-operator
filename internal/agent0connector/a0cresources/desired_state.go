@@ -43,18 +43,20 @@ const (
 	allowedKubectlCommandsEnvVarName = "DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS"
 
 	// defaultMaxConcurrentCommands is the number of command requests the agent0-connector executes at the same time when
-	// the extra config does not specify a value (e.g. an older config map). It is bounded by memory: a request that
-	// returns the maximum output size costs about 90 MiB, most of it in the kubectl child process and in parsing the
-	// output in order to redact credentials from it. Raising it requires raising the container's memory limit and
-	// GOMEMLIMIT as well, which is why it is configurable via the Helm value
-	// operator.agent0Connector.maxConcurrentCommands. It mirrors defaultMaxConcurrentCommands in
-	// images/agent0-connector/src/grpc/grpcclient.go, the fallback within the workload itself.
+	// the extra config specifies a value below 1. It is bounded by memory: a request that returns the maximum output
+	// size costs about 90 MiB, most of it in the kubectl child process and in parsing the output in order to redact
+	// credentials from it. Raising it requires raising the container's memory limit and GOMEMLIMIT as well, which is why
+	// it is configurable via the Helm value operator.agent0Connector.maxConcurrentCommands. It mirrors
+	// defaultMaxConcurrentCommands in images/agent0-connector/src/grpc/grpcclient.go, the fallback within the workload
+	// itself.
 	defaultMaxConcurrentCommands int32 = 2
 
 	// label values
 	appKubernetesIoNameValue      = agent0Connector
 	appKubernetesIoInstanceValue  = "dash0-operator"
 	appKubernetesIoManagedByValue = "dash0-operator"
+	gkeAutopilotAllowlistKey      = "cloud.google.com/matching-allowlist"
+	gkeAutopilotAllowlistValue    = "dash0-agent0-connector-v1.0.4"
 
 	defaultUser  int64 = 65532
 	defaultGroup int64 = 0
@@ -716,6 +718,11 @@ func assembleDeployment(
 		},
 	}
 
+	templateLabels := labels()
+	if c.IsGkeAutopilot {
+		templateLabels[gkeAutopilotAllowlistKey] = gkeAutopilotAllowlistValue
+	}
+
 	if extraConfig.Agent0ConnectorNodeAffinity != nil {
 		podSpec.Affinity = &corev1.Affinity{
 			NodeAffinity: extraConfig.Agent0ConnectorNodeAffinity,
@@ -740,7 +747,7 @@ func assembleDeployment(
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels:      util.MergeMaps(labels(), extraConfig.Agent0ConnectorPodLabels),
+					Labels:      util.MergeMaps(templateLabels, extraConfig.Agent0ConnectorPodLabels),
 					Annotations: util.MergeMaps(nil, extraConfig.Agent0ConnectorPodAnnotations),
 				},
 				Spec: podSpec,

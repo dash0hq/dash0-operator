@@ -36,7 +36,7 @@ const (
 	AppKubernetesIoInstanceValue  = "dash0-operator"
 	AppKubernetesIoManagedByValue = "dash0-operator"
 	gkeAutopilotAllowlistKey      = "cloud.google.com/matching-allowlist"
-	gkeAutopilotAllowlistValue    = "dash0-target-allocator-v1.0.3"
+	gkeAutopilotAllowlistValue    = "dash0-target-allocator-v1.0.4"
 
 	defaultUser  int64 = 65532
 	defaultGroup int64 = 0

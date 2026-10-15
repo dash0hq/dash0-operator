@@ -1,16 +1,21 @@
 // SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// outbound-connector-mock is a minimal gRPC server that implements
-// outboundconnector.OutboundConnectorService. It stands in for the Dash0 backend's outbound-connector component in the
+// outbound-connector-mock is a minimal gRPC server that implements outboundconnector.OutboundConnectorService and
+// synthetictasks.SyntheticTaskService. It stands in for the Dash0 backend's outbound-connector component in the
 // operator's e2e tests: the agent0-connector workload opens the SubscribeToCommandRequests bidirectional stream against
-// it, and the test asserts that the connection was established with the expected gRPC metadata.
+// it, the synthetics-worker workload opens the Subscribe bidirectional stream, and the test asserts that the
+// connections were established with the expected gRPC metadata.
 //
 // The mock keeps track of which clients are connected (including the gRPC metadata they announced themselves with) and
 // records every CommandResponse it receives. It exposes a separate HTTP control/debug port that the e2e test uses to:
 //   - query which clients are currently connected (GET /clients),
 //   - trigger sending a CommandRequest down a connected client's stream (POST /command-requests),
-//   - query which CommandResponses have been received (GET /command-responses).
+//   - query which CommandResponses have been received (GET /command-responses),
+//   - query which synthetics-workers are currently connected (GET /synthetics-workers),
+//   - trigger sending an HTTP check TaskRequest down a connected synthetics-worker's stream
+//     (POST /synthetics-task-requests),
+//   - query which TaskResults have been received (GET /synthetics-task-results).
 //
 // It implements no real command routing or authentication logic; it only exists for wiring assertions in e2e tests.
 
@@ -105,11 +110,18 @@ type state struct {
 
 	// responses accumulates every CommandResponse received from any client, in the order received.
 	responses []commandResponse
+
+	// syntheticsWorkers holds the currently connected synthetics-workers, keyed by worker ID.
+	syntheticsWorkers map[string]*syntheticsWorker
+
+	// syntheticsTaskResults accumulates every TaskResult received from any synthetics-worker, in the order received.
+	syntheticsTaskResults []syntheticsTaskResult
 }
 
 func newState() *state {
 	return &state{
-		clients: make(map[string]*connectedClient),
+		clients:           make(map[string]*connectedClient),
+		syntheticsWorkers: make(map[string]*syntheticsWorker),
 	}
 }
 
@@ -273,6 +285,7 @@ func runGrpcServer(st *state) {
 	}
 	grpcServer := grpc.NewServer()
 	pb.RegisterOutboundConnectorServiceServer(grpcServer, &outboundConnectorServer{state: st})
+	pb.RegisterSyntheticTaskServiceServer(grpcServer, &syntheticTaskServer{state: st})
 	log.Printf("outbound-connector-mock gRPC server listening on %s", grpcAddr)
 	if err := grpcServer.Serve(listener); err != nil {
 		log.Fatalf("gRPC server failed: %v", err)
@@ -292,6 +305,15 @@ func runDebugServer(st *state) {
 	})
 	mux.HandleFunc("/command-requests", func(w http.ResponseWriter, r *http.Request) {
 		handleTriggerCommandRequest(st, w, r)
+	})
+	mux.HandleFunc("/synthetics-workers", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, st.listSyntheticsWorkers())
+	})
+	mux.HandleFunc("/synthetics-task-results", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, st.listSyntheticsTaskResults())
+	})
+	mux.HandleFunc("/synthetics-task-requests", func(w http.ResponseWriter, r *http.Request) {
+		handleTriggerSyntheticsTaskRequest(st, w, r)
 	})
 
 	server := &http.Server{Addr: debugAddr, Handler: mux}

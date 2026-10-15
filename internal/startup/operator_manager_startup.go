@@ -8,7 +8,6 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -52,6 +51,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/allowlistreadycheck"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/componentsettings"
 	"github.com/dash0hq/dash0-operator/internal/controller"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
 	"github.com/dash0hq/dash0-operator/internal/postdelete"
@@ -60,6 +60,8 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol/scresources"
+	"github.com/dash0hq/dash0-operator/internal/syntheticsworker"
+	"github.com/dash0hq/dash0-operator/internal/syntheticsworker/swresources"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -104,6 +106,12 @@ type environmentVariables struct {
 	agent0ConnectorToken                        string
 	agent0ConnectorSecretRefName                string
 	agent0ConnectorSecretRefKey                 string
+	syntheticsWorkerImage                       string
+	syntheticsWorkerImagePullPolicy             corev1.PullPolicy
+	syntheticsWorkerEnabled                     bool
+	syntheticsWorkerServerAddress               string
+	syntheticsWorkerInsecure                    bool
+	syntheticsWorkerPriorityClassName           string
 	nodeIp                                      string
 	nodeName                                    string
 	podIp                                       string
@@ -222,6 +230,12 @@ const (
 	agent0ConnectorTokenEnvVarName                        = "DASH0_AGENT0_CONNECTOR_TOKEN"
 	agent0ConnectorSecretRefNameEnvVarName                = "DASH0_AGENT0_CONNECTOR_SECRET_REF_NAME"
 	agent0ConnectorSecretRefKeyEnvVarName                 = "DASH0_AGENT0_CONNECTOR_SECRET_REF_KEY"
+	syntheticsWorkerImageEnvVarName                       = "DASH0_SYNTHETICS_WORKER_IMAGE"
+	syntheticsWorkerImagePullPolicyEnvVarName             = "DASH0_SYNTHETICS_WORKER_IMAGE_PULL_POLICY"
+	syntheticsWorkerEnabledEnvVarName                     = "DASH0_SYNTHETICS_WORKER_ENABLED"
+	syntheticsWorkerServerAddressEnvVarName               = "DASH0_SYNTHETICS_WORKER_SERVER_ADDRESS"
+	syntheticsWorkerInsecureEnvVarName                    = "DASH0_SYNTHETICS_WORKER_INSECURE"
+	syntheticsWorkerPriorityClassNameEnvVarName           = "DASH0_SYNTHETICS_WORKER_PRIORITY_CLASS_NAME"
 	k8sNodeIpEnvVarName                                   = "K8S_NODE_IP"
 	k8sNodeNameEnvVarName                                 = "K8S_NODE_NAME"
 	k8sPodIpEnvVarName                                    = "K8S_POD_IP"
@@ -270,6 +284,7 @@ var (
 	operatorDeploymentSelfReference *appsv1.Deployment
 	envVars                         environmentVariables
 	extraConfig                     util.ExtraConfig
+	extraConfigDefaults             util.ExtraConfig
 	extraConfigMapWatcher           = util.NewExtraConfigWatcher()
 
 	thirdPartyResourceSynchronizationQueue *workqueue.Typed[controller.ThirdPartyResourceSyncJob]
@@ -389,12 +404,13 @@ func Start() {
 		setupLog.Error(err, "invalid OTLP collector host port configuration")
 		os.Exit(1)
 	}
-	if err = readExtraConfigMap(); err != nil {
+	extraConfigDefaults = util.ExtraConfigDefaultsFor(cliArgs.isGkeAutopilot)
+	if err = readExtraConfigMap(extraConfigDefaults); err != nil {
 		setupLog.Error(err, "cannot read extra config map file at startup")
 		os.Exit(1)
 	}
 	util.WarnOnCollectorGoMemLimitInversion(extraConfig, setupLog)
-	if err = extraConfigMapWatcher.StartWatch(setupLog); err != nil {
+	if err = extraConfigMapWatcher.StartWatch(extraConfigDefaults, setupLog); err != nil {
 		setupLog.Error(err, "cannot establish file watch for extra config map")
 		os.Exit(1)
 	}
@@ -506,7 +522,7 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 		&cliArgs.allowlistVersion,
 		"allowlist-version",
 		"",
-		"The version of the Dash0 operator allowlist to wait for (e.g. v1.0.3). Used with --allowlist-synchronizer-ready-check.",
+		"The version of the Dash0 operator allowlist to wait for (e.g. v1.0.4). Used with --allowlist-synchronizer-ready-check.",
 	)
 	fs.BoolVar(
 		&cliArgs.deleteAllowlistSynchronizer,
@@ -950,6 +966,13 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	agent0ConnectorSecretRefName, _ := os.LookupEnv(agent0ConnectorSecretRefNameEnvVarName)
 	agent0ConnectorSecretRefKey, _ := os.LookupEnv(agent0ConnectorSecretRefKeyEnvVarName)
 
+	syntheticsWorkerImage, _ := os.LookupEnv(syntheticsWorkerImageEnvVarName)
+	syntheticsWorkerImagePullPolicy := readOptionalPullPolicyFromEnvironmentVariable(syntheticsWorkerImagePullPolicyEnvVarName)
+	syntheticsWorkerEnabled := readOptionalBoolFromEnvironmentVariable(syntheticsWorkerEnabledEnvVarName, false)
+	syntheticsWorkerServerAddress, _ := os.LookupEnv(syntheticsWorkerServerAddressEnvVarName)
+	syntheticsWorkerInsecure := readBooleanEnvVar(syntheticsWorkerInsecureEnvVarName)
+	syntheticsWorkerPriorityClassName, _ := os.LookupEnv(syntheticsWorkerPriorityClassNameEnvVarName)
+
 	nodeIp, isSet := os.LookupEnv(k8sNodeIpEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, k8sNodeIpEnvVarName)
@@ -1041,6 +1064,12 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		agent0ConnectorToken:                        agent0ConnectorToken,
 		agent0ConnectorSecretRefName:                agent0ConnectorSecretRefName,
 		agent0ConnectorSecretRefKey:                 agent0ConnectorSecretRefKey,
+		syntheticsWorkerImage:                       syntheticsWorkerImage,
+		syntheticsWorkerImagePullPolicy:             syntheticsWorkerImagePullPolicy,
+		syntheticsWorkerEnabled:                     syntheticsWorkerEnabled,
+		syntheticsWorkerServerAddress:               syntheticsWorkerServerAddress,
+		syntheticsWorkerInsecure:                    syntheticsWorkerInsecure,
+		syntheticsWorkerPriorityClassName:           syntheticsWorkerPriorityClassName,
 		nodeIp:                                      nodeIp,
 		nodeName:                                    nodeName,
 		podIp:                                       podIp,
@@ -1088,9 +1117,9 @@ func readKubeletStatsReceiverConfigFromEnv() (bool, *util.KubeletStatsReceiverCo
 
 // readExtraConfigMap reads the config map content, which is basically a container for structured configuration data
 // that would be cumbersome to pass in as a command line argument.
-func readExtraConfigMap() error {
+func readExtraConfigMap(defaults util.ExtraConfig) error {
 	var err error
-	extraConfig, err = util.ReadExtraConfigMap()
+	extraConfig, err = util.ReadExtraConfigMap(defaults, setupLog)
 	if err != nil {
 		return err
 	}
@@ -1187,13 +1216,13 @@ func setupSpamFilterReconciler(
 	k8sClient client.Client,
 	clusterUid types.UID,
 	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
-	httpClient *http.Client,
+	apiClientPool *controller.ApiClientPool,
 ) (*controller.SpamFilterReconciler, error) {
 	spamFilterReconciler := controller.NewSpamFilterReconciler(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err := spamFilterReconciler.SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("unable to set up the spam filter reconciler: %w", err)
@@ -1209,13 +1238,13 @@ func setupTeamReconciler(
 	k8sClient client.Client,
 	clusterUid types.UID,
 	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
-	httpClient *http.Client,
+	apiClientPool *controller.ApiClientPool,
 ) (*controller.TeamReconciler, error) {
 	teamReconciler := controller.NewTeamReconciler(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err := teamReconciler.SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("unable to set up the team reconciler: %w", err)
@@ -1231,13 +1260,13 @@ func setupTimeSeriesAggregationReconciler(
 	k8sClient client.Client,
 	clusterUid types.UID,
 	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
-	httpClient *http.Client,
+	apiClientPool *controller.ApiClientPool,
 ) (*controller.TimeSeriesAggregationReconciler, error) {
 	timeSeriesAggregationReconciler := controller.NewTimeSeriesAggregationReconciler(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err := timeSeriesAggregationReconciler.SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("unable to set up the time series aggregation reconciler: %w", err)
@@ -1284,13 +1313,13 @@ func setupSyntheticCheckReconciler(
 	k8sClient client.Client,
 	clusterUid types.UID,
 	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
-	httpClient *http.Client,
+	apiClientPool *controller.ApiClientPool,
 ) (*controller.SyntheticCheckReconciler, error) {
 	syntheticCheckReconciler := controller.NewSyntheticCheckReconciler(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err := syntheticCheckReconciler.SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("unable to set up the synthetic check reconciler: %w", err)
@@ -1309,14 +1338,14 @@ func setupSLOReconciler(
 	startupK8sClient client.Client,
 	clusterUid types.UID,
 	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
-	httpClient *http.Client,
+	apiClientPool *controller.ApiClientPool,
 	logger logd.Logger,
 ) (*controller.SLOReconciler, error) {
 	sloReconciler := controller.NewSLOReconciler(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err := sloReconciler.SetupWithManager(ctx, mgr, startupK8sClient, logger); err != nil {
 		return nil, fmt.Errorf("unable to set up the SLO reconciler: %w", err)
@@ -1694,15 +1723,19 @@ func startDash0Controllers(
 		EdgeProxyImagePullPolicy:                    envVars.edgeProxyImagePullPolicy,
 		Agent0ConnectorImage:                        envVars.agent0ConnectorImage,
 		Agent0ConnectorImagePullPolicy:              envVars.agent0ConnectorImagePullPolicy,
+		SyntheticsWorkerImage:                       envVars.syntheticsWorkerImage,
+		SyntheticsWorkerImagePullPolicy:             envVars.syntheticsWorkerImagePullPolicy,
 	}
 
-	httpClient := util.WithUserAgent(
-		dash0apiclient.NewTransport(
-			dash0apiclient.WithTransportMaxRetries(2),
-			dash0apiclient.WithTransportRetryWaitMin(1*time.Second),
-			dash0apiclient.WithTransportRetryWaitMax(3*time.Second),
-		).HTTPClient(),
-		images.GetOperatorVersion(),
+	dash0ApiTransport := dash0apiclient.NewTransport(
+		dash0apiclient.WithTransportMaxRetries(2),
+		dash0apiclient.WithTransportRetryWaitMin(1*time.Second),
+		dash0apiclient.WithTransportRetryWaitMax(3*time.Second),
+	)
+	httpClient := util.WithUserAgent(dash0ApiTransport.HTTPClient(), images.GetOperatorVersion())
+	apiClientPool := controller.NewApiClientPool(
+		dash0ApiTransport,
+		util.RenderUserAgent(images.GetOperatorVersion()),
 	)
 
 	isIPv6Cluster := util.IsIPv6Address(envVars.podIp)
@@ -1800,6 +1833,7 @@ func startDash0Controllers(
 			OTelCollectorNamePrefix:                envVars.oTelCollectorNamePrefix,
 			TargetAllocatorNamePrefix:              envVars.targetAllocatorNamePrefix,
 			Agent0ConnectorEnabledViaHelm:          envVars.agent0ConnectorEnabled,
+			SyntheticsWorkerEnabledViaHelm:         envVars.syntheticsWorkerEnabled,
 			SendBatchSize:                          envVars.sendBatchSize,
 			SendBatchMaxSize:                       envVars.sendBatchMaxSize,
 			K8sAttributesDisableReplicasetInformer: envVars.k8sAttributesDisableReplicasetInformer,
@@ -1833,6 +1867,7 @@ func startDash0Controllers(
 			k8sClient,
 			nodeMetadataClient,
 			extraConfig,
+			extraConfigDefaults,
 			developmentMode,
 			cliArgs.featureSignalControlEnabled,
 			oTelColResourceManager,
@@ -1885,6 +1920,30 @@ func startDash0Controllers(
 		operatorDeploymentSelfReference,
 		clusterUid,
 		developmentMode,
+		cliArgs.isGkeAutopilot,
+		cliArgs.isOpenShift,
+	)
+	if err != nil {
+		return err
+	}
+
+	componentSettingsConflictReporter := componentsettings.NewConflictReporter(
+		k8sClient,
+		extraConfig,
+		extraConfigDefaults,
+		cliArgs.featureSignalControlEnabled,
+		leaderElectionAwareRunnable,
+	)
+	extraConfigMapWatcher.AddClient(componentSettingsConflictReporter)
+	leaderElectionAwareRunnable.AddLeaderElectionClient(componentSettingsConflictReporter)
+
+	syntheticsWorkerManager, err := setupSyntheticsWorkerManager(
+		mgr,
+		k8sClient,
+		envVars,
+		images,
+		operatorDeploymentSelfReference,
+		developmentMode,
 		cliArgs.isOpenShift,
 	)
 	if err != nil {
@@ -1907,6 +1966,7 @@ func startDash0Controllers(
 			images.GetOperatorVersion(),
 			int32(cliArgs.otlpGrpcHostPort),
 			kubernetesApiServerVersionInfo,
+			cliArgs.isGkeAutopilot,
 			cliArgs.isOpenShift,
 		)
 		scManager = signalcontrol.NewSignalControlManager(
@@ -1914,6 +1974,7 @@ func startDash0Controllers(
 			scResourceManager,
 			nodeMetadataClient,
 			extraConfig,
+			extraConfigDefaults,
 		)
 		// Update the extra config in the Signal Control manager when the extra config map changes, and also trigger a
 		// reconciliation of the Signal Control resources.
@@ -1923,6 +1984,7 @@ func startDash0Controllers(
 			scManager,
 			collectorManager,
 		)
+		scReconciler.ComponentSettingsConflictReporter = componentSettingsConflictReporter
 		if err := scReconciler.SetupWithManager(mgr); err != nil {
 			return fmt.Errorf("unable to set up the Signal Control reconciler: %w", err)
 		}
@@ -1934,7 +1996,7 @@ func startDash0Controllers(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err != nil {
 		return err
@@ -1947,7 +2009,7 @@ func startDash0Controllers(
 		startupTasksK8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 		setupLog,
 	)
 	if err != nil {
@@ -1958,7 +2020,8 @@ func startDash0Controllers(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		mgr.GetEventRecorder("dash0-view-controller"),
+		apiClientPool,
 	)
 	if err := viewReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the view reconciler: %w", err)
@@ -1969,7 +2032,7 @@ func startDash0Controllers(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err := notificationChannelReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the notification channel reconciler: %w", err)
@@ -1981,7 +2044,7 @@ func startDash0Controllers(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err != nil {
 		return err
@@ -1992,7 +2055,7 @@ func startDash0Controllers(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err != nil {
 		return err
@@ -2003,7 +2066,7 @@ func startDash0Controllers(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
-		httpClient,
+		apiClientPool,
 	)
 	if err != nil {
 		return err
@@ -2015,7 +2078,7 @@ func startDash0Controllers(
 			k8sClient,
 			clusterUid,
 			leaderElectionAwareRunnable,
-			httpClient,
+			apiClientPool,
 		)
 		if err := samplingRuleReconciler.SetupWithManager(mgr); err != nil {
 			return fmt.Errorf("unable to set up the sampling rule reconciler: %w", err)
@@ -2119,6 +2182,7 @@ func startDash0Controllers(
 		collectorManager,
 		targetallocatorManager,
 		agent0ConnectorManager,
+		syntheticsWorkerManager,
 		scManager,
 		clusterInstrumentationConfig,
 		clusterUid,
@@ -2174,6 +2238,7 @@ func startDash0Controllers(
 		autoNamespaceMonitoringReconciler = controller.NewAutoNamespaceMonitoringReconciler(
 			k8sClient,
 			envVars.operatorNamespace,
+			operatorDeploymentSelfReference.CreationTimestamp.Time,
 		)
 		setupLog.Info("Starting the auto-namespace-monitoring reconciler.")
 		if err := autoNamespaceMonitoringReconciler.SetupWithManager(mgr); err != nil {
@@ -2204,6 +2269,7 @@ func startDash0Controllers(
 		cliArgs.telemetryCollectionEnabled,
 		cliArgs.featureSignalControlEnabled,
 		envVars.agent0ConnectorEnabled,
+		envVars.syntheticsWorkerEnabled,
 	); err != nil {
 		return err
 	}
@@ -2391,6 +2457,7 @@ func setupAgent0ConnectorManager(
 	operatorDeploymentSelfReference *appsv1.Deployment,
 	pseudoClusterUid types.UID,
 	developmentMode bool,
+	isGkeAutopilot bool,
 	isOpenShift bool,
 ) (*agent0connector.Agent0ConnectorManager, error) {
 	if !envVars.agent0ConnectorEnabled {
@@ -2406,6 +2473,7 @@ func setupAgent0ConnectorManager(
 		ServerAddress:     envVars.agent0ConnectorServerAddress,
 		Insecure:          envVars.agent0ConnectorInsecure,
 		Authorization:     agent0ConnectorAuthorization(envVars),
+		IsGkeAutopilot:    isGkeAutopilot,
 		IsOpenShift:       isOpenShift,
 		DevelopmentMode:   developmentMode,
 	}
@@ -2433,6 +2501,54 @@ func setupAgent0ConnectorManager(
 		return nil, fmt.Errorf("unable to set up the agent0-connector reconciler: %w", err)
 	}
 	return agent0ConnectorManager, nil
+}
+
+func setupSyntheticsWorkerManager(
+	mgr ctrl.Manager,
+	k8sClient client.Client,
+	envVars environmentVariables,
+	images util.Images,
+	operatorDeploymentSelfReference *appsv1.Deployment,
+	developmentMode bool,
+	isOpenShift bool,
+) (*syntheticsworker.SyntheticsWorkerManager, error) {
+	if !envVars.syntheticsWorkerEnabled {
+		// We might not have the permissions to manage the synthetics-worker resources (in particular when telemetry
+		// collection is also disabled), e.g. no permission to manage deployments.
+		return nil, nil
+	}
+	syntheticsWorkerConfig := util.SyntheticsWorkerConfig{
+		Images:            images,
+		OperatorNamespace: envVars.operatorNamespace,
+		NamePrefix:        envVars.oTelCollectorNamePrefix,
+		ServerAddress:     envVars.syntheticsWorkerServerAddress,
+		Insecure:          envVars.syntheticsWorkerInsecure,
+		PriorityClassName: envVars.syntheticsWorkerPriorityClassName,
+		IsOpenShift:       isOpenShift,
+		DevelopmentMode:   developmentMode,
+	}
+	syntheticsWorkerResourceManager := swresources.NewSyntheticsWorkerResourceManager(
+		k8sClient,
+		mgr.GetScheme(),
+		operatorDeploymentSelfReference,
+		syntheticsWorkerConfig,
+	)
+	syntheticsWorkerManager := syntheticsworker.NewSyntheticsWorkerManager(
+		k8sClient,
+		developmentMode,
+		syntheticsWorkerResourceManager,
+		mgr.GetEventRecorder("dash0-synthetics-worker"),
+	)
+	syntheticsWorkerReconciler := syntheticsworker.NewSyntheticsWorkerReconciler(
+		k8sClient,
+		syntheticsWorkerManager,
+		envVars.operatorNamespace,
+		envVars.oTelCollectorNamePrefix,
+	)
+	if err := syntheticsWorkerReconciler.SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("unable to set up the synthetics-worker reconciler: %w", err)
+	}
+	return syntheticsWorkerManager, nil
 }
 
 // agent0ConnectorAuthorization builds the Dash0 authorization configuration for the agent0-connector workload from the
@@ -2613,17 +2729,26 @@ func setupResourceWebhooks(
 	telemetryCollectionEnabled bool,
 	signalControlEnabled bool,
 	agent0ConnectorEnabled bool,
+	syntheticsWorkerEnabled bool,
 ) error {
 	if err := webhooks.NewOperatorConfigurationMutatingWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration mutating webhook: %w", err)
 	}
-	if err := webhooks.NewOperatorConfigurationValidationWebhookHandler(k8sClient, telemetryCollectionEnabled, agent0ConnectorEnabled).SetupWebhookWithManager(mgr); err != nil {
+	if err := webhooks.NewOperatorConfigurationValidationWebhookHandler(
+		k8sClient, telemetryCollectionEnabled, agent0ConnectorEnabled, syntheticsWorkerEnabled,
+	).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration validation webhook: %w", err)
 	}
 	if signalControlEnabled {
-		if err := webhooks.NewSignalControlValidationWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
+		signalControlValidationWebhookHandler := webhooks.NewSignalControlValidationWebhookHandler(
+			k8sClient,
+			extraConfig,
+			extraConfigDefaults,
+		)
+		if err := signalControlValidationWebhookHandler.SetupWebhookWithManager(mgr); err != nil {
 			return fmt.Errorf("unable to create the Signal Control validation webhook: %w", err)
 		}
+		extraConfigMapWatcher.AddClient(signalControlValidationWebhookHandler)
 	}
 	if err := webhooks.NewMonitoringMutatingWebhookHandler(k8sClient, operatorNamespace).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the monitoring mutating webhook: %w", err)

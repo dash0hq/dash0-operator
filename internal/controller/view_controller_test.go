@@ -7,10 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -20,6 +20,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
@@ -250,6 +251,44 @@ var _ = Describe(
 							"",
 						)
 						Expect(gock.IsDone()).To(BeTrue())
+					},
+				)
+
+				It(
+					"synchronizes a view with the deprecated field spec.display.folder and queues a warning event",
+					func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						expectViewPutRequest(clusterId, defaultExpectedPathView)
+						defer gock.Off()
+
+						viewResource := createViewResource(TestNamespaceName, viewName)
+						viewResource.Spec.Display.Folder = []string{"Shop", "Checkout"}
+						Expect(k8sClient.Create(ctx, viewResource)).To(Succeed())
+
+						result, err := viewReconciler.Reconcile(
+							ctx, reconcile.Request{
+								NamespacedName: types.NamespacedName{
+									Namespace: TestNamespaceName,
+									Name:      viewName,
+								},
+							},
+						)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(result).To(Equal(reconcile.Result{}))
+						Expect(gock.IsDone()).To(BeTrue())
+
+						VerifyEvent(
+							ctx,
+							clientset,
+							TestNamespaceName,
+							viewName,
+							corev1.EventTypeWarning,
+							util.ReasonDeprecatedFieldUsed,
+							util.ActionSynchronization,
+							"The field spec.display.folder is deprecated and ignored by Dash0. Use the annotation "+
+								"dash0.com/folder-path: \"/Shop/Checkout\" instead.",
+						)
 					},
 				)
 
@@ -927,11 +966,11 @@ var _ = Describe(
 						Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(1))
 						apiRequest := resourceToRequestsResult.ApiRequests[0]
 						Expect(apiRequest.ItemName).To(Equal("dash0-view"))
-						req := apiRequest.Request
-						defer func() {
-							_ = req.Body.Close()
-						}()
-						body, err := io.ReadAll(req.Body)
+						Expect(apiRequest.ApiClientCall).ToNot(BeNil())
+						Expect(apiRequest.ApiClientCall.Method).To(Equal(http.MethodPut))
+						viewDefinition, err := mapToViewDefinition(view)
+						Expect(err).ToNot(HaveOccurred())
+						body, err := json.Marshal(viewDefinition)
 						Expect(err).ToNot(HaveOccurred())
 						resultingViewInRequest := map[string]any{}
 						Expect(json.Unmarshal(body, &resultingViewInRequest)).To(Succeed())
@@ -981,8 +1020,9 @@ kind: Dash0View
 metadata:
   name: dash0-view
   annotations:
-    dash0com/annotation1: value1
-    dash0com/annotation2: value2
+    dash0.com/folder-path: /shop/checkout
+    dash0.com/sharing: team:team_01abc
+    dash0com/not-part-of-the-api: dropped
 spec:
   display:
     name: Dash0 View Example
@@ -994,8 +1034,8 @@ spec:
         stringValue: "200"
 `,
 							expectedAnnotations: map[string]string{
-								"dash0com/annotation1": "value1",
-								"dash0com/annotation2": "value2",
+								"dash0.com/folder-path": "/shop/checkout",
+								"dash0.com/sharing":     "team:team_01abc",
 							},
 						},
 					),
@@ -1010,7 +1050,8 @@ func createViewReconciler(clusterId string) *ViewReconciler {
 		k8sClient,
 		types.UID(clusterId),
 		viewLeaderElectionAware,
-		TestHTTPClient(),
+		recorder,
+		testApiClientPool(),
 	)
 	return viewReconciler
 }

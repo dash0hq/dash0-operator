@@ -14,11 +14,12 @@ import (
 // sensitiveEnvVarNamePrefixes are the (prefixes of the) env var names under which the operator injects plaintext
 // secrets into managed workloads. Prefix-matched because the names carry per-export/-namespace/-index suffixes.
 var sensitiveEnvVarNamePrefixes = []string{
-	"OTELCOL_AUTH_TOKEN",                // collector Dash0 export auth token(s)
-	"SELF_MONITORING_AUTH_TOKEN",        // collector self-monitoring auth token
-	"DASH0_AGENT0_CONNECTOR_AUTH_TOKEN", // agent0-connector auth token
-	"EDGE_PROXY_AUTH_TOKEN",             // signal-control edge proxy auth token
-	"DASH0_HEADER",                      // collector gRPC/HTTP header secrets
+	"OTELCOL_AUTH_TOKEN",
+	"SELF_MONITORING_AUTH_TOKEN",
+	"DASH0_AGENT0_CONNECTOR_AUTH_TOKEN",
+	"DASH0_SYNTHETICS_WORKER_AUTH_TOKEN",
+	"EDGE_PROXY_AUTH_TOKEN",
+	"DASH0_HEADER",
 }
 
 func isSensitiveEnvVarName(name string) bool {

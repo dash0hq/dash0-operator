@@ -375,6 +375,11 @@ func addHelmParametersForImages(arguments []string, images Images) []string {
 	arguments = setIfNotEmpty(arguments, "operator.agent0ConnectorImage.digest", images.agent0Connector.digest)
 	arguments = setIfNotEmpty(arguments, "operator.agent0ConnectorImage.pullPolicy", images.agent0Connector.pullPolicy)
 
+	arguments = setIfNotEmpty(arguments, "operator.syntheticsWorkerImage.repository", images.syntheticsWorker.repository)
+	arguments = setIfNotEmpty(arguments, "operator.syntheticsWorkerImage.tag", images.syntheticsWorker.tag)
+	arguments = setIfNotEmpty(arguments, "operator.syntheticsWorkerImage.digest", images.syntheticsWorker.digest)
+	arguments = setIfNotEmpty(arguments, "operator.syntheticsWorkerImage.pullPolicy", images.syntheticsWorker.pullPolicy)
+
 	return arguments
 }
 

@@ -185,6 +185,51 @@ func QueueAgent0ConnectorDisabledEvent(eventRecorder events.EventRecorder, resou
 	)
 }
 
+// QueueSyntheticsWorkerDeployedEvent queues the event reporting that the operator has created or updated the
+// synthetics-worker resources. It should only be queued when the synthetics-worker was not deployed before, see
+// Dash0OperatorConfiguration#SetSyntheticsWorkerStatus.
+func QueueSyntheticsWorkerDeployedEvent(eventRecorder events.EventRecorder, resource runtime.Object) {
+	eventRecorder.Eventf(
+		resource,
+		nil,
+		corev1.EventTypeNormal,
+		string(ReasonSyntheticsWorkerDeployed),
+		string(ActionSyntheticsWorkerDeploy),
+		"The operator has deployed the synthetics-worker.",
+	)
+}
+
+// QueueSyntheticsWorkerNotDeployedEvent queues the event reporting that the operator could not create or update the
+// synthetics-worker resources. It should only be queued when the outcome changed, see
+// Dash0OperatorConfiguration#SetSyntheticsWorkerStatus.
+func QueueSyntheticsWorkerNotDeployedEvent(eventRecorder events.EventRecorder, resource runtime.Object, message string) {
+	eventRecorder.Eventf(
+		resource,
+		nil,
+		corev1.EventTypeWarning,
+		string(ReasonSyntheticsWorkerNotDeployed),
+		string(ActionSyntheticsWorkerDeploy),
+		"The operator has not deployed the synthetics-worker: %s",
+		message,
+	)
+}
+
+// QueueSyntheticsWorkerDisabledEvent queues the event reporting that the operator has removed the synthetics-worker
+// because it is disabled. This is a normal event, not a warning: the synthetics-worker is absent because it has been
+// switched off, not because the operator failed to deploy it. It should only be queued when the outcome changed, see
+// Dash0OperatorConfiguration#SetSyntheticsWorkerStatus.
+func QueueSyntheticsWorkerDisabledEvent(eventRecorder events.EventRecorder, resource runtime.Object, message string) {
+	eventRecorder.Eventf(
+		resource,
+		nil,
+		corev1.EventTypeNormal,
+		string(ReasonSyntheticsWorkerDisabled),
+		string(ActionSyntheticsWorkerDeploy),
+		"%s",
+		message,
+	)
+}
+
 func stringifyContainerInstrumentationIssues(instrumentationIssuesPerContainer map[string][]string) string {
 	var sb strings.Builder
 	for idx, containerName := range slices.Sorted(maps.Keys(instrumentationIssuesPerContainer)) {

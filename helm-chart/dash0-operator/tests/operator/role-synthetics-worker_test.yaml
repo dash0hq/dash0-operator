@@ -1,0 +1,51 @@
+suite: test synthetics-worker role
+templates:
+  - operator/role-synthetics-worker.yaml
+tests:
+  - it: should not render by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render a namespaced role if the synthetics-worker is enabled
+    set:
+      operator:
+        syntheticsWorker:
+          enabled: true
+    asserts:
+      - matchSnapshot: {}
+      - containsDocument:
+          kind: Role
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-synthetics-worker
+          namespace: NAMESPACE
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - ""
+            resources:
+              - serviceaccounts
+            verbs:
+              - create
+              - delete
+              - get
+              - list
+              - patch
+              - update
+              - watch
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - apps
+            resources:
+              - deployments
+            verbs:
+              - create
+              - delete
+              - get
+              - list
+              - patch
+              - update
+              - watch

@@ -55,7 +55,7 @@ func TestKubectlEnv(t *testing.T) {
 				t.Errorf("expected the auth token not to reach the kubectl subprocess, got the entry %q", entry)
 			}
 			name, _, _ := strings.Cut(entry, "=")
-			if name != "HOME" && !slices.Contains(kubectlEnvPassThrough, name) {
+			if name != "HOME" && name != kubercEnvVarName && !slices.Contains(kubectlEnvPassThrough, name) {
 				t.Errorf("expected only allowlisted variables in the environment, got %q", name)
 			}
 		}
@@ -70,6 +70,12 @@ func TestKubectlEnv(t *testing.T) {
 			if strings.HasPrefix(entry, "NO_PROXY=") {
 				t.Errorf("expected an unset variable to be omitted rather than passed as empty, got %q", entry)
 			}
+		}
+	})
+
+	t.Run("disables kuberc preferences", func(t *testing.T) {
+		if !slices.Contains(kubectlEnv("/tmp"), "KUBERC=off") {
+			t.Errorf("expected KUBERC=off in the environment, got %v", kubectlEnv("/tmp"))
 		}
 	})
 }

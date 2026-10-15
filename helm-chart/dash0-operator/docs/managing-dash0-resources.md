@@ -49,13 +49,13 @@ The dashboards created by the operator will be in read-only mode in Dash0.
 If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the dashboards in
 that dataset, otherwise they will be created in the `default` dataset.
 
-You can opt out of synchronization for individual Perses dashboard resources by adding the Kubernetes label
-`dash0.com/enable: false` to the Perses dashboard resource.
+You can remove a Perses dashboard resource from synchronization with Dash0 by adding the Kubernetes label
+`dash0.com/enable: false` to it.
 If this label is added to a dashboard which has previously been synchronized to Dash0, the operator will delete the
 corresponding dashboard in Dash0.
 Note that the `spec.instrumentWorkloads.labelSelector` in the monitoring resource does not affect the synchronization of
-Perses dashboards, the label to opt out of synchronization is always `dash0.com/enable: false`, even if a non-default
-label selector has been set in `spec.instrumentWorkloads.labelSelector`.
+Perses dashboards, the label to remove a dashboard from synchronization is always `dash0.com/enable: false`, even if a
+non-default label selector has been set in `spec.instrumentWorkloads.labelSelector`.
 
 When a Perses dashboard resource has been synchronized to Dash0, the operator will write a summary of that
 synchronization operation to the status of the Dash0 monitoring resource in the same namespace.
@@ -145,7 +145,7 @@ You can manage your Dash0 check rules via the Dash0 operator.
 The custom resource definition for Prometheus rules also needs to be installed in the cluster.
 There are two ways to achieve this:
 
-1. Install the Prometheus rules custom resource definition with the following command:
+1. Install the PrometheusRule custom resource definition with the following command:
    ```console
    kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.94.1/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
    ```
@@ -190,8 +190,8 @@ Prometheus rules will be mapped to Dash0 check rules as follows:
 * If `expr` contains the token `$__threshold`, and neither annotation `dash0-threshold-degraded` nor
   `dash0-threshold-critical` is present, the rule will be considered invalid and will not be synchronized to Dash0.
 * If the rule has the annotation `dash0-enabled=false`, the check rule will be synchronized but disabled in Dash0.
-  This Prometheus annotation is not to be confused with the Kubernetes label `dash0.com/enable: false`, which disables
-  synchronization of the entire Prometheus rules resource (and all its check rules) to Dash0 (see below).
+  This Prometheus annotation is not to be confused with the Kubernetes label `dash0.com/enable: false`, which removes
+  the entire PrometheusRule resource (and all its check rules) from synchronization to Dash0 (see below).
 * The group attribute `limit` is not supported by Dash0 and will be ignored.
 * The group attribute `partial_response_strategy` is not supported by Dash0 and will be ignored.
 * All labels (except for the ones explicitly mentioned in the conversion table below) will be listed under "Additional
@@ -214,20 +214,20 @@ Prometheus rules will be mapped to Dash0 check rules as follows:
 | `annotations/*`                        | "Annotations"                                                                                                     | |
 | `labels/*`                             | "Additional labels"                                                                                               | |
 
-You can opt out of synchronization for individual Prometheus rules resources by adding the Kubernetes label
+You can remove a PrometheusRule resource from synchronization with Dash0 by adding the Kubernetes label
 `dash0.com/enable: false` to it.
-If this label is added to a Prometheus rules resource which has previously been synchronized to Dash0, the operator will
+If this label is added to a PrometheusRule resource which has previously been synchronized to Dash0, the operator will
 delete all corresponding check rules in Dash0.
 Note that this refers to a _Kubernetes_ label on the Kubernetes resource, and it will affect all check rules contained
-in this Prometheus rules resource.
+in this PrometheusRule resource.
 This mechanism is not to be confused with the Prometheus annotation `dash0-enabled`, which can be applied to
-individual rules in a Prometheus rules resource, and controls whether the check rule is enabled or disabled in Dash0.
+individual rules in a PrometheusRule resource, and controls whether the check rule is enabled or disabled in Dash0.
 Please also note that the `spec.instrumentWorkloads.labelSelector` in the monitoring resource does not affect the
-synchronization of Prometheus rule resources, the label to opt out of synchronization is always
+synchronization of Prometheus rules, the label to remove Prometheus rules from synchronization is always
 `dash0.com/enable: false`, even if a non-default label selector has been set in
 `spec.instrumentWorkloads.labelSelector`.
 
-When a Prometheus rules resource has been synchronized to Dash0, the operator will write a summary of that
+When a PrometheusRule resource has been synchronized to Dash0, the operator will write a summary of that
 synchronization operation to the status of the Dash0 monitoring resource in the same namespace.
 This summary will also show whether any of the rules had validation issues or errors occurred during synchronization:
 
@@ -305,6 +305,22 @@ checks with the same name but different internal IDs.
 If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the synthetic
 checks in that dataset, otherwise they will be created in the `default` dataset.
 
+To place a synthetic check in a folder in Dash0, add the annotation `dash0.com/folder-path` to the synthetic check resource, for
+example `dash0.com/folder-path: "/Shop/Checkout"` for the folder `Checkout` within the folder `Shop`.
+The operator synchronizes changes to `dash0.com/*` annotations like any other change to the resource.
+The resource is the source of truth: when the operator synchronizes the synthetic check, it replaces the folder in Dash0
+with the value of the annotation (or removes it, if the annotation is not set).
+The folder of a synthetic check managed by the operator cannot be changed in the Dash0 UI.
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SyntheticCheck
+metadata:
+  name: ...
+  annotations:
+    dash0.com/folder-path: "/Shop/Checkout"
+```
+
 You can opt out of synchronization for individual synthetic check resources by adding the Kubernetes label
 `dash0.com/enable: false` to the synthetic check resource.
 If this label is added to a synthetic check which has previously been synchronized to Dash0, the operator will delete
@@ -373,6 +389,25 @@ name but different internal IDs.
 
 If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the view in that
 dataset, otherwise they will be created in the `default` dataset.
+
+To place a view in a folder in Dash0, add the annotation `dash0.com/folder-path` to the view resource, for
+example `dash0.com/folder-path: "/Shop/Checkout"` for the folder `Checkout` within the folder `Shop`.
+The operator synchronizes changes to `dash0.com/*` annotations like any other change to the resource.
+The resource is the source of truth: when the operator synchronizes the view, it replaces the folder in Dash0
+with the value of the annotation (or removes it, if the annotation is not set).
+The folder of a view managed by the operator cannot be changed in the Dash0 UI.
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0View
+metadata:
+  name: ...
+  annotations:
+    dash0.com/folder-path: "/Shop/Checkout"
+```
+
+The field `spec.display.folder` is deprecated, Dash0 ignores it.
+The operator logs a warning and queues a Kubernetes event of type `Warning` for views that still use it.
 
 You can opt out of synchronization for individual view resources by adding the Kubernetes label
 `dash0.com/enable: false` to the view resource.

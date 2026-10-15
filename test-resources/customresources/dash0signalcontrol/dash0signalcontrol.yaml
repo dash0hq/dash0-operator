@@ -7,3 +7,5 @@ spec:
   edgeProxy:
     logLevel: debug
     debug: true
+  logEnrichment:
+    enabled: true

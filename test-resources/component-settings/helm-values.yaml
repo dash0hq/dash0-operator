@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# Helm values for test-scenario-12-component-settings.sh. They differ from the values in spec.components.
+operator:
+  collectors:
+    signalControlCollectorReplicas: 3
+  signalControl:
+    edgeProxy:
+      replicas: 3
