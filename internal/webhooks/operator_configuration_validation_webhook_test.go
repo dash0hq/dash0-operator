@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -904,6 +905,28 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				Expect(response.Allowed).To(BeFalse())
 				Expect(response.Result.Code).To(Equal(int32(http.StatusBadRequest)))
 			})
+		})
+
+		It("should accept a required node affinity without node selector terms, which removes the default", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(
+				dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					Components: &dash0v1alpha1.OperatorConfigurationComponents{
+						TargetAllocator: &dash0v1alpha1.TargetAllocatorSettings{
+							WorkloadSettings: dash0v1alpha1.WorkloadSettings{
+								NodeAffinity: &corev1.NodeAffinity{
+									RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+										NodeSelectorTerms: []corev1.NodeSelectorTerm{},
+									},
+								},
+							},
+						},
+					},
+				}))
+			Expect(response.Allowed).To(BeTrue())
+			Expect(response.Warnings).To(BeEmpty())
 		})
 	})
 

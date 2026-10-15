@@ -1,8 +1,10 @@
 # SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-# A merge patch for the Dash0 operator configuration resource that sets every field of spec.components, and enables the
-# Prometheus CRD support, without which the operator does not deploy the target-allocator.
+# A merge patch for the Dash0 operator configuration resource that sets every field of spec.components, except for
+# daemonSetCollector.filelogOffsetStorageVolume (see operator-configuration-filelog-offset-storage-volume.yaml) and
+# daemonSetCollector.seLinuxOptions, which depends on the SELinux policy of the nodes. It also enables the Prometheus CRD
+# support, without which the operator does not deploy the target-allocator.
 spec:
   prometheusCrdSupport:
     enabled: true
@@ -16,6 +18,44 @@ spec:
         dash0.com/component-settings-test: custom-resource
       podAnnotations:
         dash0.com/component-settings-test: custom-resource
+      tolerations:
+        - key: dash0.com/component-settings-test
+          operator: Equal
+          value: custom-resource
+          effect: NoSchedule
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: dash0.com/enable
+                  operator: NotIn
+                  values: ["false"]
+                - key: kubernetes.io/os
+                  operator: In
+                  values: ["linux"]
+                - key: kubernetes.io/arch
+                  operator: In
+                  values: ["amd64", "arm64"]
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            preference:
+              matchExpressions:
+                - key: dash0.com/component-settings-test
+                  operator: Exists
+      sysctls:
+        - name: net.ipv4.tcp_keepalive_time
+          value: "240"
+      probes:
+        liveness:
+          failureThreshold: 25
+          terminationGracePeriodSeconds: 30
+        readiness:
+          periodSeconds: 3
+          successThreshold: 2
+        startup:
+          initialDelaySeconds: 1
+          timeoutSeconds: 2
+      priorityClassName: d0-otelcol-daemonset-prio
 
     deploymentCollector:
       labels:
@@ -26,6 +66,30 @@ spec:
         dash0.com/component-settings-test: custom-resource
       podAnnotations:
         dash0.com/component-settings-test: custom-resource
+      tolerations:
+        - key: dash0.com/component-settings-test
+          operator: Exists
+          effect: NoSchedule
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            preference:
+              matchExpressions:
+                - key: dash0.com/component-settings-test
+                  operator: Exists
+      sysctls:
+        - name: net.ipv4.tcp_keepalive_time
+          value: "240"
+      probes:
+        liveness:
+          failureThreshold: 25
+          successThreshold: 1
+        readiness:
+          timeoutSeconds: 2
+        startup:
+          periodSeconds: 3
+          terminationGracePeriodSeconds: 30
+      priorityClassName: d0-otelcol-deployment-prio
 
     targetAllocator:
       labels:
@@ -36,6 +100,28 @@ spec:
         dash0.com/component-settings-test: custom-resource
       podAnnotations:
         dash0.com/component-settings-test: custom-resource
+      tolerations:
+        - key: dash0.com/component-settings-test
+          operator: Exists
+          effect: NoSchedule
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: dash0.com/enable
+                  operator: NotIn
+                  values: ["false"]
+                - key: kubernetes.io/os
+                  operator: In
+                  values: ["linux"]
+                - key: kubernetes.io/arch
+                  operator: In
+                  values: ["amd64", "arm64"]
+      mTls:
+        enabled: true
+        serverCertSecretName: ta-server-cert-secret
+        clientCertSecretName: ta-client-cert-secret
+      allowInsecureAuthSecrets: false
 
     agent0Connector:
       labels:
@@ -46,3 +132,20 @@ spec:
         dash0.com/component-settings-test: custom-resource
       podAnnotations:
         dash0.com/component-settings-test: custom-resource
+      tolerations:
+        - key: dash0.com/component-settings-test
+          operator: Exists
+          effect: NoSchedule
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: dash0.com/enable
+                  operator: NotIn
+                  values: ["false"]
+                - key: kubernetes.io/os
+                  operator: In
+                  values: ["linux"]
+                - key: kubernetes.io/arch
+                  operator: In
+                  values: ["amd64", "arm64"]

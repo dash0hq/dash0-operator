@@ -22,6 +22,36 @@ spec:
         dash0.com/component-settings-test: custom-resource
       podAnnotations:
         dash0.com/component-settings-test: custom-resource
+      tolerations:
+        - key: dash0.com/component-settings-test
+          operator: Exists
+          effect: NoSchedule
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: dash0.com/enable
+                  operator: NotIn
+                  values: ["false"]
+                - key: kubernetes.io/os
+                  operator: In
+                  values: ["linux"]
+                - key: kubernetes.io/arch
+                  operator: In
+                  values: ["amd64", "arm64"]
+      sysctls:
+        - name: net.ipv4.tcp_keepalive_time
+          value: "240"
+      probes:
+        liveness:
+          initialDelaySeconds: 1
+          timeoutSeconds: 2
+        readiness:
+          failureThreshold: 5
+        startup:
+          failureThreshold: 60
+          successThreshold: 1
+      priorityClassName: d0-otelcol-deployment-prio
 
     edgeProxy:
       replicas: 1
@@ -34,3 +64,14 @@ spec:
         dash0.com/component-settings-test: custom-resource
       podAnnotations:
         dash0.com/component-settings-test: custom-resource
+      tolerations:
+        - key: dash0.com/component-settings-test
+          operator: Exists
+          effect: NoSchedule
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            preference:
+              matchExpressions:
+                - key: dash0.com/component-settings-test
+                  operator: Exists

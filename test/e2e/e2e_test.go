@@ -4371,7 +4371,7 @@ spec:
 
 		Describe("when component settings are configured via Helm and in the operator configuration resource", func() {
 			BeforeAll(func() {
-				By("deploy the Dash0 operator with a DaemonSet label")
+				By("deploy the Dash0 operator with a DaemonSet toleration")
 				deployOperatorWithoutAutoOperationConfiguration(
 					operatorNamespace,
 					operatorHelmChart,
@@ -4379,7 +4379,8 @@ spec:
 					"",
 					&images,
 					map[string]string{
-						"operator.collectors.daemonSetLabels.e2e-component-label": "from-helm",
+						"operator.collectors.daemonSetTolerations[0].key":      "e2e-helm-toleration",
+						"operator.collectors.daemonSetTolerations[0].operator": "Exists",
 					},
 				)
 				time.Sleep(10 * time.Second)
@@ -4403,10 +4404,10 @@ spec:
 					TelemetryCollectionEnabled: true,
 				}, operatorNamespace, operatorHelmChart)
 
-				By("verifying that the DaemonSet uses the label provided via Helm")
+				By("verifying that the DaemonSet uses the toleration provided via Helm")
 				Eventually(func(g Gomega) {
-					g.Expect(readCollectorDaemonSetComponentLabel(g, operatorNamespace)).
-						To(Equal("from-helm"))
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, "{.spec.template.spec.tolerations[*].key}")).
+						To(Equal("e2e-helm-toleration"))
 				}, 60*time.Second, time.Second).Should(Succeed())
 
 				By("adding component settings to the Dash0 operator configuration resource")
@@ -4418,16 +4419,20 @@ spec:
 					"--type",
 					"merge",
 					"-p",
-					`{"spec":{"components":{"daemonSetCollector":{"labels":{"e2e-component-label":"from-resource"}}}}}`,
+					`{"spec":{"components":{"daemonSetCollector":{`+
+						`"tolerations":[{"key":"e2e-resource-toleration","operator":"Exists"}],`+
+						`"labels":{"e2e-component-label":"from-resource"}}}}}`,
 				))
 				Expect(err).ToNot(HaveOccurred())
 				Expect(output).To(ContainSubstring(
-					"spec.components.daemonSetCollector.labels overrides the custom Helm value " +
-						"operator.collectors.daemonSetLabels"))
+					"spec.components.daemonSetCollector.tolerations overrides the custom Helm value " +
+						"operator.collectors.daemonSetTolerations"))
 
 				By("verifying that the DaemonSet uses the settings of the resource")
 				Eventually(func(g Gomega) {
-					g.Expect(readCollectorDaemonSetComponentLabel(g, operatorNamespace)).
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, "{.spec.template.spec.tolerations[*].key}")).
+						To(Equal("e2e-resource-toleration"))
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, "{.metadata.labels.e2e-component-label}")).
 						To(Equal("from-resource"))
 				}, 60*time.Second, time.Second).Should(Succeed())
 			})
