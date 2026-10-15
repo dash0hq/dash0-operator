@@ -11,9 +11,14 @@ jobs:
     name: check for new Signal Control collector and Edge Proxy image tags and update the Helm chart values
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: check if open PR already exists
         id: open_pr_exists

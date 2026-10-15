@@ -3,6 +3,8 @@
 
 name: E2E tests on kind
 
+# Every run uses its own kind cluster, and a newer run (e.g. with a different focus) does not supersede an older one.
+# jactionlint ignore=concurrency-limits
 on:
   workflow_call:
     inputs:
@@ -53,6 +55,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: go version
         run: |

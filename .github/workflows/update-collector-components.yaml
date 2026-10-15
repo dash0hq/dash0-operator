@@ -11,9 +11,14 @@ jobs:
     name: check for new available OpenTelemetry collector components and update the builder config
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       # Required to update the collector modules of the custom internal-telemetry factory, see
       # .github/workflows/scripts/update-collector-components-check-and-bump-versions.sh.
