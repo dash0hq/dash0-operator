@@ -207,6 +207,8 @@ custom resource definition for SLOs should match snapshot:
                                   rule: 'has(self.raw) ? !has(self.good) && !has(self.bad) && !has(self.total) : has(self.total) && has(self.good) != has(self.bad)'
                                 - message: rawType can only be set together with raw
                                   rule: '!has(self.rawType) || has(self.raw)'
+                                - message: rawType is required when raw is set
+                                  rule: '!has(self.raw) || has(self.rawType)'
                           required:
                             - ratioMetric
                           type: object
