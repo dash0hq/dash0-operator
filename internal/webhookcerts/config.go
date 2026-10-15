@@ -37,7 +37,7 @@ type Config struct {
 	// SecretName is the name of the Secret (rendered empty by the Helm chart) in which the material is stored.
 	SecretName string
 	// PreviousSecretName is the name of the Secret in which older chart versions stored their certificates. Its CA is
-	// retained in the bundle when new material is generated. Optional.
+	// retained in the bundle. Optional.
 	PreviousSecretName string
 	DeploymentName     string
 	WebhookServiceName string

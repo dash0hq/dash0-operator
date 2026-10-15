@@ -46,6 +46,10 @@ var (
 	dash0WebhookCallFailure = regexp.MustCompile(
 		`failed calling webhook "[^"]*\.dash0\.com"|conversion webhook for operator\.dash0\.com/`,
 	)
+
+	// certificateFailure matches the errors of webhook calls that fail because the webhook's serving certificate is not
+	// trusted by the caBundle.
+	certificateFailure = regexp.MustCompile(`x509: |tls: failed to verify certificate`)
 )
 
 func (t caBundleTarget) caBundleJsonPath() string {
@@ -189,7 +193,10 @@ type webhookProbe struct {
 	failures []string
 }
 
-func startWebhookProbe(namespace string) *webhookProbe {
+// startWebhookProbe starts a probe that records every failed webhook call. With onlyCertificateFailures, it only
+// records failures caused by the certificates, for example while operator pods terminate, which stop serving their
+// webhooks during shutdown.
+func startWebhookProbe(namespace string, onlyCertificateFailures bool) *webhookProbe {
 	By("starting to probe the operator's webhooks continuously")
 	manifests := []string{
 		fmt.Sprintf(`apiVersion: operator.dash0.com/v1beta1
@@ -222,7 +229,9 @@ metadata:
 				// Other rejections (for example by the validation webhooks of an older operator version) are expected.
 				output, err := run(command, false, false, false)
 				probe.attempts++
-				if err != nil && dash0WebhookCallFailure.MatchString(output) {
+				if err != nil &&
+					dash0WebhookCallFailure.MatchString(output) &&
+					(!onlyCertificateFailures || certificateFailure.MatchString(output)) {
 					probe.failures = append(probe.failures, output)
 				}
 			}

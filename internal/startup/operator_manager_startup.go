@@ -1484,11 +1484,12 @@ func startWebhookCertificatesManagement(
 		store,
 	)
 	if err := webhookCertificates.Bootstrap(ctx, logger); err != nil {
-		logger.Error(
-			err,
-			"Could not load and inject the webhook certificates at startup, the webhook certificates controller will "+
-				"retry. The pod will not become ready until this has succeeded.",
-		)
+		msg := "Could not load and inject the webhook certificates at startup, the webhook certificates controller will " +
+			"retry."
+		if !store.IsReady() {
+			msg += " The pod will not become ready until this has succeeded."
+		}
+		logger.Error(err, msg)
 	}
 	webhookCertificates.StartController(signalHandlerCtx, ctrl.GetConfigOrDie(), runtimeScheme, logger)
 }

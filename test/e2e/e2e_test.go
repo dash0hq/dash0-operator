@@ -3545,7 +3545,7 @@ spec:
 				caBundle := verifyCaBundlesCarryOperatorManagedBundle(operatorNamespace)
 				servingCertificate := readWebhookCertificatesSecretField(Default, operatorNamespace, "tls.crt")
 
-				probe := startWebhookProbe(operatorNamespace)
+				probe := startWebhookProbe(operatorNamespace, false)
 				By("applying the Helm chart again with identical values")
 				Expect(upgradeOperator(
 					operatorNamespace,
@@ -4158,9 +4158,11 @@ spec:
 
 				// The published chart versions used when the test suite runs against the published Helm chart might both
 				// still generate the webhook certificates while rendering the chart, which changes them on every upgrade.
+				// Operator pods stop serving their webhooks while they shut down, so requests routed to the pods of the
+				// previous release while they terminate can fail; only certificate failures are counted.
 				var probe *webhookProbe
 				if isLocalHelmChart(operatorHelmChart) {
-					probe = startWebhookProbe(operatorNamespace)
+					probe = startWebhookProbe(operatorNamespace, true)
 				}
 
 				// Now upgrade the operator.
