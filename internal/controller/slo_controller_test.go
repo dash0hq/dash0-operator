@@ -881,6 +881,53 @@ spec:
 							ratioMetric.Raw = prometheusMetricSource("checkout:success_ratio")
 						},
 					),
+					Entry(
+						"raw and good", func(ratioMetric *openslov1.SLORatioMetric) {
+							ratioMetric.Total = nil
+							ratioMetric.Raw = prometheusMetricSource("checkout:success_ratio")
+						},
+					),
+					Entry(
+						"raw and bad", func(ratioMetric *openslov1.SLORatioMetric) {
+							*ratioMetric = openslov1.SLORatioMetric{
+								Bad: prometheusMetricSource(sloFailedCheckoutRequestsQuery),
+								Raw: prometheusMetricSource("checkout:success_ratio"),
+							}
+						},
+					),
+					Entry(
+						"raw, good and bad", func(ratioMetric *openslov1.SLORatioMetric) {
+							ratioMetric.Total = nil
+							ratioMetric.Bad = prometheusMetricSource(sloFailedCheckoutRequestsQuery)
+							ratioMetric.Raw = prometheusMetricSource("checkout:success_ratio")
+						},
+					),
+					Entry(
+						"raw and total", func(ratioMetric *openslov1.SLORatioMetric) {
+							ratioMetric.Good = nil
+							ratioMetric.Raw = prometheusMetricSource("checkout:success_ratio")
+						},
+					),
+				)
+
+				DescribeTable(
+					"rejects a rawType without raw",
+					func(modify func(ratioMetric *openslov1.SLORatioMetric)) {
+						sloResource := createSLOResource()
+						modify(&sloResource.Spec.Indicator.Spec.RatioMetric)
+						sloResource.Spec.Indicator.Spec.RatioMetric.RawType = "success"
+						Expect(k8sClient.Create(ctx, sloResource)).To(
+							MatchError(ContainSubstring("rawType can only be set together with raw")))
+					},
+					Entry(
+						"good and total", func(ratioMetric *openslov1.SLORatioMetric) {},
+					),
+					Entry(
+						"bad and total", func(ratioMetric *openslov1.SLORatioMetric) {
+							ratioMetric.Bad = prometheusMetricSource(sloFailedCheckoutRequestsQuery)
+							ratioMetric.Good = nil
+						},
+					),
 				)
 			},
 		)

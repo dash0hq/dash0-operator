@@ -225,10 +225,12 @@ spec:
                         type: object
                         x-kubernetes-validations:
                         - message: exactly one of good and total, bad and total, or
-                            raw must be set
-                          rule: '(has(self.good) && has(self.total) ? 1 : 0) + (has(self.bad)
-                            && has(self.total) ? 1 : 0) + (has(self.raw) ? 1 : 0)
-                            == 1'
+                            raw must be set, without any other metric source
+                          rule: 'has(self.raw) ? !has(self.good) && !has(self.bad)
+                            && !has(self.total) : has(self.total) && has(self.good)
+                            != has(self.bad)'
+                        - message: rawType can only be set together with raw
+                          rule: '!has(self.rawType) || has(self.raw)'
                     required:
                     - ratioMetric
                     type: object
