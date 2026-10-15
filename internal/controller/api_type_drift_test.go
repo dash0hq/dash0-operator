@@ -262,6 +262,7 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 				"retries.spec": syntheticCheckUnionReason,
 			},
 			map[string]string{
+				"annotations":                        "not supported by Dash0SyntheticCheck yet",
 				"notifications.onlyCriticalChannels": "not supported by Dash0SyntheticCheck yet",
 				"permissions":                        "not supported by Dash0SyntheticCheck yet",
 			},
