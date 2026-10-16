@@ -244,7 +244,7 @@ func (r *SynchronizationRetryRunnable) retryPersesDashboardSynchronizations(
 }
 
 // retryThirdPartyResource fetches the third-party resource identified by qualifiedName (in the form "namespace/name")
-// and re-enqueues it for synchronization via the shared synchronization queue.
+// and re-enqueues it for synchronization via the synchronization queue of its resource type.
 func (r *SynchronizationRetryRunnable) retryThirdPartyResource(
 	ctx context.Context,
 	resourceReconciler ThirdPartyResourceReconciler,

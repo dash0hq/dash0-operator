@@ -23,7 +23,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllertest"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -50,11 +49,7 @@ const (
 
 var (
 	persesDashboardCrd        *apiextensionsv1.CustomResourceDefinition
-	testQueuePersesDashboards = workqueue.NewTypedWithConfig(
-		workqueue.TypedQueueConfig[ThirdPartyResourceSyncJob]{
-			Name: "dash0-third-party-resource-synchronization-queue",
-		},
-	)
+	testQueuePersesDashboards = NewThirdPartyResourceSyncQueue("dash0-perses-dashboard-synchronization-queue")
 
 	dashboardApiBasePath = "/api/dashboards/"
 
@@ -1550,6 +1545,7 @@ spec:
 
 func createPersesDashboardCrdReconciler(autoPatch bool, caBundlePath string) *PersesDashboardCrdReconciler {
 	crdReconciler := NewPersesDashboardCrdReconciler(
+		k8sClient,
 		k8sClient,
 		testQueuePersesDashboards,
 		&DummyLeaderElectionAware{Leader: true},
