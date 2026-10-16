@@ -4410,6 +4410,7 @@ spec:
 				}).Should(Succeed())
 
 				verifyThatCollectorIsRemovedEventually()
+				verifyThatOperatorManagedClusterScopedResourcesAreRemovedEventually()
 			}
 
 			Describe("when uninstalling the operator via helm", func() {

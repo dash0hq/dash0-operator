@@ -104,6 +104,7 @@ var _ = Describe(
 						OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
 						TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 					},
+					nil,
 				)
 				collectorManager := collectors.NewCollectorManager(
 					k8sClient,
@@ -124,6 +125,7 @@ var _ = Describe(
 						TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 						CollectorComponent:        otelcolresources.CollectorDaemonSetServiceComponent(),
 					},
+					nil,
 				)
 				targetAllocatorManager := targetallocator.NewTargetAllocatorManager(
 					k8sClient,

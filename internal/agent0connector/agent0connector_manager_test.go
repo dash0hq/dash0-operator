@@ -44,6 +44,7 @@ func newResourceManager() *a0cresources.Agent0ConnectorResourceManager {
 			ServerAddress:     "https://example.com:4317",
 			Authorization:     dash0common.Authorization{Token: &token},
 		},
+		nil,
 	)
 }
 

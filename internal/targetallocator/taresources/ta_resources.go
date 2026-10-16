@@ -24,6 +24,7 @@ type TargetAllocatorResourceManager struct {
 	scheme                    *runtime.Scheme
 	operatorManagerDeployment *appsv1.Deployment
 	targetAllocatorConfig     util.TargetAllocatorConfig
+	uninstallationDetector    *util.UninstallationDetector
 }
 
 func NewTargetAllocatorResourceManager(
@@ -31,12 +32,14 @@ func NewTargetAllocatorResourceManager(
 	scheme *runtime.Scheme,
 	operatorManagerDeployment *appsv1.Deployment,
 	targetAllocatorConfig util.TargetAllocatorConfig,
+	uninstallationDetector *util.UninstallationDetector,
 ) *TargetAllocatorResourceManager {
 	return &TargetAllocatorResourceManager{
 		Client:                    k8sClient,
 		scheme:                    scheme,
 		operatorManagerDeployment: operatorManagerDeployment,
 		targetAllocatorConfig:     targetAllocatorConfig,
+		uninstallationDetector:    uninstallationDetector,
 	}
 }
 
@@ -95,6 +98,10 @@ func (m *TargetAllocatorResourceManager) createOrUpdateResource(
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return false, false, err
+		}
+		skip, skipErr := resources.SkipCreationDuringUninstallation(ctx, m.uninstallationDetector, desiredResource, logger)
+		if skipErr != nil || skip {
+			return false, false, skipErr
 		}
 		err = m.createResource(ctx, desiredResource, logger)
 		if err != nil {

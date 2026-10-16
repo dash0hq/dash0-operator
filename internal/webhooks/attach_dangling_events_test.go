@@ -66,6 +66,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 				OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
 				TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 			},
+			nil,
 		)
 		collectorManager := collectors.NewCollectorManager(
 			k8sClient,
@@ -87,6 +88,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 				TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 				CollectorComponent:        otelcolresources.CollectorDaemonSetServiceComponent(),
 			},
+			nil,
 		)
 		targetAllocatorManager := targetallocator.NewTargetAllocatorManager(
 			k8sClient,

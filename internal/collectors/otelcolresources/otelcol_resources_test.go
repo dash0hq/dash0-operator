@@ -12,6 +12,7 @@ import (
 	"github.com/cisco-open/k8s-objectmatcher/patch"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -74,6 +75,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				KubeletStatsAutoDetectEndpoint: true,
 				DevelopmentMode:                true,
 			},
+			nil,
 		)
 	})
 
@@ -130,6 +132,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					OperatorNamespace:       OperatorNamespace,
 					OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
 				},
+				nil,
 			)
 
 			updated := testResource.DeepCopy()
@@ -413,6 +416,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					DevelopmentMode:                true,
 					Agent0ConnectorEnabledViaHelm:  true,
 				},
+				nil,
 			)
 		})
 
@@ -473,6 +477,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					DevelopmentMode:                true,
 					SyntheticsWorkerEnabledViaHelm: enabledViaHelm,
 				},
+				nil,
 			)
 			locationIds := []string{"location-a", "location-b"}
 			operatorConfiguration := DefaultOperatorConfigurationResource()
@@ -679,6 +684,50 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 		})
 	})
 
+	Context("when the operator is being uninstalled", func() {
+		It("should not create cluster-scoped resources, but namespace-scoped ones", func() {
+			preDeleteHookJob := CreatePreDeleteHookJob(ctx, k8sClient)
+			defer DeletePreDeleteHookJob(ctx, k8sClient, preDeleteHookJob)
+			managerDuringUninstallation := NewOTelColResourceManager(
+				k8sClient,
+				k8sClient.Scheme(),
+				OperatorManagerDeployment,
+				util.CollectorConfig{
+					Images:                         TestImages,
+					OperatorNamespace:              OperatorNamespace,
+					OTelCollectorNamePrefix:        OTelCollectorNamePrefixTest,
+					KubeletStatsAutoDetectEndpoint: true,
+					DevelopmentMode:                true,
+				},
+				util.NewUninstallationDetector(k8sClient, OperatorNamespace, time.Time{}),
+			)
+
+			_, _, err := managerDuringUninstallation.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx,
+				util.ExtraConfigDefaults,
+				DefaultOperatorConfigurationResource(),
+				nil,
+				nil,
+				logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(k8sClient.Get(
+				ctx, client.ObjectKey{Name: ExpectedDaemonSetClusterRoleName}, &rbacv1.ClusterRole{},
+			)).To(MatchError(apierrors.IsNotFound, "IsNotFound"))
+			Expect(k8sClient.Get(
+				ctx, client.ObjectKey{Name: ExpectedDaemonSetClusterRoleBinding}, &rbacv1.ClusterRoleBinding{},
+			)).To(MatchError(apierrors.IsNotFound, "IsNotFound"))
+			Expect(k8sClient.Get(
+				ctx, client.ObjectKey{Name: ExpectedDeploymentClusterRoleName}, &rbacv1.ClusterRole{},
+			)).To(MatchError(apierrors.IsNotFound, "IsNotFound"))
+			Expect(k8sClient.Get(
+				ctx, client.ObjectKey{Name: ExpectedDeploymentClusterRoleBindingName}, &rbacv1.ClusterRoleBinding{},
+			)).To(MatchError(apierrors.IsNotFound, "IsNotFound"))
+			GetOTelColDaemonSetConfigMap(ctx, k8sClient, OperatorNamespace)
+		})
+	})
+
 	Context("when all OpenTelemetry collector resources are up to date", func() {
 		It("should report that nothing has changed", func() {
 			operatorConfiguration := DefaultOperatorConfigurationResource()
@@ -849,6 +898,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					},
 					DevelopmentMode: true,
 				},
+				nil,
 			)
 			result := manager.determineKubeletstatsReceiverEndpoint(true, probeKubeletStatsEndpointFailIfCalled, logger)
 			Expect(result.Enabled).To(BeTrue())
@@ -873,6 +923,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					},
 					DevelopmentMode: true,
 				},
+				nil,
 			)
 			result := manager.determineKubeletstatsReceiverEndpoint(false, probeKubeletStatsEndpointFailIfCalled, logger)
 			Expect(result.Enabled).To(BeFalse())
@@ -891,6 +942,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					KubeletStatsReceiverConfig:     nil,
 					DevelopmentMode:                true,
 				},
+				nil,
 			)
 			result := manager.determineKubeletstatsReceiverEndpoint(true, probeKubeletStatsEndpointFailIfCalled, logger)
 			Expect(result.Enabled).To(BeFalse())
@@ -915,6 +967,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					},
 					DevelopmentMode: true,
 				},
+				nil,
 			)
 			result := manager.determineKubeletstatsReceiverEndpoint(true, probeKubeletStatsEndpointFailIfCalled, logger)
 			Expect(result.Enabled).To(BeFalse())
