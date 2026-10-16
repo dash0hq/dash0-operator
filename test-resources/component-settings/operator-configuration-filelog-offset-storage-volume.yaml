@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# A merge patch for the Dash0 operator configuration resource that sets the filelog offset volume, see
+# deploy_filelog_offsets_pvc in test-resources/bin/lib/util for the persistent volume claim.
+spec:
+  components:
+    daemonSetCollector:
+      filelogOffsetStorageVolume:
+        persistentVolumeClaim:
+          claimName: offset-storage-claim

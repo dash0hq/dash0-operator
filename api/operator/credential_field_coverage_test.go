@@ -62,6 +62,9 @@ var knownUnredactedFields = map[string]string{
 	// operator resolves it into the workload, and the custom resource only ever holds the reference.
 	"secretKeyRef.key": "the name of an entry in a Kubernetes secret, not its value",
 	"secretRef.key":    "the name of an entry in a Kubernetes secret, not its value",
+	// The names of the Kubernetes secrets that hold the target-allocator's mTLS certificates, not their content.
+	"mTls.serverCertSecretName": "the name of a Kubernetes secret, not its content",
+	"mTls.clientCertSecretName": "the name of a Kubernetes secret, not its content",
 	// Attribute keys of filters, columns and assertions - the left-hand side of a comparison, never a secret.
 	"filter.key":         "an attribute key of a filter",
 	"filters.key":        "an attribute key of a filter",
@@ -70,8 +73,8 @@ var knownUnredactedFields = map[string]string{
 	"columns.key":        "an attribute key of a table column",
 	"sort.key":           "an attribute key of a sort order",
 	"spec.key":           "the response header name of a synthetic check assertion",
-	// Standard Kubernetes pod scheduling fields (SyntheticsWorkerInstance.NodeAffinity/.Tolerations): the node label or
-	// taint key they match against, never a credential.
+	// Standard Kubernetes pod scheduling fields (SyntheticsWorkerInstance.NodeAffinity/.Tolerations and the workloads in
+	// spec.components): the node label or taint key they match against, never a credential.
 	"matchExpressions.key": "a Kubernetes node label key matched by a node affinity term",
 	"matchFields.key":      "a Kubernetes node field matched by a node affinity term",
 	"tolerations.key":      "a Kubernetes taint key matched by a pod toleration",
