@@ -760,6 +760,63 @@ spec:
     url: "https://allquiet.app/api/webhook/my-inbound-integration-id"
 ```
 
+#### Reading Credentials from a Kubernetes Secret
+
+Instead of putting a credential into the notification channel resource, you can reference a key in a Kubernetes secret.
+Each credential field has a counterpart with the suffix `From`, and exactly one of the two has to be set (except for the
+headers of `webhookConfig`, see below):
+
+| Config | Credential field | Secret reference field |
+|---|---|---|
+| `slackConfig` | `webhookURL` | `webhookURLFrom` |
+| `webhookConfig` | `url`, `headers` | `urlFrom`, `headersFrom` |
+| `incidentioConfig` | `url`, `headers` | `urlFrom`, `headersFrom` |
+| `opsgenieConfig` | `apiKey` | `apiKeyFrom` |
+| `pagerdutyConfig` | `key` | `keyFrom` |
+| `teamsWebhookConfig`, `discordWebhookConfig`, `googleChatWebhookConfig`, `ilertConfig`, `allQuietConfig` | `url` | `urlFrom` |
+
+For `webhookConfig`, `headersFrom` is a map from header name to secret reference. It can be combined with `headers`, as
+long as a header is not listed in both. Header names are compared case-insensitively, so `Authorization` in `headers`
+and `authorization` in `headersFrom` count as the same header.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pagerduty
+  namespace: my-namespace
+stringData:
+  integration-key: "my-integration-key"
+---
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: pagerduty-alerts
+  namespace: my-namespace
+spec:
+  display:
+    name: PagerDuty Alerts
+  type: pagerduty
+  pagerdutyConfig:
+    keyFrom:
+      secretKeyRef:
+        name: pagerduty
+        key: integration-key
+    url: "https://events.pagerduty.com/v2/enqueue"
+```
+
+* The secret has to be in the same namespace as the notification channel resource.
+* The operator reads the secret each time it synchronizes the notification channel, and sends the value to Dash0 as it
+  is stored in the secret. Trailing newlines are not removed.
+* The operator does not watch secrets. When you change the value in the secret, the operator sends it to Dash0 the next
+  time the notification channel resource changes, or when the operator restarts.
+* If the secret or the key does not exist, the operator reports the error in the status of the notification channel
+  resource and retries the synchronization periodically (every 10 minutes by default).
+* Deleting the secret does not change the notification channel in Dash0. It keeps the last value the operator sent.
+* To read the secrets, the operator has permission to get secrets in all namespaces. Anyone who can create a
+  notification channel resource in a namespace can make the operator send any secret from that namespace to a
+  notification channel endpoint, similar to how a pod can mount any secret from its namespace.
+
 #### Optional Fields
 
 **`frequency`**: Controls the notification frequency (e.g. `10m`, `5m`, `1h`). Defaults to `10m` if omitted.

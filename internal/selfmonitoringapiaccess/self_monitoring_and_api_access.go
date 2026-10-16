@@ -308,7 +308,7 @@ func resolveSelfMonitoringHeaderSecrets(
 		if header.ValueFrom == nil || header.ValueFrom.SecretKeyRef == nil {
 			continue
 		}
-		value, err := getSecretValue(
+		value, err := GetSecretValue(
 			ctx,
 			k8sClient,
 			operatorNamespace,
@@ -893,7 +893,7 @@ func ExchangeSecretRefForToken(
 		return nil, fmt.Errorf("dash0Config has no secret ref")
 	}
 	secretRef := dash0Config.Authorization.SecretRef
-	token, err := getSecretValue(
+	token, err := GetSecretValue(
 		ctx,
 		k8sClient,
 		operatorNamespace,
@@ -910,13 +910,12 @@ func ExchangeSecretRefForToken(
 	return &token, nil
 }
 
-// getSecretValue fetches the value stored under secretKeyRef.Key in the secret secretKeyRef.Name in the operator
-// namespace. It is used to resolve header values that are sourced from a Kubernetes secret for the operator manager's
-// in-process self-monitoring OTel SDK, which (unlike the collector) cannot use ${env:...} references.
-func getSecretValue(
+// GetSecretValue fetches the value stored under secretKeyRef.Key in the secret secretKeyRef.Name in the given
+// namespace.
+func GetSecretValue(
 	ctx context.Context,
-	k8sClient client.Client,
-	operatorNamespace string,
+	k8sClient client.Reader,
+	namespace string,
 	secretRef *dash0common.SecretKeySelector,
 	purpose string,
 	logger logd.Logger,
@@ -924,13 +923,13 @@ func getSecretValue(
 	var secret corev1.Secret
 	if err := k8sClient.Get(
 		ctx,
-		client.ObjectKey{Name: secretRef.Name, Namespace: operatorNamespace},
+		client.ObjectKey{Name: secretRef.Name, Namespace: namespace},
 		&secret,
 	); err != nil {
 		msg := fmt.Sprintf(
 			"failed to fetch secret with name %s in namespace %s %s",
 			secretRef.Name,
-			operatorNamespace,
+			namespace,
 			purpose,
 		)
 		logger.Error(err, msg)
@@ -940,7 +939,7 @@ func getSecretValue(
 	if !hasKey || len(rawValue) == 0 {
 		err := fmt.Errorf(
 			"secret \"%s/%s\" does not contain key \"%s\"",
-			operatorNamespace,
+			namespace,
 			secretRef.Name,
 			secretRef.Key,
 		)

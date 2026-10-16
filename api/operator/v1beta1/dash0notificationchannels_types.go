@@ -116,11 +116,18 @@ type Dash0NotificationChannelDisplay struct {
 }
 
 // SlackConfig defines the configuration for Slack webhook notifications.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.webhookURL) != has(self.webhookURLFrom)",message="exactly one of webhookURL or webhookURLFrom has to be provided"
 type SlackConfig struct {
 	// The Slack incoming webhook URL.
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Format=uri
-	WebhookURL string `json:"webhookURL"`
+	// +kubebuilder:validation:MinLength=1
+	WebhookURL string `json:"webhookURL,omitempty"`
+
+	// The Slack incoming webhook URL, read from a Kubernetes secret.
+	// +kubebuilder:validation:Optional
+	WebhookURLFrom *CredentialValueFrom `json:"webhookURLFrom,omitempty"`
 
 	// The Slack channel to post to.
 	// +kubebuilder:validation:Required
@@ -151,15 +158,30 @@ type EmailV2Config struct {
 }
 
 // WebhookConfig defines the configuration for generic webhook notifications.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.url) != has(self.urlFrom)",message="exactly one of url or urlFrom has to be provided"
+// +kubebuilder:validation:XValidation:rule="!has(self.headers) || !has(self.headersFrom) || self.headersFrom.all(name, !self.headers.exists(h, h.lowerAscii() == name.lowerAscii()))",message="a header must not be provided in both headers and headersFrom"
 type WebhookConfig struct {
 	// The webhook URL.
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Format=uri
-	URL string `json:"url"`
+	// +kubebuilder:validation:MinLength=1
+	URL string `json:"url,omitempty"`
+
+	// The webhook URL, read from a Kubernetes secret.
+	// +kubebuilder:validation:Optional
+	URLFrom *CredentialValueFrom `json:"urlFrom,omitempty"`
 
 	// Additional HTTP headers to include in the webhook request.
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxProperties=32
 	Headers map[string]string `json:"headers,omitempty"`
+
+	// Additional HTTP headers to include in the webhook request, with values read from Kubernetes secrets. The map key
+	// is the header name.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxProperties=32
+	HeadersFrom map[string]CredentialValueFrom `json:"headersFrom,omitempty"`
 
 	// Whether to follow HTTP redirects.
 	// +kubebuilder:validation:Optional
@@ -173,18 +195,33 @@ type WebhookConfig struct {
 }
 
 // IncidentioConfig defines the configuration for Incident.io notifications.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.url) != has(self.urlFrom)",message="exactly one of url or urlFrom has to be provided"
+// +kubebuilder:validation:XValidation:rule="has(self.headers) != has(self.headersFrom)",message="exactly one of headers or headersFrom has to be provided"
 type IncidentioConfig struct {
 	// The Incident.io webhook URL.
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Format=uri
-	URL string `json:"url"`
+	// +kubebuilder:validation:MinLength=1
+	URL string `json:"url,omitempty"`
+
+	// The Incident.io webhook URL, read from a Kubernetes secret.
+	// +kubebuilder:validation:Optional
+	URLFrom *CredentialValueFrom `json:"urlFrom,omitempty"`
 
 	// The authorization header value for Incident.io.
-	// +kubebuilder:validation:Required
-	Headers string `json:"headers"`
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	Headers string `json:"headers,omitempty"`
+
+	// The authorization header value for Incident.io, read from a Kubernetes secret.
+	// +kubebuilder:validation:Optional
+	HeadersFrom *CredentialValueFrom `json:"headersFrom,omitempty"`
 }
 
 // OpsgenieConfig defines the configuration for OpsGenie notifications.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.apiKey) != has(self.apiKeyFrom)",message="exactly one of apiKey or apiKeyFrom has to be provided"
 type OpsgenieConfig struct {
 	// The OpsGenie instance region.
 	// +kubebuilder:validation:Required
@@ -192,15 +229,27 @@ type OpsgenieConfig struct {
 	Instance string `json:"instance"`
 
 	// The OpsGenie API key.
-	// +kubebuilder:validation:Required
-	ApiKey string `json:"apiKey"`
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	ApiKey string `json:"apiKey,omitempty"`
+
+	// The OpsGenie API key, read from a Kubernetes secret.
+	// +kubebuilder:validation:Optional
+	ApiKeyFrom *CredentialValueFrom `json:"apiKeyFrom,omitempty"`
 }
 
 // PagerdutyConfig defines the configuration for PagerDuty notifications.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.key) != has(self.keyFrom)",message="exactly one of key or keyFrom has to be provided"
 type PagerdutyConfig struct {
 	// The PagerDuty integration key.
-	// +kubebuilder:validation:Required
-	Key string `json:"key"`
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	Key string `json:"key,omitempty"`
+
+	// The PagerDuty integration key, read from a Kubernetes secret.
+	// +kubebuilder:validation:Optional
+	KeyFrom *CredentialValueFrom `json:"keyFrom,omitempty"`
 
 	// The PagerDuty events API URL.
 	// +kubebuilder:validation:Required
@@ -209,43 +258,87 @@ type PagerdutyConfig struct {
 }
 
 // TeamsWebhookConfig defines the configuration for Microsoft Teams webhook notifications.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.url) != has(self.urlFrom)",message="exactly one of url or urlFrom has to be provided"
 type TeamsWebhookConfig struct {
 	// The Microsoft Teams incoming webhook URL.
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Format=uri
-	URL string `json:"url"`
+	// +kubebuilder:validation:MinLength=1
+	URL string `json:"url,omitempty"`
+
+	// The Microsoft Teams incoming webhook URL, read from a Kubernetes secret.
+	// +kubebuilder:validation:Optional
+	URLFrom *CredentialValueFrom `json:"urlFrom,omitempty"`
 }
 
 // DiscordWebhookConfig defines the configuration for Discord webhook notifications.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.url) != has(self.urlFrom)",message="exactly one of url or urlFrom has to be provided"
 type DiscordWebhookConfig struct {
 	// The Discord webhook URL.
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Format=uri
-	URL string `json:"url"`
+	// +kubebuilder:validation:MinLength=1
+	URL string `json:"url,omitempty"`
+
+	// The Discord webhook URL, read from a Kubernetes secret.
+	// +kubebuilder:validation:Optional
+	URLFrom *CredentialValueFrom `json:"urlFrom,omitempty"`
 }
 
 // GoogleChatWebhookConfig defines the configuration for Google Chat webhook notifications.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.url) != has(self.urlFrom)",message="exactly one of url or urlFrom has to be provided"
 type GoogleChatWebhookConfig struct {
 	// The Google Chat webhook URL.
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Format=uri
-	URL string `json:"url"`
+	// +kubebuilder:validation:MinLength=1
+	URL string `json:"url,omitempty"`
+
+	// The Google Chat webhook URL, read from a Kubernetes secret.
+	// +kubebuilder:validation:Optional
+	URLFrom *CredentialValueFrom `json:"urlFrom,omitempty"`
 }
 
 // IlertConfig defines the configuration for iLert notifications.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.url) != has(self.urlFrom)",message="exactly one of url or urlFrom has to be provided"
 type IlertConfig struct {
 	// The iLert alert source URL.
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Format=uri
-	URL string `json:"url"`
+	// +kubebuilder:validation:MinLength=1
+	URL string `json:"url,omitempty"`
+
+	// The iLert alert source URL, read from a Kubernetes secret.
+	// +kubebuilder:validation:Optional
+	URLFrom *CredentialValueFrom `json:"urlFrom,omitempty"`
 }
 
 // AllQuietConfig defines the configuration for All Quiet notifications.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.url) != has(self.urlFrom)",message="exactly one of url or urlFrom has to be provided"
 type AllQuietConfig struct {
 	// The All Quiet webhook URL.
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Format=uri
-	URL string `json:"url"`
+	// +kubebuilder:validation:MinLength=1
+	URL string `json:"url,omitempty"`
+
+	// The All Quiet webhook URL, read from a Kubernetes secret.
+	// +kubebuilder:validation:Optional
+	URLFrom *CredentialValueFrom `json:"urlFrom,omitempty"`
+}
+
+// CredentialValueFrom describes a source for a credential of a notification channel.
+type CredentialValueFrom struct {
+	// A reference to a key in a Kubernetes secret containing the credential. The secret has to be in the namespace of
+	// the notification channel resource.
+	//
+	// +kubebuilder:validation:Required
+	SecretKeyRef *dash0common.SecretKeySelector `json:"secretKeyRef"`
 }
 
 // Dash0NotificationChannelRouting defines the routing configuration for a notification channel.
