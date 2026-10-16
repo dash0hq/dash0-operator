@@ -125,6 +125,29 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 			Expect(isChanged).To(BeFalse())
 			verifyConfigMap(ctx, syntheticsWorkerTestResource)
 		})
+
+		It("should retry an update that conflicts with a concurrent modification", func() {
+			_, _, err := manager.createOrUpdateResource(ctx, syntheticsWorkerTestResource.DeepCopy(), logger)
+			Expect(err).ToNot(HaveOccurred())
+
+			conflictingClient := &ConflictOnFirstUpdateClient{Client: k8sClient}
+			managerWithConflicts := NewSyntheticsWorkerResourceManager(
+				conflictingClient,
+				k8sClient.Scheme(),
+				OperatorManagerDeployment,
+				manager.syntheticsWorkerConfig,
+			)
+
+			updated := syntheticsWorkerTestResource.DeepCopy()
+			updated.Data["key"] = "value after a conflict"
+			isNew, isChanged, err := managerWithConflicts.createOrUpdateResource(ctx, updated, logger)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(isNew).To(BeFalse())
+			Expect(isChanged).To(BeTrue())
+			Expect(conflictingClient.UpdateCalls).To(Equal(2), "expected exactly one retry after the conflict")
+			verifyConfigMap(ctx, updated)
+		})
 	})
 
 	Context("when creating all synthetics-worker resources", func() {
@@ -402,6 +425,54 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 				reconciled,
 			)).To(Succeed())
 			Expect(reconciled.Spec.Template.Spec).To(Equal(deployment.Spec.Template.Spec))
+		})
+	})
+
+	Context("when a synthetics-worker deployment has been restarted via kubectl rollout restart", func() {
+		It("should keep the restart annotation, also when reconciling other changes", func() {
+			createOrUpdate := func() (bool, bool) {
+				results, err := manager.CreateOrUpdateSyntheticsWorkerResources(
+					ctx,
+					operatorConfigurationResourceWithSyntheticsWorker(syntheticsWorkerAuthToken),
+					logger,
+				)
+				Expect(err).ToNot(HaveOccurred())
+				return aggregateResults(results)
+			}
+			getDeployment := func() *appsv1.Deployment {
+				GinkgoHelper()
+				deployment := &appsv1.Deployment{}
+				Expect(k8sClient.Get(
+					ctx,
+					client.ObjectKey{Name: DeploymentName(testNamePrefix, testLocationID), Namespace: OperatorNamespace},
+					deployment,
+				)).To(Succeed())
+				return deployment
+			}
+
+			created, _ := createOrUpdate()
+			Expect(created).To(BeTrue())
+
+			deployment := getDeployment()
+			SimulateKubectlRolloutRestart(&deployment.Spec.Template)
+			Expect(k8sClient.Update(ctx, deployment)).To(Succeed())
+
+			_, updated := createOrUpdate()
+			Expect(updated).To(BeFalse())
+			Expect(getDeployment().Spec.Template.Annotations).To(
+				HaveKeyWithValue(KubectlRestartedAtAnnotationTest, KubectlRestartedAtTest))
+
+			deployment = getDeployment()
+			var changedReplicas int32 = 5
+			deployment.Spec.Replicas = &changedReplicas
+			Expect(k8sClient.Update(ctx, deployment)).To(Succeed())
+
+			_, updated = createOrUpdate()
+			Expect(updated).To(BeTrue())
+			reconciled := getDeployment()
+			Expect(*reconciled.Spec.Replicas).To(Equal(int32(1)))
+			Expect(reconciled.Spec.Template.Annotations).To(
+				HaveKeyWithValue(KubectlRestartedAtAnnotationTest, KubectlRestartedAtTest))
 		})
 	})
 
