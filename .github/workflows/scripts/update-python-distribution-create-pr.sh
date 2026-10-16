@@ -23,7 +23,7 @@ if git diff-files --quiet "$version_file"; then
 fi
 
 echo "There are changes, creating a pull request."
-new_version=$(cat "$version_file")
+new_version=$(sed -n 's/^DASH0_PYTHON_DISTRIBUTION_VERSION=//p' "$version_file")
 commit_message="chore(deps): update opentelemetry-python-distribution to ${new_version}"
 
 gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${branch_name}" >/dev/null 2>&1 || true
