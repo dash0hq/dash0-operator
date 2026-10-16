@@ -69,6 +69,16 @@ The operator accepts the adjusted values and does not revert them.
 When the resource settings in the Helm values are changed, the operator applies the new values, which GKE Autopilot then
 adjusts again.
 
+When the Dash0 operator Helm chart is uninstalled, a post-delete hook removes the `AllowlistSynchronizer` deployed by
+the Helm chart, as well as the `WorkloadAllowlist` resources it has installed.
+If `WorkloadAllowlist` resources are still left after a timeout of a few minutes, the hook logs a warning and
+terminates without an error.
+Leftover `WorkloadAllowlist` resources of the Dash0 `AllowlistSynchronizer` can be removed manually once the
+`AllowlistSynchronizer` is gone:
+```
+kubectl delete workloadallowlists.auto.gke.io -l auto.gke.io/managed-by-synchronizer-dash0-allowlist-synchronizer=true
+```
+
 Refer to <https://cloud.google.com/kubernetes-engine/docs/how-to/run-autopilot-partner-workloads> for more information
 on `AllowlistSynchronizer`, `WorkloadAllowlist`, and related concepts.
 

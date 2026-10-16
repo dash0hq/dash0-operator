@@ -151,6 +151,27 @@ cleanup() {
     --wait \
     "$helm_release_name"
 
+  # The post-delete hook removes the AllowlistSynchronizer and the WorkloadAllowlists it has installed. Keep checking for a
+  # while, since GKE might recreate allowlists shortly after they have been removed.
+  log "checking that no GKE Autopilot WorkloadAllowlists are left after uninstalling the helm release"
+  local leftover_allowlists=""
+  local leftover_allowlists_found=false
+  for _ in {1..12}; do
+    leftover_allowlists=$(kubectl get workloadallowlists.auto.gke.io --no-headers --show-labels --ignore-not-found 2>/dev/null || true)
+    if [[ -n "$leftover_allowlists" ]]; then
+      log "ERROR: WorkloadAllowlists are left after uninstalling the helm release:"
+      echo "$leftover_allowlists"
+      log "AllowlistSynchronizers:"
+      kubectl get allowlistsynchronizers.auto.gke.io -o yaml || true
+      # The post-delete job is deleted when it succeeds, its logs are only available if it has failed.
+      log "logs of the post-delete job, if it still exists:"
+      kubectl logs --namespace "$operator_namespace" job/dash0-operator-post-delete-remove-allowlist-synchronizer || true
+      leftover_allowlists_found=true
+      break
+    fi
+    sleep 5
+  done
+
   # If the workload allow list for the pre-delete hook does not match, it might stick around as a Zombie job, force-delete it.
   log "deleting the pre-delete job"
   kubectl delete job --namespace "$operator_namespace" --ignore-not-found "${helm_release_name}-pre-delete" --wait --grace-period=0 --force
@@ -167,6 +188,9 @@ cleanup() {
 
   set +x
   set -e
+  if [[ "$leftover_allowlists_found" == "true" ]]; then
+    exit 1
+  fi
   return 0
 }
 
