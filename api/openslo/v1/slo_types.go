@@ -114,6 +114,7 @@ type SLOIndicatorSpec struct {
 //
 // +kubebuilder:validation:XValidation:rule="has(self.raw) ? !has(self.good) && !has(self.bad) && !has(self.total) : has(self.total) && has(self.good) != has(self.bad)",message="exactly one of good and total, bad and total, or raw must be set, without any other metric source"
 // +kubebuilder:validation:XValidation:rule="!has(self.rawType) || has(self.raw)",message="rawType can only be set together with raw"
+// +kubebuilder:validation:XValidation:rule="!has(self.raw) || has(self.rawType)",message="rawType is required when raw is set"
 type SLORatioMetric struct {
 	// Counter indicates whether the underlying metric is a monotonically increasing counter (true) or a gauge-like
 	// value (false).
