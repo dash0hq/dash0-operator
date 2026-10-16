@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -68,6 +69,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
+	"github.com/dash0hq/dash0-operator/internal/webhookcerts"
 	"github.com/dash0hq/dash0-operator/internal/webhooks"
 )
 
@@ -76,6 +78,9 @@ type environmentVariables struct {
 	deploymentName                              string
 	webhookServiceName                          string
 	webhookServicePort                          int32
+	webhookCertificatesSecretName               string
+	previousCertificatesSecretName              string
+	caBundleTargets                             []webhookcerts.Target
 	iacPeriodicRetryEnabled                     bool
 	iacPeriodicRetryInterval                    time.Duration
 	autoPatchPersesDashboardConversionWebhook   bool
@@ -200,6 +205,9 @@ const (
 	deploymentNameEnvVarName                              = "DASH0_DEPLOYMENT_NAME"
 	webhookServiceNameEnvVarName                          = "DASH0_WEBHOOK_SERVICE_NAME"
 	webhookServicePortEnvVarName                          = "DASH0_WEBHOOK_SERVICE_PORT"
+	webhookCertificatesSecretNameEnvVarName               = "DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME"
+	previousCertificatesSecretNameEnvVarName              = "DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME"
+	caBundleTargetsEnvVarName                             = "DASH0_CA_BUNDLE_TARGETS"
 	persesDashboardAutoPatchConversionWebhookEnvVarName   = "DASH0_PERSES_DASHBOARD_AUTO_PATCH_CONVERSION_WEBHOOK"
 	periodicRetryEnabledEnvVarName                        = "DASH0_IAC_PERIODIC_RETRY_ENABLED"
 	periodicRetryIntervalEnvVarName                       = "DASH0_IAC_PERIODIC_RETRY_INTERVAL"
@@ -287,6 +295,10 @@ var (
 	extraConfigDefaults             util.ExtraConfig
 	extraConfigMapWatcher           = util.NewExtraConfigWatcher()
 
+	// webhookCertificates is only set if the webhook certificates are managed by the operator (self-signed mode of the
+	// Helm chart). It is nil if they are provided via a mounted Secret, for example by cert-manager.
+	webhookCertificates *webhookcerts.Manager
+
 	thirdPartyResourceSynchronizationQueue *workqueue.Typed[controller.ThirdPartyResourceSyncJob]
 )
 
@@ -338,7 +350,7 @@ func Start() {
 		os.Exit(0)
 	}
 	if cliArgs.autoOperatorConfigurationResourceAvailableCheck {
-		if err := waitForOperatorConfigurationResourceAvailability(setupLog); err != nil {
+		if err := waitForOperatorConfigurationResourceAvailability(ctx, setupLog); err != nil {
 			setupLog.Error(err, "waiting for the Dash0 operator configuration resource to become available has failed")
 			os.Exit(1)
 		}
@@ -389,17 +401,26 @@ func Start() {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
 
-	webhookServer := k8swebhook.NewServer(
-		k8swebhook.Options{
-			TLSOpts: tlsOpts,
-		},
-	)
-
 	var err error
 	if err = readEnvironmentVariables(setupLog); err != nil {
 		setupLog.Error(err, "cannot read environment variables")
 		os.Exit(1)
 	}
+
+	webhookServerTlsOpts := tlsOpts
+	var webhookCertificatesStore *webhookcerts.Store
+	if envVars.webhookCertificatesSecretName != "" {
+		// The serving certificate is managed by the operator and served from memory, instead of from a mounted Secret.
+		webhookCertificatesStore = webhookcerts.NewStore()
+		webhookServerTlsOpts = append(slices.Clone(tlsOpts), func(c *tls.Config) {
+			c.GetCertificate = webhookCertificatesStore.GetCertificate
+		})
+	}
+	webhookServer := k8swebhook.NewServer(
+		k8swebhook.Options{
+			TLSOpts: webhookServerTlsOpts,
+		},
+	)
 	if err = validateOtlpHostPorts(cliArgs.otlpGrpcHostPort, cliArgs.otlpHttpHostPort); err != nil {
 		setupLog.Error(err, "invalid OTLP collector host port configuration")
 		os.Exit(1)
@@ -432,6 +453,12 @@ func Start() {
 	); err != nil {
 		setupLog.Error(err, "The Dash0 operator manager lookup for its own deployment failed.")
 		os.Exit(1)
+	}
+
+	// The signal handler can only be set up once; the webhook certificates controller and the manager share it.
+	signalHandlerCtx := ctrl.SetupSignalHandler()
+	if webhookCertificatesStore != nil {
+		startWebhookCertificatesManagement(ctx, signalHandlerCtx, webhookCertificatesStore)
 	}
 
 	var operatorConfigurationValues *OperatorConfigurationValues
@@ -476,6 +503,7 @@ func Start() {
 
 	if err = startOperatorManager(
 		ctx,
+		signalHandlerCtx,
 		cliArgs,
 		tlsOpts,
 		webhookServer,
@@ -885,6 +913,14 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		return err
 	}
 
+	// The Helm chart only sets the following variables if the operator manages the webhook certificates itself.
+	webhookCertificatesSecretName, _ := os.LookupEnv(webhookCertificatesSecretNameEnvVarName)
+	previousCertificatesSecretName, _ := os.LookupEnv(previousCertificatesSecretNameEnvVarName)
+	caBundleTargets, err := webhookcerts.ParseTargets(os.Getenv(caBundleTargetsEnvVarName))
+	if err != nil {
+		return fmt.Errorf("cannot parse %s: %w", caBundleTargetsEnvVarName, err)
+	}
+
 	autoPatchPersesDashboardConversionWebhook :=
 		readOptionalBoolFromEnvironmentVariable(persesDashboardAutoPatchConversionWebhookEnvVarName, true)
 
@@ -1034,6 +1070,9 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		deploymentName:                              deploymentName,
 		webhookServiceName:                          webhookServiceName,
 		webhookServicePort:                          webhookServicePort,
+		webhookCertificatesSecretName:               webhookCertificatesSecretName,
+		previousCertificatesSecretName:              previousCertificatesSecretName,
+		caBundleTargets:                             caBundleTargets,
 		iacPeriodicRetryEnabled:                     iacPeriodicRetryEnabled,
 		iacPeriodicRetryInterval:                    iacPeriodicRetryInterval,
 		autoPatchPersesDashboardConversionWebhook:   autoPatchPersesDashboardConversionWebhook,
@@ -1418,6 +1457,43 @@ func initStartupTasksK8sClient(logger logd.Logger) error {
 	return nil
 }
 
+// startWebhookCertificatesManagement loads (or creates) the webhook certificates and injects the CA bundle before the
+// manager starts, then starts the controller that keeps them up to date. Both run on every replica, independent of
+// leader election: a new pod needs its certificate before it can become ready, while the old pod still holds the lease.
+func startWebhookCertificatesManagement(
+	ctx context.Context,
+	signalHandlerCtx context.Context,
+	store *webhookcerts.Store,
+) {
+	persesCrdName := ""
+	if envVars.autoPatchPersesDashboardConversionWebhook {
+		persesCrdName = controller.PersesDashboardCrdName
+	}
+	logger := setupLog.WithName("webhook-certificates")
+	webhookCertificates = webhookcerts.NewManager(
+		webhookcerts.Config{
+			OperatorNamespace:  envVars.operatorNamespace,
+			SecretName:         envVars.webhookCertificatesSecretName,
+			PreviousSecretName: envVars.previousCertificatesSecretName,
+			DeploymentName:     envVars.deploymentName,
+			WebhookServiceName: envVars.webhookServiceName,
+			Targets:            envVars.caBundleTargets,
+			PersesCrdName:      persesCrdName,
+		},
+		startupTasksK8sClient,
+		store,
+	)
+	if err := webhookCertificates.Bootstrap(ctx, logger); err != nil {
+		msg := "Could not load and inject the webhook certificates at startup, the webhook certificates controller will " +
+			"retry."
+		if !store.IsReady() {
+			msg += " The pod will not become ready until this has succeeded."
+		}
+		logger.Error(err, msg)
+	}
+	webhookCertificates.StartController(signalHandlerCtx, ctrl.GetConfigOrDie(), runtimeScheme, logger)
+}
+
 func detectDocker(
 	ctx context.Context,
 	k8sClient client.Client,
@@ -1439,6 +1515,7 @@ func detectDocker(
 
 func startOperatorManager(
 	ctx context.Context,
+	signalHandlerCtx context.Context,
 	cliArgs *commandLineArguments,
 	tlsOpts []func(*tls.Config),
 	webhookServer k8swebhook.Server,
@@ -1489,6 +1566,12 @@ func startOperatorManager(
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), options)
 	if err != nil {
 		return fmt.Errorf("unable to create the manager: %w", err)
+	}
+	if webhookCertificates != nil {
+		webhookCertificates.SetEventRecorder(
+			mgr.GetEventRecorder("dash0-webhook-certificates"),
+			operatorDeploymentSelfReference,
+		)
 	}
 
 	clientset, err := kubernetes.NewForConfig(mgr.GetConfig())
@@ -1661,7 +1744,7 @@ func startOperatorManager(
 	}
 
 	setupLog.Info("starting manager (waiting for leader election)")
-	if err = mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err = mgr.Start(signalHandlerCtx); err != nil {
 		return fmt.Errorf("unable to set up the signal handler: %w", err)
 	}
 	// ^mgr.Start(...) blocks. It only returns when the manager is terminating.
@@ -2104,20 +2187,29 @@ func startDash0Controllers(
 			},
 		)
 
+	persesConversionWebhookSettings := controller.PersesDashboardConversionWebhookSettings{
+		AutoPatchConversionWebhook: envVars.autoPatchPersesDashboardConversionWebhook,
+		OperatorNamespace:          envVars.operatorNamespace,
+		WebhookServiceName:         envVars.webhookServiceName,
+		WebhookServicePort:         envVars.webhookServicePort,
+	}
+	if webhookCertificates != nil {
+		persesConversionWebhookSettings.CaBundleSource = webhookCertificates.Store().CaBundle
+	}
 	persesDashboardCrdReconciler := controller.NewPersesDashboardCrdReconciler(
 		k8sClient,
 		thirdPartyResourceSynchronizationQueue,
 		leaderElectionAwareRunnable,
 		httpClient,
-		controller.PersesDashboardConversionWebhookSettings{
-			AutoPatchConversionWebhook: envVars.autoPatchPersesDashboardConversionWebhook,
-			OperatorNamespace:          envVars.operatorNamespace,
-			WebhookServiceName:         envVars.webhookServiceName,
-			WebhookServicePort:         envVars.webhookServicePort,
-		},
+		persesConversionWebhookSettings,
 	)
 	if err := persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, setupLog); err != nil {
 		return fmt.Errorf("unable to set up the Perses dashboard reconciler: %w", err)
+	}
+	if webhookCertificates != nil {
+		webhookCertificates.Store().OnCaBundleChange(func([]byte) {
+			persesDashboardCrdReconciler.OnCaBundleChange(ctx, setupLog)
+		})
 	}
 
 	prometheusRuleCrdReconciler := controller.NewPrometheusRuleCrdReconciler(
@@ -2325,6 +2417,11 @@ func registerHealthAndReadyChecks(ctx context.Context, mgr manager.Manager) (*Re
 	readyCheckExecuter.start(ctx, setupLog)
 	if err := mgr.AddReadyzCheck("readyz", readyCheckExecuter.isReady); err != nil {
 		return readyCheckExecuter, fmt.Errorf("unable to set up the operator manager ready check: %w", err)
+	}
+	if webhookCertificates != nil {
+		if err := mgr.AddReadyzCheck("webhook-certificates", webhookCertificates.Store().ReadyCheck); err != nil {
+			return readyCheckExecuter, fmt.Errorf("unable to set up the webhook certificates ready check: %w", err)
+		}
 	}
 	return readyCheckExecuter, nil
 }
@@ -2643,10 +2740,13 @@ func deleteMonitoringResourcesInAllNamespaces(logger logd.Logger) error {
 	return nil
 }
 
-func waitForOperatorConfigurationResourceAvailability(logger logd.Logger) error {
+func waitForOperatorConfigurationResourceAvailability(ctx context.Context, logger logd.Logger) error {
 	handler, err := postinstall.NewOperatorPostInstallHandler()
 	if err != nil {
 		logger.Error(err, "Failed to create the post-install handler.")
+		return err
+	}
+	if err = waitForWebhookReachability(ctx, handler, logger); err != nil {
 		return err
 	}
 	if err = handler.WaitForOperatorConfigurationResourceToBecomeAvailable(); err != nil {
@@ -2662,14 +2762,9 @@ func waitForOperatorConfigurationResourceAvailability(logger logd.Logger) error 
 // able to reach the webhook. This closes the race in which an operator configuration resource is created (e.g. via
 // kubectl apply) immediately after helm returns, but before the webhook service is routable.
 func waitForWebhookEndpointReadiness(ctx context.Context, logger logd.Logger) error {
-	// Note: waiting on the EndpointSlice Ready condition reduces the probability of returning from
-	// helm install --wait before the webhook endpoint can be reached, but there is still a very small chance of being too
-	// early. kube-proxy manages service DNAT rules per-node. If the check here observes the endpoint slice as ready,
-	// it is not strictly guaranteed that kube-proxy on the API server's node has also reprogrammed iptables.
-	//
-	// If this turns out to be a problem in practice, we could make the "--wait" guarantee stronger by actually waiting
-	// until a TLS dial to the webhook Service ClusterIP connects successful, e.g. call
-	// https://dash0-operator-webhook-service.operator-namespace.svc:443/operator-configuration/mutate.
+	// Note: waiting on the EndpointSlice Ready condition alone would accept the endpoints of pods of an older revision,
+	// and it would not guarantee that kube-proxy on the API server's node has reprogrammed its rules. The webhook
+	// reachability check therefore sends dry-run requests through the API server first.
 	operatorNamespace := os.Getenv(operatorNamespaceEnvVarName)
 	if operatorNamespace == "" {
 		return fmt.Errorf("the environment variable %s is not set", operatorNamespaceEnvVarName)
@@ -2677,6 +2772,15 @@ func waitForWebhookEndpointReadiness(ctx context.Context, logger logd.Logger) er
 	webhookServiceName := os.Getenv(webhookServiceNameEnvVarName)
 	if webhookServiceName == "" {
 		return fmt.Errorf("the environment variable %s is not set", webhookServiceNameEnvVarName)
+	}
+
+	handler, err := postinstall.NewOperatorPostInstallHandler()
+	if err != nil {
+		logger.Error(err, "Failed to create the post-install handler.")
+		return err
+	}
+	if err = waitForWebhookReachability(ctx, handler, logger); err != nil {
+		return err
 	}
 
 	cfg := ctrl.GetConfigOrDie()
@@ -2693,6 +2797,30 @@ func waitForWebhookEndpointReadiness(ctx context.Context, logger logd.Logger) er
 	}
 	if !webhookServiceIsAvailable {
 		return fmt.Errorf("the Dash0 operator webhook service endpoint did not become ready")
+	}
+	return nil
+}
+
+// waitForWebhookReachability waits until the rollout of the operator manager deployment is complete and the API server
+// can call the operator's webhooks. It is skipped if the Helm chart does not provide the deployment name.
+func waitForWebhookReachability(
+	ctx context.Context,
+	handler *postinstall.OperatorPostInstallHandler,
+	logger logd.Logger,
+) error {
+	operatorNamespace := os.Getenv(operatorNamespaceEnvVarName)
+	deploymentName := os.Getenv(deploymentNameEnvVarName)
+	if operatorNamespace == "" || deploymentName == "" {
+		logger.Info(fmt.Sprintf(
+			"skipping the webhook reachability check, since %s or %s is not set",
+			operatorNamespaceEnvVarName,
+			deploymentNameEnvVarName,
+		))
+		return nil
+	}
+	if err := handler.WaitForWebhooksToBecomeReachable(ctx, operatorNamespace, deploymentName); err != nil {
+		logger.Error(err, "Failed to wait for the operator's webhooks to become reachable.")
+		return err
 	}
 	return nil
 }

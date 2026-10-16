@@ -142,7 +142,7 @@ files:
   - source: docs/advanced-configuration.md
     target: dash0-operator/advanced-configuration.md
     title: Advanced Configuration
-    description: Advanced Dash0 operator configuration, including cert-manager, collector pod scheduling, sysctls, SELinux options, and filelog offset volumes.
+    description: Advanced Dash0 operator configuration, including webhook certificates, cert-manager, collector pod scheduling, sysctls, SELinux options, and filelog offset volumes.
 
   - source: docs/signal-control-edge.md
     target: dash0-operator/signal-control-edge.md

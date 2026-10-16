@@ -161,7 +161,10 @@ kubectl delete service                      --ignore-not-found dash0-operator-si
 kubectl delete poddisruptionbudget          --ignore-not-found dash0-operator-signal-control-collector-pdb
 kubectl delete deployment                   --ignore-not-found dash0-operator-signal-control-collector-deployment
 kubectl delete mutatingwebhookconfiguration --ignore-not-found dash0-operator-injector
+kubectl delete mutatingwebhookconfiguration --ignore-not-found dash0-operator-operator-configuration-mutating
 kubectl delete validatingwebhookconfiguration --ignore-not-found dash0-operator-operator-configuration-validator
+kubectl delete validatingwebhookconfiguration --ignore-not-found dash0-operator-signal-control-validator
+kubectl delete mutatingwebhookconfiguration --ignore-not-found dash0-operator-monitoring-mutating
 kubectl delete validatingwebhookconfiguration --ignore-not-found dash0-operator-monitoring-validator
 
 # Clean up the cadvisor ScrapeConfig helper resources (see deploy_cadvisor_scrapeconfig, both the default and the GKE

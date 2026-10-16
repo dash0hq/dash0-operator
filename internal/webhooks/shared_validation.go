@@ -4,6 +4,7 @@
 package webhooks
 
 import (
+	admissionv1 "k8s.io/api/admission/v1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/dash0hq/dash0-operator/api/operator/common"
@@ -22,6 +23,16 @@ func validateGrpcExportInsecureFlags(export *common.Export) valid {
 		return !pointers.ReadBoolPointerWithDefault(export.Grpc.Insecure, false) ||
 			!pointers.ReadBoolPointerWithDefault(export.Grpc.InsecureSkipVerify, false)
 	}
+}
+
+// isReachabilityCheck reports whether the request is one of the dry-run requests with which the Helm chart's
+// post-install hook checks that the webhooks are reachable. These requests are allowed right away, without validation
+// or logging; since they are dry-run requests, nothing is persisted.
+func isReachabilityCheck(request admission.Request) bool {
+	return request.DryRun != nil &&
+		*request.DryRun &&
+		request.Operation == admissionv1.Create &&
+		request.Name == util.WebhookReachabilityCheckResourceName
 }
 
 // componentSettingsCheckResponse allows the request with one admission warning per setting in spec.components that
