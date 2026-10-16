@@ -201,6 +201,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 
 				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
 
+				VerifyInstrumentationViaHigherOrderWorkloadEvent(ctx, clientset, namespace, name, testActor)
 				VerifyUnmodifiedReplicaSet(GetReplicaSet(ctx, k8sClient, namespace, name))
 			})
 		})
@@ -817,6 +818,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 
 			checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenterWithDebug, dash0MonitoringResource, logger)
 
+			VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
 			instrumentedDeployment := GetDeployment(ctx, k8sClient, TestNamespaceName, name)
 			podSpec := instrumentedDeployment.Spec.Template.Spec
 			initContainerEnv := podSpec.InitContainers[0].Env
