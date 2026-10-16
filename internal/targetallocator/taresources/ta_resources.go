@@ -12,7 +12,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -103,23 +102,14 @@ func (m *TargetAllocatorResourceManager) createOrUpdateResource(
 		}
 		return true, false, nil
 	}
-	// The read is served by the controller-runtime cache, so the update can be rejected with a conflict. Every attempt
-	// re-reads the object and starts from an untouched copy of the desired object, since updateResource modifies it.
-	pristineDesiredResource := desiredResource.DeepCopyObject().(client.Object)
-	hasChanged := false
-	err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-		currentResource, receiverErr := resources.CreateEmptyReceiverFor(pristineDesiredResource)
-		if receiverErr != nil {
-			return receiverErr
-		}
-		if getErr := m.Get(ctx, client.ObjectKeyFromObject(pristineDesiredResource), currentResource); getErr != nil {
-			return getErr
-		}
-		attempt := pristineDesiredResource.DeepCopyObject().(client.Object)
-		var updateErr error
-		hasChanged, updateErr = m.updateResource(ctx, currentResource, attempt, logger)
-		return updateErr
-	})
+	hasChanged, err := resources.UpdateWithRetryOnConflict(
+		ctx,
+		m.Client,
+		desiredResource,
+		func(existingResource client.Object, desiredResource client.Object) (bool, error) {
+			return m.updateResource(ctx, existingResource, desiredResource, logger)
+		},
+	)
 	if err != nil {
 		return false, false, err
 	}
