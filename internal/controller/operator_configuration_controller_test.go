@@ -619,7 +619,7 @@ var _ = Describe(
 									selfMonitoringEnabled: true,
 									expectedSdkIsActive:   true,
 									expectHasConfig:       true,
-									expectedEndpoint:      EndpointGrpcTest,
+									expectedEndpoint:      EndpointGrpcWithProtocolTest,
 									expectedProtocol:      common.ProtocolGrpc,
 									expectedHeaders: map[string]string{
 										"Key": "Value",
