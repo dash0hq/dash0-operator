@@ -115,11 +115,6 @@ func (r *SpamFilterReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
-// HttpClient returns nil, the spam filter reconciler talks to the Dash0 API via the API client pool.
-func (r *SpamFilterReconciler) HttpClient() *http.Client {
-	return nil
-}
-
 func (r *SpamFilterReconciler) SetDefaultApiConfigs(ctx context.Context, apiConfigs []ApiConfig, logger logd.Logger) {
 	r.defaultApiConfigs.Set(apiConfigs)
 	r.maybeDoInitialSynchronizationOfAllResources(ctx, logger)

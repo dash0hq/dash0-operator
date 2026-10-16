@@ -218,6 +218,12 @@ func (m *ResourceToRequestsResult) TotalProcessed() int {
 	return len(m.ApiRequests) + len(m.ValidationIssues) + len(m.SynchronizationErrors)
 }
 
+// HttpApiSyncReconciler is implemented by API sync reconcilers that still send raw HTTP requests (WrappedApiRequest
+// with Request set) instead of using the dash0-api-client-go client pool.
+type HttpApiSyncReconciler interface {
+	HttpClient() *http.Client
+}
+
 // ApiSyncReconciler is the common interface for reconcilers that synchonize their Kubernetes resources to the Dash0
 // API. This can either be resource types owned by the Dash0 operator (like Dash0SyntheticCheck), which then also
 // implement the OwnedResourceReconciler interface, or third-party resource types (like PrometheusRule or
@@ -229,7 +235,6 @@ type ApiSyncReconciler interface {
 	GetNamespacedApiConfigs(string) ([]ApiConfig, bool)
 	ControllerName() string
 	K8sClient() client.Client
-	HttpClient() *http.Client
 
 	// MapResourceToHttpRequests converts a Kubernetes resource object to a list of HTTP requests that can be sent to
 	// the Dash0 API. It returns:
@@ -516,6 +521,7 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 
 	for _, validatedApiConfig := range preconditionChecksResult.validatedApiConfigs {
 		existingOriginsFromApi, existingOriginsAreKnown, err := fetchExistingOriginsForResource(
+			ctx,
 			apiSyncReconciler,
 			preconditionChecksResult,
 			validatedApiConfig.ApiConfig,
@@ -1075,6 +1081,7 @@ func stripKubernetesOnlyMetadataFields(resource map[string]any) {
 //
 // For a delete action, the existing origins are used to only send DELETE requests for objects that actually exist.
 func fetchExistingOriginsForResource(
+	ctx context.Context,
 	apiSyncReconciler ApiSyncReconciler,
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
@@ -1093,6 +1100,7 @@ func fetchExistingOriginsForResource(
 	switch {
 	case originsInNamespace != nil && (mapsToMultipleApiObjects || action == deleteAction):
 		return filterOriginsOfResourceInNamespace(
+			ctx,
 			thirdPartyResourceReconciler,
 			preconditionChecksResult,
 			apiConfig,
@@ -1112,13 +1120,14 @@ func fetchExistingOriginsForResource(
 // the list of origins of all objects in the namespace. The list is only fetched from the backend on the first call per
 // API config, and then reused for the rest of the namespace-wide resync.
 func filterOriginsOfResourceInNamespace(
+	ctx context.Context,
 	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	originsInNamespace *existingOriginsInNamespace,
 	logger logd.Logger,
 ) ([]string, bool, error) {
-	allOriginsInNamespace, err := originsInNamespace.get(thirdPartyResourceReconciler, apiConfig, logger)
+	allOriginsInNamespace, err := originsInNamespace.get(ctx, thirdPartyResourceReconciler, apiConfig, logger)
 	if err != nil {
 		return nil, false, err
 	}
@@ -1222,6 +1231,7 @@ func newExistingOriginsInNamespace(namespace string) *existingOriginsInNamespace
 // Worst case, it returns a list the size of all objects in the dataset; for dashboards that limit is 512
 // and for check rules it is 128, see https://www.dash0.com/docs/dash0/cost-control/quotas-and-limits.
 func (o *existingOriginsInNamespace) get(
+	ctx context.Context,
 	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
 	apiConfig ApiConfig,
 	logger logd.Logger,
@@ -1232,17 +1242,8 @@ func (o *existingOriginsInNamespace) get(
 		return fetchResult.origins, fetchResult.err
 	}
 	var fetchResult existingOriginsFetchResult
-	requests, err := thirdPartyResourceReconciler.FetchExistingNamespaceOriginsRequests(o.namespace, apiConfig)
-	if err != nil {
-		logger.Error(err, "cannot create request to fetch existing origins in namespace", "namespace", o.namespace)
-		fetchResult.err = err
-	} else {
-		fetchResult.origins, fetchResult.err = executeFetchExistingOriginsRequests(
-			thirdPartyResourceReconciler,
-			requests,
-			logger,
-		)
-	}
+	fetchResult.origins, fetchResult.err =
+		thirdPartyResourceReconciler.FetchExistingNamespaceOrigins(ctx, o.namespace, apiConfig, logger)
 	o.originsPerApiConfig[apiConfig] = fetchResult
 	return fetchResult.origins, fetchResult.err
 }
@@ -1334,7 +1335,7 @@ func removeDeleteRequestsForObjectsThatDoNotExist(
 	resourceToRequestsResult.ApiRequests = slices.DeleteFunc(
 		resourceToRequestsResult.ApiRequests,
 		func(apiRequest WrappedApiRequest) bool {
-			return apiRequest.Request.Method == http.MethodDelete &&
+			return apiRequest.method() == http.MethodDelete &&
 				!slices.Contains(existingOriginsFromApi, apiRequest.Origin)
 		},
 	)
@@ -1429,7 +1430,17 @@ func executeSingleHttpRequest(
 ) ([]byte, error) {
 	logger.Info(fmt.Sprintf("executing HTTP request to %s", actionLabel))
 
-	res, err := apiSyncReconciler.HttpClient().Do(req)
+	httpApiSyncReconciler, ok := apiSyncReconciler.(HttpApiSyncReconciler)
+	if !ok || httpApiSyncReconciler.HttpClient() == nil {
+		err := fmt.Errorf(
+			"cannot %s, the %s reconciler does not support raw HTTP requests",
+			actionLabel,
+			apiSyncReconciler.ShortName(),
+		)
+		logger.Error(err, "missing HTTP client")
+		return nil, err
+	}
+	res, err := httpApiSyncReconciler.HttpClient().Do(req)
 	if err != nil {
 		logger.Error(
 			err,
