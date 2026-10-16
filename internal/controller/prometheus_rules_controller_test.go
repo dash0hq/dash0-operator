@@ -20,7 +20,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllertest"
@@ -47,11 +46,7 @@ const (
 
 var (
 	prometheusRuleCrd        *apiextensionsv1.CustomResourceDefinition
-	testQueuePrometheusRules = workqueue.NewTypedWithConfig(
-		workqueue.TypedQueueConfig[ThirdPartyResourceSyncJob]{
-			Name: "dash0-third-party-resource-synchronization-queue",
-		},
-	)
+	testQueuePrometheusRules = NewThirdPartyResourceSyncQueue("dash0-prometheus-rule-synchronization-queue")
 
 	checkRuleApiBasePath     = "/api/alerting/check-rules/"
 	recordingRuleApiBasePath = "/api/recording-rules/"
@@ -3027,6 +3022,7 @@ spec:
 
 func createPrometheusRuleCrdReconciler() *PrometheusRuleCrdReconciler {
 	crdReconciler := NewPrometheusRuleCrdReconciler(
+		k8sClient,
 		k8sClient,
 		testQueuePrometheusRules,
 		&DummyLeaderElectionAware{Leader: true},

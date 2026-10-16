@@ -29,7 +29,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/metadata"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -287,7 +286,8 @@ var (
 	extraConfigDefaults             util.ExtraConfig
 	extraConfigMapWatcher           = util.NewExtraConfigWatcher()
 
-	thirdPartyResourceSynchronizationQueue *workqueue.Typed[controller.ThirdPartyResourceSyncJob]
+	persesDashboardSynchronizationQueue *controller.ThirdPartyResourceSyncQueue
+	prometheusRuleSynchronizationQueue  *controller.ThirdPartyResourceSyncQueue
 )
 
 var (
@@ -1651,8 +1651,11 @@ func startOperatorManager(
 	}
 
 	defer func() {
-		if thirdPartyResourceSynchronizationQueue != nil {
-			controller.StopProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, setupLog)
+		if persesDashboardSynchronizationQueue != nil {
+			controller.StopProcessingThirdPartySynchronizationQueue(persesDashboardSynchronizationQueue, setupLog)
+		}
+		if prometheusRuleSynchronizationQueue != nil {
+			controller.StopProcessingThirdPartySynchronizationQueue(prometheusRuleSynchronizationQueue, setupLog)
 		}
 	}()
 
@@ -2097,16 +2100,15 @@ func startDash0Controllers(
 	}
 	leaderElectionAwareRunnable.AddLeaderElectionClient(signalToMetricsReconciler)
 
-	thirdPartyResourceSynchronizationQueue =
-		workqueue.NewTypedWithConfig(
-			workqueue.TypedQueueConfig[controller.ThirdPartyResourceSyncJob]{
-				Name: "dash0-third-party-resource-synchronization-queue",
-			},
-		)
+	persesDashboardSynchronizationQueue =
+		controller.NewThirdPartyResourceSyncQueue("dash0-perses-dashboard-synchronization-queue")
+	prometheusRuleSynchronizationQueue =
+		controller.NewThirdPartyResourceSyncQueue("dash0-prometheus-rule-synchronization-queue")
 
 	persesDashboardCrdReconciler := controller.NewPersesDashboardCrdReconciler(
 		k8sClient,
-		thirdPartyResourceSynchronizationQueue,
+		mgr.GetAPIReader(),
+		persesDashboardSynchronizationQueue,
 		leaderElectionAwareRunnable,
 		httpClient,
 		controller.PersesDashboardConversionWebhookSettings{
@@ -2122,7 +2124,8 @@ func startDash0Controllers(
 
 	prometheusRuleCrdReconciler := controller.NewPrometheusRuleCrdReconciler(
 		k8sClient,
-		thirdPartyResourceSynchronizationQueue,
+		mgr.GetAPIReader(),
+		prometheusRuleSynchronizationQueue,
 		leaderElectionAwareRunnable,
 		httpClient,
 	)
@@ -2130,7 +2133,8 @@ func startDash0Controllers(
 		return fmt.Errorf("unable to set up the Prometheus rule reconciler: %w", err)
 	}
 
-	controller.StartProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, setupLog)
+	controller.StartProcessingThirdPartySynchronizationQueue(persesDashboardSynchronizationQueue, setupLog)
+	controller.StartProcessingThirdPartySynchronizationQueue(prometheusRuleSynchronizationQueue, setupLog)
 
 	// Periodically retry synchronizing iac resources (Prometheus rules, Perses dashboards, notification channels,
 	// sampling rules, etc.) for which the previous synchronization attempt failed due to a transient error (server error
