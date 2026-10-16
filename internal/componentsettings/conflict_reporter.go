@@ -20,9 +20,9 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
-// ConflictReporter logs new, changed and resolved conflicts between Helm values and spec.components of the Signal
-// Control resource (see util.ComponentSettingConflicts). It only logs on the leader, where the reconcilers that report
-// on changes of the resources run.
+// ConflictReporter logs new, changed and resolved conflicts between Helm values and spec.components of the operator
+// configuration resource or the Signal Control resource (see util.ComponentSettingConflicts). It only logs on the
+// leader, where the reconcilers that report on changes of the resources run.
 type ConflictReporter struct {
 	client               client.Client
 	defaults             util.ExtraConfig
@@ -69,8 +69,8 @@ func (r *ConflictReporter) UpdateExtraConfig(
 	r.Report(ctx, logger)
 }
 
-// Report looks up the Signal Control resource and logs the changes of the settings that are configured both via the
-// Helm chart and via this resource since the last report.
+// Report looks up the operator configuration resource and the Signal Control resource and logs the changes of the
+// settings that are configured both via the Helm chart and via one of these resources since the last report.
 func (r *ConflictReporter) Report(ctx context.Context, logger logd.Logger) {
 	if r == nil || !r.leaderElectionAware.IsLeader() {
 		return
@@ -79,6 +79,18 @@ func (r *ConflictReporter) Report(ctx context.Context, logger logd.Logger) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
+	operatorConfigurationResource, err := resources.FindUniqueOrMostRecentResourceInScope(
+		ctx, r.client, "", &dash0v1alpha1.Dash0OperatorConfiguration{}, logger)
+	if err != nil {
+		logger.Debug("cannot look up the operator configuration resource to report component settings conflicts",
+			"error", err.Error())
+		return
+	}
+	var operatorConfigurationComponents *dash0v1alpha1.OperatorConfigurationComponents
+	if operatorConfigurationResource != nil {
+		operatorConfigurationComponents = util.OperatorConfigurationComponentsOf(
+			operatorConfigurationResource.(*dash0v1alpha1.Dash0OperatorConfiguration))
+	}
 	var signalControlComponents *dash0v1alpha1.SignalControlComponents
 	if r.signalControlEnabled {
 		signalControlResource, err := resources.FindUniqueOrMostRecentResourceInScope(
@@ -96,7 +108,8 @@ func (r *ConflictReporter) Report(ctx context.Context, logger logd.Logger) {
 		}
 	}
 
-	conflicts := util.ComponentSettingConflicts(*r.extraConfig.Load(), r.defaults, signalControlComponents)
+	conflicts := util.ComponentSettingConflicts(
+		*r.extraConfig.Load(), r.defaults, operatorConfigurationComponents, signalControlComponents)
 	for _, conflict := range conflicts {
 		if slices.Contains(r.lastReported, conflict) {
 			continue

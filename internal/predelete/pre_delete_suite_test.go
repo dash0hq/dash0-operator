@@ -151,6 +151,7 @@ var _ = BeforeSuite(func() {
 		k8sClient,
 		clientset,
 		util.ExtraConfigDefaults,
+		util.ExtraConfigDefaults,
 		false,
 		targetAllocatorResourceManager,
 	)

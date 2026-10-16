@@ -129,6 +129,7 @@ var _ = Describe(
 					k8sClient,
 					clientset,
 					util.ExtraConfigDefaults,
+					util.ExtraConfigDefaults,
 					false,
 					targetAllocatorResourceManager,
 				)

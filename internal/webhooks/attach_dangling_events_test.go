@@ -92,6 +92,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			k8sClient,
 			clientset,
 			util.ExtraConfigDefaults,
+			util.ExtraConfigDefaults,
 			false,
 			targetAllocatorResourceManager,
 		)

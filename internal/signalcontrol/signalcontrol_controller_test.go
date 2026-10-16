@@ -156,11 +156,18 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 	It("applies the component settings of the Signal Control resource instead of the Helm values", func() {
 		signalControlResource := loadSignalControlResource(ctx)
 		signalControlResource.Spec.Components = &dash0v1alpha1.SignalControlComponents{
-			EdgeProxy: &dash0v1alpha1.EdgeProxySettings{Replicas: ptr.To(int32(3))},
+			EdgeProxy: &dash0v1alpha1.EdgeProxySettings{
+				Replicas: ptr.To(int32(3)),
+				WorkloadSettings: dash0v1alpha1.WorkloadSettings{
+					PodLabels: map[string]string{"edge-proxy-label": "resource"},
+				},
+			},
 		}
 		Expect(k8sClient.Update(ctx, signalControlResource)).To(Succeed())
 		fileConfig := util.ExtraConfigDefaults
 		fileConfig.EdgeProxyReplicas = 4
+		fileConfig.EdgeProxyPodLabels = map[string]string{"helm-label": "helm"}
+		fileConfig.EdgeProxyPodAnnotations = map[string]string{"helm-annotation": "helm"}
 		reconciler.signalControlManager.extraConfig.Store(&fileConfig)
 
 		_, err := reconciler.Reconcile(ctx, scRequest)
@@ -169,6 +176,9 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 		edgeProxy := &appsv1.Deployment{}
 		Expect(k8sClient.Get(ctx, edgeProxyName, edgeProxy)).To(Succeed())
 		Expect(edgeProxy.Spec.Replicas).To(Equal(ptr.To(int32(3))))
+		Expect(edgeProxy.Spec.Template.Labels).To(HaveKeyWithValue("edge-proxy-label", "resource"))
+		Expect(edgeProxy.Spec.Template.Labels).ToNot(HaveKey("helm-label"))
+		Expect(edgeProxy.Spec.Template.Annotations).To(HaveKeyWithValue("helm-annotation", "helm"))
 	})
 })
 

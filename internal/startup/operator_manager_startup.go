@@ -1896,7 +1896,7 @@ func startDash0Controllers(
 			targetAllocatorConfig,
 		)
 		targetallocatorManager = targetallocator.NewTargetAllocatorManager(
-			k8sClient, clientset, extraConfig, developmentMode, targetallocatorResourceManager,
+			k8sClient, clientset, extraConfig, extraConfigDefaults, developmentMode, targetallocatorResourceManager,
 		)
 		// We update the extra config map in the targetallocatorManager when the extra config map changes, and also trigger a
 		// reconciliation of the target-allocator.
@@ -2194,6 +2194,7 @@ func startDash0Controllers(
 		envVars.operatorNamespace,
 		developmentMode,
 	)
+	operatorConfigurationReconciler.ComponentSettingsConflictReporter = componentSettingsConflictReporter
 	setupLog.Info("Starting the operator configuration resource reconciler.")
 	if err := operatorConfigurationReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the operator configuration resource reconciler: %w", err)
@@ -2486,6 +2487,7 @@ func setupAgent0ConnectorManager(
 	agent0ConnectorManager := agent0connector.NewAgent0ConnectorManager(
 		k8sClient,
 		extraConfig,
+		extraConfigDefaults,
 		developmentMode,
 		agent0ConnectorResourceManager,
 		mgr.GetEventRecorder("dash0-agent0-connector"),
@@ -2734,11 +2736,18 @@ func setupResourceWebhooks(
 	if err := webhooks.NewOperatorConfigurationMutatingWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration mutating webhook: %w", err)
 	}
-	if err := webhooks.NewOperatorConfigurationValidationWebhookHandler(
-		k8sClient, telemetryCollectionEnabled, agent0ConnectorEnabled, syntheticsWorkerEnabled,
-	).SetupWebhookWithManager(mgr); err != nil {
+	operatorConfigurationValidationWebhookHandler := webhooks.NewOperatorConfigurationValidationWebhookHandler(
+		k8sClient,
+		telemetryCollectionEnabled,
+		agent0ConnectorEnabled,
+		syntheticsWorkerEnabled,
+		extraConfig,
+		extraConfigDefaults,
+	)
+	if err := operatorConfigurationValidationWebhookHandler.SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration validation webhook: %w", err)
 	}
+	extraConfigMapWatcher.AddClient(operatorConfigurationValidationWebhookHandler)
 	if signalControlEnabled {
 		signalControlValidationWebhookHandler := webhooks.NewSignalControlValidationWebhookHandler(
 			k8sClient,
