@@ -116,7 +116,8 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 			// The operator reads the object it is about to update through the controller-runtime cache, which lags
 			// behind the API server, so the resource version it sends can already be stale. This simulates that: the
-			// first update is rejected with a conflict, the retry has to re-read and succeed.
+			// object is modified concurrently and the first update is rejected with a conflict, the retry has to
+			// re-read and succeed.
 			conflictingClient := &ConflictOnFirstUpdateClient{Client: k8sClient}
 			managerWithConflicts := NewOTelColResourceManager(
 				conflictingClient,
@@ -138,6 +139,58 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(isChanged).To(BeTrue())
 			Expect(conflictingClient.UpdateCalls).To(Equal(2), "expected exactly one retry after the conflict")
 			verifyObject(ctx, updated)
+		})
+
+		It("should keep a kubectl rollout restart that happens between reading and updating a workload", func() {
+			labels := map[string]string{"app": "restart-race-test"}
+			desired := &appsv1.Deployment{
+				TypeMeta:   metav1.TypeMeta{Kind: "Deployment", APIVersion: "apps/v1"},
+				ObjectMeta: metav1.ObjectMeta{Name: "restart-race-test", Namespace: OperatorNamespace},
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{MatchLabels: labels},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{Labels: labels},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{{Name: "test", Image: "test-image:1"}},
+						},
+					},
+				},
+			}
+			Expect(oTelColResourceManager.createResource(ctx, desired.DeepCopy(), logger)).To(Succeed())
+			DeferCleanup(func() {
+				Expect(k8sClient.Delete(ctx, desired.DeepCopy())).To(Succeed())
+			})
+
+			conflictingClient := &ConflictOnFirstUpdateClient{
+				Client: k8sClient,
+				ModifyStoredObject: func(storedObject client.Object) {
+					SimulateKubectlRolloutRestart(&storedObject.(*appsv1.Deployment).Spec.Template)
+				},
+			}
+			managerWithConflicts := NewOTelColResourceManager(
+				conflictingClient,
+				k8sClient.Scheme(),
+				OperatorManagerDeployment,
+				util.CollectorConfig{
+					Images:                  TestImages,
+					OperatorNamespace:       OperatorNamespace,
+					OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
+				},
+			)
+
+			updated := desired.DeepCopy()
+			updated.Spec.Template.Spec.Containers[0].Image = "test-image:2"
+			isNew, isChanged, err := managerWithConflicts.createOrUpdateResource(ctx, updated, logger)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(isNew).To(BeFalse())
+			Expect(isChanged).To(BeTrue())
+			Expect(conflictingClient.UpdateCalls).To(Equal(2), "expected exactly one retry after the conflict")
+			reconciled := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(desired), reconciled)).To(Succeed())
+			Expect(reconciled.Spec.Template.Spec.Containers[0].Image).To(Equal("test-image:2"))
+			Expect(reconciled.Spec.Template.Annotations).To(
+				HaveKeyWithValue(KubectlRestartedAtAnnotationTest, KubectlRestartedAtTest))
 		})
 
 		It("should report that nothing has changed for a single object", func() {
