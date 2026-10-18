@@ -9,7 +9,9 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr/funcr"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -177,6 +179,32 @@ var _ = Describe("The component settings conflict reporter", func() {
 		Expect(countMessages(conflictMessage)).To(Equal(2))
 		Expect(countMessages(noConflictMessage)).To(Equal(0))
 		Expect(logged[1]).To(ContainSubstring(`"helmSetting"="{\"team\":\"other\"}"`))
+	})
+
+	It("should name the deprecated Helm value of a conflict", func() {
+		operatorConfiguration := operatorConfigurationResource()
+		operatorConfiguration.Spec.Components = &dash0v1alpha1.OperatorConfigurationComponents{
+			DeploymentCollector: &dash0v1alpha1.DeploymentCollectorSettings{
+				CollectorContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+					ContainerResources: dash0v1alpha1.ContainerResources{
+						Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("500Mi")},
+					},
+					GoMemLimit: "300MiB",
+				},
+			},
+		}
+		extraConfig := util.ExtraConfigDefaults
+		extraConfig.CollectorDeploymentCollectorContainerResources.GoMemLimit = "200MiB"
+		reporter := newReporter(newClient(operatorConfiguration), extraConfig, true)
+		reporter.Report(ctx, logger)
+		Expect(logged).To(HaveLen(1))
+		Expect(logged[0]).To(ContainSubstring(
+			"overrides the custom Helm value operator.collectors.deploymentCollectorContainerResources (or " +
+				"operator.collectorDeploymentCollectorContainerResources)."))
+		Expect(logged[0]).To(ContainSubstring(
+			`"helmValue"="operator.collectors.deploymentCollectorContainerResources"`))
+		Expect(logged[0]).To(ContainSubstring(
+			`"deprecatedHelmValue"="operator.collectorDeploymentCollectorContainerResources"`))
 	})
 
 	It("should log the conflicts of the Signal Control resource", func() {

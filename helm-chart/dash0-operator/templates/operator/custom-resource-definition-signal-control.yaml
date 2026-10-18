@@ -66,15 +66,16 @@ spec:
             properties:
               components:
                 description: |-
-                  Settings for the Signal Control workloads the operator manages. Every setting in this section is optional. A setting
-                  that is absent keeps the value provided via the Helm chart. A setting that is present replaces the Helm value, and
-                  the fields it leaves out take the defaults of the Helm chart (see its values.yaml), not the values provided via
-                  Helm: probes are merged with the default probes per field, and the required and the preferred node affinity each
-                  replace their default. An empty object (e.g. probes: {}, nodeAffinity: {}) therefore means the defaults. Empty
-                  labels, annotations, podLabels, podAnnotations, tolerations and sysctls and an empty priorityClassName count as
-                  absent. A setting that Kubernetes would reject in the pod template of the workload is rejected. A setting that
-                  replaces a custom Helm value with a different one is reported as a warning in the operator log, and as an admission
-                  warning when spec.components is created or changed.
+                  Settings for the Signal Control workloads the operator manages. Every setting in this section is optional. A
+                  setting that is absent keeps the value provided via the Helm chart. A setting that is present replaces the Helm
+                  value, and the fields it leaves out take their defaults, not the values provided via Helm: resources are merged
+                  with the default resources per resource, probes with the default probes per field, and the required and the
+                  preferred node affinity each replace their default. An empty object
+                  (e.g. containerResources: {}, probes: {}, nodeAffinity: {}) therefore means the defaults. Empty labels,
+                  annotations, podLabels, podAnnotations, tolerations and sysctls and an empty priorityClassName count as absent. A
+                  setting that Kubernetes would reject in the pod template of the workload, and an invalid GOMEMLIMIT, are rejected.
+                  A setting that replaces a custom Helm value with a different one is reported as a warning in the operator log, and
+                  as an admission warning when spec.components is created or changed.
                 properties:
                   collector:
                     description: Settings for the Signal Control collector Deployment.
@@ -85,6 +86,80 @@ spec:
                         description: |-
                           Additional annotations for the workload. They replace the annotations provided via the Helm chart, empty
                           annotations keep them.
+                        type: object
+                      collectorContainerResources:
+                        description: |-
+                          The resources of the OpenTelemetry collector container (Helm value
+                          operator.collectors.signalControlCollectorContainerResources). With the disk-backed trace reservoir, the operator
+                          derives an ephemeral-storage request from spec.sampling.reservoir.maxDiskBytes and adds it if no request other
+                          than 0 is set. A lower ephemeral-storage limit is rejected, since the reservoir counts towards the limit.
+                        properties:
+                          gomemlimit:
+                            description: |-
+                              The GOMEMLIMIT environment variable, in the format of the Go runtime (e.g. 400MiB, not 400Mi), or off. If it is
+                              empty (recommended), the operator derives it from the memory limit. It must be greater than 0 and below the
+                              effective memory limit. In collectorContainerResources, it should also be below the memory_limiter soft limit.
+                            pattern: ^(off|[0-9]+(([KMGT]i)?B)?)$
+                            type: string
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource limits. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default limit, and -1 removes it. A default limit below the request set in requests is raised to that request.
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource requests. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default request, and -1 removes it. A default request above the limit set in limits is lowered to that limit.
+                              A request above the limit set in limits is rejected.
+                            type: object
+                        type: object
+                      configurationReloaderContainerResources:
+                        description: |-
+                          The resources of the configuration reloader container (Helm value
+                          operator.collectors.signalControlCollectorConfigurationReloaderContainerResources).
+                        properties:
+                          gomemlimit:
+                            description: |-
+                              The GOMEMLIMIT environment variable, in the format of the Go runtime (e.g. 400MiB, not 400Mi), or off. If it is
+                              empty (recommended), the operator derives it from the memory limit. It must be greater than 0 and below the
+                              effective memory limit. In collectorContainerResources, it should also be below the memory_limiter soft limit.
+                            pattern: ^(off|[0-9]+(([KMGT]i)?B)?)$
+                            type: string
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource limits. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default limit, and -1 removes it. A default limit below the request set in requests is raised to that request.
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource requests. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default request, and -1 removes it. A default request above the limit set in limits is lowered to that limit.
+                              A request above the limit set in limits is rejected.
+                            type: object
                         type: object
                       labels:
                         additionalProperties:
@@ -541,6 +616,41 @@ spec:
                         description: |-
                           Additional annotations for the workload. They replace the annotations provided via the Helm chart, empty
                           annotations keep them.
+                        type: object
+                      containerResources:
+                        description: The resources of the Edge Proxy container (Helm
+                          value operator.signalControl.edgeProxy.containerResources).
+                        properties:
+                          gomemlimit:
+                            description: |-
+                              The GOMEMLIMIT environment variable, in the format of the Go runtime (e.g. 400MiB, not 400Mi), or off. If it is
+                              empty (recommended), the operator derives it from the memory limit. It must be greater than 0 and below the
+                              effective memory limit. In collectorContainerResources, it should also be below the memory_limiter soft limit.
+                            pattern: ^(off|[0-9]+(([KMGT]i)?B)?)$
+                            type: string
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource limits. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default limit, and -1 removes it. A default limit below the request set in requests is raised to that request.
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource requests. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default request, and -1 removes it. A default request above the limit set in limits is lowered to that limit.
+                              A request above the limit set in limits is rejected.
+                            type: object
                         type: object
                       enablePprof:
                         description: |-

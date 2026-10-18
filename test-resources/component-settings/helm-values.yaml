@@ -5,6 +5,11 @@
 # daemonSetProbes, which is set to its default and hence does not count as a conflict.
 operator:
   collectors:
+    daemonSetCollectorContainerResources:
+      limits:
+        memory: 600Mi
+      requests:
+        memory: 600Mi
     daemonSetPodLabels:
       dash0.com/component-settings-test: helm
     daemonSetTolerations:
@@ -41,5 +46,9 @@ operator:
   signalControl:
     edgeProxy:
       replicas: 3
+      containerResources:
+        requests:
+          # Not kept: spec.components.edgeProxy.containerResources is merged with the defaults, not the Helm values.
+          memory: 320Mi
       labels:
         dash0.com/component-settings-test: helm

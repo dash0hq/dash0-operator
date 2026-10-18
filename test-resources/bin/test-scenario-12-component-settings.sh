@@ -7,7 +7,7 @@ set -euo pipefail
 
 # Sets the component settings via spec.components of the Dash0 operator configuration resource and of the Dash0 Signal
 # Control resource, and sets some of them to different values via Helm as well. The filelog offset volume is only set if
-# FILELOG_OFFSETS_PVC is set.
+# FILELOG_OFFSETS_PVC is set. Without it, the filelog offset sync containers use filelogOffsetSyncContainerResources.
 
 project_root="$(dirname "${BASH_SOURCE[0]}")"/../..
 scripts_lib="test-resources/bin/lib"

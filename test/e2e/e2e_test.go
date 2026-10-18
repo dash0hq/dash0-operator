@@ -4421,7 +4421,8 @@ spec:
 					"-p",
 					`{"spec":{"components":{"daemonSetCollector":{`+
 						`"tolerations":[{"key":"e2e-resource-toleration","operator":"Exists"}],`+
-						`"labels":{"e2e-component-label":"from-resource"}}}}}`,
+						`"labels":{"e2e-component-label":"from-resource"},`+
+						`"collectorContainerResources":{"limits":{"memory":"550Mi"},"gomemlimit":"400MiB"}}}}}`,
 				))
 				Expect(err).ToNot(HaveOccurred())
 				Expect(output).To(ContainSubstring(
@@ -4434,6 +4435,14 @@ spec:
 						To(Equal("e2e-resource-toleration"))
 					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, "{.metadata.labels.e2e-component-label}")).
 						To(Equal("from-resource"))
+					collector := `{.spec.template.spec.containers[?(@.name=="opentelemetry-collector")]`
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, collector+".resources.limits.memory}")).
+						To(Equal("550Mi"))
+					// The request is not set in the resource and keeps its default.
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, collector+".resources.requests.memory}")).
+						To(Equal("500Mi"))
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace,
+						collector+`.env[?(@.name=="GOMEMLIMIT")].value}`)).To(Equal("400MiB"))
 				}, 60*time.Second, time.Second).Should(Succeed())
 			})
 		})

@@ -295,7 +295,12 @@ value; for a collector it must stay below the derived soft limit, or the operato
 The SignalControl collector only exists when SignalControl Edge is enabled. Unlike the other two collectors it
 processes the Dash0-bound telemetry of the whole cluster, so its memory requirement scales with total telemetry volume
 rather than with per-node volume. Its replica count is configured separately via
-`operator.collectors.signalControlCollectorReplicas` (default `2`).
+`operator.collectors.signalControlCollectorReplicas` (default `2`). When the tail-sampling reservoir of the
+Dash0SignalControl resource uses the disk type, the operator derives an `ephemeral-storage` request from its
+`maxDiskBytes` (unless an `ephemeral-storage` request is set explicitly). The `ephemeral-storage` limit of the
+SignalControl collector container must be at least that derived value, even with an explicit request, since the
+reservoir counts towards the limit. Otherwise, creating a Dash0SignalControl resource or changing its `sampling` or
+`components` is rejected.
 
 Its replicas are distributed as evenly as possible over the cluster's availability zones and nodes: the operator sets
 `topologySpreadConstraints` with `maxSkew: 1` on `topology.kubernetes.io/zone` and on `kubernetes.io/hostname`. Since
