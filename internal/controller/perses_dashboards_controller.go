@@ -933,23 +933,6 @@ func (r *PersesDashboardReconciler) CreateDeleteRequests(
 	return nil, nil
 }
 
-func (r *PersesDashboardReconciler) ExtractIdFromResponseBody(
-	responseBytes []byte,
-	logger logd.Logger,
-) (id string, err error) {
-	objectWithMetadata := Dash0ApiObjectWithMetadata{}
-	if err := json.Unmarshal(responseBytes, &objectWithMetadata); err != nil {
-		logger.Error(
-			err,
-			"cannot parse response, will not extract the synchronized object's ID",
-			"response",
-			string(responseBytes),
-		)
-		return "", err
-	}
-	return objectWithMetadata.Metadata.Labels.Id, nil
-}
-
 func (*PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringStatus(
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	qualifiedName string,

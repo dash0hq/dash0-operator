@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"net/http"
 	"slices"
@@ -111,27 +110,6 @@ func NewResourceToRequestsResult(
 	}
 }
 
-func NewResourceToRequestsResultSingleItemSuccess(
-	apiConfig ApiConfig,
-	request *http.Request,
-	itemName string,
-	origin string,
-) *ResourceToRequestsResult {
-	return NewResourceToRequestsResult(
-		apiConfig,
-		[]WrappedApiRequest{
-			{
-				Request:  request,
-				ItemName: itemName,
-				Origin:   origin,
-			},
-		},
-		nil,
-		nil,
-		nil,
-	)
-}
-
 // NewResourceToRequestsResultSingleItemApiClientCall creates a result with a single call via the Dash0 API client.
 func NewResourceToRequestsResultSingleItemApiClientCall(
 	apiConfig ApiConfig,
@@ -218,12 +196,6 @@ func (m *ResourceToRequestsResult) TotalProcessed() int {
 	return len(m.ApiRequests) + len(m.ValidationIssues) + len(m.SynchronizationErrors)
 }
 
-// HttpApiSyncReconciler is implemented by API sync reconcilers that still send raw HTTP requests (WrappedApiRequest
-// with Request set) instead of using the dash0-api-client-go client pool.
-type HttpApiSyncReconciler interface {
-	HttpClient() *http.Client
-}
-
 // ApiSyncReconciler is the common interface for reconcilers that synchonize their Kubernetes resources to the Dash0
 // API. This can either be resource types owned by the Dash0 operator (like Dash0SyntheticCheck), which then also
 // implement the OwnedResourceReconciler interface, or third-party resource types (like PrometheusRule or
@@ -236,18 +208,13 @@ type ApiSyncReconciler interface {
 	ControllerName() string
 	K8sClient() client.Client
 
-	// MapResourceToHttpRequests converts a Kubernetes resource object to a list of HTTP requests that can be sent to
-	// the Dash0 API. It returns:
+	// MapResourceToHttpRequests converts a Kubernetes resource object to a list of calls to the Dash0 API via the Dash0
+	// API client (see ApiClientCall). It returns:
 	// - the total number of eligible items in the Kubernetes resource,
 	// - the request objects for which the conversion was successful,
 	// - validation issues for items that were invalid and
 	// - synchronization errors that occurred during the conversion.
 	MapResourceToHttpRequests(*preconditionValidationResult, ApiConfig, apiAction, logd.Logger) *ResourceToRequestsResult
-
-	ExtractIdFromResponseBody(
-		responseBytes []byte,
-		logger logd.Logger,
-	) (string, error)
 }
 
 // OwnedResourceReconciler extends the ApiSyncReconciler interface with methods that are specific to resource types
@@ -266,10 +233,8 @@ type OwnedResourceReconciler interface {
 	)
 }
 
-// WrappedApiRequest bundles a request for the Dash0 API with additional metadata. The request is either a raw
-// http.Request (Request) or a call via the Dash0 API client (ApiClientCall), exactly one of the two is set.
+// WrappedApiRequest bundles a call via the Dash0 API client (ApiClientCall) with additional metadata.
 type WrappedApiRequest struct {
-	Request       *http.Request
 	ApiClientCall *ApiClientCall
 	ItemName      string
 	Origin        string
@@ -277,7 +242,7 @@ type WrappedApiRequest struct {
 }
 
 // ApiClientCall is a deferred call to the Dash0 API via the Dash0 API client. Method and Url describe the HTTP request
-// the call will issue, they are only used for logging and error messages.
+// the call will issue, they are used for logging and error messages, and to tell DELETE calls apart from upserts.
 type ApiClientCall struct {
 	Method string
 	Url    string
@@ -286,25 +251,11 @@ type ApiClientCall struct {
 }
 
 func (r *WrappedApiRequest) method() string {
-	if r.ApiClientCall != nil {
-		return r.ApiClientCall.Method
-	}
-	return r.Request.Method
+	return r.ApiClientCall.Method
 }
 
 func (r *WrappedApiRequest) url() string {
-	if r.ApiClientCall != nil {
-		return r.ApiClientCall.Url
-	}
-	return r.Request.URL.String()
-}
-
-type Dash0ApiObjectWithMetadata struct {
-	Metadata Dash0ApiObjectMetadata `json:"metadata"`
-}
-
-type Dash0ApiObjectMetadata struct {
-	Labels Dash0ApiObjectLabels `json:"labels"`
+	return r.ApiClientCall.Url
 }
 
 type Dash0ApiObjectLabels struct {
@@ -312,19 +263,6 @@ type Dash0ApiObjectLabels struct {
 	Origin      string `json:"dash0.com/origin,omitempty"`
 	ApiEndpoint string `json:"dash0.com/apiEndpoint"`
 	Dataset     string `json:"dash0.com/dataset"`
-}
-
-type Dash0DashboardResponse struct {
-	Metadata Dash0DashboardMetadata `json:"metadata"`
-}
-
-type Dash0DashboardMetadata struct {
-	Dash0Extensions Dash0ApiResponseWithOriginAsId `json:"dash0Extensions"`
-}
-
-type Dash0ApiResponseWithOriginAsId struct {
-	Origin  string `json:"id"`
-	Dataset string `json:"dataset"`
 }
 
 type SuccessfulSynchronizationResult struct {
@@ -1247,10 +1185,10 @@ func structToMap(obj any) (*unstructured.Unstructured, error) {
 	}, nil
 }
 
-// executeAllHttpRequests executes all HTTP requests in the given list and returns the names of the items that were
-// successfully synchronized, a map of name to error message for items that were rejected by the Dash0 API, and a map of
-// name to HTTP status code for the failed items (0 if the failure was a transport-level error where no HTTP response
-// was received). The keys of the two maps are identical.
+// executeAllHttpRequests executes the Dash0 API client calls of all requests in the given list and returns the names
+// of the items that were successfully synchronized, a map of name to error message for items that were rejected by the
+// Dash0 API, and a map of name to HTTP status code for the failed items (0 if the failure was a transport-level error
+// where no HTTP response was received). The keys of the two maps are identical.
 func executeAllHttpRequests(
 	ctx context.Context,
 	apiSyncReconciler ApiSyncReconciler,
@@ -1269,17 +1207,7 @@ func executeAllHttpRequests(
 			apiRequest.url(),
 		)
 		isDelete := apiRequest.method() == http.MethodDelete
-		var id string
-		var err error
-		if apiRequest.ApiClientCall != nil {
-			id, err = executeApiClientCall(ctx, apiRequest.ApiClientCall, actionLabel, isDelete, logger)
-		} else {
-			var responseBytes []byte
-			responseBytes, err = executeSingleHttpRequest(apiSyncReconciler, apiRequest.Request, actionLabel, !isDelete, logger)
-			if err == nil && !isDelete {
-				id, _ = apiSyncReconciler.ExtractIdFromResponseBody(responseBytes, logger)
-			}
-		}
+		id, err := executeApiClientCall(ctx, apiRequest.ApiClientCall, actionLabel, isDelete, logger)
 		if err != nil {
 			httpErrors[apiRequest.ItemName] = err.Error()
 			httpErrorStatusCodes[apiRequest.ItemName] = httpStatusCodeFromError(err)
@@ -1306,75 +1234,8 @@ func executeAllHttpRequests(
 	return successfullySynchronized, httpErrors, httpErrorStatusCodes
 }
 
-// executeSingleHttpRequest executes a single HTTP request and reads the response body. Retry and rate limiting are
-// handled by the transport layer of the HTTP client (provided by dash0-api-client-go).
-func executeSingleHttpRequest(
-	apiSyncReconciler ApiSyncReconciler,
-	req *http.Request,
-	actionLabel string,
-	expectBody bool,
-	logger logd.Logger,
-) ([]byte, error) {
-	logger.Info(fmt.Sprintf("executing HTTP request to %s", actionLabel))
-
-	httpApiSyncReconciler, ok := apiSyncReconciler.(HttpApiSyncReconciler)
-	if !ok || httpApiSyncReconciler.HttpClient() == nil {
-		err := fmt.Errorf(
-			"cannot %s, the %s reconciler does not support raw HTTP requests",
-			actionLabel,
-			apiSyncReconciler.ShortName(),
-		)
-		logger.Error(err, "missing HTTP client")
-		return nil, err
-	}
-	res, err := httpApiSyncReconciler.HttpClient().Do(req)
-	if err != nil {
-		logger.Error(
-			err,
-			fmt.Sprintf("unable to execute the HTTP request to %s", actionLabel),
-		)
-		return nil, err
-	}
-
-	isUnexpectedStatusCode := res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices
-	if req.Method == http.MethodDelete {
-		isUnexpectedStatusCode = res.StatusCode != http.StatusNotFound && isUnexpectedStatusCode
-	}
-	if isUnexpectedStatusCode {
-		// HTTP status is not 2xx, treat this as an error.
-		// convertNon2xxStatusCodeToError will also consume and close the response body.
-		err = convertNon2xxStatusCodeToError(res, actionLabel)
-		logger.Error(err, "unexpected status code")
-		return nil, err
-	}
-
-	// HTTP status code was 2xx, read the response body and return it.
-	defer func() {
-		_ = res.Body.Close()
-	}()
-
-	responseBytes, err := io.ReadAll(res.Body)
-	if err != nil {
-		logger.Error(
-			err,
-			fmt.Sprintf(
-				"unable to read the HTTP response body for %s at %s",
-				apiSyncReconciler.ShortName(),
-				req.URL.String(),
-			),
-		)
-		return nil, err
-	}
-	if len(responseBytes) > 0 {
-		return responseBytes, nil
-	} else if expectBody {
-		return nil, fmt.Errorf("unexpected nil/empty response body")
-	}
-	return make([]byte, 0), nil
-}
-
 // executeApiClientCall executes a single call via the Dash0 API client and returns the Dash0 id of the synchronized
-// object. Errors are converted to the same format and status code semantics as errors from executeSingleHttpRequest.
+// object. Errors are converted with convertApiClientError, so they carry the HTTP status code of the failed request.
 func executeApiClientCall(
 	ctx context.Context,
 	apiClientCall *ApiClientCall,
@@ -1457,33 +1318,6 @@ func httpStatusCodeFromError(err error) int {
 		return apiErr.statusCode
 	}
 	return 0
-}
-
-func convertNon2xxStatusCodeToError(
-	res *http.Response,
-	actionLabel string,
-) error {
-	defer func() {
-		_ = res.Body.Close()
-	}()
-	errorResponseBody, readErr := io.ReadAll(res.Body)
-	if readErr != nil {
-		readBodyErr := fmt.Errorf(
-			"unable to read the API response payload after receiving status code %d when "+
-				"trying to %s",
-			res.StatusCode,
-			actionLabel,
-		)
-		return &apiSyncHttpError{statusCode: res.StatusCode, err: readBodyErr}
-	}
-
-	statusCodeErr := fmt.Errorf(
-		"unexpected status code %d when trying to %s, response body is %s",
-		res.StatusCode,
-		actionLabel,
-		string(errorResponseBody),
-	)
-	return &apiSyncHttpError{statusCode: res.StatusCode, err: statusCodeErr}
 }
 
 // writeSynchronizationResult writes the result of a synchronization attempt to the status of a Kubernetes
