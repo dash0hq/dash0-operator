@@ -1,23 +1,32 @@
 name: "CLA Assistant"
 
+# Every run has to complete: a run triggered by a comment records a CLA signature, cancelling it would lose the
+# signature.
+# jactionlint ignore=concurrency-limits
 on:
+  # The reusable CLA workflow does not check out any code of the pull request, it only runs the CLA assistant action.
+  # jactionlint ignore=dangerous-triggers
   issue_comment:
     types:
       - created
+  # jactionlint ignore=dangerous-triggers
   pull_request_target:
     types:
      - opened
      - closed
      - synchronize
 
-permissions:
-  actions: write
-  contents: write
-  pull-requests: write
-  statuses: write
+permissions: {}
 
 jobs:
   call-workflow:
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+      statuses: write
+    # The shared CLA workflow has no release tags, so it is used from main.
+    # jactionlint ignore=unpinned-uses
     uses: dash0hq/.github/.github/workflows/cla.yaml@main
     secrets:
       PERSONAL_ACCESS_TOKEN: ${{ secrets.CLA_PAT }}

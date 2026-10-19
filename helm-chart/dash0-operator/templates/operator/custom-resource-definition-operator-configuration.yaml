@@ -297,6 +297,144 @@ spec:
                       `collectPodLabelsAndAnnotations.enabled=true` at the same time.
                     type: boolean
                 type: object
+              components:
+                description: |-
+                  Settings for the workloads the operator manages. An absent or empty setting keeps the Helm value, a present one
+                  replaces it. Invalid settings are rejected. Replacing a custom Helm value with a different one causes a warning.
+                properties:
+                  agent0Connector:
+                    description: |-
+                      Settings for the agent0-connector. Its cluster role rules can only be configured via the Helm chart, since the
+                      operator can only grant permissions it holds itself. Its allowed kubectl commands can also only be configured via
+                      the Helm chart (operator.agent0Connector.allowedKubectlCommands).
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional annotations for the workload. They replace the annotations provided via the Helm chart, empty
+                          annotations keep them.
+                        type: object
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: Additional labels for the workload. They replace
+                          the labels provided via the Helm chart, empty labels keep
+                          them.
+                        type: object
+                      podAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional annotations for the pods of the workload. They replace the pod annotations provided via the Helm
+                          chart, empty pod annotations keep them.
+                        type: object
+                      podLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional labels for the pods of the workload. They replace the pod labels provided via the Helm chart, empty
+                          pod labels keep them.
+                        type: object
+                    type: object
+                  daemonSetCollector:
+                    description: Settings for the OpenTelemetry collector DaemonSet.
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional annotations for the workload. They replace the annotations provided via the Helm chart, empty
+                          annotations keep them.
+                        type: object
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: Additional labels for the workload. They replace
+                          the labels provided via the Helm chart, empty labels keep
+                          them.
+                        type: object
+                      podAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional annotations for the pods of the workload. They replace the pod annotations provided via the Helm
+                          chart, empty pod annotations keep them.
+                        type: object
+                      podLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional labels for the pods of the workload. They replace the pod labels provided via the Helm chart, empty
+                          pod labels keep them.
+                        type: object
+                    type: object
+                  deploymentCollector:
+                    description: Settings for the OpenTelemetry collector Deployment
+                      (cluster-metrics-collector).
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional annotations for the workload. They replace the annotations provided via the Helm chart, empty
+                          annotations keep them.
+                        type: object
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: Additional labels for the workload. They replace
+                          the labels provided via the Helm chart, empty labels keep
+                          them.
+                        type: object
+                      podAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional annotations for the pods of the workload. They replace the pod annotations provided via the Helm
+                          chart, empty pod annotations keep them.
+                        type: object
+                      podLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional labels for the pods of the workload. They replace the pod labels provided via the Helm chart, empty
+                          pod labels keep them.
+                        type: object
+                    type: object
+                  targetAllocator:
+                    description: Settings for the OpenTelemetry target-allocator.
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional annotations for the workload. They replace the annotations provided via the Helm chart, empty
+                          annotations keep them.
+                        type: object
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: Additional labels for the workload. They replace
+                          the labels provided via the Helm chart, empty labels keep
+                          them.
+                        type: object
+                      podAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional annotations for the pods of the workload. They replace the pod annotations provided via the Helm
+                          chart, empty pod annotations keep them.
+                        type: object
+                      podLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional labels for the pods of the workload. They replace the pod labels provided via the Helm chart, empty
+                          pod labels keep them.
+                        type: object
+                    type: object
+                type: object
               export:
                 description: |-
                   Deprecated: Use `exports` instead. If both `export` and `exports` are specified, `export` will be ignored.

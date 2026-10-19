@@ -151,9 +151,27 @@ func (h *SignalControlValidationWebhookHandler) Handle(ctx context.Context, requ
 			return admission.Denied(err.Error())
 		}
 
-		check := util.CheckComponentSettings(
-			*h.extraConfig.Load(), h.extraConfigDefaults, signalControlResource.Spec.Components)
-		return componentSettingsCheckResponse(check)
+		unchanged, errorResponse := componentSettingsAreUnchanged(
+			request,
+			&dash0v1alpha1.Dash0SignalControl{},
+			func(oldResource *dash0v1alpha1.Dash0SignalControl) *dash0v1alpha1.SignalControlComponents {
+				return oldResource.Spec.Components
+			},
+			signalControlResource.Spec.Components,
+			logger,
+		)
+		if errorResponse != nil {
+			return *errorResponse
+		}
+		if unchanged {
+			return admission.Allowed("")
+		}
+		return componentSettingsCheckResponse(
+			"Signal Control resource",
+			util.CheckComponentSettings(
+				*h.extraConfig.Load(), h.extraConfigDefaults, nil, signalControlResource.Spec.Components),
+			logger,
+		)
 	}
 
 	return admission.Allowed("")

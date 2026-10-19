@@ -14,7 +14,23 @@ spec:
   components:
     collector:
       replicas: 1
+      labels:
+        dash0.com/component-settings-test: custom-resource
+      annotations:
+        dash0.com/component-settings-test: custom-resource
+      podLabels:
+        dash0.com/component-settings-test: custom-resource
+      podAnnotations:
+        dash0.com/component-settings-test: custom-resource
 
     edgeProxy:
       replicas: 1
       enablePprof: true
+      labels:
+        dash0.com/component-settings-test: custom-resource
+      annotations:
+        dash0.com/component-settings-test: custom-resource
+      podLabels:
+        dash0.com/component-settings-test: custom-resource
+      podAnnotations:
+        dash0.com/component-settings-test: custom-resource

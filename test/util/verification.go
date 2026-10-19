@@ -586,9 +586,9 @@ func VerifyInstrumentationViaHigherOrderWorkloadEvent(
 		util.ReasonNoInstrumentationNecessary,
 		util.ActionInstrumentation,
 		fmt.Sprintf(
-			"The workload is part of a higher order workload that will be instrumented by the %s, "+
+			"The workload is part of a higher order workload that will be instrumented by the webhook, "+
 				"no modification by the %s is necessary.",
-			eventSource, eventSource),
+			eventSource),
 	)
 }
 

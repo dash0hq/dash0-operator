@@ -2308,6 +2308,50 @@ log_statements:
 				}, 60*time.Second, pollingInterval).Should(Succeed())
 			})
 
+			It("applies the component settings of the Dash0SignalControl resource to the Edge Proxy", func() {
+				edgeProxyDeployment := operatorHelmReleaseName + "-edge-proxy"
+				patchComponents := func(components string) {
+					Expect(runAndIgnoreOutput(exec.Command(
+						"kubectl",
+						"patch",
+						"Dash0SignalControl",
+						signalControlName,
+						"--type",
+						"merge",
+						"-p",
+						`{"spec":{"components":`+components+`}}`,
+					))).To(Succeed())
+				}
+				readEdgeProxyLabel := func(g Gomega) string {
+					label, err := run(exec.Command(
+						"kubectl",
+						"-n", operatorNamespace,
+						"get", "deployment", edgeProxyDeployment,
+						"-o", "jsonpath={.metadata.labels.e2e-component-label}",
+					), false)
+					g.Expect(err).ToNot(HaveOccurred())
+					return strings.TrimSpace(label)
+				}
+
+				By("adding a label for the Edge Proxy deployment to the Dash0SignalControl resource")
+				// A label of the deployment (as opposed to a pod label) does not roll out the Edge Proxy pods, which the
+				// subsequent specs rely on.
+				patchComponents(`{"edgeProxy":{"labels":{"e2e-component-label":"from-resource"}}}`)
+				// Removes the settings also if this spec fails, so that they do not leak into the subsequent specs.
+				DeferCleanup(func() {
+					patchComponents("null")
+				})
+				Eventually(func(g Gomega) {
+					g.Expect(readEdgeProxyLabel(g)).To(Equal("from-resource"))
+				}, 60*time.Second, pollingInterval).Should(Succeed())
+
+				By("removing the component settings from the Dash0SignalControl resource")
+				patchComponents("null")
+				Eventually(func(g Gomega) {
+					g.Expect(readEdgeProxyLabel(g)).To(BeEmpty())
+				}, 60*time.Second, pollingInterval).Should(Succeed())
+			})
+
 			Describe("with a workload sending traces", Ordered, func() {
 				BeforeAll(func() {
 					deployDash0MonitoringResourceWithRetry(
@@ -4322,6 +4366,70 @@ spec:
 							"reloaded the configuration in-process.",
 					)
 				}
+			})
+		})
+
+		Describe("when component settings are configured via Helm and in the operator configuration resource", func() {
+			BeforeAll(func() {
+				By("deploy the Dash0 operator with a DaemonSet label")
+				deployOperatorWithoutAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					map[string]string{
+						"operator.collectors.daemonSetLabels.e2e-component-label": "from-helm",
+					},
+				)
+				time.Sleep(10 * time.Second)
+			})
+
+			AfterAll(func() {
+				undeployOperator(operatorNamespace)
+			})
+
+			AfterEach(func() {
+				undeployDash0OperatorConfigurationResource()
+			})
+
+			It("should apply the settings of the resource and warn about the Helm value it overrides", func() {
+				deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
+					SelfMonitoringEnabled:      false,
+					Endpoint:                   defaultEndpoint,
+					Token:                      defaultToken,
+					ApiEndpoint:                dash0ApiMockServiceBaseUrl,
+					ClusterName:                e2eKubernetesContext,
+					TelemetryCollectionEnabled: true,
+				}, operatorNamespace, operatorHelmChart)
+
+				By("verifying that the DaemonSet uses the label provided via Helm")
+				Eventually(func(g Gomega) {
+					g.Expect(readCollectorDaemonSetComponentLabel(g, operatorNamespace)).
+						To(Equal("from-helm"))
+				}, 60*time.Second, time.Second).Should(Succeed())
+
+				By("adding component settings to the Dash0 operator configuration resource")
+				output, err := run(exec.Command(
+					"kubectl",
+					"patch",
+					"Dash0OperatorConfiguration",
+					dash0OperatorConfigurationResourceManuallyManagedName,
+					"--type",
+					"merge",
+					"-p",
+					`{"spec":{"components":{"daemonSetCollector":{"labels":{"e2e-component-label":"from-resource"}}}}}`,
+				))
+				Expect(err).ToNot(HaveOccurred())
+				Expect(output).To(ContainSubstring(
+					"spec.components.daemonSetCollector.labels overrides the custom Helm value " +
+						"operator.collectors.daemonSetLabels"))
+
+				By("verifying that the DaemonSet uses the settings of the resource")
+				Eventually(func(g Gomega) {
+					g.Expect(readCollectorDaemonSetComponentLabel(g, operatorNamespace)).
+						To(Equal("from-resource"))
+				}, 60*time.Second, time.Second).Should(Succeed())
 			})
 		})
 

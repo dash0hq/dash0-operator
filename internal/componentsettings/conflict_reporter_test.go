@@ -9,8 +9,10 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr/funcr"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -48,6 +50,21 @@ var _ = Describe("The component settings conflict reporter", func() {
 		return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 	}
 
+	operatorConfigurationResource := func() *dash0v1alpha1.Dash0OperatorConfiguration {
+		return &dash0v1alpha1.Dash0OperatorConfiguration{
+			ObjectMeta: metav1.ObjectMeta{Name: "operator-configuration"},
+			Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				Components: &dash0v1alpha1.OperatorConfigurationComponents{
+					Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{
+						WorkloadSettings: dash0v1alpha1.WorkloadSettings{
+							Labels: map[string]string{"team": "observability"},
+						},
+					},
+				},
+			},
+		}
+	}
+
 	signalControlResource := func() *dash0v1alpha1.Dash0SignalControl {
 		return &dash0v1alpha1.Dash0SignalControl{
 			ObjectMeta: metav1.ObjectMeta{Name: "signal-control"},
@@ -61,6 +78,7 @@ var _ = Describe("The component settings conflict reporter", func() {
 
 	conflictingExtraConfig := func() util.ExtraConfig {
 		extraConfig := util.ExtraConfigDefaults
+		extraConfig.Agent0ConnectorLabels = map[string]string{"team": "helm"}
 		extraConfig.EdgeProxyReplicas = 4
 		return extraConfig
 	}
@@ -91,7 +109,7 @@ var _ = Describe("The component settings conflict reporter", func() {
 	})
 
 	It("should not log anything without conflicts", func() {
-		reporter := newReporter(newClient(signalControlResource()), util.ExtraConfigDefaults, true)
+		reporter := newReporter(newClient(operatorConfigurationResource()), util.ExtraConfigDefaults, true)
 		reporter.Report(ctx, logger)
 		Expect(logged).To(BeEmpty())
 	})
@@ -99,7 +117,7 @@ var _ = Describe("The component settings conflict reporter", func() {
 	It("should only log on the leader, and as soon as the replica has become leader", func() {
 		leaderElectionAware := NewLeaderElectionAwareMock(false)
 		reporter := NewConflictReporter(
-			newClient(signalControlResource()),
+			newClient(operatorConfigurationResource()),
 			util.ExtraConfigDefaults,
 			util.ExtraConfigDefaults,
 			true,
@@ -115,55 +133,76 @@ var _ = Describe("The component settings conflict reporter", func() {
 	})
 
 	It("should log a conflict only once while it stays the same", func() {
-		reporter := newReporter(newClient(signalControlResource()), conflictingExtraConfig(), true)
+		reporter := newReporter(newClient(operatorConfigurationResource()), conflictingExtraConfig(), true)
 		reporter.Report(ctx, logger)
 		Expect(countMessages(conflictMessage)).To(Equal(1))
 		Expect(logged[0]).To(ContainSubstring(
-			"Dash0SignalControl spec.components.edgeProxy.replicas overrides the custom Helm value " +
-				"operator.signalControl.edgeProxy.replicas."))
+			"Dash0OperatorConfiguration spec.components.agent0Connector.labels overrides the custom Helm value " +
+				"operator.agent0Connector.labels."))
 
 		reporter.Report(ctx, logger)
 		Expect(logged).To(HaveLen(1))
 	})
 
 	It("should log when a conflict has been resolved by a change of the extra config map", func() {
-		reporter := newReporter(newClient(signalControlResource()), conflictingExtraConfig(), true)
+		reporter := newReporter(
+			newClient(operatorConfigurationResource(), signalControlResource()), conflictingExtraConfig(), true)
 		reporter.Report(ctx, logger)
-		Expect(countMessages(conflictMessage)).To(Equal(1))
+		Expect(countMessages(conflictMessage)).To(Equal(2))
 
-		reporter.UpdateExtraConfig(ctx, util.ExtraConfigDefaults, logger)
-		Expect(logged).To(HaveLen(2))
-		Expect(logged[1]).To(ContainSubstring(
+		extraConfig := conflictingExtraConfig()
+		extraConfig.EdgeProxyReplicas = util.ExtraConfigDefaults.EdgeProxyReplicas
+		reporter.UpdateExtraConfig(ctx, extraConfig, logger)
+		Expect(logged).To(HaveLen(3))
+		Expect(logged[2]).To(ContainSubstring(
 			"Dash0SignalControl spec.components.edgeProxy.replicas no longer overrides the custom Helm value " +
 				"operator.signalControl.edgeProxy.replicas."))
 
 		reporter.UpdateExtraConfig(ctx, util.ExtraConfigDefaults, logger)
-		Expect(logged).To(HaveLen(2))
+		Expect(countMessages(noConflictMessage)).To(Equal(2))
+		Expect(logged).To(HaveLen(4))
+
+		reporter.UpdateExtraConfig(ctx, util.ExtraConfigDefaults, logger)
+		Expect(logged).To(HaveLen(4))
 	})
 
 	It("should log a conflict again when its values have changed", func() {
-		reporter := newReporter(newClient(signalControlResource()), conflictingExtraConfig(), true)
+		reporter := newReporter(newClient(operatorConfigurationResource()), conflictingExtraConfig(), true)
 		reporter.Report(ctx, logger)
 		Expect(countMessages(conflictMessage)).To(Equal(1))
 
 		extraConfig := conflictingExtraConfig()
-		extraConfig.EdgeProxyReplicas = 5
+		extraConfig.Agent0ConnectorLabels = map[string]string{"team": "other"}
 		reporter.UpdateExtraConfig(ctx, extraConfig, logger)
 		Expect(countMessages(conflictMessage)).To(Equal(2))
 		Expect(countMessages(noConflictMessage)).To(Equal(0))
-		Expect(logged[1]).To(ContainSubstring(`"helmSetting"="5"`))
+		Expect(logged[1]).To(ContainSubstring(`"helmSetting"="{\"team\":\"other\"}"`))
 	})
 
 	It("should log the conflicts of the Signal Control resource", func() {
-		reporter := newReporter(newClient(signalControlResource()), conflictingExtraConfig(), true)
+		reporter := newReporter(
+			newClient(operatorConfigurationResource(), signalControlResource()), conflictingExtraConfig(), true)
+		reporter.Report(ctx, logger)
+		Expect(countMessages(conflictMessage)).To(Equal(2))
+		Expect(logged[1]).To(ContainSubstring("spec.components.edgeProxy.replicas"))
+		Expect(logged[1]).To(ContainSubstring("Dash0SignalControl"))
+	})
+
+	It("should log the conflicts of the operator configuration resource if the Signal Control CRD is missing", func() {
+		reporter := newReporter(
+			&signalControlListErrorClient{
+				Client: newClient(operatorConfigurationResource()),
+				err:    &meta.NoKindMatchError{GroupKind: schema.GroupKind{Kind: "Dash0SignalControl"}},
+			},
+			conflictingExtraConfig(),
+			true,
+		)
 		reporter.Report(ctx, logger)
 		Expect(countMessages(conflictMessage)).To(Equal(1))
-		Expect(logged[0]).To(ContainSubstring("spec.components.edgeProxy.replicas"))
-		Expect(logged[0]).To(ContainSubstring("Dash0SignalControl"))
 	})
 
 	It("should not report anything if the Signal Control resource cannot be looked up", func() {
-		reporter := newReporter(newClient(signalControlResource()), conflictingExtraConfig(), true)
+		reporter := newReporter(newClient(operatorConfigurationResource()), conflictingExtraConfig(), true)
 		reporter.Report(ctx, logger)
 		Expect(countMessages(conflictMessage)).To(Equal(1))
 

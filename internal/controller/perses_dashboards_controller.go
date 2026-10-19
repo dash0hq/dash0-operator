@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -43,7 +45,7 @@ type PersesDashboardCrdReconciler struct {
 	queue                     *workqueue.Typed[ThirdPartyResourceSyncJob]
 	leaderElectionAware       util.LeaderElectionAware
 	mgr                       ctrl.Manager
-	httpClient                *http.Client
+	apiClientPool             *ApiClientPool
 	skipNameValidation        bool
 	persesDashboardReconciler *PersesDashboardReconciler
 	persesDashboardCrdExists  atomic.Bool
@@ -80,7 +82,7 @@ type PersesDashboardReconciler struct {
 	crdReconciler              *PersesDashboardCrdReconciler
 	pseudoClusterUid           types.UID
 	queue                      *workqueue.Typed[ThirdPartyResourceSyncJob]
-	httpClient                 *http.Client
+	apiClientPool              *ApiClientPool
 	defaultApiConfigs          selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs       selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	namespacedSyncEnabled      sync.Map
@@ -116,7 +118,7 @@ func NewPersesDashboardCrdReconciler(
 	k8sClient client.Client,
 	queue *workqueue.Typed[ThirdPartyResourceSyncJob],
 	leaderElectionAware util.LeaderElectionAware,
-	httpClient *http.Client,
+	apiClientPool *ApiClientPool,
 	conversionWebhookSettings PersesDashboardConversionWebhookSettings,
 ) *PersesDashboardCrdReconciler {
 	if conversionWebhookSettings.CaBundlePath == "" {
@@ -126,7 +128,7 @@ func NewPersesDashboardCrdReconciler(
 		Client:                    k8sClient,
 		queue:                     queue,
 		leaderElectionAware:       leaderElectionAware,
-		httpClient:                httpClient,
+		apiClientPool:             apiClientPool,
 		conversionWebhookSettings: conversionWebhookSettings,
 	}
 }
@@ -248,7 +250,7 @@ func (r *PersesDashboardCrdReconciler) CreateThirdPartyResourceReconciler(pseudo
 		crdReconciler:        r,
 		queue:                r.queue,
 		pseudoClusterUid:     pseudoClusterUid,
-		httpClient:           r.httpClient,
+		apiClientPool:        r.apiClientPool,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
 	}
@@ -571,10 +573,6 @@ func (r *PersesDashboardReconciler) Queue() *workqueue.Typed[ThirdPartyResourceS
 	return r.queue
 }
 
-func (r *PersesDashboardReconciler) HttpClient() *http.Client {
-	return r.httpClient
-}
-
 func (r *PersesDashboardReconciler) IsSynchronizationEnabled(monitoringResource *dash0v1beta1.Dash0Monitoring) bool {
 	if monitoringResource == nil {
 		return false
@@ -703,23 +701,41 @@ func (r *PersesDashboardReconciler) FetchExistingResourceOriginsRequests(
 	return nil, nil
 }
 
-func (r *PersesDashboardReconciler) FetchExistingNamespaceOriginsRequests(
-	_ string,
+func (r *PersesDashboardReconciler) FetchExistingNamespaceOrigins(
+	ctx context.Context,
+	namespace string,
 	apiConfig ApiConfig,
-) ([]*http.Request, error) {
+	logger logd.Logger,
+) ([]string, error) {
 	// The Dash0 API does not support filtering the list of dashboards by origin, so this fetches the origins of all
 	// dashboards in the dataset. IsOriginOfResource is used to pick the origins that belong to a particular resource.
-	req, err := http.NewRequest(
+	dataset := apiConfig.Dataset
+	actionLabel := fmt.Sprintf(
+		"fetch existing origins: %s %sapi/dashboards?dataset=%s",
 		http.MethodGet,
-		fmt.Sprintf("%sapi/dashboards?dataset=%s", apiConfig.Endpoint, url.QueryEscape(apiConfig.Dataset)),
-		nil,
+		apiConfig.Endpoint,
+		url.QueryEscape(dataset),
 	)
+	logger.Info(fmt.Sprintf("executing HTTP request to %s", actionLabel))
+	apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
 	if err != nil {
+		err = convertApiClientError(err, actionLabel, false)
+		logger.Error(err, "cannot fetch existing origins", "namespace", namespace)
 		return nil, err
 	}
-	addAuthorizationHeader(req, apiConfig.Token)
-	req.Header.Set(util.AcceptHeaderName, util.ApplicationJsonMediaType)
-	return []*http.Request{req}, nil
+	dashboards, err := apiClient.ListDashboards(ctx, &dataset)
+	if err != nil {
+		err = convertApiClientError(err, actionLabel, false)
+		logger.Error(err, "cannot fetch existing origins", "namespace", namespace)
+		return nil, err
+	}
+	var origins []string
+	for _, dashboard := range dashboards {
+		if dashboard != nil && dashboard.Origin != nil && *dashboard.Origin != "" {
+			origins = append(origins, *dashboard.Origin)
+		}
+	}
+	return origins, nil
 }
 
 func (r *PersesDashboardReconciler) IsOriginOfResource(
@@ -741,11 +757,9 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 
 	dashboardUrl, dashboardOrigin := r.renderDashboardUrl(preconditionChecksResult, apiConfig.Endpoint, apiConfig.Dataset)
 
-	var req *http.Request
-	var method string
-	var err error
+	dataset := apiConfig.Dataset
 
-	//nolint:ineffassign
+	var apiClientCall *ApiClientCall
 	switch action {
 	case upsertAction:
 		dashboard := preconditionChecksResult.resource
@@ -759,45 +773,67 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 		}
 		r.setDisplayNameIfMissing(preconditionChecksResult, display)
 
-		serializedDashboard, _ := json.Marshal(dashboard)
-		requestPayload := bytes.NewBuffer(serializedDashboard)
-
-		method = http.MethodPut
-		req, err = http.NewRequest(
-			method,
-			dashboardUrl,
-			requestPayload,
-		)
+		dashboardDefinition, err := mapToDashboardDefinition(dashboard)
+		if err != nil {
+			conversionErr := fmt.Errorf("unable to convert the dashboard to the Dash0 API format: %w", err)
+			logger.Error(conversionErr, "error converting dashboard")
+			return NewResourceToRequestsResultSingleItemConversionError(apiConfig, itemName, conversionErr.Error())
+		}
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodPut,
+			Url:    dashboardUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				updatedDashboard, err := apiClient.UpdateDashboard(ctx, dashboardOrigin, dashboardDefinition, &dataset)
+				if err != nil {
+					return "", err
+				}
+				if updatedDashboard == nil {
+					return "", errors.New("unexpected nil/empty response body")
+				}
+				return dash0apiclient.GetDashboardID(updatedDashboard), nil
+			},
+		}
 	case deleteAction:
-		method = http.MethodDelete
-		req, err = http.NewRequest(
-			method,
-			dashboardUrl,
-			nil,
-		)
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodDelete,
+			Url:    dashboardUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				return "", apiClient.DeleteDashboard(ctx, dashboardOrigin, &dataset)
+			},
+		}
 	default:
 		unknownActionErr := fmt.Errorf("unknown API action: %d", action)
 		logger.Error(unknownActionErr, "unknown API action")
 		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, unknownActionErr.Error())
 	}
 
+	return NewResourceToRequestsResultSingleItemApiClientCall(apiConfig, apiClientCall, itemName, dashboardOrigin)
+}
+
+// mapToDashboardDefinition converts the normalized Perses dashboard resource (spec.config already unwrapped, display
+// name already set) to the typed dashboard definition of the Dash0 API client. The resource is decoded directly instead
+// of using dash0apiclient.ConvertPersesDashboardToDashboard, since that would replace kind with "Dashboard" and
+// metadata.name with the display name (which is often not a valid Kubernetes name). Metadata that the Dash0 API does
+// not define for dashboards (for example arbitrary annotations, metadata.namespace) is dropped.
+func mapToDashboardDefinition(dashboard map[string]any) (*dash0apiclient.DashboardDefinition, error) {
+	serializedDashboard, err := json.Marshal(dashboard)
 	if err != nil {
-		httpError := fmt.Errorf(
-			"unable to create a new HTTP request to synchronize the dashboard: %s %s: %w",
-			method,
-			dashboardUrl,
-			err,
-		)
-		logger.Error(httpError, "error creating http request")
-		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, httpError.Error())
+		return nil, err
 	}
-
-	addAuthorizationHeader(req, apiConfig.Token)
-	if action == upsertAction {
-		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
+	dashboardDefinition := &dash0apiclient.DashboardDefinition{}
+	if err = json.Unmarshal(serializedDashboard, dashboardDefinition); err != nil {
+		return nil, err
 	}
-
-	return NewResourceToRequestsResultSingleItemSuccess(apiConfig, req, itemName, dashboardOrigin)
+	dash0apiclient.StripDashboardServerFields(dashboardDefinition)
+	return dashboardDefinition, nil
 }
 
 func (r *PersesDashboardReconciler) normalizeV1Alpha1V1Alpha2(dashboard map[string]any) map[string]any {
@@ -843,21 +879,20 @@ func (r *PersesDashboardReconciler) renderDashboardUrl(
 	endpoint string,
 	dataset string,
 ) (string, string) {
-	datasetUrlEncoded := url.QueryEscape(dataset)
 	dashboardOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s",
 		r.pseudoClusterUid,
-		datasetUrlEncoded,
+		datasetInOrigin(dataset),
 		preconditionChecksResult.k8sNamespace,
 		preconditionChecksResult.k8sName,
 	)
 	return fmt.Sprintf(
 		"%sapi/dashboards/%s?dataset=%s",
 		endpoint,
-		dashboardOrigin,
-		datasetUrlEncoded,
+		url.PathEscape(dashboardOrigin),
+		url.QueryEscape(dataset),
 	), dashboardOrigin
 }
 

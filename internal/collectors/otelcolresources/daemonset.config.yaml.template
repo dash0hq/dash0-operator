@@ -150,18 +150,6 @@ connectors:
     {{- end }}
 {{- end }}
   {{- end }}
-  {{- if and .ProfilingEnabled $hasNamespacedExporters }}
-  routing/profiles:
-    default_pipelines: [profiles/export/default]
-    error_mode: ignore
-    table:
-    {{- range $ns := .Exporters.AllNamespaceKeys }}
-      - context: resource
-        condition: attributes["k8s.namespace.name"] == "{{ $ns }}"
-        pipelines:
-          - profiles/export/ns/{{ $ns }}
-    {{- end }}
-  {{- end }}
 
 receivers:
   otlp:
@@ -1535,20 +1523,16 @@ service:
         - transform/profiles/custom_telemetry_transform
         {{- end }}
         - transform/resources
+      {{- /*
+      Profiles are not routed per namespace, because the routing connector does not support profiles (upstream).
+      Profiles from all namespaces go to the default exporters, including namespaces with a namespace-specific export.
+      */}}
       exporters:
-        {{- if $hasNamespacedExporters }}
-        - routing/profiles
-        {{- else }}
         - forward/profiles-default-exporter
-        {{- end }}
 
     profiles/export/default:
       receivers:
-        {{- if $hasNamespacedExporters }}
-        - routing/profiles
-        {{- else }}
         - forward/profiles-default-exporter
-        {{- end}}
       exporters:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
         - debug
@@ -1556,20 +1540,6 @@ service:
       {{- range $i, $exporter := .Exporters.Default }}
         - {{ $exporter.Name }}
       {{- end }}
-
-    {{- range $ns := .Exporters.AllNamespaceKeys }}
-    {{- $exporters := index $.Exporters.Namespaced $ns }}
-    profiles/export/ns/{{- $ns -}}:
-      receivers:
-        - routing/profiles
-      exporters:
-      {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
-        - debug
-      {{- end }}
-      {{- range $i, $exporter := $exporters }}
-        - {{ $exporter.Name }}
-      {{- end }}
-    {{- end }}
     {{- end }}
 
   {{- if .InternalTelemetryEnabled }}

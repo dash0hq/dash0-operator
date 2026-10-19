@@ -5,13 +5,19 @@ package webhooks
 
 import (
 	"encoding/json"
+	"net/http"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
+	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -798,6 +804,109 @@ var _ = Describe("The validation webhook for the operator configuration resource
 		})
 	})
 
+	Describe("component settings", func() {
+		componentsSpec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
+			Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+			Components: &dash0v1alpha1.OperatorConfigurationComponents{
+				Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{
+					WorkloadSettings: dash0v1alpha1.WorkloadSettings{Labels: map[string]string{"team": "observability"}},
+				},
+			},
+		}
+
+		It("should not return warnings when the Helm chart uses the default values", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(componentsSpec))
+			Expect(response.Allowed).To(BeTrue())
+			Expect(response.Warnings).To(BeEmpty())
+		})
+
+		It("should return a warning for a setting that overrides a different value provided via the Helm chart", func() {
+			extraConfig := util.ExtraConfigDefaults
+			extraConfig.Agent0ConnectorLabels = map[string]string{"team": "other"}
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, extraConfig, util.ExtraConfigDefaults)
+			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(componentsSpec))
+			Expect(response.Allowed).To(BeTrue())
+			Expect(response.Warnings).To(ConsistOf(
+				`spec.components.agent0Connector.labels overrides the custom Helm value ` +
+					`operator.agent0Connector.labels: {"team":"observability"} instead of {"team":"other"}`))
+		})
+
+		It("should use the extra configuration from the latest update", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			extraConfig := util.ExtraConfigDefaults
+			extraConfig.Agent0ConnectorLabels = map[string]string{"team": "other"}
+			handler.UpdateExtraConfig(ctx, extraConfig, logd.FromContext(ctx))
+			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(componentsSpec))
+			Expect(response.Allowed).To(BeTrue())
+			Expect(response.Warnings).To(HaveLen(1))
+		})
+
+		Describe("updates that leave spec.components unchanged", func() {
+			// A label with an invalid key, e.g. stored before the validation has been introduced.
+			invalidSpec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+				Components: &dash0v1alpha1.OperatorConfigurationComponents{
+					DaemonSetCollector: &dash0v1alpha1.DaemonSetCollectorSettings{
+						WorkloadSettings: dash0v1alpha1.WorkloadSettings{Labels: map[string]string{"in valid": "value"}},
+					},
+				},
+			}
+
+			updateRequest := func(
+				oldSpec dash0v1alpha1.Dash0OperatorConfigurationSpec,
+				spec dash0v1alpha1.Dash0OperatorConfigurationSpec,
+			) admission.Request {
+				request := operatorConfigurationAdmissionRequest(spec)
+				request.Operation = admissionv1.Update
+				request.OldObject = operatorConfigurationAdmissionRequest(oldSpec).Object
+				return request
+			}
+
+			It("should allow an update of other fields without checking spec.components again", func() {
+				extraConfig := util.ExtraConfigDefaults
+				extraConfig.Agent0ConnectorLabels = map[string]string{"team": "other"}
+				handler := NewOperatorConfigurationValidationWebhookHandler(
+					k8sClient, true, false, false, extraConfig, util.ExtraConfigDefaults)
+				spec := *invalidSpec.DeepCopy()
+				spec.Components.Agent0Connector = &dash0v1alpha1.Agent0ConnectorSettings{
+					WorkloadSettings: dash0v1alpha1.WorkloadSettings{Labels: map[string]string{"team": "observability"}},
+				}
+				updatedSpec := *spec.DeepCopy()
+				updatedSpec.ClusterName = "updated-cluster-name"
+				response := handler.Handle(ctx, updateRequest(spec, updatedSpec))
+				Expect(response.Allowed).To(BeTrue())
+				Expect(response.Warnings).To(BeEmpty())
+			})
+
+			It("should reject an update that changes spec.components while a setting is invalid", func() {
+				handler := NewOperatorConfigurationValidationWebhookHandler(
+					k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+				updatedSpec := *invalidSpec.DeepCopy()
+				updatedSpec.Components.Agent0Connector = &dash0v1alpha1.Agent0ConnectorSettings{
+					WorkloadSettings: dash0v1alpha1.WorkloadSettings{Labels: map[string]string{"team": "observability"}},
+				}
+				response := handler.Handle(ctx, updateRequest(invalidSpec, updatedSpec))
+				Expect(response.Allowed).To(BeFalse())
+				Expect(response.Result.Message).To(ContainSubstring(
+					`spec.components.daemonSetCollector.labels: Invalid value: "in valid"`))
+			})
+
+			It("should reject an update with an OldObject that cannot be decoded", func() {
+				handler := NewOperatorConfigurationValidationWebhookHandler(
+					k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+				request := updateRequest(invalidSpec, invalidSpec)
+				request.OldObject = runtime.RawExtension{Raw: []byte("{")}
+				response := handler.Handle(ctx, request)
+				Expect(response.Allowed).To(BeFalse())
+				Expect(response.Result.Code).To(Equal(int32(http.StatusBadRequest)))
+			})
+		})
+	})
+
 	Describe("synthetics-worker", func() {
 		It("should reject enabling the synthetics-worker when it is disabled via Helm", func() {
 			_, err := CreateOperatorConfigurationResource(
@@ -982,3 +1091,17 @@ var _ = Describe("The validation webhook for the operator configuration resource
 		})
 	})
 })
+
+func operatorConfigurationAdmissionRequest(spec dash0v1alpha1.Dash0OperatorConfigurationSpec) admission.Request {
+	rawJson, err := json.Marshal(dash0v1alpha1.Dash0OperatorConfiguration{Spec: spec})
+	Expect(err).ToNot(HaveOccurred())
+	return admission.Request{
+		AdmissionRequest: admissionv1.AdmissionRequest{
+			Name:      OperatorConfigurationResourceName,
+			Operation: admissionv1.Create,
+			Object: runtime.RawExtension{
+				Raw: rawJson,
+			},
+		},
+	}
+}

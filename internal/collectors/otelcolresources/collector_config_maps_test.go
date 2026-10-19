@@ -1797,7 +1797,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(processors).To(HaveKey("k8s_attributes"))
 		})
 
-		It("should render profiling routing connector with namespaced exporters [DaemonSet]", func() {
+		It("should export profiles via the default exporters even with namespaced exporters [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -1809,33 +1809,21 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 
-			connectors := collectorConfig["connectors"].(map[string]any)
-			routingProfilesRaw := connectors["routing/profiles"]
-			Expect(routingProfilesRaw).ToNot(BeNil())
-			routingProfiles := routingProfilesRaw.(map[string]any)
-			Expect(routingProfiles["error_mode"]).To(Equal("ignore"))
-			defaultPipelines := routingProfiles["default_pipelines"].([]any)
-			Expect(defaultPipelines).To(ContainElement("profiles/export/default"))
-
-			// Verify namespaced export pipeline has the expected exporters
-			pipelines := readPipelines(collectorConfig)
-			profilesExportNs1Exporters := readPipelineExporters(pipelines, "profiles/export/ns/"+namespace1)
-			Expect(profilesExportNs1Exporters).To(ContainElement("otlp_grpc/ns/" + namespace1))
-		})
-
-		It("should not render profiling routing connector without namespaced exporters [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
-				OperatorNamespace: OperatorNamespace,
-				NamePrefix:        namePrefix,
-				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				ProfilingEnabled:  true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
-
-			Expect(err).ToNot(HaveOccurred())
-			collectorConfig := parseConfigMapContent(configMap)
-
+			// The routing connector does not support profiles, only the other signals are routed per namespace.
 			connectors := collectorConfig["connectors"].(map[string]any)
 			Expect(connectors).ToNot(HaveKey("routing/profiles"))
+			Expect(connectors).To(HaveKey("routing/traces"))
+
+			pipelines := readPipelines(collectorConfig)
+			Expect(readPipelineExporters(pipelines, "profiles/common-processors")).To(
+				ConsistOf("forward/profiles-default-exporter"))
+			Expect(readPipelineReceivers(pipelines, "profiles/export/default")).To(
+				ConsistOf("forward/profiles-default-exporter"))
+			Expect(readPipelineExporters(pipelines, "profiles/export/default")).To(
+				ConsistOf("otlp_grpc/dash0/default"))
+			for pipelineName := range pipelines {
+				Expect(pipelineName).ToNot(HavePrefix("profiles/export/ns/"))
+			}
 		})
 
 		It("should render routing table entries with correct namespace conditions [DaemonSet])", func() {
