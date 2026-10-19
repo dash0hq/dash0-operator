@@ -231,6 +231,12 @@ cluster roles should match snapshot:
           - patch
           - update
       - apiGroups:
+          - ""
+        resources:
+          - secrets
+        verbs:
+          - get
+      - apiGroups:
           - dash0.com
         resources:
           - dash0teams
@@ -827,6 +833,12 @@ cluster roles should match snapshot with agent0-connector enabled:
           - get
           - patch
           - update
+      - apiGroups:
+          - ""
+        resources:
+          - secrets
+        verbs:
+          - get
       - apiGroups:
           - dash0.com
         resources:

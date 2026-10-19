@@ -51,20 +51,70 @@ custom resource definition for notification channels should match snapshot:
                         url:
                           description: The All Quiet webhook URL.
                           format: uri
+                          minLength: 1
                           type: string
-                      required:
-                        - url
+                        urlFrom:
+                          description: The All Quiet webhook URL, read from a Kubernetes secret.
+                          properties:
+                            secretKeyRef:
+                              description: |-
+                                A reference to a key in a Kubernetes secret containing the credential. The secret has to be in the namespace of
+                                the notification channel resource.
+                              properties:
+                                key:
+                                  description: The key within the secret which contains the value.
+                                  minLength: 1
+                                  type: string
+                                name:
+                                  description: The name of the secret containing the value.
+                                  minLength: 1
+                                  type: string
+                              required:
+                                - key
+                                - name
+                              type: object
+                          required:
+                            - secretKeyRef
+                          type: object
                       type: object
+                      x-kubernetes-validations:
+                        - message: exactly one of url or urlFrom has to be provided
+                          rule: has(self.url) != has(self.urlFrom)
                     discordWebhookConfig:
                       description: Configuration for Discord webhook notifications. Required when type is "discord_webhook".
                       properties:
                         url:
                           description: The Discord webhook URL.
                           format: uri
+                          minLength: 1
                           type: string
-                      required:
-                        - url
+                        urlFrom:
+                          description: The Discord webhook URL, read from a Kubernetes secret.
+                          properties:
+                            secretKeyRef:
+                              description: |-
+                                A reference to a key in a Kubernetes secret containing the credential. The secret has to be in the namespace of
+                                the notification channel resource.
+                              properties:
+                                key:
+                                  description: The key within the secret which contains the value.
+                                  minLength: 1
+                                  type: string
+                                name:
+                                  description: The name of the secret containing the value.
+                                  minLength: 1
+                                  type: string
+                              required:
+                                - key
+                                - name
+                              type: object
+                          required:
+                            - secretKeyRef
+                          type: object
                       type: object
+                      x-kubernetes-validations:
+                        - message: exactly one of url or urlFrom has to be provided
+                          rule: has(self.url) != has(self.urlFrom)
                     display:
                       description: Display configuration for the notification channel.
                       properties:
@@ -98,40 +148,164 @@ custom resource definition for notification channels should match snapshot:
                         url:
                           description: The Google Chat webhook URL.
                           format: uri
+                          minLength: 1
                           type: string
-                      required:
-                        - url
+                        urlFrom:
+                          description: The Google Chat webhook URL, read from a Kubernetes secret.
+                          properties:
+                            secretKeyRef:
+                              description: |-
+                                A reference to a key in a Kubernetes secret containing the credential. The secret has to be in the namespace of
+                                the notification channel resource.
+                              properties:
+                                key:
+                                  description: The key within the secret which contains the value.
+                                  minLength: 1
+                                  type: string
+                                name:
+                                  description: The name of the secret containing the value.
+                                  minLength: 1
+                                  type: string
+                              required:
+                                - key
+                                - name
+                              type: object
+                          required:
+                            - secretKeyRef
+                          type: object
                       type: object
+                      x-kubernetes-validations:
+                        - message: exactly one of url or urlFrom has to be provided
+                          rule: has(self.url) != has(self.urlFrom)
                     ilertConfig:
                       description: Configuration for iLert notifications. Required when type is "ilert".
                       properties:
                         url:
                           description: The iLert alert source URL.
                           format: uri
+                          minLength: 1
                           type: string
-                      required:
-                        - url
+                        urlFrom:
+                          description: The iLert alert source URL, read from a Kubernetes secret.
+                          properties:
+                            secretKeyRef:
+                              description: |-
+                                A reference to a key in a Kubernetes secret containing the credential. The secret has to be in the namespace of
+                                the notification channel resource.
+                              properties:
+                                key:
+                                  description: The key within the secret which contains the value.
+                                  minLength: 1
+                                  type: string
+                                name:
+                                  description: The name of the secret containing the value.
+                                  minLength: 1
+                                  type: string
+                              required:
+                                - key
+                                - name
+                              type: object
+                          required:
+                            - secretKeyRef
+                          type: object
                       type: object
+                      x-kubernetes-validations:
+                        - message: exactly one of url or urlFrom has to be provided
+                          rule: has(self.url) != has(self.urlFrom)
                     incidentioConfig:
                       description: Configuration for Incident.io notifications. Required when type is "incidentio".
                       properties:
                         headers:
                           description: The authorization header value for Incident.io.
+                          minLength: 1
                           type: string
+                        headersFrom:
+                          description: The authorization header value for Incident.io, read from a Kubernetes secret.
+                          properties:
+                            secretKeyRef:
+                              description: |-
+                                A reference to a key in a Kubernetes secret containing the credential. The secret has to be in the namespace of
+                                the notification channel resource.
+                              properties:
+                                key:
+                                  description: The key within the secret which contains the value.
+                                  minLength: 1
+                                  type: string
+                                name:
+                                  description: The name of the secret containing the value.
+                                  minLength: 1
+                                  type: string
+                              required:
+                                - key
+                                - name
+                              type: object
+                          required:
+                            - secretKeyRef
+                          type: object
                         url:
                           description: The Incident.io webhook URL.
                           format: uri
+                          minLength: 1
                           type: string
-                      required:
-                        - headers
-                        - url
+                        urlFrom:
+                          description: The Incident.io webhook URL, read from a Kubernetes secret.
+                          properties:
+                            secretKeyRef:
+                              description: |-
+                                A reference to a key in a Kubernetes secret containing the credential. The secret has to be in the namespace of
+                                the notification channel resource.
+                              properties:
+                                key:
+                                  description: The key within the secret which contains the value.
+                                  minLength: 1
+                                  type: string
+                                name:
+                                  description: The name of the secret containing the value.
+                                  minLength: 1
+                                  type: string
+                              required:
+                                - key
+                                - name
+                              type: object
+                          required:
+                            - secretKeyRef
+                          type: object
                       type: object
+                      x-kubernetes-validations:
+                        - message: exactly one of url or urlFrom has to be provided
+                          rule: has(self.url) != has(self.urlFrom)
+                        - message: exactly one of headers or headersFrom has to be provided
+                          rule: has(self.headers) != has(self.headersFrom)
                     opsgenieConfig:
                       description: Configuration for OpsGenie notifications. Required when type is "opsgenie".
                       properties:
                         apiKey:
                           description: The OpsGenie API key.
+                          minLength: 1
                           type: string
+                        apiKeyFrom:
+                          description: The OpsGenie API key, read from a Kubernetes secret.
+                          properties:
+                            secretKeyRef:
+                              description: |-
+                                A reference to a key in a Kubernetes secret containing the credential. The secret has to be in the namespace of
+                                the notification channel resource.
+                              properties:
+                                key:
+                                  description: The key within the secret which contains the value.
+                                  minLength: 1
+                                  type: string
+                                name:
+                                  description: The name of the secret containing the value.
+                                  minLength: 1
+                                  type: string
+                              required:
+                                - key
+                                - name
+                              type: object
+                          required:
+                            - secretKeyRef
+                          type: object
                         instance:
                           description: The OpsGenie instance region.
                           enum:
@@ -139,23 +313,51 @@ custom resource definition for notification channels should match snapshot:
                             - us
                           type: string
                       required:
-                        - apiKey
                         - instance
                       type: object
+                      x-kubernetes-validations:
+                        - message: exactly one of apiKey or apiKeyFrom has to be provided
+                          rule: has(self.apiKey) != has(self.apiKeyFrom)
                     pagerdutyConfig:
                       description: Configuration for PagerDuty notifications. Required when type is "pagerduty".
                       properties:
                         key:
                           description: The PagerDuty integration key.
+                          minLength: 1
                           type: string
+                        keyFrom:
+                          description: The PagerDuty integration key, read from a Kubernetes secret.
+                          properties:
+                            secretKeyRef:
+                              description: |-
+                                A reference to a key in a Kubernetes secret containing the credential. The secret has to be in the namespace of
+                                the notification channel resource.
+                              properties:
+                                key:
+                                  description: The key within the secret which contains the value.
+                                  minLength: 1
+                                  type: string
+                                name:
+                                  description: The name of the secret containing the value.
+                                  minLength: 1
+                                  type: string
+                              required:
+                                - key
+                                - name
+                              type: object
+                          required:
+                            - secretKeyRef
+                          type: object
                         url:
                           description: The PagerDuty events API URL.
                           format: uri
                           type: string
                       required:
-                        - key
                         - url
                       type: object
+                      x-kubernetes-validations:
+                        - message: exactly one of key or keyFrom has to be provided
+                          rule: has(self.key) != has(self.keyFrom)
                     routing:
                       description: |-
                         Routing configuration for the notification channel. When set, routing updates will be executed. When omitted,
@@ -262,21 +464,72 @@ custom resource definition for notification channels should match snapshot:
                         webhookURL:
                           description: The Slack incoming webhook URL.
                           format: uri
+                          minLength: 1
                           type: string
+                        webhookURLFrom:
+                          description: The Slack incoming webhook URL, read from a Kubernetes secret.
+                          properties:
+                            secretKeyRef:
+                              description: |-
+                                A reference to a key in a Kubernetes secret containing the credential. The secret has to be in the namespace of
+                                the notification channel resource.
+                              properties:
+                                key:
+                                  description: The key within the secret which contains the value.
+                                  minLength: 1
+                                  type: string
+                                name:
+                                  description: The name of the secret containing the value.
+                                  minLength: 1
+                                  type: string
+                              required:
+                                - key
+                                - name
+                              type: object
+                          required:
+                            - secretKeyRef
+                          type: object
                       required:
                         - channel
-                        - webhookURL
                       type: object
+                      x-kubernetes-validations:
+                        - message: exactly one of webhookURL or webhookURLFrom has to be provided
+                          rule: has(self.webhookURL) != has(self.webhookURLFrom)
                     teamsWebhookConfig:
                       description: Configuration for Microsoft Teams webhook notifications. Required when type is "teams_webhook".
                       properties:
                         url:
                           description: The Microsoft Teams incoming webhook URL.
                           format: uri
+                          minLength: 1
                           type: string
-                      required:
-                        - url
+                        urlFrom:
+                          description: The Microsoft Teams incoming webhook URL, read from a Kubernetes secret.
+                          properties:
+                            secretKeyRef:
+                              description: |-
+                                A reference to a key in a Kubernetes secret containing the credential. The secret has to be in the namespace of
+                                the notification channel resource.
+                              properties:
+                                key:
+                                  description: The key within the secret which contains the value.
+                                  minLength: 1
+                                  type: string
+                                name:
+                                  description: The name of the secret containing the value.
+                                  minLength: 1
+                                  type: string
+                              required:
+                                - key
+                                - name
+                              type: object
+                          required:
+                            - secretKeyRef
+                          type: object
                       type: object
+                      x-kubernetes-validations:
+                        - message: exactly one of url or urlFrom has to be provided
+                          rule: has(self.url) != has(self.urlFrom)
                     type:
                       description: The type of notification channel integration.
                       enum:
@@ -313,14 +566,71 @@ custom resource definition for notification channels should match snapshot:
                           additionalProperties:
                             type: string
                           description: Additional HTTP headers to include in the webhook request.
+                          maxProperties: 32
+                          type: object
+                        headersFrom:
+                          additionalProperties:
+                            description: CredentialValueFrom describes a source for a credential of a notification channel.
+                            properties:
+                              secretKeyRef:
+                                description: |-
+                                  A reference to a key in a Kubernetes secret containing the credential. The secret has to be in the namespace of
+                                  the notification channel resource.
+                                properties:
+                                  key:
+                                    description: The key within the secret which contains the value.
+                                    minLength: 1
+                                    type: string
+                                  name:
+                                    description: The name of the secret containing the value.
+                                    minLength: 1
+                                    type: string
+                                required:
+                                  - key
+                                  - name
+                                type: object
+                            required:
+                              - secretKeyRef
+                            type: object
+                          description: |-
+                            Additional HTTP headers to include in the webhook request, with values read from Kubernetes secrets. The map key
+                            is the header name.
+                          maxProperties: 32
                           type: object
                         url:
                           description: The webhook URL.
                           format: uri
+                          minLength: 1
                           type: string
-                      required:
-                        - url
+                        urlFrom:
+                          description: The webhook URL, read from a Kubernetes secret.
+                          properties:
+                            secretKeyRef:
+                              description: |-
+                                A reference to a key in a Kubernetes secret containing the credential. The secret has to be in the namespace of
+                                the notification channel resource.
+                              properties:
+                                key:
+                                  description: The key within the secret which contains the value.
+                                  minLength: 1
+                                  type: string
+                                name:
+                                  description: The name of the secret containing the value.
+                                  minLength: 1
+                                  type: string
+                              required:
+                                - key
+                                - name
+                              type: object
+                          required:
+                            - secretKeyRef
+                          type: object
                       type: object
+                      x-kubernetes-validations:
+                        - message: exactly one of url or urlFrom has to be provided
+                          rule: has(self.url) != has(self.urlFrom)
+                        - message: a header must not be provided in both headers and headersFrom
+                          rule: '!has(self.headers) || !has(self.headersFrom) || self.headersFrom.all(name, !self.headers.exists(h, h.lowerAscii() == name.lowerAscii()))'
                   required:
                     - display
                     - type
