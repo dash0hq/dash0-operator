@@ -490,6 +490,30 @@ processors:
     allow_all_keys: true
     blocked_key_patterns:
       - "^value$"
+
+  # Kubernetes rewrites objects for runtime-state reasons constantly, and every rewrite ships a full manifest. Keying
+  # the hash on spec, labels and annotations (rather than metadata.generation, which only tracks spec changes and
+  # would swallow label edits) collapses the rewrites that carry no manifest change. include_fields feeds the hash
+  # only, so the emitted record keeps its status; exclude_fields would strip the fields from the record instead.
+  # status.phase is part of the key because without it a pod's transition from Pending to Running is swallowed.
+  # The condition restricts aggregation to MODIFIED: ADDED and DELETED records never dedup anyway, and keeping them
+  # out of the processor means the initial state burst is never buffered.
+  log_dedup/k8s_objects:
+    interval: 30s
+    conditions:
+      - IsMap(log.body) and log.body["type"] == "MODIFIED"
+    include_fields:
+      - body.type
+      - body.object.metadata.uid
+      - body.object.metadata.labels
+      - body.object.metadata.annotations
+      - body.object.spec
+      # Only the status fields that no metric can reconstruct are part of the key: restart counts and termination
+      # reasons, condition messages, and the pod phase. Everything else in status (replica counters, resource
+      # versions, timestamps) is already covered by k8sclusterreceiver metrics and only adds records.
+      - body.object.status.phase
+      - body.object.status.conditions
+      - body.object.status.containerStatuses
   {{- end }}
 
   {{- if .ClusterName }}
@@ -738,6 +762,7 @@ service:
         {{- if $hasKubernetesObjectCollectionEnabledForAtLeastOneNamespace }}
         - transform/k8s_objects
         - redaction/k8s_objects
+        - log_dedup/k8s_objects
         {{- end }}
         - k8s_attributes
         {{- if .ClusterName }}

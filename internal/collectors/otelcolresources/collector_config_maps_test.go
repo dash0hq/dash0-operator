@@ -5717,12 +5717,32 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(redaction.(map[string]any)["allow_all_keys"]).To(BeTrue())
 			Expect(redaction.(map[string]any)["blocked_key_patterns"]).To(ConsistOf("^value$"))
 
+			logDedup := ReadFromMap(collectorConfig, []string{"processors", "log_dedup/k8s_objects"})
+			Expect(logDedup).ToNot(BeNil())
+			// Aggregating only MODIFIED records keeps ADDED and DELETED (including the initial state burst) out of
+			// the processor's unbounded buffer. The status fields in the key are the ones no metric can
+			// reconstruct: phase transitions, restart counts with their termination reasons, and condition
+			// messages.
+			Expect(logDedup.(map[string]any)["conditions"]).
+				To(ConsistOf(`IsMap(log.body) and log.body["type"] == "MODIFIED"`))
+			Expect(logDedup.(map[string]any)["include_fields"]).To(ConsistOf(
+				"body.type",
+				"body.object.metadata.uid",
+				"body.object.metadata.labels",
+				"body.object.metadata.annotations",
+				"body.object.spec",
+				"body.object.status.phase",
+				"body.object.status.conditions",
+				"body.object.status.containerStatuses",
+			))
+
 			pipelines := readPipelines(collectorConfig)
 			Expect(pipelines["logs/k8sevents"]).ToNot(BeNil())
 			Expect(readPipelineReceivers(pipelines, "logs/k8sevents")).To(Equal([]any{"k8s_objects"}))
 			processors := readPipelineProcessors(pipelines, "logs/k8sevents")
 			Expect(processors).ToNot(ContainElement("transform/k8s_events"))
-			Expect(processors).To(ContainElements("transform/k8s_objects", "redaction/k8s_objects"))
+			Expect(processors).To(ContainElements(
+				"transform/k8s_objects", "redaction/k8s_objects", "log_dedup/k8s_objects"))
 			assertCollectorConfigStructurallyValid(collectorConfig, "k8s-objects/only-objects")
 			assertNoDanglingPipelineComponents(collectorConfig, "k8s-objects/only-objects")
 		})
@@ -5736,6 +5756,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				"transform/k8s_events",
 				"transform/k8s_objects",
 				"redaction/k8s_objects",
+				"log_dedup/k8s_objects",
 			))
 			assertCollectorConfigStructurallyValid(collectorConfig, "k8s-objects/events-and-objects")
 			assertNoDanglingPipelineComponents(collectorConfig, "k8s-objects/events-and-objects")
