@@ -432,6 +432,18 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 		)
 	})
 
+	It("finds no unexpected drift between Dash0SignalToMetrics and the API client's signal-to-metrics type", func() {
+		expectNoUnexpectedApiTypeDrift(
+			reflect.TypeFor[dash0v1alpha1.Dash0SignalToMetricsSpec](),
+			reflect.TypeFor[dash0apiclient.SignalToMetricsSpec](),
+			nil,
+			map[string]string{
+				"alternativeDatasetId": "not supported by Dash0SignalToMetrics yet",
+				"targetDatasetMode":    "not supported by Dash0SignalToMetrics yet",
+			},
+		)
+	})
+
 	It("finds no unexpected drift between Dash0TimeSeriesAggregation and the API client's time series aggregation type", func() {
 		expectNoUnexpectedApiTypeDrift(
 			reflect.TypeFor[dash0v1alpha1.Dash0TimeSeriesAggregationSpec](),

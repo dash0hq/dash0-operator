@@ -134,11 +134,11 @@ type ThirdPartyResourceReconciler interface {
 	// Controllers which manage objects with a one-to-one relation (like Perses dashboards) should return nil, nil.
 	FetchExistingResourceOriginsRequests(*preconditionValidationResult, ApiConfig) ([]*http.Request, error)
 
-	// FetchExistingNamespaceOriginsRequests creates HTTP requests for retrieving the origins of all Dash0 API objects
-	// that have been synchronized from Kubernetes resources in the given namespace. The responses may contain origins
-	// that do not belong to the namespace, IsOriginOfResource is used to filter them. This is used when synchronizing
-	// all resources in a namespace at once, to avoid sending DELETE requests for objects that do not exist.
-	FetchExistingNamespaceOriginsRequests(string, ApiConfig) ([]*http.Request, error)
+	// FetchExistingNamespaceOrigins retrieves the origins of all Dash0 API objects that have been synchronized from
+	// Kubernetes resources in the given namespace. The result may contain origins that do not belong to the namespace,
+	// IsOriginOfResource is used to filter them. This is used when synchronizing all resources in a namespace at once,
+	// to avoid sending DELETE requests for objects that do not exist. Implementations log errors themselves.
+	FetchExistingNamespaceOrigins(context.Context, string, ApiConfig, logd.Logger) ([]string, error)
 
 	// IsOriginOfResource reports whether the given origin belongs to a Dash0 API object that has been produced from
 	// the Kubernetes resource described by the precondition validation result.

@@ -1058,9 +1058,10 @@ The `ratioMetric` has exactly one of these shapes:
 * `good` and `total`: the share of good events.
 * `bad` and `total`: the share of bad events, which Dash0 turns into the share of good events.
 * `raw` with `rawType`: a precomputed ratio. Set `rawType` to `success` if the query returns good/total, or to
-  `failure` if it returns bad/total. Without `rawType`, Dash0 treats the ratio as `success`.
+  `failure` if it returns bad/total.
 
-The CRD rejects any other combination, for example `raw` together with `total`, or `rawType` without `raw`.
+The CRD rejects any other combination, for example `raw` together with `total`, `raw` without `rawType`, or `rawType`
+without `raw`.
 
 With `good` or `bad` and `counter: true` (the default), queries must be bare PromQL vector selectors, so no `rate()`
 and no `sum()`.

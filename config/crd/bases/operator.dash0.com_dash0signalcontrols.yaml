@@ -60,13 +60,41 @@ spec:
             properties:
               components:
                 description: |-
-                  Settings for the Signal Control workloads the operator manages. Every setting is optional. An absent setting keeps
-                  the value provided via the Helm chart, a present one replaces it. Replacing a custom Helm value with a different
-                  one causes a warning in the operator log and an admission warning.
+                  Settings for the Signal Control workloads the operator manages. An absent or empty setting keeps the Helm value, a
+                  present one replaces it. Invalid settings are rejected. Replacing a custom Helm value with a different one causes a
+                  warning in the operator log, and an admission warning when spec.components is created or changed.
                 properties:
                   collector:
                     description: Settings for the Signal Control collector Deployment.
                     properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional annotations for the workload. They replace the annotations provided via the Helm chart, empty
+                          annotations keep them.
+                        type: object
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: Additional labels for the workload. They replace
+                          the labels provided via the Helm chart, empty labels keep
+                          them.
+                        type: object
+                      podAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional annotations for the pods of the workload. They replace the pod annotations provided via the Helm
+                          chart, empty pod annotations keep them.
+                        type: object
+                      podLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional labels for the pods of the workload. They replace the pod labels provided via the Helm chart, empty
+                          pod labels keep them.
+                        type: object
                       replicas:
                         description: |-
                           The number of replicas of the Signal Control collector Deployment (Helm value
@@ -78,11 +106,39 @@ spec:
                   edgeProxy:
                     description: Settings for the Edge Proxy Deployment.
                     properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional annotations for the workload. They replace the annotations provided via the Helm chart, empty
+                          annotations keep them.
+                        type: object
                       enablePprof:
                         description: |-
                           Whether to enable pprof for the Edge Proxy pods (Helm value operator.signalControl.edgeProxy.enablePprof, default
                           false). Only enable this if instructed by Dash0 support.
                         type: boolean
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: Additional labels for the workload. They replace
+                          the labels provided via the Helm chart, empty labels keep
+                          them.
+                        type: object
+                      podAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional annotations for the pods of the workload. They replace the pod annotations provided via the Helm
+                          chart, empty pod annotations keep them.
+                        type: object
+                      podLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional labels for the pods of the workload. They replace the pod labels provided via the Helm chart, empty
+                          pod labels keep them.
+                        type: object
                       replicas:
                         description: The number of Edge Proxy pods to run (Helm value
                           operator.signalControl.edgeProxy.replicas, default 2).

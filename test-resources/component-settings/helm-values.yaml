@@ -4,7 +4,16 @@
 # Helm values for test-scenario-12-component-settings.sh. They differ from the values in spec.components.
 operator:
   collectors:
+    daemonSetPodLabels:
+      dash0.com/component-settings-test: helm
     signalControlCollectorReplicas: 3
+    signalControlCollectorAnnotations:
+      dash0.com/component-settings-test: helm
+  targetAllocator:
+    podAnnotations:
+      dash0.com/component-settings-test: helm
   signalControl:
     edgeProxy:
       replicas: 3
+      labels:
+        dash0.com/component-settings-test: helm

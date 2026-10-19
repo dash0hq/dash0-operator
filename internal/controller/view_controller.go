@@ -124,11 +124,6 @@ func (r *ViewReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
-// HttpClient returns nil, the view reconciler talks to the Dash0 API via the API client pool.
-func (r *ViewReconciler) HttpClient() *http.Client {
-	return nil
-}
-
 func (r *ViewReconciler) SetDefaultApiConfigs(ctx context.Context, apiConfigs []ApiConfig, logger logd.Logger) {
 	r.defaultApiConfigs.Set(apiConfigs)
 	r.maybeDoInitialSynchronizationOfAllResources(ctx, logger)

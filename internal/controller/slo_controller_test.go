@@ -805,12 +805,13 @@ spec:
 				)
 
 				It(
-					"accepts a raw indicator without a rawType", func() {
+					"rejects a raw indicator without a rawType", func() {
 						sloResource := createSLOResource()
 						sloResource.Spec.Indicator.Spec.RatioMetric = openslov1.SLORatioMetric{
 							Raw: prometheusMetricSource("checkout:success_ratio"),
 						}
-						Expect(k8sClient.Create(ctx, sloResource)).To(Succeed())
+						Expect(k8sClient.Create(ctx, sloResource)).To(
+							MatchError(ContainSubstring("rawType is required when raw is set")))
 					},
 				)
 

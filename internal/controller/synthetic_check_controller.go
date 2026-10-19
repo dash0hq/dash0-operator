@@ -115,11 +115,6 @@ func (r *SyntheticCheckReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
-// HttpClient returns nil, the synthetic check reconciler talks to the Dash0 API via the API client pool.
-func (r *SyntheticCheckReconciler) HttpClient() *http.Client {
-	return nil
-}
-
 func (r *SyntheticCheckReconciler) SetDefaultApiConfigs(
 	ctx context.Context,
 	apiConfigs []ApiConfig,

@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# A merge patch for the Dash0 operator configuration resource that sets every field of spec.components, and enables the
+# Prometheus CRD support, without which the operator does not deploy the target-allocator.
+spec:
+  prometheusCrdSupport:
+    enabled: true
+  components:
+    daemonSetCollector:
+      labels:
+        dash0.com/component-settings-test: custom-resource
+      annotations:
+        dash0.com/component-settings-test: custom-resource
+      podLabels:
+        dash0.com/component-settings-test: custom-resource
+      podAnnotations:
+        dash0.com/component-settings-test: custom-resource
+
+    deploymentCollector:
+      labels:
+        dash0.com/component-settings-test: custom-resource
+      annotations:
+        dash0.com/component-settings-test: custom-resource
+      podLabels:
+        dash0.com/component-settings-test: custom-resource
+      podAnnotations:
+        dash0.com/component-settings-test: custom-resource
+
+    targetAllocator:
+      labels:
+        dash0.com/component-settings-test: custom-resource
+      annotations:
+        dash0.com/component-settings-test: custom-resource
+      podLabels:
+        dash0.com/component-settings-test: custom-resource
+      podAnnotations:
+        dash0.com/component-settings-test: custom-resource
+
+    agent0Connector:
+      labels:
+        dash0.com/component-settings-test: custom-resource
+      annotations:
+        dash0.com/component-settings-test: custom-resource
+      podLabels:
+        dash0.com/component-settings-test: custom-resource
+      podAnnotations:
+        dash0.com/component-settings-test: custom-resource
