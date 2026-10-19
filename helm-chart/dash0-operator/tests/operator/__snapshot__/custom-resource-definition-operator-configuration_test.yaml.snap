@@ -1884,6 +1884,23 @@ custom resource definition for operator configuration should match snapshot:
                                       type: string
                                   type: object
                               type: object
+                            kubernetesObjectCollection:
+                              description: |-
+                                Settings for collecting the manifests of pods and workloads in the target namespace. This setting is optional,
+                                by default the operator will not collect Kubernetes object manifests.
+                              properties:
+                                enabled:
+                                  description: |-
+                                    Opt-in for Kubernetes object collection for the target namespace. If set to `true`, the operator will collect the
+                                    manifests of pods, deployments, replica sets, stateful sets and daemon sets in the target namespace and send them
+                                    to Dash0 as log records. Values of environment variables as well as the
+                                    `kubectl.kubernetes.io/last-applied-configuration` annotation are removed from the manifests before they leave
+                                    the cluster.
+
+                                    This setting is optional, it defaults to `false`, that is, if this setting is omitted, the operator will not
+                                    collect Kubernetes object manifests in the target namespace.
+                                  type: boolean
+                              type: object
                             logCollection:
                               description: |-
                                 Settings for log collection in the target namespace. This setting is optional, by default the operator will
@@ -3462,6 +3479,23 @@ custom resource definition for operator configuration should match snapshot:
                                         See also: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators
                                       type: string
                                   type: object
+                              type: object
+                            kubernetesObjectCollection:
+                              description: |-
+                                Settings for collecting the manifests of pods and workloads in the target namespace. This setting is optional,
+                                by default the operator will not collect Kubernetes object manifests.
+                              properties:
+                                enabled:
+                                  description: |-
+                                    Opt-in for Kubernetes object collection for the target namespace. If set to `true`, the operator will collect the
+                                    manifests of pods, deployments, replica sets, stateful sets and daemon sets in the target namespace and send them
+                                    to Dash0 as log records. Values of environment variables as well as the
+                                    `kubectl.kubernetes.io/last-applied-configuration` annotation are removed from the manifests before they leave
+                                    the cluster.
+
+                                    This setting is optional, it defaults to `false`, that is, if this setting is omitted, the operator will not
+                                    collect Kubernetes object manifests in the target namespace.
+                                  type: boolean
                               type: object
                             logCollection:
                               description: |-
