@@ -174,6 +174,20 @@ func workloadKubernetesEventResourceMatcher(clusterName string, namespace string
 	}
 }
 
+func kubernetesObjectResourceMatcher(clusterName string) func(
+	plog.ResourceLogs,
+	*ResourceMatchResult[plog.ResourceLogs],
+) {
+	return func(resourceLogs plog.ResourceLogs, matchResult *ResourceMatchResult[plog.ResourceLogs]) {
+		verifyResourceAttributeEquals(
+			resourceLogs.Resource().Attributes(),
+			string(semconv.K8SClusterNameKey),
+			clusterName,
+			matchResult,
+		)
+	}
+}
+
 func selfMonitoringLogsResourceMatcherOperatorManager(
 	clusterName string,
 	operatorNamespace string,

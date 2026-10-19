@@ -1504,6 +1504,47 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				})
 			})
 
+			Describe("Kubernetes object collection", func() {
+
+				BeforeAll(func() {
+					deployDash0MonitoringResourceWithRetry(
+						applicationUnderTestNamespace,
+						dash0MonitoringWithKubernetesObjectCollection,
+						operatorNamespace,
+					)
+				})
+
+				AfterAll(func() {
+					undeployDash0MonitoringResource(applicationUnderTestNamespace)
+					Expect(uninstallNodeJsRelease(applicationUnderTestNamespace)).To(Succeed())
+				})
+
+				It("collects the manifests of pods and workloads with environment variable values masked", func() {
+					timestampLowerBound := time.Now()
+
+					By("installing the Node.js deployment")
+					Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+
+					By("waiting for the manifest of the Node.js deployment to be collected")
+					Eventually(func(g Gomega) {
+						verifyAtLeastOneKubernetesObjectRecord(
+							g,
+							timestampLowerBound,
+							"dash0-operator-nodejs-20-express-test-deployment",
+						)
+					}, 2*time.Minute, pollingInterval).Should(Succeed())
+
+					By("verifying that the values of environment variables are masked")
+					Eventually(func(g Gomega) {
+						verifyAtLeastOneKubernetesObjectRecord(
+							g,
+							timestampLowerBound,
+							`"value":"****"`,
+						)
+					}, 2*time.Minute, pollingInterval).Should(Succeed())
+				})
+			})
+
 			Describe("self-monitoring telemetry", func() {
 
 				It("should produce self-monitoring telemetry", func() {

@@ -23,6 +23,10 @@ spec:
   transform:
   {{- .Transform | indent 4 -}}
 {{- end }}
+{{- if .KubernetesObjectCollectionEnabled }}
+  kubernetesObjectCollection:
+    enabled: {{ .KubernetesObjectCollectionEnabled }}
+{{- end }}
 {{- if .PrometheusScrapingEnabled }}
   prometheusScraping:
     enabled: {{ .PrometheusScrapingEnabled }}

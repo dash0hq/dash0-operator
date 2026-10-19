@@ -24,13 +24,14 @@ import (
 )
 
 type dash0MonitoringValues struct {
-	InstrumentWorkloadsMode          dash0common.InstrumentWorkloadsMode
-	InstrumentWorkloadsLabelSelector string
-	Endpoint                         string
-	Token                            string
-	Filter                           string
-	Transform                        string
-	PrometheusScrapingEnabled        string
+	InstrumentWorkloadsMode           dash0common.InstrumentWorkloadsMode
+	InstrumentWorkloadsLabelSelector  string
+	Endpoint                          string
+	Token                             string
+	Filter                            string
+	Transform                         string
+	PrometheusScrapingEnabled         string
+	KubernetesObjectCollectionEnabled string
 }
 
 const (
@@ -59,6 +60,11 @@ var (
 	dash0MonitoringWithScrapingDisabled = dash0MonitoringValues{
 		InstrumentWorkloadsMode:   dash0common.InstrumentWorkloadsModeAll,
 		PrometheusScrapingEnabled: "false",
+	}
+
+	dash0MonitoringWithKubernetesObjectCollection = dash0MonitoringValues{
+		InstrumentWorkloadsMode:           dash0common.InstrumentWorkloadsModeAll,
+		KubernetesObjectCollectionEnabled: "true",
 	}
 )
 

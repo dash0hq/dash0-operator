@@ -74,6 +74,26 @@ func verifyAtLeastOneSelfMonitoringLogRecord(
 	)
 }
 
+// verifyAtLeastOneKubernetesObjectRecord looks for a log record emitted by the k8s_objects receiver whose body (the
+// manifest, rendered as JSON) contains logBodyContains.
+func verifyAtLeastOneKubernetesObjectRecord(
+	g Gomega,
+	timestampLowerBound time.Time,
+	logBodyContains string,
+) {
+	askTelemetryMatcherForMatchingLogRecords(
+		g,
+		shared.ExpectAtLeastOne,
+		shared.LogResourceMatcherKubernetesObject,
+		nil,
+		nil,
+		"",
+		timestampLowerBound,
+		"",
+		logBodyContains,
+	)
+}
+
 func verifyExactlyOneWorkloadLogRecord(
 	g Gomega,
 	runtime runtimeType,

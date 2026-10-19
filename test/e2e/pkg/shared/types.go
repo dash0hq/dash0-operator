@@ -25,6 +25,9 @@ const (
 	LogResourceMatcherWorkload                          LogResourceMatcherMode = "workload"
 	LogResourceMatcherSelfMonitoringLogsOperatorManager LogResourceMatcherMode = "self-monitoring-logs-operator-manager"
 	LogResourceMatcherSelfMonitoringLogsCollector       LogResourceMatcherMode = "self-monitoring-logs-collector"
+	// LogResourceMatcherKubernetesObject matches the records of the k8s_objects receiver. They only carry the cluster
+	// attributes; the namespace and the workload are part of the manifest in the log record's body.
+	LogResourceMatcherKubernetesObject LogResourceMatcherMode = "kubernetes-object"
 )
 
 var (
@@ -32,6 +35,7 @@ var (
 		string(LogResourceMatcherWorkload),
 		string(LogResourceMatcherSelfMonitoringLogsOperatorManager),
 		string(LogResourceMatcherSelfMonitoringLogsCollector),
+		string(LogResourceMatcherKubernetesObject),
 	}
 )
 

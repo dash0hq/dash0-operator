@@ -134,6 +134,8 @@ func (r *Routes) matchingLogsRouteHandler(c *gin.Context) {
 			commonParams.clusterName,
 			commonParams.operatorNamespace,
 		)
+	case shared.LogResourceMatcherKubernetesObject:
+		resourceMatchFn = kubernetesObjectResourceMatcher(commonParams.clusterName)
 	default:
 		c.JSON(400, shared.ExpectationResult{
 			Success:     false,
