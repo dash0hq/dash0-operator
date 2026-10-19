@@ -103,6 +103,7 @@ func maximalMatrixBaseline() collectorConfigMatrixEntry {
 			CollectPodLabelsAndAnnotationsEnabled:            true,
 			CollectNamespaceLabelsAndAnnotationsEnabled:      true,
 			CollectNodeLabelsAndAnnotationsEnabled:           true,
+			CollectClusterScopedObjectsEnabled:               true,
 			K8sAttributesDisableReplicasetInformer:           true,
 			K8sAttributesWaitForMetadata:                     true,
 			K8sAttributesWaitForMetadataTimeout:              "10s",
@@ -467,6 +468,12 @@ func matrixSettings() []matrixSetting {
 				} else {
 					e.namespacesWithK8sObjects = nil
 				}
+			},
+		},
+		{
+			name: "collect-cluster-scoped-objects",
+			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				e.config.CollectClusterScopedObjectsEnabled = enabled
 			},
 		},
 		{

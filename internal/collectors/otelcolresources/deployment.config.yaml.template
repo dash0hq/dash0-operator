@@ -137,12 +137,15 @@ receivers:
       - name: daemonsets
         mode: watch
         {{- template "k8sObjectNamespaces" .NamespacesWithKubernetesObjectCollection }}
+      {{- if .CollectClusterScopedObjectsEnabled }}
       # Nodes and persistent volumes are cluster-scoped, so they are watched cluster-wide. An entry without a
-      # namespaces key gets one cluster-wide watch.
+      # namespaces key gets one cluster-wide watch. Since no namespace setting can exclude them, and since a node
+      # writes its status roughly every five minutes however idle it is, they have their own opt-out.
       - name: nodes
         mode: watch
       - name: persistentvolumes
         mode: watch
+      {{- end }}
   {{- end }}
 
 processors:

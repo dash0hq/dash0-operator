@@ -118,6 +118,17 @@ Here is a list of configuration options for this resource:
   It is a validation error to set `telemetryCollection.enabled=false` and `collectNodeLabelsAndAnnotations.enabled=true`
   at the same time.
 
+* <a href="#operatorconfigurationresource.spec.collectClusterScopedObjects.enabled"><span id="operatorconfigurationresource.spec.collectClusterScopedObjects.enabled">**`spec.collectClusterScopedObjects.enabled`**</span></a>:
+  If enabled, the operator will collect the manifests of cluster-scoped Kubernetes objects, that is, nodes and
+  persistent volumes.
+  This setting only has an effect when Kubernetes object collection is enabled for at least one namespace via
+  `kubernetesObjectCollection.enabled` on a Dash0Monitoring resource; it never enables collection on its own.
+  This setting is optional, it defaults to `true`.
+  Set it to `false` to collect only the manifests of namespaced workloads.
+  Cluster-scoped objects do not belong to a namespace, so the per-namespace setting cannot exclude them, and nodes
+  report their status roughly every five minutes no matter how idle the cluster is, which is a volume floor that
+  scales with the number of nodes.
+
 * <a href="#operatorconfigurationresource.spec.clusterName"><span id="operatorconfigurationresource.spec.clusterName">**`spec.clusterName`**</span></a>:
   If set, the value will be added as the resource attribute `k8s.cluster.name` to all telemetry.
   This setting is optional.
@@ -477,6 +488,15 @@ The Dash0 monitoring resource supports additional configuration settings:
   `telemetryCollection.enabled=false`, then log collection is off by default.
   It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
   `logCollection.enabled=true` in any monitoring resource at the same time.
+
+* <a href="#monitoringresource.spec.kubernetesObjectCollection.enabled"><span id="monitoringresource.spec.kubernetesObjectCollection.enabled">**`spec.kubernetesObjectCollection.enabled`**</span></a>:
+  A namespace-wide opt-in for collecting the manifests of pods, deployments, replica sets, stateful sets and daemon
+  sets via the `k8s_objects` receiver.
+  If enabled, the operator will configure its OpenTelemetry collector to watch these resources in the namespace of this
+  Dash0Monitoring resource and send their manifests to Dash0 as log records.
+  Before the manifests leave the cluster, the collector removes `metadata.managedFields` and the
+  `kubectl.kubernetes.io/last-applied-configuration` annotation, and masks the values of environment variables.
+  This setting is optional, it defaults to `false`.
 
 * <a href="#monitoringresource.spec.prometheusScraping.enabled"><span id="monitoringresource.spec.prometheusScraping.enabled">**`spec.prometheusScraping.enabled`**</span></a>:
   A namespace-wide opt-out for Prometheus scraping for the target namespace.

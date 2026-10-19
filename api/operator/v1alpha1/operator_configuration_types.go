@@ -127,6 +127,13 @@ type Dash0OperatorConfigurationSpec struct {
 	// +kubebuilder:validation:Optional
 	CollectNodeLabelsAndAnnotations CollectNodeLabelsAndAnnotations `json:"collectNodeLabelsAndAnnotations,omitempty"`
 
+	// Settings for collecting the manifests of cluster-scoped Kubernetes objects (nodes and persistent volumes) when
+	// Kubernetes object collection is enabled for at least one namespace. This setting is optional, it defaults to
+	// `true`.
+	//
+	// +kubebuilder:validation:Optional
+	CollectClusterScopedObjects CollectClusterScopedObjects `json:"collectClusterScopedObjects,omitempty"`
+
 	// Settings for discovering scrape targets via Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig).
 	// This setting is optional and opt-in, by default the operator will not consider Prometheus CRDs when configuring
 	// the Prometheus receiver in the OpenTelemetry collectors.
@@ -450,6 +457,20 @@ type KubernetesObjectCollection struct {
 	// This setting is optional, it defaults to `false`. It is the cluster-wide switch for the feature: with it off, no
 	// manifests are collected no matter what the Dash0Monitoring resources say. It is a validation error to set
 	// `telemetryCollection.enabled=false` and `kubernetesObjectCollection.enabled=true` at the same time.
+	//
+	// +kubebuilder:validation:Optional
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+type CollectClusterScopedObjects struct {
+	// Opt-out for collecting the manifests of cluster-scoped Kubernetes objects, that is, nodes and persistent
+	// volumes. This setting only has an effect when Kubernetes object collection is enabled for at least one namespace
+	// via `kubernetesObjectCollection.enabled` on a Dash0Monitoring resource; it never enables collection on its own.
+	//
+	// This setting is optional, it defaults to `true`. Set it to `false` to collect only the manifests of namespaced
+	// workloads. Cluster-scoped objects do not belong to a namespace, so the per-namespace setting cannot exclude
+	// them, and nodes report their status roughly every five minutes no matter how idle the cluster is, which is a
+	// volume floor that scales with the number of nodes.
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`

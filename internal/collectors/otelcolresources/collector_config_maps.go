@@ -94,6 +94,7 @@ type collectorConfigurationTemplateValues struct {
 	CollectPodLabelsAndAnnotationsEnabled            bool
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
 	CollectNodeLabelsAndAnnotationsEnabled           bool
+	CollectClusterScopedObjectsEnabled               bool
 	LabelAndAnnotationExclusionPatterns              []string
 	K8sAttributesDisableReplicasetInformer           bool
 	K8sAttributesWaitForMetadata                     bool
@@ -417,6 +418,7 @@ func newCollectorConfigurationTemplateValues(
 		CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
 		CollectNamespaceLabelsAndAnnotationsEnabled:      config.CollectNamespaceLabelsAndAnnotationsEnabled,
 		CollectNodeLabelsAndAnnotationsEnabled:           config.CollectNodeLabelsAndAnnotationsEnabled,
+		CollectClusterScopedObjectsEnabled:               config.CollectClusterScopedObjectsEnabled,
 		LabelAndAnnotationExclusionPatterns:              labelAndAnnotationExclusionPatterns(),
 		K8sAttributesDisableReplicasetInformer:           config.K8sAttributesDisableReplicasetInformer,
 		K8sAttributesWaitForMetadata:                     config.K8sAttributesWaitForMetadata,

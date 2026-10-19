@@ -115,6 +115,7 @@ type oTelColConfig struct {
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
 	CollectNodeLabelsAndAnnotationsEnabled           bool
 	KubernetesObjectCollectionEnabled                bool
+	CollectClusterScopedObjectsEnabled               bool
 	K8sAttributesDisableReplicasetInformer           bool
 	K8sAttributesWaitForMetadata                     bool
 	K8sAttributesWaitForMetadataTimeout              string

@@ -5596,9 +5596,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 	})
 
 	Describe("Kubernetes object collection", func() {
-		assembleWithObjectCollection := func(
+		assembleWithObjectCollectionAndClusterScopedObjects := func(
 			namespacesWithEventCollection []string,
 			namespacesWithKubernetesObjectCollection []string,
+			collectClusterScopedObjects bool,
 		) map[string]interface{} {
 			configMap, err := assembleDeploymentCollectorConfigMap(
 				&oTelColConfig{
@@ -5606,6 +5607,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					NamePrefix:        namePrefix,
 					Exporters:         cmTestSingleDefaultOtlpExporter(),
 					KubernetesInfrastructureMetricsCollectionEnabled: true,
+					CollectClusterScopedObjectsEnabled:               collectClusterScopedObjects,
 				},
 				[]string{"namespace-1", "namespace-2", "namespace-3"},
 				namespacesWithEventCollection,
@@ -5615,6 +5617,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				false)
 			Expect(err).ToNot(HaveOccurred())
 			return parseConfigMapContent(configMap)
+		}
+
+		// Collecting cluster-scoped objects is the default, so the tests that are not about that setting use it.
+		assembleWithObjectCollection := func(
+			namespacesWithEventCollection []string,
+			namespacesWithKubernetesObjectCollection []string,
+		) map[string]interface{} {
+			return assembleWithObjectCollectionAndClusterScopedObjects(
+				namespacesWithEventCollection,
+				namespacesWithKubernetesObjectCollection,
+				true)
 		}
 
 		It("should not render the k8s_objects receiver and its processors if no namespace has it enabled", func() {
@@ -5658,6 +5671,24 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(allNames).ToNot(ContainElement("events"))
 			Expect(allNames).ToNot(ContainElement("secrets"))
 			Expect(allNames).ToNot(ContainElement("configmaps"))
+		})
+
+		It("should omit the cluster-scoped objects if collecting them is disabled", func() {
+			collectorConfig := assembleWithObjectCollectionAndClusterScopedObjects(
+				nil, []string{"namespace-1"}, false)
+			k8sObjectsReceiver :=
+				ReadFromMap(collectorConfig, []string{"receivers", "k8s_objects"}).(map[string]any)
+			Expect(k8sObjectsReceiver).ToNot(BeNil())
+
+			objects := k8sObjectsReceiver["objects"].([]any)
+			names := make([]any, 0, len(objects))
+			for _, objectRaw := range objects {
+				object := objectRaw.(map[string]any)
+				// Every remaining entry is namespaced, so none of them may watch cluster-wide.
+				Expect(object).To(HaveKey("namespaces"))
+				names = append(names, object["name"])
+			}
+			Expect(names).To(ConsistOf("pods", "deployments", "replicasets", "statefulsets", "daemonsets"))
 		})
 
 		It("should render the redaction processors and wire them into the shared logs pipeline", func() {
