@@ -65,7 +65,7 @@ var _ = Describe("The target-allocator resource manager", func() {
 
 	It("should not revert GKE Autopilot resource adjustments, but still apply changed resource settings", func() {
 		resourcesHaveBeenCreated, _, err := resourceManager.CreateOrUpdateTargetAllocatorResources(
-			ctx, extraConfigWithMemory("500Mi"), []string{"namespace"}, logger)
+			ctx, extraConfigWithMemory("500Mi"), nil, []string{"namespace"}, logger)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resourcesHaveBeenCreated).To(BeTrue())
 
@@ -74,13 +74,13 @@ var _ = Describe("The target-allocator resource manager", func() {
 		Expect(k8sClient.Update(ctx, deployment)).To(Succeed())
 
 		_, resourcesHaveBeenUpdated, err := resourceManager.CreateOrUpdateTargetAllocatorResources(
-			ctx, extraConfigWithMemory("500Mi"), []string{"namespace"}, logger)
+			ctx, extraConfigWithMemory("500Mi"), nil, []string{"namespace"}, logger)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resourcesHaveBeenUpdated).To(BeFalse())
 		Expect(getDeployment().Spec.Template.Spec).To(Equal(deployment.Spec.Template.Spec))
 
 		_, resourcesHaveBeenUpdated, err = resourceManager.CreateOrUpdateTargetAllocatorResources(
-			ctx, extraConfigWithMemory("1Gi"), []string{"namespace"}, logger)
+			ctx, extraConfigWithMemory("1Gi"), nil, []string{"namespace"}, logger)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resourcesHaveBeenUpdated).To(BeTrue())
 		containerResources := getDeployment().Spec.Template.Spec.Containers[0].Resources

@@ -12,6 +12,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -184,6 +185,7 @@ func (m *TargetAllocatorManager) reconcileTargetAllocator(ctx context.Context, l
 		)
 		err = m.createOrUpdateTargetAllocator(
 			ctx,
+			operatorConfigurationResource,
 			namespacesWithPrometheusScraping,
 			*extraConfig,
 			logger,
@@ -194,6 +196,7 @@ func (m *TargetAllocatorManager) reconcileTargetAllocator(ctx context.Context, l
 
 func (m *TargetAllocatorManager) createOrUpdateTargetAllocator(
 	ctx context.Context,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	namespacesWithPrometheusScraping []string,
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
@@ -202,6 +205,7 @@ func (m *TargetAllocatorManager) createOrUpdateTargetAllocator(
 		m.targetAllocatorResourceManager.CreateOrUpdateTargetAllocatorResources(
 			ctx,
 			extraConfig,
+			operatorConfigurationResource,
 			namespacesWithPrometheusScraping,
 			logger)
 

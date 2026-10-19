@@ -109,7 +109,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(
 				ctx,
 				util.ExtraConfig{},
-				DefaultOperatorConfigurationResource(),
+				DefaultOperatorConfigurationResourceWithUid(),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -134,7 +134,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 						Verbs:           []string{"get"},
 					},
 				},
-			}, DefaultOperatorConfigurationResource(), logger)
+			}, DefaultOperatorConfigurationResourceWithUid(), logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeTrue())
 
@@ -154,7 +154,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 						Verbs:     []string{"get", "list"},
 					},
 				},
-			}, DefaultOperatorConfigurationResource(), logger)
+			}, DefaultOperatorConfigurationResourceWithUid(), logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeTrue())
 
@@ -164,7 +164,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			_, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(
 				ctx,
 				util.ExtraConfig{},
-				DefaultOperatorConfigurationResource(),
+				DefaultOperatorConfigurationResourceWithUid(),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -185,7 +185,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 						Verbs:     []string{"get", "list", "delete"},
 					},
 				},
-			}, DefaultOperatorConfigurationResource(), logger)
+			}, DefaultOperatorConfigurationResourceWithUid(), logger)
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring(`rules[0]: the verb "delete" is not allowed`))
@@ -199,7 +199,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(
 				ctx,
 				util.ExtraConfig{},
-				DefaultOperatorConfigurationResource(),
+				DefaultOperatorConfigurationResourceWithUid(),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -213,7 +213,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 						Verbs:     []string{"*"},
 					},
 				},
-			}, DefaultOperatorConfigurationResource(), logger)
+			}, DefaultOperatorConfigurationResourceWithUid(), logger)
 			Expect(err).To(HaveOccurred())
 
 			clusterRole := &rbacv1.ClusterRole{}
@@ -229,7 +229,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(
 				ctx,
 				util.ExtraConfig{},
-				DefaultOperatorConfigurationResource(),
+				DefaultOperatorConfigurationResourceWithUid(),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -250,7 +250,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(
 				ctx,
 				util.ExtraConfig{},
-				DefaultOperatorConfigurationResource(),
+				DefaultOperatorConfigurationResourceWithUid(),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -273,7 +273,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(
 				ctx,
 				util.ExtraConfig{},
-				DefaultOperatorConfigurationResource(),
+				DefaultOperatorConfigurationResourceWithUid(),
 				logger,
 			)
 
@@ -290,7 +290,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(
 				ctx,
 				util.ExtraConfig{},
-				DefaultOperatorConfigurationResource(),
+				DefaultOperatorConfigurationResourceWithUid(),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -322,7 +322,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(
 				ctx,
 				util.ExtraConfig{},
-				DefaultOperatorConfigurationResource(),
+				DefaultOperatorConfigurationResourceWithUid(),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -343,7 +343,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(
 				ctx,
 				util.ExtraConfig{},
-				DefaultOperatorConfigurationResource(),
+				DefaultOperatorConfigurationResourceWithUid(),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -365,7 +365,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(
 				ctx,
 				util.ExtraConfig{},
-				DefaultOperatorConfigurationResource(),
+				DefaultOperatorConfigurationResourceWithUid(),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -382,7 +382,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			created, _, err = manager.CreateOrUpdateAgent0ConnectorResources(
 				ctx,
 				util.ExtraConfig{},
-				DefaultOperatorConfigurationResource(),
+				DefaultOperatorConfigurationResourceWithUid(),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -403,7 +403,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(
 				ctx,
 				util.ExtraConfig{},
-				DefaultOperatorConfigurationResource(),
+				DefaultOperatorConfigurationResourceWithUid(),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -413,7 +413,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			created, updated, err = manager.CreateOrUpdateAgent0ConnectorResources(
 				ctx,
 				util.ExtraConfig{},
-				DefaultOperatorConfigurationResource(),
+				DefaultOperatorConfigurationResourceWithUid(),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -429,7 +429,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			_, _, err := manager.CreateOrUpdateAgent0ConnectorResources(
 				ctx,
 				util.ExtraConfig{},
-				DefaultOperatorConfigurationResource(),
+				DefaultOperatorConfigurationResourceWithUid(),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
