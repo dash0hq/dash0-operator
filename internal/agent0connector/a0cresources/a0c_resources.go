@@ -38,7 +38,6 @@ type Agent0ConnectorResourceManager struct {
 	scheme                    *runtime.Scheme
 	operatorManagerDeployment *appsv1.Deployment
 	agent0ConnectorConfig     util.Agent0ConnectorConfig
-	uninstallationDetector    *util.UninstallationDetector
 }
 
 func NewAgent0ConnectorResourceManager(
@@ -46,14 +45,12 @@ func NewAgent0ConnectorResourceManager(
 	scheme *runtime.Scheme,
 	operatorManagerDeployment *appsv1.Deployment,
 	agent0ConnectorConfig util.Agent0ConnectorConfig,
-	uninstallationDetector *util.UninstallationDetector,
 ) *Agent0ConnectorResourceManager {
 	return &Agent0ConnectorResourceManager{
 		Client:                    k8sClient,
 		scheme:                    scheme,
 		operatorManagerDeployment: operatorManagerDeployment,
 		agent0ConnectorConfig:     agent0ConnectorConfig,
-		uninstallationDetector:    uninstallationDetector,
 	}
 }
 
@@ -164,10 +161,6 @@ func (m *Agent0ConnectorResourceManager) createOrUpdateResource(
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return false, false, err
-		}
-		skip, skipErr := resources.SkipCreationDuringUninstallation(ctx, m.uninstallationDetector, desiredResource, logger)
-		if skipErr != nil || skip {
-			return false, false, skipErr
 		}
 		err = m.createResource(ctx, desiredResource, logger)
 		if err != nil {

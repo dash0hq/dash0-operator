@@ -40,7 +40,6 @@ type OTelColResourceManager struct {
 	scheme                           *runtime.Scheme
 	operatorManagerDeployment        *appsv1.Deployment
 	collectorConfig                  util.CollectorConfig
-	uninstallationDetector           *util.UninstallationDetector
 	obsoleteResourcesHaveBeenDeleted atomic.Bool
 	kubeletStatsReceiverConfig       atomic.Pointer[util.KubeletStatsReceiverConfig]
 }
@@ -68,14 +67,12 @@ func NewOTelColResourceManager(
 	scheme *runtime.Scheme,
 	operatorManagerDeployment *appsv1.Deployment,
 	collectorConfig util.CollectorConfig,
-	uninstallationDetector *util.UninstallationDetector,
 ) *OTelColResourceManager {
 	return &OTelColResourceManager{
 		Client:                    k8sClient,
 		scheme:                    scheme,
 		operatorManagerDeployment: operatorManagerDeployment,
 		collectorConfig:           collectorConfig,
-		uninstallationDetector:    uninstallationDetector,
 	}
 }
 
@@ -288,10 +285,6 @@ func (m *OTelColResourceManager) createOrUpdateResource(
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return false, false, err
-		}
-		skip, skipErr := resources.SkipCreationDuringUninstallation(ctx, m.uninstallationDetector, desiredResource, logger)
-		if skipErr != nil || skip {
-			return false, false, skipErr
 		}
 		err = m.createResource(ctx, desiredResource, logger)
 		if err != nil {

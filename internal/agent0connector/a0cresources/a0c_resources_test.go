@@ -466,7 +466,6 @@ func newAgent0ConnectorResourceManager(authorization dash0common.Authorization) 
 			Authorization:     authorization,
 			DevelopmentMode:   true,
 		},
-		nil,
 	)
 }
 

@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dash0hq/dash0-operator/internal/util"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -170,23 +168,6 @@ func verifyThatCollectorIsRemovedEventually() {
 	By("validating that the OpenTelemetry collector is removed eventually")
 	Eventually(verifyCollectorDaemonSetIsNotPresent, 60*time.Second, time.Second).Should(Succeed())
 	Eventually(verifyCollectorDeploymentIsNotPresent, 60*time.Second, time.Second).Should(Succeed())
-}
-
-func verifyThatOperatorManagedClusterScopedResourcesAreRemovedEventually() {
-	By("validating that the cluster roles and cluster role bindings managed by the operator are removed eventually")
-	Eventually(func(g Gomega) {
-		output, err := run(exec.Command(
-			"kubectl",
-			"get",
-			"clusterroles,clusterrolebindings",
-			"--selector",
-			fmt.Sprintf("%s=%s", util.AppKubernetesIoManagedByLabel, util.OperatorManagedByLabelValue),
-			"--output",
-			"name",
-		), false)
-		g.Expect(err).ToNot(HaveOccurred())
-		g.Expect(strings.TrimSpace(output)).To(BeEmpty())
-	}, 60*time.Second, time.Second).Should(Succeed())
 }
 
 func verifyThatCollectorIsNotPresentConsistently() {

@@ -60,7 +60,6 @@ var _ = Describe("The collector manager", Ordered, func() {
 				OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
 				TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 			},
-			nil,
 		)
 		collectorManager = NewCollectorManager(
 			k8sClient,
@@ -745,7 +744,6 @@ func newCollectorManagerWithSignalControlEnabled() *CollectorManager {
 			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
 			TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 		},
-		nil,
 	)
 	return NewCollectorManager(
 		k8sClient,

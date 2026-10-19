@@ -60,7 +60,6 @@ var _ = Describe("The target-allocator resource manager", func() {
 				TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 				IsGkeAutopilot:            true,
 			},
-			nil,
 		)
 	})
 

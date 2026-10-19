@@ -61,7 +61,6 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 				OperatorNamespace:         operatorNamespace,
 				TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 			},
-			nil,
 		)
 		targetAllocatorManager = NewTargetAllocatorManager(
 			k8sClient,
