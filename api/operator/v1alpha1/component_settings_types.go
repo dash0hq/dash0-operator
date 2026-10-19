@@ -9,6 +9,11 @@ import (
 
 // OperatorConfigurationComponents contains the optional settings for the managed workloads.
 type OperatorConfigurationComponents struct {
+	// Settings for the init container that the operator adds to instrumented workloads.
+	//
+	// +kubebuilder:validation:Optional
+	InstrumentationInitContainer *InstrumentationInitContainerSettings `json:"instrumentationInitContainer,omitempty"`
+
 	// Settings for the OpenTelemetry collector DaemonSet.
 	//
 	// +kubebuilder:validation:Optional
@@ -200,6 +205,15 @@ type CollectorPodSettings struct {
 	//
 	// +kubebuilder:validation:Optional
 	PriorityClassName string `json:"priorityClassName,omitempty"`
+}
+
+// InstrumentationInitContainerSettings are the settings for the instrumentation init container.
+type InstrumentationInitContainerSettings struct {
+	// The resources of the init container (Helm value operator.initContainerResources). Instrumented workloads get
+	// changed resources on their next update, e.g. via kubectl rollout restart.
+	//
+	// +kubebuilder:validation:Optional
+	Resources *ContainerResources `json:"resources,omitempty"`
 }
 
 // DaemonSetCollectorSettings are the settings for the OpenTelemetry collector DaemonSet.

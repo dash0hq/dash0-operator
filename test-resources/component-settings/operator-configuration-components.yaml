@@ -9,6 +9,13 @@ spec:
   prometheusCrdSupport:
     enabled: true
   components:
+    instrumentationInitContainer:
+      resources:
+        limits:
+          memory: 150Mi
+        requests:
+          cpu: 50m
+
     daemonSetCollector:
       collectorContainerResources:
         limits:

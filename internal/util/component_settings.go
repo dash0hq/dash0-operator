@@ -36,12 +36,13 @@ const (
 
 // The names of the components in spec.components of the custom resources.
 const (
-	componentDaemonSetCollector     = "daemonSetCollector"
-	componentDeploymentCollector    = "deploymentCollector"
-	componentTargetAllocator        = "targetAllocator"
-	componentAgent0Connector        = "agent0Connector"
-	componentSignalControlCollector = "collector"
-	componentEdgeProxy              = "edgeProxy"
+	componentInstrumentationInitContainer = "instrumentationInitContainer"
+	componentDaemonSetCollector           = "daemonSetCollector"
+	componentDeploymentCollector          = "deploymentCollector"
+	componentTargetAllocator              = "targetAllocator"
+	componentAgent0Connector              = "agent0Connector"
+	componentSignalControlCollector       = "collector"
+	componentEdgeProxy                    = "edgeProxy"
 )
 
 // deprecatedHelmValues maps the Helm values that have a deprecated predecessor to that predecessor. If the deprecated
@@ -131,6 +132,24 @@ func EffectiveExtraConfig(
 		false,
 	)
 	return effective
+}
+
+// EffectiveInstrumentationInitContainerResources returns spec.components.instrumentationInitContainer.resources merged
+// with the default resources (see mergeContainerResources), or nil if the setting is absent.
+func EffectiveInstrumentationInitContainerResources(
+	defaults ExtraConfig,
+	components *dash0v1alpha1.OperatorConfigurationComponents,
+) *corev1.ResourceRequirements {
+	if components == nil || components.InstrumentationInitContainer == nil ||
+		components.InstrumentationInitContainer.Resources == nil {
+		return nil
+	}
+	return new(mergeContainerResources(
+		defaults.InstrumentationInitContainerResources,
+		dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+			ContainerResources: *components.InstrumentationInitContainer.Resources,
+		},
+	).ToResourceRequirements())
 }
 
 // OperatorConfigurationComponentsOf returns spec.components of the resource, or nil if the resource is nil.
@@ -303,6 +322,16 @@ func (m *componentSettingsApplier) applyOperatorConfigurationComponents(
 	components *dash0v1alpha1.OperatorConfigurationComponents,
 ) {
 	const path = componentSettingsPath
+
+	if initContainer := components.InstrumentationInitContainer; initContainer != nil && initContainer.Resources != nil {
+		m.applyContainerResources(
+			path+"."+componentInstrumentationInitContainer+".resources",
+			"operator.initContainerResources",
+			&effective.InstrumentationInitContainerResources,
+			defaults.InstrumentationInitContainerResources,
+			&dash0v1alpha1.ContainerResourcesWithGoMemLimit{ContainerResources: *initContainer.Resources},
+		)
+	}
 
 	if daemonSet := components.DaemonSetCollector; daemonSet != nil {
 		p := path + "." + componentDaemonSetCollector

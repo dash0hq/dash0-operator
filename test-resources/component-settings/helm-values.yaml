@@ -4,6 +4,11 @@
 # Helm values for test-scenario-12-component-settings.sh. They differ from the values in spec.components, except for
 # daemonSetProbes, which is set to its default and hence does not count as a conflict.
 operator:
+  initContainerResources:
+    limits:
+      memory: 200Mi
+    requests:
+      memory: 100Mi
   collectors:
     daemonSetCollectorContainerResources:
       limits:
