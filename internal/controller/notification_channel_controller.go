@@ -352,7 +352,7 @@ func (r *NotificationChannelReconciler) Reconcile(
 	return reconcile.Result{}, nil
 }
 
-func (r *NotificationChannelReconciler) MapResourceToHttpRequests(
+func (r *NotificationChannelReconciler) MapResourceToApiCalls(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,

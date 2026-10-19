@@ -771,7 +771,7 @@ func (r *PersesDashboardReconciler) IsOriginOfResource(
 	return origin == dashboardOrigin
 }
 
-func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
+func (r *PersesDashboardReconciler) MapResourceToApiCalls(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,

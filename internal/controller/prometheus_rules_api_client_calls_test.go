@@ -257,7 +257,7 @@ var _ = Describe("The Prometheus rule API client calls", func() {
 
 		for _, action := range []apiAction{upsertAction, deleteAction} {
 			recorder.urls = nil
-			result := prometheusRuleReconciler.MapResourceToHttpRequests(
+			result := prometheusRuleReconciler.MapResourceToApiCalls(
 				&preconditionValidationResult{
 					k8sNamespace: "namespace",
 					k8sName:      "name",
@@ -295,7 +295,7 @@ var _ = Describe("The Prometheus rule API client calls", func() {
 
 		apiClientPool, recorder := urlRecordingApiClientPool()
 		prometheusRuleReconciler := &PrometheusRuleReconciler{pseudoClusterUid: "cluster-uid", apiClientPool: apiClientPool}
-		result := prometheusRuleReconciler.MapResourceToHttpRequests(
+		result := prometheusRuleReconciler.MapResourceToApiCalls(
 			&preconditionValidationResult{
 				k8sNamespace: "namespace",
 				k8sName:      "name",
@@ -506,7 +506,7 @@ var _ = Describe("The Prometheus rule API client calls", func() {
 				otherResourceInNamespace,
 				resourceInOtherNamespace,
 			} {
-				result := prometheusRuleReconciler.MapResourceToHttpRequests(candidate, apiConfig, upsertAction, logger)
+				result := prometheusRuleReconciler.MapResourceToApiCalls(candidate, apiConfig, upsertAction, logger)
 				Expect(result.OriginsInResource).To(HaveLen(len(rules)))
 				for i, rule := range rules {
 					if rule.record != "" {

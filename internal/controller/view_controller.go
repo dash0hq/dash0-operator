@@ -364,7 +364,7 @@ func (r *ViewReconciler) warnAboutDeprecatedFolderField(viewResource *dash0v1alp
 	}
 }
 
-func (r *ViewReconciler) MapResourceToHttpRequests(
+func (r *ViewReconciler) MapResourceToApiCalls(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,

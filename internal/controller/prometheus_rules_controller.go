@@ -643,7 +643,7 @@ func (r *PrometheusRuleReconciler) IsOriginOfResource(
 	return strings.HasPrefix(origin, r.renderRuleOriginPrefix(preconditionValidationResult, apiConfig.Dataset))
 }
 
-func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
+func (r *PrometheusRuleReconciler) MapResourceToApiCalls(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,
@@ -1142,7 +1142,7 @@ func mapToPrometheusAlertRule(checkRule *CheckRule) (*dash0apiclient.PrometheusA
 // if the conversion is successful and there are no validation issues. Otherwise, a list of validation issues is
 // returned. There are also rules which we want to silently skip, in which case no rule and no validation issues are
 // returned, but the boolean return value is false.
-// Note: recording rules (rule.Record != "") are handled separately in MapResourceToHttpRequests and should not reach
+// Note: recording rules (rule.Record != "") are handled separately in MapResourceToApiCalls and should not reach
 // this function.
 func convertAlertingRuleToCheckRule(
 	rule prometheusv1.Rule,

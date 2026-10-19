@@ -350,7 +350,7 @@ func (r *TeamReconciler) Reconcile(
 	return reconcile.Result{}, nil
 }
 
-func (r *TeamReconciler) MapResourceToHttpRequests(
+func (r *TeamReconciler) MapResourceToApiCalls(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,

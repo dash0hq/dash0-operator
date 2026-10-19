@@ -353,7 +353,7 @@ func (r *TimeSeriesAggregationReconciler) Reconcile(ctx context.Context, req rec
 	return reconcile.Result{}, nil
 }
 
-func (r *TimeSeriesAggregationReconciler) MapResourceToHttpRequests(
+func (r *TimeSeriesAggregationReconciler) MapResourceToApiCalls(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,

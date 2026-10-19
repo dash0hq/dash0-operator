@@ -2534,7 +2534,7 @@ spec:
 							validatedApiConfigs: []ValidatedApiConfigAndToken{{}},
 						}
 						resourceToRequestsResult :=
-							prometheusRuleReconciler.MapResourceToHttpRequests(
+							prometheusRuleReconciler.MapResourceToApiCalls(
 								preconditionValidationResult,
 								apiConfig,
 								upsertAction,
@@ -2612,7 +2612,7 @@ spec:
 							validatedApiConfigs: []ValidatedApiConfigAndToken{{}},
 						}
 						resourceToRequestsResult :=
-							prometheusRuleReconciler.MapResourceToHttpRequests(
+							prometheusRuleReconciler.MapResourceToApiCalls(
 								preconditionValidationResult,
 								apiConfig,
 								upsertAction,
@@ -2720,7 +2720,7 @@ spec:
 `
 						Expect(yaml.Unmarshal([]byte(prometheusRuleYaml), &prometheusRule)).To(Succeed())
 						resourceToRequestsResult :=
-							prometheusRuleReconciler.MapResourceToHttpRequests(
+							prometheusRuleReconciler.MapResourceToApiCalls(
 								&preconditionValidationResult{
 									k8sName:      "malformed-rule",
 									k8sNamespace: TestNamespaceName,
@@ -2752,7 +2752,7 @@ spec:
 				It(
 					"should process a rule that has both record and alert as an alerting rule", func() {
 						// In the production flow, recording rules (rule.Record != "") are handled
-						// separately in MapResourceToHttpRequests before convertAlertingRuleToCheckRule
+						// separately in MapResourceToApiCalls before convertAlertingRuleToCheckRule
 						// is called. If a rule somehow has both Record and Alert set,
 						// convertAlertingRuleToCheckRule treats it as an alerting rule.
 						checkRule, validationIssues, ok := convertAlertingRuleToCheckRule(

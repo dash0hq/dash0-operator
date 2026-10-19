@@ -342,7 +342,7 @@ func (r *SignalToMetricsReconciler) Reconcile(ctx context.Context, req reconcile
 	return reconcile.Result{}, nil
 }
 
-func (r *SignalToMetricsReconciler) MapResourceToHttpRequests(
+func (r *SignalToMetricsReconciler) MapResourceToApiCalls(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,

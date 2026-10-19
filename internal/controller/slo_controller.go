@@ -499,7 +499,7 @@ func (r *SLOReconciler) Reconcile(ctx context.Context, req reconcile.Request) (r
 	return reconcile.Result{}, nil
 }
 
-func (r *SLOReconciler) MapResourceToHttpRequests(
+func (r *SLOReconciler) MapResourceToApiCalls(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,

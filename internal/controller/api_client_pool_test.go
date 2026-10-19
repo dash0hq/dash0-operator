@@ -66,7 +66,7 @@ func expectApiClientCallsToAddressUrl(
 	logger := logd.FromContext(ctx)
 	for _, action := range []apiAction{upsertAction, deleteAction} {
 		preconditionChecksResult.resource = resource()
-		result := reconciler.MapResourceToHttpRequests(preconditionChecksResult, apiConfig, action, logger)
+		result := reconciler.MapResourceToApiCalls(preconditionChecksResult, apiConfig, action, logger)
 		Expect(result.ApiRequests).To(HaveLen(1))
 		_, _ = result.ApiRequests[0].ApiClientCall.Execute(ctx)
 	}

@@ -328,7 +328,7 @@ func (r *SpamFilterReconciler) Reconcile(ctx context.Context, req reconcile.Requ
 	return reconcile.Result{}, nil
 }
 
-func (r *SpamFilterReconciler) MapResourceToHttpRequests(
+func (r *SpamFilterReconciler) MapResourceToApiCalls(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,

@@ -343,7 +343,7 @@ func (r *SamplingRuleReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	return reconcile.Result{}, nil
 }
 
-func (r *SamplingRuleReconciler) MapResourceToHttpRequests(
+func (r *SamplingRuleReconciler) MapResourceToApiCalls(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,

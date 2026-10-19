@@ -208,13 +208,13 @@ type ApiSyncReconciler interface {
 	ControllerName() string
 	K8sClient() client.Client
 
-	// MapResourceToHttpRequests converts a Kubernetes resource object to a list of calls to the Dash0 API via the Dash0
+	// MapResourceToApiCalls converts a Kubernetes resource object to a list of calls to the Dash0 API via the Dash0
 	// API client (see ApiClientCall). It returns:
 	// - the total number of eligible items in the Kubernetes resource,
 	// - the request objects for which the conversion was successful,
 	// - validation issues for items that were invalid and
 	// - synchronization errors that occurred during the conversion.
-	MapResourceToHttpRequests(*preconditionValidationResult, ApiConfig, apiAction, logd.Logger) *ResourceToRequestsResult
+	MapResourceToApiCalls(*preconditionValidationResult, ApiConfig, apiAction, logd.Logger) *ResourceToRequestsResult
 }
 
 // OwnedResourceReconciler extends the ApiSyncReconciler interface with methods that are specific to resource types
@@ -436,7 +436,7 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 
 	if preconditionChecksResult.syncDisabledViaLabel {
 		// The resource has the label dash0.com/enable=false set; thus we override the API action unconditionally with
-		// delete, that is, we ask MapResourceToHttpRequests to create HTTP DELETE requests. For most purposes it would
+		// delete, that is, we ask MapResourceToApiCalls to create HTTP DELETE requests. For most purposes it would
 		// be enough to ignore resources with that label entirely and issue no HTTP requests, but when a resource has
 		// been synchronized earlier, and then the dash0.com/enable=false is added after the fact, we need to delete the
 		// object in Dash0 to get back into a consistent state.
@@ -478,7 +478,7 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 			continue
 		}
 
-		resourceToRequestsResult := apiSyncReconciler.MapResourceToHttpRequests(
+		resourceToRequestsResult := apiSyncReconciler.MapResourceToApiCalls(
 			preconditionChecksResult,
 			validatedApiConfig.ApiConfig,
 			action,
@@ -539,15 +539,15 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 		var httpErrorStatusCodes map[string]int
 		if len(resourceToRequestsResult.ApiRequests) > 0 {
 			successfullySynchronized, httpErrors, httpErrorStatusCodes =
-				executeAllHttpRequests(ctx, apiSyncReconciler, resourceToRequestsResult.ApiRequests, logger)
+				executeAllApiCalls(ctx, apiSyncReconciler, resourceToRequestsResult.ApiRequests, logger)
 		}
 		if len(httpErrors) > 0 {
 			if resourceToRequestsResult.SynchronizationErrors == nil {
 				resourceToRequestsResult.SynchronizationErrors = make(map[string]string)
 			}
-			// In theory, the following map merge could overwrite synchronization errors from the MapResourceToHttpRequests
-			// stage with errors occurring in executeAllHttpRequests, but items that have an error in
-			// MapResourceToHttpRequests are never converted to requests, so the two maps are disjoint.
+			// In theory, the following map merge could overwrite synchronization errors from the MapResourceToApiCalls
+			// stage with errors occurring in executeAllApiCalls, but items that have an error in
+			// MapResourceToApiCalls are never converted to requests, so the two maps are disjoint.
 			maps.Copy(resourceToRequestsResult.SynchronizationErrors, httpErrors)
 			if resourceToRequestsResult.SynchronizationErrorStatusCodes == nil {
 				resourceToRequestsResult.SynchronizationErrorStatusCodes = make(map[string]int)
@@ -1185,11 +1185,11 @@ func structToMap(obj any) (*unstructured.Unstructured, error) {
 	}, nil
 }
 
-// executeAllHttpRequests executes the Dash0 API client calls of all requests in the given list and returns the names
+// executeAllApiCalls executes the Dash0 API client calls of all requests in the given list and returns the names
 // of the items that were successfully synchronized, a map of name to error message for items that were rejected by the
 // Dash0 API, and a map of name to HTTP status code for the failed items (0 if the failure was a transport-level error
 // where no HTTP response was received). The keys of the two maps are identical.
-func executeAllHttpRequests(
+func executeAllApiCalls(
 	ctx context.Context,
 	apiSyncReconciler ApiSyncReconciler,
 	allRequests []WrappedApiRequest,
