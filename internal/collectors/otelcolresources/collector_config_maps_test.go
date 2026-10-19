@@ -1458,7 +1458,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestMultipleExportsDefaultMixed(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -1565,7 +1565,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestMultipleExportsWithNamespacedMultiExporters(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -1637,7 +1637,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestNamespacedOtlpExporters(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -1878,7 +1878,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestNamespacedOtlpExporters(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -1954,7 +1954,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestNamespacedOtlpExporters(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -2017,7 +2017,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestNamespacedOtlpExporters(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -2068,7 +2068,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestNamespacedOtlpExporters(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -2155,7 +2155,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -5456,8 +5456,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				},
 				nil,
 				nil,
-				false,
-			)
+				nil,
+				false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			Expect(ReadFromMap(collectorConfig, []string{"receivers", "k8s_cluster"})).To(BeNil())
@@ -5485,8 +5485,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				[]string{},
 				nil,
 				nil,
-				false,
-			)
+				nil,
+				false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			Expect(ReadFromMap(collectorConfig, []string{"processors", "resource_detection"})).To(BeNil())
@@ -5509,8 +5509,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					namespacesWithEventCollection,
 					nil,
 					nil,
-					false,
-				)
+					nil,
+					false)
 				Expect(err).ToNot(HaveOccurred())
 				collectorConfig := parseConfigMapContent(configMap)
 				Expect(ReadFromMap(collectorConfig, []string{"receivers", "k8s_cluster"})).ToNot(BeNil())
@@ -5546,8 +5546,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				[]string{},
 				nil,
 				nil,
-				false,
-			)
+				nil,
+				false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -5570,8 +5570,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					[]string{"namespace-1", "namespace-2"},
 					nil,
 					nil,
-					false,
-				)
+					nil,
+					false)
 				Expect(err).ToNot(HaveOccurred())
 				collectorConfig := parseConfigMapContent(configMap)
 				k8sEventsReceiverRaw := ReadFromMap(collectorConfig, []string{"receivers", "k8s_events"})
@@ -5593,6 +5593,122 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Entry("without Kubernetes infra metrics collection", false),
 			Entry("together with Kubernetes infra metrics collection", true),
 		)
+	})
+
+	Describe("Kubernetes object collection", func() {
+		assembleWithObjectCollection := func(
+			namespacesWithEventCollection []string,
+			namespacesWithKubernetesObjectCollection []string,
+		) map[string]interface{} {
+			configMap, err := assembleDeploymentCollectorConfigMap(
+				&oTelColConfig{
+					OperatorNamespace: OperatorNamespace,
+					NamePrefix:        namePrefix,
+					Exporters:         cmTestSingleDefaultOtlpExporter(),
+					KubernetesInfrastructureMetricsCollectionEnabled: true,
+				},
+				[]string{"namespace-1", "namespace-2", "namespace-3"},
+				namespacesWithEventCollection,
+				namespacesWithKubernetesObjectCollection,
+				nil,
+				nil,
+				false)
+			Expect(err).ToNot(HaveOccurred())
+			return parseConfigMapContent(configMap)
+		}
+
+		It("should not render the k8s_objects receiver and its processors if no namespace has it enabled", func() {
+			collectorConfig := assembleWithObjectCollection([]string{"namespace-1"}, nil)
+			Expect(ReadFromMap(collectorConfig, []string{"receivers", "k8s_objects"})).To(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{"processors", "transform/k8s_objects"})).To(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{"processors", "redaction/k8s_objects"})).To(BeNil())
+			pipelines := readPipelines(collectorConfig)
+			Expect(readPipelineReceivers(pipelines, "logs/k8sevents")).ToNot(ContainElement("k8s_objects"))
+		})
+
+		It("should render the k8s_objects receiver for all namespaces that have it enabled", func() {
+			collectorConfig := assembleWithObjectCollection(nil, []string{"namespace-1", "namespace-2"})
+			k8sObjectsReceiver :=
+				ReadFromMap(collectorConfig, []string{"receivers", "k8s_objects"}).(map[string]any)
+			Expect(k8sObjectsReceiver).ToNot(BeNil())
+
+			// include_initial_state is a receiver-level setting; the receiver rejects it per object and refuses to
+			// start, so this assertion guards against a crash loop.
+			Expect(k8sObjectsReceiver["include_initial_state"]).To(BeTrue())
+
+			objects := k8sObjectsReceiver["objects"].([]any)
+			namespacedNames := make([]any, 0, len(objects))
+			clusterScopedNames := make([]any, 0, len(objects))
+			for _, objectRaw := range objects {
+				object := objectRaw.(map[string]any)
+				Expect(object["mode"]).To(Equal("watch"))
+				Expect(object).ToNot(HaveKey("include_initial_state"))
+				if namespaces, isNamespaced := object["namespaces"]; isNamespaced {
+					namespacedNames = append(namespacedNames, object["name"])
+					Expect(namespaces).To(ConsistOf("namespace-1", "namespace-2"))
+				} else {
+					clusterScopedNames = append(clusterScopedNames, object["name"])
+				}
+			}
+			Expect(namespacedNames).
+				To(ConsistOf("pods", "deployments", "replicasets", "statefulsets", "daemonsets"))
+			Expect(clusterScopedNames).To(ConsistOf("nodes", "persistentvolumes"))
+
+			allNames := append(namespacedNames, clusterScopedNames...)
+			Expect(allNames).ToNot(ContainElement("events"))
+			Expect(allNames).ToNot(ContainElement("secrets"))
+			Expect(allNames).ToNot(ContainElement("configmaps"))
+		})
+
+		It("should render the redaction processors and wire them into the shared logs pipeline", func() {
+			collectorConfig := assembleWithObjectCollection(nil, []string{"namespace-1"})
+
+			transform := ReadFromMap(collectorConfig, []string{"processors", "transform/k8s_objects"})
+			Expect(transform).ToNot(BeNil())
+			statements := ReadFromMap(
+				transform.(map[string]any), []string{"log_statements"}).([]any)[0].(map[string]any)["statements"]
+			Expect(statements).To(ConsistOf(
+				`delete_key(log.body["object"]["metadata"], "managedFields")`,
+				`delete_key(log.body["object"]["metadata"]["annotations"], `+
+					`"kubectl.kubernetes.io/last-applied-configuration") `+
+					`where log.body["object"]["metadata"]["annotations"] != nil`,
+				`delete_key(log.body["object"]["status"], "images") `+
+					`where log.body["object"]["status"]["images"] != nil`,
+			))
+			// Kubernetes event records share this pipeline and have a string body, so without the IsMap gate the
+			// collector logs a warning per event record.
+			conditions := ReadFromMap(
+				transform.(map[string]any), []string{"log_statements"}).([]any)[0].(map[string]any)["conditions"]
+			Expect(conditions).To(ConsistOf(`IsMap(log.body) and log.body["object"] != nil`))
+
+			redaction := ReadFromMap(collectorConfig, []string{"processors", "redaction/k8s_objects"})
+			Expect(redaction).ToNot(BeNil())
+			Expect(redaction.(map[string]any)["allow_all_keys"]).To(BeTrue())
+			Expect(redaction.(map[string]any)["blocked_key_patterns"]).To(ConsistOf("^value$"))
+
+			pipelines := readPipelines(collectorConfig)
+			Expect(pipelines["logs/k8sevents"]).ToNot(BeNil())
+			Expect(readPipelineReceivers(pipelines, "logs/k8sevents")).To(Equal([]any{"k8s_objects"}))
+			processors := readPipelineProcessors(pipelines, "logs/k8sevents")
+			Expect(processors).ToNot(ContainElement("transform/k8s_events"))
+			Expect(processors).To(ContainElements("transform/k8s_objects", "redaction/k8s_objects"))
+			assertCollectorConfigStructurallyValid(collectorConfig, "k8s-objects/only-objects")
+			assertNoDanglingPipelineComponents(collectorConfig, "k8s-objects/only-objects")
+		})
+
+		It("should share one pipeline with the event collection when both are enabled", func() {
+			collectorConfig := assembleWithObjectCollection([]string{"namespace-1"}, []string{"namespace-1"})
+			pipelines := readPipelines(collectorConfig)
+			Expect(readPipelineReceivers(pipelines, "logs/k8sevents")).
+				To(Equal([]any{"k8s_events", "k8s_objects"}))
+			Expect(readPipelineProcessors(pipelines, "logs/k8sevents")).To(ContainElements(
+				"transform/k8s_events",
+				"transform/k8s_objects",
+				"redaction/k8s_objects",
+			))
+			assertCollectorConfigStructurallyValid(collectorConfig, "k8s-objects/events-and-objects")
+			assertNoDanglingPipelineComponents(collectorConfig, "k8s-objects/events-and-objects")
+		})
 	})
 
 	Describe("Signal Control log enrichment [SignalControl]", func() {
@@ -7825,7 +7941,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(grpcOtlpEndpoint).To(Equal(fmt.Sprintf("%s:4317", expected)))
 			Expect(httpOtlpEndpoint).To(Equal(fmt.Sprintf("%s:4318", expected)))
 
-			configMap, err = assembleDeploymentCollectorConfigMap(config, nil, nil, nil, nil, false)
+			configMap, err = assembleDeploymentCollectorConfigMap(config, nil, nil, nil, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig = parseConfigMapContent(configMap)
 			healthCheckEndpoint = ReadFromMap(collectorConfig, []string{"extensions", "health_check", "endpoint"})
@@ -8156,10 +8272,10 @@ func assembleDeploymentCollectorConfigMapForTest(
 		config,
 		monitoredNamespaces,
 		nil,
+		nil,
 		filters,
 		transforms,
-		forDeletion,
-	)
+		forDeletion)
 }
 
 func parseConfigMapContent(configMap *corev1.ConfigMap) map[string]any {

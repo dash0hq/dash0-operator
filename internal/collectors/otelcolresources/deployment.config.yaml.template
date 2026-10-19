@@ -1,4 +1,14 @@
 {{- $hasEventCollectionEnabledForAtLeastOneNamespace := gt (len .NamespacesWithEventCollection) 0 -}}
+{{- $hasKubernetesObjectCollectionEnabledForAtLeastOneNamespace := gt (len .NamespacesWithKubernetesObjectCollection) 0 -}}
+{{- /* Kubernetes events and Kubernetes objects share one logs pipeline, so the pipeline (and everything that only
+exists for it) is rendered when at least one of the two is enabled for at least one namespace. */}}
+{{- $hasK8sLogsPipeline := or $hasEventCollectionEnabledForAtLeastOneNamespace $hasKubernetesObjectCollectionEnabledForAtLeastOneNamespace -}}
+{{- define "k8sObjectNamespaces" }}
+        namespaces:
+        {{- range . }}
+        - '{{ . }}'
+        {{- end }}
+{{- end -}}
 {{- $hasNamespacedExporters := gt (len .Exporters.Namespaced) 0 -}}
 {{- /* Signal Control (SC) does not run in this collector. When the Signal Control collector deployment (the "gateway")
 is deployed, this collector forwards all Dash0-bound telemetry to it via otlp/signal-control-collector and the gateway
@@ -53,7 +63,7 @@ connectors:
     {{- end }}
 {{- end }}
   {{- end }}
-  {{- if and $hasNamespacedExporters $hasEventCollectionEnabledForAtLeastOneNamespace }}
+  {{- if and $hasNamespacedExporters $hasK8sLogsPipeline }}
   routing/logs:
 {{- if $gwDefault }}
     default_pipelines: [logs/to-signal-control{{- if $splitDefault }}, logs/export/default/passthrough{{- end }}]
@@ -105,6 +115,36 @@ receivers:
     {{- end }}
   {{- end }}
 
+  {{- if $hasKubernetesObjectCollectionEnabledForAtLeastOneNamespace }}
+  # Collects the manifests of pods, workloads, nodes and persistent volumes. Deliberately never events (that is what
+  # the k8s_events receiver is for), secrets or config maps.
+  k8s_objects:
+    # include_initial_state is a receiver-level setting; the receiver rejects it per object and refuses to start.
+    include_initial_state: true
+    objects:
+      - name: pods
+        mode: watch
+        {{- template "k8sObjectNamespaces" .NamespacesWithKubernetesObjectCollection }}
+      - name: deployments
+        mode: watch
+        {{- template "k8sObjectNamespaces" .NamespacesWithKubernetesObjectCollection }}
+      - name: replicasets
+        mode: watch
+        {{- template "k8sObjectNamespaces" .NamespacesWithKubernetesObjectCollection }}
+      - name: statefulsets
+        mode: watch
+        {{- template "k8sObjectNamespaces" .NamespacesWithKubernetesObjectCollection }}
+      - name: daemonsets
+        mode: watch
+        {{- template "k8sObjectNamespaces" .NamespacesWithKubernetesObjectCollection }}
+      # Nodes and persistent volumes are cluster-scoped, so they are watched cluster-wide. An entry without a
+      # namespaces key gets one cluster-wide watch.
+      - name: nodes
+        mode: watch
+      - name: persistentvolumes
+        mode: watch
+  {{- end }}
+
 processors:
 {{- if or .SendBatchSize .SendBatchMaxSize }}
   batch:
@@ -118,7 +158,7 @@ processors:
   batch: {}
 {{- end }}
 
-  {{- if or .KubernetesInfrastructureMetricsCollectionEnabled $hasEventCollectionEnabledForAtLeastOneNamespace }}
+  {{- if or .KubernetesInfrastructureMetricsCollectionEnabled $hasK8sLogsPipeline }}
   # Enrich cluster-scoped telemetry cloud/account resource attributes (cloud.provider, cloud.platform, cloud.account.id,
   # cloud.region). Deliberately not adding node- or host-related attributes (k8s.node.*, host.*,
   # cloud.availability_zone, GCE/Azure instance identifiers) here, since that would incorrectly include node attribtues
@@ -419,6 +459,36 @@ processors:
           - delete_key(resource.attributes, "k8s.object.uid")
   {{- end }}
 
+  {{- if $hasKubernetesObjectCollectionEnabledForAtLeastOneNamespace }}
+  # Drops the parts of a manifest that are pure noise or that repeat the whole spec (including env values) as a JSON
+  # string. Both are fixed paths, which is why OTTL can handle them; env values sit in arrays and are masked by
+  # redaction/k8s_objects instead.
+  # The IsMap gate and both where clauses are required rather than cosmetic: Kubernetes event records share this
+  # pipeline and have a string body, and objects without annotations or without status.images are the common case.
+  # Without them the collector logs a warning per record, and the operator ships its collector logs as
+  # self-monitoring telemetry.
+  transform/k8s_objects:
+    error_mode: ignore
+    log_statements:
+      - context: log
+        conditions:
+          - IsMap(log.body) and log.body["object"] != nil
+        statements:
+          - delete_key(log.body["object"]["metadata"], "managedFields")
+          - delete_key(log.body["object"]["metadata"]["annotations"], "kubectl.kubernetes.io/last-applied-configuration")
+            where log.body["object"]["metadata"]["annotations"] != nil
+          # status.images lists every image cached on a node and is the bulk of a node manifest.
+          - delete_key(log.body["object"]["status"], "images")
+            where log.body["object"]["status"]["images"] != nil
+
+  # Masks the values of env[] entries in pod and workload specs. The processor walks nested maps and slices in the log
+  # body, which OTTL cannot do. Kubernetes event records have a string body, so this is a no-op for them.
+  redaction/k8s_objects:
+    allow_all_keys: true
+    blocked_key_patterns:
+      - "^value$"
+  {{- end }}
+
   {{- if .ClusterName }}
   resource/clustername:
     attributes:
@@ -647,14 +717,25 @@ service:
 {{- end }}
     {{- end}}
 
-    {{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}
+    {{- if $hasK8sLogsPipeline }}
     logs/k8sevents:
       receivers:
+        {{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}
         - k8s_events
+        {{- end }}
+        {{- if $hasKubernetesObjectCollectionEnabledForAtLeastOneNamespace }}
+        - k8s_objects
+        {{- end }}
       processors:
         - memory_limiter
         - resource_detection
+        {{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}
         - transform/k8s_events
+        {{- end }}
+        {{- if $hasKubernetesObjectCollectionEnabledForAtLeastOneNamespace }}
+        - transform/k8s_objects
+        - redaction/k8s_objects
+        {{- end }}
         - k8s_attributes
         {{- if .ClusterName }}
         - resource/clustername

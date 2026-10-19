@@ -986,6 +986,72 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(deploymentCollectorContainer.Args).To(ConsistOf("--config=file:/etc/otelcol/conf/config.yaml"))
 	})
 
+	It("should create the collector deployment if only Kubernetes object collection is enabled", func() {
+		monitoringResource := dash0v1beta1.Dash0Monitoring{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "test-namespace"},
+			Spec: dash0v1beta1.Dash0MonitoringSpec{
+				EventCollection: dash0common.EventCollection{Enabled: ptr.To(false)},
+				KubernetesObjectCollection: dash0common.KubernetesObjectCollection{
+					Enabled: ptr.To(true),
+				},
+			},
+		}
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: false,
+			KubernetesObjectCollectionEnabled:                true,
+			Images:                                           TestImages,
+		}, []dash0v1beta1.Dash0Monitoring{monitoringResource}, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(getDeployment(desiredState)).ToNot(BeNil())
+		deploymentCollectorConfigMapContent := getDeploymentCollectorConfigMapContent(desiredState)
+		Expect(deploymentCollectorConfigMapContent).To(ContainSubstring("  k8s_objects:"))
+		Expect(deploymentCollectorConfigMapContent).NotTo(ContainSubstring("  k8s_events:"))
+	})
+
+	It("should not collect Kubernetes objects if the cluster-wide setting is disabled, even if a namespace opts in",
+		func() {
+			monitoringResource := dash0v1beta1.Dash0Monitoring{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-namespace"},
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					KubernetesObjectCollection: dash0common.KubernetesObjectCollection{
+						Enabled: ptr.To(true),
+					},
+				},
+			}
+			desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         defaultDash0ExportersWithToken(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				KubernetesObjectCollectionEnabled:                false,
+				Images:                                           TestImages,
+			}, []dash0v1beta1.Dash0Monitoring{monitoringResource}, util.ExtraConfigDefaults)
+
+			Expect(err).ToNot(HaveOccurred())
+			deploymentCollectorConfigMapContent := getDeploymentCollectorConfigMapContent(desiredState)
+			Expect(deploymentCollectorConfigMapContent).NotTo(ContainSubstring("  k8s_objects:"))
+		})
+
+	It("should not collect Kubernetes objects if no monitoring resource opts in", func() {
+		monitoringResource := dash0v1beta1.Dash0Monitoring{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "test-namespace"},
+		}
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			Images: TestImages,
+		}, []dash0v1beta1.Dash0Monitoring{monitoringResource}, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(getDeploymentCollectorConfigMapContent(desiredState)).NotTo(ContainSubstring("  k8s_objects:"))
+	})
+
 	It("should omit all resources related to the collector deployment if collecting cluster metrics is disabled", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,

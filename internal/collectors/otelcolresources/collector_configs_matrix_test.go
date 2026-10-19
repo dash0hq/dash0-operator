@@ -40,6 +40,7 @@ type collectorConfigMatrixEntry struct {
 	monitoredNamespaces              []string
 	namespacesWithLogCollection      []string
 	namespacesWithEventCollection    []string
+	namespacesWithK8sObjects         []string
 	namespacesWithPrometheusScraping []string
 	filters                          []NamespacedFilter
 	transforms                       []NamespacedTransform
@@ -133,6 +134,7 @@ func maximalMatrixBaseline() collectorConfigMatrixEntry {
 		monitoredNamespaces:              monitoredNamespaces,
 		namespacesWithLogCollection:      monitoredNamespaces,
 		namespacesWithEventCollection:    defaultNamespacesWithEventCollection,
+		namespacesWithK8sObjects:         monitoredNamespaces,
 		namespacesWithPrometheusScraping: monitoredNamespaces,
 		filters:                          matrixFilters(),
 		transforms:                       matrixTransforms(),
@@ -454,6 +456,16 @@ func matrixSettings() []matrixSetting {
 					e.namespacesWithEventCollection = defaultNamespacesWithEventCollection
 				} else {
 					e.namespacesWithEventCollection = nil
+				}
+			},
+		},
+		{
+			name: "kubernetes-object-collection",
+			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				if enabled {
+					e.namespacesWithK8sObjects = monitoredNamespaces
+				} else {
+					e.namespacesWithK8sObjects = nil
 				}
 			},
 		},
@@ -784,6 +796,7 @@ func (e *collectorConfigMatrixEntry) templateValues() *collectorConfigurationTem
 		e.monitoredNamespaces,
 		e.namespacesWithLogCollection,
 		e.namespacesWithEventCollection,
+		e.namespacesWithK8sObjects,
 		e.namespacesWithPrometheusScraping,
 		e.filters,
 		e.transforms,
@@ -835,11 +848,14 @@ func (e *collectorConfigMatrixEntry) render() ([]renderedCollectorConfig, error)
 	// The cluster metrics collector deployment is only created when it has something to collect; the condition has to
 	// match the one in assembleDesiredState, otherwise the matrix would validate a configuration that the operator
 	// never deploys.
-	if config.KubernetesInfrastructureMetricsCollectionEnabled || len(e.namespacesWithEventCollection) > 0 {
+	if config.KubernetesInfrastructureMetricsCollectionEnabled ||
+		len(e.namespacesWithEventCollection) > 0 ||
+		len(e.namespacesWithK8sObjects) > 0 {
 		deploymentConfigMap, err := assembleDeploymentCollectorConfigMap(
 			&config,
 			e.monitoredNamespaces,
 			e.namespacesWithEventCollection,
+			e.namespacesWithK8sObjects,
 			e.filters,
 			e.transforms,
 			false,
