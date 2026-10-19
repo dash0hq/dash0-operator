@@ -184,10 +184,8 @@ This recommendation does not apply to workloads that are [excluded from workload
 
 ## Notes on ArgoCD
 
-Unless [cert-manager](advanced-configuration.md#using-cert-manager) is used, the operator manages the TLS certificates
-for its webhooks, see [Webhook Certificates](advanced-configuration.md#webhook-certificates).
-The manifests that ArgoCD renders contain neither certificates nor `caBundle` values, so syncs and hard refreshes do not
-change the certificates, and they do not show up as a diff.
+Applications that have been installed with version 0.158.0 or later do not need any `ignoreDifferences` entries for the
+certificates.
 
 ### Upgrading to Version 0.158.0
 
@@ -203,6 +201,8 @@ Jobs and pods without an owner that are created in this time need to be created 
 
 To avoid this, add the following settings to the ArgoCD application together with the upgrade or shortly before it, and
 keep them afterwards.
+Once they have been applied, ArgoCD stores the `caBundle` values as part of the applied manifests, and removing the
+settings later makes ArgoCD remove these values once.
 Do not add them months before the upgrade, since they stop ArgoCD from replacing the certificate of the old version,
 which expires 365 days after it has been generated.
 

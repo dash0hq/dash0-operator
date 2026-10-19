@@ -59,8 +59,6 @@ When upgrading from a version before 0.158.0:
 * **Pipelines that render the chart without access to the cluster**, for example `helm template` followed by
   `kubectl apply`, or Kustomize's `helmCharts`: Requests to the operator's webhooks fail from applying the manifests
   until the new operator pod has written the CA bundle, with the effects described for ArgoCD without preparation.
-* The operator image must have the same version as the Helm chart, or a later version.
-  If you set `operator.image.tag` to a version before 0.158.0, the operator pod does not start.
 
 Rolling back to a version before 0.158.0:
 
