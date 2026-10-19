@@ -381,6 +381,16 @@ func validateTelemetryCollectionDisabledConsistency(
 		logger.Warn(msg)
 		return admission.Denied(msg), true
 	}
+	// Unlike the settings above, Kubernetes object collection is opt-in and the mutating webhook does not derive it
+	// from telemetryCollection.enabled, so the default here is false: only an explicit opt-in conflicts.
+	if pointers.ReadBoolPointerWithDefault(spec.KubernetesObjectCollection.Enabled, false) {
+		msg := "The provided Dash0 operator configuration resource has Kubernetes object collection " +
+			"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
+			"Please either set telemetryCollection.enabled=true or " +
+			"kubernetesObjectCollection.enabled=false."
+		logger.Warn(msg)
+		return admission.Denied(msg), true
+	}
 	if pointers.ReadBoolPointerWithDefault(spec.PrometheusCrdSupport.Enabled, true) {
 		logger.Warn(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)
 		return admission.Denied(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid), true
