@@ -98,26 +98,200 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[23].valueFrom.fieldRef.fieldPath
           value: metadata.name
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[24].name
+          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[25].name
+          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[26].name
+          value: DASH0_CA_BUNDLE_TARGETS
+      - notExists:
+          path: spec.template.spec.containers[0].env[27].name
 
-  - it: secret should contain ca and cert
+  - it: webhook certificates secret should be rendered without data
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-webhook-server-cert
+    asserts:
+      - equal:
+          path: kind
+          value: Secret
+      - equal:
+          path: type
+          value: Opaque
+      - equal:
+          path: metadata.namespace
+          value: NAMESPACE
+      - notExists:
+          path: data
+      - notExists:
+          path: stringData
+
+  - it: webhook certificates secret should not be rendered if cert-manager is used
+    set:
+      operator:
+        certManager:
+          useCertManager: true
+          secretName: dash0-operator-certificate-secret
+          certManagerAnnotations:
+            cert-manager.io/inject-ca-from: dash0-system/dash0-operator-serving-certificate
+    asserts:
+      - containsDocument:
+          kind: Secret
+          apiVersion: v1
+          name: dash0-operator-webhook-server-cert
+          namespace: NAMESPACE
+        not: true
+
+  - it: legacy certificates secret should not be rendered if it does not exist
+    asserts:
+      - containsDocument:
+          kind: Secret
+          apiVersion: v1
+          name: dash0-operator-certificates
+          namespace: NAMESPACE
+        not: true
+
+  - it: legacy certificates secret should be rendered unchanged as long as it exists
+    kubernetesProvider:
+      scheme:
+        "v1/Secret":
+          gvr:
+            version: "v1"
+            resource: "secrets"
+          namespaced: true
+      objects:
+        - kind: Secret
+          apiVersion: v1
+          type: kubernetes.io/tls
+          metadata:
+            name: dash0-operator-certificates
+            namespace: NAMESPACE
+          data:
+            ca.crt: bGVnYWN5LWNh
+            tls.crt: bGVnYWN5LWNlcnQ=
+            tls.key: bGVnYWN5LWtleQ==
     documentSelector:
       path: metadata.name
       value: dash0-operator-certificates
     asserts:
-      - exists:
-          path: data["ca.crt"]
-      - isNotNullOrEmpty:
-          path: data["ca.crt"]
-      - exists:
-          path: data["tls.crt"]
-      - isNotNullOrEmpty:
-          path: data["tls.crt"]
-      - exists:
-          path: data["tls.key"]
-      - isNotNullOrEmpty:
-          path: data["tls.key"]
+      - equal:
+          path: type
+          value: kubernetes.io/tls
+      - equal:
+          path: data
+          value:
+            ca.crt: bGVnYWN5LWNh
+            tls.crt: bGVnYWN5LWNlcnQ=
+            tls.key: bGVnYWN5LWtleQ==
+
+  - it: should render the environment variables for the webhook certificates managed by the operator
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
+            value: dash0-operator-webhook-server-cert
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+            value: dash0-operator-certificates
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_CA_BUNDLE_TARGETS
+            value: "MutatingWebhookConfiguration/dash0-operator-injector,MutatingWebhookConfiguration/dash0-operator-operator-configuration-mutating,ValidatingWebhookConfiguration/dash0-operator-operator-configuration-validator,MutatingWebhookConfiguration/dash0-operator-monitoring-mutating,ValidatingWebhookConfiguration/dash0-operator-monitoring-validator,CustomResourceDefinition/dash0monitorings.operator.dash0.com"
+
+  - it: should include the signal control validator in the CA bundle targets if signal control is enabled
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        signalControl:
+          enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_CA_BUNDLE_TARGETS
+            value: "MutatingWebhookConfiguration/dash0-operator-injector,MutatingWebhookConfiguration/dash0-operator-operator-configuration-mutating,ValidatingWebhookConfiguration/dash0-operator-operator-configuration-validator,MutatingWebhookConfiguration/dash0-operator-monitoring-mutating,ValidatingWebhookConfiguration/dash0-operator-monitoring-validator,CustomResourceDefinition/dash0monitorings.operator.dash0.com,ValidatingWebhookConfiguration/dash0-operator-signal-control-validator"
+
+  - it: should not render the environment variables for the webhook certificates if cert-manager is used
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        certManager:
+          useCertManager: true
+          secretName: dash0-operator-certificate-secret
+          certManagerAnnotations:
+            cert-manager.io/inject-ca-from: dash0-system/dash0-operator-serving-certificate
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_CA_BUNDLE_TARGETS
+          any: true
+
+  - it: should not mount the certificates volume if the operator manages the webhook certificates
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: certificates
+          any: true
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: certificates
+          any: true
+
+  - it: should mount the certificates volume if cert-manager is used
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        certManager:
+          useCertManager: true
+          secretName: dash0-operator-certificate-secret
+          certManagerAnnotations:
+            cert-manager.io/inject-ca-from: dash0-system/dash0-operator-serving-certificate
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: certificates
+            mountPath: /tmp/k8s-webhook-server/serving-certs
+            readOnly: true
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: certificates
+            secret:
+              defaultMode: 420
+              secretName: dash0-operator-certificate-secret
 
   - it: deployment should match snapshot when using cert-manager
     documentSelector:
@@ -731,8 +905,17 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[42].valueFrom.fieldRef.fieldPath
           value: metadata.name
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[43].name
+          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[44].name
+          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[45].name
+          value: DASH0_CA_BUNDLE_TARGETS
+      - notExists:
+          path: spec.template.spec.containers[0].env[46].name
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
           value: 123m
@@ -1429,31 +1612,13 @@ tests:
           path: spec.template.spec.containers[0].env[20].value
           value: Never
 
-  - it: should render the "dash0.com/cert-digest" label
+  - it: should not render the "dash0.com/cert-digest" label
     documentSelector:
       path: metadata.name
       value: dash0-operator-controller
     asserts:
-      - exists:
+      - notExists:
           path: spec.template.metadata.labels["dash0.com/cert-digest"]
-      - isNotNullOrEmpty:
-          path: spec.template.metadata.labels["dash0.com/cert-digest"]
-
-  - it: should not render the "dash0.com/cert-digest" label if cert-manager is used
-    documentSelector:
-      path: metadata.name
-      value: dash0-operator-controller
-    set:
-      operator:
-        certManager:
-          useCertManager: true
-          secretName: dash0-operator-certificate-secret
-          certManagerAnnotations:
-            cert-manager.io/inject-ca-from: dash0-system/dash0-operator-serving-certificate
-    asserts:
-      - exists:
-          path: spec.template.metadata.labels["dash0.com/cert-digest"]
-        not: true
 
   - it: deployment should support referencing images by digest instead of tag
     documentSelector:
@@ -1559,8 +1724,17 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[23].valueFrom.fieldRef.fieldPath
           value: metadata.name
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[24].name
+          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[25].name
+          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[26].name
+          value: DASH0_CA_BUNDLE_TARGETS
+      - notExists:
+          path: spec.template.spec.containers[0].env[27].name
 
   - it: deployment should support changing repositories for images
     chart:
@@ -1673,78 +1847,170 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[23].valueFrom.fieldRef.fieldPath
           value: metadata.name
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[24].name
+          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[25].name
+          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[26].name
+          value: DASH0_CA_BUNDLE_TARGETS
+      - notExists:
+          path: spec.template.spec.containers[0].env[27].name
 
-  - it: mutating webhook should have caBundle set
-    documentSelector:
-      path: metadata.name
-      value: dash0-operator-injector
-    asserts:
-      - isNotNullOrEmpty:
-          path: webhooks[0].clientConfig.caBundle
-
-  - it: mutating webhook should have caBundle set also with custom settings
-    documentSelector:
-      path: metadata.name
-      value: dash0-operator-injector
+  - it: webhook configurations should not render a caBundle if the live objects cannot be read
     set:
       operator:
-        webhookPort: 554
+        signalControl:
+          enabled: true
     asserts:
-      - isNotNullOrEmpty:
+      - notExists:
           path: webhooks[0].clientConfig.caBundle
-
-  - it: validating webhook for operator configuration resource should have caBundle set
-    documentSelector:
-      path: metadata.name
-      value: dash0-operator-operator-configuration-validator
-    asserts:
-      - isNotNullOrEmpty:
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-injector
+      - notExists:
           path: webhooks[0].clientConfig.caBundle
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-operator-configuration-mutating
+      - notExists:
+          path: webhooks[0].clientConfig.caBundle
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-operator-configuration-validator
+      - notExists:
+          path: webhooks[0].clientConfig.caBundle
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-signal-control-validator
+      - notExists:
+          path: webhooks[0].clientConfig.caBundle
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-monitoring-mutating
+      - notExists:
+          path: webhooks[0].clientConfig.caBundle
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-monitoring-validator
+      - notExists:
+          path: spec.conversion.webhook.clientConfig.caBundle
+        documentSelector:
+          path: metadata.name
+          value: dash0monitorings.operator.dash0.com
 
-  - it: validating webhook for operator configuration resource should have caBundle set also with custom settings
-    documentSelector:
-      path: metadata.name
-      value: dash0-operator-operator-configuration-validator
+  - it: webhook configurations should render the live caBundle
     set:
       operator:
-        webhookPort: 554
+        signalControl:
+          enabled: true
+    kubernetesProvider:
+      scheme:
+        "admissionregistration.k8s.io/v1/MutatingWebhookConfiguration":
+          gvr:
+            group: admissionregistration.k8s.io
+            version: v1
+            resource: mutatingwebhookconfigurations
+          namespaced: false
+        "admissionregistration.k8s.io/v1/ValidatingWebhookConfiguration":
+          gvr:
+            group: admissionregistration.k8s.io
+            version: v1
+            resource: validatingwebhookconfigurations
+          namespaced: false
+      objects:
+        - apiVersion: admissionregistration.k8s.io/v1
+          kind: MutatingWebhookConfiguration
+          metadata:
+            name: dash0-operator-injector
+          webhooks:
+            - name: inject.dash0.com
+              clientConfig:
+                caBundle: bGl2ZS1pbmplY3Rvcg==
+        - apiVersion: admissionregistration.k8s.io/v1
+          kind: MutatingWebhookConfiguration
+          metadata:
+            name: dash0-operator-operator-configuration-mutating
+          webhooks:
+            - name: mutate-operator-configuration.dash0.com
+              clientConfig:
+                caBundle: bGl2ZS1vYy1tdXRhdGluZw==
+        - apiVersion: admissionregistration.k8s.io/v1
+          kind: ValidatingWebhookConfiguration
+          metadata:
+            name: dash0-operator-operator-configuration-validator
+          webhooks:
+            - name: validate-operator-configuration.dash0.com
+              clientConfig:
+                caBundle: bGl2ZS1vYy12YWxpZGF0b3I=
+        - apiVersion: admissionregistration.k8s.io/v1
+          kind: ValidatingWebhookConfiguration
+          metadata:
+            name: dash0-operator-signal-control-validator
+          webhooks:
+            - name: validate-signal-control.dash0.com
+              clientConfig:
+                caBundle: bGl2ZS1zYy12YWxpZGF0b3I=
+        - apiVersion: admissionregistration.k8s.io/v1
+          kind: MutatingWebhookConfiguration
+          metadata:
+            name: dash0-operator-monitoring-mutating
+          webhooks:
+            - name: mutate-monitoring.dash0.com
+              clientConfig:
+                caBundle: bGl2ZS1tLW11dGF0aW5n
+        - apiVersion: admissionregistration.k8s.io/v1
+          kind: ValidatingWebhookConfiguration
+          metadata:
+            name: dash0-operator-monitoring-validator
+          webhooks:
+            - name: some-other-webhook.dash0.com
+              clientConfig:
+                caBundle: b3RoZXItd2ViaG9vaw==
+            - name: validate-monitoring.dash0.com
+              clientConfig:
+                caBundle: bGl2ZS1tLXZhbGlkYXRvcg==
     asserts:
-      - isNotNullOrEmpty:
+      - equal:
           path: webhooks[0].clientConfig.caBundle
-
-  - it: validating webhook for monitoring resource should have caBundle set
-    documentSelector:
-      path: metadata.name
-      value: dash0-operator-monitoring-validator
-    asserts:
-      - isNotNullOrEmpty:
+          value: bGl2ZS1pbmplY3Rvcg==
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-injector
+      - equal:
           path: webhooks[0].clientConfig.caBundle
-
-  - it: validating webhook for monitoring resource should have caBundle set also with custom settings
-    documentSelector:
-      path: metadata.name
-      value: dash0-operator-monitoring-validator
-    set:
-      operator:
-        webhookPort: 554
-    asserts:
-      - isNotNullOrEmpty:
+          value: bGl2ZS1vYy1tdXRhdGluZw==
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-operator-configuration-mutating
+      - equal:
           path: webhooks[0].clientConfig.caBundle
+          value: bGl2ZS1vYy12YWxpZGF0b3I=
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-operator-configuration-validator
+      - equal:
+          path: webhooks[0].clientConfig.caBundle
+          value: bGl2ZS1zYy12YWxpZGF0b3I=
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-signal-control-validator
+      - equal:
+          path: webhooks[0].clientConfig.caBundle
+          value: bGl2ZS1tLW11dGF0aW5n
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-monitoring-mutating
+      - equal:
+          path: webhooks[0].clientConfig.caBundle
+          value: bGl2ZS1tLXZhbGlkYXRvcg==
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-monitoring-validator
 
-  - it: webhook service should render the "dash0.com/cert-digest" label
-    documentSelector:
-      path: metadata.name
-      value: dash0-operator-webhook-service
-    asserts:
-      - isNotNullOrEmpty:
-          path: spec.selector["dash0.com/cert-digest"]
-
-  - it: webhook service should not render the "dash0.com/cert-digest" label if cert-manager is used
-    documentSelector:
-      path: metadata.name
-      value: dash0-operator-webhook-service
+  - it: webhook configurations should not render a caBundle if cert-manager is used, even if a live caBundle exists
     set:
       operator:
         certManager:
@@ -1752,10 +2018,133 @@ tests:
           secretName: dash0-operator-certificate-secret
           certManagerAnnotations:
             cert-manager.io/inject-ca-from: dash0-system/dash0-operator-serving-certificate
+    kubernetesProvider:
+      scheme:
+        "admissionregistration.k8s.io/v1/MutatingWebhookConfiguration":
+          gvr:
+            group: admissionregistration.k8s.io
+            version: v1
+            resource: mutatingwebhookconfigurations
+          namespaced: false
+      objects:
+        - apiVersion: admissionregistration.k8s.io/v1
+          kind: MutatingWebhookConfiguration
+          metadata:
+            name: dash0-operator-injector
+          webhooks:
+            - name: inject.dash0.com
+              clientConfig:
+                caBundle: bGl2ZS1pbmplY3Rvcg==
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-injector
     asserts:
-      - exists:
-          path: spec.template.metadata.labels["dash0.com/cert-digest"]
-        not: true
+      - notExists:
+          path: webhooks[0].clientConfig.caBundle
+
+  - it: should label all CA bundle injection targets
+    set:
+      operator:
+        signalControl:
+          enabled: true
+    asserts:
+      - equal:
+          path: metadata.labels["dash0.com/inject-ca-bundle"]
+          value: NAMESPACE
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-injector
+      - equal:
+          path: metadata.labels["dash0.com/inject-ca-bundle"]
+          value: NAMESPACE
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-operator-configuration-mutating
+      - equal:
+          path: metadata.labels["dash0.com/inject-ca-bundle"]
+          value: NAMESPACE
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-operator-configuration-validator
+      - equal:
+          path: metadata.labels["dash0.com/inject-ca-bundle"]
+          value: NAMESPACE
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-signal-control-validator
+      - equal:
+          path: metadata.labels["dash0.com/inject-ca-bundle"]
+          value: NAMESPACE
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-monitoring-mutating
+      - equal:
+          path: metadata.labels["dash0.com/inject-ca-bundle"]
+          value: NAMESPACE
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-monitoring-validator
+      - equal:
+          path: metadata.labels["dash0.com/inject-ca-bundle"]
+          value: NAMESPACE
+        documentSelector:
+          path: metadata.name
+          value: dash0monitorings.operator.dash0.com
+
+  - it: should not label any object as CA bundle injection target if cert-manager is used
+    set:
+      operator:
+        signalControl:
+          enabled: true
+        certManager:
+          useCertManager: true
+          secretName: dash0-operator-certificate-secret
+          certManagerAnnotations:
+            cert-manager.io/inject-ca-from: dash0-system/dash0-operator-serving-certificate
+    asserts:
+      - notExists:
+          path: metadata.labels["dash0.com/inject-ca-bundle"]
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-injector
+      - notExists:
+          path: metadata.labels["dash0.com/inject-ca-bundle"]
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-operator-configuration-mutating
+      - notExists:
+          path: metadata.labels["dash0.com/inject-ca-bundle"]
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-operator-configuration-validator
+      - notExists:
+          path: metadata.labels["dash0.com/inject-ca-bundle"]
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-signal-control-validator
+      - notExists:
+          path: metadata.labels["dash0.com/inject-ca-bundle"]
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-monitoring-mutating
+      - notExists:
+          path: metadata.labels["dash0.com/inject-ca-bundle"]
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-monitoring-validator
+      - notExists:
+          path: metadata.labels["dash0.com/inject-ca-bundle"]
+        documentSelector:
+          path: metadata.name
+          value: dash0monitorings.operator.dash0.com
+
+  - it: webhook service should not select pods by the "dash0.com/cert-digest" label
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-webhook-service
+    asserts:
+      - notExists:
+          path: spec.selector["dash0.com/cert-digest"]
 
   - it: webhook service should match snapshot (default settings)
     documentSelector:
@@ -1774,10 +2163,6 @@ tests:
           name: custom-webhook-service-name
           port: 554
     asserts:
-      - exists:
-          path: spec.selector["dash0.com/cert-digest"]
-      - isNotNullOrEmpty:
-          path: spec.selector["dash0.com/cert-digest"]
       - equal:
           path: spec.ports[0].port
           value: 554
@@ -1812,9 +2197,7 @@ tests:
           annotation1: "metrics service annotation 1"
           annotation2: "metrics service annotation 2"
     asserts:
-      - exists:
-          path: spec.selector["dash0.com/cert-digest"]
-      - isNotNullOrEmpty:
+      - notExists:
           path: spec.selector["dash0.com/cert-digest"]
       - equal:
           path: spec.ports[0].port
@@ -1835,15 +2218,36 @@ tests:
           path:
             spec.versions
 
-  - it: monitoring resource CRD should render the caBundle for the conversion webhook
+  - it: monitoring resource CRD should render the live caBundle for the conversion webhook
+    kubernetesProvider:
+      scheme:
+        "apiextensions.k8s.io/v1/CustomResourceDefinition":
+          gvr:
+            group: apiextensions.k8s.io
+            version: v1
+            resource: customresourcedefinitions
+          namespaced: false
+      objects:
+        - apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          metadata:
+            name: dash0monitorings.operator.dash0.com
+          spec:
+            conversion:
+              strategy: Webhook
+              webhook:
+                clientConfig:
+                  caBundle: bGl2ZS1jb252ZXJzaW9u
     documentSelector:
       path: metadata.name
       value: dash0monitorings.operator.dash0.com
     asserts:
-      - exists:
+      - equal:
           path: spec.conversion.webhook.clientConfig.caBundle
-      - isNotNullOrEmpty:
-          path: spec.conversion.webhook.clientConfig.caBundle
+          value: bGl2ZS1jb252ZXJzaW9u
+      - equal:
+          path: spec.conversion.webhook.clientConfig.service.name
+          value: dash0-operator-webhook-service
 
   - it: monitoring resource CRD should not render the caBundle for the conversion webhook if cert-manager is used
     documentSelector:

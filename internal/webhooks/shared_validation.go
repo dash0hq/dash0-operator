@@ -32,6 +32,16 @@ func validateGrpcExportInsecureFlags(export *common.Export) valid {
 	}
 }
 
+// isReachabilityCheck reports whether the request is one of the dry-run requests with which the Helm chart's
+// post-install hook checks that the webhooks are reachable. These requests are allowed right away, without validation
+// or logging; since they are dry-run requests, nothing is persisted.
+func isReachabilityCheck(request admission.Request) bool {
+	return request.DryRun != nil &&
+		*request.DryRun &&
+		request.Operation == admissionv1.Create &&
+		request.Name == util.WebhookReachabilityCheckResourceName
+}
+
 // componentSettingsAreUnchanged reports whether the request is an UPDATE that leaves spec.components unchanged, which
 // is not checked again: a setting stored before the validation became stricter must not block updates of other fields.
 // Returns an error response if the OldObject cannot be decoded.

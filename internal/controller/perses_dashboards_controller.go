@@ -21,10 +21,12 @@ import (
 	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	k8sretry "k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -54,6 +56,9 @@ type PersesDashboardCrdReconciler struct {
 	crdVersion atomic.Pointer[string]
 
 	conversionWebhookSettings PersesDashboardConversionWebhookSettings
+	// uncachedClient is used to read the CRD again after a conflicting conversion webhook patch, and when the CA bundle
+	// changes.
+	uncachedClient client.Client
 }
 
 // PersesDashboardConversionWebhookSettings are the settings for auto-patching the PersesDashboard CRD's conversion webhook stanza
@@ -65,6 +70,9 @@ type PersesDashboardConversionWebhookSettings struct {
 	WebhookServicePort         int32
 	// CaBundlePath is optional; defaults to the standard controller-runtime serving-certs mount.
 	CaBundlePath string
+	// CaBundleSource is optional; if set, the CA bundle is read from it instead of from CaBundlePath. It is set when the
+	// operator manages the webhook certificates itself.
+	CaBundleSource func() []byte
 }
 
 type PersesDashboardReconciler struct {
@@ -83,9 +91,14 @@ type PersesDashboardReconciler struct {
 }
 
 const (
+	// PersesDashboardCrdName is the name of the perses.dev PersesDashboard CRD.
+	PersesDashboardCrdName = "persesdashboards.perses.dev"
+
 	persesDashboardV1Alpha1         = "v1alpha1"
 	persesDashboardV1Alpha2         = "v1alpha2"
 	defaultWebhookServingCertCAPath = "/tmp/k8s-webhook-server/serving-certs/ca.crt"
+
+	persesCaBundleUpdateTimeout = 30 * time.Second
 )
 
 var (
@@ -198,7 +211,7 @@ func chooseVersionFromCrd(crd *apiextensionsv1.CustomResourceDefinition, logger 
 }
 
 func (r *PersesDashboardCrdReconciler) QualifiedKind() string {
-	return "persesdashboards.perses.dev"
+	return PersesDashboardCrdName
 }
 
 func (r *PersesDashboardCrdReconciler) ControllerName() string {
@@ -254,6 +267,7 @@ func (r *PersesDashboardCrdReconciler) SetupWithManager(
 	logger logd.Logger,
 ) error {
 	r.mgr = mgr
+	r.uncachedClient = startupK8sClient
 	if err := SetupThirdPartyCrdReconcilerWithManager(
 		ctx,
 		startupK8sClient,
@@ -1032,6 +1046,77 @@ func (r *PersesDashboardCrdReconciler) ensurePersesConversionWebhookConfigured(
 	logger.Info("Checking whether the PersesDashboard CRD conversion webhook needs patching (auto-patch is enabled, " +
 		"operator.iac.persesDashboard.autoPatchConversionWebhook=true).")
 
+	stanzaMatches := false
+	firstAttempt := true
+	err := k8sretry.RetryOnConflict(k8sretry.DefaultRetry, func() error {
+		if !firstAttempt {
+			// The CRD has been changed since it has been read, for example by another replica of the operator manager.
+			crd = &apiextensionsv1.CustomResourceDefinition{}
+			if err := r.crdReader().Get(ctx, client.ObjectKey{Name: r.QualifiedKind()}, crd); err != nil {
+				return err
+			}
+		}
+		firstAttempt = false
+		var err error
+		stanzaMatches, err = r.patchConversionWebhookIfNecessary(ctx, crd, onUpdate, logger)
+		return err
+	})
+	if err == nil {
+		return
+	}
+	if stanzaMatches {
+		logger.Error(
+			err,
+			"Failed to update the CA bundle of the Dash0-operator conversion webhook on the perses.dev "+
+				"PersesDashboard CRD. Requests that require a conversion of PersesDashboard resources may fail with a "+
+				"certificate error.",
+		)
+	} else {
+		logger.Error(
+			err,
+			"Failed to patch the perses.dev PersesDashboard CRD with the Dash0-operator conversion webhook "+
+				"configuration. v1alpha1 PersesDashboard resources will lose fields when stored.",
+		)
+	}
+}
+
+// OnCaBundleChange updates the CA bundle of the conversion webhook stanza after the operator-managed webhook CA bundle
+// has changed. It reads the CRD without the cache and runs on every replica, independent of leader election.
+func (r *PersesDashboardCrdReconciler) OnCaBundleChange(ctx context.Context, logger logd.Logger) {
+	if !r.conversionWebhookSettings.AutoPatchConversionWebhook {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, persesCaBundleUpdateTimeout)
+	defer cancel()
+	crd := &apiextensionsv1.CustomResourceDefinition{}
+	if err := r.crdReader().Get(ctx, client.ObjectKey{Name: r.QualifiedKind()}, crd); err != nil {
+		if !apierrors.IsNotFound(err) {
+			logger.Error(
+				err,
+				"Cannot read the perses.dev PersesDashboard CRD to update the CA bundle of its conversion webhook.",
+			)
+		}
+		return
+	}
+	r.ensurePersesConversionWebhookConfigured(ctx, crd, false, logger)
+}
+
+func (r *PersesDashboardCrdReconciler) crdReader() client.Reader {
+	if r.uncachedClient != nil {
+		return r.uncachedClient
+	}
+	return r.Client
+}
+
+// patchConversionWebhookIfNecessary patches the conversion stanza unless it is up to date or a foreign conversion webhook
+// is configured. The patch carries the resourceVersion of the given CRD, so it fails with a conflict if the CRD has been
+// changed in the meantime. The returned bool reports whether the stanza already pointed at the Dash0 operator.
+func (r *PersesDashboardCrdReconciler) patchConversionWebhookIfNecessary(
+	ctx context.Context,
+	crd *apiextensionsv1.CustomResourceDefinition,
+	onUpdate bool,
+	logger logd.Logger,
+) (bool, error) {
 	// stanzaMatches tells us whether the conversion stanza already points at our webhook service. It intentionally
 	// ignores the caBundle, so we also need caBundleMatches to detect a rotated CA on an otherwise-unchanged stanza
 	// (see below).
@@ -1046,51 +1131,27 @@ func (r *PersesDashboardCrdReconciler) ensurePersesConversionWebhookConfigured(
 					"(not pointing at the Dash0 operator); leaving the CRD untouched.",
 			)
 		}
-		return
+		return stanzaMatches, nil
 	}
 
 	// The CA bundle might need changes independently of the conversion webhook stanza, if certs get rotated (for example
-	// when using the Helm-chart-generated certs and doing a helm upgrade).
-	caBundle, err := os.ReadFile(r.conversionWebhookSettings.CaBundlePath)
-	if err != nil {
-		logger.Error(
-			err,
-			"Cannot read CA bundle for patching the perses.dev PersesDashboard CRD conversion webhook; "+
-				"skipping the patch. v1alpha1 PersesDashboard resources may lose fields when stored.",
-			"caBundlePath", r.conversionWebhookSettings.CaBundlePath,
-		)
-		return
-	}
-	// Skip the patch on an empty bundle: this happens transiently while cert-manager (or whatever provisions the serving cert)
-	// has not yet materialized the file. Patching with an empty caBundle would make the API server reject every conversion
-	// request until we re-reconcile and rewrite the bundle, so it's strictly worse than leaving the previous stanza in place.
-	if len(bytes.TrimSpace(caBundle)) == 0 {
-		logger.Error(
-			fmt.Errorf("CA bundle file is empty"),
-			"CA bundle for patching the perses.dev PersesDashboard CRD conversion webhook is empty; skipping the patch. "+
-				"This is expected briefly while the serving cert is being provisioned; the next CRD reconciliation will "+
-				"retry. If it persists, v1alpha1 PersesDashboard resources may lose fields when stored.",
-			"caBundlePath", r.conversionWebhookSettings.CaBundlePath,
-		)
-		return
+	// when using cert-manager, or when the operator rotates its own CA).
+	caBundle, ok := r.readCaBundle(logger)
+	if !ok {
+		return stanzaMatches, nil
 	}
 
 	if stanzaMatches && caBundleMatches(crd, caBundle) {
 		// Fully up to date: our service target and the current CA bundle are both already in place.
 		logger.Info("PersesDashboard CRD conversion webhook (stanza and caBundle) is up to date, no need to patch.")
-		return
+		return stanzaMatches, nil
 	}
 
 	patched := crd.DeepCopy()
 	patched.Spec.Conversion = r.buildConversionStanza(caBundle)
 
-	if err := r.Patch(ctx, patched, client.MergeFrom(crd)); err != nil {
-		logger.Error(
-			err,
-			"Failed to patch the perses.dev PersesDashboard CRD with the Dash0-operator conversion webhook configuration. "+
-				"v1alpha1 PersesDashboard resources will lose fields when stored.",
-		)
-		return
+	if err := r.Patch(ctx, patched, client.MergeFromWithOptions(crd, client.MergeFromWithOptimisticLock{})); err != nil {
+		return stanzaMatches, err
 	}
 
 	switch {
@@ -1113,6 +1174,42 @@ func (r *PersesDashboardCrdReconciler) ensurePersesConversionWebhookConfigured(
 			"Patched the perses.dev PersesDashboard CRD to route conversions through the Dash0 operator's conversion webhook.",
 		)
 	}
+	return stanzaMatches, nil
+}
+
+// readCaBundle returns the CA bundle for the conversion webhook stanza, or false if it is not available (yet).
+func (r *PersesDashboardCrdReconciler) readCaBundle(logger logd.Logger) ([]byte, bool) {
+	var caBundle []byte
+	caBundleSource := "operator-managed webhook certificates"
+	if r.conversionWebhookSettings.CaBundleSource != nil {
+		caBundle = r.conversionWebhookSettings.CaBundleSource()
+	} else {
+		caBundleSource = r.conversionWebhookSettings.CaBundlePath
+		var err error
+		if caBundle, err = os.ReadFile(r.conversionWebhookSettings.CaBundlePath); err != nil {
+			logger.Error(
+				err,
+				"Cannot read CA bundle for patching the perses.dev PersesDashboard CRD conversion webhook; "+
+					"skipping the patch. v1alpha1 PersesDashboard resources may lose fields when stored.",
+				"caBundlePath", r.conversionWebhookSettings.CaBundlePath,
+			)
+			return nil, false
+		}
+	}
+	// Skip the patch on an empty bundle: this happens transiently while the serving certificate is being provisioned.
+	// Patching with an empty caBundle would make the API server reject every conversion request until we re-reconcile and
+	// rewrite the bundle, so it's strictly worse than leaving the previous stanza in place.
+	if len(bytes.TrimSpace(caBundle)) == 0 {
+		logger.Error(
+			fmt.Errorf("the CA bundle is empty"),
+			"CA bundle for patching the perses.dev PersesDashboard CRD conversion webhook is empty; skipping the patch. "+
+				"This is expected briefly while the serving certificate is being provisioned; the patch will be "+
+				"attempted again. If it persists, v1alpha1 PersesDashboard resources may lose fields when stored.",
+			"caBundleSource", caBundleSource,
+		)
+		return nil, false
+	}
+	return caBundle, true
 }
 
 // conversionStanzaMatchesOurs reports whether the CRD's conversion stanza is already pointing at our webhook (same

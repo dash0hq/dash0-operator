@@ -37,6 +37,14 @@ leader election role should match snapshot:
           - watch
       - apiGroups:
           - ""
+        resourceNames:
+          - dash0-operator-webhook-server-cert
+        resources:
+          - secrets
+        verbs:
+          - update
+      - apiGroups:
+          - ""
         resources:
           - configmaps
         verbs:
