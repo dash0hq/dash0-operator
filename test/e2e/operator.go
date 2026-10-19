@@ -71,19 +71,23 @@ func deployOperatorWithDefaultAutoOperationConfiguration(
 		operatorHelmChartUrl,
 		operatorHelmChartVersion,
 		images,
-		&startup.OperatorConfigurationValues{
-			Endpoint:              defaultEndpoint,
-			ApiEndpoint:           dash0ApiMockServiceBaseUrl,
-			Token:                 defaultToken,
-			SelfMonitoringEnabled: selfMonitoringEnabled,
-			KubernetesInfrastructureMetricsCollectionEnabled: true,
-			CollectPodLabelsAndAnnotationsEnabled:            true,
-			PrometheusCrdSupportEnabled:                      false,
-			TelemetryCollectionEnabled:                       true,
-		},
+		defaultAutoOperatorConfigurationValues(selfMonitoringEnabled),
 		additionalHelmParameters,
 	)
 	Expect(err).ToNot(HaveOccurred())
+}
+
+func defaultAutoOperatorConfigurationValues(selfMonitoringEnabled bool) *startup.OperatorConfigurationValues {
+	return &startup.OperatorConfigurationValues{
+		Endpoint:              defaultEndpoint,
+		ApiEndpoint:           dash0ApiMockServiceBaseUrl,
+		Token:                 defaultToken,
+		SelfMonitoringEnabled: selfMonitoringEnabled,
+		KubernetesInfrastructureMetricsCollectionEnabled: true,
+		CollectPodLabelsAndAnnotationsEnabled:            true,
+		PrometheusCrdSupportEnabled:                      false,
+		TelemetryCollectionEnabled:                       true,
+	}
 }
 
 //nolint:unparam
@@ -205,6 +209,7 @@ func readHelmChartVersion(chart string, chartUrl string, index int64) string {
 	return version
 }
 
+//nolint:unparam
 func upgradeOperator(
 	operatorNamespace string,
 	operatorHelmChart string,

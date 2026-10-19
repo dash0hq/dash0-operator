@@ -80,8 +80,6 @@ For **production use**, we strongly recommend tweaking a couple of settings:
 * Provide a [filelog offset volume](advanced-configuration.md#providing-a-filelog-offset-volume).
   By default, file offsets for log collection are stored in a config map in the operator's namespace.
   For production use, it is highly recommended to provide a persistent volume instead.
-* Use `cert-manager` to manage certificates instead of the Helm chart's auto-generated certificates, see
-  [Using cert-manager](advanced-configuration.md#using-cert-manager).
 * Review the resource requests and limits for the operator's workloads and adjust them to your cluster, see
   [Tuning Resource Requests and Limits](advanced-configuration.md#tuning-resource-requests-and-limits).
   The defaults are a reasonable baseline, but may not be optimal for every cluster.
