@@ -42,7 +42,8 @@ import (
 
 type PrometheusRuleCrdReconciler struct {
 	client.Client
-	queue                    *workqueue.Typed[ThirdPartyResourceSyncJob]
+	apiReader                client.Reader
+	queue                    *ThirdPartyResourceSyncQueue
 	leaderElectionAware      util.LeaderElectionAware
 	mgr                      ctrl.Manager
 	httpClient               *http.Client
@@ -53,8 +54,9 @@ type PrometheusRuleCrdReconciler struct {
 
 type PrometheusRuleReconciler struct {
 	client.Client
+	apiReader                  client.Reader
 	pseudoClusterUid           types.UID
-	queue                      *workqueue.Typed[ThirdPartyResourceSyncJob]
+	queue                      *ThirdPartyResourceSyncQueue
 	httpClient                 *http.Client
 	defaultApiConfigs          selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs       selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
@@ -90,12 +92,14 @@ var (
 
 func NewPrometheusRuleCrdReconciler(
 	k8sClient client.Client,
-	queue *workqueue.Typed[ThirdPartyResourceSyncJob],
+	apiReader client.Reader,
+	queue *ThirdPartyResourceSyncQueue,
 	leaderElectionAware util.LeaderElectionAware,
 	httpClient *http.Client,
 ) *PrometheusRuleCrdReconciler {
 	return &PrometheusRuleCrdReconciler{
 		Client:              k8sClient,
+		apiReader:           apiReader,
 		queue:               queue,
 		leaderElectionAware: leaderElectionAware,
 		httpClient:          httpClient,
@@ -160,6 +164,7 @@ func (r *PrometheusRuleCrdReconciler) OperatorManagerIsLeader() bool {
 func (r *PrometheusRuleCrdReconciler) CreateThirdPartyResourceReconciler(pseudoClusterUid types.UID) {
 	r.prometheusRuleReconciler = &PrometheusRuleReconciler{
 		Client:               r.Client,
+		apiReader:            r.apiReader,
 		queue:                r.queue,
 		pseudoClusterUid:     pseudoClusterUid,
 		httpClient:           r.httpClient,
@@ -389,8 +394,12 @@ func (r *PrometheusRuleReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
-func (r *PrometheusRuleReconciler) Queue() *workqueue.Typed[ThirdPartyResourceSyncJob] {
+func (r *PrometheusRuleReconciler) Queue() *ThirdPartyResourceSyncQueue {
 	return r.queue
+}
+
+func (r *PrometheusRuleReconciler) ApiReader() client.Reader {
+	return r.apiReader
 }
 
 func (r *PrometheusRuleReconciler) HttpClient() *http.Client {
@@ -434,11 +443,24 @@ func (r *PrometheusRuleReconciler) Update(
 	e event.TypedUpdateEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
+	logger := logd.FromContext(ctx)
+	if hasUnchangedResourceVersion(e) {
+		logger.Debug(
+			"Ignoring an update event for an unchanged Prometheus rule resource",
+			"namespace",
+			e.ObjectNew.GetNamespace(),
+			"name",
+			e.ObjectNew.GetName(),
+			"resourceVersion",
+			e.ObjectNew.GetResourceVersion(),
+		)
+		return
+	}
+
 	if prometheusRuleReconcileRequestMetric != nil {
 		prometheusRuleReconcileRequestMetric.Add(ctx, 1)
 	}
 
-	logger := logd.FromContext(ctx)
 	logger.Info(
 		"Detected a change for a Prometheus rule resource",
 		"namespace",

@@ -42,7 +42,8 @@ import (
 
 type PersesDashboardCrdReconciler struct {
 	client.Client
-	queue                     *workqueue.Typed[ThirdPartyResourceSyncJob]
+	apiReader                 client.Reader
+	queue                     *ThirdPartyResourceSyncQueue
 	leaderElectionAware       util.LeaderElectionAware
 	mgr                       ctrl.Manager
 	apiClientPool             *ApiClientPool
@@ -80,8 +81,9 @@ type PersesDashboardReconciler struct {
 	// crdReconciler is a back-reference to the owning CRD reconciler so the inner reconciler can read the chosen API version (which
 	// depends on which versions the cluster's CRD currently serves; see PersesDashboardCrdReconciler.OnCrdChange).
 	crdReconciler              *PersesDashboardCrdReconciler
+	apiReader                  client.Reader
 	pseudoClusterUid           types.UID
-	queue                      *workqueue.Typed[ThirdPartyResourceSyncJob]
+	queue                      *ThirdPartyResourceSyncQueue
 	apiClientPool              *ApiClientPool
 	defaultApiConfigs          selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs       selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
@@ -116,7 +118,8 @@ var (
 
 func NewPersesDashboardCrdReconciler(
 	k8sClient client.Client,
-	queue *workqueue.Typed[ThirdPartyResourceSyncJob],
+	apiReader client.Reader,
+	queue *ThirdPartyResourceSyncQueue,
 	leaderElectionAware util.LeaderElectionAware,
 	apiClientPool *ApiClientPool,
 	conversionWebhookSettings PersesDashboardConversionWebhookSettings,
@@ -126,6 +129,7 @@ func NewPersesDashboardCrdReconciler(
 	}
 	return &PersesDashboardCrdReconciler{
 		Client:                    k8sClient,
+		apiReader:                 apiReader,
 		queue:                     queue,
 		leaderElectionAware:       leaderElectionAware,
 		apiClientPool:             apiClientPool,
@@ -247,6 +251,7 @@ func (r *PersesDashboardCrdReconciler) OperatorManagerIsLeader() bool {
 func (r *PersesDashboardCrdReconciler) CreateThirdPartyResourceReconciler(pseudoClusterUid types.UID) {
 	r.persesDashboardReconciler = &PersesDashboardReconciler{
 		Client:               r.Client,
+		apiReader:            r.apiReader,
 		crdReconciler:        r,
 		queue:                r.queue,
 		pseudoClusterUid:     pseudoClusterUid,
@@ -569,8 +574,12 @@ func (r *PersesDashboardReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
-func (r *PersesDashboardReconciler) Queue() *workqueue.Typed[ThirdPartyResourceSyncJob] {
+func (r *PersesDashboardReconciler) Queue() *ThirdPartyResourceSyncQueue {
 	return r.queue
+}
+
+func (r *PersesDashboardReconciler) ApiReader() client.Reader {
+	return r.apiReader
 }
 
 func (r *PersesDashboardReconciler) IsSynchronizationEnabled(monitoringResource *dash0v1beta1.Dash0Monitoring) bool {
@@ -610,11 +619,24 @@ func (r *PersesDashboardReconciler) Update(
 	e event.TypedUpdateEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
+	logger := logd.FromContext(ctx)
+	if hasUnchangedResourceVersion(e) {
+		logger.Debug(
+			"Ignoring an update event for an unchanged Perses dashboard resource",
+			"namespace",
+			e.ObjectNew.GetNamespace(),
+			"name",
+			e.ObjectNew.GetName(),
+			"resourceVersion",
+			e.ObjectNew.GetResourceVersion(),
+		)
+		return
+	}
+
 	if persesDashboardReconcileRequestMetric != nil {
 		persesDashboardReconcileRequestMetric.Add(ctx, 1)
 	}
 
-	logger := logd.FromContext(ctx)
 	logger.Info(
 		"Detected a change for a Perses dashboard resource",
 		"namespace",
