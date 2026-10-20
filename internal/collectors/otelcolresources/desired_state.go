@@ -275,8 +275,12 @@ const (
 	collectorConfigCompressedFilePath = collectorConfigCompressedDirPath + "/" + collectorConfigurationYaml
 
 	// collector feature gates
-	profilesSupportFeatureGate             = "service.profilesSupport"
-	k8sAttributesShareProcessorFeatureGate = "processor.k8sattributes.ShareProcessorBetweenPipelines"
+	profilesSupportFeatureGate                              = "service.profilesSupport"
+	k8sAttributesShareProcessorFeatureGate                  = "processor.k8sattributes.ShareProcessorBetweenPipelines"
+	disableK8sAttributesDontEmitV0K8sConventionsFeatureGate = "-processor.k8sattributes.DontEmitV0K8sConventions"
+	// read by images/collector/src/image/entrypoint.sh
+	gkeAutopilotWorkaroundEmitV0K8sConventionsEnvVarName        = "DASH0_GKE_AUTOPILOT_WORKAROUND_EMIT_V0_K8S_CONVENTIONS"
+	gkeAutopilotWorkaroundShareK8sAttributesProcessorEnvVarName = "DASH0_GKE_AUTOPILOT_WORKAROUND_SHARE_K8S_ATTRIBUTES_PROCESSOR"
 
 	// config volume names -- the collectors will either use only the collectorConfigMapVolumeNamePlainText (when config
 	// map compression is disabled), or collectorConfigMapCompressedVolumeName + collectorConfigMapDecompressedVolumeName
@@ -411,7 +415,7 @@ var (
 
 	deploymentReplicas int32 = 1
 
-	// SignalControlCollectorDefaultReplicas is used when the extra config map does not specify a replica count. Two
+	// SignalControlCollectorDefaultReplicas is used when the extra config map specifies a replica count below 1. Two
 	// replicas halve the per-process concentration of the RED connector's cardinality tracking and of the sampling
 	// reservoir compared to a single pod, and let a rolling update proceed without emptying the pool. The topology
 	// spread constraints bias them onto separate zones and nodes, and the pod disruption budget keeps a voluntary
@@ -1363,6 +1367,8 @@ func assembleDaemonSetCollectorContainer(
 	if config.K8sAttributesShareProcessor {
 		featureGates = append(featureGates, k8sAttributesShareProcessorFeatureGate)
 	}
+	// Keeps the legacy container.image.tag attribute next to container.image.tags.
+	featureGates = append(featureGates, disableK8sAttributesDontEmitV0K8sConventionsFeatureGate)
 	collectorArgs := assembleCollectorArgs(featureGates)
 
 	collectorContainer := corev1.Container{
@@ -1900,9 +1906,27 @@ func assembleDeploymentCollectorContainer(
 		return corev1.Container{}, err
 	}
 
+	// The GKE Autopilot WorkloadAllowlist of this collector permits no --feature-gates argument, so there the image's
+	// entrypoint adds the gates instead.
 	var featureGates []string
 	if config.K8sAttributesShareProcessor {
-		featureGates = append(featureGates, k8sAttributesShareProcessorFeatureGate)
+		if config.IsGkeAutopilot {
+			collectorEnv = append(collectorEnv, corev1.EnvVar{
+				Name:  gkeAutopilotWorkaroundShareK8sAttributesProcessorEnvVarName,
+				Value: "true",
+			})
+		} else {
+			featureGates = append(featureGates, k8sAttributesShareProcessorFeatureGate)
+		}
+	}
+	// Keeps the legacy container.image.tag attribute next to container.image.tags.
+	if config.IsGkeAutopilot {
+		collectorEnv = append(collectorEnv, corev1.EnvVar{
+			Name:  gkeAutopilotWorkaroundEmitV0K8sConventionsEnvVarName,
+			Value: "true",
+		})
+	} else {
+		featureGates = append(featureGates, disableK8sAttributesDontEmitV0K8sConventionsFeatureGate)
 	}
 	collectorArgs := assembleCollectorArgs(featureGates)
 
@@ -2060,7 +2084,6 @@ func assembleSignalControlCollectorDeployment(
 
 	replicas := extraConfig.SignalControlCollectorReplicas
 	if replicas < 1 {
-		// Default when the extra config does not specify a value (e.g. older config maps).
 		replicas = SignalControlCollectorDefaultReplicas
 	}
 

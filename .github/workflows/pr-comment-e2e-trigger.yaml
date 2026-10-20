@@ -3,17 +3,24 @@
 
 name: Trigger E2E tests via PR comment
 
+# Every comment is a separate command, a newer comment never supersedes an older one.
+# jactionlint ignore=concurrency-limits
 on:
+  # Only commenters with write access can trigger the tests (see "Check commenter permissions"), and no code of the pull
+  # request is checked out.
+  # jactionlint ignore=dangerous-triggers
   issue_comment:
     types: [created]
 
-permissions:
-  pull-requests: write
+permissions: {}
 
 jobs:
   trigger-e2e:
     name: Trigger E2E tests from PR comment
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
     # Only run for PR comments (not issue comments) that start with /run-e2e
     if: |
       github.event.issue.pull_request != null &&

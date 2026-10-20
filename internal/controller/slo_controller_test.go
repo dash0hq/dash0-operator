@@ -7,9 +7,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"maps"
 	"net/http"
+	"strings"
 	"time"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -41,6 +41,8 @@ const (
 	sloOriginPattern            = "dash0-operator_%s_test-dataset_test-namespace_test-slo"
 	sloOriginPatternAlternative = "dash0-operator_%s_test-dataset-alt_test-namespace_test-slo"
 	sloManagedByLabel           = "dash0.com/managed-by-operator"
+
+	sloFailedCheckoutRequestsQuery = `http_server_request_duration_seconds_count{service_name="checkout",http_response_status_code=~"5.."}`
 )
 
 var (
@@ -91,7 +93,7 @@ var _ = Describe(
 							k8sClient,
 							types.UID(clusterId),
 							sloLeaderElectionAware,
-							TestHTTPClient(),
+							testApiClientPool(),
 						)
 						sloReconciler.defaultApiConfigs.Set(
 							[]ApiConfig{
@@ -453,42 +455,7 @@ var _ = Describe(
 
 				It(
 					"builds an openslo.com/v1 SLO API body with apiVersion, kind and spec", func() {
-						slo := map[string]any{}
-						Expect(yaml.Unmarshal([]byte(sloYamlForMapping), &slo)).To(Succeed())
-						apiConfig := ApiConfig{
-							Endpoint: ApiEndpointTest,
-							Dataset:  DatasetCustomTest,
-							Token:    AuthorizationTokenTest,
-						}
-						preconditionValidationResult := &preconditionValidationResult{
-							k8sName:      sloName,
-							k8sNamespace: TestNamespaceName,
-							resource:     slo,
-							validatedApiConfigs: []ValidatedApiConfigAndToken{
-								*NewValidatedApiConfigAndToken(apiConfig.Endpoint, apiConfig.Dataset, apiConfig.Token),
-							},
-						}
-						resourceToRequestsResult := sloReconciler.MapResourceToHttpRequests(
-							preconditionValidationResult,
-							apiConfig,
-							upsertAction,
-							logger,
-						)
-						Expect(resourceToRequestsResult.TotalProcessed()).To(Equal(1))
-						Expect(resourceToRequestsResult.ValidationIssues).To(BeNil())
-						Expect(resourceToRequestsResult.SynchronizationErrors).To(BeNil())
-						Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(1))
-
-						apiRequest := resourceToRequestsResult.ApiRequests[0]
-						Expect(apiRequest.ItemName).To(Equal(sloName))
-						req := apiRequest.Request
-						defer func() {
-							_ = req.Body.Close()
-						}()
-						body, err := io.ReadAll(req.Body)
-						Expect(err).ToNot(HaveOccurred())
-						resultingSLO := map[string]any{}
-						Expect(json.Unmarshal(body, &resultingSLO)).To(Succeed())
+						resultingSLO := mapSLOYamlToApiBody(sloReconciler, sloYamlForMapping, logger)
 						// client-go strips TypeMeta on read, so the controller has to set the envelope itself.
 						Expect(resultingSLO["apiVersion"]).To(Equal("openslo.com/v1"))
 						Expect(resultingSLO["kind"]).To(Equal("SLO"))
@@ -500,7 +467,7 @@ var _ = Describe(
 							),
 						).To(Equal("Checkout availability"))
 
-						// Assert the whole spec, so that a field silently dropped by the round-trip in buildSLOApiBody
+						// Assert the whole spec, so that a field silently dropped by the round-trip in mapToSLODefinition
 						// fails here.
 						Expect(resultingSLO["spec"]).To(Equal(map[string]any{
 							"description":     "99 percent of checkout HTTP requests succeed over a rolling 28-day window.",
@@ -545,6 +512,81 @@ var _ = Describe(
 								},
 							},
 						}))
+					},
+				)
+
+				It(
+					"carries a bad and total indicator into the SLO API body", func() {
+						resultingSLO := mapSLOYamlToApiBody(sloReconciler, sloYamlForMappingBadTotal, logger)
+						Expect(ReadFromMap(resultingSLO, []string{"spec", "indicator", "spec"})).To(Equal(map[string]any{
+							"ratioMetric": map[string]any{
+								"counter": true,
+								"bad": map[string]any{
+									"metricSource": map[string]any{
+										"type": "Prometheus",
+										"spec": map[string]any{
+											"query": "http_server_request_duration_seconds_count{service_name=\"checkout\",http_response_status_code=~\"5..\"}",
+										},
+									},
+								},
+								"total": map[string]any{
+									"metricSource": map[string]any{
+										"type": "Prometheus",
+										"spec": map[string]any{
+											"query": "http_server_request_duration_seconds_count{service_name=\"checkout\"}",
+										},
+									},
+								},
+							},
+						}))
+					},
+				)
+
+				It(
+					"carries a raw indicator, its rawType and the indicator description into the SLO API body", func() {
+						resultingSLO := mapSLOYamlToApiBody(sloReconciler, sloYamlForMappingRaw, logger)
+						Expect(ReadFromMap(resultingSLO, []string{"spec", "indicator", "spec"})).To(Equal(map[string]any{
+							"description": "Share of checkout requests that failed.",
+							"ratioMetric": map[string]any{
+								"rawType": "failure",
+								"raw": map[string]any{
+									"metricSource": map[string]any{
+										"type": "Prometheus",
+										"spec": map[string]any{
+											"query": "checkout:error_ratio",
+										},
+									},
+								},
+							},
+						}))
+					},
+				)
+
+				It(
+					"reports a non-retryable synchronization error for an SLO that cannot be converted", func() {
+						slo := map[string]any{}
+						Expect(yaml.Unmarshal([]byte(`
+apiVersion: openslo.com/v1
+kind: SLO
+metadata:
+  name: test-slo
+spec:
+  service: checkout
+  budgetingMethod: Occurrences
+  objectives:
+    - displayName: 99% availability
+      target: 99%
+`), &slo)).To(Succeed())
+						apiConfig := ApiConfig{Endpoint: ApiEndpointTest, Dataset: DatasetCustomTest, Token: AuthorizationTokenTest}
+						resourceToRequestsResult :=
+							sloReconciler.MapResourceToHttpRequests(
+								&preconditionValidationResult{k8sName: sloName, k8sNamespace: TestNamespaceName, resource: slo},
+								apiConfig, upsertAction, logger)
+						Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())
+						synchronizationError, httpStatusCode := firstSynchronizationErrorAndStatusCode(resourceToRequestsResult)
+						Expect(synchronizationError).To(ContainSubstring("unable to convert the SLO"))
+						Expect(httpStatusCode).To(Equal(http.StatusBadRequest))
+						Expect(isRetryableSynchronizationError(synchronizationError, httpStatusCode)).To(BeFalse())
 					},
 				)
 			},
@@ -624,7 +666,7 @@ var _ = Describe(
 							k8sClient,
 							types.UID(clusterId),
 							sloLeaderElectionAware,
-							TestHTTPClient(),
+							testApiClientPool(),
 						)
 						lookupError := fmt.Errorf("the cache is not started, can not read objects")
 						err := reconciler.SetupWithManager(
@@ -646,7 +688,7 @@ var _ = Describe(
 							k8sClient,
 							types.UID(clusterId),
 							sloLeaderElectionAware,
-							TestHTTPClient(),
+							testApiClientPool(),
 						)
 						Expect(reconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						Expect(reconciler.conflictingCrdDetected.Load()).To(BeTrue())
@@ -659,7 +701,7 @@ var _ = Describe(
 							k8sClient,
 							types.UID(clusterId),
 							sloLeaderElectionAware,
-							TestHTTPClient(),
+							testApiClientPool(),
 						)
 						reconciler.conflictingCrdDetected.Store(true)
 
@@ -678,7 +720,7 @@ var _ = Describe(
 							k8sClient,
 							types.UID(clusterId),
 							sloLeaderElectionAware,
-							TestHTTPClient(),
+							testApiClientPool(),
 						)
 
 						Expect(reconciler.setConflictingCrdDetected(false, logger)).To(BeFalse())
@@ -740,6 +782,154 @@ var _ = Describe(
 							MatchError(ContainSubstring("exactly one of target or targetPercent must be set")))
 					},
 				)
+
+				It(
+					"accepts a bad and total indicator", func() {
+						sloResource := createSLOResource()
+						ratioMetric := &sloResource.Spec.Indicator.Spec.RatioMetric
+						ratioMetric.Bad = prometheusMetricSource(sloFailedCheckoutRequestsQuery)
+						ratioMetric.Good = nil
+						Expect(k8sClient.Create(ctx, sloResource)).To(Succeed())
+					},
+				)
+
+				It(
+					"accepts a raw indicator with a rawType", func() {
+						sloResource := createSLOResource()
+						sloResource.Spec.Indicator.Spec.RatioMetric = openslov1.SLORatioMetric{
+							Raw:     prometheusMetricSource("checkout:success_ratio"),
+							RawType: "success",
+						}
+						Expect(k8sClient.Create(ctx, sloResource)).To(Succeed())
+					},
+				)
+
+				It(
+					"rejects a raw indicator without a rawType", func() {
+						sloResource := createSLOResource()
+						sloResource.Spec.Indicator.Spec.RatioMetric = openslov1.SLORatioMetric{
+							Raw: prometheusMetricSource("checkout:success_ratio"),
+						}
+						Expect(k8sClient.Create(ctx, sloResource)).To(
+							MatchError(ContainSubstring("rawType is required when raw is set")))
+					},
+				)
+
+				It(
+					"rejects a rawType other than success or failure", func() {
+						sloResource := createSLOResource()
+						sloResource.Spec.Indicator.Spec.RatioMetric = openslov1.SLORatioMetric{
+							Raw:     prometheusMetricSource("checkout:success_ratio"),
+							RawType: "ratio",
+						}
+						Expect(k8sClient.Create(ctx, sloResource)).To(MatchError(ContainSubstring(`"success", "failure"`)))
+					},
+				)
+
+				It(
+					"stores an indicator description", func() {
+						sloResource := createSLOResource()
+						sloResource.Spec.Indicator.Spec.Description = "Share of checkout requests that succeed."
+						Expect(k8sClient.Create(ctx, sloResource)).To(Succeed())
+
+						storedSLO := &openslov1.SLO{}
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sloResource), storedSLO)).To(Succeed())
+						Expect(storedSLO.Spec.Indicator.Spec.Description).To(Equal("Share of checkout requests that succeed."))
+					},
+				)
+
+				It(
+					"rejects an indicator description longer than 1050 characters", func() {
+						sloResource := createSLOResource()
+						sloResource.Spec.Indicator.Spec.Description = strings.Repeat("a", 1051)
+						Expect(k8sClient.Create(ctx, sloResource)).To(
+							MatchError(ContainSubstring("spec.indicator.spec.description: Too long")))
+					},
+				)
+
+				DescribeTable(
+					"rejects a ratio metric that does not have exactly one shape",
+					func(modify func(ratioMetric *openslov1.SLORatioMetric)) {
+						sloResource := createSLOResource()
+						modify(&sloResource.Spec.Indicator.Spec.RatioMetric)
+						Expect(k8sClient.Create(ctx, sloResource)).To(
+							MatchError(ContainSubstring("exactly one of good and total, bad and total, or raw must be set")))
+					},
+					Entry(
+						"no metric source", func(ratioMetric *openslov1.SLORatioMetric) {
+							*ratioMetric = openslov1.SLORatioMetric{}
+						},
+					),
+					Entry(
+						"good without total", func(ratioMetric *openslov1.SLORatioMetric) {
+							ratioMetric.Total = nil
+						},
+					),
+					Entry(
+						"bad without total", func(ratioMetric *openslov1.SLORatioMetric) {
+							ratioMetric.Bad = prometheusMetricSource(sloFailedCheckoutRequestsQuery)
+							ratioMetric.Good = nil
+							ratioMetric.Total = nil
+						},
+					),
+					Entry(
+						"good, bad and total", func(ratioMetric *openslov1.SLORatioMetric) {
+							ratioMetric.Bad = prometheusMetricSource(sloFailedCheckoutRequestsQuery)
+						},
+					),
+					Entry(
+						"good, total and raw", func(ratioMetric *openslov1.SLORatioMetric) {
+							ratioMetric.Raw = prometheusMetricSource("checkout:success_ratio")
+						},
+					),
+					Entry(
+						"raw and good", func(ratioMetric *openslov1.SLORatioMetric) {
+							ratioMetric.Total = nil
+							ratioMetric.Raw = prometheusMetricSource("checkout:success_ratio")
+						},
+					),
+					Entry(
+						"raw and bad", func(ratioMetric *openslov1.SLORatioMetric) {
+							*ratioMetric = openslov1.SLORatioMetric{
+								Bad: prometheusMetricSource(sloFailedCheckoutRequestsQuery),
+								Raw: prometheusMetricSource("checkout:success_ratio"),
+							}
+						},
+					),
+					Entry(
+						"raw, good and bad", func(ratioMetric *openslov1.SLORatioMetric) {
+							ratioMetric.Total = nil
+							ratioMetric.Bad = prometheusMetricSource(sloFailedCheckoutRequestsQuery)
+							ratioMetric.Raw = prometheusMetricSource("checkout:success_ratio")
+						},
+					),
+					Entry(
+						"raw and total", func(ratioMetric *openslov1.SLORatioMetric) {
+							ratioMetric.Good = nil
+							ratioMetric.Raw = prometheusMetricSource("checkout:success_ratio")
+						},
+					),
+				)
+
+				DescribeTable(
+					"rejects a rawType without raw",
+					func(modify func(ratioMetric *openslov1.SLORatioMetric)) {
+						sloResource := createSLOResource()
+						modify(&sloResource.Spec.Indicator.Spec.RatioMetric)
+						sloResource.Spec.Indicator.Spec.RatioMetric.RawType = "success"
+						Expect(k8sClient.Create(ctx, sloResource)).To(
+							MatchError(ContainSubstring("rawType can only be set together with raw")))
+					},
+					Entry(
+						"good and total", func(ratioMetric *openslov1.SLORatioMetric) {},
+					),
+					Entry(
+						"bad and total", func(ratioMetric *openslov1.SLORatioMetric) {
+							ratioMetric.Bad = prometheusMetricSource(sloFailedCheckoutRequestsQuery)
+							ratioMetric.Good = nil
+						},
+					),
+				)
 			},
 		)
 	},
@@ -778,6 +968,52 @@ spec:
   objectives:
     - displayName: 99% availability
       target: 0.99
+`
+
+const sloYamlForMappingBadTotal = `
+apiVersion: openslo.com/v1
+kind: SLO
+metadata:
+  name: test-slo
+spec:
+  budgetingMethod: Occurrences
+  indicator:
+    spec:
+      ratioMetric:
+        counter: true
+        bad:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: 'http_server_request_duration_seconds_count{service_name="checkout",http_response_status_code=~"5.."}'
+        total:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: 'http_server_request_duration_seconds_count{service_name="checkout"}'
+  objectives:
+    - target: 0.99
+`
+
+const sloYamlForMappingRaw = `
+apiVersion: openslo.com/v1
+kind: SLO
+metadata:
+  name: test-slo
+spec:
+  budgetingMethod: Occurrences
+  indicator:
+    spec:
+      description: Share of checkout requests that failed.
+      ratioMetric:
+        rawType: failure
+        raw:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: 'checkout:error_ratio'
+  objectives:
+    - target: 0.99
 `
 
 // makeInstalledSloCrdLookForeign strips the marker label from the CRD envtest installed, and restores it when the
@@ -879,22 +1115,12 @@ func createSLOResource() *openslov1.SLO {
 				Spec: openslov1.SLOIndicatorSpec{
 					RatioMetric: openslov1.SLORatioMetric{
 						Counter: ptr.To(true),
-						Good: openslov1.SLOMetricSourceWrapper{
-							MetricSource: openslov1.SLOMetricSource{
-								Type: "Prometheus",
-								Spec: openslov1.SLOMetricSourceSpec{
-									Query: `http_server_request_duration_seconds_count{service_name="checkout",http_response_status_code!~"5.."}`,
-								},
-							},
-						},
-						Total: openslov1.SLOMetricSourceWrapper{
-							MetricSource: openslov1.SLOMetricSource{
-								Type: "Prometheus",
-								Spec: openslov1.SLOMetricSourceSpec{
-									Query: `http_server_request_duration_seconds_count{service_name="checkout"}`,
-								},
-							},
-						},
+						Good: prometheusMetricSource(
+							`http_server_request_duration_seconds_count{service_name="checkout",http_response_status_code!~"5.."}`,
+						),
+						Total: prometheusMetricSource(
+							`http_server_request_duration_seconds_count{service_name="checkout"}`,
+						),
 					},
 				},
 			},
@@ -906,6 +1132,58 @@ func createSLOResource() *openslov1.SLO {
 			},
 		},
 	}
+}
+
+func prometheusMetricSource(query string) *openslov1.SLOMetricSourceWrapper {
+	return &openslov1.SLOMetricSourceWrapper{
+		MetricSource: openslov1.SLOMetricSource{
+			Type: "Prometheus",
+			Spec: openslov1.SLOMetricSourceSpec{
+				Query: query,
+			},
+		},
+	}
+}
+
+func mapSLOYamlToApiBody(sloReconciler *SLOReconciler, sloYaml string, logger logd.Logger) map[string]any {
+	GinkgoHelper()
+	slo := map[string]any{}
+	Expect(yaml.Unmarshal([]byte(sloYaml), &slo)).To(Succeed())
+	apiConfig := ApiConfig{
+		Endpoint: ApiEndpointTest,
+		Dataset:  DatasetCustomTest,
+		Token:    AuthorizationTokenTest,
+	}
+	preconditionValidationResult := &preconditionValidationResult{
+		k8sName:      sloName,
+		k8sNamespace: TestNamespaceName,
+		resource:     slo,
+		validatedApiConfigs: []ValidatedApiConfigAndToken{
+			*NewValidatedApiConfigAndToken(apiConfig.Endpoint, apiConfig.Dataset, apiConfig.Token),
+		},
+	}
+	resourceToRequestsResult := sloReconciler.MapResourceToHttpRequests(
+		preconditionValidationResult,
+		apiConfig,
+		upsertAction,
+		logger,
+	)
+	Expect(resourceToRequestsResult.TotalProcessed()).To(Equal(1))
+	Expect(resourceToRequestsResult.ValidationIssues).To(BeNil())
+	Expect(resourceToRequestsResult.SynchronizationErrors).To(BeNil())
+	Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(1))
+
+	apiRequest := resourceToRequestsResult.ApiRequests[0]
+	Expect(apiRequest.ItemName).To(Equal(sloName))
+	Expect(apiRequest.ApiClientCall).ToNot(BeNil())
+	Expect(apiRequest.ApiClientCall.Method).To(Equal(http.MethodPut))
+	sloDefinition, err := mapToSLODefinition(slo)
+	Expect(err).ToNot(HaveOccurred())
+	body, err := json.Marshal(sloDefinition)
+	Expect(err).ToNot(HaveOccurred())
+	resultingSLO := map[string]any{}
+	Expect(json.Unmarshal(body, &resultingSLO)).To(Succeed())
+	return resultingSLO
 }
 
 func deleteSLOResourceIfItExists(

@@ -225,9 +225,9 @@ build-all-push-all-test-e2e: all-images push-all-images test-e2e ## Builds and p
 .PHONY: test-e2e
 test-e2e: ## Run the end-to-end tests. When testing local code, container images should be built beforehand (or use target build-all-test-e2e).
 ifdef GINKGO_FOCUS
-	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v -focus="$(GINKGO_FOCUS)" .
+	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v --timeout=90m -focus="$(GINKGO_FOCUS)" .
 else
-	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v .
+	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v --timeout=90m .
 endif
 
 # Validates every collector configuration the operator can render against the collector binary, which rejects settings
@@ -249,7 +249,7 @@ collector-configs-validate: ## Validate the collector configurations the operato
 	  -run TestCollectorConfigurationsAreAcceptedByTheCollector -count=1 -v
 
 GOLANGCI_LINT = $(shell pwd)/bin/golangci-lint
-GOLANGCI_LINT_VERSION ?= v2.13.1
+GOLANGCI_LINT_VERSION ?= v2.14.0
 golangci-lint-install:
 	@if test -x $(GOLANGCI_LINT) && [ "$$($(GOLANGCI_LINT) version --short)" != "$(GOLANGCI_LINT_VERSION:v%=%)" ]; then \
 		echo "$(GOLANGCI_LINT) version is not expected $(GOLANGCI_LINT_VERSION). Removing it before installing."; \
@@ -343,6 +343,29 @@ shellcheck-lint: shellcheck-check-installed ## Run static code analysis for all 
 	  -not -path ./images/collector/opentelemetry-collector-contrib/\* \
 	  | xargs shellcheck -x
 
+JACTIONLINT = $(shell pwd)/bin/jactionlint
+JACTIONLINT_VERSION ?= v2.1.0
+.PHONY: jactionlint-install
+jactionlint-install:
+	@if test -x $(JACTIONLINT) && [ "$$($(JACTIONLINT) --version | sed -n 1p)" != "$(JACTIONLINT_VERSION)" ]; then \
+		echo "$(JACTIONLINT) version is not expected $(JACTIONLINT_VERSION). Removing it before installing."; \
+		rm -f $(JACTIONLINT); \
+	fi
+	@[ -f $(JACTIONLINT) ] || GOBIN=$(shell dirname $(JACTIONLINT)) go install github.com/jdx/jactionlint/v2/cmd/jactionlint@$(JACTIONLINT_VERSION)
+
+# Without arguments, jactionlint also lints action.yml files in any other directory, including ignored ones like
+# node_modules, so the files are passed explicitly.
+JACTIONLINT_FILES = $(wildcard .github/dependabot.y*ml .github/actions/*/action.y*ml .github/workflows/*.y*ml)
+
+.PHONY: jactionlint
+jactionlint: jactionlint-install shellcheck-check-installed ## Run static code analysis for GitHub Actions workflows.
+	@echo "-------------------------------- (linting GitHub Actions workflows)"
+ifeq ("${CI}","true")
+	$(JACTIONLINT) --format=github $(JACTIONLINT_FILES)
+else
+	$(JACTIONLINT) $(JACTIONLINT_FILES)
+endif
+
 .PHONY: npm-installed
 npm-installed:
 	@set +x
@@ -395,7 +418,7 @@ perses-crd-version-check: ## Check whether all references to the PersesDashboard
 	./test-resources/bin/perses-crd-version-check.sh
 
 .PHONY: lint
-lint: go-version-check golangci-lint ginkgo-suite-check internal-config-map-lint helm-chart-lint shellcheck-lint instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check ## Run all static code analysis checks (Go, Helm, shell scripts, etc.).
+lint: go-version-check golangci-lint ginkgo-suite-check internal-config-map-lint helm-chart-lint shellcheck-lint jactionlint instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check ## Run all static code analysis checks (Go, Helm, shell scripts, GitHub Actions workflows, etc.).
 
 .PHONY: lint-fix
 lint-fix: golangci-lint-fix

@@ -195,11 +195,18 @@ func collectPotentialCredentialFields(
 
 	for i := range resourceType.NumField() {
 		field := resourceType.Field(i)
-		name := jsonFieldName(field)
-		if name == "" {
+		name, isSerialized := jsonFieldName(field)
+		if !isSerialized {
 			continue
 		}
 		fieldType := elementTypeOf(field.Type)
+		if name == "" {
+			// An embedded struct without a name of its own is inlined, its fields belong to the enclosing object.
+			if field.Anonymous {
+				collectPotentialCredentialFields(fieldType, path, enclosingObject, visited, fields)
+			}
+			continue
+		}
 		fieldPath := path + "." + name
 		// A string holds a credential value directly, and a map of strings holds one per entry - the shape of the generic
 		// webhook channel's headers. Both are value-shaped, so the name of the field decides whether it might be a
@@ -235,14 +242,14 @@ func elementTypeOf(t reflect.Type) reflect.Type {
 	return t
 }
 
-// jsonFieldName returns the name a field is serialized under, or "" when it is not serialized on its own (an inlined
-// or omitted field).
-func jsonFieldName(field reflect.StructField) string {
+// jsonFieldName returns the name a field is serialized under, "" for an inlined field, and false for a field that is
+// not serialized at all.
+func jsonFieldName(field reflect.StructField) (string, bool) {
 	name := strings.Split(field.Tag.Get("json"), ",")[0]
 	if name == "-" {
-		return ""
+		return "", false
 	}
-	return name
+	return name, true
 }
 
 func hasCredentialLikeName(name string) bool {

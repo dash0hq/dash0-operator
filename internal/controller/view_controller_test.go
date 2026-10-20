@@ -1040,6 +1040,44 @@ spec:
 						},
 					),
 				)
+
+				It(
+					"reports a non-retryable synchronization error for a view that cannot be converted", func() {
+						view := map[string]any{}
+						Expect(yaml.Unmarshal([]byte(`
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0View
+metadata:
+  name: dash0-view
+  annotations:
+    dash0.com/deleted-at: "2026-10-19"
+spec:
+  display:
+    name: Dash0 View Example
+`), &view)).To(Succeed())
+						apiConfig := ApiConfig{
+							Endpoint: ApiEndpointTest,
+							Dataset:  DatasetCustomTest,
+							Token:    AuthorizationTokenTest,
+						}
+						resourceToRequestsResult :=
+							viewReconciler.MapResourceToHttpRequests(
+								&preconditionValidationResult{
+									k8sName:      "dash0-view",
+									k8sNamespace: TestNamespaceName,
+									resource:     view,
+								},
+								apiConfig,
+								upsertAction,
+								logger,
+							)
+						Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())
+						synchronizationError, httpStatusCode := firstSynchronizationErrorAndStatusCode(resourceToRequestsResult)
+						Expect(synchronizationError).To(ContainSubstring("unable to convert the view"))
+						Expect(httpStatusCode).To(Equal(http.StatusBadRequest))
+						Expect(isRetryableSynchronizationError(synchronizationError, httpStatusCode)).To(BeFalse())
+					},
+				)
 			},
 		)
 	},

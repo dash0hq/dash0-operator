@@ -5,6 +5,7 @@ This guide covers advanced configuration topics for the Dash0 operator, includin
 ## Table of Contents
 
 - [Providing a Filelog Offset Volume](#providing-a-filelog-offset-volume)
+- [Webhook Certificates](#webhook-certificates)
 - [Using cert-manager](#using-cert-manager)
 - [Tuning Resource Requests and Limits](#tuning-resource-requests-and-limits)
 - [Controlling On Which Nodes the Operator's Collector Pods Are Scheduled](#controlling-on-which-nodes-the-operators-collector-pods-are-scheduled)
@@ -99,15 +100,42 @@ Known examples for this are:
 
 For more details on OPA, Kyverno, and other platform-specific considerations, see [Platform Specific](platform-specific.md).
 
+## Webhook Certificates
+
+By default, the operator manages the TLS certificates for its webhooks itself, without the need for a third-party
+solution.
+It stores them in the Secret `dash0-operator-webhook-server-cert` in the operator's namespace, writes the CA into the
+`caBundle` fields of its webhook configurations and of the `dash0monitorings.operator.dash0.com` CRD, and renews the
+certificates before they expire.
+Applying the Helm chart again, for example via `helm upgrade` or an ArgoCD sync, does not change the certificates.
+
+Things to be aware of:
+
+* If an admission policy (for example Kyverno or OPA Gatekeeper) prevents the operator from updating the Secret or from
+  patching its webhook configurations or the CRD, requests to the webhooks fail, and the operator pods might not become
+  ready.
+  The operator logs errors in this case.
+* To replace the CA, for example after its key has been leaked, delete the Secret and run `helm upgrade` or an ArgoCD
+  sync right after it, which creates the Secret again.
+  New operator pods do not become ready until the Secret exists again.
+  Requests to the webhooks fail briefly until the operator has written the new CA.
+* With Flux drift detection, add the ignore rules from
+  [Operator Version 0.158.0: Operator-Managed Webhook Certificates](upgrading.md#operator-version-01580-operator-managed-webhook-certificates)
+  to the `HelmRelease`, also for new installations.
+  Otherwise, Flux resets the `caBundle` values whenever the operator changes them, and requests to the webhooks fail
+  briefly each time.
+* Do not apply the operator's resources with options that replace objects instead of updating them, like
+  `helm upgrade --force`, Flux's `upgrade.force`, or ArgoCD's `Replace=true` or `Force=true` sync options.
+  They remove the certificates or the `caBundle` values, and requests to the webhooks fail until the operator has
+  written them again.
+
+For upgrading from a version before 0.158.0, see
+[Operator Version 0.158.0: Operator-Managed Webhook Certificates](upgrading.md#operator-version-01580-operator-managed-webhook-certificates).
+
 ## Using cert-manager
 
-When installing the Helm chart, it generates TLS certificates on the fly for all components that need certificates (the
-operator's webhook service and its metrics service).
-This also happens when updating the operator, e.g. via `helm upgrade`.
-This is the default behavior, and it works out of the box without the need to manage certificates with a third-party
-solution.
-
-As an alternative, you can use [`cert-manager`](https://cert-manager.io/) to manage the certificates.
+As an alternative to the operator-managed certificates, you can use [`cert-manager`](https://cert-manager.io/) to manage
+the certificates.
 To let `cert-manager` handle TLS certificates, provide the following additional settings when applying the Helm chart:
 
 ```yaml
@@ -116,7 +144,7 @@ operator:
   # Settings for using cert-manager instead of auto-generating TLS certificates.
   certManager:
 
-    # This disables the usage of automatically generated certificates by the Helm chart.
+    # This disables the certificates managed by the operator.
     # If this is set to true, the assumption is that certificates are managed by
     # cert-manager (see https://cert-manager.io/), and the other settings shown in this
     # snippet (certManager.secretName, certManager.certManagerAnnotations) become
@@ -255,7 +283,7 @@ The following Helm values control the resource settings, all nested under the to
 | `collectors.signalControlCollectorContainerResources` | SignalControl collector container | `memory: 1Gi` | `memory: 1Gi` |
 | `collectors.signalControlCollectorConfigurationReloaderContainerResources` | SignalControl collector configuration reloader | `memory: 12Mi` | `memory: 26Mi` |
 | `targetAllocator.containerResources` | target-allocator container | `cpu: 200m`, `memory: 128Mi` | `cpu: 200m`, `memory: 500Mi` |
-| `agent0Connector.containerResources` | agent0-connector container | `memory: 32Mi` | `memory: 256Mi` |
+| `agent0Connector.containerResources` | agent0-connector container | `memory: 64Mi` | `memory: 256Mi` |
 
 For every container above except the operator manager, `gomemlimit` is left empty by default and the operator derives it
 from the container's memory limit (about 80%, or about 60% for the agent0-connector, which also runs `kubectl` as a

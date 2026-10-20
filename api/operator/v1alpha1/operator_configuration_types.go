@@ -221,6 +221,12 @@ type Dash0OperatorConfigurationSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	SyntheticsWorker SyntheticsWorker `json:"syntheticsWorker,omitempty"`
+
+	// Settings for the workloads the operator manages. An absent or empty setting keeps the Helm value, a present one
+	// replaces it. Invalid settings are rejected. Replacing a custom Helm value with a different one causes a warning.
+	//
+	// +kubebuilder:validation:Optional
+	Components *OperatorConfigurationComponents `json:"components,omitempty"`
 }
 
 // SelfMonitoring describes how the operator will report telemetry about its working to the backend.

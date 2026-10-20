@@ -9,8 +9,10 @@ import (
 	"reflect"
 	"slices"
 	"sync"
+	"time"
 
 	otelmetric "go.opentelemetry.io/otel/metric"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -41,6 +43,7 @@ type AutoNamespaceMonitoringReconciler struct {
 	client.Client
 	manager           ctrl.Manager
 	operatorNamespace string
+	operatorCreatedAt time.Time
 	namespaceWatcher  *NamespaceWatcher
 }
 
@@ -49,19 +52,23 @@ var (
 	namespaceReconcileRequestMetric                                    otelmetric.Int64Counter
 )
 
+// NewAutoNamespaceMonitoringReconciler creates an AutoNamespaceMonitoringReconciler. operatorCreatedAt is the creation
+// timestamp of the operator manager deployment, see NewNamespaceWatcher.
 func NewAutoNamespaceMonitoringReconciler(
 	k8sClient client.Client,
 	operatorNamespace string,
+	operatorCreatedAt time.Time,
 ) *AutoNamespaceMonitoringReconciler {
 	return &AutoNamespaceMonitoringReconciler{
 		Client:            k8sClient,
 		operatorNamespace: operatorNamespace,
+		operatorCreatedAt: operatorCreatedAt,
 	}
 }
 
 func (r *AutoNamespaceMonitoringReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.manager = mgr
-	r.namespaceWatcher = NewNamespaceWatcher(r.Client, r.operatorNamespace)
+	r.namespaceWatcher = NewNamespaceWatcher(r.Client, mgr.GetAPIReader(), r.operatorNamespace, r.operatorCreatedAt)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dash0v1alpha1.Dash0OperatorConfiguration{}).
 		Named("autoNamespaceMonitoring").
@@ -528,15 +535,27 @@ func (r *AutoNamespaceMonitoringReconciler) updateOperatorConfigurationStatus(
 
 type NamespaceWatcher struct {
 	client.Client
+	apiReader                  client.Reader
 	operatorNamespace          string
+	operatorCreatedAt          time.Time
 	controllerStopFunctionLock sync.Mutex
 	controllerStopFunction     *context.CancelFunc
 }
 
-func NewNamespaceWatcher(k8sClient client.Client, operatorNamespace string) *NamespaceWatcher {
+// NewNamespaceWatcher creates a NamespaceWatcher. The apiReader must read directly from the API server (not from the
+// informer cache), so that a just-created pre-delete hook job is guaranteed to be visible. Pre-delete hook jobs created
+// before operatorCreatedAt are left over from a previous installation and are ignored. See isOperatorBeingUninstalled.
+func NewNamespaceWatcher(
+	k8sClient client.Client,
+	apiReader client.Reader,
+	operatorNamespace string,
+	operatorCreatedAt time.Time,
+) *NamespaceWatcher {
 	return &NamespaceWatcher{
 		Client:            k8sClient,
+		apiReader:         apiReader,
 		operatorNamespace: operatorNamespace,
+		operatorCreatedAt: operatorCreatedAt,
 	}
 }
 
@@ -682,7 +701,7 @@ func (w *NamespaceWatcher) ensureNamespaceIsMonitored(
 		)
 	}
 	logger.Warn(
-		"There already is a Dash0Monitoring resource in this namespace that has not been created via auto-namespace "+
+		"There already is a monitoring resource in this namespace that has not been created via auto-namespace "+
 			"monitoring, skipping this namespace.",
 		"namespace",
 		ns.Name,
@@ -740,6 +759,25 @@ func (w *NamespaceWatcher) createMonitoringResource(
 		resourceAnnotations[k] = v
 	}
 
+	operatorIsBeingUninstalled, err := w.isOperatorBeingUninstalled(ctx)
+	if err != nil {
+		logger.Error(
+			err,
+			"cannot check whether the operator is being uninstalled, not creating the auto-monitoring resource",
+			"namespace",
+			namespaceName,
+		)
+		return err
+	}
+	if operatorIsBeingUninstalled {
+		logger.Info(
+			"the operator is being uninstalled, not creating the auto-monitoring resource",
+			"namespace",
+			namespaceName,
+		)
+		return nil
+	}
+
 	monitoring := &dash0v1beta1.Dash0Monitoring{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
@@ -751,11 +789,50 @@ func (w *NamespaceWatcher) createMonitoringResource(
 	}
 
 	if err := w.Create(ctx, monitoring); err != nil {
-		logger.Error(err, "failed to create auto Dash0Monitoring resource", "namespace", namespaceName)
+		logger.Error(err, "failed to create auto-monitoring resource", "namespace", namespaceName)
 		return err
 	}
-	logger.Info("created auto Dash0Monitoring resource", "namespace", namespaceName, "name", name)
+	logger.Info("created auto-monitoring resource", "namespace", namespaceName, "name", name)
 	return nil
+}
+
+// isOperatorBeingUninstalled checks whether the Helm chart's pre-delete hook job exists in the operator namespace. The
+// hook deletes all Dash0Monitoring resources, auto-monitoring resources must not be recreated from then on until the
+// operator is gone. Helm creates the job before the hook deletes anything, and the check reads from the API server
+// directly, so the job is always visible by the time a deletion triggers a recreation attempt. The chart keeps the job
+// for a while after it has completed (ttlSecondsAfterFinished), so that it outlives the operator manager pod, which
+// Helm only deletes after the hook has finished. A failed job means the uninstallation has been aborted and does not
+// count. If the uninstallation is aborted after the hook has completed, auto-monitoring resources are only recreated
+// after the job has been removed, with the next reconcile of the namespace (a namespace change, an operator restart or
+// a cache resync).
+func (w *NamespaceWatcher) isOperatorBeingUninstalled(ctx context.Context) (bool, error) {
+	preDeleteHookJobs := &batchv1.JobList{}
+	if err := w.apiReader.List(
+		ctx,
+		preDeleteHookJobs,
+		client.InNamespace(w.operatorNamespace),
+		client.MatchingLabels{util.AppKubernetesIoComponentLabel: util.UninstallationProcessComponent},
+	); err != nil {
+		return false, err
+	}
+	for i := range preDeleteHookJobs.Items {
+		if indicatesUninstallation(&preDeleteHookJobs.Items[i], w.operatorCreatedAt) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func indicatesUninstallation(preDeleteHookJob *batchv1.Job, operatorCreatedAt time.Time) bool {
+	if preDeleteHookJob.CreationTimestamp.Time.Before(operatorCreatedAt) {
+		return false
+	}
+	for _, condition := range preDeleteHookJob.Status.Conditions {
+		if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
+			return false
+		}
+	}
+	return true
 }
 
 // reconcileResourceWithMonitoringTemplate makes sure the monitoring resource reflects the current monitoring template.
@@ -788,21 +865,21 @@ func (w *NamespaceWatcher) reconcileResourceWithMonitoringTemplate(
 	}
 
 	logger.Debug(
-		"auto Dash0Monitoring resource does not match the monitoring template, updating",
+		"auto-monitoring resource does not match the monitoring template, updating",
 		"namespace", monitoringResource.Namespace,
 		"name", monitoringResource.Name,
 	)
 	if err := w.Update(ctx, &monitoringResource); err != nil {
 		logger.Error(
 			err,
-			"failed to update auto Dash0Monitoring resource to match the monitoring template",
+			"failed to update auto-monitoring resource to match the monitoring template",
 			"namespace", monitoringResource.Namespace,
 			"name", monitoringResource.Name,
 		)
 		return err
 	}
 	logger.Info(
-		"updated auto Dash0Monitoring resource to match the monitoring template",
+		"updated auto-monitoring resource to match the monitoring template",
 		"namespace", monitoringResource.Namespace,
 		"name", monitoringResource.Name,
 	)

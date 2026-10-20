@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io"
 	"math/big"
 	"net/http"
 	"os"
@@ -23,7 +22,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllertest"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -50,11 +48,7 @@ const (
 
 var (
 	persesDashboardCrd        *apiextensionsv1.CustomResourceDefinition
-	testQueuePersesDashboards = workqueue.NewTypedWithConfig(
-		workqueue.TypedQueueConfig[ThirdPartyResourceSyncJob]{
-			Name: "dash0-third-party-resource-synchronization-queue",
-		},
-	)
+	testQueuePersesDashboards = NewThirdPartyResourceSyncQueue("dash0-perses-dashboard-synchronization-queue")
 
 	dashboardApiBasePath = "/api/dashboards/"
 
@@ -712,6 +706,54 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 				Expect(conv.Strategy).To(Equal(apiextensionsv1.WebhookConverter))
 				Expect(conv.Webhook.ClientConfig.Service.Name).To(Equal(OperatorWebhookServiceName))
 			})
+
+			It("reads the CA bundle from the operator-managed webhook certificates if they are configured", func() {
+				ensurePersesDashboardCrdExists(ctx)
+				operatorManagedCaPEM := generateTestCaPem()
+				r := createPersesDashboardCrdReconciler(true, caBundlePath+".does-not-exist")
+				r.conversionWebhookSettings.CaBundleSource = func() []byte { return operatorManagedCaPEM }
+
+				r.ensurePersesConversionWebhookConfigured(ctx, persesDashboardCrd, false, logger)
+
+				Expect(readCrdConversion().Webhook.ClientConfig.CABundle).To(Equal(operatorManagedCaPEM))
+			})
+
+			It("reads the CRD again and retries if it has been changed concurrently", func() {
+				ensurePersesDashboardCrdExists(ctx)
+				stale := &apiextensionsv1.CustomResourceDefinition{}
+				Expect(k8sClient.Get(ctx, PersesDashboardCrdQualifiedName, stale)).To(Succeed())
+				concurrent := stale.DeepCopy()
+				concurrent.Labels = map[string]string{"concurrent": "change"}
+				Expect(k8sClient.Patch(ctx, concurrent, client.MergeFrom(stale))).To(Succeed())
+
+				r := createPersesDashboardCrdReconciler(true, caBundlePath)
+				r.ensurePersesConversionWebhookConfigured(ctx, stale, false, logger)
+
+				crd := &apiextensionsv1.CustomResourceDefinition{}
+				Expect(k8sClient.Get(ctx, PersesDashboardCrdQualifiedName, crd)).To(Succeed())
+				Expect(crd.Labels).To(HaveKeyWithValue("concurrent", "change"))
+				Expect(crd.Spec.Conversion.Webhook.ClientConfig.Service.Name).To(Equal(OperatorWebhookServiceName))
+				Expect(crd.Spec.Conversion.Webhook.ClientConfig.CABundle).To(Equal(caPEM))
+			})
+
+			It("updates the CA bundle when the operator-managed CA bundle changes", func() {
+				ensurePersesDashboardCrdExists(ctx)
+				currentCaPEM := caPEM
+				r := createPersesDashboardCrdReconciler(true, caBundlePath)
+				r.conversionWebhookSettings.CaBundleSource = func() []byte { return currentCaPEM }
+				r.ensurePersesConversionWebhookConfigured(ctx, persesDashboardCrd, false, logger)
+				Expect(readCrdConversion().Webhook.ClientConfig.CABundle).To(Equal(caPEM))
+
+				currentCaPEM = generateTestCaPem()
+				r.OnCaBundleChange(ctx, logger)
+
+				Expect(readCrdConversion().Webhook.ClientConfig.CABundle).To(Equal(currentCaPEM))
+			})
+
+			It("ignores a CA bundle change if the CRD does not exist", func() {
+				r := createPersesDashboardCrdReconciler(true, caBundlePath)
+				r.OnCaBundleChange(ctx, logger)
+			})
 		},
 	)
 
@@ -1041,6 +1083,198 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			)
 
 			It(
+				"synchronizeViaApiAndUpdateStatusWithOriginsInNamespace: fetches the existing dashboards only once, "+
+					"only deletes dashboards that exist",
+				func() {
+					EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+					dashboardOrigin := func(name string) string {
+						return fmt.Sprintf("dash0-operator_%s_%s_%s_%s", clusterId, DatasetCustomTest, TestNamespaceName, name)
+					}
+					gock.New(ApiEndpointTest).
+						Get("/api/dashboards").
+						MatchHeader("Authorization", AuthorizationHeaderTest).
+						MatchParam("dataset", DatasetCustomTest).
+						Times(1).
+						Reply(http.StatusOK).
+						JSON([]map[string]string{
+							{"id": "1", "origin": dashboardOrigin("test-dashboard-2")},
+							// This origin must not be attributed to the resource test-dashboard-2.
+							{"id": "2", "origin": dashboardOrigin("test-dashboard-20")},
+							{"id": "3", "origin": "dashboard-not-managed-by-the-operator"},
+							{"id": "4"},
+						})
+					gock.New(ApiEndpointTest).
+						Delete(dashboardApiBasePath+dashboardOrigin("test-dashboard-2")).
+						MatchHeader("Authorization", AuthorizationHeaderTest).
+						MatchParam("dataset", DatasetCustomTest).
+						Times(1).
+						Reply(http.StatusOK)
+					defer gock.Off()
+
+					originsInNamespace := newExistingOriginsInNamespace(TestNamespaceName)
+					for _, name := range []string{"test-dashboard-1", "test-dashboard-2", "test-dashboard-3"} {
+						dashboardResource := createDashboardResourceWithEnableLabel("false")
+						dashboardResource.SetName(name)
+						synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
+							ctx,
+							persesDashboardReconciler,
+							&dashboardResource,
+							nil,
+							upsertAction,
+							originsInNamespace,
+							logger,
+						)
+					}
+
+					Expect(gock.IsDone()).To(BeTrue())
+					monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+					results := monRes.Status.PersesDashboardSynchronizationResults
+					Expect(results).To(HaveLen(3))
+					for _, name := range []string{"test-dashboard-1", "test-dashboard-2", "test-dashboard-3"} {
+						result := results[fmt.Sprintf("%s/%s", TestNamespaceName, name)]
+						Expect(result.SynchronizationStatus).To(
+							Equal(dash0common.ThirdPartySynchronizationStatusSuccessful),
+						)
+					}
+					Expect(results[fmt.Sprintf("%s/test-dashboard-2", TestNamespaceName)].
+						SynchronizationResults[0].Dash0Origin).To(Equal(dashboardOrigin("test-dashboard-2")))
+				},
+			)
+
+			It(
+				"synchronizeViaApiAndUpdateStatusWithOriginsInNamespace: tries to fetch the existing dashboards only once, "+
+					"records an error and does not send DELETE requests if fetching them fails",
+				func() {
+					EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+					gock.New(ApiEndpointTest).
+						Get("/api/dashboards").
+						MatchHeader("Authorization", AuthorizationHeaderTest).
+						MatchParam("dataset", DatasetCustomTest).
+						Times(1).
+						Reply(http.StatusForbidden)
+					defer gock.Off()
+
+					resourceNames := []string{"test-dashboard-1", "test-dashboard-2", "test-dashboard-3"}
+					originsInNamespace := newExistingOriginsInNamespace(TestNamespaceName)
+					for _, name := range resourceNames {
+						dashboardResource := createDashboardResourceWithEnableLabel("false")
+						dashboardResource.SetName(name)
+						synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
+							ctx,
+							persesDashboardReconciler,
+							&dashboardResource,
+							nil,
+							upsertAction,
+							originsInNamespace,
+							logger,
+						)
+					}
+
+					Expect(gock.IsDone()).To(BeTrue())
+					monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+					results := monRes.Status.PersesDashboardSynchronizationResults
+					Expect(results).To(HaveLen(len(resourceNames)))
+					for _, name := range resourceNames {
+						result := results[fmt.Sprintf("%s/%s", TestNamespaceName, name)]
+						Expect(result.SynchronizationStatus).To(Equal(dash0common.ThirdPartySynchronizationStatusFailed))
+						Expect(result.SynchronizationResults).To(HaveLen(1))
+						Expect(result.SynchronizationResults[0].SynchronizationError).To(
+							MatchRegexp("^unexpected status code 403 when trying to fetch existing origins: GET .*"),
+						)
+						Expect(result.SynchronizationResults[0].HttpStatusCode).To(Equal(http.StatusForbidden))
+					}
+				},
+			)
+
+			It(
+				"synchronizeNamespacedResources: fetches the existing dashboards only once in a namespace-wide resync, "+
+					"only deletes dashboards that exist",
+				func() {
+					EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+					resourceNames := []string{"test-dashboard-1", "test-dashboard-2", "test-dashboard-3"}
+					dashboardOrigin := func(name string) string {
+						return fmt.Sprintf("dash0-operator_%s_%s_%s_%s", clusterId, DatasetCustomTest, TestNamespaceName, name)
+					}
+					gock.New(ApiEndpointTest).
+						Get("/api/dashboards").
+						MatchHeader("Authorization", AuthorizationHeaderTest).
+						MatchParam("dataset", DatasetCustomTest).
+						Times(1).
+						Reply(http.StatusOK).
+						JSON([]map[string]string{{"id": "1", "origin": dashboardOrigin("test-dashboard-2")}})
+					expectDashboardDeleteRequest(dashboardApiBasePath + dashboardOrigin("test-dashboard-2"))
+					defer gock.Off()
+
+					deleteDashboardResources := createDisabledDashboardResourcesInKubernetes(
+						ctx,
+						persesDashboardCrdReconciler.Version(),
+						resourceNames,
+					)
+					defer deleteDashboardResources()
+
+					persesDashboardReconciler.synchronizeNamespacedResources(ctx, TestNamespaceName, logger)
+
+					Eventually(func(g Gomega) {
+						monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, g)
+						results := monRes.Status.PersesDashboardSynchronizationResults
+						g.Expect(results).To(HaveLen(len(resourceNames)))
+						for _, name := range resourceNames {
+							g.Expect(results[fmt.Sprintf("%s/%s", TestNamespaceName, name)].SynchronizationStatus).To(
+								Equal(dash0common.ThirdPartySynchronizationStatusSuccessful),
+							)
+						}
+					}, 5*time.Second, 50*time.Millisecond).Should(Succeed())
+					Expect(gock.IsDone()).To(BeTrue())
+				},
+			)
+
+			It(
+				"synchronizeNamespacedResources: tries to fetch the existing dashboards only once in a namespace-wide "+
+					"resync when fetching them fails",
+				func() {
+					EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+					resourceNames := []string{"test-dashboard-1", "test-dashboard-2", "test-dashboard-3"}
+					gock.New(ApiEndpointTest).
+						Get("/api/dashboards").
+						MatchHeader("Authorization", AuthorizationHeaderTest).
+						MatchParam("dataset", DatasetCustomTest).
+						Times(1).
+						Reply(http.StatusForbidden)
+					defer gock.Off()
+
+					deleteDashboardResources := createDisabledDashboardResourcesInKubernetes(
+						ctx,
+						persesDashboardCrdReconciler.Version(),
+						resourceNames,
+					)
+					defer deleteDashboardResources()
+
+					persesDashboardReconciler.synchronizeNamespacedResources(ctx, TestNamespaceName, logger)
+
+					Eventually(func(g Gomega) {
+						monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, g)
+						results := monRes.Status.PersesDashboardSynchronizationResults
+						g.Expect(results).To(HaveLen(len(resourceNames)))
+						for _, name := range resourceNames {
+							result := results[fmt.Sprintf("%s/%s", TestNamespaceName, name)]
+							g.Expect(result.SynchronizationStatus).To(
+								Equal(dash0common.ThirdPartySynchronizationStatusFailed),
+							)
+							g.Expect(result.SynchronizationResults).To(HaveLen(1))
+							g.Expect(result.SynchronizationResults[0].SynchronizationError).To(
+								MatchRegexp("^unexpected status code 403 when trying to fetch existing origins: GET .*"),
+							)
+						}
+					}, 5*time.Second, 50*time.Millisecond).Should(Succeed())
+					Expect(gock.IsDone()).To(BeTrue())
+				},
+			)
+
+			It(
 				"reports validation issues for a dashboard", func() {
 					EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
@@ -1162,11 +1396,11 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 					Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(1))
 					apiRequest := resourceToRequestsResult.ApiRequests[0]
 					Expect(apiRequest.ItemName).To(Equal("perses-dashboard"))
-					req := apiRequest.Request
-					defer func() {
-						_ = req.Body.Close()
-					}()
-					body, err := io.ReadAll(req.Body)
+					Expect(apiRequest.ApiClientCall).ToNot(BeNil())
+					Expect(apiRequest.ApiClientCall.Method).To(Equal(http.MethodPut))
+					dashboardDefinition, err := mapToDashboardDefinition(dashboard)
+					Expect(err).ToNot(HaveOccurred())
+					body, err := json.Marshal(dashboardDefinition)
 					Expect(err).ToNot(HaveOccurred())
 					resultingDashboardInRequest := map[string]any{}
 					Expect(json.Unmarshal(body, &resultingDashboardInRequest)).To(Succeed())
@@ -1187,6 +1421,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 						Expect(ReadFromMap(resultingDashboardInRequest, []string{"spec", "display", "description"})).To(BeNil())
 					}
 
+					Expect(resultingDashboardInRequest["kind"]).To(Equal("PersesDashboard"))
 					Expect(resultingDashboardInRequest["metadata"]).ToNot(BeNil())
 					Expect(ReadFromMap(resultingDashboardInRequest, []string{"metadata", "name"})).To(Equal("perses-dashboard"))
 
@@ -1302,15 +1537,16 @@ spec:
 					},
 				),
 				Entry(
-					"should send annotations with v1alpha1", dashboardToRequestTestConfig{
+					"should send Dash0 annotations and drop other annotations with v1alpha1", dashboardToRequestTestConfig{
 						dashboard: `
 apiVersion: perses.dev/v1alpha1
 kind: PersesDashboard
 metadata:
   name: perses-dashboard
   annotations:
-    dash0com/annotation1: value1
-    dash0com/annotation2: value2
+    dash0.com/folder-path: /team/dashboards
+    dash0.com/sharing: team:abc
+    example.com/other: value
 spec:
   display:
     name: Perses Dashboard Example
@@ -1320,21 +1556,22 @@ spec:
 						expectedName:        "Perses Dashboard Example",
 						expectedDescription: new("This is an example dashboard."),
 						expectedAnnotations: map[string]string{
-							"dash0com/annotation1": "value1",
-							"dash0com/annotation2": "value2",
+							"dash0.com/folder-path": "/team/dashboards",
+							"dash0.com/sharing":     "team:abc",
 						},
 					},
 				),
 				Entry(
-					"should send annotations with v1alpha2", dashboardToRequestTestConfig{
+					"should send Dash0 annotations and drop other annotations with v1alpha2", dashboardToRequestTestConfig{
 						dashboard: `
 apiVersion: perses.dev/v1alpha2
 kind: PersesDashboard
 metadata:
   name: perses-dashboard
   annotations:
-    dash0com/annotation1: value1
-    dash0com/annotation2: value2
+    dash0.com/folder-path: /team/dashboards
+    dash0.com/sharing: team:abc
+    example.com/other: value
 spec:
   config:
     display:
@@ -1345,11 +1582,54 @@ spec:
 						expectedName:        "Perses Dashboard Example",
 						expectedDescription: new("This is an example dashboard."),
 						expectedAnnotations: map[string]string{
-							"dash0com/annotation1": "value1",
-							"dash0com/annotation2": "value2",
+							"dash0.com/folder-path": "/team/dashboards",
+							"dash0.com/sharing":     "team:abc",
 						},
 					},
 				),
+			)
+
+			It(
+				"reports a non-retryable synchronization error for a dashboard that cannot be converted", func() {
+					dashboard := map[string]any{}
+					Expect(yaml.Unmarshal([]byte(`
+apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: perses-dashboard
+  annotations:
+    dash0.com/folder-path: 2
+spec:
+  display:
+    name: Perses Dashboard Example
+  duration: 5m
+`), &dashboard)).To(Succeed())
+					apiConfig := ApiConfig{Endpoint: ApiEndpointTest, Dataset: DatasetCustomTest, Token: AuthorizationTokenTest}
+					resourceToRequestsResult :=
+						persesDashboardReconciler.MapResourceToHttpRequests(
+							&preconditionValidationResult{
+								k8sName:      "perses-dashboard",
+								k8sNamespace: TestNamespaceName,
+								resource:     dashboard,
+							},
+							apiConfig,
+							upsertAction,
+							logger,
+						)
+					Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())
+					synchronizationError, httpStatusCode := firstSynchronizationErrorAndStatusCode(resourceToRequestsResult)
+					Expect(synchronizationError).To(ContainSubstring("unable to convert the dashboard to the Dash0 API format"))
+					Expect(httpStatusCode).To(Equal(http.StatusBadRequest))
+					Expect(
+						persesDashboardSynchronizationResultHasRetryableError(
+							dash0common.PersesDashboardSynchronizationResults{
+								SynchronizationResults: []dash0common.PersesDashboardSynchronizationResultPerEndpointAndDataset{
+									{SynchronizationError: synchronizationError, HttpStatusCode: httpStatusCode},
+								},
+							},
+						),
+					).To(BeFalse())
+				},
 			)
 		},
 	)
@@ -1359,9 +1639,10 @@ spec:
 func createPersesDashboardCrdReconciler(autoPatch bool, caBundlePath string) *PersesDashboardCrdReconciler {
 	crdReconciler := NewPersesDashboardCrdReconciler(
 		k8sClient,
+		k8sClient,
 		testQueuePersesDashboards,
 		&DummyLeaderElectionAware{Leader: true},
-		TestHTTPClient(),
+		testApiClientPool(),
 		PersesDashboardConversionWebhookSettings{
 			// Default to disabled in tests; individual tests that exercise the patch logic set this back to true.
 			AutoPatchConversionWebhook: autoPatch,
@@ -1482,6 +1763,44 @@ func createDashboardResourceWithEnableLabel(dash0EnableLabelValue string) unstru
 	err = json.Unmarshal(marshalled, &unstructuredObject)
 	Expect(err).NotTo(HaveOccurred())
 	return unstructuredObject
+}
+
+// createDisabledDashboardResourcesInKubernetes creates PersesDashboard resources of the given perses.dev API version
+// with the label dash0.com/enable=false in the test namespace, and returns a function that deletes them again.
+func createDisabledDashboardResourcesInKubernetes(ctx context.Context, version string, names []string) func() {
+	dashboardSpec := map[string]any{
+		"duration": "5m",
+		"layouts":  []any{},
+		"panels":   map[string]any{},
+	}
+	if version != "v1alpha1" {
+		dashboardSpec = map[string]any{"config": dashboardSpec}
+	}
+	dashboardResources := make([]*unstructured.Unstructured, 0, len(names))
+	for _, name := range names {
+		dashboardResource := &unstructured.Unstructured{
+			Object: map[string]any{
+				"apiVersion": "perses.dev/" + version,
+				"kind":       "PersesDashboard",
+				"metadata": map[string]any{
+					"name":      name,
+					"namespace": TestNamespaceName,
+					"labels":    map[string]any{"dash0.com/enable": "false"},
+				},
+				"spec": dashboardSpec,
+			},
+		}
+		// The client's REST mapper might not have discovered the freshly created PersesDashboard CRD yet.
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Create(ctx, dashboardResource)).To(Succeed())
+		}, 5*time.Second, 50*time.Millisecond).Should(Succeed())
+		dashboardResources = append(dashboardResources, dashboardResource)
+	}
+	return func() {
+		for _, dashboardResource := range dashboardResources {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, dashboardResource))).To(Succeed())
+		}
+	}
 }
 
 func ensurePersesDashboardCrdExists(ctx context.Context) {

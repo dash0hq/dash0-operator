@@ -103,6 +103,53 @@ cluster roles should match snapshot:
           - deployments/finalizers
         verbs:
           - update
+      - apiGroups:
+          - admissionregistration.k8s.io
+        resources:
+          - mutatingwebhookconfigurations
+          - validatingwebhookconfigurations
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - apiextensions.k8s.io
+        resources:
+          - customresourcedefinitions
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - admissionregistration.k8s.io
+        resourceNames:
+          - dash0-operator-injector
+          - dash0-operator-operator-configuration-mutating
+          - dash0-operator-monitoring-mutating
+        resources:
+          - mutatingwebhookconfigurations
+        verbs:
+          - patch
+          - update
+      - apiGroups:
+          - admissionregistration.k8s.io
+        resourceNames:
+          - dash0-operator-operator-configuration-validator
+          - dash0-operator-monitoring-validator
+        resources:
+          - validatingwebhookconfigurations
+        verbs:
+          - patch
+          - update
+      - apiGroups:
+          - apiextensions.k8s.io
+        resourceNames:
+          - dash0monitorings.operator.dash0.com
+        resources:
+          - customresourcedefinitions
+        verbs:
+          - patch
+          - update
   2: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
@@ -699,6 +746,53 @@ cluster roles should match snapshot with agent0-connector enabled:
         resources:
           - deployments/finalizers
         verbs:
+          - update
+      - apiGroups:
+          - admissionregistration.k8s.io
+        resources:
+          - mutatingwebhookconfigurations
+          - validatingwebhookconfigurations
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - apiextensions.k8s.io
+        resources:
+          - customresourcedefinitions
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - admissionregistration.k8s.io
+        resourceNames:
+          - dash0-operator-injector
+          - dash0-operator-operator-configuration-mutating
+          - dash0-operator-monitoring-mutating
+        resources:
+          - mutatingwebhookconfigurations
+        verbs:
+          - patch
+          - update
+      - apiGroups:
+          - admissionregistration.k8s.io
+        resourceNames:
+          - dash0-operator-operator-configuration-validator
+          - dash0-operator-monitoring-validator
+        resources:
+          - validatingwebhookconfigurations
+        verbs:
+          - patch
+          - update
+      - apiGroups:
+          - apiextensions.k8s.io
+        resourceNames:
+          - dash0monitorings.operator.dash0.com
+        resources:
+          - customresourcedefinitions
+        verbs:
+          - patch
           - update
   2: |
     apiVersion: rbac.authorization.k8s.io/v1

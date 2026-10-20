@@ -69,6 +69,11 @@ tests:
           content:
             name: DASH0_WEBHOOK_SERVICE_NAME
             value: dash0-operator-webhook-service
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_DEPLOYMENT_NAME
+            value: dash0-operator-controller
 
   - it: should render tolerations and priority class
     set:

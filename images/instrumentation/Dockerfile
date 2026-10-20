@@ -68,7 +68,7 @@ RUN distribution_version=$(cat /tmp/dash0-python-distribution-version) && \
     tar -xz --strip-components=1 -C /dash0-python-distribution
 
 # install Python artifacts (glibc)
-FROM python:3.14.7-trixie AS build-python-glibc
+FROM python:3.14.8-trixie AS build-python-glibc
 RUN mkdir -p /dash0-instrumentation/python
 WORKDIR /dash0-instrumentation/python
 COPY python/extract-flattened-requirements.sh .

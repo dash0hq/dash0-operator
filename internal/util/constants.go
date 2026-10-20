@@ -20,6 +20,10 @@ const (
 	MonitoringAutoResourceDefaultName     = "dash0-monitoring-auto-resource"
 	AutoMonitoredNamespaceLabel           = "dash0.com/auto-monitored-namespace"
 
+	// WebhookReachabilityCheckResourceName is the name of the resources the Helm chart's post-install hook creates with
+	// dryRun=All to check that the operator's webhooks are reachable. The webhooks allow these requests right away.
+	WebhookReachabilityCheckResourceName = "dash0-webhook-reachability-check"
+
 	ActorController WorkloadModifierActor = "controller"
 	ActorWebhook    WorkloadModifierActor = "webhook"
 
@@ -30,6 +34,10 @@ const (
 	AppKubernetesIoManagedByLabel = "app.kubernetes.io/managed-by"
 	AppKubernetesIoVersionLabel   = "app.kubernetes.io/version"
 	KubernetesIoOs                = "kubernetes.io/os"
+
+	// UninstallationProcessComponent is the app.kubernetes.io/component label value of the Helm chart's pre-delete hook
+	// job. The operator checks for a running job with this label to detect that it is being uninstalled.
+	UninstallationProcessComponent = "uninstallation-process"
 
 	EnvVarDash0NodeIp = "DASH0_NODE_IP"
 	EnvVarGoMemLimit  = "GOMEMLIMIT"

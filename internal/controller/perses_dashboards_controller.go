@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -17,12 +18,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	k8sretry "k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -38,10 +42,11 @@ import (
 
 type PersesDashboardCrdReconciler struct {
 	client.Client
-	queue                     *workqueue.Typed[ThirdPartyResourceSyncJob]
+	apiReader                 client.Reader
+	queue                     *ThirdPartyResourceSyncQueue
 	leaderElectionAware       util.LeaderElectionAware
 	mgr                       ctrl.Manager
-	httpClient                *http.Client
+	apiClientPool             *ApiClientPool
 	skipNameValidation        bool
 	persesDashboardReconciler *PersesDashboardReconciler
 	persesDashboardCrdExists  atomic.Bool
@@ -52,6 +57,9 @@ type PersesDashboardCrdReconciler struct {
 	crdVersion atomic.Pointer[string]
 
 	conversionWebhookSettings PersesDashboardConversionWebhookSettings
+	// uncachedClient is used to read the CRD again after a conflicting conversion webhook patch, and when the CA bundle
+	// changes.
+	uncachedClient client.Client
 }
 
 // PersesDashboardConversionWebhookSettings are the settings for auto-patching the PersesDashboard CRD's conversion webhook stanza
@@ -63,6 +71,9 @@ type PersesDashboardConversionWebhookSettings struct {
 	WebhookServicePort         int32
 	// CaBundlePath is optional; defaults to the standard controller-runtime serving-certs mount.
 	CaBundlePath string
+	// CaBundleSource is optional; if set, the CA bundle is read from it instead of from CaBundlePath. It is set when the
+	// operator manages the webhook certificates itself.
+	CaBundleSource func() []byte
 }
 
 type PersesDashboardReconciler struct {
@@ -70,9 +81,10 @@ type PersesDashboardReconciler struct {
 	// crdReconciler is a back-reference to the owning CRD reconciler so the inner reconciler can read the chosen API version (which
 	// depends on which versions the cluster's CRD currently serves; see PersesDashboardCrdReconciler.OnCrdChange).
 	crdReconciler              *PersesDashboardCrdReconciler
+	apiReader                  client.Reader
 	pseudoClusterUid           types.UID
-	queue                      *workqueue.Typed[ThirdPartyResourceSyncJob]
-	httpClient                 *http.Client
+	queue                      *ThirdPartyResourceSyncQueue
+	apiClientPool              *ApiClientPool
 	defaultApiConfigs          selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs       selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	namespacedSyncEnabled      sync.Map
@@ -81,9 +93,14 @@ type PersesDashboardReconciler struct {
 }
 
 const (
+	// PersesDashboardCrdName is the name of the perses.dev PersesDashboard CRD.
+	PersesDashboardCrdName = "persesdashboards.perses.dev"
+
 	persesDashboardV1Alpha1         = "v1alpha1"
 	persesDashboardV1Alpha2         = "v1alpha2"
 	defaultWebhookServingCertCAPath = "/tmp/k8s-webhook-server/serving-certs/ca.crt"
+
+	persesCaBundleUpdateTimeout = 30 * time.Second
 )
 
 var (
@@ -101,9 +118,10 @@ var (
 
 func NewPersesDashboardCrdReconciler(
 	k8sClient client.Client,
-	queue *workqueue.Typed[ThirdPartyResourceSyncJob],
+	apiReader client.Reader,
+	queue *ThirdPartyResourceSyncQueue,
 	leaderElectionAware util.LeaderElectionAware,
-	httpClient *http.Client,
+	apiClientPool *ApiClientPool,
 	conversionWebhookSettings PersesDashboardConversionWebhookSettings,
 ) *PersesDashboardCrdReconciler {
 	if conversionWebhookSettings.CaBundlePath == "" {
@@ -111,9 +129,10 @@ func NewPersesDashboardCrdReconciler(
 	}
 	return &PersesDashboardCrdReconciler{
 		Client:                    k8sClient,
+		apiReader:                 apiReader,
 		queue:                     queue,
 		leaderElectionAware:       leaderElectionAware,
-		httpClient:                httpClient,
+		apiClientPool:             apiClientPool,
 		conversionWebhookSettings: conversionWebhookSettings,
 	}
 }
@@ -196,7 +215,7 @@ func chooseVersionFromCrd(crd *apiextensionsv1.CustomResourceDefinition, logger 
 }
 
 func (r *PersesDashboardCrdReconciler) QualifiedKind() string {
-	return "persesdashboards.perses.dev"
+	return PersesDashboardCrdName
 }
 
 func (r *PersesDashboardCrdReconciler) ControllerName() string {
@@ -232,10 +251,11 @@ func (r *PersesDashboardCrdReconciler) OperatorManagerIsLeader() bool {
 func (r *PersesDashboardCrdReconciler) CreateThirdPartyResourceReconciler(pseudoClusterUid types.UID) {
 	r.persesDashboardReconciler = &PersesDashboardReconciler{
 		Client:               r.Client,
+		apiReader:            r.apiReader,
 		crdReconciler:        r,
 		queue:                r.queue,
 		pseudoClusterUid:     pseudoClusterUid,
-		httpClient:           r.httpClient,
+		apiClientPool:        r.apiClientPool,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
 	}
@@ -252,6 +272,7 @@ func (r *PersesDashboardCrdReconciler) SetupWithManager(
 	logger logd.Logger,
 ) error {
 	r.mgr = mgr
+	r.uncachedClient = startupK8sClient
 	if err := SetupThirdPartyCrdReconcilerWithManager(
 		ctx,
 		startupK8sClient,
@@ -553,12 +574,12 @@ func (r *PersesDashboardReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
-func (r *PersesDashboardReconciler) Queue() *workqueue.Typed[ThirdPartyResourceSyncJob] {
+func (r *PersesDashboardReconciler) Queue() *ThirdPartyResourceSyncQueue {
 	return r.queue
 }
 
-func (r *PersesDashboardReconciler) HttpClient() *http.Client {
-	return r.httpClient
+func (r *PersesDashboardReconciler) ApiReader() client.Reader {
+	return r.apiReader
 }
 
 func (r *PersesDashboardReconciler) IsSynchronizationEnabled(monitoringResource *dash0v1beta1.Dash0Monitoring) bool {
@@ -598,11 +619,24 @@ func (r *PersesDashboardReconciler) Update(
 	e event.TypedUpdateEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
+	logger := logd.FromContext(ctx)
+	if hasUnchangedResourceVersion(e) {
+		logger.Debug(
+			"Ignoring an update event for an unchanged Perses dashboard resource",
+			"namespace",
+			e.ObjectNew.GetNamespace(),
+			"name",
+			e.ObjectNew.GetName(),
+			"resourceVersion",
+			e.ObjectNew.GetResourceVersion(),
+		)
+		return
+	}
+
 	if persesDashboardReconcileRequestMetric != nil {
 		persesDashboardReconcileRequestMetric.Add(ctx, 1)
 	}
 
-	logger := logd.FromContext(ctx)
 	logger.Info(
 		"Detected a change for a Perses dashboard resource",
 		"namespace",
@@ -636,9 +670,17 @@ func (r *PersesDashboardReconciler) Delete(
 }
 
 func (r *PersesDashboardReconciler) Generic(
+	context.Context,
+	event.TypedGenericEvent[*unstructured.Unstructured],
+	workqueue.TypedRateLimitingInterface[reconcile.Request],
+) {
+	// Should not be called, the watch is backed by source.Kind, which never emits generic events.
+}
+
+func (r *PersesDashboardReconciler) resyncViaApi(
 	ctx context.Context,
-	e event.TypedGenericEvent[*unstructured.Unstructured],
-	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
+	dashboardResource *unstructured.Unstructured,
+	originsInNamespace *existingOriginsInNamespace,
 ) {
 	if persesDashboardReconcileRequestMetric != nil {
 		persesDashboardReconcileRequestMetric.Add(ctx, 1)
@@ -648,12 +690,12 @@ func (r *PersesDashboardReconciler) Generic(
 	logger.Info(
 		"Reconciling dashboard triggered by config event (updated API config or authorization).",
 		"namespace",
-		e.Object.GetNamespace(),
+		dashboardResource.GetNamespace(),
 		"name",
-		e.Object.GetName(),
+		dashboardResource.GetName(),
 	)
 
-	upsertViaApi(r, e.Object)
+	upsertViaApiWithOriginsInNamespace(r, dashboardResource, originsInNamespace)
 }
 
 func (r *PersesDashboardReconciler) Reconcile(
@@ -664,6 +706,10 @@ func (r *PersesDashboardReconciler) Reconcile(
 	// directly when setting up the watch. We still need to implement the method, as the controller builder's Complete
 	// method requires implementing the Reconciler interface.
 	return reconcile.Result{}, nil
+}
+
+func (r *PersesDashboardReconciler) MapsToMultipleApiObjects() bool {
+	return false
 }
 
 func (r *PersesDashboardReconciler) FetchExistingResourceOriginsRequests(
@@ -677,6 +723,52 @@ func (r *PersesDashboardReconciler) FetchExistingResourceOriginsRequests(
 	return nil, nil
 }
 
+func (r *PersesDashboardReconciler) FetchExistingNamespaceOrigins(
+	ctx context.Context,
+	namespace string,
+	apiConfig ApiConfig,
+	logger logd.Logger,
+) ([]string, error) {
+	// The Dash0 API does not support filtering the list of dashboards by origin, so this fetches the origins of all
+	// dashboards in the dataset. IsOriginOfResource is used to pick the origins that belong to a particular resource.
+	dataset := apiConfig.Dataset
+	actionLabel := fmt.Sprintf(
+		"fetch existing origins: %s %sapi/dashboards?dataset=%s",
+		http.MethodGet,
+		apiConfig.Endpoint,
+		url.QueryEscape(dataset),
+	)
+	logger.Info(fmt.Sprintf("executing HTTP request to %s", actionLabel))
+	apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+	if err != nil {
+		err = convertApiClientError(err, actionLabel, false)
+		logger.Error(err, "cannot fetch existing origins", "namespace", namespace)
+		return nil, err
+	}
+	dashboards, err := apiClient.ListDashboards(ctx, &dataset)
+	if err != nil {
+		err = convertApiClientError(err, actionLabel, false)
+		logger.Error(err, "cannot fetch existing origins", "namespace", namespace)
+		return nil, err
+	}
+	var origins []string
+	for _, dashboard := range dashboards {
+		if dashboard != nil && dashboard.Origin != nil && *dashboard.Origin != "" {
+			origins = append(origins, *dashboard.Origin)
+		}
+	}
+	return origins, nil
+}
+
+func (r *PersesDashboardReconciler) IsOriginOfResource(
+	origin string,
+	preconditionValidationResult *preconditionValidationResult,
+	apiConfig ApiConfig,
+) bool {
+	_, dashboardOrigin := r.renderDashboardUrl(preconditionValidationResult, apiConfig.Endpoint, apiConfig.Dataset)
+	return origin == dashboardOrigin
+}
+
 func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
@@ -687,11 +779,9 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 
 	dashboardUrl, dashboardOrigin := r.renderDashboardUrl(preconditionChecksResult, apiConfig.Endpoint, apiConfig.Dataset)
 
-	var req *http.Request
-	var method string
-	var err error
+	dataset := apiConfig.Dataset
 
-	//nolint:ineffassign
+	var apiClientCall *ApiClientCall
 	switch action {
 	case upsertAction:
 		dashboard := preconditionChecksResult.resource
@@ -705,45 +795,67 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 		}
 		r.setDisplayNameIfMissing(preconditionChecksResult, display)
 
-		serializedDashboard, _ := json.Marshal(dashboard)
-		requestPayload := bytes.NewBuffer(serializedDashboard)
-
-		method = http.MethodPut
-		req, err = http.NewRequest(
-			method,
-			dashboardUrl,
-			requestPayload,
-		)
+		dashboardDefinition, err := mapToDashboardDefinition(dashboard)
+		if err != nil {
+			conversionErr := fmt.Errorf("unable to convert the dashboard to the Dash0 API format: %w", err)
+			logger.Error(conversionErr, "error converting dashboard")
+			return NewResourceToRequestsResultSingleItemConversionError(apiConfig, itemName, conversionErr.Error())
+		}
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodPut,
+			Url:    dashboardUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				updatedDashboard, err := apiClient.UpdateDashboard(ctx, dashboardOrigin, dashboardDefinition, &dataset)
+				if err != nil {
+					return "", err
+				}
+				if updatedDashboard == nil {
+					return "", errors.New("unexpected nil/empty response body")
+				}
+				return dash0apiclient.GetDashboardID(updatedDashboard), nil
+			},
+		}
 	case deleteAction:
-		method = http.MethodDelete
-		req, err = http.NewRequest(
-			method,
-			dashboardUrl,
-			nil,
-		)
+		apiClientCall = &ApiClientCall{
+			Method: http.MethodDelete,
+			Url:    dashboardUrl,
+			Execute: func(ctx context.Context) (string, error) {
+				apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+				if err != nil {
+					return "", err
+				}
+				return "", apiClient.DeleteDashboard(ctx, dashboardOrigin, &dataset)
+			},
+		}
 	default:
 		unknownActionErr := fmt.Errorf("unknown API action: %d", action)
 		logger.Error(unknownActionErr, "unknown API action")
 		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, unknownActionErr.Error())
 	}
 
+	return NewResourceToRequestsResultSingleItemApiClientCall(apiConfig, apiClientCall, itemName, dashboardOrigin)
+}
+
+// mapToDashboardDefinition converts the normalized Perses dashboard resource (spec.config already unwrapped, display
+// name already set) to the typed dashboard definition of the Dash0 API client. The resource is decoded directly instead
+// of using dash0apiclient.ConvertPersesDashboardToDashboard, since that would replace kind with "Dashboard" and
+// metadata.name with the display name (which is often not a valid Kubernetes name). Metadata that the Dash0 API does
+// not define for dashboards (for example arbitrary annotations, metadata.namespace) is dropped.
+func mapToDashboardDefinition(dashboard map[string]any) (*dash0apiclient.DashboardDefinition, error) {
+	serializedDashboard, err := json.Marshal(dashboard)
 	if err != nil {
-		httpError := fmt.Errorf(
-			"unable to create a new HTTP request to synchronize the dashboard: %s %s: %w",
-			method,
-			dashboardUrl,
-			err,
-		)
-		logger.Error(httpError, "error creating http request")
-		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, httpError.Error())
+		return nil, err
 	}
-
-	addAuthorizationHeader(req, apiConfig.Token)
-	if action == upsertAction {
-		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
+	dashboardDefinition := &dash0apiclient.DashboardDefinition{}
+	if err = json.Unmarshal(serializedDashboard, dashboardDefinition); err != nil {
+		return nil, err
 	}
-
-	return NewResourceToRequestsResultSingleItemSuccess(apiConfig, req, itemName, dashboardOrigin)
+	dash0apiclient.StripDashboardServerFields(dashboardDefinition)
+	return dashboardDefinition, nil
 }
 
 func (r *PersesDashboardReconciler) normalizeV1Alpha1V1Alpha2(dashboard map[string]any) map[string]any {
@@ -789,21 +901,20 @@ func (r *PersesDashboardReconciler) renderDashboardUrl(
 	endpoint string,
 	dataset string,
 ) (string, string) {
-	datasetUrlEncoded := url.QueryEscape(dataset)
 	dashboardOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s",
 		r.pseudoClusterUid,
-		datasetUrlEncoded,
+		datasetInOrigin(dataset),
 		preconditionChecksResult.k8sNamespace,
 		preconditionChecksResult.k8sName,
 	)
 	return fmt.Sprintf(
 		"%sapi/dashboards/%s?dataset=%s",
 		endpoint,
-		dashboardOrigin,
-		datasetUrlEncoded,
+		url.PathEscape(dashboardOrigin),
+		url.QueryEscape(dataset),
 	), dashboardOrigin
 }
 
@@ -922,12 +1033,9 @@ func (r *PersesDashboardReconciler) synchronizeNamespacedResources(
 			return
 		}
 
+		originsInNamespace := newExistingOriginsInNamespace(namespace)
 		for i := range allDashboardResourcesInNamespace.Items {
-			dashboardResource := &allDashboardResourcesInNamespace.Items[i]
-			evt := event.TypedGenericEvent[*unstructured.Unstructured]{
-				Object: dashboardResource,
-			}
-			r.Generic(ctx, evt, nil)
+			r.resyncViaApi(ctx, &allDashboardResourcesInNamespace.Items[i], originsInNamespace)
 
 			// stagger API requests a bit
 			time.Sleep(50 * time.Millisecond)
@@ -960,6 +1068,77 @@ func (r *PersesDashboardCrdReconciler) ensurePersesConversionWebhookConfigured(
 	logger.Info("Checking whether the PersesDashboard CRD conversion webhook needs patching (auto-patch is enabled, " +
 		"operator.iac.persesDashboard.autoPatchConversionWebhook=true).")
 
+	stanzaMatches := false
+	firstAttempt := true
+	err := k8sretry.RetryOnConflict(k8sretry.DefaultRetry, func() error {
+		if !firstAttempt {
+			// The CRD has been changed since it has been read, for example by another replica of the operator manager.
+			crd = &apiextensionsv1.CustomResourceDefinition{}
+			if err := r.crdReader().Get(ctx, client.ObjectKey{Name: r.QualifiedKind()}, crd); err != nil {
+				return err
+			}
+		}
+		firstAttempt = false
+		var err error
+		stanzaMatches, err = r.patchConversionWebhookIfNecessary(ctx, crd, onUpdate, logger)
+		return err
+	})
+	if err == nil {
+		return
+	}
+	if stanzaMatches {
+		logger.Error(
+			err,
+			"Failed to update the CA bundle of the Dash0-operator conversion webhook on the perses.dev "+
+				"PersesDashboard CRD. Requests that require a conversion of PersesDashboard resources may fail with a "+
+				"certificate error.",
+		)
+	} else {
+		logger.Error(
+			err,
+			"Failed to patch the perses.dev PersesDashboard CRD with the Dash0-operator conversion webhook "+
+				"configuration. v1alpha1 PersesDashboard resources will lose fields when stored.",
+		)
+	}
+}
+
+// OnCaBundleChange updates the CA bundle of the conversion webhook stanza after the operator-managed webhook CA bundle
+// has changed. It reads the CRD without the cache and runs on every replica, independent of leader election.
+func (r *PersesDashboardCrdReconciler) OnCaBundleChange(ctx context.Context, logger logd.Logger) {
+	if !r.conversionWebhookSettings.AutoPatchConversionWebhook {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, persesCaBundleUpdateTimeout)
+	defer cancel()
+	crd := &apiextensionsv1.CustomResourceDefinition{}
+	if err := r.crdReader().Get(ctx, client.ObjectKey{Name: r.QualifiedKind()}, crd); err != nil {
+		if !apierrors.IsNotFound(err) {
+			logger.Error(
+				err,
+				"Cannot read the perses.dev PersesDashboard CRD to update the CA bundle of its conversion webhook.",
+			)
+		}
+		return
+	}
+	r.ensurePersesConversionWebhookConfigured(ctx, crd, false, logger)
+}
+
+func (r *PersesDashboardCrdReconciler) crdReader() client.Reader {
+	if r.uncachedClient != nil {
+		return r.uncachedClient
+	}
+	return r.Client
+}
+
+// patchConversionWebhookIfNecessary patches the conversion stanza unless it is up to date or a foreign conversion webhook
+// is configured. The patch carries the resourceVersion of the given CRD, so it fails with a conflict if the CRD has been
+// changed in the meantime. The returned bool reports whether the stanza already pointed at the Dash0 operator.
+func (r *PersesDashboardCrdReconciler) patchConversionWebhookIfNecessary(
+	ctx context.Context,
+	crd *apiextensionsv1.CustomResourceDefinition,
+	onUpdate bool,
+	logger logd.Logger,
+) (bool, error) {
 	// stanzaMatches tells us whether the conversion stanza already points at our webhook service. It intentionally
 	// ignores the caBundle, so we also need caBundleMatches to detect a rotated CA on an otherwise-unchanged stanza
 	// (see below).
@@ -974,51 +1153,27 @@ func (r *PersesDashboardCrdReconciler) ensurePersesConversionWebhookConfigured(
 					"(not pointing at the Dash0 operator); leaving the CRD untouched.",
 			)
 		}
-		return
+		return stanzaMatches, nil
 	}
 
 	// The CA bundle might need changes independently of the conversion webhook stanza, if certs get rotated (for example
-	// when using the Helm-chart-generated certs and doing a helm upgrade).
-	caBundle, err := os.ReadFile(r.conversionWebhookSettings.CaBundlePath)
-	if err != nil {
-		logger.Error(
-			err,
-			"Cannot read CA bundle for patching the perses.dev PersesDashboard CRD conversion webhook; "+
-				"skipping the patch. v1alpha1 PersesDashboard resources may lose fields when stored.",
-			"caBundlePath", r.conversionWebhookSettings.CaBundlePath,
-		)
-		return
-	}
-	// Skip the patch on an empty bundle: this happens transiently while cert-manager (or whatever provisions the serving cert)
-	// has not yet materialized the file. Patching with an empty caBundle would make the API server reject every conversion
-	// request until we re-reconcile and rewrite the bundle, so it's strictly worse than leaving the previous stanza in place.
-	if len(bytes.TrimSpace(caBundle)) == 0 {
-		logger.Error(
-			fmt.Errorf("CA bundle file is empty"),
-			"CA bundle for patching the perses.dev PersesDashboard CRD conversion webhook is empty; skipping the patch. "+
-				"This is expected briefly while the serving cert is being provisioned; the next CRD reconciliation will "+
-				"retry. If it persists, v1alpha1 PersesDashboard resources may lose fields when stored.",
-			"caBundlePath", r.conversionWebhookSettings.CaBundlePath,
-		)
-		return
+	// when using cert-manager, or when the operator rotates its own CA).
+	caBundle, ok := r.readCaBundle(logger)
+	if !ok {
+		return stanzaMatches, nil
 	}
 
 	if stanzaMatches && caBundleMatches(crd, caBundle) {
 		// Fully up to date: our service target and the current CA bundle are both already in place.
 		logger.Info("PersesDashboard CRD conversion webhook (stanza and caBundle) is up to date, no need to patch.")
-		return
+		return stanzaMatches, nil
 	}
 
 	patched := crd.DeepCopy()
 	patched.Spec.Conversion = r.buildConversionStanza(caBundle)
 
-	if err := r.Patch(ctx, patched, client.MergeFrom(crd)); err != nil {
-		logger.Error(
-			err,
-			"Failed to patch the perses.dev PersesDashboard CRD with the Dash0-operator conversion webhook configuration. "+
-				"v1alpha1 PersesDashboard resources will lose fields when stored.",
-		)
-		return
+	if err := r.Patch(ctx, patched, client.MergeFromWithOptions(crd, client.MergeFromWithOptimisticLock{})); err != nil {
+		return stanzaMatches, err
 	}
 
 	switch {
@@ -1041,6 +1196,42 @@ func (r *PersesDashboardCrdReconciler) ensurePersesConversionWebhookConfigured(
 			"Patched the perses.dev PersesDashboard CRD to route conversions through the Dash0 operator's conversion webhook.",
 		)
 	}
+	return stanzaMatches, nil
+}
+
+// readCaBundle returns the CA bundle for the conversion webhook stanza, or false if it is not available (yet).
+func (r *PersesDashboardCrdReconciler) readCaBundle(logger logd.Logger) ([]byte, bool) {
+	var caBundle []byte
+	caBundleSource := "operator-managed webhook certificates"
+	if r.conversionWebhookSettings.CaBundleSource != nil {
+		caBundle = r.conversionWebhookSettings.CaBundleSource()
+	} else {
+		caBundleSource = r.conversionWebhookSettings.CaBundlePath
+		var err error
+		if caBundle, err = os.ReadFile(r.conversionWebhookSettings.CaBundlePath); err != nil {
+			logger.Error(
+				err,
+				"Cannot read CA bundle for patching the perses.dev PersesDashboard CRD conversion webhook; "+
+					"skipping the patch. v1alpha1 PersesDashboard resources may lose fields when stored.",
+				"caBundlePath", r.conversionWebhookSettings.CaBundlePath,
+			)
+			return nil, false
+		}
+	}
+	// Skip the patch on an empty bundle: this happens transiently while the serving certificate is being provisioned.
+	// Patching with an empty caBundle would make the API server reject every conversion request until we re-reconcile and
+	// rewrite the bundle, so it's strictly worse than leaving the previous stanza in place.
+	if len(bytes.TrimSpace(caBundle)) == 0 {
+		logger.Error(
+			fmt.Errorf("the CA bundle is empty"),
+			"CA bundle for patching the perses.dev PersesDashboard CRD conversion webhook is empty; skipping the patch. "+
+				"This is expected briefly while the serving certificate is being provisioned; the patch will be "+
+				"attempted again. If it persists, v1alpha1 PersesDashboard resources may lose fields when stored.",
+			"caBundleSource", caBundleSource,
+		)
+		return nil, false
+	}
+	return caBundle, true
 }
 
 // conversionStanzaMatchesOurs reports whether the CRD's conversion stanza is already pointing at our webhook (same

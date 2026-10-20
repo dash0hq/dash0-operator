@@ -38,6 +38,19 @@ rules:
   - list
   - watch
 
+{{- if not .Values.operator.certManager.useCertManager }}
+
+# Permissions required to store the webhook certificates, which the operator manages itself if cert-manager is not used:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  resourceNames:
+  - {{ include "dash0-operator.webhookCertificatesSecretName" . }}
+  verbs:
+  - update
+{{- end }}
+
 # Permissions required for leader election:
 - apiGroups:
   - ""

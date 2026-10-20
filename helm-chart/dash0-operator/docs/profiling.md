@@ -39,6 +39,10 @@ spec:
 When profiling is enabled, you can use the same `spec.filter` and `spec.transform` settings on your `Dash0Monitoring` resources to filter and transform profiling data, just like for traces, metrics, and logs.
 See [Filtering and Transforming Telemetry](configuration.md#filtering-and-transforming-telemetry) for details.
 
+**Note:** [Namespace-specific exports](configuration.md#namespace-specific-exports-and-api-sync-overrides) (`spec.export` or `spec.exports` on a `Dash0Monitoring` resource) do not apply to profiling data.
+Profiles from all namespaces are sent to the default export of the operator configuration (for example via the `operator.dash0Export` or `operator.exports` Helm values), including profiles from namespaces that have a namespace-specific export.
+The reason is that the operator sends telemetry to namespace-specific exports via the routing connector of the OpenTelemetry collector, which does not support profiles.
+
 ## Collecting Profiles with the OpenTelemetry eBPF Profiler
 
 Since the standard OpenTelemetry auto-instrumentation agents do not yet emit OTLP profiles, a separate profiling agent is needed to generate profiling data, like the [OpenTelemetry eBPF profiler](https://github.com/open-telemetry/opentelemetry-ebpf-profiler).

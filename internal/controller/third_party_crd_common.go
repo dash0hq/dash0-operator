@@ -118,14 +118,31 @@ type ThirdPartyResourceReconciler interface {
 	SetControllerStopFunction(*context.CancelFunc)
 	IsWatching() bool
 
-	Queue() *workqueue.Typed[ThirdPartyResourceSyncJob]
+	Queue() *ThirdPartyResourceSyncQueue
+
+	// ApiReader returns a client that reads directly from the API server, bypassing the cache.
+	ApiReader() client.Reader
+
+	// MapsToMultipleApiObjects reports whether one Kubernetes resource of this type (say, a PrometheusRule) is
+	// potentially associated with multiple Dash0 API objects (multiple checks). It returns false for resource types
+	// with a one-to-one relation (like Perses dashboards).
+	MapsToMultipleApiObjects() bool
 
 	// FetchExistingResourceOriginsRequest creates an HTTP request for retrieving the existing origins from the Dash0
 	// API for a given Kubernetes resource.
-	// FetchExistingResourceOriginsRequest is only used for resource types where one Kubernetes resource (say, a
-	// PrometheusRule) is potentially associated with multiple Dash0 api objects (multiple checks). Controllers
-	// which manage objects with a one-to-one relation (like Perses dashboards) should return nil, nil.
+	// FetchExistingResourceOriginsRequest is only used for resource types where MapsToMultipleApiObjects returns true.
+	// Controllers which manage objects with a one-to-one relation (like Perses dashboards) should return nil, nil.
 	FetchExistingResourceOriginsRequests(*preconditionValidationResult, ApiConfig) ([]*http.Request, error)
+
+	// FetchExistingNamespaceOrigins retrieves the origins of all Dash0 API objects that have been synchronized from
+	// Kubernetes resources in the given namespace. The result may contain origins that do not belong to the namespace,
+	// IsOriginOfResource is used to filter them. This is used when synchronizing all resources in a namespace at once,
+	// to avoid sending DELETE requests for objects that do not exist. Implementations log errors themselves.
+	FetchExistingNamespaceOrigins(context.Context, string, ApiConfig, logd.Logger) ([]string, error)
+
+	// IsOriginOfResource reports whether the given origin belongs to a Dash0 API object that has been produced from
+	// the Kubernetes resource described by the precondition validation result.
+	IsOriginOfResource(string, *preconditionValidationResult, ApiConfig) bool
 
 	// CreateDeleteRequests produces an HTTP DELETE requests for the resources that still exist in Dash0, but should
 	// not. It does so by comparing the list of IDs of objects that exist in the Dash0 backend with the list
@@ -149,6 +166,118 @@ type ThirdPartyResourceSyncJob struct {
 	thirdPartyResourceReconciler ThirdPartyResourceReconciler
 	dash0ApiResource             *unstructured.Unstructured
 	action                       apiAction
+	originsInNamespace           *existingOriginsInNamespace
+	// queueKey is set by ThirdPartyResourceSyncQueue#Add.
+	queueKey thirdPartyResourceSyncKey
+}
+
+type thirdPartyResourceSyncKey struct {
+	controllerName string
+	namespace      string
+	name           string
+}
+
+func (j ThirdPartyResourceSyncJob) key() thirdPartyResourceSyncKey {
+	return thirdPartyResourceSyncKey{
+		controllerName: j.thirdPartyResourceReconciler.ControllerName(),
+		namespace:      j.dash0ApiResource.GetNamespace(),
+		name:           j.dash0ApiResource.GetName(),
+	}
+}
+
+// ThirdPartyResourceSyncQueue is the queue for synchronizing third-party resources via the Dash0 API. It holds at most
+// one pending job per resource: adding a job for a resource that already has a pending job replaces that job, so that
+// only the most recently added job for each resource is processed.
+type ThirdPartyResourceSyncQueue struct {
+	name        string
+	keys        *workqueue.Typed[thirdPartyResourceSyncKey]
+	pendingJobs map[thirdPartyResourceSyncKey]ThirdPartyResourceSyncJob
+	// inFlightJobs is the number of jobs that have been returned by Get and have not been marked as done yet.
+	inFlightJobs int
+	lock         sync.Mutex
+}
+
+// NewThirdPartyResourceSyncQueue creates a new, empty ThirdPartyResourceSyncQueue with the given name.
+func NewThirdPartyResourceSyncQueue(name string) *ThirdPartyResourceSyncQueue {
+	return &ThirdPartyResourceSyncQueue{
+		name: name,
+		keys: workqueue.NewTypedWithConfig(
+			workqueue.TypedQueueConfig[thirdPartyResourceSyncKey]{
+				Name: name,
+			},
+		),
+		pendingJobs: make(map[thirdPartyResourceSyncKey]ThirdPartyResourceSyncJob),
+	}
+}
+
+// Add enqueues the given job, replacing a pending job for the same resource. If a job for the same resource is
+// currently being processed, the new job is processed after that one has been marked as done. Jobs added after the queue
+// has been shut down are discarded.
+func (q *ThirdPartyResourceSyncQueue) Add(job ThirdPartyResourceSyncJob) {
+	if q.keys.ShuttingDown() {
+		return
+	}
+	key := job.key()
+	job.queueKey = key
+	q.lock.Lock()
+	q.pendingJobs[key] = job
+	q.lock.Unlock()
+	q.keys.Add(key)
+}
+
+// Get blocks until a job is available and returns it. The second return value is true if the queue has been shut down
+// and no jobs are left; jobs that have been added before the shutdown are still returned. Every job returned by Get
+// needs to be marked as done via Done after processing it.
+func (q *ThirdPartyResourceSyncQueue) Get() (ThirdPartyResourceSyncJob, bool) {
+	for {
+		key, shutdown := q.keys.Get()
+		if shutdown {
+			return ThirdPartyResourceSyncJob{}, true
+		}
+		q.lock.Lock()
+		job, found := q.pendingJobs[key]
+		delete(q.pendingJobs, key)
+		if found {
+			q.inFlightJobs++
+		}
+		q.lock.Unlock()
+		if found {
+			return job, false
+		}
+		// An earlier Get has already taken the job that Add stored before re-adding this key.
+		q.keys.Done(key)
+	}
+}
+
+// Done marks the given job as processed. It uses the key computed in Add, so that a modification of the job's resource
+// during processing cannot leave the key in the processing state forever.
+func (q *ThirdPartyResourceSyncQueue) Done(job ThirdPartyResourceSyncJob) {
+	q.lock.Lock()
+	q.inFlightJobs--
+	q.lock.Unlock()
+	q.keys.Done(job.queueKey)
+}
+
+// Len returns the number of jobs that have not been marked as done yet: pending jobs (at most one per resource) plus
+// jobs that are currently being processed.
+func (q *ThirdPartyResourceSyncQueue) Len() int {
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	return len(q.pendingJobs) + q.inFlightJobs
+}
+
+// ShutDown stops the queue, see workqueue.Typed#ShutDown.
+func (q *ThirdPartyResourceSyncQueue) ShutDown() {
+	q.keys.ShutDown()
+}
+
+// hasUnchangedResourceVersion reports whether the old and the new object of an update event have the same resource
+// version, that is, the object has not changed. Informers deliver such update events on relists (for example after a
+// watch has been closed) and on periodic resyncs, to every event handler that currently takes part in resyncs.
+func hasUnchangedResourceVersion(e event.TypedUpdateEvent[*unstructured.Unstructured]) bool {
+	return e.ObjectOld != nil &&
+		e.ObjectNew != nil &&
+		e.ObjectOld.GetResourceVersion() == e.ObjectNew.GetResourceVersion()
 }
 
 // SetupThirdPartyCrdReconcilerWithManager sets up a ThirdPartyCrdReconciler with the provided manager. It establishes
@@ -497,32 +626,43 @@ func createUnstructuredGvk(crdReconciler ThirdPartyCrdReconciler, crdVersion str
 	return unstructuredGvkForThirdPartyResourceType
 }
 
+// upsertViaApi enqueues a synchronization job for the given resource when it has been created or updated. It is
+// triggered when the reconciler receives individual Create or Update events, and it delegates to
+// upsertViaApiWithOriginsInNamespace, passing nil for originsInNamespace.
 func upsertViaApi(
 	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
 	dash0ApiResource *unstructured.Unstructured,
 ) {
-	// The create/update/delete/... events we receive from K8s are sequential per resource type, that is, we only
-	// receive the next event for a Perses dashboard resource once we have processed the previous one; same for
-	// Prometheus rules. However, we might receive events for different resource types concurrently, that is, one event
-	// each for a Perses dashboard and a Prometheus rules might be processed concurrently. All resource synchronization
-	// attempts that are related to third-party resources types (Prometheus rules, Perses dashboards) end with writing
-	// to the Dash0 monitoring resource status in the same namespace. These write attempts will fail if they happen
-	// concurrently. Therefore, we add all synchronization attempts to one queue that is shared across resource types,
-	// and only process them one at a time.
+	upsertViaApiWithOriginsInNamespace(thirdPartyResourceReconciler, dash0ApiResource, nil)
+}
+
+// upsertViaApiWithOriginsInNamespace enqueues a synchronization job for the given resource. It is used directly by the
+// reconciler (without going through upsertViaApi) when a resync of all resources in a namespace is triggered. The
+// existing origins in originsInNamespace (if not nil) are shared by all resources of one namespace-wide synchronization
+// run.
+func upsertViaApiWithOriginsInNamespace(
+	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
+	dash0ApiResource *unstructured.Unstructured,
+	originsInNamespace *existingOriginsInNamespace,
+) {
+	// Each third-party resource type (Prometheus rules, Perses dashboards) has its own queue, which is processed by a
+	// single worker, see StartProcessingThirdPartySynchronizationQueue.
 	thirdPartyResourceReconciler.Queue().Add(
 		ThirdPartyResourceSyncJob{
 			thirdPartyResourceReconciler: thirdPartyResourceReconciler,
 			dash0ApiResource:             dash0ApiResource,
 			action:                       upsertAction,
+			originsInNamespace:           originsInNamespace,
 		},
 	)
 }
 
+// deleteViaApi enqueues a synchronization job for the given resource when it has been deleted.
 func deleteViaApi(
 	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
 	dash0ApiResource *unstructured.Unstructured,
 ) {
-	// See comment in upsertViaApi for an explanation why we use a shared queue for all resource types.
+	// See comment in upsertViaApiWithOriginsInNamespace.
 	thirdPartyResourceReconciler.Queue().Add(
 		ThirdPartyResourceSyncJob{
 			thirdPartyResourceReconciler: thirdPartyResourceReconciler,
@@ -533,17 +673,24 @@ func deleteViaApi(
 }
 
 func StartProcessingThirdPartySynchronizationQueue(
-	thirdPartyResourceSynchronizationQueue *workqueue.Typed[ThirdPartyResourceSyncJob],
+	thirdPartyResourceSynchronizationQueue *ThirdPartyResourceSyncQueue,
 	setupLog logd.Logger,
 ) {
-	setupLog.Info("Starting the Dash0 API resource synchronization queue.")
+	setupLog.Info(
+		fmt.Sprintf("Starting the Dash0 API resource synchronization queue %s.", thirdPartyResourceSynchronizationQueue.name),
+	)
 	go func() {
 		for {
 			ctx := context.Background()
 			logger := logd.FromContext(ctx)
 			item, queueShutdown := thirdPartyResourceSynchronizationQueue.Get()
 			if queueShutdown {
-				logger.Info("The Dash0 API resource synchronization queue has been shut down.")
+				logger.Info(
+					fmt.Sprintf(
+						"The Dash0 API resource synchronization queue %s has been shut down.",
+						thirdPartyResourceSynchronizationQueue.name,
+					),
+				)
 				return
 			}
 			logger.Info(
@@ -555,12 +702,13 @@ func StartProcessingThirdPartySynchronizationQueue(
 				),
 			)
 
-			synchronizeViaApiAndUpdateStatus(
+			synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 				ctx,
 				item.thirdPartyResourceReconciler,
 				item.dash0ApiResource,
 				nil,
 				item.action,
+				item.originsInNamespace,
 				logger,
 			)
 			logger.Info(
@@ -577,10 +725,10 @@ func StartProcessingThirdPartySynchronizationQueue(
 }
 
 func StopProcessingThirdPartySynchronizationQueue(
-	resourceReconcileQueue *workqueue.Typed[ThirdPartyResourceSyncJob],
+	resourceReconcileQueue *ThirdPartyResourceSyncQueue,
 	logger logd.Logger,
 ) {
-	logger.Info("Shutting down the Dash0 API resource synchronization queue.")
+	logger.Info(fmt.Sprintf("Shutting down the Dash0 API resource synchronization queue %s.", resourceReconcileQueue.name))
 	resourceReconcileQueue.ShutDown()
 }
 
@@ -608,7 +756,7 @@ func writeSynchronizationResultToDash0MonitoringStatus(
 
 	if hasSuccess && hasError {
 		status = dash0common.ThirdPartySynchronizationStatusPartiallySuccessful
-	} else if hasSuccess {
+	} else if hasSuccess || (syncResults.isDeletion && !hasError) {
 		status = dash0common.ThirdPartySynchronizationStatusSuccessful
 	}
 
@@ -628,15 +776,17 @@ func writeSynchronizationResultToDash0MonitoringStatus(
 			return true
 		},
 		func() error {
-			// re-fetch monitoring resource in case it has been modified since the start of the synchronization
-			// operation
-			if err := thirdPartyResourceReconciler.K8sClient().Get(
+			// Re-fetch the monitoring resource without the cache: the merge patch is the difference to this state, a
+			// stale base would miss sub-fields of the previous result for this resource that need to be removed. Reading
+			// into a fresh object keeps the base independent of changes made to monitoringResource by a failed attempt.
+			freshMonitoringResource := &dash0v1beta1.Dash0Monitoring{}
+			if err := thirdPartyResourceReconciler.ApiReader().Get(
 				ctx,
 				types.NamespacedName{
 					Namespace: monitoringResource.GetNamespace(),
 					Name:      monitoringResource.GetName(),
 				},
-				monitoringResource,
+				freshMonitoringResource,
 			); err != nil {
 				logger.Info(
 					fmt.Sprintf(
@@ -657,13 +807,21 @@ func writeSynchronizationResultToDash0MonitoringStatus(
 				)
 				return err
 			}
+			*monitoringResource = *freshMonitoringResource
+			monitoringResourceBeforeUpdate := monitoringResource.DeepCopy()
 			resultForThisResource := thirdPartyResourceReconciler.UpdateSynchronizationResultsInDash0MonitoringStatus(
 				monitoringResource,
 				qualifiedName,
 				status,
 				syncResults,
 			)
-			if err := thirdPartyResourceReconciler.K8sClient().Status().Update(ctx, monitoringResource); err != nil {
+			// A merge patch without optimistic locking only contains the result for this resource, so concurrent writes
+			// of other results or other status fields cannot cause a conflict and are not overwritten.
+			if err := thirdPartyResourceReconciler.K8sClient().Status().Patch(
+				ctx,
+				monitoringResource,
+				client.MergeFrom(monitoringResourceBeforeUpdate),
+			); err != nil {
 				logger.Info(
 					fmt.Sprintf(
 						"failed attempt (might be retried) to update the Dash0 monitoring resource "+
