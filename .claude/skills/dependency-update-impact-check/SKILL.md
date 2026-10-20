@@ -162,6 +162,10 @@ Also record the dependencies that the update adds or removes: new or removed ent
 modules that the shipped binaries link (determined in step 2). An added package that is active by default changes the
 behavior like any update.
 
+If the diff, including untracked files in branch mode, changes no dependency line of the files in the table above (a
+version, a digest, an added or removed entry), stop here and run none of the other steps. Print only the line "No
+dependency updates found in <PR #n, or the branch name>."
+
 List all other changes of the diff as **adaptation changes**: Go code, Helm chart templates (including the CRD
 templates) and values, RBAC rules, config templates, scripts and tests. Record per file what the change does, for
 example "replaces `GetEventRecorderFor` with `GetEventRecorder`" or "deletes the attachment of events to workloads".
