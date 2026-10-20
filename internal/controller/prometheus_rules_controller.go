@@ -636,11 +636,11 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 						continue
 					}
 				}
-				apiClientCall, syncError :=
+				apiClientCall, unknownActionErr :=
 					r.createRecordingRuleApiClientCall(ruleOriginInApiPath, action, apiConfig, recordingRule)
-				if syncError != nil {
-					logger.Error(syncError, "unable to synchronize the recording rule")
-					allSynchronizationErrors[ruleName] = syncError.Error()
+				if unknownActionErr != nil {
+					logger.Error(unknownActionErr, "unknown API action")
+					allSynchronizationErrors[ruleName] = unknownActionErr.Error()
 					continue
 				}
 				requests = append(
@@ -700,11 +700,11 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 						continue
 					}
 				}
-				apiClientCall, syncError :=
+				apiClientCall, unknownActionErr :=
 					r.createCheckRuleApiClientCall(checkRuleOriginInApiPath, action, apiConfig, alertRule)
-				if syncError != nil {
-					logger.Error(syncError, "unable to synchronize the alerting rule")
-					allSynchronizationErrors[checkRuleName] = syncError.Error()
+				if unknownActionErr != nil {
+					logger.Error(unknownActionErr, "unknown API action")
+					allSynchronizationErrors[checkRuleName] = unknownActionErr.Error()
 					continue
 				}
 				requests = append(
