@@ -103,6 +103,7 @@ type ExtraConfig struct {
 	TargetAllocatorMtlsServerCertSecretName string                             `json:"targetAllocatorMtlsServerCertSecretName,omitempty"`
 	TargetAllocatorMtlsClientCertSecretName string                             `json:"targetAllocatorMtlsClientCertSecretName,omitempty"`
 	TargetAllocatorAllowInsecureAuthSecrets bool                               `json:"targetAllocatorAllowInsecureAuthSecrets,omitempty"`
+	TargetAllocatorRestrictToNamespaces     []string                           `json:"targetAllocatorRestrictToNamespaces,omitempty"`
 	TargetAllocatorContainerResources       ResourceRequirementsWithGoMemLimit `json:"targetAllocatorContainerResources"`
 	TargetAllocatorLabels                   map[string]string                  `json:"targetAllocatorLabels,omitempty"`
 	TargetAllocatorAnnotations              map[string]string                  `json:"targetAllocatorAnnotations,omitempty"`

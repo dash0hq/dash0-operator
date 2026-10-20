@@ -178,6 +178,15 @@ data:
     targetAllocatorMtlsServerCertSecretName: {{ .Values.operator.targetAllocator.mTls.serverCertSecretName | quote }}
     targetAllocatorMtlsClientCertSecretName: {{ .Values.operator.targetAllocator.mTls.clientCertSecretName | quote }}
     targetAllocatorAllowInsecureAuthSecrets: {{ .Values.operator.targetAllocator.allowInsecureAuthSecrets }}
+{{- if .Values.operator.targetAllocator.restrictToNamespaces }}
+{{- range $namespace := .Values.operator.targetAllocator.restrictToNamespaces }}
+{{- if not (and (kindIs "string" $namespace) $namespace) }}
+{{- fail "Error: operator.targetAllocator.restrictToNamespaces must only contain non-empty namespace names." }}
+{{- end }}
+{{- end }}
+    targetAllocatorRestrictToNamespaces:
+      {{- toYaml .Values.operator.targetAllocator.restrictToNamespaces | nindent 6 }}
+{{- end }}
     targetAllocatorContainerResources:
       {{- toYaml .Values.operator.targetAllocator.containerResources | nindent 6 }}
 {{- if .Values.operator.targetAllocator.labels }}

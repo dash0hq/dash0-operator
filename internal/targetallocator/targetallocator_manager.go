@@ -127,6 +127,12 @@ func (m *TargetAllocatorManager) reconcileTargetAllocator(ctx context.Context, l
 	}
 	logger.Debug("found monitoring resources for target allocator reconciliation", "count", len(allMonitoringResources))
 
+	fileExtraConfig := m.extraConfig.Load()
+	if fileExtraConfig == nil {
+		return false, fmt.Errorf("extra config is nil in TargetAllocatorManager#ReconcileTargetAllocator")
+	}
+	extraConfig := util.EffectiveExtraConfig(*fileExtraConfig, m.extraConfigDefaults, operatorConfigurationResource, nil)
+
 	namespacesWithPrometheusScraping := make([]string, 0, len(allMonitoringResources))
 	for _, monitoringResource := range allMonitoringResources {
 		namespace := monitoringResource.Namespace
@@ -134,14 +140,12 @@ func (m *TargetAllocatorManager) reconcileTargetAllocator(ctx context.Context, l
 			namespacesWithPrometheusScraping = append(namespacesWithPrometheusScraping, namespace)
 		}
 	}
+	namespacesWithPrometheusScraping, excludedNamespaces := taresources.FilterNamespacesByRestriction(
+		namespacesWithPrometheusScraping,
+		extraConfig.TargetAllocatorRestrictToNamespaces,
+	)
 	hasPrometheusScrapingEnabledForAtLeastOneNamespace := len(namespacesWithPrometheusScraping) > 0
 	logger.Debug("determined namespaces with Prometheus scraping enabled", "namespaces", namespacesWithPrometheusScraping)
-
-	fileExtraConfig := m.extraConfig.Load()
-	if fileExtraConfig == nil {
-		return false, fmt.Errorf("extra config is nil in TargetAllocatorManager#ReconcileTargetAllocator")
-	}
-	extraConfig := util.EffectiveExtraConfig(*fileExtraConfig, m.extraConfigDefaults, operatorConfigurationResource, nil)
 
 	if operatorConfigurationResource == nil {
 		logger.Info("The Dash0Configuration resource is missing or has been deleted, no Dash0 OpenTelemetry " +
@@ -171,16 +175,20 @@ func (m *TargetAllocatorManager) reconcileTargetAllocator(ctx context.Context, l
 		err = m.removeTargetAllocator(ctx, extraConfig, logger)
 		return err == nil, err
 	} else if !hasPrometheusScrapingEnabledForAtLeastOneNamespace {
+		warnAboutExcludedNamespaces(excludedNamespaces, logger)
 		logger.Warn(
 			fmt.Sprintf("Support for Prometheus CRDs has been enabled explicitly via the operator configuration "+
 				"resource (\"%s\"), property prometheusCrdSupport.enabled=true, but not a single namespace has "+
-				"`prometheusScraping.enabled` via the Dash0Monitoring resource. No Dash0 OpenTelemetry target-allocator "+
-				"will be created, the existing Dash0 OpenTelemetry target-allocator (if present) will be removed.",
+				"`prometheusScraping.enabled` via the Dash0Monitoring resource (and is listed in "+
+				"operator.targetAllocator.restrictToNamespaces, if that list is set). No Dash0 OpenTelemetry "+
+				"target-allocator will be created, the existing Dash0 OpenTelemetry target-allocator (if present) will be "+
+				"removed.",
 				operatorConfigurationResource.Name),
 		)
 		err = m.removeTargetAllocator(ctx, extraConfig, logger)
 		return err == nil, err
 	} else {
+		warnAboutExcludedNamespaces(excludedNamespaces, logger)
 		logger.Info(
 			fmt.Sprintf("Telemetry collection and support for Prometheus CRDs has been enabled via the operator configuration "+
 				"resource (\"%s\"), the Dash0 OpenTelemetry target-allocator will be created or updated.",
@@ -193,6 +201,18 @@ func (m *TargetAllocatorManager) reconcileTargetAllocator(ctx context.Context, l
 			logger,
 		)
 		return err == nil, err
+	}
+}
+
+func warnAboutExcludedNamespaces(excludedNamespaces []string, logger logd.Logger) {
+	for _, namespace := range excludedNamespaces {
+		logger.Warn(
+			fmt.Sprintf("The Dash0Monitoring resource in namespace \"%s\" has Prometheus scraping enabled, but the "+
+				"namespace is not listed in the Helm value operator.targetAllocator.restrictToNamespaces. Prometheus "+
+				"CRDs (PodMonitor, ServiceMonitor, ScrapeConfig) in this namespace will be ignored. Scraping pods via "+
+				"prometheus.io/* annotations is not affected.",
+				namespace),
+		)
 	}
 }
 

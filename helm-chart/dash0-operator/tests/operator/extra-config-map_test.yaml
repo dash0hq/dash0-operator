@@ -219,6 +219,9 @@ tests:
             serverCertSecretName: ta-mtls-server-cert
             clientCertSecretName: ta-mtls-client-cert
           allowInsecureAuthSecrets: true
+          restrictToNamespaces:
+            - namespace-a
+            - namespace-b
           containerResources:
             limits:
               memory: 2Gi
@@ -592,6 +595,9 @@ tests:
             targetAllocatorMtlsServerCertSecretName: "ta-mtls-server-cert"
             targetAllocatorMtlsClientCertSecretName: "ta-mtls-client-cert"
             targetAllocatorAllowInsecureAuthSecrets: true
+            targetAllocatorRestrictToNamespaces:
+              - namespace-a
+              - namespace-b
             targetAllocatorContainerResources:
               gomemlimit: 1500MiB
               limits:
@@ -939,6 +945,38 @@ tests:
       - notMatchRegex:
           path: data['extra.yaml']
           pattern: targetAllocatorPodAnnotations
+
+  - it: should render restrictToNamespaces for the target-allocator when set
+    set:
+      operator:
+        targetAllocator:
+          restrictToNamespaces:
+            - namespace-a
+            - namespace-b
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            targetAllocatorRestrictToNamespaces:
+              - namespace-a
+              - namespace-b
+
+  - it: should reject an empty namespace in restrictToNamespaces for the target-allocator
+    set:
+      operator:
+        targetAllocator:
+          restrictToNamespaces:
+            - namespace-a
+            - ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.targetAllocator.restrictToNamespaces must only contain non-empty namespace names."
+
+  - it: should not render restrictToNamespaces for the target-allocator by default
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: targetAllocatorRestrictToNamespaces
 
   - it: should render agent0-connector labels and annotations when set
     set:

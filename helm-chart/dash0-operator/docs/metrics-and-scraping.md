@@ -10,6 +10,7 @@ This document covers metrics collection, Prometheus endpoint scraping, profiling
 - [Support for Prometheus CRDs](#support-for-prometheus-crds)
   - [Authorization](#authorization)
     - [Allowing Insecure Auth Secrets](#allowing-insecure-auth-secrets)
+  - [Restricting Access to Secrets](#restricting-access-to-secrets)
   - [Configuring Resource Requests/Limits for the Target-Allocator](#configuring-resource-requestslimits-for-the-target-allocator)
 
 ## Configure Metrics Collection
@@ -165,6 +166,33 @@ operator:
 
 Do not enable this setting unless transport-level security is guaranteed by other means, otherwise the credentials for the scraped endpoints are transferred unencrypted.
 See the [upstream documentation](https://github.com/open-telemetry/opentelemetry-operator/blob/main/docs/target-allocator/README.md#alternative-allow-insecure-auth-secrets) for details.
+
+### Restricting Access to Secrets
+
+To resolve credentials referenced by Prometheus CRDs, the Target Allocator needs read access to secrets.
+By default, the Target Allocator (and the operator manager, which grants this permission to the Target Allocator) can read secrets in all namespaces.
+You can restrict this access to a list of namespaces via the Helm chart:
+
+```yaml
+operator:
+  targetAllocator:
+    restrictToNamespaces:
+      - namespace-a
+      - namespace-b
+```
+
+If this list is set, the Target Allocator can only read secrets in the listed namespaces and in the Dash0 operator namespace, and the operator manager only in the Dash0 operator namespace.
+Listing a namespace does not enable scraping in it by itself.
+The Target Allocator only watches Prometheus CRDs in a listed namespace if [support for Prometheus CRDs](#support-for-prometheus-crds) is enabled and the namespace has a Dash0 monitoring resource with [Prometheus scraping](configuration.md#monitoringresource.spec.prometheusScraping.enabled) enabled (which is the default).
+For Dash0 monitoring resources with Prometheus scraping enabled outside of this list, the operator logs a warning and ignores the Prometheus CRDs in their namespace.
+Scraping pods via the `prometheus.io/*` annotations (see [Scraping Prometheus Endpoints](#scraping-prometheus-endpoints)) is not affected by this list.
+
+All listed namespaces need to exist when the Helm chart is installed or upgraded, since a role binding is created in each of them.
+If a listed namespace is deleted and recreated later, its role binding is only restored by the next Helm upgrade.
+
+When the list is removed again via `helm upgrade`, the role bindings are deleted right away, while the operator grants cluster-wide access to secrets to the Target Allocator only once it has picked up the changed configuration.
+Credentials that the Target Allocator has not resolved before can fail to resolve during that time.
+They are resolved again within a few minutes.
 
 ### Configuring Resource Requests/Limits for the Target-Allocator
 

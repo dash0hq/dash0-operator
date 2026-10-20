@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -347,6 +348,65 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 			Expect(hasBeenReconciled).To(BeTrue())
 			tatest.VerifyTargetAllocatorResources(ctx, k8sClient, operatorNamespace)
 			tatest.VerifyTargetAllocatorConfigMapContainsNamespaces(ctx, k8sClient, operatorNamespace, []string{testNamespace1, testNamespace2})
+		})
+
+		It("should only watch namespaces that are listed in restrictToNamespaces", func() {
+			extraConfig := util.ExtraConfigDefaults
+			extraConfig.TargetAllocatorRestrictToNamespaces = []string{testNamespace1, testNamespace3}
+			targetAllocatorManager.extraConfig.Store(&extraConfig)
+			tatest.CreateDefaultOperatorConfigurationResourceWithPrometheusCrdSupport(
+				ctx,
+				k8sClient,
+			)
+
+			firstName := types.NamespacedName{Namespace: testNamespace1, Name: "dash0-monitoring-test-resource-1"}
+			firstMonitoringResource := tatest.EnsureMonitoringResourceWithPrometheusScrapingExistsInNamespaceAndIsAvailable(ctx, k8sClient, firstName)
+			createdObjectsTargetAllocatorManagerTest = append(createdObjectsTargetAllocatorManagerTest, firstMonitoringResource)
+
+			secondName := types.NamespacedName{Namespace: testNamespace2, Name: "dash0-monitoring-test-resource-2"}
+			secondMonitoringResource := tatest.EnsureMonitoringResourceWithPrometheusScrapingExistsInNamespaceAndIsAvailable(ctx, k8sClient, secondName)
+			createdObjectsTargetAllocatorManagerTest = append(createdObjectsTargetAllocatorManagerTest, secondMonitoringResource)
+
+			hasBeenReconciled, err := targetAllocatorManager.ReconcileTargetAllocator(
+				ctx,
+				TriggeredByDash0ResourceReconcile,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
+			tatest.VerifyTargetAllocatorResources(ctx, k8sClient, operatorNamespace)
+			tatest.VerifyTargetAllocatorConfigMapContainsNamespaces(ctx, k8sClient, operatorNamespace, []string{testNamespace1})
+
+			clusterRole := &rbacv1.ClusterRole{}
+			Expect(k8sClient.Get(
+				ctx,
+				types.NamespacedName{Name: tatest.ExpectedTargetAllocatorClusterRoleName},
+				clusterRole,
+			)).To(Succeed())
+			for _, rule := range clusterRole.Rules {
+				Expect(rule.Resources).ToNot(ContainElement("secrets"))
+			}
+		})
+
+		It("should not create the target-allocator if no namespace with PrometheusScraping is listed in restrictToNamespaces", func() {
+			extraConfig := util.ExtraConfigDefaults
+			extraConfig.TargetAllocatorRestrictToNamespaces = []string{testNamespace3}
+			targetAllocatorManager.extraConfig.Store(&extraConfig)
+			tatest.CreateDefaultOperatorConfigurationResourceWithPrometheusCrdSupport(
+				ctx,
+				k8sClient,
+			)
+
+			firstName := types.NamespacedName{Namespace: testNamespace1, Name: "dash0-monitoring-test-resource-1"}
+			firstMonitoringResource := tatest.EnsureMonitoringResourceWithPrometheusScrapingExistsInNamespaceAndIsAvailable(ctx, k8sClient, firstName)
+			createdObjectsTargetAllocatorManagerTest = append(createdObjectsTargetAllocatorManagerTest, firstMonitoringResource)
+
+			hasBeenReconciled, err := targetAllocatorManager.ReconcileTargetAllocator(
+				ctx,
+				TriggeredByDash0ResourceReconcile,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
+			tatest.VerifyTargetAllocatorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 
 		It("should not delete the target-allocator if some monitoring resources still have PrometheusScraping enabled", func() {

@@ -434,6 +434,7 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.TargetAllocatorMtlsServerCertSecretName).To(Equal(""))
 					Expect(extraConfig.TargetAllocatorMtlsClientCertSecretName).To(Equal(""))
 					Expect(extraConfig.TargetAllocatorAllowInsecureAuthSecrets).To(BeFalse())
+					Expect(extraConfig.TargetAllocatorRestrictToNamespaces).To(BeEmpty())
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Cpu().String()).To(Equal("200m"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Requests.Cpu().String()).To(Equal("200m"))
@@ -766,6 +767,9 @@ targetAllocatorMtlsEnabled: true
 targetAllocatorMtlsServerCertSecretName: "ta-mtls-server-cert"
 targetAllocatorMtlsClientCertSecretName: "ta-mtls-client-cert"
 targetAllocatorAllowInsecureAuthSecrets: true
+targetAllocatorRestrictToNamespaces:
+  - namespace-a
+  - namespace-b
 targetAllocatorContainerResources:
   limits:
     cpu: 500m
@@ -952,6 +956,7 @@ monitoringTemplate:
 					Expect(extraConfig.TargetAllocatorMtlsServerCertSecretName).To(Equal("ta-mtls-server-cert"))
 					Expect(extraConfig.TargetAllocatorMtlsClientCertSecretName).To(Equal("ta-mtls-client-cert"))
 					Expect(extraConfig.TargetAllocatorAllowInsecureAuthSecrets).To(BeTrue())
+					Expect(extraConfig.TargetAllocatorRestrictToNamespaces).To(Equal([]string{"namespace-a", "namespace-b"}))
 
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Cpu().String()).To(Equal("500m"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Memory().String()).To(Equal("806Mi"))
@@ -1640,6 +1645,7 @@ var extraConfigKeysToHelmValues = map[string]string{
 	"targetAllocatorMtlsServerCertSecretName":                       "operator.targetAllocator.mTls.serverCertSecretName",
 	"targetAllocatorMtlsClientCertSecretName":                       "operator.targetAllocator.mTls.clientCertSecretName",
 	"targetAllocatorAllowInsecureAuthSecrets":                       "operator.targetAllocator.allowInsecureAuthSecrets",
+	"targetAllocatorRestrictToNamespaces":                           "operator.targetAllocator.restrictToNamespaces",
 	"targetAllocatorContainerResources":                             "operator.targetAllocator.containerResources",
 	"targetAllocatorLabels":                                         "operator.targetAllocator.labels",
 	"targetAllocatorAnnotations":                                    "operator.targetAllocator.annotations",

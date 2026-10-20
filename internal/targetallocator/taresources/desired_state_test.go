@@ -8,6 +8,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -322,7 +323,72 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 		Expect(ReadFromMap(taConfig, []string{"allow_insecure_auth_secrets"})).To(Equal(true))
 		Expect(ReadFromMap(taConfig, []string{"https", "enabled"})).To(Equal(true))
 	})
+
+	It("should grant cluster-wide access to secrets if restrictToNamespaces is not set", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        TargetAllocatorPrefixTest,
+			Images:            TestImages,
+		}, nil, util.ExtraConfig{})
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(clusterRoleResources(getClusterRole(desiredState))).To(ContainElement("secrets"))
+	})
+
+	It("should not grant cluster-wide access to secrets if restrictToNamespaces is set", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        TargetAllocatorPrefixTest,
+			Images:            TestImages,
+		}, []string{"namespace-a"}, util.ExtraConfig{
+			TargetAllocatorRestrictToNamespaces: []string{"namespace-a"},
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		resources := clusterRoleResources(getClusterRole(desiredState))
+		Expect(resources).ToNot(ContainElement("secrets"))
+		Expect(resources).To(ContainElements("namespaces", "pods", "servicemonitors"))
+	})
 })
+
+var _ = Describe("FilterNamespacesByRestriction", func() {
+	It("should allow all namespaces if restrictToNamespaces is empty", func() {
+		allowed, excluded := FilterNamespacesByRestriction([]string{"namespace-a", "namespace-b"}, nil)
+		Expect(allowed).To(Equal([]string{"namespace-a", "namespace-b"}))
+		Expect(excluded).To(BeEmpty())
+	})
+
+	It("should exclude namespaces that are not listed in restrictToNamespaces", func() {
+		allowed, excluded := FilterNamespacesByRestriction(
+			[]string{"namespace-a", "namespace-b", "namespace-c"},
+			[]string{"namespace-c", "namespace-a", "namespace-x"},
+		)
+		Expect(allowed).To(Equal([]string{"namespace-a", "namespace-c"}))
+		Expect(excluded).To(Equal([]string{"namespace-b"}))
+	})
+
+	It("should exclude all namespaces if none of them is listed in restrictToNamespaces", func() {
+		allowed, excluded := FilterNamespacesByRestriction([]string{"namespace-a"}, []string{"namespace-x"})
+		Expect(allowed).To(BeEmpty())
+		Expect(excluded).To(Equal([]string{"namespace-a"}))
+	})
+})
+
+func getClusterRole(desiredState []clientObject) *rbacv1.ClusterRole {
+	if clusterRole := findObjectByName(desiredState, tatest.ExpectedTargetAllocatorClusterRoleName); clusterRole != nil {
+		return clusterRole.(*rbacv1.ClusterRole)
+	}
+	return nil
+}
+
+func clusterRoleResources(clusterRole *rbacv1.ClusterRole) []string {
+	Expect(clusterRole).ToNot(BeNil())
+	var resources []string
+	for _, rule := range clusterRole.Rules {
+		resources = append(resources, rule.Resources...)
+	}
+	return resources
+}
 
 func getConfigMap(desiredState []clientObject) *corev1.ConfigMap {
 	if cm := findObjectByName(desiredState, tatest.ExpectedTargetAllocatorConfigMapName); cm != nil {

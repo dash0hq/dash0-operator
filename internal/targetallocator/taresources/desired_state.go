@@ -147,7 +147,7 @@ func assembleDesiredState(
 	}
 	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccount(config)))
 	desiredState = append(desiredState, addCommonMetadata(cm))
-	desiredState = append(desiredState, addCommonMetadata(assembleClusterRole(config)))
+	desiredState = append(desiredState, addCommonMetadata(assembleClusterRole(config, extraConfig)))
 	desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleBinding(config)))
 	desiredState = append(desiredState, addCommonMetadata(assembleService(config, extraConfig)))
 	desiredState = append(desiredState, addCommonMetadata(deployment))
@@ -218,7 +218,19 @@ func assembleServiceAccount(c *targetAllocatorConfig) *corev1.ServiceAccount {
 	}
 }
 
-func assembleClusterRole(c *targetAllocatorConfig) *rbacv1.ClusterRole {
+func assembleClusterRole(c *targetAllocatorConfig, extraConfig util.ExtraConfig) *rbacv1.ClusterRole {
+	coreResources := []string{
+		"namespaces",
+		"nodes",
+		"nodes/metrics",
+		"services",
+		"endpoints",
+		"pods",
+	}
+	// With restrictToNamespaces set, the Helm chart grants access to secrets via namespaced role bindings.
+	if len(extraConfig.TargetAllocatorRestrictToNamespaces) == 0 {
+		coreResources = append(coreResources, "secrets")
+	}
 	return &rbacv1.ClusterRole{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "rbac.authorization.k8s.io/v1",
@@ -247,16 +259,8 @@ func assembleClusterRole(c *targetAllocatorConfig) *rbacv1.ClusterRole {
 			},
 			{
 				APIGroups: []string{""},
-				Resources: []string{
-					"namespaces",
-					"nodes",
-					"nodes/metrics",
-					"services",
-					"endpoints",
-					"pods",
-					"secrets",
-				},
-				Verbs: []string{"get", "list", "watch"},
+				Resources: coreResources,
+				Verbs:     []string{"get", "list", "watch"},
 			},
 			{
 				APIGroups: []string{""},
@@ -515,6 +519,24 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 }
 
 // ---utils---
+
+// FilterNamespacesByRestriction splits the given namespaces into the ones the target-allocator is allowed to watch and
+// the ones it is not allowed to watch. If restrictToNamespaces is empty, all namespaces are allowed.
+func FilterNamespacesByRestriction(namespaces []string, restrictToNamespaces []string) ([]string, []string) {
+	if len(restrictToNamespaces) == 0 {
+		return namespaces, nil
+	}
+	allowed := make([]string, 0, len(namespaces))
+	var excluded []string
+	for _, namespace := range namespaces {
+		if slices.Contains(restrictToNamespaces, namespace) {
+			allowed = append(allowed, namespace)
+		} else {
+			excluded = append(excluded, namespace)
+		}
+	}
+	return allowed, excluded
+}
 
 func ConfigMapName(namePrefix string) string {
 	return resources.RenderName(namePrefix, targetAllocatorDeploymentNameSuffix, "cm")
