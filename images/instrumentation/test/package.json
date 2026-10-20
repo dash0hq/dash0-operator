@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@supercharge/promise-pool": "^3.3.0",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.5",
     "chalk": "^6.0.1",
     "yaml": "^2.9.1"
   },
@@ -20,7 +20,7 @@
     "node": ">=26"
   },
   "devDependencies": {
-    "prettier": "^3.9.9",
+    "prettier": "^3.9.10",
     "typescript": "^7.0.2"
   }
 }
