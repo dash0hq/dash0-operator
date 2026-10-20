@@ -24,17 +24,20 @@ import (
 )
 
 type MonitoringMutatingWebhookHandler struct {
-	Client            client.Client
-	operatorNamespace string
+	Client                   client.Client
+	operatorNamespace        string
+	signalControlSceOnlyMode bool
 }
 
 func NewMonitoringMutatingWebhookHandler(
 	k8sClient client.Client,
 	OperatorNamespace string,
+	signalControlSceOnlyMode bool,
 ) *MonitoringMutatingWebhookHandler {
 	return &MonitoringMutatingWebhookHandler{
-		Client:            k8sClient,
-		operatorNamespace: OperatorNamespace,
+		Client:                   k8sClient,
+		operatorNamespace:        OperatorNamespace,
+		signalControlSceOnlyMode: signalControlSceOnlyMode,
 	}
 }
 
@@ -156,11 +159,14 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 	if operatorConfigurationSpec != nil {
 		telemetryCollectionEnabled = pointers.ReadBoolPointerWithDefault(operatorConfigurationSpec.TelemetryCollection.Enabled, true)
 	}
+	// In SCE-only mode, the operator neither instruments workloads nor deploys the collectors that would collect logs,
+	// events or Prometheus metrics.
+	collectFromWorkloads := telemetryCollectionEnabled && !h.signalControlSceOnlyMode
 
 	if monitoringSpec.InstrumentWorkloads.Mode == "" {
 		if request.Namespace == h.operatorNamespace {
 			monitoringSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeNone
-		} else if telemetryCollectionEnabled {
+		} else if collectFromWorkloads {
 			monitoringSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeAll
 		} else {
 			monitoringSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeNone
@@ -171,16 +177,16 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 		if request.Namespace == h.operatorNamespace {
 			monitoringSpec.LogCollection.Enabled = new(false)
 		} else {
-			monitoringSpec.LogCollection.Enabled = new(telemetryCollectionEnabled)
+			monitoringSpec.LogCollection.Enabled = new(collectFromWorkloads)
 		}
 		patchRequired = true
 	}
 	if monitoringSpec.EventCollection.Enabled == nil {
-		monitoringSpec.EventCollection.Enabled = new(telemetryCollectionEnabled)
+		monitoringSpec.EventCollection.Enabled = new(collectFromWorkloads)
 		patchRequired = true
 	}
 	if monitoringSpec.PrometheusScraping.Enabled == nil {
-		monitoringSpec.PrometheusScraping.Enabled = new(telemetryCollectionEnabled)
+		monitoringSpec.PrometheusScraping.Enabled = new(collectFromWorkloads)
 		patchRequired = true
 	}
 	return patchRequired

@@ -1160,3 +1160,6 @@ It cannot, because `telemetryCollectionEnabled=false` implies that the necessary
 resources (including the permission to delete these resources) are not granted to the operator manger.
 The recommended resolution is to uninstall the operator from the cluster entirely, then re-install with
 `telemetryCollectionEnabled=false`.
+
+If you want to use SignalControl Edge without the operator's telemetry collection, use
+[SCE-only mode](signal-control-edge.md#sce-only-mode) instead.

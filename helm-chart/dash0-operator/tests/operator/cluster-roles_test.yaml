@@ -72,6 +72,49 @@ tests:
         name: dash0-operator-manager-iac
       documentIndex: 1
 
+  - it: should grant cluster-wide permissions for secrets to the manager by default
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - ""
+            resources:
+              - secrets
+            verbs:
+              - get
+              - list
+              - watch
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-collector
+
+  - it: should neither grant instrumentation permissions nor cluster-wide permissions for secrets in SCE-only mode
+    set:
+      operator:
+        signalControl:
+          enabled: true
+          sceOnlyMode: true
+    asserts:
+      - hasDocuments:
+          count: 3
+      - containsDocument:
+          kind: ClusterRole
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-collector
+        documentIndex: 2
+      - containsDocument:
+          kind: ClusterRole
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-instrument
+        not: true
+      - notContains:
+          path: rules[*].resources
+          content: secrets
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-collector
+
   - it: should not grant agent0-connector permissions by default
     asserts:
       - containsDocument:

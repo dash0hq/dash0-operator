@@ -59,6 +59,8 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 			cluster.KubernetesVersionInfo{},
 			false,
 			false,
+			false,
+			false,
 		)
 		scManager := NewSignalControlManager(
 			k8sClient, scResourceManager, nodeMetadataClient, util.ExtraConfigDefaults, util.ExtraConfigDefaults)

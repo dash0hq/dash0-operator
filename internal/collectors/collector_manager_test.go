@@ -567,6 +567,73 @@ var _ = Describe("The collector manager", Ordered, func() {
 		})
 	})
 
+	Describe("in SCE-only mode", func() {
+		var warnings []string
+		var recordingLogger logd.Logger
+
+		BeforeEach(func() {
+			warnings = nil
+			recordingLogger = logd.NewLogger(funcr.New(func(_ string, args string) {
+				warnings = append(warnings, args)
+			}, funcr.Options{}))
+			CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
+		})
+
+		AfterEach(func() {
+			_, err := collectorManager.oTelColResourceManager.DeleteResources(ctx, util.ExtraConfigDefaults, logger)
+			Expect(err).ToNot(HaveOccurred())
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
+		})
+
+		createSignalControlResource := func() {
+			scResource := &dash0v1alpha1.Dash0SignalControl{
+				ObjectMeta: metav1.ObjectMeta{Name: "dash0-signal-control-test"},
+				Spec:       dash0v1alpha1.Dash0SignalControlSpec{Enabled: ptr.To(true)},
+			}
+			Expect(k8sClient.Create(ctx, scResource)).To(Succeed())
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, scResource)
+		}
+
+		It("removes the daemonset and deployment collectors and keeps the Signal Control collector", func() {
+			createSignalControlResource()
+			collectorManager = newCollectorManagerWithSignalControlEnabled()
+			_, err := collectorManager.ReconcileOpenTelemetryCollector(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			VerifyResourceExists(ctx, k8sClient, operatorNamespace, ExpectedDaemonSetName, &appsv1.DaemonSet{})
+			VerifyResourceExists(ctx, k8sClient, operatorNamespace, ExpectedDeploymentName, &appsv1.Deployment{})
+
+			collectorManager = newCollectorManagerWithSceOnlyMode()
+			_, err = collectorManager.ReconcileOpenTelemetryCollector(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			VerifyResourceDoesNotExist(ctx, k8sClient, operatorNamespace, ExpectedDaemonSetName, &appsv1.DaemonSet{})
+			VerifyResourceDoesNotExist(ctx, k8sClient, operatorNamespace, ExpectedDeploymentName, &appsv1.Deployment{})
+			VerifyResourceExists(
+				ctx, k8sClient, operatorNamespace, ExpectedSignalControlCollectorName, &appsv1.Deployment{})
+			cm := GetSignalControlCollectorConfigMap(ctx, k8sClient, operatorNamespace)
+			Expect(cm.Data["config.yaml"]).To(ContainSubstring("dash0settingsonedgeextension"))
+		})
+
+		It("deploys no collector and warns when there is no Signal Control resource", func() {
+			collectorManager = newCollectorManagerWithSceOnlyMode()
+			_, err := collectorManager.reconcileOpenTelemetryCollector(ctx, recordingLogger)
+			Expect(err).ToNot(HaveOccurred())
+
+			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
+			VerifySignalControlCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
+			Expect(warnings).To(ContainElement(ContainSubstring("SCE-only mode is active")))
+		})
+
+		It("does not warn when the Signal Control collector is deployed", func() {
+			createSignalControlResource()
+			collectorManager = newCollectorManagerWithSceOnlyMode()
+			_, err := collectorManager.reconcileOpenTelemetryCollector(ctx, recordingLogger)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(warnings).ToNot(ContainElement(ContainSubstring("SCE-only mode is active")))
+		})
+	})
+
 	Describe("when component settings are configured in the custom resources", func() {
 		BeforeEach(func() {
 			spec := OperatorConfigurationResourceDefaultSpec
@@ -810,6 +877,14 @@ var _ = Describe("The collector manager", Ordered, func() {
 })
 
 func newCollectorManagerWithSignalControlEnabled() *CollectorManager {
+	return newSignalControlCollectorManager(false)
+}
+
+func newCollectorManagerWithSceOnlyMode() *CollectorManager {
+	return newSignalControlCollectorManager(true)
+}
+
+func newSignalControlCollectorManager(sceOnlyMode bool) *CollectorManager {
 	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
 		k8sClient,
 		k8sClient.Scheme(),
@@ -819,6 +894,7 @@ func newCollectorManagerWithSignalControlEnabled() *CollectorManager {
 			OperatorNamespace:         operatorNamespace,
 			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
 			TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
+			SignalControlSceOnlyMode:  sceOnlyMode,
 		},
 	)
 	return NewCollectorManager(

@@ -75,6 +75,11 @@ func NewOTelColResourceManager(
 	}
 }
 
+// SignalControlSceOnlyMode reports whether SCE-only mode is active.
+func (m *OTelColResourceManager) SignalControlSceOnlyMode() bool {
+	return m.collectorConfig.SignalControlSceOnlyMode
+}
+
 func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	ctx context.Context,
 	extraConfig util.ExtraConfig,
@@ -153,12 +158,16 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		}
 	}
 	clusterName = operatorConfigurationResource.Spec.ClusterName
-	kubeletStatsReceiverConfig :=
-		m.determineKubeletstatsReceiverEndpoint(
-			kubernetesInfrastructureMetricsCollectionEnabled,
-			probeKubeletStatsEndpoint,
-			logger,
-		)
+	kubeletStatsReceiverConfig := util.KubeletStatsReceiverConfig{Enabled: false}
+	// The kubeletstats receiver only runs in the collector daemonset, which SCE-only mode does not deploy.
+	if !m.collectorConfig.SignalControlSceOnlyMode {
+		kubeletStatsReceiverConfig =
+			m.determineKubeletstatsReceiverEndpoint(
+				kubernetesInfrastructureMetricsCollectionEnabled,
+				probeKubeletStatsEndpoint,
+				logger,
+			)
+	}
 
 	defaultExporters, err := getDefaultOtlpExporters(operatorConfigurationResource)
 	if err != nil {
@@ -222,6 +231,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		EnableProfExtension:       m.collectorConfig.EnableProfExtension,
 		ProfilingEnabled:          profilingEnabled,
 		CompressConfigMap:         m.collectorConfig.CompressConfigMap,
+		SignalControlSceOnlyMode:  m.collectorConfig.SignalControlSceOnlyMode,
 	}
 	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
 		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume

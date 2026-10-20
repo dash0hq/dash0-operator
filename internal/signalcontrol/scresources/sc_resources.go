@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -34,6 +35,8 @@ type SignalControlResourceManager struct {
 	kubernetesApiServerVersion cluster.KubernetesVersionInfo
 	isGkeAutopilot             bool
 	isOpenShift                bool
+	signalControlSceOnlyMode   bool
+	developmentMode            bool
 }
 
 func NewSignalControlResourceManager(
@@ -49,6 +52,8 @@ func NewSignalControlResourceManager(
 	kubernetesApiServerVersion cluster.KubernetesVersionInfo,
 	isGkeAutopilot bool,
 	isOpenShift bool,
+	signalControlSceOnlyMode bool,
+	developmentMode bool,
 ) *SignalControlResourceManager {
 	return &SignalControlResourceManager{
 		Client:                     k8sClient,
@@ -63,6 +68,8 @@ func NewSignalControlResourceManager(
 		kubernetesApiServerVersion: kubernetesApiServerVersion,
 		isGkeAutopilot:             isGkeAutopilot,
 		isOpenShift:                isOpenShift,
+		signalControlSceOnlyMode:   signalControlSceOnlyMode,
+		developmentMode:            developmentMode,
 	}
 }
 
@@ -73,7 +80,8 @@ func (m *SignalControlResourceManager) CreateOrUpdateResources(
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) (bool, bool, error) {
-	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, signalControlResource, operatorConfig, m.edgeProxyImage, m.edgeProxyImagePullPolicy, m.operatorVersion, m.otlpGrpcHostPort, m.kubernetesApiServerVersion, extraConfig, false, m.isGkeAutopilot, m.isOpenShift, logger)
+	selfMonitoring := m.edgeProxySelfMonitoring(ctx, operatorConfig, logger)
+	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, signalControlResource, operatorConfig, m.edgeProxyImage, m.edgeProxyImagePullPolicy, m.operatorVersion, selfMonitoring, m.kubernetesApiServerVersion, extraConfig, false, m.isGkeAutopilot, m.isOpenShift, logger)
 
 	resourcesHaveBeenCreated := false
 	resourcesHaveBeenUpdated := false
@@ -94,6 +102,40 @@ func (m *SignalControlResourceManager) CreateOrUpdateResources(
 	}
 
 	return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, nil
+}
+
+func (m *SignalControlResourceManager) edgeProxySelfMonitoring(
+	ctx context.Context,
+	operatorConfig *dash0v1alpha1.Dash0OperatorConfiguration,
+	logger logd.Logger,
+) edgeProxySelfMonitoring {
+	selfMonitoring := edgeProxySelfMonitoring{
+		otlpGrpcHostPort: m.otlpGrpcHostPort,
+		developmentMode:  m.developmentMode,
+	}
+	if !m.signalControlSceOnlyMode {
+		return selfMonitoring
+	}
+	selfMonitoringConfiguration, err :=
+		selfmonitoringapiaccess.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
+			ctx,
+			m.Client,
+			m.operatorNamespace,
+			operatorConfig,
+			logger,
+		)
+	if err != nil {
+		logger.Error(err, "cannot generate the self-monitoring configuration for the Edge Proxy")
+		selfMonitoringConfiguration = selfmonitoringapiaccess.SelfMonitoringConfiguration{
+			SelfMonitoringEnabled: false,
+		}
+	}
+	// ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration might have resolved secrets to literal values.
+	// The Edge Proxy receives the secret refs as environment variables instead.
+	selfMonitoringConfiguration.Token = nil
+	selfMonitoringConfiguration.ResolvedSecretHeaderValues = nil
+	selfMonitoring.directExport = &selfMonitoringConfiguration
+	return selfMonitoring
 }
 
 func (m *SignalControlResourceManager) createOrUpdateResource(

@@ -57,7 +57,7 @@ subjects:
 {{ end }}
 
 ---
-{{ if .Values.operator.telemetryCollectionEnabled }}
+{{ if and .Values.operator.telemetryCollectionEnabled (not .Values.operator.signalControl.sceOnlyMode) }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:

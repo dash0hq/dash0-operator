@@ -1378,6 +1378,78 @@ tests:
           path: spec.template.spec.containers[0].env[21].name
           value: K8S_POD_UID
 
+  - it: should not enable SCE-only mode by default
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        signalControl:
+          enabled: true
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --dash0-feature-signal-control-sce-only-mode=true
+
+  - it: should enable SCE-only mode
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        signalControl:
+          enabled: true
+          sceOnlyMode: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --dash0-feature-signal-control-sce-only-mode=true
+
+  - it: should not render the injector webhook in SCE-only mode
+    set:
+      operator:
+        signalControl:
+          enabled: true
+          sceOnlyMode: true
+    asserts:
+      - containsDocument:
+          kind: MutatingWebhookConfiguration
+          apiVersion: admissionregistration.k8s.io/v1
+          name: dash0-operator-injector
+        not: true
+
+  - it: should render the injector webhook when SCE-only mode is disabled
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-injector
+    set:
+      operator:
+        signalControl:
+          enabled: true
+    asserts:
+      - isKind:
+          of: MutatingWebhookConfiguration
+
+  - it: should fail when SCE-only mode is enabled but Signal Control is disabled
+    set:
+      operator:
+        signalControl:
+          sceOnlyMode: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.signalControl.sceOnlyMode is set to true, but operator.signalControl.enabled is false. SCE-only mode requires Signal Control to be enabled."
+
+  - it: should fail when SCE-only mode is enabled but telemetry collection is disabled
+    set:
+      operator:
+        telemetryCollectionEnabled: false
+        signalControl:
+          enabled: true
+          sceOnlyMode: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.signalControl.sceOnlyMode is set to true, but operator.telemetryCollectionEnabled is false. SCE-only mode requires telemetry collection to be enabled, since the Signal Control collector is managed together with the other OpenTelemetry collectors."
+
   - it: should support custom Signal Control collector and Edge Proxy images with pull policies
     chart:
       version: 1.2.3

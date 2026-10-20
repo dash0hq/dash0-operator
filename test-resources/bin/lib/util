@@ -849,6 +849,9 @@ run_helm() {
   if [[ "${FEATURE_SIGNAL_CONTROL_ENABLED:-}" = "true" ]]; then
     helm_install_command+=" --set operator.signalControl.enabled=true"
   fi
+  if [[ "${FEATURE_SIGNAL_CONTROL_SCE_ONLY_MODE:-}" = "true" ]]; then
+    helm_install_command+=" --set operator.signalControl.sceOnlyMode=true"
+  fi
   if [[ -n "${OPERATOR_REPLICAS:-}" ]]; then
     helm_install_command+=" --set operator.replicaCount=${OPERATOR_REPLICAS:-1}"
   fi

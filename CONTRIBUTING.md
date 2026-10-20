@@ -179,6 +179,9 @@ Moving beyond the quickstart instructions, here are more details on the test scr
   component settings via `spec.components` of the operator configuration resource and of the Signal Control resource
   (see `test-resources/component-settings`). Some of them are also set to different values via Helm, which the
   operator reports with a warning ("overrides the custom Helm value").
+* `test-resources/bin/test-scenario-13-signal-control-only.sh`: Deploys the operator with Signal Control in SCE-only
+  mode (`FEATURE_SIGNAL_CONTROL_SCE_ONLY_MODE=true`), so that only the Signal Control collector and the Edge Proxy are
+  deployed. By default, it deploys neither an application under monitoring nor a monitoring resource.
 * `test-resources/bin/test-cleanup.sh`: This script removes all resources created by the other scripts. **You should
   always run this script after running any of the scenario scripts, when you are done with your tests, otherwise the
   e2e tests will fail the next time you start them.** Note that all scenario scripts call the cleanup at the beginning,
@@ -262,6 +265,9 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       to the Helm setting `operator.instrumentation.enablePythonAutoInstrumentation=true`. This defaults to "false".
     * `ENABLE_RUBY_AUTO_INSTRUMENTATION`: Set this to "true" to enable Ruby auto-instrumentation. This corresponds to
       the Helm setting `operator.instrumentation.enableRubyAutoInstrumentation=true`. This defaults to "false".
+    * `FEATURE_SIGNAL_CONTROL_SCE_ONLY_MODE`: Set this to "true" to install the operator in SCE-only mode
+      (`operator.signalControl.sceOnlyMode=true`). Requires `FEATURE_SIGNAL_CONTROL_ENABLED=true`.
+      This defaults to "false", except in test scenario 13, where it is always "true".
     * `FILELOG_OFFSETS_PVC`: Use a persistent volume claim to store filelog offsets, instead of the default config map
       based storage. Possible values:
         * `FILELOG_OFFSETS_PVC=kind`: deploy a PersistentVolume and PersistentVolumeClaim suitable for kind clusters
@@ -595,3 +601,5 @@ serves these images is required.
 
 A test scenario is available in [test-resources/bin/test-scenario-10-signal-control.sh](test-resources/bin/test-scenario-10-signal-control.sh)
 and example sampling rules can be found in [test-resources/customresources/dash0samplingrule](test-resources/customresources/dash0samplingrule).
+SCE-only mode can be tested with
+[test-resources/bin/test-scenario-13-signal-control-only.sh](test-resources/bin/test-scenario-13-signal-control-only.sh).

@@ -1375,6 +1375,12 @@ operator:
     # Whether to enable Signal Control features for this operator install.
     enabled: false
 
+    # If set to true, the operator only deploys the Signal Control collector and the Edge Proxy (SCE-only mode), and
+    # applications send OTLP directly to the Signal Control collector. Requires signalControl.enabled=true and
+    # telemetryCollectionEnabled=true. Switching an existing installation to this mode requires a re-install. See
+    # https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/signal-control-edge#sce-only-mode.
+    sceOnlyMode: false
+
     # Settings for the Edge Proxy deployed when signalControl.enabled=true.
     edgeProxy:
       # The number of Edge Proxy pods to run. The Edge Proxy is stateless, so it can be scaled horizontally to

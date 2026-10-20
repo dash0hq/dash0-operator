@@ -635,6 +635,11 @@ rules:
   - get
   - list
   - watch
+{{- /*
+The target allocator resolves secrets referenced by Prometheus CRDs in any namespace. It is not deployed in SCE-only
+mode.
+*/}}
+{{- if not .Values.operator.signalControl.sceOnlyMode }}
 - apiGroups:
   - ""
   resources:
@@ -643,6 +648,7 @@ rules:
   - get
   - list
   - watch
+{{- end }}
 - nonResourceURLs:
   - /metrics
   verbs:
@@ -651,7 +657,7 @@ rules:
 {{ end }}
 
 ---
-{{ if .Values.operator.telemetryCollectionEnabled }}
+{{ if and .Values.operator.telemetryCollectionEnabled (not .Values.operator.signalControl.sceOnlyMode) }}
 {{/*
 The -manager-instrument cluster role holds permissions necessary for auto-instrumenting workloads.
 */}}

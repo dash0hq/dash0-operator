@@ -201,3 +201,87 @@ across collector instances are instead delegated to the Dash0 Decision Maker on 
 enabled, collectors reach the Decision Maker through it rather than connecting individually. A trace whose spans are
 spread over several SignalControl collector replicas is still sampled correctly: the Decision Maker broadcasts each
 decision to every connected collector.
+
+## SCE-only mode
+
+In SCE-only mode, the operator deploys only the SignalControl collector and the Edge Proxy. It does not deploy the
+per-node collector daemonset, the cluster metrics collector deployment or the target allocator, and it does not
+instrument workloads. Applications send OTLP directly to the SignalControl collector service
+`<release-name>-signal-control-collector-service.<operator-namespace>.svc.cluster.local`, port 4317 (OTLP/gRPC) or 4318
+(OTLP/HTTP).
+
+Synchronizing Dash0 resources (dashboards, check rules, synthetic checks, views, sampling rules etc.) keeps working as
+usual, see [Managing Dash0 Resources](managing-dash0-resources.md).
+
+To enable SCE-only mode, install the operator with the following Helm values:
+
+```
+--set operator.signalControl.enabled=true
+--set operator.signalControl.sceOnlyMode=true
+```
+
+`operator.telemetryCollectionEnabled` must stay `true` (the default). The SignalControl collector is only deployed once
+an enabled `Dash0SignalControl` resource exists and the operator configuration has a default Dash0 export. Until then,
+telemetry sent to the service is lost.
+
+### What is not available
+
+All processing that the per-node collector and the cluster metrics collector add is missing in SCE-only mode:
+
+- Kubernetes metadata enrichment (`k8s_attributes`), resource detection and the `k8s.cluster.name`/`k8s.cluster.uid`
+  resource attributes
+- custom filters and transforms configured in the `Dash0OperatorConfiguration` or `Dash0Monitoring` resources
+- non-Dash0 exports
+- profiles
+- log collection (including the logs of the operator's own pods), Kubernetes event collection, Prometheus scraping and
+  infrastructure metrics (kubelet stats, cluster metrics)
+- automatic namespace monitoring (`operator.autoMonitorNamespaces.enabled`)
+
+The corresponding settings of the `Dash0OperatorConfiguration` and `Dash0Monitoring` resources have no effect.
+
+The Edge Proxy sends its self-monitoring telemetry directly to the export of the operator configuration, unless that
+export is not a Dash0 export. On GKE Autopilot, the Edge Proxy does not send self-monitoring telemetry until its GKE
+Autopilot allowlist has been updated.
+
+### Namespaced exports
+
+If `Dash0Monitoring` resources define their own Dash0 exports, the SignalControl collector routes telemetry to the
+export of a namespace based on the `k8s.namespace.name` resource attribute. Since no collector adds this attribute in
+SCE-only mode, applications have to set it themselves, for example via the Kubernetes downward API:
+
+```yaml
+env:
+  - name: K8S_NAMESPACE_NAME
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.namespace
+  - name: OTEL_RESOURCE_ATTRIBUTES
+    value: k8s.namespace.name=$(K8S_NAMESPACE_NAME)
+```
+
+Telemetry without `k8s.namespace.name` is sent to the default export of the operator configuration.
+
+### Sizing and load balancing
+
+The SignalControl collector receives the telemetry of every application process directly, instead of from a few
+collector pods that batch it. Size `operator.collectors.signalControlCollectorReplicas` and
+`operator.collectors.signalControlCollectorContainerResources` for the cluster's full telemetry volume.
+
+The collector closes OTLP/gRPC connections after five minutes, so gRPC clients spread across new replicas after scaling
+up. OTLP/HTTP connections are not recycled and can stay unevenly distributed, so OTLP/gRPC is preferable.
+
+### Switching an existing installation
+
+Switching an existing installation to SCE-only mode via `helm upgrade` is not supported: previously instrumented
+workloads would keep sending telemetry to the removed per-node collector, and the target allocator resources would not
+be removed. Instead:
+
+1. If `operator.signalControl.sceOnlyMode=true` has already been applied via `helm upgrade`, set it back to `false`
+   via `helm upgrade` and wait for the operator to be rolled out. The operator only removes the instrumentation on
+   uninstall when it is not running in SCE-only mode.
+2. Uninstall the operator, which removes the instrumentation from all workloads.
+3. Re-install it with `operator.signalControl.sceOnlyMode=true`.
+
+In SCE-only mode, the operator stores `instrumentWorkloads.mode=none` and disabled log collection, event collection and
+Prometheus scraping as defaults in new `Dash0Monitoring` resources. These values are kept when switching back to the
+regular mode, so set them explicitly in these resources to instrument workloads and collect telemetry again.
