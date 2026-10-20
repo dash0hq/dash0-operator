@@ -924,13 +924,12 @@ func (r *PersesDashboardReconciler) CreateDeleteRequests(
 	_ ApiConfig,
 	_ []string,
 	_ []string,
-	_ logd.Logger,
-) ([]WrappedApiRequest, map[string]string) {
+) []WrappedApiRequest {
 	// The mechanism to delete individual dashboards when synchronizing one Kubernetes PersesDashboard resource is not
 	// required, since each PersesDashboard only contains one dashboard. It is only needed when the resource type holds
 	// multiple objects that are synchronized (as it is the case for PrometheusRule). Thus, this controller does not
 	// need to implement this method.
-	return nil, nil
+	return nil
 }
 
 func (*PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringStatus(

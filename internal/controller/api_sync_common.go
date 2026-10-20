@@ -507,7 +507,6 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 				validatedApiConfig.ApiConfig,
 				existingOriginsFromApi,
 				resourceToRequestsResult,
-				logger,
 			)
 		}
 		if action == deleteAction && resourceToRequestsResult.IsNoOp() {
@@ -1135,7 +1134,6 @@ func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 	apiConfig ApiConfig,
 	existingOriginsFromApi []string,
 	resourceToRequestsResult *ResourceToRequestsResult,
-	logger logd.Logger,
 ) {
 	thirdPartyResourceReconciler, ok := apiSyncReconciler.(ThirdPartyResourceReconciler)
 	if !ok {
@@ -1144,15 +1142,13 @@ func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 		// Dash0 API objects.
 		return
 	}
-	deleteHttpRequests, deleteSynchronizationErrors := thirdPartyResourceReconciler.CreateDeleteRequests(
+	deleteApiCalls := thirdPartyResourceReconciler.CreateDeleteRequests(
 		apiConfig,
 		existingOriginsFromApi,
 		resourceToRequestsResult.OriginsInResource,
-		logger,
 	)
-	resourceToRequestsResult.OrphanDeletesTotal = len(deleteHttpRequests)
-	maps.Copy(resourceToRequestsResult.SynchronizationErrors, deleteSynchronizationErrors)
-	resourceToRequestsResult.ApiRequests = slices.Concat(resourceToRequestsResult.ApiRequests, deleteHttpRequests)
+	resourceToRequestsResult.OrphanDeletesTotal = len(deleteApiCalls)
+	resourceToRequestsResult.ApiRequests = slices.Concat(resourceToRequestsResult.ApiRequests, deleteApiCalls)
 }
 
 // removeDeleteRequestsForObjectsThatDoNotExist drops all DELETE requests for objects whose origin is not in the list of

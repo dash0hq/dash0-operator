@@ -368,13 +368,11 @@ var _ = Describe("The Prometheus rule API client calls", func() {
 			}
 			apiConfig := ApiConfig{Endpoint: ApiEndpointStandardizedTest, Dataset: dataset, Token: AuthorizationTokenTest}
 
-			deleteRequests, synchronizationErrors := prometheusRuleReconciler.CreateDeleteRequests(
+			deleteRequests := prometheusRuleReconciler.CreateDeleteRequests(
 				apiConfig,
 				[]string{orphanOrigin},
 				nil,
-				logger,
 			)
-			Expect(synchronizationErrors).To(BeEmpty())
 			Expect(deleteRequests).To(HaveLen(2))
 			for _, deleteRequest := range deleteRequests {
 				Expect(deleteRequest.Origin).To(Equal(orphanOrigin))

@@ -1314,8 +1314,7 @@ func (r *PrometheusRuleReconciler) CreateDeleteRequests(
 	apiConfig ApiConfig,
 	existingOriginsFromApi []string,
 	originsInResource []string,
-	_ logd.Logger,
-) ([]WrappedApiRequest, map[string]string) {
+) []WrappedApiRequest {
 	var deleteRequests []WrappedApiRequest
 	for _, existingOrigin := range existingOriginsFromApi {
 		if !slices.Contains(originsInResource, existingOrigin) {
@@ -1337,7 +1336,7 @@ func (r *PrometheusRuleReconciler) CreateDeleteRequests(
 			}
 		}
 	}
-	return deleteRequests, nil
+	return deleteRequests
 }
 
 func (*PrometheusRuleReconciler) UpdateSynchronizationResultsInDash0MonitoringStatus(
