@@ -2220,6 +2220,7 @@ func startDash0Controllers(
 		prometheusRuleSynchronizationQueue,
 		leaderElectionAwareRunnable,
 		httpClient,
+		apiClientPool,
 	)
 	if err := prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, setupLog); err != nil {
 		return fmt.Errorf("unable to set up the Prometheus rule reconciler: %w", err)

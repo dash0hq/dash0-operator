@@ -6,6 +6,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
 
@@ -22,11 +23,18 @@ func testApiClientPool() *ApiClientPool {
 }
 
 type urlRecordingRoundTripper struct {
-	urls []*url.URL
+	urls   []*url.URL
+	bodies []string
 }
 
 func (r *urlRecordingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	r.urls = append(r.urls, req.URL)
+	var body []byte
+	if req.Body != nil {
+		body, _ = io.ReadAll(req.Body)
+		_ = req.Body.Close()
+	}
+	r.bodies = append(r.bodies, string(body))
 	return nil, errors.New("request recorded")
 }
 

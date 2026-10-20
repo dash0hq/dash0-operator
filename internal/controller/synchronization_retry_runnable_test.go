@@ -186,6 +186,7 @@ var _ = Describe("The synchronization retry runnable", func() {
 				queue,
 				&DummyLeaderElectionAware{Leader: true},
 				TestHTTPClient(),
+				testApiClientPool(),
 			)
 			prometheusRuleCrdReconciler.skipNameValidation = true
 			prometheusRuleCrdReconciler.CreateThirdPartyResourceReconciler(types.UID("test-cluster-uid"))
