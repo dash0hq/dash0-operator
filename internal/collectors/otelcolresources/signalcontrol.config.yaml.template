@@ -412,6 +412,23 @@ processors:
 {{- end }}
 {{- end }}
 {{- end }}
+{{- if .SignalControl.CardholderDataRedactionEnabled }}
+{{- /* On edge, dash0redaction redacts everything it receives, so adding it to a pipeline is the switch. It marks each
+resource as redacted, which makes Dash0 skip its own redaction for it, so it must run after every processor that
+changes telemetry content. */}}
+{{- if $scDefault }}
+  dash0redaction:
+    metric_recorder: dash0metricrecorder
+{{- end }}
+{{- if $hasNamespacedDash0 }}
+{{- range $ns, $sc := .Exporters.NamespaceSC }}
+{{- range $b := $sc.DatasetBranches }}
+  dash0redaction/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+    metric_recorder: dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- if $samplingActive }}
   dash0sampling:
 {{- if $scDefault }}
@@ -496,6 +513,9 @@ service:
         {{- if .SignalControl.SpamFilterEnabled }}
         - dash0filter
         {{- end }}
+        {{- if .SignalControl.CardholderDataRedactionEnabled }}
+        - dash0redaction
+        {{- end }}
       exporters:
         {{- if $samplingActive }}
         - forward/traces-to-sampling
@@ -574,6 +594,9 @@ service:
         {{- if $.SignalControl.SpamFilterEnabled }}
         - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- end }}
+        {{- if $.SignalControl.CardholderDataRedactionEnabled }}
+        - dash0redaction/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
       exporters:
       {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
         - debug
@@ -651,6 +674,9 @@ service:
         - dash0metering
         - dash0filter
         {{- end }}
+        {{- if .SignalControl.CardholderDataRedactionEnabled }}
+        - dash0redaction
+        {{- end }}
       exporters:
         - forward/metrics-default-exporter
 {{- /* The Signal Control counters (metering and spam filter) get their own pipeline rather than riding
@@ -693,6 +719,9 @@ Dash0-Dataset header and the accountant sums what arrives, so a second delivery 
         - dash0resource
         - dash0metering/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
+        {{- if $.SignalControl.CardholderDataRedactionEnabled }}
+        - dash0redaction/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- end }}
       exporters:
         {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
@@ -749,6 +778,9 @@ Dash0-Dataset header and the accountant sums what arrives, so a second delivery 
         {{- if .SignalControl.SpamFilterEnabled }}
         - dash0filter
         {{- end }}
+        {{- if .SignalControl.CardholderDataRedactionEnabled }}
+        - dash0redaction
+        {{- end }}
       exporters:
         - forward/logs-default-exporter
         {{- if .SignalControl.SignalToMetricsEnabled }}
@@ -785,6 +817,9 @@ Dash0-Dataset header and the accountant sums what arrives, so a second delivery 
         {{- end }}
         {{- if $.SignalControl.SpamFilterEnabled }}
         - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
+        {{- if $.SignalControl.CardholderDataRedactionEnabled }}
+        - dash0redaction/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- end }}
       exporters:
         {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
