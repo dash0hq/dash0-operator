@@ -5,6 +5,7 @@ package util
 
 import (
 	"encoding/json"
+	"maps"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -229,48 +230,48 @@ var _ = Describe("component settings", func() {
 	})
 
 	Describe("scalar values", func() {
-		components := &dash0v1alpha1.SignalControlComponents{
-			EdgeProxy: &dash0v1alpha1.EdgeProxySettings{Replicas: new(int32(3))},
+		components := &dash0v1alpha1.OperatorConfigurationComponents{
+			Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{MaxConcurrentCommands: new(int32(4))},
 		}
 
 		It("should apply the value without a conflict if the Helm chart uses the default", func() {
-			effective, conflicts := resolveSignalControl(ExtraConfigDefaults, components)
-			Expect(effective.EdgeProxyReplicas).To(Equal(int32(3)))
+			effective, conflicts := resolveOperatorConfiguration(ExtraConfigDefaults, components)
+			Expect(effective.Agent0ConnectorMaxConcurrentCommands).To(Equal(int32(4)))
 			Expect(conflicts).To(BeEmpty())
 		})
 
 		It("should apply the value without a conflict if the Helm chart provides the same value", func() {
 			fileConfig := ExtraConfigDefaults
-			fileConfig.EdgeProxyReplicas = 3
-			effective, conflicts := resolveSignalControl(fileConfig, components)
-			Expect(effective.EdgeProxyReplicas).To(Equal(int32(3)))
+			fileConfig.Agent0ConnectorMaxConcurrentCommands = 4
+			effective, conflicts := resolveOperatorConfiguration(fileConfig, components)
+			Expect(effective.Agent0ConnectorMaxConcurrentCommands).To(Equal(int32(4)))
 			Expect(conflicts).To(BeEmpty())
 		})
 
 		It("should apply the value and report a conflict if the Helm chart provides a different value", func() {
 			fileConfig := ExtraConfigDefaults
-			fileConfig.EdgeProxyReplicas = 4
-			effective, conflicts := resolveSignalControl(fileConfig, components)
-			Expect(effective.EdgeProxyReplicas).To(Equal(int32(3)))
+			fileConfig.Agent0ConnectorMaxConcurrentCommands = 3
+			effective, conflicts := resolveOperatorConfiguration(fileConfig, components)
+			Expect(effective.Agent0ConnectorMaxConcurrentCommands).To(Equal(int32(4)))
 			Expect(conflicts).To(ConsistOf(ComponentSettingConflict{
-				Resource:        "Dash0SignalControl",
-				Path:            "spec.components.edgeProxy.replicas",
-				HelmValue:       "operator.signalControl.edgeProxy.replicas",
-				HelmSetting:     "4",
-				ResourceSetting: "3",
+				Resource:        "Dash0OperatorConfiguration",
+				Path:            "spec.components.agent0Connector.maxConcurrentCommands",
+				HelmValue:       "operator.agent0Connector.maxConcurrentCommands",
+				HelmSetting:     "3",
+				ResourceSetting: "4",
 			}))
 			Expect(conflicts[0].String()).To(Equal(
-				"spec.components.edgeProxy.replicas overrides the custom Helm value " +
-					"operator.signalControl.edgeProxy.replicas: 3 instead of 4"))
+				"spec.components.agent0Connector.maxConcurrentCommands overrides the custom Helm value " +
+					"operator.agent0Connector.maxConcurrentCommands: 4 instead of 3"))
 		})
 
 		It("should keep the value from the Helm chart if the setting is not provided", func() {
 			fileConfig := ExtraConfigDefaults
-			fileConfig.EdgeProxyReplicas = 4
-			effective, conflicts := resolveSignalControl(fileConfig, &dash0v1alpha1.SignalControlComponents{
-				EdgeProxy: &dash0v1alpha1.EdgeProxySettings{},
+			fileConfig.Agent0ConnectorMaxConcurrentCommands = 3
+			effective, conflicts := resolveOperatorConfiguration(fileConfig, &dash0v1alpha1.OperatorConfigurationComponents{
+				Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{},
 			})
-			Expect(effective.EdgeProxyReplicas).To(Equal(int32(4)))
+			Expect(effective.Agent0ConnectorMaxConcurrentCommands).To(Equal(int32(3)))
 			Expect(conflicts).To(BeEmpty())
 		})
 
@@ -1045,6 +1046,101 @@ var _ = Describe("component settings", func() {
 		})
 	})
 
+	Describe("allowed kubectl commands", func() {
+		allowedKubectlCommands := func(
+			settings dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands,
+		) *dash0v1alpha1.OperatorConfigurationComponents {
+			return &dash0v1alpha1.OperatorConfigurationComponents{
+				Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{AllowedKubectlCommands: &settings},
+			}
+		}
+
+		It("should merge the commands with the defaults per command", func() {
+			effective, conflicts := resolveOperatorConfiguration(ExtraConfigDefaults, allowedKubectlCommands(
+				dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands{Logs: new(true), Top: new(false)}))
+			expected := maps.Clone(ExtraConfigDefaults.Agent0ConnectorAllowedKubectlCommands)
+			expected["logs"] = true
+			expected["top"] = false
+			Expect(effective.Agent0ConnectorAllowedKubectlCommands).To(Equal(expected))
+			Expect(conflicts).To(BeEmpty())
+		})
+
+		It("should use the defaults for an empty object", func() {
+			fileConfig := ExtraConfigDefaults
+			fileConfig.Agent0ConnectorAllowedKubectlCommands = map[string]bool{"get": true}
+			effective, conflicts := resolveOperatorConfiguration(
+				fileConfig, allowedKubectlCommands(dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands{}))
+			Expect(effective.Agent0ConnectorAllowedKubectlCommands).To(
+				Equal(ExtraConfigDefaults.Agent0ConnectorAllowedKubectlCommands))
+			Expect(conflicts).To(HaveLen(1))
+		})
+
+		It("should merge with the defaults, not with the Helm value, and report a conflict", func() {
+			fileConfig := ExtraConfigDefaults
+			fileConfig.Agent0ConnectorAllowedKubectlCommands = maps.Clone(
+				ExtraConfigDefaults.Agent0ConnectorAllowedKubectlCommands)
+			fileConfig.Agent0ConnectorAllowedKubectlCommands["top"] = false
+			effective, conflicts := resolveOperatorConfiguration(fileConfig, allowedKubectlCommands(
+				dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands{Explain: new(false)}))
+			Expect(effective.Agent0ConnectorAllowedKubectlCommands).To(HaveKeyWithValue("top", true))
+			Expect(effective.Agent0ConnectorAllowedKubectlCommands).To(HaveKeyWithValue("explain", false))
+			Expect(conflicts).To(HaveLen(1))
+			Expect(conflicts[0].Path).To(Equal("spec.components.agent0Connector.allowedKubectlCommands"))
+			Expect(conflicts[0].HelmValue).To(Equal("operator.agent0Connector.allowedKubectlCommands"))
+		})
+
+		It("should have a field for every kubectl command of the defaults", func() {
+			merged := mergeAllowedKubectlCommands(ExtraConfigDefaults.Agent0ConnectorAllowedKubectlCommands,
+				&dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands{
+					ApiResources: new(false),
+					ApiVersions:  new(false),
+					Auth:         new(false),
+					ClusterInfo:  new(false),
+					Events:       new(true),
+					Explain:      new(false),
+					Get:          new(false),
+					Logs:         new(true),
+					Top:          new(false),
+					Version:      new(false),
+				})
+			Expect(merged).To(HaveLen(len(ExtraConfigDefaults.Agent0ConnectorAllowedKubectlCommands)))
+			for kubectlCommand, allowed := range ExtraConfigDefaults.Agent0ConnectorAllowedKubectlCommands {
+				Expect(merged).To(HaveKeyWithValue(kubectlCommand, !allowed))
+			}
+		})
+
+		It("should report settings that disable every kubectl command as invalid", func() {
+			Expect(invalidSettings(allowedKubectlCommands(dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands{
+				ApiResources: new(false),
+				ApiVersions:  new(false),
+				Auth:         new(false),
+				ClusterInfo:  new(false),
+				Explain:      new(false),
+				Get:          new(false),
+				Top:          new(false),
+				Version:      new(false),
+			}), nil)).To(ConsistOf(
+				"spec.components.agent0Connector.allowedKubectlCommands: Forbidden: at least one kubectl command needs " +
+					"to be enabled, set spec.agent0Connector.enabled to false instead if Agent0 should not execute any " +
+					"kubectl command",
+			))
+		})
+
+		It("should accept settings that keep one kubectl command enabled", func() {
+			Expect(invalidSettings(allowedKubectlCommands(dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands{
+				ApiResources: new(false),
+				ApiVersions:  new(false),
+				Auth:         new(false),
+				ClusterInfo:  new(false),
+				Explain:      new(false),
+				Get:          new(false),
+				Top:          new(false),
+				Version:      new(false),
+				Logs:         new(true),
+			}), nil)).To(BeEmpty())
+		})
+	})
+
 	Describe("ComponentSettingConflict.String", func() {
 		It("should leave out values that are too long for an admission warning", func() {
 			conflict := ComponentSettingConflict{
@@ -1424,15 +1520,13 @@ var _ = Describe("component settings", func() {
 				ExtraConfigDefaults,
 				ExtraConfigDefaults,
 				&dash0v1alpha1.OperatorConfigurationComponents{
-					Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{
-						WorkloadSettings: dash0v1alpha1.WorkloadSettings{Labels: map[string]string{"team": "observability"}},
-					},
+					Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{MaxConcurrentCommands: new(int32(4))},
 				},
 				&dash0v1alpha1.SignalControlComponents{
 					EdgeProxy: &dash0v1alpha1.EdgeProxySettings{Replicas: new(int32(3))},
 				},
 			)
-			Expect(effective.Agent0ConnectorLabels).To(Equal(map[string]string{"team": "observability"}))
+			Expect(effective.Agent0ConnectorMaxConcurrentCommands).To(Equal(int32(4)))
 			Expect(effective.EdgeProxyReplicas).To(Equal(int32(3)))
 		})
 	})
@@ -1482,6 +1576,12 @@ var _ = Describe("component settings", func() {
 								NodeSelectorTerms: []corev1.NodeSelectorTerm{},
 							},
 						},
+					},
+				},
+				Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{
+					AllowedKubectlCommands: &dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands{
+						Get:  new(false),
+						Logs: new(true),
 					},
 				},
 			},

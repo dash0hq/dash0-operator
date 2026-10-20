@@ -3172,7 +3172,9 @@ spec:
 				g.Expect(response.Stderr).To(Equal(
 					"dash0 agent0-connector rejected the command: the kubectl command \"cluster-info\" has been " +
 						"disabled in the configuration of the agent0-connector (via the Helm value " +
-						"operator.agent0Connector.allowedKubectlCommands), the only allowed kubectl commands are " +
+						"operator.agent0Connector.allowedKubectlCommands, or " +
+						"spec.components.agent0Connector.allowedKubectlCommands of the Dash0OperatorConfiguration " +
+						"resource), the only allowed kubectl commands are " +
 						"\"api-resources\", \"api-versions\", \"auth\", \"explain\", \"get\", \"logs\", \"top\" " +
 						"and \"version\"",
 				))
@@ -3256,7 +3258,9 @@ spec:
 				g.Expect(response.Stderr).To(Equal(
 					"dash0 agent0-connector rejected the command: the kubectl command \"events\" has been " +
 						"disabled in the configuration of the agent0-connector (via the Helm value " +
-						"operator.agent0Connector.allowedKubectlCommands), the only allowed kubectl commands are " +
+						"operator.agent0Connector.allowedKubectlCommands, or " +
+						"spec.components.agent0Connector.allowedKubectlCommands of the Dash0OperatorConfiguration " +
+						"resource), the only allowed kubectl commands are " +
 						"\"api-resources\", \"api-versions\", \"auth\", \"explain\", \"get\", \"logs\", \"top\" " +
 						"and \"version\"",
 				))

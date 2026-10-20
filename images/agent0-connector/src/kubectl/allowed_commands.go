@@ -12,7 +12,8 @@ import (
 
 // AllowedKubectlCommandsEnvVarName is the environment variable through which the operator passes the comma-separated
 // list of kubectl commands the connector may execute (set from the Helm value
-// operator.agent0Connector.allowedKubectlCommands). The variable is required.
+// operator.agent0Connector.allowedKubectlCommands, or spec.components.agent0Connector.allowedKubectlCommands). The
+// variable is required.
 const AllowedKubectlCommandsEnvVarName = "DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS"
 
 // AllowedKubectlCommands is the set of kubectl commands the connector may execute. It is never empty, always a subset

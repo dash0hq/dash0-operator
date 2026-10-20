@@ -37,18 +37,18 @@ const (
 
 	// allowedKubectlCommandsEnvVarName is the environment variable through which the agent0-connector workload
 	// receives the comma-separated list of kubectl commands it may execute (see the Helm value
-	// operator.agent0Connector.allowedKubectlCommands). The variable is required, the agent0-connector terminates with
-	// an error if it is absent, empty, cannot be parsed, or contains a kubectl command the agent0-connector does not
-	// support.
+	// operator.agent0Connector.allowedKubectlCommands or spec.components.agent0Connector.allowedKubectlCommands). The
+	// variable is required, the agent0-connector terminates with an error if it is absent, empty, cannot be parsed, or
+	// contains a kubectl command the agent0-connector does not support.
 	allowedKubectlCommandsEnvVarName = "DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS"
 
 	// defaultMaxConcurrentCommands is the number of command requests the agent0-connector executes at the same time when
 	// the extra config specifies a value below 1. It is bounded by memory: a request that returns the maximum output
 	// size costs about 90 MiB, most of it in the kubectl child process and in parsing the output in order to redact
 	// credentials from it. Raising it requires raising the container's memory limit and GOMEMLIMIT as well, which is why
-	// it is configurable via the Helm value operator.agent0Connector.maxConcurrentCommands. It mirrors
-	// defaultMaxConcurrentCommands in images/agent0-connector/src/grpc/grpcclient.go, the fallback within the workload
-	// itself.
+	// it is configurable via the Helm value operator.agent0Connector.maxConcurrentCommands (or
+	// spec.components.agent0Connector.maxConcurrentCommands). It mirrors defaultMaxConcurrentCommands in
+	// images/agent0-connector/src/grpc/grpcclient.go, the fallback within the workload itself.
 	defaultMaxConcurrentCommands int32 = 2
 
 	// label values

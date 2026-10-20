@@ -57,3 +57,9 @@ operator:
           memory: 320Mi
       labels:
         dash0.com/component-settings-test: helm
+  agent0Connector:
+    # only rendered if the agent0-connector is enabled
+    maxConcurrentCommands: 4
+    allowedKubectlCommands:
+      # Not kept: spec.components.agent0Connector.allowedKubectlCommands is merged with the defaults, not the Helm values.
+      top: false
