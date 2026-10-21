@@ -179,6 +179,8 @@ Moving beyond the quickstart instructions, here are more details on the test scr
   component settings via `spec.components` of the operator configuration resource and of the Signal Control resource
   (see `test-resources/component-settings`). Some of them are also set to different values via Helm, which the
   operator reports with a warning ("overrides the custom Helm value").
+* `test-resources/bin/test-scenario-*.sh`: Not every single test scenario is listed here individually, consult the file
+  names and comments to see what is available.
 * `test-resources/bin/test-cleanup.sh`: This script removes all resources created by the other scripts. **You should
   always run this script after running any of the scenario scripts, when you are done with your tests, otherwise the
   e2e tests will fail the next time you start them.** Note that all scenario scripts call the cleanup at the beginning,
@@ -191,6 +193,13 @@ Moving beyond the quickstart instructions, here are more details on the test scr
 * Additional parameterization can be achieved via environment variables. Here is a full list of all available variables.
     * `ADDITIONAL_NAMESPACES`: Create two more test namespaces (in addition to the usual one test namespace) and deploy
       workloads there as well.
+    * `AGENT0_CONNECTOR_ENABLED`: Set this to "true" to enable the agent0-connector. The agent0-connector connects to
+      `$DASH0_OUTBOUND_CONNECTOR_ENDPOINT` and authenticates with the token from the secret
+      `dash0-authorization-secret`.
+      This defaults to "false", except in test scenario 13, where it is always "true".
+    * `AGENT0_CONNECTOR_INSECURE`: Set this to "true" to have the agent0-connector use a plaintext connection instead of
+      TLS, for example for an outbound connector running locally.
+      This defaults to "false".
     * `ALLOWED_KUBECTXS`: A comma separated lists of Kubernetes contexts that the script are allowed to use. The scripts
       will refuse to deploy to/delete from any context not on this list. This is a protection against accidentally
       deploying something to or deleting something from a production Kubernetes context.
@@ -222,6 +231,8 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `DASH0_NAMESPACED_AUTHORIZATION_TOKEN`: Token used exclusively by the test script for namespaced exporters. It
       will be placed in the monitoring resource of the test namespace to override the default config from the operator
       configuration resource.
+    * `DASH0_OUTBOUND_CONNECTOR_ENDPOINT`: The endpoint of the outbound connector the agent0-connector connects to
+      (`host:port`). Required when `AGENT0_CONNECTOR_ENABLED` is "true".
     * `DEPLOY_APPLICATION_UNDER_MONITORING`: Set this to "false" to skip deploying a workload in the test namespace.
       This is assumed to be "true" by default.
     * `DEPLOY_NGINX_INGRESS`: Set this to "false" to skip deploying an nginx ingress to the cluster.
