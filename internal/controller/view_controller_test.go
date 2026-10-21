@@ -1061,7 +1061,7 @@ spec:
 							Token:    AuthorizationTokenTest,
 						}
 						resourceToRequestsResult :=
-							viewReconciler.MapResourceToHttpRequests(
+							viewReconciler.MapResourceToApiCalls(
 								&preconditionValidationResult{
 									k8sName:      "dash0-view",
 									k8sNamespace: TestNamespaceName,

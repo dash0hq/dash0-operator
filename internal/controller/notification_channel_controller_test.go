@@ -662,7 +662,7 @@ var _ = Describe(
 							Dataset:  DatasetCustomTest,
 							Token:    AuthorizationTokenTest,
 						}
-						result := ncReconciler.MapResourceToHttpRequests(
+						result := ncReconciler.MapResourceToApiCalls(
 							&preconditionValidationResult{
 								k8sName:      testK8sName,
 								k8sNamespace: TestNamespaceName,
