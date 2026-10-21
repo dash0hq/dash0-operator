@@ -222,12 +222,14 @@ build-all-push-all-test-e2e: all-images push-all-images test-e2e ## Builds and p
 # would be used when simply running `ginkgo -v test/e2e`. An alternative would be to invoke ginkgo via go test, that
 # is, `go test ./test/e2e/ -v -ginkgo.v`, but that would require us to manage go test's timeout (via the -timeout
 # flag), and ginkgo's own timeout.
+# --fail-on-empty makes a GINKGO_FOCUS that matches no spec fail the run instead of passing silently, (?i) makes the
+# focus case-insensitive.
 .PHONY: test-e2e
 test-e2e: ## Run the end-to-end tests. When testing local code, container images should be built beforehand (or use target build-all-test-e2e).
 ifdef GINKGO_FOCUS
-	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v --timeout=90m -focus="$(GINKGO_FOCUS)" .
+	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v --timeout=90m --fail-on-empty -focus="(?i)$(GINKGO_FOCUS)" .
 else
-	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v --timeout=90m .
+	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v --timeout=90m --fail-on-empty .
 endif
 
 # Validates every collector configuration the operator can render against the collector binary, which rejects settings
