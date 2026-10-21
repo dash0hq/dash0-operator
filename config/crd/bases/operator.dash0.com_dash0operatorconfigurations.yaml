@@ -2220,8 +2220,8 @@ spec:
                           The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
                           dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
                           needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom
-                          https://app.dash0.com -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always
-                          start with "https://api." and end in ".dash0.com"
+                          https://app.dash0.com/settings/endpoints -> "API". The correct endpoint value will always start with
+                          "https://api." and end in ".dash0.com"
                         type: string
                       authorization:
                         description: Mandatory authorization settings for sending
@@ -2233,7 +2233,7 @@ spec:
                             description: |-
                               A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
                               ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-                              https://app.dash0.com -> organization settings -> "Auth Tokens".
+                              https://app.dash0.com/settings/auth-tokens.
                             properties:
                               key:
                                 default: token
@@ -2253,23 +2253,22 @@ spec:
                             description: |-
                               The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
                               to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-                              token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
-                              "Auth Tokens".
+                              token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
                             type: string
                         type: object
                       dataset:
                         description: |-
                           The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
-                          identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
-                          identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
-                          optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
-                          authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
+                          identifier, not its display name; for example, a dataset named "Production" can have the identifier "prod". The
+                          identifier can be looked up in https://app.dash0.com/settings/datasets. This property is optional. If omitted, no
+                          dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token. API
+                          access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                         type: string
                       endpoint:
                         description: |-
                           The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
-                          needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
-                          https://app.dash0.com -> organization settings -> "Endpoints". The correct endpoint value will always start with
+                          needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
+                          https://app.dash0.com/settings/endpoints -> "OTLP via gRPC". The correct endpoint value will always start with
                           `ingress.` and end in `dash0.com:4317`.
                         minLength: 1
                         type: string
@@ -2501,8 +2500,8 @@ spec:
                             The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
                             dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
                             needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom
-                            https://app.dash0.com -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always
-                            start with "https://api." and end in ".dash0.com"
+                            https://app.dash0.com/settings/endpoints -> "API". The correct endpoint value will always start with
+                            "https://api." and end in ".dash0.com"
                           type: string
                         authorization:
                           description: Mandatory authorization settings for sending
@@ -2514,7 +2513,7 @@ spec:
                               description: |-
                                 A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
                                 ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-                                https://app.dash0.com -> organization settings -> "Auth Tokens".
+                                https://app.dash0.com/settings/auth-tokens.
                               properties:
                                 key:
                                   default: token
@@ -2534,23 +2533,22 @@ spec:
                               description: |-
                                 The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
                                 to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-                                token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
-                                "Auth Tokens".
+                                token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
                               type: string
                           type: object
                         dataset:
                           description: |-
                             The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
-                            identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
-                            identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
-                            optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
-                            authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
+                            identifier, not its display name; for example, a dataset named "Production" can have the identifier "prod". The
+                            identifier can be looked up in https://app.dash0.com/settings/datasets. This property is optional. If omitted, no
+                            dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token. API
+                            access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                           type: string
                         endpoint:
                           description: |-
                             The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
-                            needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
-                            https://app.dash0.com -> organization settings -> "Endpoints". The correct endpoint value will always start with
+                            needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
+                            https://app.dash0.com/settings/endpoints -> "OTLP via gRPC". The correct endpoint value will always start with
                             `ingress.` and end in `dash0.com:4317`.
                           minLength: 1
                           type: string
@@ -3122,8 +3120,8 @@ spec:
                                   The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
                                   dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
                                   needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom
-                                  https://app.dash0.com -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always
-                                  start with "https://api." and end in ".dash0.com"
+                                  https://app.dash0.com/settings/endpoints -> "API". The correct endpoint value will always start with
+                                  "https://api." and end in ".dash0.com"
                                 type: string
                               authorization:
                                 description: Mandatory authorization settings for
@@ -3135,7 +3133,7 @@ spec:
                                     description: |-
                                       A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
                                       ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-                                      https://app.dash0.com -> organization settings -> "Auth Tokens".
+                                      https://app.dash0.com/settings/auth-tokens.
                                     properties:
                                       key:
                                         default: token
@@ -3157,23 +3155,22 @@ spec:
                                     description: |-
                                       The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
                                       to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-                                      token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
-                                      "Auth Tokens".
+                                      token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
                                     type: string
                                 type: object
                               dataset:
                                 description: |-
                                   The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
-                                  identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
-                                  identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
-                                  optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
-                                  authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
+                                  identifier, not its display name; for example, a dataset named "Production" can have the identifier "prod". The
+                                  identifier can be looked up in https://app.dash0.com/settings/datasets. This property is optional. If omitted, no
+                                  dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token. API
+                                  access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                                 type: string
                               endpoint:
                                 description: |-
                                   The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
-                                  needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
-                                  https://app.dash0.com -> organization settings -> "Endpoints". The correct endpoint value will always start with
+                                  needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
+                                  https://app.dash0.com/settings/endpoints -> "OTLP via gRPC". The correct endpoint value will always start with
                                   `ingress.` and end in `dash0.com:4317`.
                                 minLength: 1
                                 type: string
@@ -3409,8 +3406,8 @@ spec:
                                     The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
                                     dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
                                     needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom
-                                    https://app.dash0.com -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always
-                                    start with "https://api." and end in ".dash0.com"
+                                    https://app.dash0.com/settings/endpoints -> "API". The correct endpoint value will always start with
+                                    "https://api." and end in ".dash0.com"
                                   type: string
                                 authorization:
                                   description: Mandatory authorization settings for
@@ -3422,7 +3419,7 @@ spec:
                                       description: |-
                                         A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
                                         ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-                                        https://app.dash0.com -> organization settings -> "Auth Tokens".
+                                        https://app.dash0.com/settings/auth-tokens.
                                       properties:
                                         key:
                                           default: token
@@ -3444,23 +3441,22 @@ spec:
                                       description: |-
                                         The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
                                         to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-                                        token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
-                                        "Auth Tokens".
+                                        token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
                                       type: string
                                   type: object
                                 dataset:
                                   description: |-
                                     The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
-                                    identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
-                                    identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
-                                    optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
-                                    authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
+                                    identifier, not its display name; for example, a dataset named "Production" can have the identifier "prod". The
+                                    identifier can be looked up in https://app.dash0.com/settings/datasets. This property is optional. If omitted, no
+                                    dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token. API
+                                    access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                                   type: string
                                 endpoint:
                                   description: |-
                                     The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
-                                    needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
-                                    https://app.dash0.com -> organization settings -> "Endpoints". The correct endpoint value will always start with
+                                    needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
+                                    https://app.dash0.com/settings/endpoints -> "OTLP via gRPC". The correct endpoint value will always start with
                                     `ingress.` and end in `dash0.com:4317`.
                                   minLength: 1
                                   type: string
@@ -4112,7 +4108,7 @@ spec:
                               description: |-
                                 A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
                                 ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-                                https://app.dash0.com -> organization settings -> "Auth Tokens".
+                                https://app.dash0.com/settings/auth-tokens.
                               properties:
                                 key:
                                   default: token
@@ -4132,8 +4128,7 @@ spec:
                               description: |-
                                 The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
                                 to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-                                token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
-                                "Auth Tokens".
+                                token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
                               type: string
                           type: object
                         locationId:
@@ -4811,8 +4806,8 @@ spec:
                                   The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
                                   dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
                                   needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom
-                                  https://app.dash0.com -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always
-                                  start with "https://api." and end in ".dash0.com"
+                                  https://app.dash0.com/settings/endpoints -> "API". The correct endpoint value will always start with
+                                  "https://api." and end in ".dash0.com"
                                 type: string
                               authorization:
                                 description: Mandatory authorization settings for
@@ -4824,7 +4819,7 @@ spec:
                                     description: |-
                                       A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
                                       ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-                                      https://app.dash0.com -> organization settings -> "Auth Tokens".
+                                      https://app.dash0.com/settings/auth-tokens.
                                     properties:
                                       key:
                                         default: token
@@ -4846,23 +4841,22 @@ spec:
                                     description: |-
                                       The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
                                       to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-                                      token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
-                                      "Auth Tokens".
+                                      token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
                                     type: string
                                 type: object
                               dataset:
                                 description: |-
                                   The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
-                                  identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
-                                  identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
-                                  optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
-                                  authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
+                                  identifier, not its display name; for example, a dataset named "Production" can have the identifier "prod". The
+                                  identifier can be looked up in https://app.dash0.com/settings/datasets. This property is optional. If omitted, no
+                                  dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token. API
+                                  access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                                 type: string
                               endpoint:
                                 description: |-
                                   The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
-                                  needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
-                                  https://app.dash0.com -> organization settings -> "Endpoints". The correct endpoint value will always start with
+                                  needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
+                                  https://app.dash0.com/settings/endpoints -> "OTLP via gRPC". The correct endpoint value will always start with
                                   `ingress.` and end in `dash0.com:4317`.
                                 minLength: 1
                                 type: string
@@ -5098,8 +5092,8 @@ spec:
                                     The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
                                     dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
                                     needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom
-                                    https://app.dash0.com -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always
-                                    start with "https://api." and end in ".dash0.com"
+                                    https://app.dash0.com/settings/endpoints -> "API". The correct endpoint value will always start with
+                                    "https://api." and end in ".dash0.com"
                                   type: string
                                 authorization:
                                   description: Mandatory authorization settings for
@@ -5111,7 +5105,7 @@ spec:
                                       description: |-
                                         A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
                                         ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-                                        https://app.dash0.com -> organization settings -> "Auth Tokens".
+                                        https://app.dash0.com/settings/auth-tokens.
                                       properties:
                                         key:
                                           default: token
@@ -5133,23 +5127,22 @@ spec:
                                       description: |-
                                         The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
                                         to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-                                        token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
-                                        "Auth Tokens".
+                                        token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
                                       type: string
                                   type: object
                                 dataset:
                                   description: |-
                                     The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
-                                    identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
-                                    identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
-                                    optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
-                                    authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
+                                    identifier, not its display name; for example, a dataset named "Production" can have the identifier "prod". The
+                                    identifier can be looked up in https://app.dash0.com/settings/datasets. This property is optional. If omitted, no
+                                    dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token. API
+                                    access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                                   type: string
                                 endpoint:
                                   description: |-
                                     The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
-                                    needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
-                                    https://app.dash0.com -> organization settings -> "Endpoints". The correct endpoint value will always start with
+                                    needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
+                                    https://app.dash0.com/settings/endpoints -> "OTLP via gRPC". The correct endpoint value will always start with
                                     `ingress.` and end in `dash0.com:4317`.
                                   minLength: 1
                                   type: string

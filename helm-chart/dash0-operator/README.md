@@ -37,8 +37,9 @@ Metrics and log collection are independent of the runtime of workloads.
   installing Helm.
 
 You will need:
-* **`endpoint`**: The OTLP/gRPC endpoint of your Dash0 organization (from https://app.dash0.com → organization settings → "Endpoints" → "OTLP/gRPC")
-* **`token`** or **`secretRef`**: Your Dash0 authorization token (from https://app.dash0.com → organization settings → "Auth Tokens")
+* **`endpoint`**: The OTLP/gRPC endpoint of your Dash0 organization (from https://app.dash0.com/settings/endpoints →
+  "OTLP via gRPC")
+* **`token`** or **`secretRef`**: Your Dash0 authorization token (from https://app.dash0.com/settings/auth-tokens)
 
 ### Installation
 

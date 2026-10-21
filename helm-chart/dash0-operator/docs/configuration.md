@@ -49,8 +49,7 @@ Here is a list of configuration options for this resource:
   The URL of the Dash0 ingress endpoint to which telemetry data will be sent.
   This property is mandatory.
   Replace the value in the example above with the OTLP/gRPC endpoint of your Dash0 organization.
-  The correct OTLP/gRPC endpoint can be copied from https://app.dash0.com → organization settings → "Endpoints" →
-  "OTLP/gRPC".
+  The correct gRPC endpoint can be copied from https://app.dash0.com/settings/endpoints → "OTLP via gRPC".
   Note that the correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
   Including a protocol prefix (e.g. `https://`) is optional.
 
@@ -60,8 +59,7 @@ Here is a list of configuration options for this resource:
 
     * <a href="#operatorconfigurationresource.spec.export.dash0.authorization.token"><span id="operatorconfigurationresource.spec.export.dash0.authorization.token">**`spec.export.dash0.authorization.token`**</span></a>:
       Replace the value in the example above with the Dash0 authorization token of your organization.
-      The authorization token for your Dash0 organization can be copied from https://app.dash0.com → organization
-      settings → "Auth Tokens".
+      The authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
       The prefix `Bearer ` must not be included in the value.
       Note that the value will be rendered verbatim into a Kubernetes ConfigMap object.
       Anyone with API access to the Kubernetes cluster will be able to read the value.
@@ -84,7 +82,7 @@ Here is a list of configuration options for this resource:
   views, notification channels, spam filters and signal-to-metrics rules via the operator.
   This property is optional.
   The value needs to be the API endpoint of your Dash0 organization.
-  The correct API endpoint can be copied from https://app.dash0.com → organization settings → "Endpoints" → "API".
+  The correct API endpoint can be copied from https://app.dash0.com/settings/endpoints → "API".
   The correct endpoint value will always start with "https://api." and end in ".dash0.com".
   If this property is omitted, managing dashboards, check rules, synthetic checks, views, notification channels, spam
   filters and signal-to-metrics rules via the operator will not work.
@@ -1011,8 +1009,7 @@ create the secret in the namespace where the Dash0 operator is installed.
 This also applies when providing a per-namespace export and API-sync config via a monitoring resource, i.e. the operator
 will always try to look up the auth token secret in the operator namespace.
 If you followed the guide above, the name of that namespace is `dash0-system`.
-The authorization token for your Dash0 organization can be copied from https://app.dash0.com → organization settings →
-"Auth Tokens".
+The authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
 You can freely choose the name of the secret and the key of the token within the secret.
 
 Create the secret by using the following command:
@@ -1106,7 +1103,7 @@ See https://kubernetes.io/docs/concepts/configuration/secret/ for more informati
 Use the `spec.exports[].dash0.dataset` property to configure the dataset that should be used for the telemetry data.
 The value is the dataset's identifier, not its display name.
 For example, a dataset named `prod` can have the identifier `default`; in that case, use `dataset: default`.
-The identifier can be looked up in [Dash0](https://app.dash0.com) -> organization settings -> "Datasets".
+The identifier can be looked up in https://app.dash0.com/settings/datasets.
 If the property is omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
 authorization token: a token that is limited to a single dataset writes to that dataset, any other token writes to its
 default ingestion dataset. If a dataset is set (including `default`), it is always sent, and the token needs to have
