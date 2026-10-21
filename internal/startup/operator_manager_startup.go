@@ -1818,7 +1818,6 @@ func startDash0Controllers(
 		dash0apiclient.WithTransportRetryWaitMin(1*time.Second),
 		dash0apiclient.WithTransportRetryWaitMax(3*time.Second),
 	)
-	httpClient := util.WithUserAgent(dash0ApiTransport.HTTPClient(), images.GetOperatorVersion())
 	apiClientPool := controller.NewApiClientPool(
 		dash0ApiTransport,
 		util.RenderUserAgent(images.GetOperatorVersion()),
@@ -2219,7 +2218,6 @@ func startDash0Controllers(
 		mgr.GetAPIReader(),
 		prometheusRuleSynchronizationQueue,
 		leaderElectionAwareRunnable,
-		httpClient,
 		apiClientPool,
 	)
 	if err := prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, setupLog); err != nil {

@@ -185,7 +185,6 @@ var _ = Describe("The synchronization retry runnable", func() {
 				k8sClient,
 				queue,
 				&DummyLeaderElectionAware{Leader: true},
-				TestHTTPClient(),
 				testApiClientPool(),
 			)
 			prometheusRuleCrdReconciler.skipNameValidation = true

@@ -4,13 +4,18 @@
 package controller
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
+	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -19,8 +24,12 @@ import (
 )
 
 const (
-	legacyCheckRuleApiPath     = "api/alerting/check-rules/"
-	legacyRecordingRuleApiPath = "api/recording-rules/"
+	legacyCheckRuleApiPath         = "api/alerting/check-rules/"
+	legacyRecordingRuleApiPath     = "api/recording-rules/"
+	legacyCheckRuleListApiPath     = "api/alerting/check-rules"
+	legacyRecordingRuleListApiPath = "api/recording-rules"
+	checkRuleListPath              = "/api/alerting/check-rules"
+	recordingRuleListPath          = "/api/recording-rules"
 )
 
 /*
@@ -86,6 +95,109 @@ func expectUrlToBeIdentical(actual *url.URL, legacy *url.URL) {
 	Expect(actual.Host).To(Equal(legacy.Host))
 	Expect(actual.EscapedPath()).To(Equal(legacy.EscapedPath()))
 	Expect(actual.RawQuery).To(Equal(legacy.RawQuery))
+}
+
+/*
+legacyRuleListUrl returns the URL of the request that the raw-HTTP implementation sent to list the rules of one
+PrometheusRule resource, or of all PrometheusRule resources in the namespace if name is empty. The raw-HTTP
+implementation rendered the query-escaped dataset into the origin prefix, and did not escape the origin prefix itself.
+*/
+func legacyRuleListUrl(apiPath string, dataset string, namespace string, name string) *url.URL {
+	GinkgoHelper()
+	originPrefix := fmt.Sprintf("dash0-operator_cluster-uid_%s_%s_", url.QueryEscape(dataset), namespace)
+	if name != "" {
+		originPrefix = fmt.Sprintf("%s%s_", originPrefix, name)
+	}
+	req, err := http.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf(
+			"%s%s?dataset=%s&originPrefix=%s",
+			ApiEndpointStandardizedTest,
+			apiPath,
+			url.QueryEscape(dataset),
+			originPrefix,
+		),
+		nil,
+	)
+	Expect(err).ToNot(HaveOccurred())
+	return req.URL
+}
+
+type fakeRuleListApiFailure struct {
+	statusCode int
+	body       string
+}
+
+/*
+fakeRuleListApi is a fake of the list endpoints of the Dash0 check rule and recording rule APIs. It records the URLs of
+the requests it receives and, like the Dash0 API, responds with the rules whose origin starts with the decoded
+originPrefix query parameter, in the response format of the respective API. An entry in failures makes the endpoint
+with that path respond with the given status code and body instead.
+*/
+type fakeRuleListApi struct {
+	urls                 []*url.URL
+	checkRuleOrigins     []string
+	recordingRuleOrigins []string
+	failures             map[string]fakeRuleListApiFailure
+}
+
+func (f *fakeRuleListApi) RoundTrip(req *http.Request) (*http.Response, error) {
+	f.urls = append(f.urls, req.URL)
+	statusCode := http.StatusOK
+	var body []byte
+	if failure, ok := f.failures[req.URL.Path]; ok {
+		statusCode = failure.statusCode
+		body = []byte(failure.body)
+	} else {
+		originPrefix := req.URL.Query().Get("originPrefix")
+		items := make([]any, 0)
+		switch req.URL.Path {
+		case checkRuleListPath:
+			for _, origin := range f.checkRuleOrigins {
+				if strings.HasPrefix(origin, originPrefix) {
+					items = append(items, map[string]any{
+						"id":      origin,
+						"dataset": req.URL.Query().Get("dataset"),
+						"origin":  origin,
+					})
+				}
+			}
+		case recordingRuleListPath:
+			for _, origin := range f.recordingRuleOrigins {
+				if strings.HasPrefix(origin, originPrefix) {
+					items = append(items, map[string]any{
+						"apiVersion": "monitoring.coreos.com/v1",
+						"kind":       "PrometheusRule",
+						"metadata": map[string]any{
+							"name":   origin,
+							"labels": map[string]string{"dash0.com/origin": origin},
+						},
+						"spec": map[string]any{"groups": []any{}},
+					})
+				}
+			}
+		}
+		var err error
+		if body, err = json.Marshal(items); err != nil {
+			return nil, err
+		}
+	}
+	return &http.Response{
+		StatusCode: statusCode,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(body)),
+		Request:    req,
+	}, nil
+}
+
+func (f *fakeRuleListApi) prometheusRuleReconciler() *PrometheusRuleReconciler {
+	return &PrometheusRuleReconciler{
+		pseudoClusterUid: "cluster-uid",
+		apiClientPool: NewApiClientPool(
+			dash0apiclient.NewTransport(dash0apiclient.WithBaseTransport(f), dash0apiclient.WithTransportMaxRetries(0)),
+			"test",
+		),
+	}
 }
 
 type ruleUnderTest struct {
@@ -306,6 +418,221 @@ var _ = Describe("The Prometheus rule API client calls", func() {
 			"default",
 			"dash0-operator_cluster-uid_default_namespace_name_group_alert_1",
 			"dash0-operator_cluster-uid_default_namespace_name_group_alert_1",
+		),
+	)
+
+	DescribeTable("list the existing origins with the same URLs as the raw-HTTP implementation",
+		func(dataset string, namespace string, name string) {
+			fakeApi := &fakeRuleListApi{}
+			prometheusRuleReconciler := fakeApi.prometheusRuleReconciler()
+			apiConfig := ApiConfig{Endpoint: ApiEndpointStandardizedTest, Dataset: dataset, Token: AuthorizationTokenTest}
+
+			origins, err := prometheusRuleReconciler.FetchExistingResourceOrigins(
+				ctx,
+				&preconditionValidationResult{k8sNamespace: namespace, k8sName: name},
+				apiConfig,
+				logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(origins).To(BeEmpty())
+			origins, err = prometheusRuleReconciler.FetchExistingNamespaceOrigins(ctx, namespace, apiConfig, logger)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(origins).To(BeEmpty())
+
+			Expect(fakeApi.urls).To(HaveLen(4))
+			expectUrlToBeIdentical(fakeApi.urls[0], legacyRuleListUrl(legacyCheckRuleListApiPath, dataset, namespace, name))
+			expectUrlToBeIdentical(
+				fakeApi.urls[1],
+				legacyRuleListUrl(legacyRecordingRuleListApiPath, dataset, namespace, name),
+			)
+			expectUrlToBeIdentical(fakeApi.urls[2], legacyRuleListUrl(legacyCheckRuleListApiPath, dataset, namespace, ""))
+			expectUrlToBeIdentical(fakeApi.urls[3], legacyRuleListUrl(legacyRecordingRuleListApiPath, dataset, namespace, ""))
+
+			resourceOriginPrefix := fmt.Sprintf("dash0-operator_cluster-uid_%s_%s_%s_", dataset, namespace, name)
+			namespaceOriginPrefix := fmt.Sprintf("dash0-operator_cluster-uid_%s_%s_", dataset, namespace)
+			for i, expectedOriginPrefix := range []string{
+				resourceOriginPrefix,
+				resourceOriginPrefix,
+				namespaceOriginPrefix,
+				namespaceOriginPrefix,
+			} {
+				Expect(fakeApi.urls[i].Query()).To(Equal(url.Values{
+					"dataset":      {dataset},
+					"originPrefix": {expectedOriginPrefix},
+				}))
+			}
+			Expect(prometheusRuleReconciler.renderCheckRuleListUrl(resourceOriginPrefix, apiConfig.Endpoint, dataset)).
+				To(Equal(fakeApi.urls[0].String()))
+			Expect(prometheusRuleReconciler.renderRecordingRuleListUrl(resourceOriginPrefix, apiConfig.Endpoint, dataset)).
+				To(Equal(fakeApi.urls[1].String()))
+		},
+		Entry("plain dataset", "default", "namespace", "name"),
+		Entry("dataset with a space", "my dataset", "namespace", "name"),
+		Entry("dataset with a slash", "a/b", "namespace", "name"),
+		Entry("dataset with a percent sign", "100%", "namespace", "name"),
+		Entry("dataset with non-ASCII and reserved characters", "ä+ö&x=y", "namespace", "name"),
+		Entry("namespace and name with dashes and dots", "default", "team-a-prod", "rules.v1-2"),
+		Entry(
+			"dataset with reserved characters, namespace and name with dashes and dots",
+			"ä+ö&x=y _%",
+			"team-a-prod",
+			"rules.v1-2",
+		),
+	)
+
+	DescribeTable("return exactly the origins that IsOriginOfResource matches",
+		func(dataset string) {
+			fakeApi := &fakeRuleListApi{}
+			prometheusRuleReconciler := fakeApi.prometheusRuleReconciler()
+			apiConfig := ApiConfig{Endpoint: ApiEndpointStandardizedTest, Dataset: dataset, Token: AuthorizationTokenTest}
+			rules := []ruleUnderTest{
+				{alert: "Pod: crash/looping 100% ü+&"},
+				{record: "job:http_requests:rate5m"},
+				{alert: "a;b,c=d@e$f?g#h"},
+			}
+			newResource := func(namespace string, name string) *preconditionValidationResult {
+				return &preconditionValidationResult{
+					k8sNamespace: namespace,
+					k8sName:      name,
+					resource:     prometheusRuleResource("dash0/group 1", rules),
+				}
+			}
+			resource := newResource("namespace", "name")
+			otherResourceInNamespace := newResource("namespace", "name-2")
+			resourceInOtherNamespace := newResource("namespace-2", "name")
+			originsPerResource := make(map[*preconditionValidationResult][]string)
+			for _, candidate := range []*preconditionValidationResult{
+				resource,
+				otherResourceInNamespace,
+				resourceInOtherNamespace,
+			} {
+				result := prometheusRuleReconciler.MapResourceToHttpRequests(candidate, apiConfig, upsertAction, logger)
+				Expect(result.OriginsInResource).To(HaveLen(len(rules)))
+				for i, rule := range rules {
+					if rule.record != "" {
+						fakeApi.recordingRuleOrigins = append(fakeApi.recordingRuleOrigins, result.OriginsInResource[i])
+					} else {
+						fakeApi.checkRuleOrigins = append(fakeApi.checkRuleOrigins, result.OriginsInResource[i])
+					}
+				}
+				originsPerResource[candidate] = result.OriginsInResource
+			}
+
+			origins, err := prometheusRuleReconciler.FetchExistingResourceOrigins(ctx, resource, apiConfig, logger)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(origins).To(ConsistOf(originsPerResource[resource]))
+			for candidate, originsOfCandidate := range originsPerResource {
+				for _, origin := range originsOfCandidate {
+					Expect(prometheusRuleReconciler.IsOriginOfResource(origin, resource, apiConfig)).
+						To(Equal(candidate == resource))
+				}
+			}
+
+			origins, err = prometheusRuleReconciler.FetchExistingNamespaceOrigins(ctx, "namespace", apiConfig, logger)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(origins).To(ConsistOf(
+				slices.Concat(originsPerResource[resource], originsPerResource[otherResourceInNamespace]),
+			))
+		},
+		Entry("plain dataset", "default"),
+		Entry("dataset with a space", "my dataset"),
+		Entry("dataset with a slash", "a/b"),
+		Entry("dataset with a percent sign", "100%"),
+		Entry("dataset with non-ASCII and reserved characters", "ä+ö&x=y"),
+	)
+
+	DescribeTable("return an error and no origins if listing the rules fails",
+		func(
+			failures map[string]fakeRuleListApiFailure,
+			token string,
+			expectedRequests int,
+			expectedStatusCode int,
+			expectedError string,
+		) {
+			fetchFunctions := map[string]func(*PrometheusRuleReconciler, ApiConfig) ([]string, error){
+				"resource": func(prometheusRuleReconciler *PrometheusRuleReconciler, apiConfig ApiConfig) ([]string, error) {
+					return prometheusRuleReconciler.FetchExistingResourceOrigins(
+						ctx,
+						&preconditionValidationResult{k8sNamespace: "namespace", k8sName: "name"},
+						apiConfig,
+						logger,
+					)
+				},
+				"namespace": func(prometheusRuleReconciler *PrometheusRuleReconciler, apiConfig ApiConfig) ([]string, error) {
+					return prometheusRuleReconciler.FetchExistingNamespaceOrigins(ctx, "namespace", apiConfig, logger)
+				},
+			}
+			for fetchType, fetch := range fetchFunctions {
+				By(fetchType)
+				fakeApi := &fakeRuleListApi{
+					checkRuleOrigins:     []string{"dash0-operator_cluster-uid_default_namespace_name_group_alert"},
+					recordingRuleOrigins: []string{"dash0-operator_cluster-uid_default_namespace_name_group_record"},
+					failures:             failures,
+				}
+				origins, err := fetch(
+					fakeApi.prometheusRuleReconciler(),
+					ApiConfig{Endpoint: ApiEndpointStandardizedTest, Dataset: "default", Token: token},
+				)
+				Expect(err).To(MatchError(MatchRegexp(expectedError)))
+				Expect(origins).To(BeNil())
+				Expect(httpStatusCodeFromError(err)).To(Equal(expectedStatusCode))
+				Expect(fakeApi.urls).To(HaveLen(expectedRequests))
+			}
+		},
+		Entry(
+			"the check rule list fails",
+			map[string]fakeRuleListApiFailure{
+				checkRuleListPath: {statusCode: http.StatusForbidden, body: `{"error":{"code":403,"message":"forbidden"}}`},
+			},
+			AuthorizationTokenTest,
+			1,
+			http.StatusForbidden,
+			"^unexpected status code 403 when trying to fetch existing origins: GET "+
+				"https://api\\.dash0\\.com/api/alerting/check-rules\\?dataset=default&"+
+				"originPrefix=dash0-operator_cluster-uid_default_namespace_",
+		),
+		Entry(
+			"the recording rule list fails after the check rule list has succeeded",
+			map[string]fakeRuleListApiFailure{
+				recordingRuleListPath: {
+					statusCode: http.StatusServiceUnavailable,
+					body:       `{"error":{"code":503,"message":"unavailable"}}`,
+				},
+			},
+			AuthorizationTokenTest,
+			2,
+			http.StatusServiceUnavailable,
+			"^unexpected status code 503 when trying to fetch existing origins: GET "+
+				"https://api\\.dash0\\.com/api/recording-rules\\?dataset=default&"+
+				"originPrefix=dash0-operator_cluster-uid_default_namespace_",
+		),
+		Entry(
+			"the check rule list response cannot be parsed",
+			map[string]fakeRuleListApiFailure{
+				checkRuleListPath: {statusCode: http.StatusOK, body: `{"not":"a list"}`},
+			},
+			AuthorizationTokenTest,
+			1,
+			0,
+			"list check rules failed",
+		),
+		Entry(
+			"the recording rule list response cannot be parsed after the check rule list has succeeded",
+			map[string]fakeRuleListApiFailure{
+				recordingRuleListPath: {statusCode: http.StatusOK, body: `[{"metadata":"not an object"}]`},
+			},
+			AuthorizationTokenTest,
+			2,
+			0,
+			"list recording rules failed",
+		),
+		Entry(
+			"the auth token is invalid",
+			nil,
+			"invalid-token",
+			0,
+			http.StatusUnauthorized,
+			"^unable to fetch existing origins: GET .*: the Dash0 auth token is invalid",
 		),
 	)
 })

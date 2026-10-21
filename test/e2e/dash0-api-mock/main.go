@@ -306,8 +306,19 @@ func handleGetRecordingRuleOriginsRequest(ginCtx *gin.Context) {
 		if !strings.HasPrefix(recordingRuleOrigin, originPrefix) {
 			continue
 		}
+		// The recording rules API responds with PrometheusRule resources, the origin is in metadata.labels.
 		responsePayload = append(responsePayload, map[string]any{
-			"origin": recordingRuleOrigin,
+			"apiVersion": "monitoring.coreos.com/v1",
+			"kind":       "PrometheusRule",
+			"metadata": map[string]any{
+				"name": recordingRuleOrigin,
+				"labels": map[string]any{
+					"dash0.com/origin": recordingRuleOrigin,
+				},
+			},
+			"spec": map[string]any{
+				"groups": []any{},
+			},
 		})
 	}
 	ginCtx.JSON(http.StatusOK, responsePayload)
