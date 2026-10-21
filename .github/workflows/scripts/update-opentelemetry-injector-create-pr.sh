@@ -25,7 +25,7 @@ if git diff-files --quiet "$version_file"; then
 fi
 
 echo "There are changes, creating a pull request."
-new_version=$(cat "$version_file")
+new_version=$(sed -n 's/^OPENTELEMETRY_INJECTOR_VERSION=//p' "$version_file")
 commit_message="chore(deps): update opentelemetry-injector to ${new_version}"
 
 # Remove any branch lingering from a previous failed run (no-op if it does not exist). Note: We abort early if an open
