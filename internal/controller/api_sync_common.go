@@ -238,7 +238,6 @@ type WrappedApiRequest struct {
 	ApiClientCall *ApiClientCall
 	ItemName      string
 	Origin        string
-	ApiConfig     ApiConfig
 }
 
 // ApiClientCall is a deferred call to the Dash0 API via the Dash0 API client. Method and Url describe the HTTP request
@@ -259,10 +258,8 @@ func (r *WrappedApiRequest) url() string {
 }
 
 type Dash0ApiObjectLabels struct {
-	Id          string `json:"dash0.com/id,omitempty"`
-	Origin      string `json:"dash0.com/origin,omitempty"`
-	ApiEndpoint string `json:"dash0.com/apiEndpoint"`
-	Dataset     string `json:"dash0.com/dataset"`
+	Id     string
+	Origin string
 }
 
 type SuccessfulSynchronizationResult struct {
@@ -1209,13 +1206,11 @@ func executeAllApiCalls(
 			httpErrorStatusCodes[apiRequest.ItemName] = httpStatusCodeFromError(err)
 		} else {
 			// The Dash0ApiObjectLabels will be used to provide additional information in the resources status when
-			// we write the synchronization results, like the object's Dash0 id, origin and dataset.
+			// we write the synchronization results, like the object's Dash0 id and origin.
 			// We do not receive a response body from HTTP DELETE requests, so the id will be omitted for deletes.
 			labels := Dash0ApiObjectLabels{
-				Id:          id,
-				Origin:      apiRequest.Origin,
-				ApiEndpoint: apiRequest.ApiConfig.Endpoint,
-				Dataset:     apiRequest.ApiConfig.Dataset,
+				Id:     id,
+				Origin: apiRequest.Origin,
 			}
 			syncResponse := SuccessfulSynchronizationResult{
 				ItemName: apiRequest.ItemName,
