@@ -299,18 +299,6 @@ func (r *WrappedApiRequest) url() string {
 	return r.Request.URL.String()
 }
 
-type Dash0ApiObjectWithOrigin struct {
-	Origin string `json:"origin"`
-}
-
-// Dash0ApiCrdObjectWithOrigin represents the response format from APIs that return full CRD objects (e.g., the
-// recording rules API), where the origin is nested inside metadata.labels.
-type Dash0ApiCrdObjectWithOrigin struct {
-	Metadata struct {
-		Labels map[string]string `json:"labels"`
-	} `json:"metadata"`
-}
-
 type Dash0ApiObjectWithMetadata struct {
 	Metadata Dash0ApiObjectMetadata `json:"metadata"`
 }
@@ -1108,7 +1096,7 @@ func fetchExistingOriginsForResource(
 			logger,
 		)
 	case mapsToMultipleApiObjects:
-		return fetchOriginsOfResource(thirdPartyResourceReconciler, preconditionChecksResult, apiConfig, logger)
+		return fetchOriginsOfResource(ctx, thirdPartyResourceReconciler, preconditionChecksResult, apiConfig, logger)
 	default:
 		// For resource types with a one-to-one relationship between K8s resource and Dash0 API object (like Perses
 		// dashboards), fetching the origins of a single resource would not save any requests.
@@ -1142,62 +1130,18 @@ func filterOriginsOfResourceInNamespace(
 
 // fetchOriginsOfResource fetches the origins of the Dash0 API objects for a given Kubernetes resource from the backend.
 func fetchOriginsOfResource(
+	ctx context.Context,
 	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	logger logd.Logger,
 ) ([]string, bool, error) {
-	requests, err :=
-		thirdPartyResourceReconciler.FetchExistingResourceOriginsRequests(preconditionChecksResult, apiConfig)
-	if err != nil {
-		logger.Error(err, "cannot create request to fetch existing resource origins")
-		return nil, false, err
-	}
-	origins, err := executeFetchExistingOriginsRequests(thirdPartyResourceReconciler, requests, logger)
+	origins, err :=
+		thirdPartyResourceReconciler.FetchExistingResourceOrigins(ctx, preconditionChecksResult, apiConfig, logger)
 	if err != nil {
 		return nil, false, err
 	}
 	return origins, true, nil
-}
-
-// executeFetchExistingOriginsRequests executes the given requests to list Dash0 API objects, one after another, and
-// returns the combined origins from all responses. It stops at the first request that fails or whose response cannot
-// be parsed, and returns that error without any origins, so the caller never works with a partial list.
-func executeFetchExistingOriginsRequests(
-	apiSyncReconciler ApiSyncReconciler,
-	fetchExistingOriginsRequests []*http.Request,
-	logger logd.Logger,
-) ([]string, error) {
-	var allExistingOrigins []string
-	for _, fetchExistingOriginsRequest := range fetchExistingOriginsRequests {
-		actionLabel := fmt.Sprintf(
-			"fetch existing origins: %s %s",
-			fetchExistingOriginsRequest.Method,
-			fetchExistingOriginsRequest.URL.String(),
-		)
-		responseBytes, err := executeSingleHttpRequest(
-			apiSyncReconciler,
-			fetchExistingOriginsRequest,
-			actionLabel,
-			true,
-			logger,
-		)
-		if err != nil {
-			logger.Error(err, "cannot fetch existing origins")
-			return nil, err
-		}
-		origins, err := extractOriginsFromResponse(responseBytes, logger)
-		if err != nil {
-			return nil, err
-		}
-		allExistingOrigins = append(allExistingOrigins, origins...)
-	}
-	logger.Info(
-		fmt.Sprintf("existing origins for this %s", apiSyncReconciler.ShortName()),
-		"origins",
-		allExistingOrigins,
-	)
-	return allExistingOrigins, nil
 }
 
 // existingOriginsInNamespace holds the origins of all Dash0 API objects that have been synchronized from one Kubernetes
@@ -1246,59 +1190,6 @@ func (o *existingOriginsInNamespace) get(
 		thirdPartyResourceReconciler.FetchExistingNamespaceOrigins(ctx, o.namespace, apiConfig, logger)
 	o.originsPerApiConfig[apiConfig] = fetchResult
 	return fetchResult.origins, fetchResult.err
-}
-
-// extractOriginsFromResponse parses a JSON array response and extracts origin strings. It handles two formats:
-// 1. Flat format: [{"origin": "..."}] (used by the check-rules API)
-// 2. CRD format: [{"metadata": {"labels": {"dash0.com/origin": "..."}}}] (used by the recording rules API)
-func extractOriginsFromResponse(responseBytes []byte, logger logd.Logger) ([]string, error) {
-	// Try flat format first (check-rules API).
-	flatObjects := make([]Dash0ApiObjectWithOrigin, 0)
-	errFlatFormat := json.Unmarshal(responseBytes, &flatObjects)
-	if errFlatFormat == nil {
-		var origins []string
-		for _, obj := range flatObjects {
-			if obj.Origin != "" {
-				origins = append(origins, obj.Origin)
-			}
-		}
-		if len(origins) > 0 {
-			return origins, nil
-		}
-	}
-
-	// Try format where the origin is in the labels (recording rules API).
-	objectsWithOriginLabel := make([]Dash0ApiCrdObjectWithOrigin, 0)
-	errObjectsWithOriginLabel := json.Unmarshal(responseBytes, &objectsWithOriginLabel)
-	if errObjectsWithOriginLabel == nil {
-		var origins []string
-		for _, obj := range objectsWithOriginLabel {
-			if origin, ok := obj.Metadata.Labels["dash0.com/origin"]; ok && origin != "" {
-				origins = append(origins, origin)
-			}
-		}
-		if len(origins) > 0 {
-			return origins, nil
-		}
-	}
-
-	// If no attempt yielded origins and there were parsing errors (invalid JSON etc.), log and return
-	if errFlatFormat != nil || errObjectsWithOriginLabel != nil {
-		joinedError := errors.Join(errFlatFormat, errObjectsWithOriginLabel)
-		logger.Error(
-			joinedError,
-			"cannot parse responses after querying existing origins",
-			"response",
-			string(responseBytes),
-		)
-		return nil, joinedError
-	}
-
-	// If both parsing attempts yielded no origins, log and return empty.
-	if len(responseBytes) > 2 { // "[]" is 2 bytes
-		logger.Warn("no origins found in response", "responseLength", len(responseBytes), "response", string(responseBytes))
-	}
-	return nil, nil
 }
 
 func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
@@ -1354,10 +1245,6 @@ func structToMap(obj any) (*unstructured.Unstructured, error) {
 	return &unstructured.Unstructured{
 		Object: object,
 	}, nil
-}
-
-func addAuthorizationHeader(req *http.Request, token string) {
-	req.Header.Set(util.AuthorizationHeaderName, util.RenderAuthorizationHeader(token))
 }
 
 // executeAllHttpRequests executes all HTTP requests in the given list and returns the names of the items that were

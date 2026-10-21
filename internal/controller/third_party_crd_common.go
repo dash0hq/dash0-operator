@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -128,11 +127,11 @@ type ThirdPartyResourceReconciler interface {
 	// with a one-to-one relation (like Perses dashboards).
 	MapsToMultipleApiObjects() bool
 
-	// FetchExistingResourceOriginsRequest creates an HTTP request for retrieving the existing origins from the Dash0
-	// API for a given Kubernetes resource.
-	// FetchExistingResourceOriginsRequest is only used for resource types where MapsToMultipleApiObjects returns true.
-	// Controllers which manage objects with a one-to-one relation (like Perses dashboards) should return nil, nil.
-	FetchExistingResourceOriginsRequests(*preconditionValidationResult, ApiConfig) ([]*http.Request, error)
+	// FetchExistingResourceOrigins retrieves the origins of the Dash0 API objects that exist for a given Kubernetes
+	// resource. FetchExistingResourceOrigins is only used for resource types where MapsToMultipleApiObjects returns
+	// true. Controllers which manage objects with a one-to-one relation (like Perses dashboards) should return nil, nil.
+	// Implementations log errors themselves.
+	FetchExistingResourceOrigins(context.Context, *preconditionValidationResult, ApiConfig, logd.Logger) ([]string, error)
 
 	// FetchExistingNamespaceOrigins retrieves the origins of all Dash0 API objects that have been synchronized from
 	// Kubernetes resources in the given namespace. The result may contain origins that do not belong to the namespace,

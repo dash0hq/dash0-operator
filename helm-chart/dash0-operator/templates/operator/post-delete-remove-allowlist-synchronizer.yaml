@@ -32,6 +32,15 @@ rules:
     resources:
     - allowlistsynchronizers
     verbs:
+    - get
+    - patch
+    - delete
+  - apiGroups:
+    - auto.gke.io
+    resources:
+    - workloadallowlists
+    verbs:
+    - list
     - delete
 ---
 apiVersion: rbac.authorization.k8s.io/v1
