@@ -19,6 +19,7 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/agent0connector"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
+	"github.com/dash0hq/dash0-operator/internal/componentsettings"
 	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol"
@@ -43,11 +44,14 @@ type OperatorConfigurationReconciler struct {
 	operatorDeploymentUID        types.UID
 	operatorDeploymentName       string
 	OperatorManagerPodName       string
-	oTelSdkStarter               *selfmonitoringapiaccess.OTelSdkStarter
-	DanglingEventsTimeouts       *util.DanglingEventsTimeouts
-	images                       util.Images
-	operatorNamespace            string
-	developmentMode              bool
+	// ComponentSettingsConflictReporter (optional) logs settings that are configured both via Helm and via
+	// spec.components.
+	ComponentSettingsConflictReporter *componentsettings.ConflictReporter
+	oTelSdkStarter                    *selfmonitoringapiaccess.OTelSdkStarter
+	DanglingEventsTimeouts            *util.DanglingEventsTimeouts
+	images                            util.Images
+	operatorNamespace                 string
+	developmentMode                   bool
 }
 
 const (
@@ -157,6 +161,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	if resourceDeleted {
 		logger.Info("Reconciling the deletion of the operator configuration resource", "name", req.Name)
 		r.removeAllOperatorConfigurationSettings(ctx, logger)
+		r.ComponentSettingsConflictReporter.Report(ctx, logger)
 		if err = r.reconcileOpenTelemetryCollector(ctx, logger); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -237,6 +242,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	r.applyApiAccessSettings(ctx, operatorConfigurationResource, logger)
 
 	r.updateRequestedInstrumentationDelivery(operatorConfigurationResource, logger)
+	r.ComponentSettingsConflictReporter.Report(ctx, logger)
 
 	if err = r.reconcileOpenTelemetryCollector(ctx, logger); err != nil {
 		return ctrl.Result{}, err

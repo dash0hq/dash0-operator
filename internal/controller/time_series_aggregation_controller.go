@@ -115,11 +115,6 @@ func (r *TimeSeriesAggregationReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
-// HttpClient returns nil, the time series aggregation reconciler talks to the Dash0 API via the API client pool.
-func (r *TimeSeriesAggregationReconciler) HttpClient() *http.Client {
-	return nil
-}
-
 func (r *TimeSeriesAggregationReconciler) SetDefaultApiConfigs(
 	ctx context.Context,
 	apiConfigs []ApiConfig,

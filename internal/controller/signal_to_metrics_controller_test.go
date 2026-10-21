@@ -5,6 +5,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/yaml"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
@@ -394,6 +396,139 @@ var _ = Describe(
 				)
 			},
 		)
+
+		Describe(
+			"mapping signal-to-metrics resources to API client calls", func() {
+				var signalToMetricsReconciler *SignalToMetricsReconciler
+				apiConfig := ApiConfig{
+					Endpoint: ApiEndpointTest,
+					Dataset:  DatasetCustomTest,
+					Token:    AuthorizationTokenTest,
+				}
+
+				BeforeEach(
+					func() {
+						signalToMetricsReconciler = &SignalToMetricsReconciler{}
+					},
+				)
+
+				mapSignalToMetrics := func(resourceYaml string, action apiAction) *ResourceToRequestsResult {
+					resource := map[string]any{}
+					Expect(yaml.Unmarshal([]byte(resourceYaml), &resource)).To(Succeed())
+					return signalToMetricsReconciler.MapResourceToHttpRequests(
+						&preconditionValidationResult{
+							k8sName:      signalToMetricsName,
+							k8sNamespace: TestNamespaceName,
+							resource:     resource,
+						},
+						apiConfig,
+						action,
+						logger,
+					)
+				}
+
+				It(
+					"maps an upsert to a PUT API client call and only sends the fields the Dash0 API defines", func() {
+						signalToMetricsYaml := `
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SignalToMetrics
+metadata:
+  name: test-signal-to-metrics
+  namespace: test-namespace
+  labels:
+    app.kubernetes.io/name: dropped
+  annotations:
+    dash0.com/folder-path: /team/checkout
+    example.com/not-part-of-the-api: dropped
+spec:
+  enabled: true
+  display:
+    name: Checkout duration
+  match:
+    signal: spans
+    filters:
+      - key: service.name
+        operator: is
+        value: checkout-service
+  output:
+    name: checkout.request.duration
+    interval: 60s
+status:
+  synchronizationStatus: successful
+`
+						resourceToRequestsResult := mapSignalToMetrics(signalToMetricsYaml, upsertAction)
+						Expect(resourceToRequestsResult.SynchronizationErrors).To(BeNil())
+						Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(1))
+						apiRequest := resourceToRequestsResult.ApiRequests[0]
+						Expect(apiRequest.ItemName).To(Equal(signalToMetricsName))
+						Expect(apiRequest.ApiClientCall).ToNot(BeNil())
+						Expect(apiRequest.ApiClientCall.Method).To(Equal(http.MethodPut))
+
+						resource := map[string]any{}
+						Expect(yaml.Unmarshal([]byte(signalToMetricsYaml), &resource)).To(Succeed())
+						signalToMetricsDefinition, err := mapToSignalToMetricsDefinition(resource)
+						Expect(err).ToNot(HaveOccurred())
+						body, err := json.Marshal(signalToMetricsDefinition)
+						Expect(err).ToNot(HaveOccurred())
+						payload := map[string]any{}
+						Expect(json.Unmarshal(body, &payload)).To(Succeed())
+						Expect(payload).ToNot(HaveKey("apiVersion"))
+						Expect(payload).ToNot(HaveKey("status"))
+						Expect(payload["kind"]).To(Equal("Dash0SignalToMetrics"))
+						Expect(payload["metadata"]).To(Equal(map[string]any{
+							"name":        signalToMetricsName,
+							"annotations": map[string]any{"dash0.com/folder-path": "/team/checkout"},
+							"labels":      map[string]any{},
+						}))
+						Expect(ReadFromMap(payload, []string{"spec", "display", "name"})).To(Equal("Checkout duration"))
+					},
+				)
+
+				It("maps a delete to a DELETE API client call", func() {
+					resourceToRequestsResult := mapSignalToMetrics(`
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SignalToMetrics
+metadata:
+  name: test-signal-to-metrics
+`, deleteAction)
+					Expect(resourceToRequestsResult.SynchronizationErrors).To(BeNil())
+					Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(1))
+					Expect(resourceToRequestsResult.ApiRequests[0].ApiClientCall).ToNot(BeNil())
+					Expect(resourceToRequestsResult.ApiRequests[0].ApiClientCall.Method).To(Equal(http.MethodDelete))
+				})
+
+				It(
+					"reports a non-retryable synchronization error for a signal-to-metrics rule that cannot be "+
+						"converted",
+					func() {
+						resourceToRequestsResult := mapSignalToMetrics(`
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SignalToMetrics
+metadata:
+  name: test-signal-to-metrics
+spec:
+  enabled: "yes"
+  display:
+    name: Checkout duration
+  match:
+    signal: spans
+    filters: service.name
+  output:
+    name: checkout.request.duration
+    interval: 60s
+`, upsertAction)
+						Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())
+						synchronizationError, httpStatusCode :=
+							firstSynchronizationErrorAndStatusCode(resourceToRequestsResult)
+						Expect(synchronizationError).To(
+							ContainSubstring("unable to convert the signal-to-metrics rule"),
+						)
+						Expect(httpStatusCode).To(Equal(http.StatusBadRequest))
+						Expect(isRetryableSynchronizationError(synchronizationError, httpStatusCode)).To(BeFalse())
+					},
+				)
+			},
+		)
 	},
 )
 
@@ -402,7 +537,7 @@ func createSignalToMetricsReconciler(clusterId string) *SignalToMetricsReconcile
 		k8sClient,
 		types.UID(clusterId),
 		leaderElectionAware,
-		TestHTTPClient(),
+		testApiClientPool(),
 	)
 }
 

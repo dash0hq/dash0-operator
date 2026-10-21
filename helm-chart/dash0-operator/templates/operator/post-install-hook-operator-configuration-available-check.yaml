@@ -1,6 +1,8 @@
 {{- /*
 We run a post-install/post-upgrade hook so that "helm install --wait" and "helm upgrade --wait" only terminate once the
 operator's admission webhooks are actually reachable.
+* In both cases below, the hook first waits until the rollout of the operator manager deployment is complete, and until
+  the API server can call the operator's webhooks (checked with dry-run requests for Dash0 resources).
 * If the Helm chart values have requested the automatic installation of a Dash0 operator configuration resource
   (operator.dash0Export.enabled=true), the hook waits until that resource has been successfully created and has become
   available (the operator itself only creates it after the webhook endpoint is ready).
@@ -81,6 +83,8 @@ spec:
                   fieldPath: metadata.namespace
             - name: DASH0_WEBHOOK_SERVICE_NAME
               value: {{ include "dash0-operator.webhookServiceName" . }}
+            - name: DASH0_DEPLOYMENT_NAME
+              value: {{ include "dash0-operator.deploymentName" . }}
           resources:
             {{- unset (.Values.operator.managerContainerResources | mustDeepCopy) "gomemlimit" | toYaml | nindent 12 }}
       {{- with .Values.operator.imagePullSecrets }}

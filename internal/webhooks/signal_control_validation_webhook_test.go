@@ -329,6 +329,28 @@ var _ = Describe("The Signal Control validation webhook (component settings)", f
 			"spec.components.edgeProxy.replicas overrides the custom Helm value " +
 				"operator.signalControl.edgeProxy.replicas: 3 instead of 4"))
 	})
+
+	It("should allow an update that leaves invalid component settings unchanged", func() {
+		handler := NewSignalControlValidationWebhookHandler(k8sClient, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+		spec := dash0v1alpha1.Dash0SignalControlSpec{
+			Components: &dash0v1alpha1.SignalControlComponents{
+				EdgeProxy: &dash0v1alpha1.EdgeProxySettings{
+					WorkloadSettings: dash0v1alpha1.WorkloadSettings{Labels: map[string]string{"in valid": "value"}},
+				},
+			},
+		}
+		request := signalControlAdmissionRequest(spec)
+		request.Operation = admissionv1.Update
+		request.OldObject = signalControlAdmissionRequest(spec).Object
+		response := handler.Handle(ctx, request)
+		Expect(response.Allowed).To(BeTrue())
+
+		request.OldObject = signalControlAdmissionRequest(componentsSpec).Object
+		response = handler.Handle(ctx, request)
+		Expect(response.Allowed).To(BeFalse())
+		Expect(response.Result.Message).To(ContainSubstring(
+			"spec.components.edgeProxy.labels: Invalid value: \"in valid\""))
+	})
 })
 
 func createOperatorConfigurationWithExport(export dash0common.Export) {

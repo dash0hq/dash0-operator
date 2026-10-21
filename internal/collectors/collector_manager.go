@@ -178,7 +178,8 @@ func (m *CollectorManager) reconcileOpenTelemetryCollector(ctx context.Context, 
 	if fileExtraConfig == nil {
 		return false, fmt.Errorf("extra config is nil in CollectorManager#ReconcileOpenTelemetryCollector")
 	}
-	extraConfig := util.EffectiveExtraConfig(*fileExtraConfig, m.extraConfigDefaults, signalControlResource)
+	extraConfig := util.EffectiveExtraConfig(
+		*fileExtraConfig, m.extraConfigDefaults, operatorConfigurationResource, signalControlResource)
 
 	if operatorConfigurationResource == nil {
 		logger.WarnTelemetryCollectionIssue(logMsgOperatorConfigMissing)

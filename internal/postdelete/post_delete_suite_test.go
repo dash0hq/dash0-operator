@@ -30,7 +30,8 @@ import (
 )
 
 const (
-	postDeleteHandlerTimeoutForTests = 5 * time.Second
+	postDeleteHandlerTimeoutForTests     = 5 * time.Second
+	postDeleteHandlerQuietPeriodForTests = 400 * time.Millisecond
 )
 
 var (
@@ -72,6 +73,7 @@ var _ = BeforeSuite(func() {
 	postDeleteHandler, err = NewOperatorPostDeleteHandlerFromConfig(cfg)
 	Expect(err).NotTo(HaveOccurred())
 	postDeleteHandler.setTimeout(postDeleteHandlerTimeoutForTests)
+	postDeleteHandler.setQuietPeriod(postDeleteHandlerQuietPeriodForTests)
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())

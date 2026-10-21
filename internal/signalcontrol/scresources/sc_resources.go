@@ -115,7 +115,14 @@ func (m *SignalControlResourceManager) createOrUpdateResource(
 		}
 		return true, false, nil
 	}
-	hasChanged, err := m.updateResource(ctx, existingResource, desiredResource, logger)
+	hasChanged, err := resources.UpdateWithRetryOnConflict(
+		ctx,
+		m.Client,
+		desiredResource,
+		func(existingResource client.Object, desiredResource client.Object) (bool, error) {
+			return m.updateResource(ctx, existingResource, desiredResource, logger)
+		},
+	)
 	if err != nil {
 		return false, false, err
 	}
@@ -166,6 +173,7 @@ func (m *SignalControlResourceManager) updateResource(
 	if err = patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
 		return false, err
 	}
+	resources.PreserveKubectlRestartedAtAnnotation(existingResource, desiredResource, logger)
 	// Carry over the live resource version; some kinds (PodDisruptionBudget) reject an update without it
 	// ("resourceVersion: Invalid value: 0: must be specified for an update") and it adds optimistic locking.
 	desiredResource.SetResourceVersion(existingResource.GetResourceVersion())

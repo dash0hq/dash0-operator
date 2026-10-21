@@ -7,8 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
@@ -20,7 +20,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllertest"
@@ -47,11 +46,7 @@ const (
 
 var (
 	prometheusRuleCrd        *apiextensionsv1.CustomResourceDefinition
-	testQueuePrometheusRules = workqueue.NewTypedWithConfig(
-		workqueue.TypedQueueConfig[ThirdPartyResourceSyncJob]{
-			Name: "dash0-third-party-resource-synchronization-queue",
-		},
-	)
+	testQueuePrometheusRules = NewThirdPartyResourceSyncQueue("dash0-prometheus-rule-synchronization-queue")
 
 	checkRuleApiBasePath     = "/api/alerting/check-rules/"
 	recordingRuleApiBasePath = "/api/recording-rules/"
@@ -2478,12 +2473,15 @@ var _ = Describe(
 		)
 
 		Context(
-			"converting a PrometheusRule resource to multiple http requests", func() {
+			"converting a PrometheusRule resource to multiple API client calls", func() {
 				var prometheusRuleReconciler *PrometheusRuleReconciler
+				var recorder *urlRecordingRoundTripper
 
 				BeforeEach(
 					func() {
-						prometheusRuleReconciler = &PrometheusRuleReconciler{}
+						var apiClientPool *ApiClientPool
+						apiClientPool, recorder = urlRecordingApiClientPool()
+						prometheusRuleReconciler = &PrometheusRuleReconciler{apiClientPool: apiClientPool}
 					},
 				)
 
@@ -2527,6 +2525,7 @@ spec:
 						apiConfig := ApiConfig{
 							Endpoint: "https://api.example.com/",
 							Dataset:  "my-dataset",
+							Token:    AuthorizationTokenTest,
 						}
 						preconditionValidationResult := &preconditionValidationResult{
 							k8sName:             "mixed-rules",
@@ -2552,23 +2551,26 @@ spec:
 						// First rule: alerting rule "high-latency" → routed to check-rules API.
 						alertReq1 := resourceToRequestsResult.ApiRequests[0]
 						Expect(alertReq1.ItemName).To(Equal("my-group - high-latency"))
-						Expect(alertReq1.Request.URL.Path).To(ContainSubstring("/api/alerting/check-rules/"))
-						Expect(alertReq1.Request.Method).To(Equal(http.MethodPut))
-						verifyRequestBodyContains(alertReq1.Request, "histogram_quantile")
+						Expect(alertReq1.ApiClientCall.Method).To(Equal(http.MethodPut))
+						alertReq1Url, alertReq1Body := executeAndRecordApiClientCall(alertReq1, recorder)
+						Expect(alertReq1Url.Path).To(HavePrefix("/api/alerting/check-rules/"))
+						Expect(alertReq1Body).To(ContainSubstring("histogram_quantile"))
 
 						// Second rule: recording rule "job:http_requests:rate5m" → routed to recording-rules API.
 						recordReq := resourceToRequestsResult.ApiRequests[1]
 						Expect(recordReq.ItemName).To(Equal("my-group - job:http_requests:rate5m"))
-						Expect(recordReq.Request.URL.Path).To(ContainSubstring("/api/recording-rules/"))
-						Expect(recordReq.Request.Method).To(Equal(http.MethodPut))
-						verifyRequestBodyContains(recordReq.Request, "sum(rate(http_requests_total[5m])) by (job)")
+						Expect(recordReq.ApiClientCall.Method).To(Equal(http.MethodPut))
+						recordReqUrl, recordReqBody := executeAndRecordApiClientCall(recordReq, recorder)
+						Expect(recordReqUrl.Path).To(HavePrefix("/api/recording-rules/"))
+						Expect(recordReqBody).To(ContainSubstring("sum(rate(http_requests_total[5m])) by (job)"))
 
 						// Third rule: alerting rule "high-error-rate" → routed to check-rules API.
 						alertReq2 := resourceToRequestsResult.ApiRequests[2]
 						Expect(alertReq2.ItemName).To(Equal("my-group - high-error-rate"))
-						Expect(alertReq2.Request.URL.Path).To(ContainSubstring("/api/alerting/check-rules/"))
-						Expect(alertReq2.Request.Method).To(Equal(http.MethodPut))
-						verifyRequestBodyContains(alertReq2.Request, "rate(http_requests_total")
+						Expect(alertReq2.ApiClientCall.Method).To(Equal(http.MethodPut))
+						alertReq2Url, alertReq2Body := executeAndRecordApiClientCall(alertReq2, recorder)
+						Expect(alertReq2Url.Path).To(HavePrefix("/api/alerting/check-rules/"))
+						Expect(alertReq2Body).To(ContainSubstring("rate(http_requests_total"))
 					},
 				)
 
@@ -2602,7 +2604,7 @@ spec:
       expr: "expression 6"
 `
 						Expect(yaml.Unmarshal([]byte(prometheusRuleYaml), &prometheusRule)).To(Succeed())
-						apiConfig := ApiConfig{}
+						apiConfig := ApiConfig{Endpoint: "https://api.example.com/", Token: AuthorizationTokenTest}
 						preconditionValidationResult := &preconditionValidationResult{
 							k8sName:             "prometheus-rule",
 							k8sNamespace:        TestNamespaceName,
@@ -2641,65 +2643,124 @@ spec:
 						Expect(resourceToRequestsResult.ValidationIssues).To(BeEmpty())
 						Expect(resourceToRequestsResult.SynchronizationErrors).To(BeEmpty())
 						Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(6))
+						for i, expectedOrigin := range []string{
+							"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1",
+							"dash0-operator___test-namespace_prometheus-rule_group-1_alert-2",
+							"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_1",
+							"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_2",
+							"dash0-operator___test-namespace_prometheus-rule_group-1_alert-2_1",
+							"dash0-operator___test-namespace_prometheus-rule_group-2_alert-1",
+						} {
+							Expect(resourceToRequestsResult.ApiRequests[i].Origin).To(Equal(expectedOrigin))
+						}
 
-						verifyCheckRuleRequest(
+						// The API path of a duplicate carries the duplication counter twice, see renderRuleOrigin.
+						verifyRuleApiClientCall(
 							resourceToRequestsResult.ApiRequests[0],
+							recorder,
 							"group-1 - alert-1",
-							"/dash0-operator___test-namespace_prometheus-rule_group-1_alert-1",
+							checkRuleApiBasePath+"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1",
 							"expression 1",
 						)
-						verifyCheckRuleRequest(
+						verifyRuleApiClientCall(
 							resourceToRequestsResult.ApiRequests[1],
+							recorder,
 							"group-1 - alert-2",
-							"/dash0-operator___test-namespace_prometheus-rule_group-1_alert-2",
+							checkRuleApiBasePath+"dash0-operator___test-namespace_prometheus-rule_group-1_alert-2",
 							"expression 2",
 						)
-						verifyCheckRuleRequest(
+						verifyRuleApiClientCall(
 							resourceToRequestsResult.ApiRequests[2],
+							recorder,
 							"group-1 - alert-1",
-							"/dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_1",
+							checkRuleApiBasePath+"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_1_1",
 							"expression 3",
 						)
-						verifyCheckRuleRequest(
+						verifyRuleApiClientCall(
 							resourceToRequestsResult.ApiRequests[3],
+							recorder,
 							"group-1 - alert-1",
-							"/dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_2",
+							checkRuleApiBasePath+"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_2_2",
 							"expression 4",
 						)
-						verifyCheckRuleRequest(
+						verifyRuleApiClientCall(
 							resourceToRequestsResult.ApiRequests[4],
+							recorder,
 							"group-1 - alert-2",
-							"/dash0-operator___test-namespace_prometheus-rule_group-1_alert-2_1",
+							recordingRuleApiBasePath+"dash0-operator___test-namespace_prometheus-rule_group-1_alert-2_1_1",
 							"expression 5",
 						)
-						verifyCheckRuleRequest(
+						verifyRuleApiClientCall(
 							resourceToRequestsResult.ApiRequests[5],
+							recorder,
 							"group-2 - alert-1",
-							"/dash0-operator___test-namespace_prometheus-rule_group-2_alert-1",
+							checkRuleApiBasePath+"dash0-operator___test-namespace_prometheus-rule_group-2_alert-1",
 							"expression 6",
 						)
 					},
+				)
+
+				DescribeTable(
+					"should report a malformed rule as a non-retryable conversion error",
+					func(action apiAction) {
+						prometheusRule := map[string]any{}
+						prometheusRuleYaml := `
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: malformed-rule
+spec:
+  groups:
+  - name: group
+    rules:
+    - alert: alert
+      expr: up == 0
+      for:
+        minutes: 5
+`
+						Expect(yaml.Unmarshal([]byte(prometheusRuleYaml), &prometheusRule)).To(Succeed())
+						resourceToRequestsResult :=
+							prometheusRuleReconciler.MapResourceToHttpRequests(
+								&preconditionValidationResult{
+									k8sName:      "malformed-rule",
+									k8sNamespace: TestNamespaceName,
+									resource:     prometheusRule,
+								},
+								ApiConfig{Endpoint: "https://api.example.com/", Token: AuthorizationTokenTest},
+								action,
+								logger,
+							)
+
+						Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())
+						Expect(resourceToRequestsResult.SynchronizationErrors).To(HaveKeyWithValue(
+							preconditionErrorItemName,
+							ContainSubstring("cannot unmarshal object"),
+						))
+						Expect(resourceToRequestsResult.SynchronizationErrorStatusCodes).To(Equal(map[string]int{
+							preconditionErrorItemName: http.StatusBadRequest,
+						}))
+					},
+					Entry("upsert", upsertAction),
+					Entry("delete", deleteAction),
 				)
 			},
 		)
 
 		Context(
-			"converting a single Prometheus rule to an http request", func() {
+			"converting a single Prometheus rule to an API client call", func() {
 
 				It(
 					"should process a rule that has both record and alert as an alerting rule", func() {
 						// In the production flow, recording rules (rule.Record != "") are handled
-						// separately in MapResourceToHttpRequests before convertAlertingRuleToRequest
+						// separately in MapResourceToHttpRequests before convertAlertingRuleToCheckRule
 						// is called. If a rule somehow has both Record and Alert set,
-						// convertAlertingRuleToRequest treats it as an alerting rule.
-						req, validationIssues, syncError, ok := convertAlertingRuleToRequest(
-							"https://api.dash0.com/alerting/check-rules/rule-origin",
-							upsertAction,
-							ApiConfig{},
+						// convertAlertingRuleToCheckRule treats it as an alerting rule.
+						checkRule, validationIssues, ok := convertAlertingRuleToCheckRule(
 							prometheusv1.Rule{
 								Record: "record",
 								Alert:  "alert",
 							},
+							upsertAction,
 							"group",
 							ptr.To(prometheusv1.Duration("10m")),
 							nil,
@@ -2708,18 +2769,15 @@ spec:
 
 						Expect(ok).To(BeTrue())
 						Expect(validationIssues).To(BeEmpty())
-						Expect(syncError).To(BeNil())
-						Expect(req).NotTo(BeNil())
+						Expect(checkRule).NotTo(BeNil())
 					},
 				)
 
 				It(
 					"should treat an empty rule as invalid", func() {
-						req, validationIssues, syncError, ok := convertAlertingRuleToRequest(
-							"https://api.dash0.com/alerting/check-rules/rule-origin",
-							upsertAction,
-							ApiConfig{},
+						checkRule, validationIssues, ok := convertAlertingRuleToCheckRule(
 							prometheusv1.Rule{},
+							upsertAction,
 							"group",
 							ptr.To(prometheusv1.Duration("10m")),
 							nil,
@@ -2729,22 +2787,19 @@ spec:
 						Expect(ok).To(BeFalse())
 						Expect(validationIssues).To(HaveLen(1))
 						Expect(validationIssues).To(ContainElement("rule has neither the alert nor the record attribute"))
-						Expect(syncError).To(BeNil())
-						Expect(req).To(BeNil())
+						Expect(checkRule).To(BeNil())
 					},
 				)
 
 				It(
 					"should treat a rule without alert or record as invalid", func() {
-						req, validationIssues, syncError, ok := convertAlertingRuleToRequest(
-							"https://api.dash0.com/alerting/check-rules/rule-origin",
-							upsertAction,
-							ApiConfig{},
+						checkRule, validationIssues, ok := convertAlertingRuleToCheckRule(
 							prometheusv1.Rule{
 								Expr:          intstr.FromString("expr"),
 								For:           ptr.To(prometheusv1.Duration("10s")),
 								KeepFiringFor: ptr.To(prometheusv1.NonEmptyDuration("10s")),
 							},
+							upsertAction,
 							"group",
 							ptr.To(prometheusv1.Duration("10m")),
 							nil,
@@ -2754,21 +2809,18 @@ spec:
 						Expect(ok).To(BeFalse())
 						Expect(validationIssues).To(HaveLen(1))
 						Expect(validationIssues).To(ContainElement("rule has neither the alert nor the record attribute"))
-						Expect(syncError).To(BeNil())
-						Expect(req).To(BeNil())
+						Expect(checkRule).To(BeNil())
 					},
 				)
 
 				It(
 					"should treat a rule with empty expression as invalid", func() {
-						req, validationIssues, syncError, ok := convertAlertingRuleToRequest(
-							"https://api.dash0.com/alerting/check-rules/rule-origin",
-							upsertAction,
-							ApiConfig{},
+						checkRule, validationIssues, ok := convertAlertingRuleToCheckRule(
 							prometheusv1.Rule{
 								Alert: "alert",
 								Expr:  intstr.FromString(""),
 							},
+							upsertAction,
 							"group",
 							ptr.To(prometheusv1.Duration("10m")),
 							nil,
@@ -2778,20 +2830,17 @@ spec:
 						Expect(ok).To(BeFalse())
 						Expect(validationIssues).To(HaveLen(1))
 						Expect(validationIssues).To(ContainElement("the rule has no expression attribute (or the expression attribute is empty)"))
-						Expect(syncError).To(BeNil())
-						Expect(req).To(BeNil())
+						Expect(checkRule).To(BeNil())
 					},
 				)
 
 				It(
 					"should convert an almost empty rule", func() {
-						req, validationIssues, syncError, ok := convertAlertingRuleToRequest(
-							"https://api.dash0.com/alerting/check-rules/rule-origin",
-							upsertAction,
-							ApiConfig{},
+						checkRule, validationIssues, ok := convertAlertingRuleToCheckRule(
 							prometheusv1.Rule{
 								Alert: "alert",
 							},
+							upsertAction,
 							"group",
 							ptr.To(prometheusv1.Duration("10m")),
 							nil,
@@ -2800,18 +2849,23 @@ spec:
 
 						Expect(ok).To(BeTrue())
 						Expect(validationIssues).To(BeEmpty())
-						Expect(syncError).To(BeNil())
-						Expect(req).ToNot(BeNil())
-						Expect(req.URL.String()).To(Equal("https://api.dash0.com/alerting/check-rules/rule-origin"))
+						alertRule, err := mapToPrometheusAlertRule(checkRule)
+						Expect(err).ToNot(HaveOccurred())
+						apiClientCall, err := (&PrometheusRuleReconciler{}).createCheckRuleApiClientCall(
+							"rule-origin",
+							upsertAction,
+							ApiConfig{Endpoint: "https://api.dash0.com/", Dataset: "dataset"},
+							alertRule,
+						)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(apiClientCall.Method).To(Equal(http.MethodPut))
+						Expect(apiClientCall.Url).To(Equal("https://api.dash0.com/api/alerting/check-rules/rule-origin?dataset=dataset"))
 					},
 				)
 
 				It(
 					"should convert a rule with all attributes", func() {
-						req, validationIssues, syncError, ok := convertAlertingRuleToRequest(
-							"https://api.dash0.com/alerting/check-rules/rule-origin",
-							upsertAction,
-							ApiConfig{},
+						checkRule, validationIssues, ok := convertAlertingRuleToCheckRule(
 							prometheusv1.Rule{
 								Alert:         "alert",
 								Expr:          intstr.FromString("expr"),
@@ -2826,6 +2880,7 @@ spec:
 									"label2": "label value 2",
 								},
 							},
+							upsertAction,
 							"group",
 							ptr.To(prometheusv1.Duration("10m")),
 							nil,
@@ -2834,9 +2889,17 @@ spec:
 
 						Expect(ok).To(BeTrue())
 						Expect(validationIssues).To(BeEmpty())
-						Expect(syncError).To(BeNil())
-						Expect(req).ToNot(BeNil())
-						Expect(req.URL.String()).To(Equal("https://api.dash0.com/alerting/check-rules/rule-origin"))
+						alertRule, err := mapToPrometheusAlertRule(checkRule)
+						Expect(err).ToNot(HaveOccurred())
+						apiClientCall, err := (&PrometheusRuleReconciler{}).createCheckRuleApiClientCall(
+							"rule-origin",
+							upsertAction,
+							ApiConfig{Endpoint: "https://api.dash0.com/", Dataset: "dataset"},
+							alertRule,
+						)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(apiClientCall.Method).To(Equal(http.MethodPut))
+						Expect(apiClientCall.Url).To(Equal("https://api.dash0.com/api/alerting/check-rules/rule-origin?dataset=dataset"))
 					},
 				)
 
@@ -3028,9 +3091,11 @@ spec:
 func createPrometheusRuleCrdReconciler() *PrometheusRuleCrdReconciler {
 	crdReconciler := NewPrometheusRuleCrdReconciler(
 		k8sClient,
+		k8sClient,
 		testQueuePrometheusRules,
 		&DummyLeaderElectionAware{Leader: true},
 		TestHTTPClient(),
+		testApiClientPool(),
 	)
 
 	// We create the controller multiple times in tests, this option is required, otherwise the controller
@@ -3551,20 +3616,33 @@ func defaultExpectedPrometheusSyncResult(clusterId string) dash0common.Prometheu
 	return expectedPrometheusSyncResult(clusterId, ApiEndpointStandardizedTest, DatasetCustomTest, checkRuleOriginPattern)
 }
 
-func verifyCheckRuleRequest(apiRequest WrappedApiRequest, itemName string, origin string, expression string) {
+func verifyRuleApiClientCall(
+	apiRequest WrappedApiRequest,
+	recorder *urlRecordingRoundTripper,
+	itemName string,
+	expectedPath string,
+	expression string,
+) {
+	GinkgoHelper()
 	Expect(apiRequest.ItemName).To(Equal(itemName))
-	req := apiRequest.Request
-	Expect(req.URL.Path).To(ContainSubstring(origin))
-	verifyRequestBodyContains(req, expression)
+	Expect(apiRequest.ApiClientCall.Method).To(Equal(http.MethodPut))
+	requestUrl, body := executeAndRecordApiClientCall(apiRequest, recorder)
+	Expect(requestUrl.Path).To(Equal(expectedPath))
+	Expect(body).To(ContainSubstring(expression))
 }
 
-func verifyRequestBodyContains(req *http.Request, substring string) {
-	defer func() {
-		_ = req.Body.Close()
-	}()
-	body, err := io.ReadAll(req.Body)
-	Expect(err).ToNot(HaveOccurred())
-	Expect(string(body)).To(ContainSubstring(substring))
+// executeAndRecordApiClientCall executes the API client call of the given request against the recorder that backs the
+// reconciler's API client pool, and returns the URL and the body of the HTTP request the call has issued.
+func executeAndRecordApiClientCall(
+	apiRequest WrappedApiRequest,
+	recorder *urlRecordingRoundTripper,
+) (*url.URL, string) {
+	GinkgoHelper()
+	Expect(apiRequest.ApiClientCall).ToNot(BeNil())
+	recordedBefore := len(recorder.urls)
+	_, _ = apiRequest.ApiClientCall.Execute(context.Background())
+	Expect(recorder.urls).To(HaveLen(recordedBefore + 1))
+	return recorder.urls[recordedBefore], recorder.bodies[recordedBefore]
 }
 
 func verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(

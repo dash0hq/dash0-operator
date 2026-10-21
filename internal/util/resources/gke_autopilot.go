@@ -96,14 +96,22 @@ func AdoptGkeAutopilotResourceAdjustments(existing client.Object, desired client
 }
 
 func podSpecsOf(existing client.Object, desired client.Object) (*corev1.PodSpec, *corev1.PodSpec) {
+	existingTemplate, desiredTemplate := podTemplatesOf(existing, desired)
+	if existingTemplate == nil || desiredTemplate == nil {
+		return nil, nil
+	}
+	return &existingTemplate.Spec, &desiredTemplate.Spec
+}
+
+func podTemplatesOf(existing client.Object, desired client.Object) (*corev1.PodTemplateSpec, *corev1.PodTemplateSpec) {
 	switch desiredWorkload := desired.(type) {
 	case *appsv1.Deployment:
 		if existingWorkload, ok := existing.(*appsv1.Deployment); ok {
-			return &existingWorkload.Spec.Template.Spec, &desiredWorkload.Spec.Template.Spec
+			return &existingWorkload.Spec.Template, &desiredWorkload.Spec.Template
 		}
 	case *appsv1.DaemonSet:
 		if existingWorkload, ok := existing.(*appsv1.DaemonSet); ok {
-			return &existingWorkload.Spec.Template.Spec, &desiredWorkload.Spec.Template.Spec
+			return &existingWorkload.Spec.Template, &desiredWorkload.Spec.Template
 		}
 	}
 	return nil, nil

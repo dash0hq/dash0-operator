@@ -5,3 +5,33 @@ tests:
   - it: leader election role should match snapshot
     asserts:
       - matchSnapshot: {}
+
+  - it: should grant permissions to update the webhook certificates secret
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - ""
+            resources:
+              - secrets
+            resourceNames:
+              - dash0-operator-webhook-server-cert
+            verbs:
+              - update
+
+  - it: should not grant permissions to update the webhook certificates secret if cert-manager is used
+    set:
+      operator:
+        certManager:
+          useCertManager: true
+          secretName: dash0-operator-certificate-secret
+          certManagerAnnotations:
+            cert-manager.io/inject-ca-from: dash0-system/dash0-operator-serving-certificate
+    asserts:
+      - notContains:
+          path: rules
+          content:
+            resourceNames:
+              - dash0-operator-webhook-server-cert
+          any: true

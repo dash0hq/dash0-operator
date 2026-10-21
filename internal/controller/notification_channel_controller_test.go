@@ -635,6 +635,50 @@ var _ = Describe(
 						expectedKeys: []string{"url"},
 					}),
 				)
+
+				It(
+					"reports a non-retryable synchronization error for a notification channel that cannot be converted",
+					func() {
+						resource := map[string]any{
+							"metadata": map[string]any{
+								"name":      testK8sName,
+								"namespace": TestNamespaceName,
+								"annotations": map[string]any{
+									"dash0.com/created-at": "2026-10-19",
+								},
+							},
+							"spec": map[string]any{
+								"display": map[string]any{
+									"name": testDisplayName,
+								},
+								"type": "slack",
+								"slackConfig": map[string]any{
+									"webhookURL": "https://hooks.slack.com/services/T00/B00/xxxx",
+								},
+							},
+						}
+						apiConfig := ApiConfig{
+							Endpoint: ApiEndpointStandardizedTest,
+							Dataset:  DatasetCustomTest,
+							Token:    AuthorizationTokenTest,
+						}
+						result := ncReconciler.MapResourceToHttpRequests(
+							&preconditionValidationResult{
+								k8sName:      testK8sName,
+								k8sNamespace: TestNamespaceName,
+								resource:     resource,
+							},
+							apiConfig,
+							upsertAction,
+							logger,
+						)
+						Expect(result.ApiRequests).To(BeEmpty())
+						synchronizationError, httpStatusCode := firstSynchronizationErrorAndStatusCode(result)
+						Expect(synchronizationError).To(ContainSubstring("unable to convert the notification channel"))
+						Expect(httpStatusCode).To(Equal(http.StatusBadRequest))
+						Expect(isRetryableSynchronizationError(synchronizationError, httpStatusCode)).To(BeFalse())
+					},
+				)
 			},
 		)
 	},

@@ -27,7 +27,6 @@ deployment should match snapshot (default values):
           labels:
             app.kubernetes.io/component: controller
             app.kubernetes.io/name: dash0-operator
-            dash0.com/cert-digest: dJTiBDRVJUSUZJQ
         spec:
           affinity:
             nodeAffinity:
@@ -119,6 +118,12 @@ deployment should match snapshot (default values):
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.name
+                - name: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
+                  value: dash0-operator-webhook-server-cert
+                - name: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+                  value: dash0-operator-certificates
+                - name: DASH0_CA_BUNDLE_TARGETS
+                  value: MutatingWebhookConfiguration/dash0-operator-injector,MutatingWebhookConfiguration/dash0-operator-operator-configuration-mutating,ValidatingWebhookConfiguration/dash0-operator-operator-configuration-validator,MutatingWebhookConfiguration/dash0-operator-monitoring-mutating,ValidatingWebhookConfiguration/dash0-operator-monitoring-validator,CustomResourceDefinition/dash0monitorings.operator.dash0.com
               image: ghcr.io/dash0hq/operator-controller:0.0.0
               livenessProbe:
                 httpGet:
@@ -156,9 +161,6 @@ deployment should match snapshot (default values):
                 seccompProfile:
                   type: RuntimeDefault
               volumeMounts:
-                - mountPath: /tmp/k8s-webhook-server/serving-certs
-                  name: certificates
-                  readOnly: true
                 - mountPath: /etc/config
                   name: config-volume
                   readOnly: true
@@ -169,10 +171,6 @@ deployment should match snapshot (default values):
           serviceAccountName: dash0-operator-controller
           terminationGracePeriodSeconds: 10
           volumes:
-            - name: certificates
-              secret:
-                defaultMode: 420
-                secretName: dash0-operator-certificates
             - configMap:
                 name: dash0-operator-extra-config
               name: config-volume
@@ -377,7 +375,6 @@ metrics service should match snapshot (default settings):
       selector:
         app.kubernetes.io/component: controller
         app.kubernetes.io/name: dash0-operator
-        dash0.com/cert-digest: dJTiBDRVJUSUZJQ
 monitoring resource CRD should match snapshot:
   1: |
     - name: v1alpha1
@@ -2896,4 +2893,3 @@ webhook service should match snapshot (default settings):
       selector:
         app.kubernetes.io/component: controller
         app.kubernetes.io/name: dash0-operator
-        dash0.com/cert-digest: dJTiBDRVJUSUZJQ

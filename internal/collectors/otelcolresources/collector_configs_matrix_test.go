@@ -144,6 +144,8 @@ func maximalMatrixBaseline() collectorConfigMatrixEntry {
 	// The Signal Control collector is only rendered when the gateway is active, which additionally requires the
 	// Signal Control collector image to be set.
 	entry.config.Images.SignalControlCollectorImage = "dash0-signal-control-collector:1.2.3"
+	// Namespaced exporters can be combined with every other option, including profiling and Signal Control.
+	entry.config.Exporters.Namespaced = matrixNamespacedExporters().Namespaced
 	return entry
 }
 
@@ -510,10 +512,11 @@ func matrixSettings() []matrixSetting {
 		{
 			name: "namespaced-exporters",
 			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				// Only the namespaced exporters are flipped, the default exporters of the baseline are kept.
 				if enabled {
-					e.config.Exporters = matrixNamespacedExporters()
+					e.config.Exporters.Namespaced = matrixNamespacedExporters().Namespaced
 				} else {
-					e.config.Exporters = cmTestSingleDefaultOtlpExporter()
+					e.config.Exporters.Namespaced = make(map[string][]otlpExporter)
 				}
 			},
 		},

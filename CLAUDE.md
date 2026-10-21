@@ -51,7 +51,7 @@ Use 120 characters per line when formatting comments in Go code.
 Build, lint and test tasks in this repository are performed via the Makefile in the root of the repository.
 
 - make build: build the Go code
-- make lint: run all static code analysis checks (Go, Helm, shell scripts).
+- make lint: run all static code analysis checks (Go, Helm, shell scripts, GitHub Actions workflows).
 - make test: run all unit tests (Go, Helm chart unit tests)
     - To only run the Go unit tests, run `make go-unit-tests`.
     - To only run the Helm chart unit tests, run `make helm-unit-tests`.
@@ -64,6 +64,7 @@ Build, lint and test tasks in this repository are performed via the Makefile in 
 After changing Go code, run `make golangci-lint`.
 After changing the Helm chart, run `make helm-chart-lint`.
 After changing or creating bash scripts, run `make shellcheck-lint` to verify they have no issues.
+After changing GitHub Actions workflows, composite actions or `.github/dependabot.yml`, run `make jactionlint`.
 
 ### Changing the Kubernetes Custom Resource Definitions
 

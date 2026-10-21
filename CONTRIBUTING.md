@@ -176,9 +176,9 @@ Moving beyond the quickstart instructions, here are more details on the test scr
   Dash0 monitoring resource to namespace `test-namespace`, and finally an application under monitoring to the namespace
   `test-namespace`. This is a test scenario for instrumenting _new_ workloads at deploy time via the admission webhook.
 * `test-resources/bin/test-scenario-12-component-settings.sh`: Deploys the operator with Signal Control, then sets the
-  component settings via `spec.components` of the Signal Control resource (see `test-resources/component-settings`).
-  Some of them are also set to different values via Helm, which the operator reports with a warning ("overrides the
-  custom Helm value").
+  component settings via `spec.components` of the operator configuration resource and of the Signal Control resource
+  (see `test-resources/component-settings`). Some of them are also set to different values via Helm, which the
+  operator reports with a warning ("overrides the custom Helm value").
 * `test-resources/bin/test-cleanup.sh`: This script removes all resources created by the other scripts. **You should
   always run this script after running any of the scenario scripts, when you are done with your tests, otherwise the
   e2e tests will fail the next time you start them.** Note that all scenario scripts call the cleanup at the beginning,
@@ -230,7 +230,7 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       This is assumed to be "true" by default.
     * `DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM`: Set this to "false" to omit the Helm settings which make the operator
       deploy the Dash0 operator configuration resource (aka auto configuration resource) automatically at startup.
-      This defaults to "true".
+      This defaults to "true", except in test scenario 12, where it is always "false".
     * `DEPLOY_PERSES_DASHBOARD`: Set to "v1alpha2" or "v1alpha1" to deploy a Perses dashboard resource that will be
       synchronized to Dash0 via the Dash0 API. This defaults to "false". Use "true" to deploy the latest version.
     * `DEPLOY_PROMETHEUS_RULE`: Set to "true" to deploy Prometheus rule resource that will be synchronized to Dash0 via
@@ -274,6 +274,7 @@ Moving beyond the quickstart instructions, here are more details on the test scr
           https://docs.aws.amazon.com/eks/latest/userguide/efs-csi.html and
           https://github.com/kubernetes-sigs/aws-efs-csi-driver/tree/master/examples/kubernetes/dynamic_provisioning)
       Take a look at the files in `test-resources/filelog-offset-storage` for details.
+      Test scenario 12 configures the volume via `spec.components` instead of via Helm.
     * `FILELOG_OFFSETS_HOST_PATH_VOLUME`: Use a `hostPath` volume to store filelog offsets, instead of the default
       config map based storage.
     * `INSTRUMENT_WORKLOADS_MODE`: Set this to "all", "created-and-updated" or "none" to control the
