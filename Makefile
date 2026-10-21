@@ -80,7 +80,13 @@ TEST_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
 TEST_APP_DOTNET_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-dotnet-test-app
 TEST_APP_DOTNET_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
 
-TEST_APP_DOTNET_8_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-dotnet-8-test-app
+TEST_APP_DOTNET_6_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-dotnet-6-test-app
+TEST_APP_DOTNET_6_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
+
+TEST_APP_DOTNET_7_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-dotnet-7-test-app
+TEST_APP_DOTNET_7_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
+
+TEST_APP_DOTNET_8_IMAGE_REPOSITORY ?=$(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-dotnet-8-test-app
 TEST_APP_DOTNET_8_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
 
 TEST_APP_JVM_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-jvm-spring-boot-test-app
@@ -419,6 +425,8 @@ all-auxiliary-images: \
 PHONY: test-app-images
 test-app-images: \
   test-app-image-dotnet \
+  test-app-image-dotnet-6 \
+  test-app-image-dotnet-7 \
   test-app-image-dotnet-8 \
   test-app-image-jvm \
   test-app-image-nodejs \
@@ -428,6 +436,14 @@ test-app-images: \
 .PHONY: test-app-image-dotnet
 test-app-image-dotnet: ## Build the .NET test application.
 	@$(call build_container_image,$(TEST_APP_DOTNET_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_IMAGE_TAG),test-resources/dotnet)
+
+.PHONY: test-app-image-dotnet-6
+test-app-image-dotnet-6: ## Build the .NET test application with .NET 6.
+	@$(call build_container_image,$(TEST_APP_DOTNET_6_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_6_IMAGE_TAG),test-resources/dotnet,,--build-arg base_image_build=mcr.microsoft.com/dotnet/sdk:6.0-bookworm-slim --build-arg base_image_run=mcr.microsoft.com/dotnet/aspnet:6.0-bookworm-slim)
+
+.PHONY: test-app-image-dotnet-7
+test-app-image-dotnet-7: ## Build the .NET test application with .NET 7.
+	@$(call build_container_image,$(TEST_APP_DOTNET_7_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_7_IMAGE_TAG),test-resources/dotnet,,--build-arg base_image_build=mcr.microsoft.com/dotnet/sdk:7.0-bookworm-slim --build-arg base_image_run=mcr.microsoft.com/dotnet/aspnet:7.0-bookworm-slim)
 
 .PHONY: test-app-image-dotnet-8
 test-app-image-dotnet-8: ## Build the .NET test application with .NET 8.
@@ -486,6 +502,8 @@ push-all-auxiliary-images: \
 PHONY: push-test-app-images
 push-test-app-images: \
   push-test-app-image-dotnet \
+  push-test-app-image-dotnet-6 \
+  push-test-app-image-dotnet-7 \
   push-test-app-image-dotnet-8 \
   push-test-app-image-jvm \
   push-test-app-image-nodejs \
@@ -495,6 +513,14 @@ push-test-app-images: \
 .PHONY: push-test-app-image-dotnet
 push-test-app-image-dotnet: ## Push the .NET test app image.
 	@$(call push_container_image,$(TEST_APP_DOTNET_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_IMAGE_TAG))
+
+.PHONY: push-test-app-image-dotnet-6
+push-test-app-image-dotnet-6: ## Push the .NET 6 test app image.
+	@$(call push_container_image,$(TEST_APP_DOTNET_6_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_6_IMAGE_TAG))
+
+.PHONY: push-test-app-image-dotnet-7
+push-test-app-image-dotnet-7: ## Push the .NET 7 test app image.
+	@$(call push_container_image,$(TEST_APP_DOTNET_7_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_7_IMAGE_TAG))
 
 .PHONY: push-test-app-image-dotnet-8
 push-test-app-image-dotnet-8: ## Push the .NET 8 test app image.
