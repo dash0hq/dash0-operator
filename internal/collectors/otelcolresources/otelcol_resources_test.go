@@ -26,6 +26,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/syntheticsworker/swresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/resources"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -172,7 +173,12 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(patch.DefaultAnnotator.SetLastAppliedAnnotation(existing)).To(Succeed())
 			Expect(k8sClient.Create(ctx, existing)).To(Succeed())
 
-			isNew, isChanged, err := oTelColResourceManager.createOrUpdateResource(ctx, testResource.DeepCopy(), logger)
+			desired := testResource.DeepCopy()
+			Expect(resources.SetOwnerReference(
+				OperatorManagerDeployment, nil, k8sClient.Scheme(), desired, logger,
+			)).To(Succeed())
+
+			isNew, isChanged, err := oTelColResourceManager.createOrUpdateResource(ctx, desired, logger)
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(isNew).To(BeFalse())

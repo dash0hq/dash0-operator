@@ -90,49 +90,34 @@ func CreateEmptyReceiverFor(desiredResource client.Object) (client.Object, error
 	return runtimeObject.(client.Object), nil
 }
 
-// SetClusterScopedOwnerReference makes the given operator configuration resource the owner of the given object, if the
-// object is cluster-scoped. Cluster-scoped objects cannot be owned by the (namespace-scoped) operator manager
-// deployment, see SetOwnerReference. Without an owner, they would never be garbage collected, e.g. when the operator is
-// uninstalled.
-func SetClusterScopedOwnerReference(
+// SetOwnerReference sets the owner reference of the given object, depending on its scope. Namespaced objects are owned
+// by the operator manager deployment. Cluster-scoped objects cannot have a namespace-scoped owner, so they are owned by
+// the (cluster-scoped) operator configuration resource instead; without an owner they would never be garbage collected,
+// e.g. when the operator is uninstalled. If the object is cluster-scoped and there is no operator configuration
+// resource, no owner reference is set.
+func SetOwnerReference(
+	operatorManagerDeployment *appsv1.Deployment,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	scheme *runtime.Scheme,
 	object client.Object,
 	logger logd.Logger,
 ) error {
-	if object.GetNamespace() != "" || operatorConfigurationResource == nil {
-		return nil
-	}
-	if err := controllerutil.SetOwnerReference(
-		operatorConfigurationResource,
-		object,
-		scheme,
-		controllerutil.WithBlockOwnerDeletion(true),
-	); err != nil {
-		logger.Error(err, "cannot set owner reference on cluster-scoped object")
-		return err
-	}
-	return nil
-}
-
-func SetOwnerReference(
-	operatorManagerDeployment *appsv1.Deployment,
-	scheme *runtime.Scheme,
-	object client.Object,
-	logger logd.Logger,
-) error {
-	if object.GetNamespace() == "" {
-		// cluster scoped resources like ClusterRole and ClusterRoleBinding cannot have a namespace-scoped owner.
-		return nil
-	}
-	if err := controllerutil.SetOwnerReference(
-		&appsv1.Deployment{
+	var owner client.Object
+	if object.GetNamespace() != "" {
+		owner = &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: operatorManagerDeployment.Namespace,
 				Name:      operatorManagerDeployment.Name,
 				UID:       operatorManagerDeployment.UID,
 			},
-		},
+		}
+	} else if operatorConfigurationResource != nil {
+		owner = operatorConfigurationResource
+	} else {
+		return nil
+	}
+	if err := controllerutil.SetOwnerReference(
+		owner,
 		object,
 		scheme,
 		controllerutil.WithBlockOwnerDeletion(true),

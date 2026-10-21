@@ -248,8 +248,8 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	resourcesHaveBeenUpdated := false
 	for _, wrapper := range desiredState {
 		desiredResource := wrapper.object
-		if err = resources.SetClusterScopedOwnerReference(
-			operatorConfigurationResource, m.scheme, desiredResource, logger,
+		if err = resources.SetOwnerReference(
+			m.operatorManagerDeployment, operatorConfigurationResource, m.scheme, desiredResource, logger,
 		); err != nil {
 			return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err
 		}
@@ -304,8 +304,8 @@ func (m *OTelColResourceManager) createOrUpdateResource(
 	// been created, while the API server and the built-in controllers are still writing status onto them. Retry with
 	// a fresh read instead of failing the whole reconcile.
 	//
-	// Every attempt starts from an untouched copy of the desired object, because updateResource modifies it (owner
-	// reference, self-reference UID environment variables, the last-applied annotation and the resource version).
+	// Every attempt starts from an untouched copy of the desired object, because updateResource modifies it
+	// (self-reference UID environment variables, the last-applied annotation and the resource version).
 	pristineDesiredResource := desiredResource.DeepCopyObject().(client.Object)
 	hasChanged := false
 	err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
@@ -332,9 +332,6 @@ func (m *OTelColResourceManager) createResource(
 	desiredResource client.Object,
 	logger logd.Logger,
 ) error {
-	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
-		return err
-	}
 	if err := patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
 		return err
 	}
@@ -356,9 +353,6 @@ func (m *OTelColResourceManager) updateResource(
 	desiredResource client.Object,
 	logger logd.Logger,
 ) (bool, error) {
-	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
-		return false, err
-	}
 	// This will change the collector daemonset and collector deployment one more time after it has been created
 	// initially, by setting their own UID as an environment variable in all containers. Obviously, this cannot be done
 	// when creating the daemonset/deployment. The next reconcile cycle after creating the resources will set the UID
