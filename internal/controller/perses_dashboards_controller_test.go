@@ -1382,7 +1382,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 						validatedApiConfigs: []ValidatedApiConfigAndToken{{}},
 					}
 					resourceToRequestsResult :=
-						persesDashboardReconciler.MapResourceToHttpRequests(
+						persesDashboardReconciler.MapResourceToApiCalls(
 							preconditionValidationResult,
 							apiConfig,
 							upsertAction,
@@ -1606,7 +1606,7 @@ spec:
 `), &dashboard)).To(Succeed())
 					apiConfig := ApiConfig{Endpoint: ApiEndpointTest, Dataset: DatasetCustomTest, Token: AuthorizationTokenTest}
 					resourceToRequestsResult :=
-						persesDashboardReconciler.MapResourceToHttpRequests(
+						persesDashboardReconciler.MapResourceToApiCalls(
 							&preconditionValidationResult{
 								k8sName:      "perses-dashboard",
 								k8sNamespace: TestNamespaceName,

@@ -143,13 +143,13 @@ type ThirdPartyResourceReconciler interface {
 	// the Kubernetes resource described by the precondition validation result.
 	IsOriginOfResource(string, *preconditionValidationResult, ApiConfig) bool
 
-	// CreateDeleteRequests produces an HTTP DELETE requests for the resources that still exist in Dash0, but should
+	// CreateDeleteRequests produces DELETE requests for the resources that still exist in Dash0, but should
 	// not. It does so by comparing the list of IDs of objects that exist in the Dash0 backend with the list
 	// of IDs found in a given Kubernetes resource. This mechanism is only used for resource types where one Kubernetes
 	// resource (say, a PrometheusRule) is potentially associated with multiple Dash0 api objects (multiple checks).
 	// Controllers which manage objects with a one-to-one relation (like Perses dashboards, synthetic checks, view)
-	// should return nil, nil.
-	CreateDeleteRequests(ApiConfig, []string, []string, logd.Logger) ([]WrappedApiRequest, map[string]string)
+	// should return nil.
+	CreateDeleteRequests(ApiConfig, []string, []string) []WrappedApiRequest
 
 	// UpdateSynchronizationResultsInDash0MonitoringStatus Modifies the status of the provided Dash0Monitoring resource
 	// to reflect the results of the synchronization operation for one third-party Kubernetes resource.

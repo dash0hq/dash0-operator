@@ -348,7 +348,7 @@ func (r *SyntheticCheckReconciler) Reconcile(ctx context.Context, req reconcile.
 	return reconcile.Result{}, nil
 }
 
-func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
+func (r *SyntheticCheckReconciler) MapResourceToApiCalls(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,
@@ -456,23 +456,6 @@ func (r *SyntheticCheckReconciler) renderSyntheticCheckUrl(
 		url.PathEscape(syntheticCheckOrigin),
 		url.QueryEscape(dataset),
 	), syntheticCheckOrigin
-}
-
-func (r *SyntheticCheckReconciler) ExtractIdFromResponseBody(
-	responseBytes []byte,
-	logger logd.Logger,
-) (id string, err error) {
-	objectWithMetadata := Dash0ApiObjectWithMetadata{}
-	if err := json.Unmarshal(responseBytes, &objectWithMetadata); err != nil {
-		logger.Error(
-			err,
-			"cannot parse response, will not extract the synchronized object's ID",
-			"response",
-			string(responseBytes),
-		)
-		return "", err
-	}
-	return objectWithMetadata.Metadata.Labels.Id, nil
 }
 
 func (r *SyntheticCheckReconciler) WriteSynchronizationResultToSynchronizedResource(

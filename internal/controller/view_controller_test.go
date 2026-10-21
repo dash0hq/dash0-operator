@@ -957,7 +957,7 @@ var _ = Describe(
 							},
 						}
 						resourceToRequestsResult :=
-							viewReconciler.MapResourceToHttpRequests(preconditionValidationResult, apiConfig, upsertAction, logger)
+							viewReconciler.MapResourceToApiCalls(preconditionValidationResult, apiConfig, upsertAction, logger)
 						Expect(resourceToRequestsResult.TotalProcessed()).To(Equal(1))
 						Expect(resourceToRequestsResult.OriginsInResource).To(BeNil())
 						Expect(resourceToRequestsResult.ValidationIssues).To(BeNil())
@@ -1061,7 +1061,7 @@ spec:
 							Token:    AuthorizationTokenTest,
 						}
 						resourceToRequestsResult :=
-							viewReconciler.MapResourceToHttpRequests(
+							viewReconciler.MapResourceToApiCalls(
 								&preconditionValidationResult{
 									k8sName:      "dash0-view",
 									k8sNamespace: TestNamespaceName,
