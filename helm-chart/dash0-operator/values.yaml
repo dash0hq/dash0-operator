@@ -199,10 +199,11 @@ operator:
   profilingEnabled: false
 
   # An opt-out for telemetry collection. If set to false, the operator will not deploy any OpenTelemetry collectors
-  # to the cluster (except in SCE-only mode, see below), and no telemetry will be collected. This is useful if you want to use the operator only for
-  # infrastructure-as-code purposes (dashboards, check rules, etc.) without having it collect telemetry. Setting this to
-  # false also implicitly disables all other telemetry-collection related settings (see above), except for
-  # self-monitoring telemetry from the operator (which can be enabled or disabled independently).
+  # to the cluster (except in SCE-only mode, see below), and no telemetry will be collected. This is useful if you want
+  # to use the operator only for infrastructure-as-code purposes (dashboards, check rules, etc.) without having it
+  # collect telemetry. Setting this to false also implicitly disables all other telemetry-collection related settings
+  # (see above), except for self-monitoring telemetry from the operator (which can be enabled or disabled
+  # independently).
   #
   # If this is set to false and operator.signalControl.enabled is set to true, the operator runs in SCE-only mode: it
   # only deploys the Signal Control collector and the Edge Proxy, see operator.signalControl.enabled.

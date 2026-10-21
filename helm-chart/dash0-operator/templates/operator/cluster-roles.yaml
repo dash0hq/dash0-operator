@@ -476,6 +476,7 @@ rules:
   - patch
   - update
   - watch
+{{- if .Values.operator.telemetryCollectionEnabled }}
 
 # Permissions required due to the fact that the operator needs to create dedicated service accounts/cluster roles/
 # cluster role bindings for the OTel collector daemonset/deployment and give it a set of permissions; which it can only
@@ -635,11 +636,7 @@ rules:
   - get
   - list
   - watch
-{{- /*
-The target allocator resolves secrets referenced by Prometheus CRDs in any namespace. It is not deployed in SCE-only
-mode.
-*/}}
-{{- if .Values.operator.telemetryCollectionEnabled }}
+# The target allocator resolves secrets referenced by Prometheus CRDs in any namespace.
 - apiGroups:
   - ""
   resources:
@@ -648,11 +645,31 @@ mode.
   - get
   - list
   - watch
-{{- end }}
 - nonResourceURLs:
   - /metrics
   verbs:
   - get
+{{- else }}
+
+{{- /*
+In SCE-only mode, the operator creates no service accounts/cluster roles for collectors or the target allocator, so it
+does not need the permissions above. It lists pods to warn about workloads that are still instrumented, and the
+monitoring validation webhook reads namespaces via the cache if spec.autoMonitorNamespaces is enabled.
+*/}}
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - list
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - list
+  - watch
+{{- end }}
 
 {{ end }}
 
