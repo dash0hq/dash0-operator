@@ -108,14 +108,19 @@ func (m *TargetAllocatorResourceManager) createOrUpdateResource(
 			return false, false, err
 		}
 		return true, false, nil
-	} else {
-		// object might need to be updated
-		hasChanged, err := m.updateResource(ctx, existingResource, desiredResource, logger)
-		if err != nil {
-			return false, false, err
-		}
-		return false, hasChanged, err
 	}
+	hasChanged, err := resources.UpdateWithRetryOnConflict(
+		ctx,
+		m.Client,
+		desiredResource,
+		func(existingResource client.Object, desiredResource client.Object) (bool, error) {
+			return m.updateResource(ctx, existingResource, desiredResource, logger)
+		},
+	)
+	if err != nil {
+		return false, false, err
+	}
+	return false, hasChanged, nil
 }
 
 func (m *TargetAllocatorResourceManager) createResource(
@@ -164,6 +169,9 @@ func (m *TargetAllocatorResourceManager) updateResource(
 	if err = patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
 		return false, err
 	}
+	resources.PreserveKubectlRestartedAtAnnotation(existingResource, desiredResource, logger)
+	// Carry over the live resource version, so that a concurrent modification results in a conflict and a retry.
+	desiredResource.SetResourceVersion(existingResource.GetResourceVersion())
 
 	err = m.Update(ctx, desiredResource)
 	if err != nil {

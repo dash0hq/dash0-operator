@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# Helm values for test-scenario-12-component-settings.sh. They differ from the values in spec.components, except for
+# daemonSetProbes, which is set to its default and hence does not count as a conflict.
+operator:
+  collectors:
+    daemonSetPodLabels:
+      dash0.com/component-settings-test: helm
+    daemonSetTolerations:
+      - key: dash0.com/component-settings-test
+        operator: Equal
+        value: helm
+        effect: NoSchedule
+    daemonSetProbes:
+      readiness:
+        periodSeconds: 2
+    deploymentPriorityClassName: d0-operator-manager-prio
+    deploymentProbes:
+      liveness:
+        failureThreshold: 30
+    signalControlCollectorReplicas: 3
+    signalControlCollectorAnnotations:
+      dash0.com/component-settings-test: helm
+  targetAllocator:
+    allowInsecureAuthSecrets: true
+    podAnnotations:
+      dash0.com/component-settings-test: helm
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: dash0.com/enable
+                operator: NotIn
+                values: ["false"]
+              - key: kubernetes.io/os
+                operator: In
+                values: ["linux"]
+              - key: kubernetes.io/hostname
+                operator: Exists
+  signalControl:
+    edgeProxy:
+      replicas: 3
+      labels:
+        dash0.com/component-settings-test: helm

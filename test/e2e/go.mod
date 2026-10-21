@@ -1,6 +1,6 @@
 module github.com/dash0hq/dash0-operator/test/e2e
 
-go 1.27.1
+go 1.27.2
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
@@ -8,7 +8,7 @@ require (
 	github.com/dash0hq/dash0-operator/test/e2e/pkg/shared v0.0.0-00010101000000-000000000000
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
-	github.com/onsi/ginkgo/v2 v2.33.0
+	github.com/onsi/ginkgo/v2 v2.33.1
 	github.com/onsi/gomega v1.44.0
 	k8s.io/api v0.37.1
 	k8s.io/apimachinery v0.37.1
@@ -36,7 +36,7 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cisco-open/k8s-objectmatcher v1.10.0 // indirect
-	github.com/dash0hq/dash0-api-client-go v1.22.0 // indirect
+	github.com/dash0hq/dash0-api-client-go v1.25.0 // indirect
 	github.com/dash0hq/dash0-operator/images/pkg/common v0.0.0-00010101000000-000000000000 // indirect
 	github.com/dash0hq/dash0-operator/images/pkg/nodeuid v0.0.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -89,7 +89,7 @@ require (
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/knadh/koanf/maps v0.1.3 // indirect
 	github.com/knadh/koanf/providers/confmap v1.0.1 // indirect
-	github.com/knadh/koanf/v2 v2.3.6 // indirect
+	github.com/knadh/koanf/v2 v2.3.8 // indirect
 	github.com/labstack/echo/v4 v4.15.4 // indirect
 	github.com/labstack/gommon v0.5.0 // indirect
 	github.com/lightstep/go-expohisto v1.0.0 // indirect
@@ -138,13 +138,13 @@ require (
 	github.com/zitadel/schema v1.3.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/collector/client v1.67.0 // indirect
-	go.opentelemetry.io/collector/component v1.68.0 // indirect
-	go.opentelemetry.io/collector/confmap v1.68.0 // indirect
+	go.opentelemetry.io/collector/component v1.69.0 // indirect
+	go.opentelemetry.io/collector/confmap v1.69.0 // indirect
 	go.opentelemetry.io/collector/consumer v1.67.0 // indirect
 	go.opentelemetry.io/collector/consumer/xconsumer v0.161.0 // indirect
-	go.opentelemetry.io/collector/featuregate v1.68.0 // indirect
+	go.opentelemetry.io/collector/featuregate v1.69.0 // indirect
 	go.opentelemetry.io/collector/internal/componentalias v0.161.0 // indirect
-	go.opentelemetry.io/collector/pdata v1.68.0 // indirect
+	go.opentelemetry.io/collector/pdata v1.69.0 // indirect
 	go.opentelemetry.io/collector/pdata/pprofile v0.161.0 // indirect
 	go.opentelemetry.io/collector/pdata/xpdata v0.161.0 // indirect
 	go.opentelemetry.io/collector/pipeline v1.67.0 // indirect
@@ -173,7 +173,7 @@ require (
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/mod v0.41.0 // indirect
-	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect

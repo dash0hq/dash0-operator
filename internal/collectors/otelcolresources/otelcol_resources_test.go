@@ -5,7 +5,6 @@ package otelcolresources
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -13,10 +12,8 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -121,8 +118,9 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 			// The operator reads the object it is about to update through the controller-runtime cache, which lags
 			// behind the API server, so the resource version it sends can already be stale. This simulates that: the
-			// first update is rejected with a conflict, the retry has to re-read and succeed.
-			conflictingClient := &conflictOnFirstUpdateClient{Client: k8sClient}
+			// object is modified concurrently and the first update is rejected with a conflict, the retry has to
+			// re-read and succeed.
+			conflictingClient := &ConflictOnFirstUpdateClient{Client: k8sClient}
 			managerWithConflicts := NewOTelColResourceManager(
 				conflictingClient,
 				k8sClient.Scheme(),
@@ -141,8 +139,60 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(err).ToNot(HaveOccurred())
 			Expect(isNew).To(BeFalse())
 			Expect(isChanged).To(BeTrue())
-			Expect(conflictingClient.updateCalls).To(Equal(2), "expected exactly one retry after the conflict")
+			Expect(conflictingClient.UpdateCalls).To(Equal(2), "expected exactly one retry after the conflict")
 			verifyObject(ctx, updated)
+		})
+
+		It("should keep a kubectl rollout restart that happens between reading and updating a workload", func() {
+			labels := map[string]string{"app": "restart-race-test"}
+			desired := &appsv1.Deployment{
+				TypeMeta:   metav1.TypeMeta{Kind: "Deployment", APIVersion: "apps/v1"},
+				ObjectMeta: metav1.ObjectMeta{Name: "restart-race-test", Namespace: OperatorNamespace},
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{MatchLabels: labels},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{Labels: labels},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{{Name: "test", Image: "test-image:1"}},
+						},
+					},
+				},
+			}
+			Expect(oTelColResourceManager.createResource(ctx, desired.DeepCopy(), logger)).To(Succeed())
+			DeferCleanup(func() {
+				Expect(k8sClient.Delete(ctx, desired.DeepCopy())).To(Succeed())
+			})
+
+			conflictingClient := &ConflictOnFirstUpdateClient{
+				Client: k8sClient,
+				ModifyStoredObject: func(storedObject client.Object) {
+					SimulateKubectlRolloutRestart(&storedObject.(*appsv1.Deployment).Spec.Template)
+				},
+			}
+			managerWithConflicts := NewOTelColResourceManager(
+				conflictingClient,
+				k8sClient.Scheme(),
+				OperatorManagerDeployment,
+				util.CollectorConfig{
+					Images:                  TestImages,
+					OperatorNamespace:       OperatorNamespace,
+					OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
+				},
+			)
+
+			updated := desired.DeepCopy()
+			updated.Spec.Template.Spec.Containers[0].Image = "test-image:2"
+			isNew, isChanged, err := managerWithConflicts.createOrUpdateResource(ctx, updated, logger)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(isNew).To(BeFalse())
+			Expect(isChanged).To(BeTrue())
+			Expect(conflictingClient.UpdateCalls).To(Equal(2), "expected exactly one retry after the conflict")
+			reconciled := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(desired), reconciled)).To(Succeed())
+			Expect(reconciled.Spec.Template.Spec.Containers[0].Image).To(Equal("test-image:2"))
+			Expect(reconciled.Spec.Template.Annotations).To(
+				HaveKeyWithValue(KubectlRestartedAtAnnotationTest, KubectlRestartedAtTest))
 		})
 
 		It("should report that nothing has changed for a single object", func() {
@@ -708,6 +758,71 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace).Spec.Template.Spec.Containers[0].Resources
 			Expect(collectorContainerResources.Limits.Memory().Equal(changedMemory)).To(BeTrue())
 			Expect(collectorContainerResources.Requests.Memory().Equal(changedMemory)).To(BeTrue())
+		})
+	})
+
+	Context("when the collector workloads have been restarted via kubectl rollout restart", func() {
+		It("should keep the restart annotation, also when applying changed settings", func() {
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
+			createOrUpdate := func(extraConfig util.ExtraConfig) bool {
+				resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
+					oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+						ctx,
+						extraConfig,
+						operatorConfiguration,
+						nil,
+						nil,
+						logger,
+					)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(resourcesHaveBeenCreated).To(BeFalse())
+				return resourcesHaveBeenUpdated
+			}
+			verifyRestartAnnotation := func() {
+				GinkgoHelper()
+				Expect(GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace).Spec.Template.Annotations).To(
+					HaveKeyWithValue(KubectlRestartedAtAnnotationTest, KubectlRestartedAtTest))
+				Expect(GetOTelColDeployment(ctx, k8sClient, OperatorNamespace).Spec.Template.Annotations).To(
+					HaveKeyWithValue(KubectlRestartedAtAnnotationTest, KubectlRestartedAtTest))
+			}
+
+			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx,
+				util.ExtraConfigDefaults,
+				operatorConfiguration,
+				nil,
+				nil,
+				logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			// adds the self-reference UID env vars
+			Expect(createOrUpdate(util.ExtraConfigDefaults)).To(BeTrue())
+
+			daemonSet := GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace)
+			SimulateKubectlRolloutRestart(&daemonSet.Spec.Template)
+			Expect(k8sClient.Update(ctx, daemonSet)).To(Succeed())
+			deployment := GetOTelColDeployment(ctx, k8sClient, OperatorNamespace)
+			SimulateKubectlRolloutRestart(&deployment.Spec.Template)
+			Expect(k8sClient.Update(ctx, deployment)).To(Succeed())
+
+			Expect(createOrUpdate(util.ExtraConfigDefaults)).To(BeFalse())
+			verifyRestartAnnotation()
+
+			changedMemory := resource.MustParse("1Gi")
+			extraConfig := util.ExtraConfigDefaults
+			extraConfig.CollectorDaemonSetCollectorContainerResources = util.ResourceRequirementsWithGoMemLimit{
+				Limits:   corev1.ResourceList{corev1.ResourceMemory: changedMemory},
+				Requests: corev1.ResourceList{corev1.ResourceMemory: changedMemory},
+			}
+			extraConfig.CollectorDeploymentCollectorContainerResources = extraConfig.CollectorDaemonSetCollectorContainerResources
+			Expect(createOrUpdate(extraConfig)).To(BeTrue())
+			Expect(GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace).Spec.Template.Spec.Containers[0].Resources.
+				Limits.Memory().Equal(changedMemory)).To(BeTrue())
+			Expect(GetOTelColDeployment(ctx, k8sClient, OperatorNamespace).Spec.Template.Spec.Containers[0].Resources.
+				Limits.Memory().Equal(changedMemory)).To(BeTrue())
+			verifyRestartAnnotation()
+
+			Expect(createOrUpdate(extraConfig)).To(BeFalse())
 		})
 	})
 
@@ -1641,27 +1756,4 @@ func verifyObject(ctx context.Context, testObject *corev1.ConfigMap) {
 	Expect(object.Namespace).To(Equal(testObject.Namespace))
 	Expect(object.Labels).To(Equal(testObject.Labels))
 	Expect(object.Data).To(Equal(testObject.Data))
-}
-
-// conflictOnFirstUpdateClient rejects the first Update with a conflict error and delegates everything else, to
-// exercise the retry in createOrUpdateResource.
-type conflictOnFirstUpdateClient struct {
-	client.Client
-	updateCalls int
-}
-
-func (c *conflictOnFirstUpdateClient) Update(
-	ctx context.Context,
-	obj client.Object,
-	opts ...client.UpdateOption,
-) error {
-	c.updateCalls++
-	if c.updateCalls == 1 {
-		return apierrors.NewConflict(
-			schema.GroupResource{Resource: "configmaps"},
-			obj.GetName(),
-			errors.New("the object has been modified; please apply your changes to the latest version and try again"),
-		)
-	}
-	return c.Client.Update(ctx, obj, opts...)
 }

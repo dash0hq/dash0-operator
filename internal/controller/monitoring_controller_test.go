@@ -109,6 +109,7 @@ var _ = Describe(
 					k8sClient,
 					nodeMetadataClient,
 					util.ExtraConfigDefaults,
+					util.ExtraConfigDefaults,
 					false,
 					false,
 					oTelColResourceManager,
@@ -127,6 +128,7 @@ var _ = Describe(
 				targetAllocatorManager := targetallocator.NewTargetAllocatorManager(
 					k8sClient,
 					clientset,
+					util.ExtraConfigDefaults,
 					util.ExtraConfigDefaults,
 					false,
 					targetAllocatorResourceManager,

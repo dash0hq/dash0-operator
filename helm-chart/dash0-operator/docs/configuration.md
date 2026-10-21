@@ -670,6 +670,10 @@ The override supports both the export of telemetry and the sync of resources, li
 Note: The operator always expects default export and API-sync settings via the Dash0 operator configuration, even when
 namespace-specific overrides are used.
 
+Note: Namespace-specific exports do not apply to profiling data. Profiles are always sent to the default export, because
+the routing connector of the OpenTelemetry collector, which the operator uses for namespace-specific exports, does not
+support profiles. See [Profiling](profiling.md#enabling-profiling-support).
+
 ### Automatic Namespace Monitoring
 
 By default, a Dash0Monitoring resource has to be added to each namespace that you want to monitor (see

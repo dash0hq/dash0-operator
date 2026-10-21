@@ -101,6 +101,19 @@ type Dash0SignalControlSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	ControlPlaneApiEndpoint string `json:"controlPlaneApiEndpoint,omitempty"`
+
+	// Settings for the Signal Control workloads the operator manages. Every setting in this section is optional. A setting
+	// that is absent keeps the value provided via the Helm chart. A setting that is present replaces the Helm value, and
+	// the fields it leaves out take the defaults of the Helm chart (see its values.yaml), not the values provided via
+	// Helm: probes are merged with the default probes per field, and the required and the preferred node affinity each
+	// replace their default. An empty object (e.g. probes: {}, nodeAffinity: {}) therefore means the defaults. Empty
+	// labels, annotations, podLabels, podAnnotations, tolerations and sysctls and an empty priorityClassName count as
+	// absent. A setting that Kubernetes would reject in the pod template of the workload is rejected. A setting that
+	// replaces a custom Helm value with a different one is reported as a warning in the operator log, and as an admission
+	// warning when spec.components is created or changed.
+	//
+	// +kubebuilder:validation:Optional
+	Components *SignalControlComponents `json:"components,omitempty"`
 }
 
 // EdgeProxyConfig configures the Edge Proxy (Decision Maker proxy).

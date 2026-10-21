@@ -57,7 +57,8 @@ func newManager() *Agent0ConnectorManager {
 
 func newManagerWithExtraConfig(extraConfig util.ExtraConfig) *Agent0ConnectorManager {
 	eventRecorder = events.NewFakeRecorder(10)
-	return NewAgent0ConnectorManager(k8sClient, extraConfig, false, newResourceManager(), eventRecorder)
+	return NewAgent0ConnectorManager(
+		k8sClient, extraConfig, util.ExtraConfigDefaults, false, newResourceManager(), eventRecorder)
 }
 
 // recordedEvents drains the events the manager under test has queued so far.
@@ -226,6 +227,35 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 			deployment)).To(Succeed())
 		Expect(deployment.Spec.Template.Spec.Tolerations).To(HaveLen(1))
 		Expect(deployment.Spec.Template.Spec.Tolerations[0].Key).To(Equal("agent0-connector-key"))
+	})
+
+	It("applies the component settings of the operator configuration resource instead of the Helm values", func() {
+		spec := OperatorConfigurationResourceDefaultSpec
+		spec.Components = &dash0v1alpha1.OperatorConfigurationComponents{
+			Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{
+				WorkloadSettings: dash0v1alpha1.WorkloadSettings{
+					Tolerations: []corev1.Toleration{
+						{Key: "resource-key", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule},
+					},
+				},
+			},
+		}
+		CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, spec)
+		manager := newManagerWithExtraConfig(util.ExtraConfig{
+			Agent0ConnectorTolerations: []corev1.Toleration{
+				{Key: "helm-key", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule},
+			},
+		})
+
+		_, err := manager.ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
+		Expect(err).ToNot(HaveOccurred())
+
+		deployment := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx,
+			client.ObjectKey{Namespace: OperatorNamespace, Name: a0cresources.DeploymentName(agent0ConnectorTestNamePrefix)},
+			deployment)).To(Succeed())
+		Expect(deployment.Spec.Template.Spec.Tolerations).To(HaveLen(1))
+		Expect(deployment.Spec.Template.Spec.Tolerations[0].Key).To(Equal("resource-key"))
 	})
 
 	It("does not report an error when the agent0-connector is misconfigured", func() {

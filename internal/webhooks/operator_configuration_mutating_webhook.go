@@ -74,6 +74,9 @@ func (h *OperatorConfigurationMutatingWebhookHandler) Handle(ctx context.Context
 	// api/operator/v1alpha1/operator_configuration_types.go have already been applied by the time this webhook
 	// is called.
 	// See https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#admission-control-phases.
+	if isReachabilityCheck(request) {
+		return admission.Allowed("")
+	}
 	logger := logd.FromContext(ctx)
 	operatorConfigurationResource := &dash0v1alpha1.Dash0OperatorConfiguration{}
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, operatorConfigurationResource); err != nil {

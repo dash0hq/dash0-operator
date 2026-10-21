@@ -11,9 +11,16 @@ if [ -f /etc/otelcol/conf-compressed/config.yaml ]; then
 fi
 
 # The GKE Autopilot WorkloadAllowlist of the cluster metrics collector permits no --feature-gates argument, so the
-# operator requests this particular feature gate via an environment variable there.
+# operator requests these particular feature gates via environment variables there.
+feature_gates=""
 if [ "${DASH0_GKE_AUTOPILOT_WORKAROUND_EMIT_V0_K8S_CONVENTIONS:-}" = "true" ]; then
-  set -- "$@" "--feature-gates=-processor.k8sattributes.DontEmitV0K8sConventions"
+  feature_gates="-processor.k8sattributes.DontEmitV0K8sConventions"
+fi
+if [ "${DASH0_GKE_AUTOPILOT_WORKAROUND_SHARE_K8S_ATTRIBUTES_PROCESSOR:-}" = "true" ]; then
+  feature_gates="${feature_gates:+${feature_gates},}processor.k8sattributes.ShareProcessorBetweenPipelines"
+fi
+if [ -n "${feature_gates}" ]; then
+  set -- "$@" "--feature-gates=${feature_gates}"
 fi
 
 ./otelcol "$@" &

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 
 	"go.uber.org/multierr"
 	admissionv1 "k8s.io/api/admission/v1"
@@ -17,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
@@ -72,20 +74,39 @@ type OperatorConfigurationValidationWebhookHandler struct {
 	telemetryCollectionEnabledViaHelm bool
 	agent0ConnectorEnabledViaHelm     bool
 	syntheticsWorkerEnabledViaHelm    bool
+	extraConfig                       atomic.Pointer[util.ExtraConfig]
+	extraConfigDefaults               util.ExtraConfig
 }
 
+// NewOperatorConfigurationValidationWebhookHandler creates the validation webhook handler for operator configuration
+// resources. The extra configuration and its defaults are used to warn about settings in spec.components that override
+// a value provided via the Helm chart.
 func NewOperatorConfigurationValidationWebhookHandler(
 	k8sClient client.Client,
 	telemetryCollectionEnabledViaHelm bool,
 	agent0ConnectorEnabledViaHelm bool,
 	syntheticsWorkerEnabledViaHelm bool,
+	extraConfig util.ExtraConfig,
+	extraConfigDefaults util.ExtraConfig,
 ) *OperatorConfigurationValidationWebhookHandler {
-	return &OperatorConfigurationValidationWebhookHandler{
+	h := &OperatorConfigurationValidationWebhookHandler{
 		Client:                            k8sClient,
 		telemetryCollectionEnabledViaHelm: telemetryCollectionEnabledViaHelm,
 		agent0ConnectorEnabledViaHelm:     agent0ConnectorEnabledViaHelm,
 		syntheticsWorkerEnabledViaHelm:    syntheticsWorkerEnabledViaHelm,
+		extraConfigDefaults:               extraConfigDefaults,
 	}
+	h.extraConfig.Store(&extraConfig)
+	return h
+}
+
+// UpdateExtraConfig stores the updated extra config map, which spec.components is checked against.
+func (h *OperatorConfigurationValidationWebhookHandler) UpdateExtraConfig(
+	_ context.Context,
+	extraConfig util.ExtraConfig,
+	_ logd.Logger,
+) {
+	h.extraConfig.Store(&extraConfig)
 }
 
 func (h *OperatorConfigurationValidationWebhookHandler) SetupWebhookWithManager(mgr ctrl.Manager) error {
@@ -106,6 +127,9 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	// Note: The mutating webhook is called before the validating webhook, so we can assume the resource has already
 	// been normalized by the mutating webhook.
 	// See https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#admission-control-phases.
+	if isReachabilityCheck(request) {
+		return admission.Allowed("")
+	}
 	logger := logd.FromContext(ctx)
 	operatorConfigurationResource := &dash0v1alpha1.Dash0OperatorConfiguration{}
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, operatorConfigurationResource); err != nil {
@@ -219,7 +243,35 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		}
 	}
 
-	return admission.Allowed("")
+	return h.validateComponentSettings(request, spec, logger)
+}
+
+// validateComponentSettings checks spec.components, unless an UPDATE leaves it unchanged.
+func (h *OperatorConfigurationValidationWebhookHandler) validateComponentSettings(
+	request admission.Request,
+	spec dash0v1alpha1.Dash0OperatorConfigurationSpec,
+	logger logd.Logger,
+) admission.Response {
+	unchanged, errorResponse := componentSettingsAreUnchanged(
+		request,
+		&dash0v1alpha1.Dash0OperatorConfiguration{},
+		func(oldResource *dash0v1alpha1.Dash0OperatorConfiguration) *dash0v1alpha1.OperatorConfigurationComponents {
+			return oldResource.Spec.Components
+		},
+		spec.Components,
+		logger,
+	)
+	if errorResponse != nil {
+		return *errorResponse
+	}
+	if unchanged {
+		return admission.Allowed("")
+	}
+	return componentSettingsCheckResponse(
+		"Dash0 operator configuration resource",
+		util.CheckComponentSettings(*h.extraConfig.Load(), h.extraConfigDefaults, spec.Components, nil),
+		logger,
+	)
 }
 
 // isFeatureNewlyEnabled reports whether the request itself sets the given feature's enabled flag to true, as opposed

@@ -12,8 +12,11 @@ import (
 	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	prometheusv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	dash0dashv1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
+	openslov1 "github.com/dash0hq/dash0-operator/api/openslo/v1"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 )
@@ -260,6 +263,7 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 				"retries.spec": syntheticCheckUnionReason,
 			},
 			map[string]string{
+				"annotations":                        "not supported by Dash0SyntheticCheck yet",
 				"notifications.onlyCriticalChannels": "not supported by Dash0SyntheticCheck yet",
 				"permissions":                        "not supported by Dash0SyntheticCheck yet",
 			},
@@ -429,11 +433,92 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 		)
 	})
 
+	It("finds no unexpected drift between Dash0SignalToMetrics and the API client's signal-to-metrics type", func() {
+		expectNoUnexpectedApiTypeDrift(
+			reflect.TypeFor[dash0v1alpha1.Dash0SignalToMetricsSpec](),
+			reflect.TypeFor[dash0apiclient.SignalToMetricsSpec](),
+			nil,
+			map[string]string{
+				"alternativeDatasetId": "not supported by Dash0SignalToMetrics yet",
+				"targetDatasetMode":    "not supported by Dash0SignalToMetrics yet",
+			},
+		)
+	})
+
 	It("finds no unexpected drift between Dash0TimeSeriesAggregation and the API client's time series aggregation type", func() {
 		expectNoUnexpectedApiTypeDrift(
 			reflect.TypeFor[dash0v1alpha1.Dash0TimeSeriesAggregationSpec](),
 			reflect.TypeFor[dash0apiclient.TimeSeriesAggregationSpec](),
 			nil,
+			nil,
+		)
+	})
+
+	It("finds no unexpected drift between Dash0Team and the API client's team type", func() {
+		expectNoUnexpectedApiTypeDrift(
+			reflect.TypeFor[dash0dashv1alpha1.Dash0TeamSpec](),
+			reflect.TypeFor[dash0apiclient.TeamSpec](),
+			nil,
+			nil,
+		)
+	})
+
+	sloMetricSourceSpecReason := "an untyped map in the API client, see slo_definition_roundtrip_test.go"
+	sloNotSupportedByApiReason := "accepted for OpenSLO compatibility, but ignored or rejected by the Dash0 API"
+
+	It("finds no unexpected drift between SLO and the API client's SLO type", func() {
+		expectNoUnexpectedApiTypeDrift(
+			reflect.TypeFor[openslov1.SLOSpec](),
+			reflect.TypeFor[dash0apiclient.SloSpec](),
+			map[string]string{
+				"indicator.spec.ratioMetric.good.metricSource.spec.query":  sloMetricSourceSpecReason,
+				"indicator.spec.ratioMetric.bad.metricSource.spec.query":   sloMetricSourceSpecReason,
+				"indicator.spec.ratioMetric.total.metricSource.spec.query": sloMetricSourceSpecReason,
+				"indicator.spec.ratioMetric.raw.metricSource.spec.query":   sloMetricSourceSpecReason,
+			},
+			map[string]string{
+				"alertPolicies":                  sloNotSupportedByApiReason,
+				"indicatorRef":                   sloNotSupportedByApiReason,
+				"indicator.spec.thresholdMetric": sloNotSupportedByApiReason,
+				"indicator.spec.ratioMetric.good.metricSource.metricSourceRef":  sloNotSupportedByApiReason,
+				"indicator.spec.ratioMetric.bad.metricSource.metricSourceRef":   sloNotSupportedByApiReason,
+				"indicator.spec.ratioMetric.total.metricSource.metricSourceRef": sloNotSupportedByApiReason,
+				"indicator.spec.ratioMetric.raw.metricSource.metricSourceRef":   sloNotSupportedByApiReason,
+				"objectives.compositeWeight":                                    sloNotSupportedByApiReason,
+				"objectives.indicator":                                          sloNotSupportedByApiReason,
+				"objectives.indicatorRef":                                       sloNotSupportedByApiReason,
+				"objectives.op":                                                 sloNotSupportedByApiReason,
+				"objectives.timeSliceTarget":                                    sloNotSupportedByApiReason,
+				"objectives.timeSliceWindow":                                    sloNotSupportedByApiReason,
+				"objectives.value":                                              sloNotSupportedByApiReason,
+				"timeWindow.calendar":                                           sloNotSupportedByApiReason,
+			},
+		)
+	})
+
+	It("finds no unexpected drift between CheckRule and the API client's check rule type", func() {
+		expectNoUnexpectedApiTypeDrift(
+			reflect.TypeFor[CheckRule](),
+			reflect.TypeFor[dash0apiclient.PrometheusAlertRule](),
+			nil,
+			map[string]string{
+				"dataset":    "sent as the dataset query parameter",
+				"enabled":    "not supported by PrometheusRule",
+				"id":         "check rules are addressed by their origin in the URL path",
+				"metadata":   "server-populated and read-only",
+				"thresholds": "sent as the dash0-threshold-degraded/-critical annotations",
+			},
+		)
+	})
+
+	It("finds no unexpected drift between PrometheusRule and the API client's recording rule type", func() {
+		expectNoUnexpectedApiTypeDrift(
+			reflect.TypeFor[prometheusv1.PrometheusRuleSpec](),
+			reflect.TypeFor[dash0apiclient.PrometheusRuleSpec](),
+			map[string]string{
+				"groups.limit":                     "not supported by the Dash0 API",
+				"groups.partial_response_strategy": "not supported by the Dash0 API",
+			},
 			nil,
 		)
 	})

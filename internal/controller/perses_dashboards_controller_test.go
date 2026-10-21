@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io"
 	"math/big"
 	"net/http"
 	"os"
@@ -23,7 +22,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllertest"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -50,11 +48,7 @@ const (
 
 var (
 	persesDashboardCrd        *apiextensionsv1.CustomResourceDefinition
-	testQueuePersesDashboards = workqueue.NewTypedWithConfig(
-		workqueue.TypedQueueConfig[ThirdPartyResourceSyncJob]{
-			Name: "dash0-third-party-resource-synchronization-queue",
-		},
-	)
+	testQueuePersesDashboards = NewThirdPartyResourceSyncQueue("dash0-perses-dashboard-synchronization-queue")
 
 	dashboardApiBasePath = "/api/dashboards/"
 
@@ -712,6 +706,54 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 				Expect(conv.Strategy).To(Equal(apiextensionsv1.WebhookConverter))
 				Expect(conv.Webhook.ClientConfig.Service.Name).To(Equal(OperatorWebhookServiceName))
 			})
+
+			It("reads the CA bundle from the operator-managed webhook certificates if they are configured", func() {
+				ensurePersesDashboardCrdExists(ctx)
+				operatorManagedCaPEM := generateTestCaPem()
+				r := createPersesDashboardCrdReconciler(true, caBundlePath+".does-not-exist")
+				r.conversionWebhookSettings.CaBundleSource = func() []byte { return operatorManagedCaPEM }
+
+				r.ensurePersesConversionWebhookConfigured(ctx, persesDashboardCrd, false, logger)
+
+				Expect(readCrdConversion().Webhook.ClientConfig.CABundle).To(Equal(operatorManagedCaPEM))
+			})
+
+			It("reads the CRD again and retries if it has been changed concurrently", func() {
+				ensurePersesDashboardCrdExists(ctx)
+				stale := &apiextensionsv1.CustomResourceDefinition{}
+				Expect(k8sClient.Get(ctx, PersesDashboardCrdQualifiedName, stale)).To(Succeed())
+				concurrent := stale.DeepCopy()
+				concurrent.Labels = map[string]string{"concurrent": "change"}
+				Expect(k8sClient.Patch(ctx, concurrent, client.MergeFrom(stale))).To(Succeed())
+
+				r := createPersesDashboardCrdReconciler(true, caBundlePath)
+				r.ensurePersesConversionWebhookConfigured(ctx, stale, false, logger)
+
+				crd := &apiextensionsv1.CustomResourceDefinition{}
+				Expect(k8sClient.Get(ctx, PersesDashboardCrdQualifiedName, crd)).To(Succeed())
+				Expect(crd.Labels).To(HaveKeyWithValue("concurrent", "change"))
+				Expect(crd.Spec.Conversion.Webhook.ClientConfig.Service.Name).To(Equal(OperatorWebhookServiceName))
+				Expect(crd.Spec.Conversion.Webhook.ClientConfig.CABundle).To(Equal(caPEM))
+			})
+
+			It("updates the CA bundle when the operator-managed CA bundle changes", func() {
+				ensurePersesDashboardCrdExists(ctx)
+				currentCaPEM := caPEM
+				r := createPersesDashboardCrdReconciler(true, caBundlePath)
+				r.conversionWebhookSettings.CaBundleSource = func() []byte { return currentCaPEM }
+				r.ensurePersesConversionWebhookConfigured(ctx, persesDashboardCrd, false, logger)
+				Expect(readCrdConversion().Webhook.ClientConfig.CABundle).To(Equal(caPEM))
+
+				currentCaPEM = generateTestCaPem()
+				r.OnCaBundleChange(ctx, logger)
+
+				Expect(readCrdConversion().Webhook.ClientConfig.CABundle).To(Equal(currentCaPEM))
+			})
+
+			It("ignores a CA bundle change if the CRD does not exist", func() {
+				r := createPersesDashboardCrdReconciler(true, caBundlePath)
+				r.OnCaBundleChange(ctx, logger)
+			})
 		},
 	)
 
@@ -1354,11 +1396,11 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 					Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(1))
 					apiRequest := resourceToRequestsResult.ApiRequests[0]
 					Expect(apiRequest.ItemName).To(Equal("perses-dashboard"))
-					req := apiRequest.Request
-					defer func() {
-						_ = req.Body.Close()
-					}()
-					body, err := io.ReadAll(req.Body)
+					Expect(apiRequest.ApiClientCall).ToNot(BeNil())
+					Expect(apiRequest.ApiClientCall.Method).To(Equal(http.MethodPut))
+					dashboardDefinition, err := mapToDashboardDefinition(dashboard)
+					Expect(err).ToNot(HaveOccurred())
+					body, err := json.Marshal(dashboardDefinition)
 					Expect(err).ToNot(HaveOccurred())
 					resultingDashboardInRequest := map[string]any{}
 					Expect(json.Unmarshal(body, &resultingDashboardInRequest)).To(Succeed())
@@ -1379,6 +1421,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 						Expect(ReadFromMap(resultingDashboardInRequest, []string{"spec", "display", "description"})).To(BeNil())
 					}
 
+					Expect(resultingDashboardInRequest["kind"]).To(Equal("PersesDashboard"))
 					Expect(resultingDashboardInRequest["metadata"]).ToNot(BeNil())
 					Expect(ReadFromMap(resultingDashboardInRequest, []string{"metadata", "name"})).To(Equal("perses-dashboard"))
 
@@ -1494,15 +1537,16 @@ spec:
 					},
 				),
 				Entry(
-					"should send annotations with v1alpha1", dashboardToRequestTestConfig{
+					"should send Dash0 annotations and drop other annotations with v1alpha1", dashboardToRequestTestConfig{
 						dashboard: `
 apiVersion: perses.dev/v1alpha1
 kind: PersesDashboard
 metadata:
   name: perses-dashboard
   annotations:
-    dash0com/annotation1: value1
-    dash0com/annotation2: value2
+    dash0.com/folder-path: /team/dashboards
+    dash0.com/sharing: team:abc
+    example.com/other: value
 spec:
   display:
     name: Perses Dashboard Example
@@ -1512,21 +1556,22 @@ spec:
 						expectedName:        "Perses Dashboard Example",
 						expectedDescription: new("This is an example dashboard."),
 						expectedAnnotations: map[string]string{
-							"dash0com/annotation1": "value1",
-							"dash0com/annotation2": "value2",
+							"dash0.com/folder-path": "/team/dashboards",
+							"dash0.com/sharing":     "team:abc",
 						},
 					},
 				),
 				Entry(
-					"should send annotations with v1alpha2", dashboardToRequestTestConfig{
+					"should send Dash0 annotations and drop other annotations with v1alpha2", dashboardToRequestTestConfig{
 						dashboard: `
 apiVersion: perses.dev/v1alpha2
 kind: PersesDashboard
 metadata:
   name: perses-dashboard
   annotations:
-    dash0com/annotation1: value1
-    dash0com/annotation2: value2
+    dash0.com/folder-path: /team/dashboards
+    dash0.com/sharing: team:abc
+    example.com/other: value
 spec:
   config:
     display:
@@ -1537,11 +1582,54 @@ spec:
 						expectedName:        "Perses Dashboard Example",
 						expectedDescription: new("This is an example dashboard."),
 						expectedAnnotations: map[string]string{
-							"dash0com/annotation1": "value1",
-							"dash0com/annotation2": "value2",
+							"dash0.com/folder-path": "/team/dashboards",
+							"dash0.com/sharing":     "team:abc",
 						},
 					},
 				),
+			)
+
+			It(
+				"reports a non-retryable synchronization error for a dashboard that cannot be converted", func() {
+					dashboard := map[string]any{}
+					Expect(yaml.Unmarshal([]byte(`
+apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: perses-dashboard
+  annotations:
+    dash0.com/folder-path: 2
+spec:
+  display:
+    name: Perses Dashboard Example
+  duration: 5m
+`), &dashboard)).To(Succeed())
+					apiConfig := ApiConfig{Endpoint: ApiEndpointTest, Dataset: DatasetCustomTest, Token: AuthorizationTokenTest}
+					resourceToRequestsResult :=
+						persesDashboardReconciler.MapResourceToHttpRequests(
+							&preconditionValidationResult{
+								k8sName:      "perses-dashboard",
+								k8sNamespace: TestNamespaceName,
+								resource:     dashboard,
+							},
+							apiConfig,
+							upsertAction,
+							logger,
+						)
+					Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())
+					synchronizationError, httpStatusCode := firstSynchronizationErrorAndStatusCode(resourceToRequestsResult)
+					Expect(synchronizationError).To(ContainSubstring("unable to convert the dashboard to the Dash0 API format"))
+					Expect(httpStatusCode).To(Equal(http.StatusBadRequest))
+					Expect(
+						persesDashboardSynchronizationResultHasRetryableError(
+							dash0common.PersesDashboardSynchronizationResults{
+								SynchronizationResults: []dash0common.PersesDashboardSynchronizationResultPerEndpointAndDataset{
+									{SynchronizationError: synchronizationError, HttpStatusCode: httpStatusCode},
+								},
+							},
+						),
+					).To(BeFalse())
+				},
 			)
 		},
 	)
@@ -1551,9 +1639,10 @@ spec:
 func createPersesDashboardCrdReconciler(autoPatch bool, caBundlePath string) *PersesDashboardCrdReconciler {
 	crdReconciler := NewPersesDashboardCrdReconciler(
 		k8sClient,
+		k8sClient,
 		testQueuePersesDashboards,
 		&DummyLeaderElectionAware{Leader: true},
-		TestHTTPClient(),
+		testApiClientPool(),
 		PersesDashboardConversionWebhookSettings{
 			// Default to disabled in tests; individual tests that exercise the patch logic set this back to true.
 			AutoPatchConversionWebhook: autoPatch,

@@ -19,7 +19,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -236,6 +235,11 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			"Dash0-bound telemetry to it instead of exporting to Dash0 directly.",
 			config.signalControlCollectorImage()))
 	}
+	if config.ProfilingEnabled && len(otlpExporters.Namespaced) > 0 {
+		logger.Debug(fmt.Sprintf("Profiles from the namespaces %v are exported via the default exporters, although "+
+			"these namespaces have a namespace-specific export, since the routing connector does not support profiles.",
+			otlpExporters.AllNamespaceKeys()))
+	}
 	desiredState, err := assembleDesiredStateForUpsert(
 		config,
 		allMonitoringResources,
@@ -298,29 +302,16 @@ func (m *OTelColResourceManager) createOrUpdateResource(
 		return true, false, nil
 	}
 
-	// The object exists and might need to be updated. Since the update carries the resource version of the object
-	// that was read, and that read is served by the controller-runtime cache, which lags behind the API server, the
-	// update can be rejected with a conflict. That is expected rather than exceptional right after the resources have
-	// been created, while the API server and the built-in controllers are still writing status onto them. Retry with
-	// a fresh read instead of failing the whole reconcile.
-	//
-	// Every attempt starts from an untouched copy of the desired object, because updateResource modifies it
-	// (self-reference UID environment variables, the last-applied annotation and the resource version).
-	pristineDesiredResource := desiredResource.DeepCopyObject().(client.Object)
-	hasChanged := false
-	err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-		currentResource, receiverErr := resources.CreateEmptyReceiverFor(pristineDesiredResource)
-		if receiverErr != nil {
-			return receiverErr
-		}
-		if getErr := m.Get(ctx, client.ObjectKeyFromObject(pristineDesiredResource), currentResource); getErr != nil {
-			return getErr
-		}
-		attempt := pristineDesiredResource.DeepCopyObject().(client.Object)
-		var updateErr error
-		hasChanged, updateErr = m.updateResource(ctx, currentResource, attempt, logger)
-		return updateErr
-	})
+	// The update can be rejected with a conflict, particularly right after the resources have been created, while the
+	// API server and the built-in controllers are still writing status onto them.
+	hasChanged, err := resources.UpdateWithRetryOnConflict(
+		ctx,
+		m.Client,
+		desiredResource,
+		func(existingResource client.Object, desiredResource client.Object) (bool, error) {
+			return m.updateResource(ctx, existingResource, desiredResource, logger)
+		},
+	)
 	if err != nil {
 		return false, false, err
 	}
@@ -378,6 +369,7 @@ func (m *OTelColResourceManager) updateResource(
 	if err = patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
 		return false, err
 	}
+	resources.PreserveKubectlRestartedAtAnnotation(existingResource, desiredResource, logger)
 
 	// Carry over the resource version of the live object. Most resource kinds accept an unconditional update (an
 	// update without a resource version), but some - PodDisruptionBudget among them - reject it with

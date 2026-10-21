@@ -15,6 +15,8 @@
 #   Testing with arbitrary container image repositories is not supported due to allowlist restrictions on the container images.)
 #   IMPORTANT: Make sure the ghcr.io/dash0hq/gke-ap-xxx repositories have up-to-date images that represent your current
 #   branch. This script does not build or push images.
+#   With a local Helm chart, all images built in this repository are deployed with the image pull policy Always, so that
+#   a node does not reuse an image it has cached for the same tag in an earlier run.
 #   The Signal Control collector and Edge Proxy images are not built in this repository, they are always pulled from the
 #   official ghcr.io/dash0hq repositories.
 # - Use IMAGE_REPOSITORY_PREFIX to control the prefix of the container image repositories used with a local Helm chart
@@ -149,6 +151,27 @@ cleanup() {
     --wait \
     "$helm_release_name"
 
+  # The post-delete hook removes the AllowlistSynchronizer and the WorkloadAllowlists it has installed. Keep checking for a
+  # while, since GKE might recreate allowlists shortly after they have been removed.
+  log "checking that no GKE Autopilot WorkloadAllowlists are left after uninstalling the helm release"
+  local leftover_allowlists=""
+  local leftover_allowlists_found=false
+  for _ in {1..12}; do
+    leftover_allowlists=$(kubectl get workloadallowlists.auto.gke.io --no-headers --show-labels --ignore-not-found 2>/dev/null || true)
+    if [[ -n "$leftover_allowlists" ]]; then
+      log "ERROR: WorkloadAllowlists are left after uninstalling the helm release:"
+      echo "$leftover_allowlists"
+      log "AllowlistSynchronizers:"
+      kubectl get allowlistsynchronizers.auto.gke.io -o yaml || true
+      # The post-delete job is deleted when it succeeds, its logs are only available if it has failed.
+      log "logs of the post-delete job, if it still exists:"
+      kubectl logs --namespace "$operator_namespace" job/dash0-operator-post-delete-remove-allowlist-synchronizer || true
+      leftover_allowlists_found=true
+      break
+    fi
+    sleep 5
+  done
+
   # If the workload allow list for the pre-delete hook does not match, it might stick around as a Zombie job, force-delete it.
   log "deleting the pre-delete job"
   kubectl delete job --namespace "$operator_namespace" --ignore-not-found "${helm_release_name}-pre-delete" --wait --grace-period=0 --force
@@ -165,6 +188,9 @@ cleanup() {
 
   set +x
   set -e
+  if [[ "$leftover_allowlists_found" == "true" ]]; then
+    exit 1
+  fi
   return 0
 }
 
@@ -271,6 +297,7 @@ helm_command+=" --set operator.dash0Export.secretRef.key=token"
 helm_command+=" --set operator.dash0Export.apiEndpoint=https://api.dummy-url.aws.dash0.com"
 helm_command+=" --set operator.prometheusCrdSupportEnabled=true"
 helm_command+=" --set operator.clusterName=dummy-cluster-name"
+helm_command+=" --set operator.collectors.k8s_attributes.shareProcessorBetweenPipelines=true"
 # Signal Control: the pull policies add optional env vars to the operator manager, enablePprof adds the optional pprof
 # port to the Edge Proxy. A single replica is enough for the check and reduces the capacity GKE Autopilot has to add.
 helm_command+=" --set operator.signalControl.enabled=true"
@@ -279,21 +306,39 @@ helm_command+=" --set operator.signalControl.edgeProxy.replicas=1"
 helm_command+=" --set operator.collectors.signalControlCollectorReplicas=1"
 helm_command+=" --set operator.signalControlCollectorImage.pullPolicy=IfNotPresent"
 helm_command+=" --set operator.edgeProxyImage.pullPolicy=IfNotPresent"
+# agent0-connector: insecure adds the optional env var DASH0_AGENT0_CONNECTOR_INSECURE to the operator manager and the
+# agent0-connector.
+helm_command+=" --set operator.agent0Connector.enabled=true"
+helm_command+=" --set operator.agent0Connector.serverAddress=agent0.dummy-url.aws.dash0.com:4317"
+helm_command+=" --set operator.agent0Connector.secretRef.name=dash0-authorization-secret"
+helm_command+=" --set operator.agent0Connector.secretRef.key=token"
+helm_command+=" --set operator.agent0Connector.insecure=true"
 if [[ "$use_local_chart" = "true" ]]; then
+  # Image tags of local builds are mutable, hence the pull policy Always, see the comment at the top of the file.
   helm_command+=" --set operator.image.repository=${image_repository_prefix}operator-controller"
   helm_command+=" --set operator.image.tag=$image_tag"
+  helm_command+=" --set operator.image.pullPolicy=Always"
   helm_command+=" --set operator.instrumentationImage.repository=${image_repository_prefix}instrumentation"
   helm_command+=" --set operator.instrumentationImage.tag=$image_tag"
+  helm_command+=" --set operator.instrumentationImage.pullPolicy=Always"
   helm_command+=" --set operator.collectorImage.repository=${image_repository_prefix}collector"
   helm_command+=" --set operator.collectorImage.tag=$image_tag"
+  helm_command+=" --set operator.collectorImage.pullPolicy=Always"
   helm_command+=" --set operator.configurationReloaderImage.repository=${image_repository_prefix}configuration-reloader"
   helm_command+=" --set operator.configurationReloaderImage.tag=$image_tag"
+  helm_command+=" --set operator.configurationReloaderImage.pullPolicy=Always"
   helm_command+=" --set operator.filelogOffsetSyncImage.repository=${image_repository_prefix}filelog-offset-sync"
   helm_command+=" --set operator.filelogOffsetSyncImage.tag=$image_tag"
+  helm_command+=" --set operator.filelogOffsetSyncImage.pullPolicy=Always"
   helm_command+=" --set operator.filelogOffsetVolumeOwnershipImage.repository=${image_repository_prefix}filelog-offset-volume-ownership"
   helm_command+=" --set operator.filelogOffsetVolumeOwnershipImage.tag=$image_tag"
+  helm_command+=" --set operator.filelogOffsetVolumeOwnershipImage.pullPolicy=Always"
   helm_command+=" --set operator.targetAllocatorImage.repository=${image_repository_prefix}target-allocator"
   helm_command+=" --set operator.targetAllocatorImage.tag=$image_tag"
+  helm_command+=" --set operator.targetAllocatorImage.pullPolicy=Always"
+  helm_command+=" --set operator.agent0ConnectorImage.repository=${image_repository_prefix}agent0-connector"
+  helm_command+=" --set operator.agent0ConnectorImage.tag=$image_tag"
+  helm_command+=" --set operator.agent0ConnectorImage.pullPolicy=Always"
 fi
 helm_command+=" $helm_release_name"
 helm_command+=" $chart"
@@ -381,6 +426,27 @@ kubectl \
 set +x
 
 log "the target-allocator is ready now"
+
+log "waiting for the agent0-connector to be created"
+set -x
+kubectl wait \
+  --for=create \
+  deployment "${helm_release_name}-agent0-connector" \
+  --namespace "$operator_namespace" \
+  --timeout=60s
+set +x
+# The agent0-connector cannot connect to the dummy server address, but it keeps reconnecting instead of exiting, and it
+# has no readiness probe.
+log "waiting for the agent0-connector rollout to finish"
+set -x
+kubectl \
+  rollout status \
+  deployment "${helm_release_name}-agent0-connector" \
+  --namespace "$operator_namespace" \
+  --timeout 120s
+set +x
+log "the agent0-connector is ready now"
+verify_matching_allowlist app.kubernetes.io/name=dash0-agent0-connector "agent0-connector"
 
 # The optional settings make the operator render the optional env vars and volumes of the Signal Control collector and
 # the Edge Proxy, so that they are checked against the WorkloadAllowlists as well. This uses create instead of apply, so

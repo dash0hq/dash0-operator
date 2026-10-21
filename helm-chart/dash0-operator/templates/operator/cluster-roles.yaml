@@ -128,6 +128,66 @@ rules:
   verbs:
   - update
 
+{{- if not .Values.operator.certManager.useCertManager }}
+{{- $chartName := include "dash0-operator.chartName" . }}
+
+# Permissions required to read the operator's webhook configurations and the Dash0 monitoring CRD, to check whether they
+# carry the CA bundle of the webhook certificates, which the operator manages itself if cert-manager is not used:
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - mutatingwebhookconfigurations
+  - validatingwebhookconfigurations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  verbs:
+  - get
+  - list
+  - watch
+
+# Permissions required to inject the CA bundle of the webhook certificates (scoped to the operator's own webhook
+# configurations and CRD by name):
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - mutatingwebhookconfigurations
+  resourceNames:
+  - {{ $chartName }}-injector
+  - {{ $chartName }}-operator-configuration-mutating
+  - {{ $chartName }}-monitoring-mutating
+  verbs:
+  - patch
+  - update
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - validatingwebhookconfigurations
+  resourceNames:
+  - {{ $chartName }}-operator-configuration-validator
+  - {{ $chartName }}-monitoring-validator
+  {{- if .Values.operator.signalControl.enabled }}
+  - {{ $chartName }}-signal-control-validator
+  {{- end }}
+  verbs:
+  - patch
+  - update
+- apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  resourceNames:
+  - dash0monitorings.operator.dash0.com
+  verbs:
+  - patch
+  - update
+{{- end }}
+
 ---
 {{/*
 The -manager-iac cluster role holds permissions used for IaC tasks, like synchronizing dashboards and check rules.

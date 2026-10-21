@@ -144,6 +144,8 @@ func maximalMatrixBaseline() collectorConfigMatrixEntry {
 	// The Signal Control collector is only rendered when the gateway is active, which additionally requires the
 	// Signal Control collector image to be set.
 	entry.config.Images.SignalControlCollectorImage = "dash0-signal-control-collector:1.2.3"
+	// Namespaced exporters can be combined with every other option, including profiling and Signal Control.
+	entry.config.Exporters.Namespaced = matrixNamespacedExporters().Namespaced
 	return entry
 }
 
@@ -510,10 +512,11 @@ func matrixSettings() []matrixSetting {
 		{
 			name: "namespaced-exporters",
 			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				// Only the namespaced exporters are flipped, the default exporters of the baseline are kept.
 				if enabled {
-					e.config.Exporters = matrixNamespacedExporters()
+					e.config.Exporters.Namespaced = matrixNamespacedExporters().Namespaced
 				} else {
-					e.config.Exporters = cmTestSingleDefaultOtlpExporter()
+					e.config.Exporters.Namespaced = make(map[string][]otlpExporter)
 				}
 			},
 		},
@@ -819,11 +822,11 @@ func (e *collectorConfigMatrixEntry) render() ([]renderedCollectorConfig, error)
 	if config.ProfilingEnabled {
 		daemonSetFeatureGates = append(daemonSetFeatureGates, profilesSupportFeatureGate)
 	}
+	// On GKE Autopilot, the collector image's entrypoint adds the deployment's gates instead of an arg.
 	if config.K8sAttributesShareProcessor {
 		daemonSetFeatureGates = append(daemonSetFeatureGates, k8sAttributesShareProcessorFeatureGate)
 		deploymentFeatureGates = append(deploymentFeatureGates, k8sAttributesShareProcessorFeatureGate)
 	}
-	// On GKE Autopilot, the collector image's entrypoint adds this gate for the deployment instead of an arg.
 	daemonSetFeatureGates = append(daemonSetFeatureGates, disableK8sAttributesDontEmitV0K8sConventionsFeatureGate)
 	deploymentFeatureGates = append(deploymentFeatureGates, disableK8sAttributesDontEmitV0K8sConventionsFeatureGate)
 

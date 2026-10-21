@@ -164,6 +164,21 @@ func verifyCollectorHasOwnerReference(operatorNamespace string, operatorHelmChar
 	Expect(output).To(Equal(controllerDeploymentName))
 }
 
+func readCollectorDaemonSetField(g Gomega, operatorNamespace string, jsonPath string) string {
+	output, err := run(exec.Command(
+		"kubectl",
+		"get",
+		"daemonset",
+		collectorDaemonSetName,
+		"--namespace",
+		operatorNamespace,
+		"-o",
+		"jsonpath="+jsonPath,
+	), false)
+	g.Expect(err).ToNot(HaveOccurred())
+	return output
+}
+
 // verifyThatCollectorIsRemovedEventually assumes that the collector definitely has been deployed before this function
 // is called, otherwise the way the verification is implemented is not valid.
 func verifyThatCollectorIsRemovedEventually() {

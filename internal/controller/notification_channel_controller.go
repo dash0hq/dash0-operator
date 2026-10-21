@@ -113,11 +113,6 @@ func (r *NotificationChannelReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
-// HttpClient returns nil, the notification channel reconciler talks to the Dash0 API via the API client pool.
-func (r *NotificationChannelReconciler) HttpClient() *http.Client {
-	return nil
-}
-
 func (r *NotificationChannelReconciler) SetDefaultApiConfigs(
 	ctx context.Context,
 	apiConfigs []ApiConfig,
@@ -377,7 +372,7 @@ func (r *NotificationChannelReconciler) MapResourceToHttpRequests(
 		if err != nil {
 			conversionErr := fmt.Errorf("unable to convert the notification channel to the Dash0 API format: %w", err)
 			logger.Error(conversionErr, "error converting notification channel")
-			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, conversionErr.Error())
+			return NewResourceToRequestsResultSingleItemConversionError(apiConfig, itemName, conversionErr.Error())
 		}
 		apiClientCall = &ApiClientCall{
 			Method: http.MethodPut,

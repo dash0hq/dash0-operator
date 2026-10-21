@@ -1407,6 +1407,7 @@ func createReconcilerWithManagers(
 		k8sClient,
 		nodeMetadataClient,
 		util.ExtraConfigDefaults,
+		util.ExtraConfigDefaults,
 		false,
 		false,
 		oTelColResourceManager,
@@ -1423,7 +1424,7 @@ func createReconcilerWithManagers(
 		},
 	)
 	targetallocatorManager := targetallocator.NewTargetAllocatorManager(
-		k8sClient, clientset, util.ExtraConfigDefaults, false, targetallocatorResourceManager,
+		k8sClient, clientset, util.ExtraConfigDefaults, util.ExtraConfigDefaults, false, targetallocatorResourceManager,
 	)
 	delegatingZapCoreWrapper := zaputil.NewDelegatingZapCoreWrapper()
 	otelSdkStarter := selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCoreWrapper, NewNoopExporterFactory())
@@ -1513,6 +1514,7 @@ func newAgent0ConnectorManagerWithInvalidClusterRoleRules() *agent0connector.Age
 	return agent0connector.NewAgent0ConnectorManager(
 		k8sClient,
 		extraConfig,
+		util.ExtraConfigDefaults,
 		false,
 		agent0ConnectorResourceManager,
 		recorder,

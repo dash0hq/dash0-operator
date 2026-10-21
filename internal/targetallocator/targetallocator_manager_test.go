@@ -66,6 +66,7 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 			k8sClient,
 			clientset,
 			util.ExtraConfigDefaults,
+			util.ExtraConfigDefaults,
 			false,
 			targetAllocatorResourceManager,
 		)
@@ -484,6 +485,59 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 			Expect(deployment.Spec.Template.Spec.Containers[0].Resources.Requests.Memory().String()).To(Equal("600Mi"))
 			Expect(deployment.Spec.Template.Spec.Tolerations).To(HaveLen(1))
 			Expect(deployment.Spec.Template.Spec.Tolerations[0].Key).To(Equal("test-key"))
+		})
+	})
+
+	Describe("when component settings are configured in the operator configuration resource", func() {
+		BeforeEach(func() {
+			CreateOperatorConfigurationResourceWithSpec(
+				ctx,
+				k8sClient,
+				dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					TelemetryCollection:  dash0v1alpha1.TelemetryCollection{Enabled: new(true)},
+					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{Enabled: new(true)},
+					Components: &dash0v1alpha1.OperatorConfigurationComponents{
+						TargetAllocator: &dash0v1alpha1.TargetAllocatorSettings{
+							WorkloadSettings: dash0v1alpha1.WorkloadSettings{
+								PodLabels: map[string]string{"target-allocator-label": "resource"},
+							},
+						},
+					},
+				},
+			)
+			monitoringResource := tatest.EnsureMonitoringResourceWithPrometheusScrapingExistsAndIsAvailable(
+				ctx,
+				k8sClient,
+			)
+			createdObjectsTargetAllocatorManagerTest = append(createdObjectsTargetAllocatorManagerTest, monitoringResource)
+		})
+
+		AfterEach(func() {
+			_, err := targetAllocatorManager.targetAllocatorResourceManager.DeleteResources(
+				ctx,
+				util.ExtraConfigDefaults,
+				logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
+		})
+
+		It("should apply the settings of the operator configuration resource instead of the Helm values", func() {
+			fileConfig := util.ExtraConfigDefaults
+			fileConfig.TargetAllocatorPodAnnotations = map[string]string{"helm-annotation": "helm"}
+			targetAllocatorManager.extraConfig.Store(&fileConfig)
+
+			hasBeenReconciled, err := targetAllocatorManager.ReconcileTargetAllocator(
+				ctx,
+				TriggeredByDash0ResourceReconcile,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
+
+			deployment := tatest.VerifyTargetAllocatorDeploymentExists(ctx, k8sClient, operatorNamespace)
+			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue("target-allocator-label", "resource"))
+			Expect(deployment.Spec.Template.Annotations).To(HaveKeyWithValue("helm-annotation", "helm"))
 		})
 	})
 
