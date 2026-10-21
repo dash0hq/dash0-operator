@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dash0hq/dash0-operator/internal/util"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -162,9 +164,7 @@ func verifyCollectorHasOwnerReference(operatorNamespace string, operatorHelmChar
 	Expect(output).To(Equal(controllerDeploymentName))
 }
 
-// readCollectorDaemonSetComponentLabel returns the value of the label e2e-component-label of the collector DaemonSet,
-// which the specs for component settings set via Helm and via spec.components.
-func readCollectorDaemonSetComponentLabel(g Gomega, operatorNamespace string) string {
+func readCollectorDaemonSetField(g Gomega, operatorNamespace string, jsonPath string) string {
 	output, err := run(exec.Command(
 		"kubectl",
 		"get",
@@ -173,7 +173,7 @@ func readCollectorDaemonSetComponentLabel(g Gomega, operatorNamespace string) st
 		"--namespace",
 		operatorNamespace,
 		"-o",
-		"jsonpath={.metadata.labels.e2e-component-label}",
+		"jsonpath="+jsonPath,
 	), false)
 	g.Expect(err).ToNot(HaveOccurred())
 	return output
@@ -185,6 +185,23 @@ func verifyThatCollectorIsRemovedEventually() {
 	By("validating that the OpenTelemetry collector is removed eventually")
 	Eventually(verifyCollectorDaemonSetIsNotPresent, 60*time.Second, time.Second).Should(Succeed())
 	Eventually(verifyCollectorDeploymentIsNotPresent, 60*time.Second, time.Second).Should(Succeed())
+}
+
+func verifyThatOperatorManagedClusterScopedResourcesAreRemovedEventually() {
+	By("validating that the cluster roles and cluster role bindings managed by the operator are removed eventually")
+	Eventually(func(g Gomega) {
+		output, err := run(exec.Command(
+			"kubectl",
+			"get",
+			"clusterroles,clusterrolebindings",
+			"--selector",
+			fmt.Sprintf("%s=dash0-operator", util.AppKubernetesIoManagedByLabel),
+			"--output",
+			"name",
+		), false)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(strings.TrimSpace(output)).To(BeEmpty())
+	}, 60*time.Second, time.Second).Should(Succeed())
 }
 
 func verifyThatCollectorIsNotPresentConsistently() {

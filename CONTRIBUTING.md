@@ -274,6 +274,7 @@ Moving beyond the quickstart instructions, here are more details on the test scr
           https://docs.aws.amazon.com/eks/latest/userguide/efs-csi.html and
           https://github.com/kubernetes-sigs/aws-efs-csi-driver/tree/master/examples/kubernetes/dynamic_provisioning)
       Take a look at the files in `test-resources/filelog-offset-storage` for details.
+      Test scenario 12 configures the volume via `spec.components` instead of via Helm.
     * `FILELOG_OFFSETS_HOST_PATH_VOLUME`: Use a `hostPath` volume to store filelog offsets, instead of the default
       config map based storage.
     * `INSTRUMENT_WORKLOADS_MODE`: Set this to "all", "created-and-updated" or "none" to control the

@@ -6,15 +6,19 @@ package taresources
 import (
 	"context"
 
+	"github.com/cisco-open/k8s-objectmatcher/patch"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
@@ -50,10 +54,13 @@ var _ = Describe("The target-allocator resource manager", func() {
 	}
 
 	BeforeEach(func() {
-		k8sClient = fake.NewClientBuilder().WithScheme(clientgoscheme.Scheme).Build()
+		scheme := runtime.NewScheme()
+		Expect(clientgoscheme.AddToScheme(scheme)).To(Succeed())
+		Expect(dash0v1alpha1.AddToScheme(scheme)).To(Succeed())
+		k8sClient = fake.NewClientBuilder().WithScheme(scheme).Build()
 		resourceManager = NewTargetAllocatorResourceManager(
 			k8sClient,
-			clientgoscheme.Scheme,
+			scheme,
 			OperatorManagerDeployment,
 			util.TargetAllocatorConfig{
 				Images:                    TestImages,
@@ -66,7 +73,7 @@ var _ = Describe("The target-allocator resource manager", func() {
 
 	It("should not revert GKE Autopilot resource adjustments, but still apply changed resource settings", func() {
 		resourcesHaveBeenCreated, _, err := resourceManager.CreateOrUpdateTargetAllocatorResources(
-			ctx, extraConfigWithMemory("500Mi"), []string{"namespace"}, logger)
+			ctx, extraConfigWithMemory("500Mi"), nil, []string{"namespace"}, logger)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resourcesHaveBeenCreated).To(BeTrue())
 
@@ -75,13 +82,13 @@ var _ = Describe("The target-allocator resource manager", func() {
 		Expect(k8sClient.Update(ctx, deployment)).To(Succeed())
 
 		_, resourcesHaveBeenUpdated, err := resourceManager.CreateOrUpdateTargetAllocatorResources(
-			ctx, extraConfigWithMemory("500Mi"), []string{"namespace"}, logger)
+			ctx, extraConfigWithMemory("500Mi"), nil, []string{"namespace"}, logger)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resourcesHaveBeenUpdated).To(BeFalse())
 		Expect(getDeployment().Spec.Template.Spec).To(Equal(deployment.Spec.Template.Spec))
 
 		_, resourcesHaveBeenUpdated, err = resourceManager.CreateOrUpdateTargetAllocatorResources(
-			ctx, extraConfigWithMemory("1Gi"), []string{"namespace"}, logger)
+			ctx, extraConfigWithMemory("1Gi"), nil, []string{"namespace"}, logger)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resourcesHaveBeenUpdated).To(BeTrue())
 		containerResources := getDeployment().Spec.Template.Spec.Containers[0].Resources
@@ -89,9 +96,60 @@ var _ = Describe("The target-allocator resource manager", func() {
 		Expect(containerResources.Requests.Memory().Equal(resource.MustParse("1Gi"))).To(BeTrue())
 	})
 
+	It("should make the operator configuration resource the owner of cluster-scoped resources", func() {
+		_, _, err := resourceManager.CreateOrUpdateTargetAllocatorResources(
+			ctx, util.ExtraConfigDefaults, DefaultOperatorConfigurationResourceWithUid(), []string{"namespace"}, logger)
+		Expect(err).ToNot(HaveOccurred())
+
+		for _, object := range []client.Object{
+			&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: ClusterRoleName(TargetAllocatorPrefixTest)}},
+			&rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{
+				Name: ClusterRoleBindingName(TargetAllocatorPrefixTest),
+			}},
+		} {
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(object), object)).To(Succeed())
+			ownerReferences := object.GetOwnerReferences()
+			Expect(ownerReferences).To(HaveLen(1))
+			Expect(ownerReferences[0].Kind).To(Equal("Dash0OperatorConfiguration"))
+			Expect(ownerReferences[0].UID).To(Equal(OperatorConfigurationResourceUid))
+			Expect(ownerReferences[0].Controller).To(BeNil())
+			Expect(*ownerReferences[0].BlockOwnerDeletion).To(BeTrue())
+		}
+
+		for _, object := range []client.Object{
+			&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
+				Namespace: OperatorNamespace,
+				Name:      ServiceAccountName(TargetAllocatorPrefixTest),
+			}},
+			getDeployment(),
+		} {
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(object), object)).To(Succeed())
+			ownerReferences := object.GetOwnerReferences()
+			Expect(ownerReferences).To(HaveLen(1))
+			Expect(ownerReferences[0].UID).To(Equal(OperatorManagerDeploymentUID))
+		}
+	})
+
+	It("should add the owner reference to existing cluster-scoped resources that do not have one", func() {
+		clusterRoleName := ClusterRoleName(TargetAllocatorPrefixTest)
+		existingClusterRole := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: clusterRoleName}}
+		Expect(patch.DefaultAnnotator.SetLastAppliedAnnotation(existingClusterRole)).To(Succeed())
+		Expect(k8sClient.Create(ctx, existingClusterRole)).To(Succeed())
+
+		_, resourcesHaveBeenUpdated, err := resourceManager.CreateOrUpdateTargetAllocatorResources(
+			ctx, util.ExtraConfigDefaults, DefaultOperatorConfigurationResourceWithUid(), []string{"namespace"}, logger)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(resourcesHaveBeenUpdated).To(BeTrue())
+
+		clusterRole := &rbacv1.ClusterRole{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: clusterRoleName}, clusterRole)).To(Succeed())
+		Expect(clusterRole.GetOwnerReferences()).To(HaveLen(1))
+		Expect(clusterRole.GetOwnerReferences()[0].UID).To(Equal(OperatorConfigurationResourceUid))
+	})
+
 	It("should keep the kubectl rollout restart annotation, also when applying changed resource settings", func() {
 		resourcesHaveBeenCreated, _, err := resourceManager.CreateOrUpdateTargetAllocatorResources(
-			ctx, extraConfigWithMemory("500Mi"), []string{"namespace"}, logger)
+			ctx, extraConfigWithMemory("500Mi"), nil, []string{"namespace"}, logger)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resourcesHaveBeenCreated).To(BeTrue())
 
@@ -100,14 +158,14 @@ var _ = Describe("The target-allocator resource manager", func() {
 		Expect(k8sClient.Update(ctx, deployment)).To(Succeed())
 
 		_, resourcesHaveBeenUpdated, err := resourceManager.CreateOrUpdateTargetAllocatorResources(
-			ctx, extraConfigWithMemory("500Mi"), []string{"namespace"}, logger)
+			ctx, extraConfigWithMemory("500Mi"), nil, []string{"namespace"}, logger)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resourcesHaveBeenUpdated).To(BeFalse())
 		Expect(getDeployment().Spec.Template.Annotations).To(
 			HaveKeyWithValue(KubectlRestartedAtAnnotationTest, KubectlRestartedAtTest))
 
 		_, resourcesHaveBeenUpdated, err = resourceManager.CreateOrUpdateTargetAllocatorResources(
-			ctx, extraConfigWithMemory("1Gi"), []string{"namespace"}, logger)
+			ctx, extraConfigWithMemory("1Gi"), nil, []string{"namespace"}, logger)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resourcesHaveBeenUpdated).To(BeTrue())
 		reconciled := getDeployment()
