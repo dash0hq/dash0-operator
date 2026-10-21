@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 
@@ -23,11 +24,18 @@ func testApiClientPool() *ApiClientPool {
 }
 
 type urlRecordingRoundTripper struct {
-	urls []*url.URL
+	urls   []*url.URL
+	bodies []string
 }
 
 func (r *urlRecordingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	r.urls = append(r.urls, req.URL)
+	var body []byte
+	if req.Body != nil {
+		body, _ = io.ReadAll(req.Body)
+		_ = req.Body.Close()
+	}
+	r.bodies = append(r.bodies, string(body))
 	return nil, errors.New("request recorded")
 }
 
@@ -59,7 +67,7 @@ func expectApiClientCallsToAddressUrl(
 	logger := logd.FromContext(ctx)
 	for _, action := range []apiAction{upsertAction, deleteAction} {
 		preconditionChecksResult.resource = resource()
-		result := reconciler.MapResourceToHttpRequests(preconditionChecksResult, apiConfig, action, logger)
+		result := reconciler.MapResourceToApiCalls(preconditionChecksResult, apiConfig, action, logger)
 		Expect(result.ApiRequests).To(HaveLen(1))
 		_, _ = result.ApiRequests[0].ApiClientCall.Execute(ctx)
 	}

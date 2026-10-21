@@ -328,7 +328,7 @@ func (r *SpamFilterReconciler) Reconcile(ctx context.Context, req reconcile.Requ
 	return reconcile.Result{}, nil
 }
 
-func (r *SpamFilterReconciler) MapResourceToHttpRequests(
+func (r *SpamFilterReconciler) MapResourceToApiCalls(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,
@@ -427,23 +427,6 @@ func (r *SpamFilterReconciler) renderSpamFilterUrl(
 		url.PathEscape(spamFilterOrigin),
 		url.QueryEscape(dataset),
 	), spamFilterOrigin
-}
-
-func (r *SpamFilterReconciler) ExtractIdFromResponseBody(
-	responseBytes []byte,
-	logger logd.Logger,
-) (id string, err error) {
-	objectWithMetadata := Dash0ApiObjectWithMetadata{}
-	if err := json.Unmarshal(responseBytes, &objectWithMetadata); err != nil {
-		logger.Error(
-			err,
-			"cannot parse response, will not extract the synchronized object's ID",
-			"response",
-			string(responseBytes),
-		)
-		return "", err
-	}
-	return objectWithMetadata.Metadata.Labels.Id, nil
 }
 
 func (r *SpamFilterReconciler) WriteSynchronizationResultToSynchronizedResource(

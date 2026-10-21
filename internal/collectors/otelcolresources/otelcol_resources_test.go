@@ -11,6 +11,7 @@ import (
 	"github.com/cisco-open/k8s-objectmatcher/patch"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
@@ -22,6 +23,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/syntheticsworker/swresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/resources"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -221,7 +223,12 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(patch.DefaultAnnotator.SetLastAppliedAnnotation(existing)).To(Succeed())
 			Expect(k8sClient.Create(ctx, existing)).To(Succeed())
 
-			isNew, isChanged, err := oTelColResourceManager.createOrUpdateResource(ctx, testResource.DeepCopy(), logger)
+			desired := testResource.DeepCopy()
+			Expect(resources.SetOwnerReference(
+				OperatorManagerDeployment, nil, k8sClient.Scheme(), desired, logger,
+			)).To(Succeed())
+
+			isNew, isChanged, err := oTelColResourceManager.createOrUpdateResource(ctx, desired, logger)
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(isNew).To(BeFalse())
@@ -242,7 +249,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 		})
 
 		It("should use the provided export settings to create the collectors", func() {
-			operatorConfiguration := DefaultOperatorConfigurationResource()
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
@@ -258,11 +265,78 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
 		})
 
-		It("should not add self-monitoring if it is disabled", func() {
-			operatorConfiguration := &dash0v1alpha1.Dash0OperatorConfiguration{
-				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
-				Spec:       OperatorConfigurationResourceWithoutSelfMonitoringWithToken,
+		It("should make the operator configuration resource the owner of cluster-scoped resources", func() {
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
+			_, _, err :=
+				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+					ctx,
+					util.ExtraConfigDefaults,
+					operatorConfiguration,
+					nil,
+					nil,
+					logger,
+				)
+			Expect(err).ToNot(HaveOccurred())
+
+			for _, object := range []client.Object{
+				&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{
+					Name: DaemonSetClusterRoleName(OTelCollectorNamePrefixTest),
+				}},
+				&rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{
+					Name: DaemonSetClusterRoleBindingName(OTelCollectorNamePrefixTest),
+				}},
+				&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{
+					Name: DeploymentClusterRoleName(OTelCollectorNamePrefixTest),
+				}},
+				&rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{
+					Name: DeploymentClusterRoleBindingName(OTelCollectorNamePrefixTest),
+				}},
+			} {
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(object), object)).To(Succeed())
+				ownerReferences := object.GetOwnerReferences()
+				Expect(ownerReferences).To(HaveLen(1))
+				Expect(ownerReferences[0].Kind).To(Equal("Dash0OperatorConfiguration"))
+				Expect(ownerReferences[0].UID).To(Equal(OperatorConfigurationResourceUid))
+				Expect(ownerReferences[0].Controller).To(BeNil())
+				Expect(*ownerReferences[0].BlockOwnerDeletion).To(BeTrue())
 			}
+
+			daemonSet := &appsv1.DaemonSet{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{
+				Namespace: OperatorNamespace,
+				Name:      DaemonSetName(OTelCollectorNamePrefixTest),
+			}, daemonSet)).To(Succeed())
+			Expect(daemonSet.GetOwnerReferences()).To(HaveLen(1))
+			Expect(daemonSet.GetOwnerReferences()[0].UID).To(Equal(OperatorManagerDeploymentUID))
+		})
+
+		It("should add the owner reference to existing cluster-scoped resources that do not have one", func() {
+			clusterRoleName := DaemonSetClusterRoleName(OTelCollectorNamePrefixTest)
+			existingClusterRole := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: clusterRoleName}}
+			Expect(patch.DefaultAnnotator.SetLastAppliedAnnotation(existingClusterRole)).To(Succeed())
+			Expect(k8sClient.Create(ctx, existingClusterRole)).To(Succeed())
+
+			_, resourcesHaveBeenUpdated, err :=
+				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+					ctx,
+					util.ExtraConfigDefaults,
+					DefaultOperatorConfigurationResourceWithUid(),
+					nil,
+					nil,
+					logger,
+				)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resourcesHaveBeenUpdated).To(BeTrue())
+
+			clusterRole := &rbacv1.ClusterRole{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: clusterRoleName}, clusterRole)).To(Succeed())
+			Expect(clusterRole.GetOwnerReferences()).To(HaveLen(1))
+			Expect(clusterRole.GetOwnerReferences()[0].UID).To(Equal(OperatorConfigurationResourceUid))
+		})
+
+		It("should not add self-monitoring if it is disabled", func() {
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
+			operatorConfiguration.Spec = OperatorConfigurationResourceWithoutSelfMonitoringWithToken
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
@@ -295,7 +369,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 		})
 
 		It("should respect self-monitoring settings when creating the collectors", func() {
-			operatorConfiguration := DefaultOperatorConfigurationResource()
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
@@ -329,7 +403,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 		It("should delete resources that are no longer desired", func() {
 			// reconcile once with KubernetesInfrastructureMetricsCollectionEnabled = true
-			operatorConfiguration := DefaultOperatorConfigurationResource()
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 			_, _, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
@@ -418,7 +492,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				},
 			})).To(Succeed())
 
-			operatorConfiguration := DefaultOperatorConfigurationResource()
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 			_, _, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
@@ -468,7 +542,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 		DescribeTable("should collect and forward the agent0-connector's pod logs unless the resource opts out",
 			func(enabledInResource *bool, expectPodLogsToBeCollected bool) {
-				operatorConfiguration := DefaultOperatorConfigurationResource()
+				operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 				operatorConfiguration.Spec.Agent0Connector.Enabled = enabledInResource
 				_, _, err := managerWithAgent0Connector.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
@@ -525,7 +599,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				},
 			)
 			locationIds := []string{"location-a", "location-b"}
-			operatorConfiguration := DefaultOperatorConfigurationResource()
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 			operatorConfiguration.Spec.SyntheticsWorker = dash0v1alpha1.SyntheticsWorker{
 				Enabled: enabledInResource,
 				Instances: []dash0v1alpha1.SyntheticsWorkerInstance{
@@ -571,7 +645,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 	Context("when OpenTelemetry collector resources have been modified externally", func() {
 		It("should reconcile the resources back into the desired state", func() {
-			operatorConfiguration := DefaultOperatorConfigurationResource()
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 			_, _, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
@@ -632,7 +706,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 	Context("when GKE Autopilot has adjusted the resources of the collector workloads", func() {
 		It("should not revert the adjustments, but still apply changed resource settings", func() {
-			operatorConfiguration := DefaultOperatorConfigurationResource()
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 			createOrUpdate := func(extraConfig util.ExtraConfig) bool {
 				resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 					oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
@@ -689,7 +763,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 	Context("when the collector workloads have been restarted via kubectl rollout restart", func() {
 		It("should keep the restart annotation, also when applying changed settings", func() {
-			operatorConfiguration := DefaultOperatorConfigurationResource()
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 			createOrUpdate := func(extraConfig util.ExtraConfig) bool {
 				resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 					oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
@@ -754,7 +828,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 	Context("when OpenTelemetry collector resources have been deleted externally", func() {
 		It("should re-created the resources", func() {
-			operatorConfiguration := DefaultOperatorConfigurationResource()
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 			_, _, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
@@ -796,7 +870,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 	Context("when all OpenTelemetry collector resources are up to date", func() {
 		It("should report that nothing has changed", func() {
-			operatorConfiguration := DefaultOperatorConfigurationResource()
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 
 			// create resources
 			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
@@ -843,7 +917,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 		})
 
 		It("should report that nothing has changed when the Signal Control collector is deployed", func() {
-			operatorConfiguration := DefaultOperatorConfigurationResource()
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 			signalControlResource := &dash0v1alpha1.Dash0SignalControl{
 				Spec: dash0v1alpha1.Dash0SignalControlSpec{Enabled: ptr.To(true)},
 			}
@@ -884,7 +958,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 	Context("when deleting all OpenTelemetry collector resources", func() {
 		It("should delete the resources", func() {
-			operatorConfiguration := DefaultOperatorConfigurationResource()
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 
 			// create resources (so there is something to delete)
 			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(

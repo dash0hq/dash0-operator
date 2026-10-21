@@ -12,6 +12,7 @@ import (
 	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	prometheusv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	dash0dashv1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
@@ -492,6 +493,33 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 				"objectives.value":                                              sloNotSupportedByApiReason,
 				"timeWindow.calendar":                                           sloNotSupportedByApiReason,
 			},
+		)
+	})
+
+	It("finds no unexpected drift between CheckRule and the API client's check rule type", func() {
+		expectNoUnexpectedApiTypeDrift(
+			reflect.TypeFor[CheckRule](),
+			reflect.TypeFor[dash0apiclient.PrometheusAlertRule](),
+			nil,
+			map[string]string{
+				"dataset":    "sent as the dataset query parameter",
+				"enabled":    "not supported by PrometheusRule",
+				"id":         "check rules are addressed by their origin in the URL path",
+				"metadata":   "server-populated and read-only",
+				"thresholds": "sent as the dash0-threshold-degraded/-critical annotations",
+			},
+		)
+	})
+
+	It("finds no unexpected drift between PrometheusRule and the API client's recording rule type", func() {
+		expectNoUnexpectedApiTypeDrift(
+			reflect.TypeFor[prometheusv1.PrometheusRuleSpec](),
+			reflect.TypeFor[dash0apiclient.PrometheusRuleSpec](),
+			map[string]string{
+				"groups.limit":                     "not supported by the Dash0 API",
+				"groups.partial_response_strategy": "not supported by the Dash0 API",
+			},
+			nil,
 		)
 	})
 })

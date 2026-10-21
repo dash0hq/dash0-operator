@@ -583,7 +583,7 @@ var _ = Describe(
 							},
 						}
 						resourceToRequestsResult :=
-							timeSeriesAggregationReconciler.MapResourceToHttpRequests(
+							timeSeriesAggregationReconciler.MapResourceToApiCalls(
 								preconditionValidationResult, apiConfig, upsertAction, logger)
 						Expect(resourceToRequestsResult.OriginsInResource).To(BeNil())
 						Expect(resourceToRequestsResult.ValidationIssues).To(BeNil())
@@ -709,7 +709,7 @@ spec:
 `), &timeSeriesAggregation)).To(Succeed())
 						apiConfig := ApiConfig{Endpoint: ApiEndpointTest, Dataset: DatasetCustomTest, Token: AuthorizationTokenTest}
 						resourceToRequestsResult :=
-							timeSeriesAggregationReconciler.MapResourceToHttpRequests(
+							timeSeriesAggregationReconciler.MapResourceToApiCalls(
 								&preconditionValidationResult{
 									k8sName:      "dash0-time-series-aggregation",
 									k8sNamespace: TestNamespaceName,

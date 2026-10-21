@@ -3,6 +3,10 @@
 
 package v1alpha1
 
+import (
+	corev1 "k8s.io/api/core/v1"
+)
+
 // OperatorConfigurationComponents contains the optional settings for the managed workloads.
 type OperatorConfigurationComponents struct {
 	// Settings for the OpenTelemetry collector DaemonSet.
@@ -41,7 +45,70 @@ type SignalControlComponents struct {
 	EdgeProxy *EdgeProxySettings `json:"edgeProxy,omitempty"`
 }
 
-// WorkloadSettings are the metadata settings of a workload that the operator manages.
+// ProbeSettings are the timing settings of a probe.
+type ProbeSettings struct {
+	// The number of seconds after the container has started before the probe is initiated.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum=0
+	InitialDelaySeconds *int32 `json:"initialDelaySeconds,omitempty"`
+
+	// The number of seconds after which the probe times out.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum=1
+	TimeoutSeconds *int32 `json:"timeoutSeconds,omitempty"`
+
+	// How often (in seconds) to perform the probe.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum=1
+	PeriodSeconds *int32 `json:"periodSeconds,omitempty"`
+
+	// The minimum number of consecutive successes for the probe to be considered successful after having failed. Must
+	// be 1 for the liveness and the startup probe.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum=1
+	SuccessThreshold *int32 `json:"successThreshold,omitempty"`
+
+	// The minimum number of consecutive failures for the probe to be considered failed after having succeeded.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum=1
+	FailureThreshold *int32 `json:"failureThreshold,omitempty"`
+
+	// The duration in seconds the pod needs to terminate gracefully upon probe failure, overriding the
+	// terminationGracePeriodSeconds of the pod. Must not be set for the readiness probe.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum=1
+	TerminationGracePeriodSeconds *int64 `json:"terminationGracePeriodSeconds,omitempty"`
+}
+
+// CollectorProbeSettings are the timing settings of the probes of an OpenTelemetry collector container.
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.liveness) || !has(self.liveness.successThreshold) || self.liveness.successThreshold == 1",message="liveness.successThreshold must be 1"
+// +kubebuilder:validation:XValidation:rule="!has(self.startup) || !has(self.startup.successThreshold) || self.startup.successThreshold == 1",message="startup.successThreshold must be 1"
+// +kubebuilder:validation:XValidation:rule="!has(self.readiness) || !has(self.readiness.terminationGracePeriodSeconds)",message="readiness.terminationGracePeriodSeconds must not be set"
+type CollectorProbeSettings struct {
+	// The timing settings of the liveness probe.
+	//
+	// +kubebuilder:validation:Optional
+	Liveness *ProbeSettings `json:"liveness,omitempty"`
+
+	// The timing settings of the readiness probe.
+	//
+	// +kubebuilder:validation:Optional
+	Readiness *ProbeSettings `json:"readiness,omitempty"`
+
+	// The timing settings of the startup probe.
+	//
+	// +kubebuilder:validation:Optional
+	Startup *ProbeSettings `json:"startup,omitempty"`
+}
+
+// WorkloadSettings are the metadata and scheduling settings of a workload that the operator manages.
 type WorkloadSettings struct {
 	// Additional labels for the workload. They replace the labels provided via the Helm chart, empty labels keep them.
 	//
@@ -65,21 +132,149 @@ type WorkloadSettings struct {
 	//
 	// +kubebuilder:validation:Optional
 	PodAnnotations map[string]string `json:"podAnnotations,omitempty"`
+
+	// Tolerations for the pods of the workload. They replace the tolerations provided via the Helm chart, empty
+	// tolerations keep them. Only the operators Equal and Exists are supported.
+	//
+	// +kubebuilder:validation:Optional
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// The node affinity for the pods of the workload. It is merged with the default node affinity of the Helm chart,
+	// not with the one provided via Helm: requiredDuringSchedulingIgnoredDuringExecution and
+	// preferredDuringSchedulingIgnoredDuringExecution each replace their default, unless they are absent. The default
+	// requires nodes that are not labelled with dash0.com/enable=false and run Linux, and has no preferred node
+	// affinity. requiredDuringSchedulingIgnoredDuringExecution with an empty list of nodeSelectorTerms removes the
+	// required node affinity.
+	//
+	// +kubebuilder:validation:Optional
+	NodeAffinity *corev1.NodeAffinity `json:"nodeAffinity,omitempty"`
+}
+
+// CollectorPodSettings are the pod settings that all OpenTelemetry collector workloads have in common.
+type CollectorPodSettings struct {
+	// Pod-level sysctls (spec.securityContext.sysctls). They replace the sysctls provided via the Helm chart, empty
+	// sysctls keep them.
+	//
+	// +kubebuilder:validation:Optional
+	Sysctls []corev1.Sysctl `json:"sysctls,omitempty"`
+
+	// The timing settings of the liveness, readiness and startup probes. The operator always sets the probe handler
+	// itself. The settings are merged with the default probes of the Helm chart per field, not with the probes provided
+	// via Helm: a probe or a field that is not set here keeps its default. The defaults are initialDelaySeconds 0,
+	// periodSeconds 2, timeoutSeconds 1, and failureThreshold 20 for the liveness, 3 for the readiness and 45 for the
+	// startup probe.
+	//
+	// +kubebuilder:validation:Optional
+	Probes *CollectorProbeSettings `json:"probes,omitempty"`
+
+	// The priority class name for the pods. It replaces the one provided via the Helm chart, an empty value keeps it.
+	//
+	// +kubebuilder:validation:Optional
+	PriorityClassName string `json:"priorityClassName,omitempty"`
 }
 
 // DaemonSetCollectorSettings are the settings for the OpenTelemetry collector DaemonSet.
 type DaemonSetCollectorSettings struct {
-	WorkloadSettings `json:",inline"`
+	WorkloadSettings     `json:",inline"`
+	CollectorPodSettings `json:",inline"`
+
+	// Pod-level SELinux options (spec.securityContext.seLinuxOptions, Helm value
+	// operator.collectors.daemonSetSeLinuxOptions). They replace the SELinux options provided via the Helm chart as a
+	// whole, an empty object removes them. By default, the pods have no SELinux options.
+	//
+	// +kubebuilder:validation:Optional
+	SELinuxOptions *corev1.SELinuxOptions `json:"seLinuxOptions,omitempty"`
+
+	// A volume for the offsets of the filelog receiver (Helm value operator.collectors.filelogOffsetSyncStorageVolume),
+	// as an alternative to the default ConfigMap-based storage, which is limited to 1 MB. It replaces the volume provided
+	// via the Helm chart.
+	//
+	// +kubebuilder:validation:Optional
+	FilelogOffsetStorageVolume *FilelogOffsetStorageVolume `json:"filelogOffsetStorageVolume,omitempty"`
+}
+
+// FilelogOffsetStorageVolume is the volume for the offsets of the filelog receiver. Exactly one of
+// persistentVolumeClaim and hostPath must be set.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.persistentVolumeClaim) != has(self.hostPath)",message="exactly one of persistentVolumeClaim and hostPath must be set"
+type FilelogOffsetStorageVolume struct {
+	// A persistent volume claim for the offsets. All pods of the DaemonSet mount the same claim, each one writes to its
+	// own subdirectory, hence the claim needs to support the ReadWriteMany access mode when the cluster has more than one
+	// node.
+	//
+	// +kubebuilder:validation:Optional
+	PersistentVolumeClaim *FilelogOffsetStoragePersistentVolumeClaim `json:"persistentVolumeClaim,omitempty"`
+
+	// A directory on the nodes for the offsets, mounted as a hostPath volume of type DirectoryOrCreate. Each pod of the
+	// DaemonSet writes to a subdirectory named after its node.
+	//
+	// +kubebuilder:validation:Optional
+	HostPath *FilelogOffsetStorageHostPath `json:"hostPath,omitempty"`
+}
+
+// FilelogOffsetStorageHostPath is a directory on the nodes.
+type FilelogOffsetStorageHostPath struct {
+	// The path of the directory on the nodes.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:XValidation:rule="!self.matches('(^|/)[.][.](/|$)')",message="path must not contain '..'"
+	Path string `json:"path"`
+}
+
+// FilelogOffsetStoragePersistentVolumeClaim references a persistent volume claim in the operator's namespace.
+type FilelogOffsetStoragePersistentVolumeClaim struct {
+	// The name of the persistent volume claim in the operator's namespace.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	ClaimName string `json:"claimName"`
 }
 
 // DeploymentCollectorSettings are the settings for the OpenTelemetry collector Deployment (cluster-metrics-collector).
 type DeploymentCollectorSettings struct {
-	WorkloadSettings `json:",inline"`
+	WorkloadSettings     `json:",inline"`
+	CollectorPodSettings `json:",inline"`
 }
 
 // TargetAllocatorSettings are the settings for the OpenTelemetry target-allocator.
 type TargetAllocatorSettings struct {
 	WorkloadSettings `json:",inline"`
+
+	// Settings for mTLS between the target-allocator and the collectors (Helm value operator.targetAllocator.mTls). They
+	// replace the mTLS settings provided via the Helm chart as a whole, an empty object disables mTLS.
+	//
+	// +kubebuilder:validation:Optional
+	MTls *TargetAllocatorMTls `json:"mTls,omitempty"`
+
+	// Whether the target-allocator serves the credentials for metrics endpoints which require authorization over plain
+	// HTTP instead of mTLS. Only enable this if the transport security between the target-allocator and the collectors
+	// is guaranteed by other means, for example by a service mesh (Helm value
+	// operator.targetAllocator.allowInsecureAuthSecrets, default false).
+	//
+	// +kubebuilder:validation:Optional
+	AllowInsecureAuthSecrets *bool `json:"allowInsecureAuthSecrets,omitempty"`
+}
+
+// TargetAllocatorMTls are the settings for mTLS between the target-allocator and the collectors.
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.enabled) || !self.enabled || (has(self.serverCertSecretName) && size(self.serverCertSecretName) > 0 && has(self.clientCertSecretName) && size(self.clientCertSecretName) > 0)",message="serverCertSecretName and clientCertSecretName are required when mTLS is enabled"
+type TargetAllocatorMTls struct {
+	// Whether to enable mTLS between the target-allocator and the collectors. Defaults to false, also when mTLS is
+	// enabled via Helm. Enabling mTLS requires serverCertSecretName and clientCertSecretName.
+	//
+	// +kubebuilder:validation:Optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// The name of the secret in the operator's namespace that contains the server certificate.
+	//
+	// +kubebuilder:validation:Optional
+	ServerCertSecretName string `json:"serverCertSecretName,omitempty"`
+
+	// The name of the secret in the operator's namespace that contains the client (collector) certificate.
+	//
+	// +kubebuilder:validation:Optional
+	ClientCertSecretName string `json:"clientCertSecretName,omitempty"`
 }
 
 // Agent0ConnectorSettings are the settings for the agent0-connector Deployment.
@@ -96,7 +291,8 @@ type SignalControlCollectorSettings struct {
 	// +kubebuilder:validation:Minimum=1
 	Replicas *int32 `json:"replicas,omitempty"`
 
-	WorkloadSettings `json:",inline"`
+	WorkloadSettings     `json:",inline"`
+	CollectorPodSettings `json:",inline"`
 }
 
 // EdgeProxySettings are the settings for the Edge Proxy Deployment.
