@@ -316,6 +316,37 @@ operator:
 
 If both `token` and `secretRef` are provided, `token` has priority and `secretRef` is ignored.
 
+### Using the Operator Only for the Agent0 Integration
+
+You can also deploy the operator only to manage the agent0-connector, without collecting telemetry or using any of its
+other capabilities.
+
+The operator only deploys the agent0-connector while a `Dash0OperatorConfiguration` resource exists, so the
+`Dash0OperatorConfiguration` needs to be created manually, or you can let the Helm chart create it.
+The latter requires `operator.dash0Export` to be enabled, with an endpoint and a token.
+
+The following values deploy only the agent0-connector, and keep the operator's self-monitoring enabled, that is, the
+operator still sends its own telemetry to Dash0 (but does not collect any other telemetry in the cluster):
+
+```yaml
+operator:
+  dash0Export:
+    enabled: true
+    endpoint: REPLACE THIS WITH YOUR DASH0 INGRESS ENDPOINT
+    token: REPLACE THIS WITH YOUR DASH0 AUTH TOKEN
+    # omitting the apiEndpoint setting disables the Dash0 API synchronization feature
+  telemetryCollectionEnabled: false
+  agent0Connector:
+    enabled: true
+    serverAddress: REPLACE THIS WITH THE OUTBOUND-CONNECTOR ENDPOINT
+    token: REPLACE THIS WITH YOUR DASH0 AUTH TOKEN
+```
+
+To switch off self-monitoring as well, add `selfMonitoringEnabled: false`.
+
+Refer to [Configuring the Dash0 Backend Connection](configuration.md#configuring-the-dash0-backend-connection) for more
+information on managing the `Dash0OperatorConfiguration` directly (without letting the Helm manage that resource).
+
 ### Restricting or Widening the Permissions
 
 The Helm value `operator.agent0Connector.clusterRole.rules` **replaces** the
