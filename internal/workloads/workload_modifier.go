@@ -153,7 +153,6 @@ type ModificationResult struct {
 	ContainersTotal                   int
 	InstrumentationIssuesPerContainer map[string][]string
 	LogAtDebugOnly                    bool
-	IgnoredOnce                       bool
 	ImmutableWorkload                 bool
 }
 
@@ -215,14 +214,6 @@ func NewNotModifiedImmutableWorkloadCannotBeRevertedResult() ModificationResult 
 		HasBeenModified:     false,
 		RenderReasonMessage: NoModificationReasonImmutableWorkloadCannotBeReverted,
 		ImmutableWorkload:   true,
-	}
-}
-
-func NewIgnoredOnceResult() ModificationResult {
-	return ModificationResult{
-		HasBeenModified:     false,
-		RenderReasonMessage: NoModificationReasonIgnoreOnceLabel,
-		IgnoredOnce:         true,
 	}
 }
 

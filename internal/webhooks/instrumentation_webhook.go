@@ -14,6 +14,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/events"
@@ -146,6 +147,10 @@ func newRequestLogger(request admission.Request) logd.Logger {
 }
 
 func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admission.Request) admission.Response {
+	if response, ignoredOnce := consumeIgnoreOnceLabel(request); ignoredOnce {
+		return response
+	}
+
 	targetNamespace := request.Namespace
 
 	dash0List := &dash0v1beta1.Dash0MonitoringList{}
@@ -237,6 +242,34 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 	)
 }
 
+// consumeIgnoreOnceLabel skips the admission request and removes the dash0.com/webhook-ignore-once label if the workload
+// has it. This runs before all other checks, so the label is consumed by the update it was added for, regardless of the
+// state of the monitoring resource.
+func consumeIgnoreOnceLabel(request admission.Request) (admission.Response, bool) {
+	workload := &unstructured.Unstructured{}
+	if err := workload.UnmarshalJSON(request.Object.Raw); err != nil {
+		// The request is then processed as if the label was absent.
+		return admission.Response{}, false
+	}
+	labels := workload.GetLabels()
+	if !util.RemoveWebhookIgnoreOnceLabel(labels) {
+		return admission.Response{}, false
+	}
+	workload.SetLabels(labels)
+
+	logger := newRequestLogger(request)
+	marshalled, err := workload.MarshalJSON()
+	if err != nil {
+		return logErrorAndReturnAllowed(
+			fmt.Errorf("error when marshalling the workload after removing the ignore-once label: %w", err),
+			logger,
+		), true
+	}
+	// deliberately not queueing an event for this case
+	logger.Info(workloads.NoModificationReasonIgnoreOnceLabel(actor))
+	return admission.PatchResponseFromRaw(request.Object.Raw, marshalled), true
+}
+
 func (h *InstrumentationWebhookHandler) handleCronJob(
 	request admission.Request,
 	gvkLabel string,
@@ -248,15 +281,6 @@ func (h *InstrumentationWebhookHandler) handleCronJob(
 	if failed {
 		// if h.preProcess returns failed=true, it will already have logged the error
 		return responseIfFailed
-	}
-	if util.CheckAndDeleteIgnoreOnceLabel(&cronJob.ObjectMeta) {
-		return h.postProcessInstrumentation(
-			request,
-			cronJob,
-			workloads.NewIgnoredOnceResult(),
-			false,
-			logger,
-		)
 	}
 	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(
 		&cronJob.ObjectMeta,
@@ -291,9 +315,6 @@ func (h *InstrumentationWebhookHandler) handleDaemonSet(
 		// if h.preProcess returns failed=true, it will already have logged the error
 		return responseIfFailed
 	}
-	if util.CheckAndDeleteIgnoreOnceLabel(&daemonSet.ObjectMeta) {
-		return h.postProcessInstrumentation(request, daemonSet, workloads.NewIgnoredOnceResult(), false, logger)
-	}
 	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(
 		&daemonSet.ObjectMeta,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
@@ -327,9 +348,6 @@ func (h *InstrumentationWebhookHandler) handleDeployment(
 		// if h.preProcess returns failed=true, it will already have logged the error
 		return responseIfFailed
 	}
-	if util.CheckAndDeleteIgnoreOnceLabel(&deployment.ObjectMeta) {
-		return h.postProcessInstrumentation(request, deployment, workloads.NewIgnoredOnceResult(), false, logger)
-	}
 	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(
 		&deployment.ObjectMeta,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
@@ -362,9 +380,6 @@ func (h *InstrumentationWebhookHandler) handleJob(
 	if failed {
 		// if h.preProcess returns failed=true, it will already have logged the error
 		return responseIfFailed
-	}
-	if util.CheckAndDeleteIgnoreOnceLabel(&job.ObjectMeta) {
-		return h.postProcessInstrumentation(request, job, workloads.NewIgnoredOnceResult(), false, logger)
 	}
 	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(
 		&job.ObjectMeta,
@@ -400,9 +415,6 @@ func (h *InstrumentationWebhookHandler) handlePod(
 	if failed {
 		// if h.preProcess returns failed=true, it will already have logged the error
 		return responseIfFailed
-	}
-	if util.CheckAndDeleteIgnoreOnceLabel(&pod.ObjectMeta) {
-		return h.postProcessInstrumentation(request, pod, workloads.NewIgnoredOnceResult(), true, logger)
 	}
 	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(
 		&pod.ObjectMeta,
@@ -440,9 +452,6 @@ func (h *InstrumentationWebhookHandler) handleReplicaSet(
 		// if h.preProcess returns failed=true, it will already have logged the error
 		return responseIfFailed
 	}
-	if util.CheckAndDeleteIgnoreOnceLabel(&replicaSet.ObjectMeta) {
-		return h.postProcessInstrumentation(request, replicaSet, workloads.NewIgnoredOnceResult(), false, logger)
-	}
 	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(
 		&replicaSet.ObjectMeta,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
@@ -475,9 +484,6 @@ func (h *InstrumentationWebhookHandler) handleStatefulSet(
 	if failed {
 		// if h.preProcess returns failed=true, it will already have logged the error
 		return responseIfFailed
-	}
-	if util.CheckAndDeleteIgnoreOnceLabel(&statefulSet.ObjectMeta) {
-		return h.postProcessInstrumentation(request, statefulSet, workloads.NewIgnoredOnceResult(), false, logger)
 	}
 	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(
 		&statefulSet.ObjectMeta,
@@ -521,7 +527,7 @@ func (h *InstrumentationWebhookHandler) postProcessInstrumentation(
 	isPod bool,
 	logger logd.Logger,
 ) admission.Response {
-	if !modificationResult.IgnoredOnce && !modificationResult.HasBeenModified {
+	if !modificationResult.HasBeenModified {
 		msg := modificationResult.RenderReasonMessage(actor)
 		if !modificationResult.LogAtDebugOnly {
 			logger.Info(msg)
@@ -537,14 +543,6 @@ func (h *InstrumentationWebhookHandler) postProcessInstrumentation(
 		wrappedErr := fmt.Errorf("error when marshalling modfied resource to JSON: %w", err)
 		util.QueueFailedInstrumentationEvent(h.Recorder, resource, actor, wrappedErr)
 		return logErrorAndReturnAllowed(wrappedErr, logger)
-	}
-
-	// For ignored workloads, we still need to return PatchResponseFromRaw. Although we do not modify the workload
-	// itself, we do need to remove the ignore-once label, which is a modification.
-	if modificationResult.IgnoredOnce {
-		logger.Info(modificationResult.RenderReasonMessage(actor))
-		// deliberately not queueing an event for this case
-		return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 	}
 
 	logger.Debug("patching workload to instrument it")
