@@ -309,16 +309,18 @@ operator:
               operator: "In"
               values: ["linux"]
 
-  # Settings for using cert-manager instead of auto-generating TLS certificates.
+  # Settings for using cert-manager instead of the webhook certificates that the operator manager generates and manages
+  # itself.
   #
   # See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/advanced-configuration.md#using-cert-manager
   # for details on how to use cert-manager with the Dash0 operator.
   certManager:
 
-    # Setting this to true disables the usage of automatically generated certificates by the Helm chart. If this is set
-    # to true, the assumption is that certificates are managed by cert-manager (see https://cert-manager.io/),
-    # and the other settings below (certManager.secretName, certManager.certManagerAnnotations) become required
-    # settings, additionally it is recommended to set webhookService.name.
+    # Setting this to true disables the webhook certificates that the operator manager generates, renews and injects
+    # into the webhook configurations itself. If this is set to true, the assumption is that certificates are managed by
+    # cert-manager (see https://cert-manager.io/), and the other settings below (certManager.secretName,
+    # certManager.certManagerAnnotations) become required settings, additionally it is recommended to set
+    # webhookService.name.
     useCertManager: false
 
     # The name of the secret used by cert-manager for the webhook certificate.
@@ -550,7 +552,7 @@ operator:
     repository: "ghcr.io/dash0hq/signal-control-collector"
     # The Signal Control collector is versioned independently of the operator, so this tag is pinned to that component
     # version; it does not track the chart appVersion.
-    tag: "1.4.0"
+    tag: "1.5.1"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy

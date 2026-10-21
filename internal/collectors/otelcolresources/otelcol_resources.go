@@ -262,6 +262,11 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	resourcesHaveBeenUpdated := false
 	for _, wrapper := range desiredState {
 		desiredResource := wrapper.object
+		if err = resources.SetOwnerReference(
+			m.operatorManagerDeployment, operatorConfigurationResource, m.scheme, desiredResource, logger,
+		); err != nil {
+			return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err
+		}
 		isNew, isChanged, err := m.createOrUpdateResource(
 			ctx,
 			desiredResource,
@@ -328,9 +333,6 @@ func (m *OTelColResourceManager) createResource(
 	desiredResource client.Object,
 	logger logd.Logger,
 ) error {
-	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
-		return err
-	}
 	if err := patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
 		return err
 	}
@@ -352,9 +354,6 @@ func (m *OTelColResourceManager) updateResource(
 	desiredResource client.Object,
 	logger logd.Logger,
 ) (bool, error) {
-	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
-		return false, err
-	}
 	// This will change the collector daemonset and collector deployment one more time after it has been created
 	// initially, by setting their own UID as an environment variable in all containers. Obviously, this cannot be done
 	// when creating the daemonset/deployment. The next reconcile cycle after creating the resources will set the UID

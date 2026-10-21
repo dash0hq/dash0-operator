@@ -1,45 +1,53 @@
-{{- /*
-Helm does not have a way to share generated values between files. So, we do not have another way to generate a
-self-signed cert and use it across deployment, webhook, service and CRDs (for conversion webhooks) other than putting
-all these resources into the same template file.
+{{- $selfManagedCertificates := not .Values.operator.certManager.useCertManager }}
+{{- $chartName := include "dash0-operator.chartName" . }}
 
-See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments:
-> Each invocation of the template function will generate a unique random string. This means that if it's necessary to
-> sync the random strings used by multiple resources, all relevant resources will need to be in the same template file.
-*/ -}}
-{{- $altNames := list ( printf "%s.%s.svc" (include "dash0-operator.webhookServiceName" . ) .Release.Namespace ) ( printf "%s-metrics.%s.svc" (include "dash0-operator.chartName" . ) .Release.Namespace ) -}}
-{{- $ca := genCA "dash0-operator-ca" 365 -}}
-{{- $cert := genSignedCert ( include "dash0-operator.chartName" . ) nil $altNames 365 $ca -}}
-{{- /*
-On upgrade, we want to avoid the webhook service from routing to an older pod, which will use a different certificate.
-Therefore, we add a digest of the cert as a label of the controller pods, which we can use in service selector to ensure
-routing to the newer controller pods.
-*/ -}}
-{{- $certFingerprint := $cert.Cert | b64enc | substr 10 25 | quote }}
-
-{{- if not .Values.operator.certManager.useCertManager }}
+{{- if $selfManagedCertificates }}
 {{/*
-------
-Secret
-------
+-------
+Secrets
+-------
+*/}}
+{{- /*
+If cert-manager is not used, the operator manager generates the webhook certificates (a CA and a serving certificate),
+stores them in this Secret, renews them, and injects the CA bundle into the webhook configurations and the conversion
+webhook of the Dash0Monitoring CRD. The Secret is rendered without data, so that neither an upgrade nor a GitOps sync
+changes the certificates.
 */}}
 ---
 apiVersion: v1
 kind: Secret
-type: kubernetes.io/tls
+type: Opaque
 metadata:
-  name: {{ include "dash0-operator.chartName" . }}-certificates
+  name: {{ include "dash0-operator.webhookCertificatesSecretName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: certificates
+    app.kubernetes.io/instance: webhook-server-cert
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+{{- /*
+Chart versions before the operator managed the webhook certificates itself generated them on every render and stored
+them in the following Secret. It is rendered unchanged as long as it exists (and can be read via lookup), so that an
+upgrade does not delete it while pods of the previous version still mount it.
+Maintenance note: This can be removed in a later release.
+*/}}
+{{- $legacyCertificatesSecret := lookup "v1" "Secret" .Release.Namespace (include "dash0-operator.legacyCertificatesSecretName" .) }}
+{{- if $legacyCertificatesSecret }}
+---
+apiVersion: v1
+kind: Secret
+type: {{ $legacyCertificatesSecret.type }}
+metadata:
+  name: {{ include "dash0-operator.legacyCertificatesSecretName" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: certificates
     app.kubernetes.io/instance: secret
 data:
-  ca.crt: {{ $ca.Cert | b64enc }}
-  tls.crt: {{ $cert.Cert | b64enc }}
-  tls.key: {{ $cert.Key | b64enc }}
-
-{{- end }}{{/* closes "if not .Values.operator.certManager.useCertManager" */}}
+  {{- toYaml $legacyCertificatesSecret.data | nindent 2 }}
+{{- end }}
+{{- end }}{{/* closes "if $selfManagedCertificates" */}}
 
 {{/*
 ---------------------------
@@ -78,9 +86,6 @@ spec:
       labels:
         app.kubernetes.io/name: dash0-operator
         app.kubernetes.io/component: controller
-        {{- if not .Values.operator.certManager.useCertManager }}
-        dash0.com/cert-digest: {{ $certFingerprint }}
-        {{- end }}
         {{- if .Values.operator.podLabels }}
         {{- include "dash0-operator.podLabels" . | nindent 8 }}
         {{- end }}
@@ -433,6 +438,14 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
+        {{- if $selfManagedCertificates }}
+        - name: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
+          value: {{ include "dash0-operator.webhookCertificatesSecretName" . }}
+        - name: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+          value: {{ include "dash0-operator.legacyCertificatesSecretName" . }}
+        - name: DASH0_CA_BUNDLE_TARGETS
+          value: {{ include "dash0-operator.caBundleTargets" . | quote }}
+        {{- end }}
         ports:
         - containerPort: 9443
           name: webhook-server
@@ -441,9 +454,11 @@ spec:
           {{- unset (.Values.operator.managerContainerResources | mustDeepCopy) "gomemlimit" | toYaml | nindent 10 }}
         {{ include "dash0-operator.restrictiveContainerSecurityContext" dict | nindent 8 }}
         volumeMounts:
+        {{- if not $selfManagedCertificates }}
         - name: certificates
           mountPath: /tmp/k8s-webhook-server/serving-certs
           readOnly: true
+        {{- end }}
         - name: config-volume
           mountPath: /etc/config
           readOnly: true
@@ -468,17 +483,15 @@ spec:
       automountServiceAccountToken: true
       terminationGracePeriodSeconds: 10
       volumes:
+      {{- if not $selfManagedCertificates }}
+      {{- if not .Values.operator.certManager.secretName }}
+      {{- fail "Error: operator.certManager.useCertManager is set to true, but you did not provide a value for operator.certManager.secretName. Please refer to the instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#using-cert-manager." -}}
+      {{- end }}
       - name: certificates
         secret:
           defaultMode: 420
-          {{- if not .Values.operator.certManager.useCertManager }}
-          secretName: {{ include "dash0-operator.chartName" . }}-certificates
-          {{- else }}
-          {{- if not .Values.operator.certManager.secretName }}
-          {{- fail "Error: operator.certManager.useCertManager is set to true, but you did not provide a value for operator.certManager.secretName. Please refer to the instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#using-cert-manager." -}}
-          {{- end }}
           secretName: {{ .Values.operator.certManager.secretName | quote }}
-          {{- end }}
+      {{- end }}
       - name: config-volume
         configMap:
           name: {{ template "dash0-operator.extraConfigMapName" . }}
@@ -507,9 +520,6 @@ spec:
   selector:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: controller
-    {{- if not .Values.operator.certManager.useCertManager }}
-    dash0.com/cert-digest: {{ $certFingerprint }}
-    {{- end }}
 
 {{/*
 ----------------------
@@ -530,6 +540,9 @@ metadata:
     app.kubernetes.io/component: injector
     app.kubernetes.io/instance: mutating-webhook
     {{- include "dash0-operator.labels" . | nindent 4 }}
+    {{- if $selfManagedCertificates }}
+    {{- include "dash0-operator.caBundleInjectionLabel" . | nindent 4 }}
+    {{- end }}
   {{- if .Values.operator.certManager.useCertManager }}
   {{- with .Values.operator.certManager.certManagerAnnotations }}
   annotations:
@@ -564,8 +577,10 @@ webhooks:
           - gke-managed-pod-snapshots
       {{- end }}
   clientConfig:
-    {{- if not .Values.operator.certManager.useCertManager }}
-    caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
+    {{- if $selfManagedCertificates }}
+    {{- with include "dash0-operator.liveCaBundle" (dict "kind" "MutatingWebhookConfiguration" "name" (printf "%s-injector" $chartName) "webhook" "inject.dash0.com") }}
+    caBundle: {{ . }}
+    {{- end }}
     {{- end }}
     service:
       name: {{ template "dash0-operator.webhookServiceName" . }}
@@ -630,6 +645,9 @@ metadata:
     app.kubernetes.io/component: validator
     app.kubernetes.io/instance: operator-configuration-mutating-webhook
     {{- include "dash0-operator.labels" . | nindent 4 }}
+    {{- if $selfManagedCertificates }}
+    {{- include "dash0-operator.caBundleInjectionLabel" . | nindent 4 }}
+    {{- end }}
   {{- if .Values.operator.certManager.useCertManager }}
   {{- with .Values.operator.certManager.certManagerAnnotations }}
   annotations:
@@ -639,8 +657,10 @@ metadata:
 webhooks:
   - name: mutate-operator-configuration.dash0.com
     clientConfig:
-      {{- if not .Values.operator.certManager.useCertManager }}
-      caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
+      {{- if $selfManagedCertificates }}
+      {{- with include "dash0-operator.liveCaBundle" (dict "kind" "MutatingWebhookConfiguration" "name" (printf "%s-operator-configuration-mutating" $chartName) "webhook" "mutate-operator-configuration.dash0.com") }}
+      caBundle: {{ . }}
+      {{- end }}
       {{- end }}
       service:
         name: {{ template "dash0-operator.webhookServiceName" . }}
@@ -690,6 +710,9 @@ metadata:
     app.kubernetes.io/component: validator
     app.kubernetes.io/instance: operator-configuration-validator-webhook
     {{- include "dash0-operator.labels" . | nindent 4 }}
+    {{- if $selfManagedCertificates }}
+    {{- include "dash0-operator.caBundleInjectionLabel" . | nindent 4 }}
+    {{- end }}
   {{- if .Values.operator.certManager.useCertManager }}
   {{- with .Values.operator.certManager.certManagerAnnotations }}
   annotations:
@@ -699,8 +722,10 @@ metadata:
 webhooks:
   - name: validate-operator-configuration.dash0.com
     clientConfig:
-      {{- if not .Values.operator.certManager.useCertManager }}
-      caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
+      {{- if $selfManagedCertificates }}
+      {{- with include "dash0-operator.liveCaBundle" (dict "kind" "ValidatingWebhookConfiguration" "name" (printf "%s-operator-configuration-validator" $chartName) "webhook" "validate-operator-configuration.dash0.com") }}
+      caBundle: {{ . }}
+      {{- end }}
       {{- end }}
       service:
         name: {{ template "dash0-operator.webhookServiceName" . }}
@@ -733,6 +758,9 @@ metadata:
     app.kubernetes.io/component: validator
     app.kubernetes.io/instance: signal-control-validator-webhook
     {{- include "dash0-operator.labels" . | nindent 4 }}
+    {{- if $selfManagedCertificates }}
+    {{- include "dash0-operator.caBundleInjectionLabel" . | nindent 4 }}
+    {{- end }}
   {{- if .Values.operator.certManager.useCertManager }}
   {{- with .Values.operator.certManager.certManagerAnnotations }}
   annotations:
@@ -742,8 +770,10 @@ metadata:
 webhooks:
   - name: validate-signal-control.dash0.com
     clientConfig:
-      {{- if not .Values.operator.certManager.useCertManager }}
-      caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
+      {{- if $selfManagedCertificates }}
+      {{- with include "dash0-operator.liveCaBundle" (dict "kind" "ValidatingWebhookConfiguration" "name" (printf "%s-signal-control-validator" $chartName) "webhook" "validate-signal-control.dash0.com") }}
+      caBundle: {{ . }}
+      {{- end }}
       {{- end }}
       service:
         name: {{ template "dash0-operator.webhookServiceName" . }}
@@ -776,6 +806,9 @@ metadata:
     app.kubernetes.io/component: validator
     app.kubernetes.io/instance: monitoring-mutating-webhook
     {{- include "dash0-operator.labels" . | nindent 4 }}
+    {{- if $selfManagedCertificates }}
+    {{- include "dash0-operator.caBundleInjectionLabel" . | nindent 4 }}
+    {{- end }}
   {{- if .Values.operator.certManager.useCertManager }}
   {{- with .Values.operator.certManager.certManagerAnnotations }}
   annotations:
@@ -785,8 +818,10 @@ metadata:
 webhooks:
   - name: mutate-monitoring.dash0.com
     clientConfig:
-      {{- if not .Values.operator.certManager.useCertManager }}
-      caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
+      {{- if $selfManagedCertificates }}
+      {{- with include "dash0-operator.liveCaBundle" (dict "kind" "MutatingWebhookConfiguration" "name" (printf "%s-monitoring-mutating" $chartName) "webhook" "mutate-monitoring.dash0.com") }}
+      caBundle: {{ . }}
+      {{- end }}
       {{- end }}
       service:
         name: {{ template "dash0-operator.webhookServiceName" . }}
@@ -836,6 +871,9 @@ metadata:
     app.kubernetes.io/component: validator
     app.kubernetes.io/instance: monitoring-validator-webhook
     {{- include "dash0-operator.labels" . | nindent 4 }}
+    {{- if $selfManagedCertificates }}
+    {{- include "dash0-operator.caBundleInjectionLabel" . | nindent 4 }}
+    {{- end }}
   {{- if .Values.operator.certManager.useCertManager }}
   {{- with .Values.operator.certManager.certManagerAnnotations }}
   annotations:
@@ -845,8 +883,10 @@ metadata:
 webhooks:
   - name: validate-monitoring.dash0.com
     clientConfig:
-       {{- if not .Values.operator.certManager.useCertManager }}
-      caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
+      {{- if $selfManagedCertificates }}
+      {{- with include "dash0-operator.liveCaBundle" (dict "kind" "ValidatingWebhookConfiguration" "name" (printf "%s-monitoring-validator" $chartName) "webhook" "validate-monitoring.dash0.com") }}
+      caBundle: {{ . }}
+      {{- end }}
       {{- end }}
       service:
         name: {{ template "dash0-operator.webhookServiceName" . }}
@@ -898,9 +938,6 @@ spec:
   selector:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: controller
-    {{- if not .Values.operator.certManager.useCertManager }}
-    dash0.com/cert-digest: {{ $certFingerprint }}
-    {{- end }}
 
 {{/*
 -------------------------------------------
@@ -918,6 +955,10 @@ metadata:
       {{- toYaml . | nindent 4 }}
     {{- end }}
     {{- end }}
+  {{- if $selfManagedCertificates }}
+  labels:
+    {{- include "dash0-operator.caBundleInjectionLabel" . | nindent 4 }}
+  {{- end }}
   name: dash0monitorings.operator.dash0.com
 spec:
   group: operator.dash0.com
@@ -3544,7 +3585,8 @@ spec:
 Maintenance note: When synchronizing helm-chart/dash0-operator/templates/operator/deployment-and-webhooks.yaml
 with config/crd/bases/operator.dash0.com_dash0monitorings.yaml after changing the CRD Golang types under
 api/operator, note that the the conversion webhook will not be generated in
-config/crd/bases/operator.dash0.com_dash0monitorings.yaml; hence, this diff is to be ignored.
+config/crd/bases/operator.dash0.com_dash0monitorings.yaml; hence, this diff is to be ignored. The same applies to the
+dash0.com/inject-ca-bundle label in the metadata of the CRD.
 */}}
   conversion:
     strategy: Webhook
@@ -3552,8 +3594,10 @@ config/crd/bases/operator.dash0.com_dash0monitorings.yaml; hence, this diff is t
       conversionReviewVersions:
       - v1
       clientConfig:
-        {{- if not .Values.operator.certManager.useCertManager }}
-        caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
+        {{- if $selfManagedCertificates }}
+        {{- with include "dash0-operator.liveCaBundle" (dict "kind" "CustomResourceDefinition" "name" "dash0monitorings.operator.dash0.com") }}
+        caBundle: {{ . }}
+        {{- end }}
         {{- end }}
         service:
           name: {{ template "dash0-operator.webhookServiceName" . }}

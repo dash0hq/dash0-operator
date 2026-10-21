@@ -62,6 +62,9 @@ func (h *MonitoringMutatingWebhookHandler) Handle(ctx context.Context, request a
 	// api/operator/v1alpha1/dash0monitoring_types.go have already been applied by the time this webhook
 	// is called.
 	// See https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#admission-control-phases.
+	if isReachabilityCheck(request) {
+		return admission.Allowed("")
+	}
 	logger := logd.FromContext(ctx)
 
 	monitoringResource := &dash0v1beta1.Dash0Monitoring{}

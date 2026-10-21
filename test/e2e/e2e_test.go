@@ -3680,6 +3680,82 @@ spec:
 					"controller",
 				)
 			})
+
+			It("should not use the operator-managed webhook certificates", func() {
+				verifyOperatorManagedCertificatesAreNotUsed(operatorNamespace)
+			})
+		})
+
+		Describe("with operator-managed webhook certificates", func() {
+
+			BeforeAll(func() {
+				By("deploying the Dash0 operator")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					true,
+					nil,
+				)
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+			})
+
+			AfterAll(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should keep the certificates when the Helm chart is applied again", func() {
+				caBundle := verifyCaBundlesCarryOperatorManagedBundle(operatorNamespace)
+				servingCertificate := readWebhookCertificatesSecretField(Default, operatorNamespace, "tls.crt")
+
+				probe := startWebhookProbe(operatorNamespace, false)
+				By("applying the Helm chart again with identical values")
+				Expect(upgradeOperator(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					defaultAutoOperatorConfigurationValues(true),
+					nil,
+				)).To(Succeed())
+				By("applying the Helm chart again with two operator manager replicas")
+				Expect(upgradeOperator(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					defaultAutoOperatorConfigurationValues(true),
+					map[string]string{"operator.replicaCount": "2"},
+				)).To(Succeed())
+				probe.stopAndVerifyNoFailures()
+
+				Expect(verifyCaBundlesCarryOperatorManagedBundle(operatorNamespace)).To(Equal(caBundle))
+				Expect(readWebhookCertificatesSecretField(Default, operatorNamespace, "tls.crt")).To(Equal(servingCertificate))
+
+				By("updating the Dash0 monitoring resource without retrying")
+				updateDash0MonitoringResource(
+					applicationUnderTestNamespace,
+					fmt.Sprintf(`{"metadata":{"annotations":{"e2e.dash0.com/updated-at":"%d"}}}`, time.Now().UnixNano()),
+				)
+			})
+
+			It("should restore removed CA bundles and certificate data", func() {
+				caBundle := verifyCaBundlesCarryOperatorManagedBundle(operatorNamespace)
+
+				removeCaBundleFromMonitoringValidator()
+				removeWebhookCertificatesSecretData(operatorNamespace)
+
+				Expect(verifyCaBundlesCarryOperatorManagedBundle(operatorNamespace)).To(Equal(caBundle))
+			})
 		})
 
 		// This test suite should be removed once Python auto-instrumentation is on by default.
@@ -4250,6 +4326,15 @@ spec:
 					"controller",
 				)
 
+				// The published chart versions used when the test suite runs against the published Helm chart might both
+				// still generate the webhook certificates while rendering the chart, which changes them on every upgrade.
+				// Operator pods stop serving their webhooks while they shut down, so requests routed to the pods of the
+				// previous release while they terminate can fail; only certificate failures are counted.
+				var probe *webhookProbe
+				if isLocalHelmChart(operatorHelmChart) {
+					probe = startWebhookProbe(operatorNamespace, true)
+				}
+
 				// Now upgrade the operator.
 				Expect(upgradeOperator(
 					operatorNamespace,
@@ -4261,6 +4346,11 @@ spec:
 					nil,
 				)).To(Succeed())
 
+				if probe != nil {
+					probe.stopAndVerifyNoFailures()
+					verifyCaBundlesCarryOperatorManagedBundle(operatorNamespace)
+				}
+
 				By("verifying that the Node.js deployment's instrumentation has been updated by the controller")
 				verifyThatWorkloadHasBeenInstrumented(
 					applicationUnderTestNamespace,
@@ -4271,6 +4361,27 @@ spec:
 					images,
 					"controller",
 				)
+			})
+
+			It("should keep the webhooks working after a rollback to the previous release", func() {
+				rollbackOperator(operatorNamespace)
+
+				By("updating the Dash0 monitoring resource and reading it via the conversion webhook")
+				Eventually(func(g Gomega) {
+					g.Expect(runAndIgnoreOutput(exec.Command(
+						"kubectl",
+						"patch",
+						"--namespace",
+						applicationUnderTestNamespace,
+						"Dash0Monitoring",
+						dash0MonitoringResourceName,
+						"--type",
+						"merge",
+						"-p",
+						fmt.Sprintf(`{"metadata":{"annotations":{"e2e.dash0.com/updated-at":"%d"}}}`, time.Now().UnixNano()),
+					))).To(Succeed())
+					readDash0MonitoringResourceAsV1Alpha1(g, applicationUnderTestNamespace)
+				}, 30*time.Second, time.Second).Should(Succeed())
 			})
 		})
 
@@ -4386,7 +4497,7 @@ spec:
 
 		Describe("when component settings are configured via Helm and in the operator configuration resource", func() {
 			BeforeAll(func() {
-				By("deploy the Dash0 operator with a DaemonSet label")
+				By("deploy the Dash0 operator with a DaemonSet toleration")
 				deployOperatorWithoutAutoOperationConfiguration(
 					operatorNamespace,
 					operatorHelmChart,
@@ -4394,7 +4505,8 @@ spec:
 					"",
 					&images,
 					map[string]string{
-						"operator.collectors.daemonSetLabels.e2e-component-label": "from-helm",
+						"operator.collectors.daemonSetTolerations[0].key":      "e2e-helm-toleration",
+						"operator.collectors.daemonSetTolerations[0].operator": "Exists",
 					},
 				)
 				time.Sleep(10 * time.Second)
@@ -4418,10 +4530,10 @@ spec:
 					TelemetryCollectionEnabled: true,
 				}, operatorNamespace, operatorHelmChart)
 
-				By("verifying that the DaemonSet uses the label provided via Helm")
+				By("verifying that the DaemonSet uses the toleration provided via Helm")
 				Eventually(func(g Gomega) {
-					g.Expect(readCollectorDaemonSetComponentLabel(g, operatorNamespace)).
-						To(Equal("from-helm"))
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, "{.spec.template.spec.tolerations[*].key}")).
+						To(Equal("e2e-helm-toleration"))
 				}, 60*time.Second, time.Second).Should(Succeed())
 
 				By("adding component settings to the Dash0 operator configuration resource")
@@ -4433,16 +4545,20 @@ spec:
 					"--type",
 					"merge",
 					"-p",
-					`{"spec":{"components":{"daemonSetCollector":{"labels":{"e2e-component-label":"from-resource"}}}}}`,
+					`{"spec":{"components":{"daemonSetCollector":{`+
+						`"tolerations":[{"key":"e2e-resource-toleration","operator":"Exists"}],`+
+						`"labels":{"e2e-component-label":"from-resource"}}}}}`,
 				))
 				Expect(err).ToNot(HaveOccurred())
 				Expect(output).To(ContainSubstring(
-					"spec.components.daemonSetCollector.labels overrides the custom Helm value " +
-						"operator.collectors.daemonSetLabels"))
+					"spec.components.daemonSetCollector.tolerations overrides the custom Helm value " +
+						"operator.collectors.daemonSetTolerations"))
 
 				By("verifying that the DaemonSet uses the settings of the resource")
 				Eventually(func(g Gomega) {
-					g.Expect(readCollectorDaemonSetComponentLabel(g, operatorNamespace)).
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, "{.spec.template.spec.tolerations[*].key}")).
+						To(Equal("e2e-resource-toleration"))
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, "{.metadata.labels.e2e-component-label}")).
 						To(Equal("from-resource"))
 				}, 60*time.Second, time.Second).Should(Succeed())
 			})
@@ -4644,6 +4760,7 @@ spec:
 				}).Should(Succeed())
 
 				verifyThatCollectorIsRemovedEventually()
+				verifyThatOperatorManagedClusterScopedResourcesAreRemovedEventually()
 			}
 
 			Describe("when uninstalling the operator via helm", func() {

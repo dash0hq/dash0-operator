@@ -22,7 +22,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllertest"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -49,11 +48,7 @@ const (
 
 var (
 	persesDashboardCrd        *apiextensionsv1.CustomResourceDefinition
-	testQueuePersesDashboards = workqueue.NewTypedWithConfig(
-		workqueue.TypedQueueConfig[ThirdPartyResourceSyncJob]{
-			Name: "dash0-third-party-resource-synchronization-queue",
-		},
-	)
+	testQueuePersesDashboards = NewThirdPartyResourceSyncQueue("dash0-perses-dashboard-synchronization-queue")
 
 	dashboardApiBasePath = "/api/dashboards/"
 
@@ -710,6 +705,54 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 				conv := readCrdConversion()
 				Expect(conv.Strategy).To(Equal(apiextensionsv1.WebhookConverter))
 				Expect(conv.Webhook.ClientConfig.Service.Name).To(Equal(OperatorWebhookServiceName))
+			})
+
+			It("reads the CA bundle from the operator-managed webhook certificates if they are configured", func() {
+				ensurePersesDashboardCrdExists(ctx)
+				operatorManagedCaPEM := generateTestCaPem()
+				r := createPersesDashboardCrdReconciler(true, caBundlePath+".does-not-exist")
+				r.conversionWebhookSettings.CaBundleSource = func() []byte { return operatorManagedCaPEM }
+
+				r.ensurePersesConversionWebhookConfigured(ctx, persesDashboardCrd, false, logger)
+
+				Expect(readCrdConversion().Webhook.ClientConfig.CABundle).To(Equal(operatorManagedCaPEM))
+			})
+
+			It("reads the CRD again and retries if it has been changed concurrently", func() {
+				ensurePersesDashboardCrdExists(ctx)
+				stale := &apiextensionsv1.CustomResourceDefinition{}
+				Expect(k8sClient.Get(ctx, PersesDashboardCrdQualifiedName, stale)).To(Succeed())
+				concurrent := stale.DeepCopy()
+				concurrent.Labels = map[string]string{"concurrent": "change"}
+				Expect(k8sClient.Patch(ctx, concurrent, client.MergeFrom(stale))).To(Succeed())
+
+				r := createPersesDashboardCrdReconciler(true, caBundlePath)
+				r.ensurePersesConversionWebhookConfigured(ctx, stale, false, logger)
+
+				crd := &apiextensionsv1.CustomResourceDefinition{}
+				Expect(k8sClient.Get(ctx, PersesDashboardCrdQualifiedName, crd)).To(Succeed())
+				Expect(crd.Labels).To(HaveKeyWithValue("concurrent", "change"))
+				Expect(crd.Spec.Conversion.Webhook.ClientConfig.Service.Name).To(Equal(OperatorWebhookServiceName))
+				Expect(crd.Spec.Conversion.Webhook.ClientConfig.CABundle).To(Equal(caPEM))
+			})
+
+			It("updates the CA bundle when the operator-managed CA bundle changes", func() {
+				ensurePersesDashboardCrdExists(ctx)
+				currentCaPEM := caPEM
+				r := createPersesDashboardCrdReconciler(true, caBundlePath)
+				r.conversionWebhookSettings.CaBundleSource = func() []byte { return currentCaPEM }
+				r.ensurePersesConversionWebhookConfigured(ctx, persesDashboardCrd, false, logger)
+				Expect(readCrdConversion().Webhook.ClientConfig.CABundle).To(Equal(caPEM))
+
+				currentCaPEM = generateTestCaPem()
+				r.OnCaBundleChange(ctx, logger)
+
+				Expect(readCrdConversion().Webhook.ClientConfig.CABundle).To(Equal(currentCaPEM))
+			})
+
+			It("ignores a CA bundle change if the CRD does not exist", func() {
+				r := createPersesDashboardCrdReconciler(true, caBundlePath)
+				r.OnCaBundleChange(ctx, logger)
 			})
 		},
 	)
@@ -1595,6 +1638,7 @@ spec:
 
 func createPersesDashboardCrdReconciler(autoPatch bool, caBundlePath string) *PersesDashboardCrdReconciler {
 	crdReconciler := NewPersesDashboardCrdReconciler(
+		k8sClient,
 		k8sClient,
 		testQueuePersesDashboards,
 		&DummyLeaderElectionAware{Leader: true},

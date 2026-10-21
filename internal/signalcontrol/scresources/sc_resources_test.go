@@ -6,6 +6,7 @@ package scresources
 import (
 	"context"
 
+	"github.com/cisco-open/k8s-objectmatcher/patch"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,6 +16,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
@@ -22,6 +24,11 @@ import (
 	. "github.com/onsi/gomega"
 
 	. "github.com/dash0hq/dash0-operator/test/util"
+)
+
+const (
+	testNamePrefix     = "test-prefix"
+	testEdgeProxyImage = "edge-proxy:latest"
 )
 
 var _ = Describe("The Signal Control resource manager", func() {
@@ -36,11 +43,11 @@ var _ = Describe("The Signal Control resource manager", func() {
 			clientgoscheme.Scheme,
 			OperatorManagerDeployment,
 			OperatorNamespace,
-			"dash0-operator",
-			"edge-proxy-image:latest",
-			corev1.PullAlways,
-			"1.0.0",
-			4317,
+			testNamePrefix,
+			testEdgeProxyImage,
+			corev1.PullIfNotPresent,
+			testOperatorVersion,
+			testOtlpGrpcHostPort,
 			cluster.KubernetesVersionInfo{},
 			false,
 			false,
@@ -56,6 +63,66 @@ var _ = Describe("The Signal Control resource manager", func() {
 		k8sClient = fake.NewClientBuilder().WithScheme(clientgoscheme.Scheme).Build()
 	})
 
+	desiredObjects := func() []client.Object {
+		desiredState := assembleDesiredState(
+			OperatorNamespace, testNamePrefix, minimalSignalControl, DefaultOperatorConfigurationResourceWithUid(),
+			testEdgeProxyImage, corev1.PullIfNotPresent, testOperatorVersion, testSelfMonitoring,
+			cluster.KubernetesVersionInfo{}, util.ExtraConfig{}, false, false, false, logger,
+		)
+		objects := make([]client.Object, 0, len(desiredState))
+		for _, wrapper := range desiredState {
+			objects = append(objects, wrapper.object)
+		}
+		Expect(objects).ToNot(BeEmpty())
+		return objects
+	}
+
+	verifyOwnedByOperatorManagerDeployment := func(desired client.Object) {
+		object := desired.DeepCopyObject().(client.Object)
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(desired), object)).To(Succeed())
+		ownerReferences := object.GetOwnerReferences()
+		Expect(ownerReferences).To(HaveLen(1))
+		Expect(ownerReferences[0].Kind).To(Equal("Deployment"))
+		Expect(ownerReferences[0].Name).To(Equal(OperatorManagerDeploymentName))
+		Expect(ownerReferences[0].UID).To(Equal(OperatorManagerDeploymentUID))
+		Expect(ownerReferences[0].Controller).To(BeNil())
+		Expect(*ownerReferences[0].BlockOwnerDeletion).To(BeTrue())
+	}
+
+	It("should make the operator manager deployment the owner of all resources", func() {
+		resourcesHaveBeenCreated, _, err := newResourceManager(k8sClient).CreateOrUpdateResources(
+			ctx,
+			minimalSignalControl,
+			DefaultOperatorConfigurationResourceWithUid(),
+			util.ExtraConfig{},
+			logger,
+		)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(resourcesHaveBeenCreated).To(BeTrue())
+
+		for _, desired := range desiredObjects() {
+			verifyOwnedByOperatorManagerDeployment(desired)
+		}
+	})
+
+	It("should add the owner reference to existing resources that do not have one", func() {
+		existingService := assembleEdgeProxyServiceForDeletion(OperatorNamespace, testNamePrefix)
+		Expect(patch.DefaultAnnotator.SetLastAppliedAnnotation(existingService)).To(Succeed())
+		Expect(k8sClient.Create(ctx, existingService)).To(Succeed())
+
+		_, resourcesHaveBeenUpdated, err := newResourceManager(k8sClient).CreateOrUpdateResources(
+			ctx,
+			minimalSignalControl,
+			DefaultOperatorConfigurationResourceWithUid(),
+			util.ExtraConfig{},
+			logger,
+		)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(resourcesHaveBeenUpdated).To(BeTrue())
+
+		verifyOwnedByOperatorManagerDeployment(existingService)
+	})
+
 	It("should keep the kubectl rollout restart annotation, also when reconciling other changes", func() {
 		resourceManager := newResourceManager(k8sClient)
 		labels := map[string]string{"app": "edge-proxy"}
@@ -68,7 +135,7 @@ var _ = Describe("The Signal Control resource manager", func() {
 				Template: corev1.PodTemplateSpec{
 					ObjectMeta: metav1.ObjectMeta{Labels: labels},
 					Spec: corev1.PodSpec{
-						Containers: []corev1.Container{{Name: "edge-proxy", Image: "edge-proxy-image:latest"}},
+						Containers: []corev1.Container{{Name: "edge-proxy", Image: testEdgeProxyImage}},
 					},
 				},
 			},
@@ -141,7 +208,7 @@ var _ = Describe("The Signal Control resource manager", func() {
 
 		It("uses the node-local collector outside of SCE-only mode", func() {
 			selfMonitoring := newResourceManager(k8sClient).edgeProxySelfMonitoring(ctx, operatorConfig, logger)
-			Expect(selfMonitoring.otlpGrpcHostPort).To(Equal(int32(4317)))
+			Expect(selfMonitoring.otlpGrpcHostPort).To(Equal(testOtlpGrpcHostPort))
 			Expect(selfMonitoring.directExport).To(BeNil())
 		})
 

@@ -382,7 +382,7 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 		if err != nil {
 			conversionErr := fmt.Errorf("unable to convert the view to the Dash0 API format: %w", err)
 			logger.Error(conversionErr, "error converting view")
-			return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, conversionErr.Error())
+			return NewResourceToRequestsResultSingleItemConversionError(apiConfig, itemName, conversionErr.Error())
 		}
 		apiClientCall = &ApiClientCall{
 			Method: http.MethodPut,

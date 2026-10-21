@@ -88,6 +88,82 @@ true
 {{- default .Values.operator.webhookService.port .Values.operator.webhookPort }}
 {{- end }}
 
+{{/*
+The Secret in which the operator manager stores the webhook certificates it manages itself, if cert-manager is not used.
+*/}}
+{{- define "dash0-operator.webhookCertificatesSecretName" -}}
+{{ include "dash0-operator.chartName" . }}-webhook-server-cert
+{{- end }}
+
+{{/*
+The Secret with the webhook certificates that chart versions before the operator managed the certificates itself have
+generated on every render.
+*/}}
+{{- define "dash0-operator.legacyCertificatesSecretName" -}}
+{{ include "dash0-operator.chartName" . }}-certificates
+{{- end }}
+
+{{/*
+The webhook configurations and CRDs into which the operator manager injects the CA bundle of the webhook certificates
+it manages itself, if cert-manager is not used, rendered as a comma-separated list of <kind>/<name>.
+Maintenance note: A new webhook configuration (or a CRD with a conversion webhook) needs to be added here, it needs the
+label rendered by dash0-operator.caBundleInjectionLabel, its caBundle needs to be rendered via
+dash0-operator.liveCaBundle, and it needs to be added to the resourceNames of the patch permissions in the -manager-base
+cluster role.
+*/}}
+{{- define "dash0-operator.caBundleTargets" -}}
+{{- $chartName := include "dash0-operator.chartName" . -}}
+{{- $targets := list
+  (printf "MutatingWebhookConfiguration/%s-injector" $chartName)
+  (printf "MutatingWebhookConfiguration/%s-operator-configuration-mutating" $chartName)
+  (printf "ValidatingWebhookConfiguration/%s-operator-configuration-validator" $chartName)
+  (printf "MutatingWebhookConfiguration/%s-monitoring-mutating" $chartName)
+  (printf "ValidatingWebhookConfiguration/%s-monitoring-validator" $chartName)
+  "CustomResourceDefinition/dash0monitorings.operator.dash0.com"
+-}}
+{{- if .Values.operator.signalControl.enabled -}}
+{{- $targets = append $targets (printf "ValidatingWebhookConfiguration/%s-signal-control-validator" $chartName) -}}
+{{- end -}}
+{{- join "," $targets -}}
+{{- end }}
+
+{{/*
+The label that marks a webhook configuration or CRD as a target for the injection of the CA bundle by the operator
+manager. The value is the namespace of the release, so that only the operator manager of this release injects into it.
+*/}}
+{{- define "dash0-operator.caBundleInjectionLabel" -}}
+dash0.com/inject-ca-bundle: {{ .Release.Namespace }}
+{{- end }}
+
+{{/*
+Renders the current caBundle of a webhook client configuration, read from the live object via lookup, or nothing if
+the live object does not exist or cannot be read (helm template, ArgoCD). The operator manager injects the CA bundle;
+rendering the live value (or omitting the field) makes sure that an install or upgrade never changes it.
+Parameters: kind and name of the object, and the name of the webhook entry (omit for the conversion webhook of a CRD).
+*/}}
+{{- define "dash0-operator.liveCaBundle" -}}
+{{- if eq .kind "CustomResourceDefinition" -}}
+{{- $live := lookup "apiextensions.k8s.io/v1" .kind "" .name -}}
+{{- with $live -}}
+{{- with .spec -}}{{- with .conversion -}}{{- with .webhook -}}{{- with .clientConfig -}}
+{{- .caBundle | default "" -}}
+{{- end -}}{{- end -}}{{- end -}}{{- end -}}
+{{- end -}}
+{{- else -}}
+{{- $live := lookup "admissionregistration.k8s.io/v1" .kind "" .name -}}
+{{- $webhookName := .webhook -}}
+{{- with $live -}}
+{{- range .webhooks -}}
+{{- if eq .name $webhookName -}}
+{{- with .clientConfig -}}
+{{- .caBundle | default "" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
 {{/* the controller manager container image */}}
 {{- define "dash0-operator.image" -}}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.image "context" .) -}}

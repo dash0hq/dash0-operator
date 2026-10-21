@@ -29,6 +29,15 @@ should install the GKE Autopilot AllowlistSynchronizer remove job if operator.gk
         resources:
           - allowlistsynchronizers
         verbs:
+          - get
+          - patch
+          - delete
+      - apiGroups:
+          - auto.gke.io
+        resources:
+          - workloadallowlists
+        verbs:
+          - list
           - delete
   3: |
     apiVersion: rbac.authorization.k8s.io/v1

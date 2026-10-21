@@ -646,12 +646,16 @@ var _ = Describe("The collector manager", Ordered, func() {
 	})
 
 	Describe("when component settings are configured in the custom resources", func() {
+		helmToleration := corev1.Toleration{Key: "helm", Operator: corev1.TolerationOpExists}
+		resourceToleration := corev1.Toleration{Key: "resource", Operator: corev1.TolerationOpExists}
+
 		BeforeEach(func() {
 			spec := OperatorConfigurationResourceDefaultSpec
 			spec.Components = &dash0v1alpha1.OperatorConfigurationComponents{
 				DaemonSetCollector: &dash0v1alpha1.DaemonSetCollectorSettings{
 					WorkloadSettings: dash0v1alpha1.WorkloadSettings{
-						Labels: map[string]string{"daemonset-label": "resource"},
+						Labels:      map[string]string{"daemonset-label": "resource"},
+						Tolerations: []corev1.Toleration{resourceToleration},
 					},
 				},
 				DeploymentCollector: &dash0v1alpha1.DeploymentCollectorSettings{
@@ -690,6 +694,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 		It("should apply the settings of the custom resources instead of the Helm values", func() {
 			collectorManager = newCollectorManagerWithSignalControlEnabled()
 			fileConfig := util.ExtraConfigDefaults
+			fileConfig.DaemonSetTolerations = []corev1.Toleration{helmToleration}
 			fileConfig.CollectorDaemonSetLabels = map[string]string{"helm-label": "helm"}
 			fileConfig.CollectorDaemonSetPodLabels = map[string]string{"helm-pod-label": "helm"}
 			fileConfig.SignalControlCollectorReplicas = 4
@@ -705,6 +710,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 			Expect(ds.Labels).To(HaveKeyWithValue("daemonset-label", "resource"))
 			Expect(ds.Labels).ToNot(HaveKey("helm-label"))
 			Expect(ds.Spec.Template.Labels).To(HaveKeyWithValue("helm-pod-label", "helm"))
+			Expect(ds.Spec.Template.Spec.Tolerations).To(Equal([]corev1.Toleration{resourceToleration}))
 
 			deployment := VerifyResourceExists(
 				ctx, k8sClient, operatorNamespace, ExpectedDeploymentName, &appsv1.Deployment{},

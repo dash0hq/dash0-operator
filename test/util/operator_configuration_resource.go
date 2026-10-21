@@ -10,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -21,6 +22,8 @@ import (
 )
 
 var (
+	OperatorConfigurationResourceUid = types.UID("8d1f3a52-6c4e-4b7a-9e0f-3b2c1d4e5f60")
+
 	OperatorConfigurationResourceDefaultObjectMeta = metav1.ObjectMeta{
 		Name: OperatorConfigurationResourceName,
 	}
@@ -211,6 +214,14 @@ func DefaultOperatorConfigurationResource() *dash0v1alpha1.Dash0OperatorConfigur
 		Spec:       OperatorConfigurationResourceDefaultSpec,
 	}
 	return &operatorConfiguration
+}
+
+// DefaultOperatorConfigurationResourceWithUid returns the default operator configuration resource with a UID, as if it
+// had been read from the API server, without creating it. This allows the resource to be used as an owner.
+func DefaultOperatorConfigurationResourceWithUid() *dash0v1alpha1.Dash0OperatorConfiguration {
+	operatorConfiguration := DefaultOperatorConfigurationResource()
+	operatorConfiguration.UID = OperatorConfigurationResourceUid
+	return operatorConfiguration
 }
 
 func CreateDefaultOperatorConfigurationResource(

@@ -114,11 +114,6 @@ func (r *SignalToMetricsReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
-// HttpClient returns nil, the signal-to-metrics reconciler talks to the Dash0 API via the API client pool.
-func (r *SignalToMetricsReconciler) HttpClient() *http.Client {
-	return nil
-}
-
 func (r *SignalToMetricsReconciler) SetDefaultApiConfigs(
 	ctx context.Context,
 	apiConfigs []ApiConfig,

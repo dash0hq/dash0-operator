@@ -14,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -145,7 +144,7 @@ var _ = Describe("The synchronization retry runnable", func() {
 
 	Context("when retrying failed synchronizations", Ordered, func() {
 		ctx := context.Background()
-		var queue *workqueue.Typed[ThirdPartyResourceSyncJob]
+		var queue *ThirdPartyResourceSyncQueue
 		var persesDashboardCrdReconciler *PersesDashboardCrdReconciler
 		var prometheusRuleCrdReconciler *PrometheusRuleCrdReconciler
 		var runnable *SynchronizationRetryRunnable
@@ -179,23 +178,21 @@ var _ = Describe("The synchronization retry runnable", func() {
 		})
 
 		BeforeEach(func() {
-			queue = workqueue.NewTypedWithConfig(
-				workqueue.TypedQueueConfig[ThirdPartyResourceSyncJob]{
-					Name: "dash0-synchronization-retry-test-queue",
-				},
-			)
+			queue = NewThirdPartyResourceSyncQueue("dash0-synchronization-retry-test-queue")
 
 			prometheusRuleCrdReconciler = NewPrometheusRuleCrdReconciler(
 				k8sClient,
+				k8sClient,
 				queue,
 				&DummyLeaderElectionAware{Leader: true},
-				TestHTTPClient(),
+				testApiClientPool(),
 			)
 			prometheusRuleCrdReconciler.skipNameValidation = true
 			prometheusRuleCrdReconciler.CreateThirdPartyResourceReconciler(types.UID("test-cluster-uid"))
 			startWatching(ctx, prometheusRuleCrdReconciler.ThirdPartyResourceReconciler())
 
 			persesDashboardCrdReconciler = NewPersesDashboardCrdReconciler(
+				k8sClient,
 				k8sClient,
 				queue,
 				&DummyLeaderElectionAware{Leader: true},
@@ -486,7 +483,7 @@ func stopWatching(resourceReconciler ThirdPartyResourceReconciler) {
 	resourceReconciler.SetControllerStopFunction(nil)
 }
 
-func drainQueue(queue *workqueue.Typed[ThirdPartyResourceSyncJob]) []string {
+func drainQueue(queue *ThirdPartyResourceSyncQueue) []string {
 	enqueued := make([]string, 0)
 	for queue.Len() > 0 {
 		item, shutdown := queue.Get()
