@@ -99,7 +99,7 @@ contain any other verb, this is considered a validation error and the Helm insta
 
 By default, the connector has **no access to Kubernetes secrets and no access to ConfigMaps** at all.
 
-The agent0-connector uses a dedicated service account with a restriced ClusterRole.
+The agent0-connector uses a dedicated service account with a restricted ClusterRole.
 The restricted permissions that it grant apply to every namespace.
 The agent0-connector is not restricted to the namespaces with a Dash0Monitoring resource.
 

@@ -1468,8 +1468,8 @@ operator:
     # If operator.agent0Connector.enabled is false, this value will be ignored.
     #
     # The value needs to be the "Outbound Connector" endpoint of your Dash0 organization. The correct endpoint can be
-    # copied fom https://app.dash0.com/settings/endpoints -> "Outbound Connector". The correct endpoint value will always
-    # start with `outbound-connector.` and end in `dash0.com:443`.
+    # copied from https://app.dash0.com/settings/endpoints -> "Outbound Connector". The correct endpoint value will
+    # always start with `outbound-connector.` and end in `dash0.com:443`.
     serverAddress: ""
 
     # The Dash0 authorization token for the agent0-connector. Either this value or the
