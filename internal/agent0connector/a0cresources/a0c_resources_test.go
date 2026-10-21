@@ -8,6 +8,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/cisco-open/k8s-objectmatcher/patch"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -117,6 +118,66 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			Expect(updated).To(BeFalse())
 
 			verifyAgent0ConnectorResourcesExist(ctx)
+		})
+
+		It("should make the operator configuration resource the owner of cluster-scoped resources", func() {
+			_, _, err := manager.CreateOrUpdateAgent0ConnectorResources(
+				ctx,
+				util.ExtraConfig{},
+				DefaultOperatorConfigurationResourceWithUid(),
+				logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			for _, object := range []client.Object{
+				&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: ClusterRoleName(testNamePrefix)}},
+				&rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: ClusterRoleBindingName(testNamePrefix)}},
+			} {
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(object), object)).To(Succeed())
+				ownerReferences := object.GetOwnerReferences()
+				Expect(ownerReferences).To(HaveLen(1))
+				Expect(ownerReferences[0].Kind).To(Equal("Dash0OperatorConfiguration"))
+				Expect(ownerReferences[0].UID).To(Equal(OperatorConfigurationResourceUid))
+				Expect(ownerReferences[0].Controller).To(BeNil())
+				Expect(*ownerReferences[0].BlockOwnerDeletion).To(BeTrue())
+			}
+
+			for _, object := range []client.Object{
+				&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
+					Namespace: OperatorNamespace,
+					Name:      ServiceAccountName(testNamePrefix),
+				}},
+				&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
+					Namespace: OperatorNamespace,
+					Name:      DeploymentName(testNamePrefix),
+				}},
+			} {
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(object), object)).To(Succeed())
+				ownerReferences := object.GetOwnerReferences()
+				Expect(ownerReferences).To(HaveLen(1))
+				Expect(ownerReferences[0].UID).To(Equal(OperatorManagerDeploymentUID))
+			}
+		})
+
+		It("should add the owner reference to existing cluster-scoped resources that do not have one", func() {
+			clusterRoleName := ClusterRoleName(testNamePrefix)
+			existingClusterRole := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: clusterRoleName}}
+			Expect(patch.DefaultAnnotator.SetLastAppliedAnnotation(existingClusterRole)).To(Succeed())
+			Expect(k8sClient.Create(ctx, existingClusterRole)).To(Succeed())
+
+			_, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(
+				ctx,
+				util.ExtraConfig{},
+				DefaultOperatorConfigurationResourceWithUid(),
+				logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updated).To(BeTrue())
+
+			clusterRole := &rbacv1.ClusterRole{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: clusterRoleName}, clusterRole)).To(Succeed())
+			Expect(clusterRole.GetOwnerReferences()).To(HaveLen(1))
+			Expect(clusterRole.GetOwnerReferences()[0].UID).To(Equal(OperatorConfigurationResourceUid))
 		})
 	})
 

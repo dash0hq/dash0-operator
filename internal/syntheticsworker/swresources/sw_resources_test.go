@@ -146,6 +146,34 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 			verifySyntheticsWorkerResourcesExist(ctx, testLocationID)
 		})
 
+		It("should make the operator manager deployment the owner of all resources", func() {
+			_, err := manager.CreateOrUpdateSyntheticsWorkerResources(
+				ctx,
+				operatorConfigurationResourceWithSyntheticsWorker(syntheticsWorkerAuthToken),
+				logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			for _, object := range []client.Object{
+				&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
+					Name:      ServiceAccountName(testNamePrefix, testLocationID),
+					Namespace: OperatorNamespace,
+				}},
+				&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
+					Name:      DeploymentName(testNamePrefix, testLocationID),
+					Namespace: OperatorNamespace,
+				}},
+			} {
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(object), object)).To(Succeed())
+				ownerReferences := object.GetOwnerReferences()
+				Expect(ownerReferences).To(HaveLen(1))
+				Expect(ownerReferences[0].Kind).To(Equal("Deployment"))
+				Expect(ownerReferences[0].UID).To(Equal(OperatorManagerDeployment.UID))
+				Expect(ownerReferences[0].Controller).To(BeNil())
+				Expect(*ownerReferences[0].BlockOwnerDeletion).To(BeTrue())
+			}
+		})
+
 		It("creates one deployment and service account per instance, and does not let one instance's "+
 			"misconfiguration block the others", func() {
 			resource := DefaultOperatorConfigurationResource()
