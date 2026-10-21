@@ -835,9 +835,6 @@ run_helm() {
     if [[ "${AUTO_MONITOR_NAMESPACES_ENABLED:-}" = "true" ]]; then
       helm_install_command+=" --set operator.autoMonitorNamespaces.enabled=true"
     fi
-    if [[ "${TELEMETRY_COLLECTION_ENABLED:-}" = "false" ]]; then
-      helm_install_command+=" --set operator.telemetryCollectionEnabled=false"
-    fi
     if [[ "${ENABLE_PYTHON_AUTO_INSTRUMENTATION:-}" = "true" ]]; then
       helm_install_command+=" --set operator.instrumentation.enablePythonAutoInstrumentation=true"
     fi
@@ -846,11 +843,11 @@ run_helm() {
     fi
     helm_install_command+=" --set operator.clusterName=$(kubectl config current-context)"
   fi
+  if [[ "${TELEMETRY_COLLECTION_ENABLED:-}" = "false" ]]; then
+    helm_install_command+=" --set operator.telemetryCollectionEnabled=false"
+  fi
   if [[ "${FEATURE_SIGNAL_CONTROL_ENABLED:-}" = "true" ]]; then
     helm_install_command+=" --set operator.signalControl.enabled=true"
-  fi
-  if [[ "${FEATURE_SIGNAL_CONTROL_SCE_ONLY_MODE:-}" = "true" ]]; then
-    helm_install_command+=" --set operator.signalControl.sceOnlyMode=true"
   fi
   if [[ -n "${OPERATOR_REPLICAS:-}" ]]; then
     helm_install_command+=" --set operator.replicaCount=${OPERATOR_REPLICAS:-1}"

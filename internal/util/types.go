@@ -118,8 +118,8 @@ type CollectorConfig struct {
 	DebugVerbosityDetailed bool
 	EnableProfExtension    bool
 	CompressConfigMap      bool
-	// SignalControlSceOnlyMode is set via the Helm value operator.signalControl.sceOnlyMode. If true, neither the
-	// collector DaemonSet nor the cluster metrics collector Deployment is deployed.
+	// SignalControlSceOnlyMode is true if Signal Control is enabled and telemetry collection is disabled via Helm. If
+	// true, neither the collector DaemonSet nor the cluster metrics collector Deployment is deployed.
 	SignalControlSceOnlyMode bool
 }
 

@@ -7,7 +7,7 @@ set -euo pipefail
 
 # enable Signal Control features in SCE-only mode (only the Signal Control collector and the Edge Proxy are deployed)
 export FEATURE_SIGNAL_CONTROL_ENABLED=true
-export FEATURE_SIGNAL_CONTROL_SCE_ONLY_MODE=true
+export TELEMETRY_COLLECTION_ENABLED=false
 # workloads are not instrumented in SCE-only mode, applications need to send telemetry to the Signal Control collector
 # service themselves
 export DEPLOY_APPLICATION_UNDER_MONITORING="${DEPLOY_APPLICATION_UNDER_MONITORING:-false}"

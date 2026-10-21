@@ -399,7 +399,7 @@ rules:
   - update
 
 ---
-{{ if .Values.operator.telemetryCollectionEnabled }}
+{{ if or .Values.operator.telemetryCollectionEnabled (include "dash0-operator.signalControlSceOnlyMode" .) }}
 {{/*
 The -manager-collector cluster role holds permissions for managing OpenTelemetry collectors and the target allocator.
 */}}
@@ -639,7 +639,7 @@ rules:
 The target allocator resolves secrets referenced by Prometheus CRDs in any namespace. It is not deployed in SCE-only
 mode.
 */}}
-{{- if not .Values.operator.signalControl.sceOnlyMode }}
+{{- if .Values.operator.telemetryCollectionEnabled }}
 - apiGroups:
   - ""
   resources:
@@ -657,7 +657,7 @@ mode.
 {{ end }}
 
 ---
-{{ if and .Values.operator.telemetryCollectionEnabled (not .Values.operator.signalControl.sceOnlyMode) }}
+{{ if .Values.operator.telemetryCollectionEnabled }}
 {{/*
 The -manager-instrument cluster role holds permissions necessary for auto-instrumenting workloads.
 */}}

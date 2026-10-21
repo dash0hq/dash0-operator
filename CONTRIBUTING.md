@@ -180,8 +180,9 @@ Moving beyond the quickstart instructions, here are more details on the test scr
   (see `test-resources/component-settings`). Some of them are also set to different values via Helm, which the
   operator reports with a warning ("overrides the custom Helm value").
 * `test-resources/bin/test-scenario-13-signal-control-only.sh`: Deploys the operator with Signal Control in SCE-only
-  mode (`FEATURE_SIGNAL_CONTROL_SCE_ONLY_MODE=true`), so that only the Signal Control collector and the Edge Proxy are
-  deployed. By default, it deploys neither an application under monitoring nor a monitoring resource.
+  mode (`FEATURE_SIGNAL_CONTROL_ENABLED=true` and `TELEMETRY_COLLECTION_ENABLED=false`), so that only the Signal
+  Control collector and the Edge Proxy are deployed. By default, it deploys neither an application under monitoring
+  nor a monitoring resource.
 * `test-resources/bin/test-cleanup.sh`: This script removes all resources created by the other scripts. **You should
   always run this script after running any of the scenario scripts, when you are done with your tests, otherwise the
   e2e tests will fail the next time you start them.** Note that all scenario scripts call the cleanup at the beginning,
@@ -265,9 +266,6 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       to the Helm setting `operator.instrumentation.enablePythonAutoInstrumentation=true`. This defaults to "false".
     * `ENABLE_RUBY_AUTO_INSTRUMENTATION`: Set this to "true" to enable Ruby auto-instrumentation. This corresponds to
       the Helm setting `operator.instrumentation.enableRubyAutoInstrumentation=true`. This defaults to "false".
-    * `FEATURE_SIGNAL_CONTROL_SCE_ONLY_MODE`: Set this to "true" to install the operator in SCE-only mode
-      (`operator.signalControl.sceOnlyMode=true`). Requires `FEATURE_SIGNAL_CONTROL_ENABLED=true`.
-      This defaults to "false", except in test scenario 13, where it is always "true".
     * `FILELOG_OFFSETS_PVC`: Use a persistent volume claim to store filelog offsets, instead of the default config map
       based storage. Possible values:
         * `FILELOG_OFFSETS_PVC=kind`: deploy a PersistentVolume and PersistentVolumeClaim suitable for kind clusters
@@ -340,8 +338,9 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       collectors. Requires `USE_CERT_MANAGER=true`, since the certificates are provisioned via cert-manager.
       This defaults to "false", except in test scenario 06, where it defaults to "true".
     * `TELEMETRY_COLLECTION_ENABLED`: Set this to "false" to instruct the operator to not deploy OpenTelemetry
-      collectors and the target allocator.
-      This defaults to "true".
+      collectors and the target allocator. Together with `FEATURE_SIGNAL_CONTROL_ENABLED=true`, this installs the
+      operator in SCE-only mode.
+      This defaults to "true", except in test scenario 13, where it is always "false".
     * `USE_CERT_MANAGER`: Set this to "true" to have the operator use cert-manager to manage TLS certificates, instead
       of generating certificates on the fly during Helm install.
       If this is set to "true", the test scenario scripts will also make sure cert-manager is installed in the

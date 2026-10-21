@@ -217,12 +217,13 @@ To enable SCE-only mode, install the operator with the following Helm values:
 
 ```
 --set operator.signalControl.enabled=true
---set operator.signalControl.sceOnlyMode=true
+--set operator.telemetryCollectionEnabled=false
 ```
 
-`operator.telemetryCollectionEnabled` must stay `true` (the default). The SignalControl collector is only deployed once
-an enabled `Dash0SignalControl` resource exists and the operator configuration has a default Dash0 export. Until then,
-telemetry sent to the service is lost.
+The SignalControl collector is only deployed once an enabled `Dash0SignalControl` resource exists and the operator
+configuration has a default Dash0 export. Until then, telemetry sent to the service is lost. A
+`Dash0OperatorConfiguration` resource that is managed manually instead of via Helm has to set
+`spec.telemetryCollection.enabled=false`.
 
 ### What is not available
 
@@ -237,7 +238,9 @@ All processing that the per-node collector and the cluster metrics collector add
   infrastructure metrics (kubelet stats, cluster metrics)
 - automatic namespace monitoring (`operator.autoMonitorNamespaces.enabled`)
 
-The corresponding settings of the `Dash0OperatorConfiguration` and `Dash0Monitoring` resources have no effect.
+As with `operator.telemetryCollectionEnabled=false` without Signal Control, most settings of the
+`Dash0OperatorConfiguration` and `Dash0Monitoring` resources that enable these features are rejected. The others have
+no effect.
 
 The Edge Proxy sends its self-monitoring telemetry directly to the export of the operator configuration, unless that
 export is not a Dash0 export. On GKE Autopilot, the Edge Proxy does not send self-monitoring telemetry until its GKE
@@ -276,11 +279,11 @@ Switching an existing installation to SCE-only mode via `helm upgrade` is not su
 workloads would keep sending telemetry to the removed per-node collector, and the target allocator resources would not
 be removed. Instead:
 
-1. If `operator.signalControl.sceOnlyMode=true` has already been applied via `helm upgrade`, set it back to `false`
+1. If `operator.telemetryCollectionEnabled=false` has already been applied via `helm upgrade`, set it back to `true`
    via `helm upgrade` and wait for the operator to be rolled out. The operator only removes the instrumentation on
    uninstall when it is not running in SCE-only mode.
 2. Uninstall the operator, which removes the instrumentation from all workloads.
-3. Re-install it with `operator.signalControl.sceOnlyMode=true`.
+3. Re-install it with `operator.telemetryCollectionEnabled=false`.
 
 In SCE-only mode, the operator stores `instrumentWorkloads.mode=none` and disabled log collection, event collection and
 Prometheus scraping as defaults in new `Dash0Monitoring` resources. These values are kept when switching back to the

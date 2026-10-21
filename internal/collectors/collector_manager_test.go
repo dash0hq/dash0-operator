@@ -570,14 +570,22 @@ var _ = Describe("The collector manager", Ordered, func() {
 	Describe("in SCE-only mode", func() {
 		var warnings []string
 		var recordingLogger logd.Logger
+		var operatorConfiguration *dash0v1alpha1.Dash0OperatorConfiguration
 
 		BeforeEach(func() {
 			warnings = nil
 			recordingLogger = logd.NewLogger(funcr.New(func(_ string, args string) {
 				warnings = append(warnings, args)
 			}, funcr.Options{}))
-			CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
+			operatorConfiguration = CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
 		})
+
+		// SCE-only mode is active when telemetry collection is disabled via Helm, which also disables it in the operator
+		// configuration resource.
+		disableTelemetryCollection := func() {
+			operatorConfiguration.Spec.TelemetryCollection.Enabled = new(false)
+			Expect(k8sClient.Update(ctx, operatorConfiguration)).To(Succeed())
+		}
 
 		AfterEach(func() {
 			_, err := collectorManager.oTelColResourceManager.DeleteResources(ctx, util.ExtraConfigDefaults, logger)
@@ -602,6 +610,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 			VerifyResourceExists(ctx, k8sClient, operatorNamespace, ExpectedDaemonSetName, &appsv1.DaemonSet{})
 			VerifyResourceExists(ctx, k8sClient, operatorNamespace, ExpectedDeploymentName, &appsv1.Deployment{})
 
+			disableTelemetryCollection()
 			collectorManager = newCollectorManagerWithSceOnlyMode()
 			_, err = collectorManager.ReconcileOpenTelemetryCollector(ctx)
 			Expect(err).ToNot(HaveOccurred())
@@ -615,6 +624,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 		})
 
 		It("deploys no collector and warns when there is no Signal Control resource", func() {
+			disableTelemetryCollection()
 			collectorManager = newCollectorManagerWithSceOnlyMode()
 			_, err := collectorManager.reconcileOpenTelemetryCollector(ctx, recordingLogger)
 			Expect(err).ToNot(HaveOccurred())
@@ -626,6 +636,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 
 		It("does not warn when the Signal Control collector is deployed", func() {
 			createSignalControlResource()
+			disableTelemetryCollection()
 			collectorManager = newCollectorManagerWithSceOnlyMode()
 			_, err := collectorManager.reconcileOpenTelemetryCollector(ctx, recordingLogger)
 			Expect(err).ToNot(HaveOccurred())

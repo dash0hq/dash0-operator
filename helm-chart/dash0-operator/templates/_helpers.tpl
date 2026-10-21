@@ -66,6 +66,16 @@ true
 {{- end }}
 {{- end }}
 
+{{/*
+Renders the string "true" if the operator runs in SCE-only mode (Signal Control enabled, telemetry collection disabled),
+and the empty string otherwise. The operator manager derives the same mode from its command line arguments.
+*/}}
+{{- define "dash0-operator.signalControlSceOnlyMode" -}}
+{{- if and .Values.operator.signalControl.enabled (not .Values.operator.telemetryCollectionEnabled) -}}
+true
+{{- end }}
+{{- end }}
+
 {{- define "dash0-operator.deploymentName" -}}
 {{ include "dash0-operator.chartName" . }}-controller
 {{- end }}

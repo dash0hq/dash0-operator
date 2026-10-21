@@ -188,7 +188,9 @@ func (m *CollectorManager) reconcileOpenTelemetryCollector(ctx context.Context, 
 		logger.WarnTelemetryCollectionIssue(logMsgOperatorConfigMissing)
 		err = m.removeOpenTelemetryCollector(ctx, extraConfig, logger)
 		return err == nil, err
-	} else if !pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.TelemetryCollection.Enabled, true) {
+	} else if !pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.TelemetryCollection.Enabled, true) &&
+		// SCE-only mode implies telemetryCollection.enabled=false, but the Signal Control collector is still deployed.
+		!m.oTelColResourceManager.SignalControlSceOnlyMode() {
 		logger.Info(fmt.Sprintf(logMsgTelemetryDisabled, operatorConfigurationResource.Name))
 		err = m.removeOpenTelemetryCollector(ctx, extraConfig, logger)
 		return err == nil, err

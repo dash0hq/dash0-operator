@@ -159,14 +159,16 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 	if operatorConfigurationSpec != nil {
 		telemetryCollectionEnabled = pointers.ReadBoolPointerWithDefault(operatorConfigurationSpec.TelemetryCollection.Enabled, true)
 	}
-	// In SCE-only mode, the operator neither instruments workloads nor deploys the collectors that would collect logs,
-	// events or Prometheus metrics.
-	collectFromWorkloads := telemetryCollectionEnabled && !h.signalControlSceOnlyMode
+	if h.signalControlSceOnlyMode {
+		// The operator configuration resource, which has telemetryCollection.enabled=false in SCE-only mode, might not
+		// exist yet.
+		telemetryCollectionEnabled = false
+	}
 
 	if monitoringSpec.InstrumentWorkloads.Mode == "" {
 		if request.Namespace == h.operatorNamespace {
 			monitoringSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeNone
-		} else if collectFromWorkloads {
+		} else if telemetryCollectionEnabled {
 			monitoringSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeAll
 		} else {
 			monitoringSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeNone
@@ -177,16 +179,16 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 		if request.Namespace == h.operatorNamespace {
 			monitoringSpec.LogCollection.Enabled = new(false)
 		} else {
-			monitoringSpec.LogCollection.Enabled = new(collectFromWorkloads)
+			monitoringSpec.LogCollection.Enabled = new(telemetryCollectionEnabled)
 		}
 		patchRequired = true
 	}
 	if monitoringSpec.EventCollection.Enabled == nil {
-		monitoringSpec.EventCollection.Enabled = new(collectFromWorkloads)
+		monitoringSpec.EventCollection.Enabled = new(telemetryCollectionEnabled)
 		patchRequired = true
 	}
 	if monitoringSpec.PrometheusScraping.Enabled == nil {
-		monitoringSpec.PrometheusScraping.Enabled = new(collectFromWorkloads)
+		monitoringSpec.PrometheusScraping.Enabled = new(telemetryCollectionEnabled)
 		patchRequired = true
 	}
 	return patchRequired

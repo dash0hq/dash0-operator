@@ -162,7 +162,7 @@ type commandLineArguments struct {
 	operatorConfigurationInstrumentationDelivery                          dash0v1alpha1.InstrumentationDelivery
 	telemetryCollectionEnabled                                            bool
 	featureSignalControlEnabled                                           bool
-	featureSignalControlSceOnlyMode                                       bool
+	signalControlSceOnlyMode                                              bool
 	forceUseOpenTelemetryCollectorServiceUrl                              bool
 	isGkeAutopilot                                                        bool
 	isOpenShift                                                           bool
@@ -665,13 +665,6 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 		false,
 		"Enable Signal Control features (sampling, RED metrics, Edge Proxy).",
 	)
-	fs.BoolVar(
-		&cliArgs.featureSignalControlSceOnlyMode,
-		"dash0-feature-signal-control-sce-only-mode",
-		false,
-		"Only deploy the Signal Control collector and the Edge Proxy, but no other OpenTelemetry collectors, the "+
-			"target allocator or workload instrumentation (SCE-only mode).",
-	)
 	fs.StringVar(
 		&cliArgs.operatorConfigurationClusterName,
 		"operator-configuration-cluster-name",
@@ -828,12 +821,7 @@ func parseCommandLineOptions(cliArgs *commandLineArguments, developmentMode bool
 		// disableOpenTelemetryCollectorHostPorts implies forceUseOpenTelemetryCollectorServiceUrl
 		cliArgs.forceUseOpenTelemetryCollectorServiceUrl = true
 	}
-	if cliArgs.featureSignalControlSceOnlyMode &&
-		(!cliArgs.featureSignalControlEnabled || !cliArgs.telemetryCollectionEnabled) {
-		fmt.Fprintln(os.Stderr, "--dash0-feature-signal-control-sce-only-mode requires "+
-			"--dash0-feature-signal-control-enabled=true and --dash0-telemetry-collection-enabled=true, ignoring it")
-		cliArgs.featureSignalControlSceOnlyMode = false
-	}
+	cliArgs.signalControlSceOnlyMode = cliArgs.featureSignalControlEnabled && !cliArgs.telemetryCollectionEnabled
 	return opts, appliedEnvVars, nil
 }
 
@@ -1482,12 +1470,12 @@ func startOperatorManager(
 		LeaderElectionReleaseOnCancel: false,
 	}
 
-	if !cliArgs.telemetryCollectionEnabled || cliArgs.featureSignalControlSceOnlyMode {
-		// If telemetry collection is disabled or SCE-only mode is active, we do not have the RBAC permissions to read
-		// secrets in arbitrary namespaces. As a consequence, we need to instruct controller-runtime to only list/watch
-		// secrets in the operator namespace. Otherwise, any k8sClient.Get call to fetch a secret (in particular, the
-		// Dash0 auth token secret for self-monitoring) will make controller-runtime execute a list and watch for secrets
-		// in the entire cluster, just to build its internal cache. This fails with
+	if !cliArgs.telemetryCollectionEnabled {
+		// If telemetry collection is disabled, we do not have the RBAC permissions to read secrets in arbitrary
+		// namespaces. As a consequence, we need to instruct controller-runtime to only list/watch secrets in the operator
+		// namespace. Otherwise, any k8sClient.Get call to fetch a secret (in particular, the Dash0 auth token secret for
+		// self-monitoring) will make controller-runtime execute a list and watch for secrets in the entire cluster, just
+		// to build its internal cache. This fails with
 		// 'User ... cannot list resource "secrets" in API group "" at the cluster scope.'
 		// if we do not have cluster-wide permissions for secrets.
 		options.Cache = cache.Options{
@@ -1602,8 +1590,8 @@ func startOperatorManager(
 		cliArgs.telemetryCollectionEnabled,
 		"feature Signal Control enabled",
 		cliArgs.featureSignalControlEnabled,
-		"feature Signal Control SCE-only mode",
-		cliArgs.featureSignalControlSceOnlyMode,
+		"Signal Control SCE-only mode",
+		cliArgs.signalControlSceOnlyMode,
 		"force-use OpenTelemetry collector service URL",
 		cliArgs.forceUseOpenTelemetryCollectorServiceUrl,
 		"disable OpenTelemetry collector host ports",
@@ -1814,8 +1802,8 @@ func startDash0Controllers(
 	var collectorManager *collectors.CollectorManager
 	var targetallocatorManager *targetallocator.TargetAllocatorManager
 
-	if cliArgs.telemetryCollectionEnabled {
-		if cliArgs.featureSignalControlSceOnlyMode {
+	if cliArgs.telemetryCollectionEnabled || cliArgs.signalControlSceOnlyMode {
+		if cliArgs.signalControlSceOnlyMode {
 			if err = mgr.Add(NewWarnAboutInstrumentedPodsRunnable(clientset)); err != nil {
 				return fmt.Errorf("unable to add the task for checking for instrumented pods: %w", err)
 			}
@@ -1854,7 +1842,7 @@ func startDash0Controllers(
 			DebugVerbosityDetailed:                 envVars.debugVerbosityDetailed,
 			EnableProfExtension:                    envVars.enablePprofExtension,
 			CompressConfigMap:                      envVars.compressConfigMaps,
-			SignalControlSceOnlyMode:               cliArgs.featureSignalControlSceOnlyMode,
+			SignalControlSceOnlyMode:               cliArgs.signalControlSceOnlyMode,
 		}
 		oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
 			k8sClient,
@@ -1880,7 +1868,7 @@ func startDash0Controllers(
 			return err
 		}
 
-		if !cliArgs.featureSignalControlSceOnlyMode {
+		if !cliArgs.signalControlSceOnlyMode {
 			if targetallocatorManager, err = setupTargetAllocatorManager(
 				mgr, k8sClient, clientset, images, cliArgs, developmentMode,
 			); err != nil {
@@ -1945,7 +1933,7 @@ func startDash0Controllers(
 			kubernetesApiServerVersionInfo,
 			cliArgs.isGkeAutopilot,
 			cliArgs.isOpenShift,
-			cliArgs.featureSignalControlSceOnlyMode,
+			cliArgs.signalControlSceOnlyMode,
 			developmentMode,
 		)
 		scManager = signalcontrol.NewSignalControlManager(
@@ -2213,7 +2201,7 @@ func startDash0Controllers(
 	setupLog.Info("The monitoring resource reconciler has been started.")
 
 	var autoNamespaceMonitoringReconciler *controller.AutoNamespaceMonitoringReconciler
-	if cliArgs.telemetryCollectionEnabled && !cliArgs.featureSignalControlSceOnlyMode {
+	if cliArgs.telemetryCollectionEnabled {
 		setupLog.Info("Creating the auto-namespace-monitoring reconciler.")
 		autoNamespaceMonitoringReconciler = controller.NewAutoNamespaceMonitoringReconciler(
 			k8sClient,
@@ -2248,7 +2236,7 @@ func startDash0Controllers(
 		envVars.operatorNamespace,
 		cliArgs.telemetryCollectionEnabled,
 		cliArgs.featureSignalControlEnabled,
-		cliArgs.featureSignalControlSceOnlyMode,
+		cliArgs.signalControlSceOnlyMode,
 		envVars.agent0ConnectorEnabled,
 		envVars.syntheticsWorkerEnabled,
 	); err != nil {

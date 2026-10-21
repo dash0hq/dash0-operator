@@ -92,9 +92,9 @@ tests:
   - it: should neither grant instrumentation permissions nor cluster-wide permissions for secrets in SCE-only mode
     set:
       operator:
+        telemetryCollectionEnabled: false
         signalControl:
           enabled: true
-          sceOnlyMode: true
     asserts:
       - hasDocuments:
           count: 3

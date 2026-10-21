@@ -36,7 +36,7 @@ subjects:
   namespace: {{ .Release.Namespace }}
 
 ---
-{{ if .Values.operator.telemetryCollectionEnabled }}
+{{ if or .Values.operator.telemetryCollectionEnabled (include "dash0-operator.signalControlSceOnlyMode" .) }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -57,7 +57,7 @@ subjects:
 {{ end }}
 
 ---
-{{ if and .Values.operator.telemetryCollectionEnabled (not .Values.operator.signalControl.sceOnlyMode) }}
+{{ if .Values.operator.telemetryCollectionEnabled }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:

@@ -2485,18 +2485,22 @@ log_statements:
 	Context("with Signal Control-only mode enabled", Ordered, func() {
 		BeforeAll(func() {
 			By("deploying the Dash0 operator in SCE-only mode")
-			deployOperatorWithDefaultAutoOperationConfiguration(
+			Expect(deployOperator(
 				operatorNamespace,
 				operatorHelmChart,
 				operatorHelmChartUrl,
 				"",
 				&images,
-				false,
-				map[string]string{
-					"operator.signalControl.enabled":     "true",
-					"operator.signalControl.sceOnlyMode": "true",
+				&startup.OperatorConfigurationValues{
+					Endpoint:                   defaultEndpoint,
+					ApiEndpoint:                dash0ApiMockServiceBaseUrl,
+					Token:                      defaultToken,
+					TelemetryCollectionEnabled: false,
 				},
-			)
+				map[string]string{
+					"operator.signalControl.enabled": "true",
+				},
+			)).To(Succeed())
 
 			installDash0ApiMock()
 			installControlPlaneMock()
@@ -2579,7 +2583,11 @@ log_statements:
 		It("should synchronize a Perses dashboard to the Dash0 API", func() {
 			deployDash0MonitoringResourceWithRetry(
 				applicationUnderTestNamespace,
-				dash0MonitoringValuesDefault,
+				// The monitoring validation webhook rejects instrumentWorkloads.mode=all when telemetry collection is
+				// disabled.
+				dash0MonitoringValues{
+					InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeNone,
+				},
 				operatorNamespace,
 			)
 			defer undeployDash0MonitoringResource(applicationUnderTestNamespace)

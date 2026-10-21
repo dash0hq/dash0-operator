@@ -18,9 +18,9 @@ const (
 	logMsgNoInstrumentedPods            = "No pods instrumented by the operator have been found."
 	logMsgInstrumentedPodsInSceOnlyMode = "SCE-only mode is active, but there are pods that have been instrumented by " +
 		"the operator (for example %s/%s). Their telemetry is lost, since the collector daemonset is not deployed in " +
-		"SCE-only mode. To remove the instrumentation, set operator.signalControl.sceOnlyMode=false via helm upgrade, " +
+		"SCE-only mode. To remove the instrumentation, set operator.telemetryCollectionEnabled=true via helm upgrade, " +
 		"wait for the operator to be rolled out, uninstall the operator, then re-install it with " +
-		"operator.signalControl.sceOnlyMode=true."
+		"operator.telemetryCollectionEnabled=false."
 )
 
 // WarnAboutInstrumentedPodsRunnable checks once at startup whether pods instrumented by the operator are still running

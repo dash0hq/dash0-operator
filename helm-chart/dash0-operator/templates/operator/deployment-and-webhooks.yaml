@@ -166,15 +166,6 @@ spec:
 {{- if .Values.operator.signalControl.enabled }}
         - --dash0-feature-signal-control-enabled=true
 {{- end }}
-{{- if .Values.operator.signalControl.sceOnlyMode }}
-{{- if not .Values.operator.signalControl.enabled }}
-{{- fail "Error: operator.signalControl.sceOnlyMode is set to true, but operator.signalControl.enabled is false. SCE-only mode requires Signal Control to be enabled." -}}
-{{- end }}
-{{- if not .Values.operator.telemetryCollectionEnabled }}
-{{- fail "Error: operator.signalControl.sceOnlyMode is set to true, but operator.telemetryCollectionEnabled is false. SCE-only mode requires telemetry collection to be enabled, since the Signal Control collector is managed together with the other OpenTelemetry collectors." -}}
-{{- end }}
-        - --dash0-feature-signal-control-sce-only-mode=true
-{{- end }}
         - --dash0-force-use-otel-collector-service-url={{ .Values.operator.collectors.forceUseServiceUrl }}
         - --dash0-gke-autopilot={{ .Values.operator.gke.autopilot.enabled }}
         - --dash0-openshift={{ .Values.operator.openShift.enabled }}
@@ -528,7 +519,7 @@ Webhook Configurations
 {{- if and .Values.operator.certManager.useCertManager (empty .Values.operator.certManager.certManagerAnnotations) }}
 {{- fail "Error: operator.certManager.useCertManager is set to true, but you did not provide any annotations in operator.certManager.certManagerAnnotations. Please refer to the instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#using-cert-manager." -}}
 {{- end }}
-{{- if not .Values.operator.signalControl.sceOnlyMode }}
+{{- if not (include "dash0-operator.signalControlSceOnlyMode" .) }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
@@ -628,7 +619,7 @@ webhooks:
     scope: Namespaced
   sideEffects: None
   timeoutSeconds: 5
-{{- end }}{{/* closes "if not .Values.operator.signalControl.sceOnlyMode" */}}
+{{- end }}{{/* closes "if not (include dash0-operator.signalControlSceOnlyMode)" */}}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration

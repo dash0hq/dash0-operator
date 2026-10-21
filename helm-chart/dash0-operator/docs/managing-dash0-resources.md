@@ -1138,13 +1138,13 @@ Status:
 
 If you use the Dash0 operator only for infrastructure-as-code purposes, and not to collect telemetry in the cluster,
 you can set the Helm flag `operator.telemetryCollectionEnabled=false`.
-In this mode, the operator will not deploy any OpenTelemetry collectors to the cluster, and no telemetry will be
-collected.
+In this mode, the operator will not deploy any OpenTelemetry collectors to the cluster (except in SCE-only mode, see
+below), and no telemetry will be collected.
 
 By default, the operator Helm chart will set up all necessary Kubernetes RBAC permissions to manage OpenTelemetry
 collectors and the target allocator.
-If set to false, these RBAC permissions will not be granted, and the operator will run with a reduced set of RBAC
-permissions.
+If set to false, these RBAC permissions will not be granted (except for the permissions to manage OpenTelemetry
+collectors in SCE-only mode), and the operator will run with a reduced set of RBAC permissions.
 
 If `operator.telemetryCollectionEnabled=false` is set, it will not be possible to set
 [`spec.telemetryCollection.enabled`](configuration.md#operatorconfigurationresource.spec.telemetryCollection.enabled)
@@ -1161,5 +1161,5 @@ resources (including the permission to delete these resources) are not granted t
 The recommended resolution is to uninstall the operator from the cluster entirely, then re-install with
 `telemetryCollectionEnabled=false`.
 
-If you want to use SignalControl Edge without the operator's telemetry collection, use
-[SCE-only mode](signal-control-edge.md#sce-only-mode) instead.
+If `operator.signalControl.enabled=true` is set as well, the operator runs in
+[SCE-only mode](signal-control-edge.md#sce-only-mode) and deploys the SignalControl collector and the Edge Proxy.

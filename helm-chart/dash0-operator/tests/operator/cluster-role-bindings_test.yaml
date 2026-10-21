@@ -52,9 +52,9 @@ tests:
   - it: should not bind instrumentation permissions in SCE-only mode
     set:
       operator:
+        telemetryCollectionEnabled: false
         signalControl:
           enabled: true
-          sceOnlyMode: true
     asserts:
     - hasDocuments:
         count: 3
