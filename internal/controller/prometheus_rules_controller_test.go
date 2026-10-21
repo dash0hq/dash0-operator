@@ -3094,7 +3094,6 @@ func createPrometheusRuleCrdReconciler() *PrometheusRuleCrdReconciler {
 		k8sClient,
 		testQueuePrometheusRules,
 		&DummyLeaderElectionAware{Leader: true},
-		TestHTTPClient(),
 		testApiClientPool(),
 	)
 
