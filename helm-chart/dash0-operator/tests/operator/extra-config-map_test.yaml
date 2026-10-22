@@ -675,6 +675,7 @@ tests:
                 cpu: 20m
                 memory: 64Mi
             agent0ConnectorMaxConcurrentCommands: 4
+            agent0ConnectorEnablePprof: false
             agent0ConnectorAllowedKubectlCommands:
               api-resources: true
               api-versions: true
@@ -1049,6 +1050,37 @@ tests:
       - notMatchRegex:
           path: data['extra.yaml']
           pattern: agent0ConnectorMaxConcurrentCommands
+
+  - it: should disable pprof for the agent0-connector by default
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: 'agent0ConnectorEnablePprof: false'
+
+  - it: should enable pprof for the agent0-connector when set
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          enablePprof: true
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: 'agent0ConnectorEnablePprof: true'
+
+  - it: should not render the agent0-connector pprof setting when the agent0-connector is disabled
+    set:
+      operator:
+        agent0Connector:
+          enablePprof: true
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0ConnectorEnablePprof
 
   - it: should not render custom agent0-connector cluster role rules by default
     asserts:

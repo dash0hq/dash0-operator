@@ -16,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
@@ -50,6 +51,10 @@ const (
 	// spec.components.agent0Connector.maxConcurrentCommands). It mirrors defaultMaxConcurrentCommands in
 	// images/agent0-connector/src/grpc/grpcclient.go, the fallback within the workload itself.
 	defaultMaxConcurrentCommands int32 = 2
+
+	// pprofPort is the port on which the agent0-connector serves pprof on the loopback address, if pprof is enabled via
+	// the Helm value operator.agent0Connector.enablePprof or spec.components.agent0Connector.enablePprof.
+	pprofPort = "1777"
 
 	// label values
 	appKubernetesIoNameValue      = agent0Connector
@@ -680,6 +685,13 @@ func assembleDeployment(
 		Name:  allowedKubectlCommandsEnvVarName,
 		Value: joinAllowedKubectlCommands(extraConfig.Agent0ConnectorAllowedKubectlCommands),
 	})
+
+	if extraConfig.Agent0ConnectorEnablePprof {
+		container.Env = append(container.Env, corev1.EnvVar{
+			Name:  common.PprofPortEnvVarName,
+			Value: pprofPort,
+		})
+	}
 
 	if c.Insecure {
 		container.Env = append(container.Env, corev1.EnvVar{

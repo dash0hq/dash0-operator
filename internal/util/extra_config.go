@@ -123,6 +123,7 @@ type ExtraConfig struct {
 	EdgeProxyPodAnnotations map[string]string `json:"edgeProxyPodAnnotations,omitempty"`
 
 	Agent0ConnectorMaxConcurrentCommands  int32                              `json:"agent0ConnectorMaxConcurrentCommands,omitempty"`
+	Agent0ConnectorEnablePprof            bool                               `json:"agent0ConnectorEnablePprof,omitempty"`
 	Agent0ConnectorClusterRoleRules       []rbacv1.PolicyRule                `json:"agent0ConnectorClusterRoleRules,omitempty"`
 	Agent0ConnectorAllowedKubectlCommands map[string]bool                    `json:"agent0ConnectorAllowedKubectlCommands,omitempty"`
 	Agent0ConnectorContainerResources     ResourceRequirementsWithGoMemLimit `json:"agent0ConnectorContainerResources"`

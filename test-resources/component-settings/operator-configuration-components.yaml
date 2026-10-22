@@ -172,6 +172,7 @@ spec:
       maxConcurrentCommands: 3
       allowedKubectlCommands:
         explain: false
+      enablePprof: true
       containerResources:
         limits:
           memory: 320Mi

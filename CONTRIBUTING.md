@@ -194,6 +194,9 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `AGENT0_CONNECTOR_ENABLED`: Set this to "true" to enable the agent0-connector, with the token from the secret
       `dash0-authorization-secret`.
       This defaults to "false", except in test scenario 12, where it defaults to "true".
+    * `AGENT0_CONNECTOR_ENABLE_PPROF`: Set to "true" to enable pprof for the agent0-connector pod (only relevant with
+      `AGENT0_CONNECTOR_ENABLED=true`).
+      See [Creatig Heap Profiles](helm-chart/dash0-operator/docs/troubleshooting.md#create-heap-profiles) for instructions on creating heap profiles.
     * `AGENT0_CONNECTOR_SERVER_ADDRESS`: The server address of the agent0-connector, used with
       `AGENT0_CONNECTOR_ENABLED=true`. It defaults to an unreachable address, so that only the agent0-connector
       Deployment can be inspected.

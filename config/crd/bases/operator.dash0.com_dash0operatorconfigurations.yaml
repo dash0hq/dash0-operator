@@ -397,6 +397,11 @@ spec:
                               A request above the limit set in limits is rejected.
                             type: object
                         type: object
+                      enablePprof:
+                        description: |-
+                          Whether to enable pprof for the agent0-connector pod (Helm value operator.agent0Connector.enablePprof, default
+                          false). Only enable this if instructed by Dash0 support.
+                        type: boolean
                       labels:
                         additionalProperties:
                           type: string
