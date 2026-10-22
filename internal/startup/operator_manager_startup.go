@@ -1542,17 +1542,11 @@ func startOperatorManager(
 		// operator manager will terminate immediately, we need to shut down a couple of internal components before
 		// terminating (self monitoring OTel SDK shutdown etc.).
 		LeaderElectionReleaseOnCancel: false,
-	}
 
-	if !cliArgs.telemetryCollectionEnabled {
-		// If telemetry collection is disabled, we do not have the RBAC permissions to read secrects in arbitrary
-		// namespaces. As a consequence, we need to instruct controller-runtime to only list/watch secrets in the operator
-		// namespace. Otherwise, any k8sClient.Get call to fetch a secret (in particular, the Dash0 auth token secret for
-		// self-monitoring) will make controller-runtime execute a list and watch for secrets in the entire cluster, just
-		// to build its internal cache. This fails with
-		// 'User ... cannot list resource "secrets" in API group "" at the cluster scope.'
-		// if we do not have cluster-wide permissions for secrets.
-		options.Cache = cache.Options{
+		// The operator manager only reads secrets in the operator namespace and does not always hold cluster-wide
+		// permissions for secrets. Without this, the first Get for a secret would make controller-runtime list/watch
+		// secrets in the entire cluster to build its cache, which fails without cluster-wide permissions.
+		Cache: cache.Options{
 			ByObject: map[client.Object]cache.ByObject{
 				&corev1.Secret{}: {
 					Namespaces: map[string]cache.Config{
@@ -1560,8 +1554,9 @@ func startOperatorManager(
 					},
 				},
 			},
-		}
+		},
 	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), options)
 	if err != nil {
 		return fmt.Errorf("unable to create the manager: %w", err)

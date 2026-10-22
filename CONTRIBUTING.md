@@ -179,6 +179,17 @@ Moving beyond the quickstart instructions, here are more details on the test scr
   agent0-connector, then sets the component settings via `spec.components` of the operator configuration resource and
   of the Signal Control resource (see `test-resources/component-settings`). Some of them are also set to different
   values via Helm, which the operator reports with a warning ("overrides the custom Helm value").
+* `test-resources/bin/test-scenario-14-ta-allow-secret-access-in-namespaces.sh`: Deploys the operator with Prometheus
+  CRD support and `operator.targetAllocator.allowSecretAccessInNamespaces` set to the target namespace (or to
+  `TA_ALLOW_SECRET_ACCESS_IN_NAMESPACES`), plus ServiceMonitors and Dash0 monitoring resources in the target namespace
+  and in `test-namespace-2` and `test-namespace-3`. The cadvisor ScrapeConfig, which references a secret, is deployed
+  to the target namespace and to `test-namespace-2`. Expected outcome (with the default for
+  `TA_ALLOW_SECRET_ACCESS_IN_NAMESPACES`): the ServiceMonitors in all three namespaces and the cadvisor ScrapeConfig in
+  the target namespace are scraped, the target allocator rejects the cadvisor ScrapeConfig in `test-namespace-2`, the
+  operator manager logs a debug message for `test-namespace-2` and `test-namespace-3` (the script always enables
+  development mode), and neither the `dash0-operator-manager-collector` cluster role nor the cluster role that the
+  operator creates for the target allocator grant access to secrets. Secrets are only granted via the
+  `dash0-operator-target-allocator-secrets` role binding in the target namespace.
 * `test-resources/bin/test-cleanup.sh`: This script removes all resources created by the other scripts. **You should
   always run this script after running any of the scenario scripts, when you are done with your tests, otherwise the
   e2e tests will fail the next time you start them.** Note that all scenario scripts call the cleanup at the beginning,
@@ -337,6 +348,9 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `TA_ALLOW_INSECURE_AUTH_SECRETS`: Set this to "true" to have the target allocator serve the credentials for
       metrics endpoints which require authorization over plain HTTP, instead of over mTLS.
       This defaults to "false".
+    * `TA_ALLOW_SECRET_ACCESS_IN_NAMESPACES`: Set this to a comma-separated list of namespaces to only let the target
+      allocator read secrets in these namespaces (`operator.targetAllocator.allowSecretAccessInNamespaces`).
+      This is unset by default, except in test scenario 14, where it defaults to the target namespace.
     * `TA_MTLS_ENABLED`: Set this to "true" to enable mTLS for the communication between the target allocator and the
       collectors. Requires `USE_CERT_MANAGER=true`, since the certificates are provisioned via cert-manager.
       This defaults to "false", except in test scenario 06, where it defaults to "true".

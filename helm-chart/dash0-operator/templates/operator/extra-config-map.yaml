@@ -178,6 +178,18 @@ data:
     targetAllocatorMtlsServerCertSecretName: {{ .Values.operator.targetAllocator.mTls.serverCertSecretName | quote }}
     targetAllocatorMtlsClientCertSecretName: {{ .Values.operator.targetAllocator.mTls.clientCertSecretName | quote }}
     targetAllocatorAllowInsecureAuthSecrets: {{ .Values.operator.targetAllocator.allowInsecureAuthSecrets }}
+{{- if .Values.operator.targetAllocator.allowSecretAccessInNamespaces }}
+{{- if not (kindIs "slice" .Values.operator.targetAllocator.allowSecretAccessInNamespaces) }}
+{{- fail "Error: operator.targetAllocator.allowSecretAccessInNamespaces must be a list, e.g. --set operator.targetAllocator.allowSecretAccessInNamespaces={namespace-a,namespace-b}." }}
+{{- end }}
+{{- range $namespace := .Values.operator.targetAllocator.allowSecretAccessInNamespaces }}
+{{- if not (and (kindIs "string" $namespace) (le (len $namespace) 63) (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $namespace)) }}
+{{- fail "Error: operator.targetAllocator.allowSecretAccessInNamespaces must only contain valid namespace names." }}
+{{- end }}
+{{- end }}
+    targetAllocatorAllowSecretAccessInNamespaces:
+      {{- toYaml .Values.operator.targetAllocator.allowSecretAccessInNamespaces | nindent 6 }}
+{{- end }}
     targetAllocatorContainerResources:
       {{- toYaml .Values.operator.targetAllocator.containerResources | nindent 6 }}
 {{- if .Values.operator.targetAllocator.labels }}

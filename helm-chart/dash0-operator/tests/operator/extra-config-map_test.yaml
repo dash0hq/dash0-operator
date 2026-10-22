@@ -219,6 +219,9 @@ tests:
             serverCertSecretName: ta-mtls-server-cert
             clientCertSecretName: ta-mtls-client-cert
           allowInsecureAuthSecrets: true
+          allowSecretAccessInNamespaces:
+            - namespace-a
+            - namespace-b
           containerResources:
             limits:
               memory: 2Gi
@@ -592,6 +595,9 @@ tests:
             targetAllocatorMtlsServerCertSecretName: "ta-mtls-server-cert"
             targetAllocatorMtlsClientCertSecretName: "ta-mtls-client-cert"
             targetAllocatorAllowInsecureAuthSecrets: true
+            targetAllocatorAllowSecretAccessInNamespaces:
+              - namespace-a
+              - namespace-b
             targetAllocatorContainerResources:
               gomemlimit: 1500MiB
               limits:
@@ -939,6 +945,57 @@ tests:
       - notMatchRegex:
           path: data['extra.yaml']
           pattern: targetAllocatorPodAnnotations
+
+  - it: should render allowSecretAccessInNamespaces for the target-allocator when set
+    set:
+      operator:
+        targetAllocator:
+          allowSecretAccessInNamespaces:
+            - namespace-a
+            - namespace-b
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            targetAllocatorAllowSecretAccessInNamespaces:
+              - namespace-a
+              - namespace-b
+
+  - it: should reject an empty namespace in allowSecretAccessInNamespaces for the target-allocator
+    set:
+      operator:
+        targetAllocator:
+          allowSecretAccessInNamespaces:
+            - namespace-a
+            - ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.targetAllocator.allowSecretAccessInNamespaces must only contain valid namespace names."
+
+  - it: should reject an invalid namespace name in allowSecretAccessInNamespaces for the target-allocator
+    set:
+      operator:
+        targetAllocator:
+          allowSecretAccessInNamespaces:
+            - "namespace-a\nfoo: bar"
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.targetAllocator.allowSecretAccessInNamespaces must only contain valid namespace names."
+
+  - it: should reject a single string instead of a list for allowSecretAccessInNamespaces
+    set:
+      operator:
+        targetAllocator:
+          allowSecretAccessInNamespaces: namespace-a
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.targetAllocator.allowSecretAccessInNamespaces must be a list, e.g. --set operator.targetAllocator.allowSecretAccessInNamespaces={namespace-a,namespace-b}."
+
+  - it: should not render allowSecretAccessInNamespaces for the target-allocator by default
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: targetAllocatorAllowSecretAccessInNamespaces
 
   - it: should render agent0-connector labels and annotations when set
     set:
