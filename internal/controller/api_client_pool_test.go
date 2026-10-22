@@ -6,6 +6,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -105,5 +106,37 @@ var _ = Describe("The API client pool", func() {
 		_, err := pool.Get(ApiEndpointStandardizedTest, "not-a-dash0-token")
 		Expect(err).To(HaveOccurred())
 		Expect(pool.clients).To(BeEmpty())
+		Expect(pool.lru.Len()).To(BeZero())
+	})
+
+	It("evicts the least recently used client when the pool is full", func() {
+		pool := testApiClientPool()
+		first, err := pool.Get(ApiEndpointStandardizedTest, AuthorizationTokenTest)
+		Expect(err).ToNot(HaveOccurred())
+		second, err := pool.Get(ApiEndpointStandardizedTest, AuthorizationTokenTestAlternative)
+		Expect(err).ToNot(HaveOccurred())
+		for i := range maxPooledApiClients - 2 {
+			_, err = pool.Get(ApiEndpointStandardizedTest, fmt.Sprintf("auth_token-%d", i))
+			Expect(err).ToNot(HaveOccurred())
+		}
+		Expect(pool.clients).To(HaveLen(maxPooledApiClients))
+
+		_, err = pool.Get(ApiEndpointStandardizedTest, AuthorizationTokenTest)
+		Expect(err).ToNot(HaveOccurred())
+		_, err = pool.Get(ApiEndpointStandardizedTest, "auth_one-too-many")
+		Expect(err).ToNot(HaveOccurred())
+		Expect(pool.clients).To(HaveLen(maxPooledApiClients))
+		Expect(pool.lru.Len()).To(Equal(maxPooledApiClients))
+
+		firstAgain, err := pool.Get(ApiEndpointStandardizedTest, AuthorizationTokenTest)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(firstAgain).To(BeIdenticalTo(first))
+		Expect(pool.clients).ToNot(HaveKey(apiClientKey{
+			endpoint: ApiEndpointStandardizedTest,
+			token:    AuthorizationTokenTestAlternative,
+		}))
+		secondAgain, err := pool.Get(ApiEndpointStandardizedTest, AuthorizationTokenTestAlternative)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(secondAgain).ToNot(BeIdenticalTo(second))
 	})
 })
