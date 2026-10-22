@@ -4352,9 +4352,11 @@ spec:
                           type: object
                         replicas:
                           default: 1
-                          description: Replicas is the number of pods this instance
-                            runs. This setting is optional, it defaults to 1.
+                          description: |-
+                            Replicas is the number of pods this instance runs. It must not be negative. This setting is optional, it defaults
+                            to 1.
                           format: int32
+                          minimum: 0
                           type: integer
                         resources:
                           description: Resources describes the compute resource requirements

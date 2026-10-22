@@ -71,7 +71,10 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
+  {{- include "dash0-operator.validateReplicas" (dict "name" "operator.replicaCount" "value" .Values.operator.replicaCount) }}
+  {{- if not (kindIs "invalid" .Values.operator.replicaCount) }}
   replicas: {{ .Values.operator.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: dash0-operator

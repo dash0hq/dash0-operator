@@ -218,6 +218,18 @@ Parameters: kind and name of the object, and the name of the webhook entry (omit
 {{- end }}
 
 {{/*
+Fails rendering the chart (install or upgrade) if a replica count (.value) is set but is not an integer of at least 1.
+Null is allowed, the default for the respective setting applies then.
+*/}}
+{{- define "dash0-operator.validateReplicas" -}}
+{{- if not (kindIs "invalid" .value) }}
+{{- if not (regexMatch "^[1-9][0-9]*$" (toString .value)) }}
+{{- fail (printf "Error: %s must be an integer of at least 1, but was %v." .name .value) }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
 Renders the RBAC rules for the agent0-connector's cluster role as yaml: the custom rules from
 operator.agent0Connector.clusterRole.rules when there are any, the default rules from
 files/agent0-connector-default-cluster-role-rules.yaml otherwise.

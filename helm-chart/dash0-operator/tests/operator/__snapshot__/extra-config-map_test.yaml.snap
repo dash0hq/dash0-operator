@@ -95,7 +95,6 @@ extra config map should match snapshot:
             initialDelaySeconds: 0
             periodSeconds: 2
             timeoutSeconds: 1
-        signalControlCollectorReplicas: 2
         signalControlCollectorContainerResources:
           gomemlimit: ""
           limits:
