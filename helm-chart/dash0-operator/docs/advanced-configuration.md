@@ -636,6 +636,17 @@ spec:
             value: my-value
 ```
 
+### Endpoint Formats for gRPC Exports
+
+The `endpoint` of a `grpc` export can have one of the following formats:
+
+| Format                  | Example                                     |
+|-------------------------|---------------------------------------------|
+| `host:port` (no scheme) | `otel-collector.observability:4317`         |
+| `https://host:port`     | `https://otel-collector.observability:4317` |
+| `http://host:port`      | `http://otel-collector.observability:4317`  |
+| `dns:///host:port`      | `dns:///otel-collector.observability:4317`  |
+
 ### Configuring Other Backends Via Helm
 
 The same exports can be configured via the Helm value `operator.exports`, which lets the operator create the operator
@@ -778,6 +789,12 @@ Please note that it is a validation error to set both `insecure` and `insecureSk
 
 - For HTTP, the connection security is automatically detected based on whether the endpoint URL starts with `http://` or `https://`
 - When using TLS, you can set `insecureSkipVerify: true` to disable the verification of the server's certificate chain, which can be useful when using self-signed certificates.
+
+#### Self-Monitoring Telemetry
+
+For self-monitoring telemetry, `insecureSkipVerify` is only applied by the operator manager, for both `grpc` and `http`
+exports. The OpenTelemetry collectors and other operator components send their self-monitoring telemetry with
+certificate verification, which fails if the certificate of the endpoint cannot be verified.
 
 ## Related Documentation
 

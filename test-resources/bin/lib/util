@@ -585,7 +585,8 @@ yaml_single_quote() {
 
 # Writes a Helm values file with a single gRPC export in operator.exports, based on
 # OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_ENDPOINT and OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_HEADERS (a
-# comma-separated list of name=value pairs), and prints the path of that file.
+# comma-separated list of name=value pairs) and OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_INSECURE (true/false), and
+# prints the path of that file.
 write_grpc_export_values_file() {
   local values_file
   values_file="$(mktemp -t dash0-operator-grpc-export-values.XXXXXX)"
@@ -594,6 +595,9 @@ write_grpc_export_values_file() {
     echo "  exports:"
     echo "    - grpc:"
     echo "        endpoint: $(yaml_single_quote "$OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_ENDPOINT")"
+    if [[ -n "${OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_INSECURE:-}" ]]; then
+      echo "        insecure: $OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_INSECURE"
+    fi
     if [[ -n "${OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_HEADERS:-}" ]]; then
       echo "        headers:"
       local header_pairs header_pair
