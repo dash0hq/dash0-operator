@@ -536,6 +536,11 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{Enabled: new(true)},
 					Components: &dash0v1alpha1.OperatorConfigurationComponents{
 						TargetAllocator: &dash0v1alpha1.TargetAllocatorSettings{
+							ContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+								ContainerResources: dash0v1alpha1.ContainerResources{
+									Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("700Mi")},
+								},
+							},
 							WorkloadSettings: dash0v1alpha1.WorkloadSettings{
 								PodLabels: map[string]string{"target-allocator-label": "resource"},
 							},
@@ -563,6 +568,12 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 
 		It("should apply the settings of the operator configuration resource instead of the Helm values", func() {
 			fileConfig := util.ExtraConfigDefaults
+			fileConfig.TargetAllocatorContainerResources = util.ResourceRequirementsWithGoMemLimit{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("300m"),
+					corev1.ResourceMemory: resource.MustParse("600Mi"),
+				},
+			}
 			fileConfig.TargetAllocatorPodAnnotations = map[string]string{"helm-annotation": "helm"}
 			targetAllocatorManager.extraConfig.Store(&fileConfig)
 
@@ -576,6 +587,9 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 			deployment := tatest.VerifyTargetAllocatorDeploymentExists(ctx, k8sClient, operatorNamespace)
 			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue("target-allocator-label", "resource"))
 			Expect(deployment.Spec.Template.Annotations).To(HaveKeyWithValue("helm-annotation", "helm"))
+			limits := deployment.Spec.Template.Spec.Containers[0].Resources.Limits
+			Expect(limits.Memory().String()).To(Equal("700Mi"))
+			Expect(limits.Cpu().String()).To(Equal("200m"))
 		})
 	})
 

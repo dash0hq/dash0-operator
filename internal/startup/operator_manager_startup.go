@@ -430,7 +430,6 @@ func Start() {
 		setupLog.Error(err, "cannot read extra config map file at startup")
 		os.Exit(1)
 	}
-	util.WarnOnCollectorGoMemLimitInversion(extraConfig, setupLog)
 	if err = extraConfigMapWatcher.StartWatch(extraConfigDefaults, setupLog); err != nil {
 		setupLog.Error(err, "cannot establish file watch for extra config map")
 		os.Exit(1)
@@ -1813,7 +1812,6 @@ func startDash0Controllers(
 		dash0apiclient.WithTransportRetryWaitMin(1*time.Second),
 		dash0apiclient.WithTransportRetryWaitMax(3*time.Second),
 	)
-	httpClient := util.WithUserAgent(dash0ApiTransport.HTTPClient(), images.GetOperatorVersion())
 	apiClientPool := controller.NewApiClientPool(
 		dash0ApiTransport,
 		util.RenderUserAgent(images.GetOperatorVersion()),
@@ -1943,6 +1941,7 @@ func startDash0Controllers(
 			mgr.GetScheme(),
 			operatorDeploymentSelfReference,
 			collectorConfig,
+			leaderElectionAwareRunnable,
 		)
 		collectorManager = collectors.NewCollectorManager(
 			k8sClient,
@@ -1957,6 +1956,7 @@ func startDash0Controllers(
 		// reconciliation of the collectors. This makes sure changed resource settings, filelog offset volumes or toleration
 		// taints are applied more or less immediately. (Noticing the changed config map can take a minute or a bit more.)
 		extraConfigMapWatcher.AddClient(collectorManager)
+		leaderElectionAwareRunnable.AddLeaderElectionClient(collectorManager)
 
 		if err := setupCollectorReconciler(mgr, k8sClient, collectorManager, envVars); err != nil {
 			return err
@@ -2214,7 +2214,6 @@ func startDash0Controllers(
 		mgr.GetAPIReader(),
 		prometheusRuleSynchronizationQueue,
 		leaderElectionAwareRunnable,
-		httpClient,
 		apiClientPool,
 	)
 	if err := prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, setupLog); err != nil {

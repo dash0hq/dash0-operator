@@ -579,7 +579,7 @@ spec:
 `), &slo)).To(Succeed())
 						apiConfig := ApiConfig{Endpoint: ApiEndpointTest, Dataset: DatasetCustomTest, Token: AuthorizationTokenTest}
 						resourceToRequestsResult :=
-							sloReconciler.MapResourceToHttpRequests(
+							sloReconciler.MapResourceToApiCalls(
 								&preconditionValidationResult{k8sName: sloName, k8sNamespace: TestNamespaceName, resource: slo},
 								apiConfig, upsertAction, logger)
 						Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())
@@ -1162,7 +1162,7 @@ func mapSLOYamlToApiBody(sloReconciler *SLOReconciler, sloYaml string, logger lo
 			*NewValidatedApiConfigAndToken(apiConfig.Endpoint, apiConfig.Dataset, apiConfig.Token),
 		},
 	}
-	resourceToRequestsResult := sloReconciler.MapResourceToHttpRequests(
+	resourceToRequestsResult := sloReconciler.MapResourceToApiCalls(
 		preconditionValidationResult,
 		apiConfig,
 		upsertAction,

@@ -340,8 +340,8 @@ func defaultNodeAffinity() *corev1.NodeAffinity {
 	}
 }
 
-// ExtraConfigDefaultsFor returns the defaults that apply when a value is missing from the extra config map. They match
-// the defaults of the Helm chart.
+// ExtraConfigDefaultsFor returns the defaults that apply when a value is missing from the extra config map, and with
+// which the settings in spec.components are merged. They match the defaults of the Helm chart.
 func ExtraConfigDefaultsFor(isGkeAutopilot bool) ExtraConfig {
 	defaults := ExtraConfigDefaults
 	if isGkeAutopilot {

@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -128,11 +127,11 @@ type ThirdPartyResourceReconciler interface {
 	// with a one-to-one relation (like Perses dashboards).
 	MapsToMultipleApiObjects() bool
 
-	// FetchExistingResourceOriginsRequest creates an HTTP request for retrieving the existing origins from the Dash0
-	// API for a given Kubernetes resource.
-	// FetchExistingResourceOriginsRequest is only used for resource types where MapsToMultipleApiObjects returns true.
-	// Controllers which manage objects with a one-to-one relation (like Perses dashboards) should return nil, nil.
-	FetchExistingResourceOriginsRequests(*preconditionValidationResult, ApiConfig) ([]*http.Request, error)
+	// FetchExistingResourceOrigins retrieves the origins of the Dash0 API objects that exist for a given Kubernetes
+	// resource. FetchExistingResourceOrigins is only used for resource types where MapsToMultipleApiObjects returns
+	// true. Controllers which manage objects with a one-to-one relation (like Perses dashboards) should return nil, nil.
+	// Implementations log errors themselves.
+	FetchExistingResourceOrigins(context.Context, *preconditionValidationResult, ApiConfig, logd.Logger) ([]string, error)
 
 	// FetchExistingNamespaceOrigins retrieves the origins of all Dash0 API objects that have been synchronized from
 	// Kubernetes resources in the given namespace. The result may contain origins that do not belong to the namespace,
@@ -144,13 +143,13 @@ type ThirdPartyResourceReconciler interface {
 	// the Kubernetes resource described by the precondition validation result.
 	IsOriginOfResource(string, *preconditionValidationResult, ApiConfig) bool
 
-	// CreateDeleteRequests produces an HTTP DELETE requests for the resources that still exist in Dash0, but should
+	// CreateDeleteRequests produces DELETE requests for the resources that still exist in Dash0, but should
 	// not. It does so by comparing the list of IDs of objects that exist in the Dash0 backend with the list
 	// of IDs found in a given Kubernetes resource. This mechanism is only used for resource types where one Kubernetes
 	// resource (say, a PrometheusRule) is potentially associated with multiple Dash0 api objects (multiple checks).
 	// Controllers which manage objects with a one-to-one relation (like Perses dashboards, synthetic checks, view)
-	// should return nil, nil.
-	CreateDeleteRequests(ApiConfig, []string, []string, logd.Logger) ([]WrappedApiRequest, map[string]string)
+	// should return nil.
+	CreateDeleteRequests(ApiConfig, []string, []string) []WrappedApiRequest
 
 	// UpdateSynchronizationResultsInDash0MonitoringStatus Modifies the status of the provided Dash0Monitoring resource
 	// to reflect the results of the synchronization operation for one third-party Kubernetes resource.

@@ -8,6 +8,8 @@ import (
 	"net/http"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -845,13 +847,46 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			Expect(response.Warnings).To(HaveLen(1))
 		})
 
+		It("should reject a resource request that is greater than the limit", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+				Components: &dash0v1alpha1.OperatorConfigurationComponents{
+					TargetAllocator: &dash0v1alpha1.TargetAllocatorSettings{
+						ContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+							ContainerResources: dash0v1alpha1.ContainerResources{
+								Limits:   corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("64Mi")},
+								Requests: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("128Mi")},
+							},
+						},
+					},
+				},
+			}
+			expectedMessage := "The provided Dash0 operator configuration resource has invalid component settings: " +
+				"spec.components.targetAllocator.containerResources.requests[memory]: Invalid value: \"128Mi\": " +
+				"must be less than or equal to the memory limit of 64Mi."
+			request := operatorConfigurationAdmissionRequest(spec)
+			for _, operation := range []admissionv1.Operation{admissionv1.Create, admissionv1.Update} {
+				request.Operation = operation
+				response := handler.Handle(ctx, request)
+				Expect(response.Allowed).To(BeFalse())
+				Expect(response.Result.Message).To(Equal(expectedMessage))
+			}
+		})
+
 		Describe("updates that leave spec.components unchanged", func() {
-			// A label with an invalid key, e.g. stored before the validation has been introduced.
+			// A GOMEMLIMIT that is not below the memory limit, e.g. in a resource stored without the validation webhook.
 			invalidSpec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
 				Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 				Components: &dash0v1alpha1.OperatorConfigurationComponents{
 					DaemonSetCollector: &dash0v1alpha1.DaemonSetCollectorSettings{
-						WorkloadSettings: dash0v1alpha1.WorkloadSettings{Labels: map[string]string{"in valid": "value"}},
+						CollectorContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+							ContainerResources: dash0v1alpha1.ContainerResources{
+								Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("500Mi")},
+							},
+							GoMemLimit: "600MiB",
+						},
 					},
 				},
 			}
@@ -892,7 +927,8 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				response := handler.Handle(ctx, updateRequest(invalidSpec, updatedSpec))
 				Expect(response.Allowed).To(BeFalse())
 				Expect(response.Result.Message).To(ContainSubstring(
-					`spec.components.daemonSetCollector.labels: Invalid value: "in valid"`))
+					"spec.components.daemonSetCollector.collectorContainerResources.gomemlimit: Invalid value: " +
+						"\"600MiB\": must be less than the memory limit of 500Mi"))
 			})
 
 			It("should reject an update with an OldObject that cannot be decoded", func() {
@@ -904,6 +940,46 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				Expect(response.Allowed).To(BeFalse())
 				Expect(response.Result.Code).To(Equal(int32(http.StatusBadRequest)))
 			})
+		})
+
+		It("should accept a required node affinity without node selector terms, which removes the default", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(
+				dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					Components: &dash0v1alpha1.OperatorConfigurationComponents{
+						TargetAllocator: &dash0v1alpha1.TargetAllocatorSettings{
+							WorkloadSettings: dash0v1alpha1.WorkloadSettings{
+								NodeAffinity: &corev1.NodeAffinity{
+									RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+										NodeSelectorTerms: []corev1.NodeSelectorTerm{},
+									},
+								},
+							},
+						},
+					},
+				}))
+			Expect(response.Allowed).To(BeTrue())
+			Expect(response.Warnings).To(BeEmpty())
+		})
+
+		It("should check a GOMEMLIMIT against the default memory limit if the setting does not set one", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(
+				dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					Components: &dash0v1alpha1.OperatorConfigurationComponents{
+						TargetAllocator: &dash0v1alpha1.TargetAllocatorSettings{
+							ContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{GoMemLimit: "600MiB"},
+						},
+					},
+				}))
+			Expect(response.Allowed).To(BeFalse())
+			Expect(response.Result.Message).To(ContainSubstring(
+				"spec.components.targetAllocator.containerResources.gomemlimit: Invalid value: \"600MiB\": must be " +
+					"less than the memory limit of 500Mi"))
 		})
 	})
 

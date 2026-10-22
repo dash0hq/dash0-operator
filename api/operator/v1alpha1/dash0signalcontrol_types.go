@@ -102,9 +102,16 @@ type Dash0SignalControlSpec struct {
 	// +kubebuilder:validation:Optional
 	ControlPlaneApiEndpoint string `json:"controlPlaneApiEndpoint,omitempty"`
 
-	// Settings for the Signal Control workloads the operator manages. An absent or empty setting keeps the Helm value, a
-	// present one replaces it. Invalid settings are rejected. Replacing a custom Helm value with a different one causes a
-	// warning in the operator log, and an admission warning when spec.components is created or changed.
+	// Settings for the Signal Control workloads the operator manages. Every setting in this section is optional. A
+	// setting that is absent keeps the value provided via the Helm chart. A setting that is present replaces the Helm
+	// value, and the fields it leaves out take their defaults, not the values provided via Helm: resources are merged
+	// with the default resources per resource, probes with the default probes per field, and the required and the
+	// preferred node affinity each replace their default. An empty object
+	// (e.g. containerResources: {}, probes: {}, nodeAffinity: {}) therefore means the defaults. Empty labels,
+	// annotations, podLabels, podAnnotations, tolerations and sysctls and an empty priorityClassName count as absent. A
+	// setting that Kubernetes would reject in the pod template of the workload, and an invalid GOMEMLIMIT, are rejected.
+	// A setting that replaces a custom Helm value with a different one is reported as a warning in the operator log, and
+	// as an admission warning when spec.components is created or changed.
 	//
 	// +kubebuilder:validation:Optional
 	Components *SignalControlComponents `json:"components,omitempty"`

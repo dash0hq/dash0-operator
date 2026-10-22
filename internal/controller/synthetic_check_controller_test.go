@@ -739,7 +739,7 @@ var _ = Describe(
 							},
 						}
 						resourceToRequestsResult :=
-							syntheticCheckReconciler.MapResourceToHttpRequests(
+							syntheticCheckReconciler.MapResourceToApiCalls(
 								preconditionValidationResult,
 								apiConfig,
 								upsertAction,
@@ -843,7 +843,7 @@ spec:
 							Token:    AuthorizationTokenTest,
 						}
 						resourceToRequestsResult :=
-							syntheticCheckReconciler.MapResourceToHttpRequests(
+							syntheticCheckReconciler.MapResourceToApiCalls(
 								&preconditionValidationResult{
 									k8sName:      "dash0-synthetic-check",
 									k8sNamespace: TestNamespaceName,
