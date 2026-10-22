@@ -5,6 +5,7 @@ package util
 
 import (
 	"encoding/json"
+	"maps"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -93,6 +94,7 @@ var _ = Describe("component settings", func() {
 				fileConfig,
 				ExtraConfigDefaults,
 				&dash0v1alpha1.OperatorConfigurationComponents{
+					InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{},
 					DaemonSetCollector: &dash0v1alpha1.DaemonSetCollectorSettings{
 						WorkloadSettings: dash0v1alpha1.WorkloadSettings{
 							Labels:      map[string]string{},
@@ -134,6 +136,26 @@ var _ = Describe("component settings", func() {
 				MatchJSON(toJson(ExtraConfigDefaults.CollectorDaemonSetCollectorContainerResources)))
 			Expect(conflicts).To(HaveLen(1))
 			Expect(invalidSettings(components, nil)).To(BeEmpty())
+		})
+
+		It("should apply empty resources of the instrumentation init container as the default resources", func() {
+			fileConfig := ExtraConfigDefaults
+			fileConfig.InstrumentationInitContainerResources = ResourceRequirementsWithGoMemLimit{
+				Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("128Mi")},
+			}
+			components := &dash0v1alpha1.OperatorConfigurationComponents{
+				InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{
+					Resources: &dash0v1alpha1.ContainerResources{},
+				},
+			}
+			effective, conflicts := resolveOperatorConfiguration(fileConfig, components)
+			Expect(effective.InstrumentationInitContainerResources).To(Equal(ResourceRequirementsWithGoMemLimit{}))
+			Expect(conflicts).To(HaveLen(1))
+			Expect(conflicts[0].HelmValue).To(Equal("operator.initContainerResources"))
+
+			effective, _ = resolve(fileConfig, ExtraConfigDefaultsFor(true), components, nil)
+			Expect(toJson(effective.InstrumentationInitContainerResources)).To(
+				MatchJSON(toJson(ExtraConfigDefaultsFor(true).InstrumentationInitContainerResources)))
 		})
 
 		DescribeTable("should apply empty probe settings as the default probes",
@@ -208,48 +230,48 @@ var _ = Describe("component settings", func() {
 	})
 
 	Describe("scalar values", func() {
-		components := &dash0v1alpha1.SignalControlComponents{
-			EdgeProxy: &dash0v1alpha1.EdgeProxySettings{Replicas: new(int32(3))},
+		components := &dash0v1alpha1.OperatorConfigurationComponents{
+			Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{MaxConcurrentCommands: new(int32(4))},
 		}
 
 		It("should apply the value without a conflict if the Helm chart uses the default", func() {
-			effective, conflicts := resolveSignalControl(ExtraConfigDefaults, components)
-			Expect(effective.EdgeProxyReplicas).To(Equal(int32(3)))
+			effective, conflicts := resolveOperatorConfiguration(ExtraConfigDefaults, components)
+			Expect(effective.Agent0ConnectorMaxConcurrentCommands).To(Equal(int32(4)))
 			Expect(conflicts).To(BeEmpty())
 		})
 
 		It("should apply the value without a conflict if the Helm chart provides the same value", func() {
 			fileConfig := ExtraConfigDefaults
-			fileConfig.EdgeProxyReplicas = 3
-			effective, conflicts := resolveSignalControl(fileConfig, components)
-			Expect(effective.EdgeProxyReplicas).To(Equal(int32(3)))
+			fileConfig.Agent0ConnectorMaxConcurrentCommands = 4
+			effective, conflicts := resolveOperatorConfiguration(fileConfig, components)
+			Expect(effective.Agent0ConnectorMaxConcurrentCommands).To(Equal(int32(4)))
 			Expect(conflicts).To(BeEmpty())
 		})
 
 		It("should apply the value and report a conflict if the Helm chart provides a different value", func() {
 			fileConfig := ExtraConfigDefaults
-			fileConfig.EdgeProxyReplicas = 4
-			effective, conflicts := resolveSignalControl(fileConfig, components)
-			Expect(effective.EdgeProxyReplicas).To(Equal(int32(3)))
+			fileConfig.Agent0ConnectorMaxConcurrentCommands = 3
+			effective, conflicts := resolveOperatorConfiguration(fileConfig, components)
+			Expect(effective.Agent0ConnectorMaxConcurrentCommands).To(Equal(int32(4)))
 			Expect(conflicts).To(ConsistOf(ComponentSettingConflict{
-				Resource:        "Dash0SignalControl",
-				Path:            "spec.components.edgeProxy.replicas",
-				HelmValue:       "operator.signalControl.edgeProxy.replicas",
-				HelmSetting:     "4",
-				ResourceSetting: "3",
+				Resource:        "Dash0OperatorConfiguration",
+				Path:            "spec.components.agent0Connector.maxConcurrentCommands",
+				HelmValue:       "operator.agent0Connector.maxConcurrentCommands",
+				HelmSetting:     "3",
+				ResourceSetting: "4",
 			}))
 			Expect(conflicts[0].String()).To(Equal(
-				"spec.components.edgeProxy.replicas overrides the custom Helm value " +
-					"operator.signalControl.edgeProxy.replicas: 3 instead of 4"))
+				"spec.components.agent0Connector.maxConcurrentCommands overrides the custom Helm value " +
+					"operator.agent0Connector.maxConcurrentCommands: 4 instead of 3"))
 		})
 
 		It("should keep the value from the Helm chart if the setting is not provided", func() {
 			fileConfig := ExtraConfigDefaults
-			fileConfig.EdgeProxyReplicas = 4
-			effective, conflicts := resolveSignalControl(fileConfig, &dash0v1alpha1.SignalControlComponents{
-				EdgeProxy: &dash0v1alpha1.EdgeProxySettings{},
+			fileConfig.Agent0ConnectorMaxConcurrentCommands = 3
+			effective, conflicts := resolveOperatorConfiguration(fileConfig, &dash0v1alpha1.OperatorConfigurationComponents{
+				Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{},
 			})
-			Expect(effective.EdgeProxyReplicas).To(Equal(int32(4)))
+			Expect(effective.Agent0ConnectorMaxConcurrentCommands).To(Equal(int32(3)))
 			Expect(conflicts).To(BeEmpty())
 		})
 
@@ -482,6 +504,26 @@ var _ = Describe("component settings", func() {
 			))
 		})
 
+		It("should merge the resources of the instrumentation init container with the defaults", func() {
+			components := &dash0v1alpha1.OperatorConfigurationComponents{
+				InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{
+					Resources: &dash0v1alpha1.ContainerResources{
+						Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("256Mi")},
+					},
+				},
+			}
+			Expect(toJson(EffectiveInstrumentationInitContainerResources(ExtraConfigDefaultsFor(true), components))).To(
+				MatchJSON(`{"limits":{"ephemeral-storage":"500Mi","memory":"256Mi"},` +
+					`"requests":{"cpu":"100m","ephemeral-storage":"500Mi","memory":"128Mi"}}`))
+			Expect(toJson(EffectiveInstrumentationInitContainerResources(ExtraConfigDefaults, components))).To(
+				MatchJSON(`{"limits":{"memory":"256Mi"}}`))
+			Expect(EffectiveInstrumentationInitContainerResources(ExtraConfigDefaults,
+				&dash0v1alpha1.OperatorConfigurationComponents{
+					InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{},
+				})).To(BeNil())
+			Expect(EffectiveInstrumentationInitContainerResources(ExtraConfigDefaults, nil)).To(BeNil())
+		})
+
 		It("should report a limit of 0 as invalid, but not a request of 0", func() {
 			Expect(invalidSettings(daemonSetCollectorResources(&dash0v1alpha1.ContainerResourcesWithGoMemLimit{
 				ContainerResources: dash0v1alpha1.ContainerResources{
@@ -660,6 +702,47 @@ var _ = Describe("component settings", func() {
 			Expect(conflicts).To(BeEmpty())
 		})
 
+		It("should apply the resources of the instrumentation init container", func() {
+			fileConfig := ExtraConfigDefaults
+			fileConfig.InstrumentationInitContainerResources = ResourceRequirementsWithGoMemLimit{
+				Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("128Mi")},
+			}
+			effective, conflicts := resolveOperatorConfiguration(
+				fileConfig,
+				&dash0v1alpha1.OperatorConfigurationComponents{
+					InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{
+						Resources: &dash0v1alpha1.ContainerResources{
+							Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("50m")},
+						},
+					},
+				})
+			Expect(toJson(effective.InstrumentationInitContainerResources)).To(MatchJSON(`{"requests":{"cpu":"50m"}}`))
+			Expect(conflicts).To(HaveLen(1))
+			Expect(conflicts[0].Path).To(Equal("spec.components.instrumentationInitContainer.resources"))
+			Expect(conflicts[0].HelmValue).To(Equal("operator.initContainerResources"))
+		})
+
+		It("should use the GKE Autopilot defaults of the init container as the baseline for conflicts", func() {
+			fileConfig := ExtraConfigDefaultsFor(true)
+			components := &dash0v1alpha1.OperatorConfigurationComponents{
+				InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{
+					Resources: &dash0v1alpha1.ContainerResources{
+						Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("200m")},
+					},
+				},
+			}
+
+			effective, conflicts := resolve(fileConfig, ExtraConfigDefaultsFor(true), components, nil)
+			Expect(conflicts).To(BeEmpty())
+			Expect(toJson(effective.InstrumentationInitContainerResources)).To(MatchJSON(
+				`{"limits":{"ephemeral-storage":"500Mi"},` +
+					`"requests":{"cpu":"200m","ephemeral-storage":"500Mi","memory":"128Mi"}}`))
+
+			_, conflicts = resolve(fileConfig, ExtraConfigDefaultsFor(false), components, nil)
+			Expect(conflicts).To(HaveLen(1))
+			Expect(conflicts[0].HelmValue).To(Equal("operator.initContainerResources"))
+		})
+
 		It("should report resources with a request that is greater than the limit as invalid", func() {
 			Expect(invalidSettings(&dash0v1alpha1.OperatorConfigurationComponents{
 				TargetAllocator: &dash0v1alpha1.TargetAllocatorSettings{
@@ -676,6 +759,28 @@ var _ = Describe("component settings", func() {
 			))
 		})
 
+		It("should not report valid resources as invalid", func() {
+			Expect(invalidSettings(
+				&dash0v1alpha1.OperatorConfigurationComponents{
+					InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{
+						Resources: &dash0v1alpha1.ContainerResources{
+							Limits:   corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")},
+							Requests: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1024Mi")},
+						},
+					},
+				},
+				&dash0v1alpha1.SignalControlComponents{
+					EdgeProxy: &dash0v1alpha1.EdgeProxySettings{
+						ContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+							ContainerResources: dash0v1alpha1.ContainerResources{
+								Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("2")},
+							},
+						},
+					},
+				},
+			)).To(BeEmpty())
+		})
+
 		It("should report invalid resources of the Signal Control resource", func() {
 			Expect(invalidSettings(nil, &dash0v1alpha1.SignalControlComponents{
 				EdgeProxy: &dash0v1alpha1.EdgeProxySettings{
@@ -688,6 +793,20 @@ var _ = Describe("component settings", func() {
 				},
 			})).To(ConsistOf(
 				`spec.components.edgeProxy.containerResources.requests[cpu]: Invalid value: "200m": ` +
+					`must be less than or equal to the cpu limit of 100m`,
+			))
+		})
+
+		It("should report an explicit request above the limit of the same resource as invalid", func() {
+			Expect(invalidSettings(&dash0v1alpha1.OperatorConfigurationComponents{
+				InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{
+					Resources: &dash0v1alpha1.ContainerResources{
+						Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m")},
+						Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("200m")},
+					},
+				},
+			}, nil)).To(ConsistOf(
+				`spec.components.instrumentationInitContainer.resources.requests[cpu]: Invalid value: "200m": ` +
 					`must be less than or equal to the cpu limit of 100m`,
 			))
 		})
@@ -863,6 +982,11 @@ var _ = Describe("component settings", func() {
 		It("should report the invalid settings of all components of both resources", func() {
 			Expect(invalidSettings(
 				&dash0v1alpha1.OperatorConfigurationComponents{
+					InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{
+						Resources: &dash0v1alpha1.ContainerResources{
+							Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("-64Mi")},
+						},
+					},
 					DeploymentCollector: &dash0v1alpha1.DeploymentCollectorSettings{
 						CollectorPodSettings: dash0v1alpha1.CollectorPodSettings{PriorityClassName: "High_Priority"},
 					},
@@ -883,6 +1007,8 @@ var _ = Describe("component settings", func() {
 					},
 				},
 			)).To(ConsistOf(
+				ContainSubstring(`spec.components.instrumentationInitContainer.resources.limits[memory]: `+
+					`Invalid value: "-64Mi"`),
 				ContainSubstring(`spec.components.deploymentCollector.priorityClassName: Invalid value: "High_Priority"`),
 				ContainSubstring(`spec.components.targetAllocator.labels: Invalid value: "in valid"`),
 				ContainSubstring(`spec.components.agent0Connector.annotations: Invalid value: "in valid"`),
@@ -917,6 +1043,101 @@ var _ = Describe("component settings", func() {
 					HelmSetting:     `{"a":"helm"}`,
 					ResourceSetting: `{"in valid":"value"}`,
 				}))
+		})
+	})
+
+	Describe("allowed kubectl commands", func() {
+		allowedKubectlCommands := func(
+			settings dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands,
+		) *dash0v1alpha1.OperatorConfigurationComponents {
+			return &dash0v1alpha1.OperatorConfigurationComponents{
+				Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{AllowedKubectlCommands: &settings},
+			}
+		}
+
+		It("should merge the commands with the defaults per command", func() {
+			effective, conflicts := resolveOperatorConfiguration(ExtraConfigDefaults, allowedKubectlCommands(
+				dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands{Logs: new(true), Top: new(false)}))
+			expected := maps.Clone(ExtraConfigDefaults.Agent0ConnectorAllowedKubectlCommands)
+			expected["logs"] = true
+			expected["top"] = false
+			Expect(effective.Agent0ConnectorAllowedKubectlCommands).To(Equal(expected))
+			Expect(conflicts).To(BeEmpty())
+		})
+
+		It("should use the defaults for an empty object", func() {
+			fileConfig := ExtraConfigDefaults
+			fileConfig.Agent0ConnectorAllowedKubectlCommands = map[string]bool{"get": true}
+			effective, conflicts := resolveOperatorConfiguration(
+				fileConfig, allowedKubectlCommands(dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands{}))
+			Expect(effective.Agent0ConnectorAllowedKubectlCommands).To(
+				Equal(ExtraConfigDefaults.Agent0ConnectorAllowedKubectlCommands))
+			Expect(conflicts).To(HaveLen(1))
+		})
+
+		It("should merge with the defaults, not with the Helm value, and report a conflict", func() {
+			fileConfig := ExtraConfigDefaults
+			fileConfig.Agent0ConnectorAllowedKubectlCommands = maps.Clone(
+				ExtraConfigDefaults.Agent0ConnectorAllowedKubectlCommands)
+			fileConfig.Agent0ConnectorAllowedKubectlCommands["top"] = false
+			effective, conflicts := resolveOperatorConfiguration(fileConfig, allowedKubectlCommands(
+				dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands{Explain: new(false)}))
+			Expect(effective.Agent0ConnectorAllowedKubectlCommands).To(HaveKeyWithValue("top", true))
+			Expect(effective.Agent0ConnectorAllowedKubectlCommands).To(HaveKeyWithValue("explain", false))
+			Expect(conflicts).To(HaveLen(1))
+			Expect(conflicts[0].Path).To(Equal("spec.components.agent0Connector.allowedKubectlCommands"))
+			Expect(conflicts[0].HelmValue).To(Equal("operator.agent0Connector.allowedKubectlCommands"))
+		})
+
+		It("should have a field for every kubectl command of the defaults", func() {
+			merged := mergeAllowedKubectlCommands(ExtraConfigDefaults.Agent0ConnectorAllowedKubectlCommands,
+				&dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands{
+					ApiResources: new(false),
+					ApiVersions:  new(false),
+					Auth:         new(false),
+					ClusterInfo:  new(false),
+					Events:       new(true),
+					Explain:      new(false),
+					Get:          new(false),
+					Logs:         new(true),
+					Top:          new(false),
+					Version:      new(false),
+				})
+			Expect(merged).To(HaveLen(len(ExtraConfigDefaults.Agent0ConnectorAllowedKubectlCommands)))
+			for kubectlCommand, allowed := range ExtraConfigDefaults.Agent0ConnectorAllowedKubectlCommands {
+				Expect(merged).To(HaveKeyWithValue(kubectlCommand, !allowed))
+			}
+		})
+
+		It("should report settings that disable every kubectl command as invalid", func() {
+			Expect(invalidSettings(allowedKubectlCommands(dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands{
+				ApiResources: new(false),
+				ApiVersions:  new(false),
+				Auth:         new(false),
+				ClusterInfo:  new(false),
+				Explain:      new(false),
+				Get:          new(false),
+				Top:          new(false),
+				Version:      new(false),
+			}), nil)).To(ConsistOf(
+				"spec.components.agent0Connector.allowedKubectlCommands: Forbidden: at least one kubectl command needs " +
+					"to be enabled, set spec.agent0Connector.enabled to false instead if Agent0 should not execute any " +
+					"kubectl command",
+			))
+		})
+
+		It("should accept settings that keep one kubectl command enabled", func() {
+			Expect(invalidSettings(allowedKubectlCommands(dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands{
+				ApiResources: new(false),
+				ApiVersions:  new(false),
+				Auth:         new(false),
+				ClusterInfo:  new(false),
+				Explain:      new(false),
+				Get:          new(false),
+				Top:          new(false),
+				Version:      new(false),
+				Logs:         new(true),
+			}), nil)).To(BeEmpty())
 		})
 	})
 
@@ -1299,15 +1520,13 @@ var _ = Describe("component settings", func() {
 				ExtraConfigDefaults,
 				ExtraConfigDefaults,
 				&dash0v1alpha1.OperatorConfigurationComponents{
-					Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{
-						WorkloadSettings: dash0v1alpha1.WorkloadSettings{Labels: map[string]string{"team": "observability"}},
-					},
+					Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{MaxConcurrentCommands: new(int32(4))},
 				},
 				&dash0v1alpha1.SignalControlComponents{
 					EdgeProxy: &dash0v1alpha1.EdgeProxySettings{Replicas: new(int32(3))},
 				},
 			)
-			Expect(effective.Agent0ConnectorLabels).To(Equal(map[string]string{"team": "observability"}))
+			Expect(effective.Agent0ConnectorMaxConcurrentCommands).To(Equal(int32(4)))
 			Expect(effective.EdgeProxyReplicas).To(Equal(int32(3)))
 		})
 	})
@@ -1357,6 +1576,12 @@ var _ = Describe("component settings", func() {
 								NodeSelectorTerms: []corev1.NodeSelectorTerm{},
 							},
 						},
+					},
+				},
+				Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{
+					AllowedKubectlCommands: &dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands{
+						Get:  new(false),
+						Logs: new(true),
 					},
 				},
 			},

@@ -1668,7 +1668,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			daemonSet,
 			collectorSelfMonitoringExpectations{
 				exportIsDash0: false,
-				endpoint:      "dns://" + EndpointGrpcTest,
+				endpoint:      EndpointGrpcWithProtocolTest,
 				protocol:      common.ProtocolGrpc,
 				otlpHeaders: map[string]string{
 					"Key": "Value",

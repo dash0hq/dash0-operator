@@ -36,12 +36,13 @@ const (
 
 // The names of the components in spec.components of the custom resources.
 const (
-	componentDaemonSetCollector     = "daemonSetCollector"
-	componentDeploymentCollector    = "deploymentCollector"
-	componentTargetAllocator        = "targetAllocator"
-	componentAgent0Connector        = "agent0Connector"
-	componentSignalControlCollector = "collector"
-	componentEdgeProxy              = "edgeProxy"
+	componentInstrumentationInitContainer = "instrumentationInitContainer"
+	componentDaemonSetCollector           = "daemonSetCollector"
+	componentDeploymentCollector          = "deploymentCollector"
+	componentTargetAllocator              = "targetAllocator"
+	componentAgent0Connector              = "agent0Connector"
+	componentSignalControlCollector       = "collector"
+	componentEdgeProxy                    = "edgeProxy"
 )
 
 // deprecatedHelmValues maps the Helm values that have a deprecated predecessor to that predecessor. If the deprecated
@@ -131,6 +132,24 @@ func EffectiveExtraConfig(
 		false,
 	)
 	return effective
+}
+
+// EffectiveInstrumentationInitContainerResources returns spec.components.instrumentationInitContainer.resources merged
+// with the default resources (see mergeContainerResources), or nil if the setting is absent.
+func EffectiveInstrumentationInitContainerResources(
+	defaults ExtraConfig,
+	components *dash0v1alpha1.OperatorConfigurationComponents,
+) *corev1.ResourceRequirements {
+	if components == nil || components.InstrumentationInitContainer == nil ||
+		components.InstrumentationInitContainer.Resources == nil {
+		return nil
+	}
+	return new(mergeContainerResources(
+		defaults.InstrumentationInitContainerResources,
+		dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+			ContainerResources: *components.InstrumentationInitContainer.Resources,
+		},
+	).ToResourceRequirements())
 }
 
 // OperatorConfigurationComponentsOf returns spec.components of the resource, or nil if the resource is nil.
@@ -304,6 +323,16 @@ func (m *componentSettingsApplier) applyOperatorConfigurationComponents(
 ) {
 	const path = componentSettingsPath
 
+	if initContainer := components.InstrumentationInitContainer; initContainer != nil && initContainer.Resources != nil {
+		m.applyContainerResources(
+			path+"."+componentInstrumentationInitContainer+".resources",
+			"operator.initContainerResources",
+			&effective.InstrumentationInitContainerResources,
+			defaults.InstrumentationInitContainerResources,
+			&dash0v1alpha1.ContainerResourcesWithGoMemLimit{ContainerResources: *initContainer.Resources},
+		)
+	}
+
 	if daemonSet := components.DaemonSetCollector; daemonSet != nil {
 		p := path + "." + componentDaemonSetCollector
 		m.applyContainerResources(
@@ -446,6 +475,14 @@ func (m *componentSettingsApplier) applyOperatorConfigurationComponents(
 
 	if agent0Connector := components.Agent0Connector; agent0Connector != nil {
 		p := path + "." + componentAgent0Connector
+		replaceValueIfSet(m, p+".maxConcurrentCommands", "operator.agent0Connector.maxConcurrentCommands",
+			&effective.Agent0ConnectorMaxConcurrentCommands, defaults.Agent0ConnectorMaxConcurrentCommands,
+			agent0Connector.MaxConcurrentCommands)
+		if allowedKubectlCommands := agent0Connector.AllowedKubectlCommands; allowedKubectlCommands != nil {
+			replaceValue(m, p+".allowedKubectlCommands", "operator.agent0Connector.allowedKubectlCommands",
+				&effective.Agent0ConnectorAllowedKubectlCommands, defaults.Agent0ConnectorAllowedKubectlCommands,
+				mergeAllowedKubectlCommands(defaults.Agent0ConnectorAllowedKubectlCommands, allowedKubectlCommands))
+		}
 		m.applyContainerResources(
 			p+".containerResources",
 			"operator.agent0Connector.containerResources",
@@ -462,6 +499,34 @@ func (m *componentSettingsApplier) applyOperatorConfigurationComponents(
 			nodeAffinity:   &effective.Agent0ConnectorNodeAffinity,
 		}, defaults.Agent0ConnectorNodeAffinity, agent0Connector.WorkloadSettings)
 	}
+}
+
+// mergeAllowedKubectlCommands merges the allowed kubectl commands with the default ones per command.
+func mergeAllowedKubectlCommands(
+	defaults map[string]bool,
+	settings *dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands,
+) map[string]bool {
+	merged := maps.Clone(defaults)
+	if merged == nil {
+		merged = map[string]bool{}
+	}
+	for kubectlCommand, allowed := range map[string]*bool{
+		"api-resources": settings.ApiResources,
+		"api-versions":  settings.ApiVersions,
+		"auth":          settings.Auth,
+		"cluster-info":  settings.ClusterInfo,
+		"events":        settings.Events,
+		"explain":       settings.Explain,
+		"get":           settings.Get,
+		"logs":          settings.Logs,
+		"top":           settings.Top,
+		"version":       settings.Version,
+	} {
+		if allowed != nil {
+			merged[kubectlCommand] = *allowed
+		}
+	}
+	return merged
 }
 
 func (m *componentSettingsApplier) applySignalControlComponents(

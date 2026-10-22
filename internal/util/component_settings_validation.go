@@ -58,6 +58,10 @@ func validateOperatorConfigurationComponents(
 	}
 	path := field.NewPath(componentSettingsPath)
 	var errs field.ErrorList
+	if initContainer := components.InstrumentationInitContainer; initContainer != nil && initContainer.Resources != nil {
+		errs = append(errs, validateContainerResources(
+			path.Child(componentInstrumentationInitContainer, "resources"), initContainer.Resources)...)
+	}
 	if daemonSet := components.DaemonSetCollector; daemonSet != nil {
 		p := path.Child(componentDaemonSetCollector)
 		errs = append(errs, validateContainerResourcesWithGoMemLimit(p.Child("collectorContainerResources"),
@@ -91,6 +95,10 @@ func validateOperatorConfigurationComponents(
 		p := path.Child(componentAgent0Connector)
 		errs = append(errs, validateContainerResourcesWithGoMemLimit(p.Child("containerResources"),
 			agent0Connector.ContainerResources, defaults.Agent0ConnectorContainerResources)...)
+		if agent0Connector.AllowedKubectlCommands != nil {
+			errs = append(errs, validateAllowedKubectlCommands(p.Child("allowedKubectlCommands"),
+				agent0Connector.AllowedKubectlCommands, defaults.Agent0ConnectorAllowedKubectlCommands)...)
+		}
 		errs = append(errs, validateWorkloadSettings(p, agent0Connector.WorkloadSettings)...)
 	}
 	return errs
@@ -362,6 +370,23 @@ func validateSysctls(path *field.Path, sysctls []corev1.Sysctl) field.ErrorList 
 		names.Insert(sysctl.Name)
 	}
 	return errs
+}
+
+// validateAllowedKubectlCommands checks that at least one kubectl command stays enabled after merging the settings with
+// the defaults, since the agent0-connector terminates without any allowed command.
+func validateAllowedKubectlCommands(
+	path *field.Path,
+	settings *dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands,
+	defaults map[string]bool,
+) field.ErrorList {
+	for _, allowed := range mergeAllowedKubectlCommands(defaults, settings) {
+		if allowed {
+			return nil
+		}
+	}
+	return field.ErrorList{field.Forbidden(path,
+		"at least one kubectl command needs to be enabled, set spec.agent0Connector.enabled to false instead if "+
+			"Agent0 should not execute any kubectl command")}
 }
 
 func validatePriorityClassName(path *field.Path, priorityClassName string) field.ErrorList {

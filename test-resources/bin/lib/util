@@ -585,7 +585,8 @@ yaml_single_quote() {
 
 # Writes a Helm values file with a single gRPC export in operator.exports, based on
 # OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_ENDPOINT and OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_HEADERS (a
-# comma-separated list of name=value pairs), and prints the path of that file.
+# comma-separated list of name=value pairs) and OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_INSECURE (true/false), and
+# prints the path of that file.
 write_grpc_export_values_file() {
   local values_file
   values_file="$(mktemp -t dash0-operator-grpc-export-values.XXXXXX)"
@@ -594,6 +595,9 @@ write_grpc_export_values_file() {
     echo "  exports:"
     echo "    - grpc:"
     echo "        endpoint: $(yaml_single_quote "$OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_ENDPOINT")"
+    if [[ -n "${OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_INSECURE:-}" ]]; then
+      echo "        insecure: $OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_INSECURE"
+    fi
     if [[ -n "${OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_HEADERS:-}" ]]; then
       echo "        headers:"
       local header_pairs header_pair
@@ -636,6 +640,14 @@ run_helm() {
   fi
   if [[ "${COMPONENT_SETTINGS_VIA_HELM:-}" = "true" ]]; then
     helm_install_command+=" --values test-resources/component-settings/helm-values.yaml"
+  fi
+  if [[ "${AGENT0_CONNECTOR_ENABLED:-}" = "true" ]]; then
+    # Without a reachable server address, the agent0-connector keeps reconnecting, but its Deployment can be inspected.
+    helm_install_command+=" --set operator.agent0Connector.enabled=true"
+    local agent0_connector_server_address="${AGENT0_CONNECTOR_SERVER_ADDRESS:-agent0-connector.invalid:443}"
+    helm_install_command+=" --set operator.agent0Connector.serverAddress=$agent0_connector_server_address"
+    helm_install_command+=" --set operator.agent0Connector.secretRef.name=dash0-authorization-secret"
+    helm_install_command+=" --set operator.agent0Connector.secretRef.key=token"
   fi
   if [[ "${DEVELOPMENT_MODE:-}" != "false" ]]; then
   helm_install_command+=" --set operator.developmentMode=true"

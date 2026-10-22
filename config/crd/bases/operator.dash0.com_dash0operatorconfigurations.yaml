@@ -308,9 +308,53 @@ spec:
                   agent0Connector:
                     description: |-
                       Settings for the agent0-connector. Its cluster role rules can only be configured via the Helm chart, since the
-                      operator can only grant permissions it holds itself. Its allowed kubectl commands can also only be configured via
-                      the Helm chart (operator.agent0Connector.allowedKubectlCommands).
+                      operator can only grant permissions it holds itself.
                     properties:
+                      allowedKubectlCommands:
+                        description: |-
+                          The kubectl commands the agent0-connector may execute (Helm value operator.agent0Connector.allowedKubectlCommands).
+                          The settings are merged with the defaults of the Helm chart per command, not with the commands provided via Helm:
+                          a command that is not set here keeps its default. At least one command needs to stay enabled. Allowing a command
+                          does not grant the RBAC permissions it needs (Helm value operator.agent0Connector.clusterRole.rules).
+                        properties:
+                          apiResources:
+                            description: kubectl api-resources, enabled by default.
+                            type: boolean
+                          apiVersions:
+                            description: kubectl api-versions, enabled by default.
+                            type: boolean
+                          auth:
+                            description: kubectl auth, enabled by default.
+                            type: boolean
+                          clusterInfo:
+                            description: kubectl cluster-info, enabled by default.
+                            type: boolean
+                          events:
+                            description: |-
+                              kubectl events, disabled by default. Events are not redacted, only enable this if no sensitive information like
+                              credentials, API tokens, secrets or customer PII is leaked into event bodies. It needs RBAC access to events (core
+                              API group) and events.events.k8s.io. While it is disabled, reading events via kubectl get is rejected as well.
+                            type: boolean
+                          explain:
+                            description: kubectl explain, enabled by default.
+                            type: boolean
+                          get:
+                            description: kubectl get, enabled by default. It is the
+                              main kubectl command that Agent0 uses.
+                            type: boolean
+                          logs:
+                            description: |-
+                              kubectl logs, disabled by default. Logs cannot be redacted reliably, only enable this if no sensitive information is
+                              leaked into logs. It needs RBAC access to pods/log, and also lifts the redaction of container termination messages
+                              (which can hold log output) in the output of kubectl get.
+                            type: boolean
+                          top:
+                            description: kubectl top, enabled by default.
+                            type: boolean
+                          version:
+                            description: kubectl version, enabled by default.
+                            type: boolean
+                        type: object
                       annotations:
                         additionalProperties:
                           type: string
@@ -360,6 +404,14 @@ spec:
                           the labels provided via the Helm chart, empty labels keep
                           them.
                         type: object
+                      maxConcurrentCommands:
+                        description: |-
+                          The number of command requests the agent0-connector executes at the same time (Helm value
+                          operator.agent0Connector.maxConcurrentCommands, default 2). Raising this value requires raising
+                          containerResources.limits.memory correspondingly, and containerResources.gomemlimit, if it is set.
+                        format: int32
+                        minimum: 1
+                        type: integer
                       nodeAffinity:
                         description: |-
                           The node affinity for the pods of the workload. It is merged with the default node affinity of the Helm chart,
@@ -1762,6 +1814,40 @@ spec:
                               type: string
                           type: object
                         type: array
+                    type: object
+                  instrumentationInitContainer:
+                    description: Settings for the init container that the operator
+                      adds to instrumented workloads.
+                    properties:
+                      resources:
+                        description: |-
+                          The resources of the init container (Helm value operator.initContainerResources). Instrumented workloads get
+                          changed resources on their next update, e.g. via kubectl rollout restart.
+                        properties:
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource limits. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default limit, and -1 removes it. A default limit below the request set in requests is raised to that request.
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource requests. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default request, and -1 removes it. A default request above the limit set in limits is lowered to that limit.
+                              A request above the limit set in limits is rejected.
+                            type: object
+                        type: object
                     type: object
                   targetAllocator:
                     description: Settings for the OpenTelemetry target-allocator.

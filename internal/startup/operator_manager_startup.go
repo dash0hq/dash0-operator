@@ -1859,6 +1859,11 @@ func startDash0Controllers(
 		envVars.enableRubyAutoInstrumentation,
 	)
 	clusterInstrumentationConfig.IsOpenShift = cliArgs.isOpenShift
+	if err = watchInstrumentationInitContainerResources(
+		ctx, mgr, clusterInstrumentationConfig, extraConfigDefaults,
+	); err != nil {
+		return err
+	}
 
 	startMinimumKubeletVersionDetection(
 		ctx,
@@ -2347,10 +2352,8 @@ func startDash0Controllers(
 			return fmt.Errorf("unable to create the instrumentation webhook: %w", err)
 		}
 		// For consistency, we update the extra config map in the instrumentation webhook handler as well.
-		// In case instrumentation-related settings have been changed (e.g., operator.initContainerResources), _new_
-		// workloads will be instrumented with the updated settings. Existing and already instrumented workloads will not
-		// be reinstrumented, and even if they are changed, the instrumentation webhook will not apply the new settings
-		// due to the HasBeenInstrumentedSuccessfullyByThisVersion check.
+		// In case instrumentation-related settings have been changed (e.g., operator.initContainerResources), workloads
+		// that are created or updated afterwards will be instrumented with the updated settings.
 		extraConfigMapWatcher.AddClient(instrumentationWebhookHandler)
 	}
 

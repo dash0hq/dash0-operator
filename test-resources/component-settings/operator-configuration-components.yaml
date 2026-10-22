@@ -9,6 +9,13 @@ spec:
   prometheusCrdSupport:
     enabled: true
   components:
+    instrumentationInitContainer:
+      resources:
+        limits:
+          memory: 150Mi
+        requests:
+          cpu: 50m
+
     daemonSetCollector:
       collectorContainerResources:
         limits:
@@ -162,6 +169,9 @@ spec:
       allowInsecureAuthSecrets: false
 
     agent0Connector:
+      maxConcurrentCommands: 3
+      allowedKubectlCommands:
+        explain: false
       containerResources:
         limits:
           memory: 320Mi

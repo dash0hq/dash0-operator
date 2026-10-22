@@ -555,10 +555,6 @@ func (m *ResourceModifier) addInitContainer(podSpec *corev1.PodSpec) {
 func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.Container {
 	initContainerUser := &defaultInitContainerUser
 	initContainerGroup := &defaultInitContainerGroup
-	extraConfig := m.clusterInstrumentationConfig.ExtraConfig.Load()
-	if extraConfig == nil {
-		panic("extra config is nil in createInitContainer")
-	}
 
 	securityContext := podSpec.SecurityContext
 	if securityContext == nil {
@@ -602,7 +598,7 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
 		},
-		Resources: (*extraConfig).InstrumentationInitContainerResources.ToResourceRequirements(),
+		Resources: m.clusterInstrumentationConfig.InstrumentationInitContainerResources(),
 		VolumeMounts: []corev1.VolumeMount{
 			{
 				Name:      dash0VolumeName,

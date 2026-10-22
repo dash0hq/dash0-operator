@@ -8,6 +8,7 @@ set -euo pipefail
 # Sets the component settings via spec.components of the Dash0 operator configuration resource and of the Dash0 Signal
 # Control resource, and sets some of them to different values via Helm as well. The filelog offset volume is only set if
 # FILELOG_OFFSETS_PVC is set. Without it, the filelog offset sync containers use filelogOffsetSyncContainerResources.
+# The agent0-connector is enabled with an unreachable server address, unless AGENT0_CONNECTOR_SERVER_ADDRESS is set.
 
 project_root="$(dirname "${BASH_SOURCE[0]}")"/../..
 scripts_lib="test-resources/bin/lib"
@@ -32,6 +33,7 @@ load_env_file
 export FEATURE_SIGNAL_CONTROL_ENABLED=true
 USE_CERT_MANAGER="true"
 COMPONENT_SETTINGS_VIA_HELM="${COMPONENT_SETTINGS_VIA_HELM:-true}"
+AGENT0_CONNECTOR_ENABLED="${AGENT0_CONNECTOR_ENABLED:-true}"
 # The operator configuration resource is created manually, since the one the operator creates from the Helm values must
 # not be edited. The target-allocator mTLS settings and the persistent volume claim for the filelog offsets are only
 # provided via spec.components.
