@@ -2654,7 +2654,6 @@ spec:
 							Expect(resourceToRequestsResult.ApiRequests[i].Origin).To(Equal(expectedOrigin))
 						}
 
-						// The API path of a duplicate carries the duplication counter twice, see renderRuleOrigin.
 						verifyRuleApiClientCall(
 							resourceToRequestsResult.ApiRequests[0],
 							recorder,
@@ -2673,21 +2672,21 @@ spec:
 							resourceToRequestsResult.ApiRequests[2],
 							recorder,
 							"group-1 - alert-1",
-							checkRuleApiBasePath+"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_1_1",
+							checkRuleApiBasePath+"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_1",
 							"expression 3",
 						)
 						verifyRuleApiClientCall(
 							resourceToRequestsResult.ApiRequests[3],
 							recorder,
 							"group-1 - alert-1",
-							checkRuleApiBasePath+"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_2_2",
+							checkRuleApiBasePath+"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_2",
 							"expression 4",
 						)
 						verifyRuleApiClientCall(
 							resourceToRequestsResult.ApiRequests[4],
 							recorder,
 							"group-1 - alert-2",
-							recordingRuleApiBasePath+"dash0-operator___test-namespace_prometheus-rule_group-1_alert-2_1_1",
+							recordingRuleApiBasePath+"dash0-operator___test-namespace_prometheus-rule_group-1_alert-2_1",
 							"expression 5",
 						)
 						verifyRuleApiClientCall(

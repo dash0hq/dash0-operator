@@ -678,7 +678,7 @@ func (r *PrometheusRuleReconciler) MapResourceToApiCalls(
 				// This is a recording rule.
 				recordingRulesTotal++
 				ruleName := fmt.Sprintf("%s - %s", group.Name, rule.Record)
-				ruleOrigin, ruleOriginInApiPath :=
+				ruleOrigin :=
 					r.renderRuleOrigin(
 						preconditionChecksResult,
 						apiConfig.Dataset,
@@ -701,7 +701,7 @@ func (r *PrometheusRuleReconciler) MapResourceToApiCalls(
 					}
 				}
 				apiClientCall, unknownActionErr :=
-					r.createRecordingRuleApiClientCall(ruleOriginInApiPath, action, apiConfig, recordingRule)
+					r.createRecordingRuleApiClientCall(ruleOrigin, action, apiConfig, recordingRule)
 				if unknownActionErr != nil {
 					logger.Error(unknownActionErr, "unknown API action")
 					allSynchronizationErrors[ruleName] = unknownActionErr.Error()
@@ -722,7 +722,7 @@ func (r *PrometheusRuleReconciler) MapResourceToApiCalls(
 					itemNameSuffix = strconv.Itoa(ruleIdx)
 				}
 				checkRuleName := fmt.Sprintf("%s - %s", group.Name, itemNameSuffix)
-				checkRuleOrigin, checkRuleOriginInApiPath :=
+				checkRuleOrigin :=
 					r.renderRuleOrigin(
 						preconditionChecksResult,
 						apiConfig.Dataset,
@@ -765,7 +765,7 @@ func (r *PrometheusRuleReconciler) MapResourceToApiCalls(
 					}
 				}
 				apiClientCall, unknownActionErr :=
-					r.createCheckRuleApiClientCall(checkRuleOriginInApiPath, action, apiConfig, alertRule)
+					r.createCheckRuleApiClientCall(checkRuleOrigin, action, apiConfig, alertRule)
 				if unknownActionErr != nil {
 					logger.Error(unknownActionErr, "unknown API action")
 					allSynchronizationErrors[checkRuleName] = unknownActionErr.Error()
@@ -942,15 +942,13 @@ func (r *PrometheusRuleReconciler) renderCheckRuleUrl(
 // renderRuleOrigin renders the origin of a single alerting or recording rule.
 // The origin has the pattern
 // "dash0-operator_${clusterUid}_${dataset}_${namespace}_${prometheusrule_resource_name}_${group.name}_${ruleName}".
-// The second return value is the origin that is used in the path of the API requests for the rule (the API client
-// URL-encodes it). It only differs from the first one for rules with a duplicate name, see below.
 func (r *PrometheusRuleReconciler) renderRuleOrigin(
 	preconditionChecksResult *preconditionValidationResult,
 	dataset string,
 	duplicateOrigins map[string]int,
 	groupName string,
 	ruleName string,
-) (string, string) {
+) string {
 	// For now the Dash0 backend treats %2F the same as "/", so we need to replace forward slashes with
 	// something other than %2F.
 	// See
@@ -978,7 +976,6 @@ func (r *PrometheusRuleReconciler) renderRuleOrigin(
 		sanitizedGroupName,
 		sanitizedRuleName,
 	)
-	originInApiPath := origin
 
 	// About duplicate origins: Origins must be unique within a dataset, and they need to be stable against reordering
 	// of rules within a group or deletion of individual rules from a group. We derive the origin from the group name
@@ -993,16 +990,13 @@ func (r *PrometheusRuleReconciler) renderRuleOrigin(
 	// rules or deleting one of the rules can lead to one rule taking over the origin of another rule, which we
 	// generally avoid for rules without duplicate names. Duplicate names should be fairly uncommon in
 	// practice, they can be considered a configuration error, so this downside is acceptable.)
-	// The origin in the API path of a duplicate carries the counter twice (e.g. "_1_1"), while the origin that is
-	// tracked in originsInResource carries it once.
 	if duplicationIndexForThisOrigin, isDuplicate := duplicateOrigins[origin]; isDuplicate {
 		duplicateOrigins[origin]++
 		origin = origin + "_" + strconv.Itoa(duplicationIndexForThisOrigin)
-		originInApiPath = origin + "_" + strconv.Itoa(duplicationIndexForThisOrigin)
 	} else {
 		duplicateOrigins[origin] = 1
 	}
-	return origin, originInApiPath
+	return origin
 }
 
 // renderRuleOriginPrefix renders the common origin prefix for all alerting or recording rules that are
