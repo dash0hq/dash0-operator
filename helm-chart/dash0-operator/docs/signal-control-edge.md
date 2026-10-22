@@ -267,7 +267,8 @@ Telemetry without `k8s.namespace.name` is sent to the default export of the oper
 ### Sizing and load balancing
 
 The SignalControl collector receives the telemetry of every application process directly, instead of from a few
-collector pods that batch it. Size `operator.collectors.signalControlCollectorReplicas` and
+collector pods that batch it. It batches the received telemetry itself, using `operator.collectors.sendBatchSize` and
+`operator.collectors.sendBatchMaxSize`. Size `operator.collectors.signalControlCollectorReplicas` and
 `operator.collectors.signalControlCollectorContainerResources` for the cluster's full telemetry volume.
 
 The collector closes OTLP/gRPC connections after five minutes, so gRPC clients spread across new replicas after scaling
