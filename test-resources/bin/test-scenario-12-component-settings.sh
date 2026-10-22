@@ -6,7 +6,9 @@
 set -euo pipefail
 
 # Sets the component settings via spec.components of the Dash0 operator configuration resource and of the Dash0 Signal
-# Control resource, and sets some of them to different values via Helm as well.
+# Control resource, and sets some of them to different values via Helm as well. The filelog offset volume is only set if
+# FILELOG_OFFSETS_PVC is set. Without it, the filelog offset sync containers use filelogOffsetSyncContainerResources.
+# The agent0-connector is enabled with an unreachable server address, unless AGENT0_CONNECTOR_SERVER_ADDRESS is set.
 
 project_root="$(dirname "${BASH_SOURCE[0]}")"/../..
 scripts_lib="test-resources/bin/lib"
@@ -29,10 +31,16 @@ load_env_file
 
 # enable Signal Control in the Helm values and deploy the Signal Control resource
 export FEATURE_SIGNAL_CONTROL_ENABLED=true
+USE_CERT_MANAGER="true"
 COMPONENT_SETTINGS_VIA_HELM="${COMPONENT_SETTINGS_VIA_HELM:-true}"
+AGENT0_CONNECTOR_ENABLED="${AGENT0_CONNECTOR_ENABLED:-true}"
 # The operator configuration resource is created manually, since the one the operator creates from the Helm values must
-# not be edited.
+# not be edited. The target-allocator mTLS settings and the persistent volume claim for the filelog offsets are only
+# provided via spec.components.
 DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM="false"
+TA_MTLS_ENABLED="false"
+filelog_offsets_pvc="${FILELOG_OFFSETS_PVC:-}"
+unset FILELOG_OFFSETS_PVC
 
 verify_kubectx
 setup_test_environment "$target_namespace"
@@ -62,6 +70,10 @@ finish_step
 
 deploy_additional_resources
 
+echo "STEP $step_counter: deploy target-allocator issuers and certs"
+deploy_ta_issuers_and_certs "$operator_namespace"
+finish_step
+
 echo "STEP $step_counter: rebuild images"
 build_all_images
 finish_step
@@ -70,7 +82,7 @@ echo "STEP $step_counter: push images"
 push_all_images
 finish_step
 
-deploy_filelog_offsets_pvc
+FILELOG_OFFSETS_PVC="$filelog_offsets_pvc" deploy_filelog_offsets_pvc
 
 echo "STEP $step_counter: deploy the Dash0 operator using helm"
 deploy_via_helm
@@ -82,6 +94,13 @@ finish_step
 
 operator_configuration_resource="dash0operatorconfigurations.operator.dash0.com"
 operator_configuration_resource+="/dash0-operator-configuration-resource"
+if [[ -n "$filelog_offsets_pvc" ]]; then
+  echo "STEP $step_counter: add the filelog offset volume to spec.components of the operator configuration resource"
+  kubectl patch "$operator_configuration_resource" \
+    --type merge \
+    --patch-file test-resources/component-settings/operator-configuration-filelog-offset-storage-volume.yaml
+  finish_step
+fi
 
 echo "STEP $step_counter: add spec.components and Prometheus CRD support to the operator configuration resource"
 kubectl patch "$operator_configuration_resource" \

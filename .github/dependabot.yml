@@ -196,6 +196,10 @@ updates:
       timezone: "Europe/Berlin"
     cooldown:
       default-days: 4
+      exclude:
+        # Dependabot reads single-arch tags like "0.163.1-386" as version 0.163.1.386. While a new release is still in
+        # cooldown, it proposes such a tag as the update.
+        - "otel/opentelemetry-collector-contrib"
     groups:
       development-dependencies:
         dependency-type: "development"

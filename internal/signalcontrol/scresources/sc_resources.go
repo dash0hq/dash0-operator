@@ -79,6 +79,11 @@ func (m *SignalControlResourceManager) CreateOrUpdateResources(
 	resourcesHaveBeenUpdated := false
 	for _, wrapper := range desiredState {
 		desiredResource := wrapper.object
+		if err := resources.SetOwnerReference(
+			m.operatorManagerDeployment, operatorConfig, m.scheme, desiredResource, logger,
+		); err != nil {
+			return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err
+		}
 		isNew, isChanged, err := m.createOrUpdateResource(ctx, desiredResource, logger)
 		if err != nil {
 			return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err
@@ -134,9 +139,6 @@ func (m *SignalControlResourceManager) createResource(
 	desiredResource client.Object,
 	logger logd.Logger,
 ) error {
-	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
-		return err
-	}
 	if err := patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
 		return err
 	}
@@ -153,9 +155,6 @@ func (m *SignalControlResourceManager) updateResource(
 	desiredResource client.Object,
 	logger logd.Logger,
 ) (bool, error) {
-	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
-		return false, err
-	}
 	desiredResourceForComparison := desiredResource.DeepCopyObject().(client.Object)
 	resources.AdoptGkeAutopilotResourceAdjustments(existingResource, desiredResourceForComparison, logger)
 	patchResult, err := patch.DefaultPatchMaker.Calculate(

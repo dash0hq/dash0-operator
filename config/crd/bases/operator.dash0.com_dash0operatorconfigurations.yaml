@@ -294,15 +294,67 @@ spec:
                 type: object
               components:
                 description: |-
-                  Settings for the workloads the operator manages. An absent or empty setting keeps the Helm value, a present one
-                  replaces it. Invalid settings are rejected. Replacing a custom Helm value with a different one causes a warning.
+                  Settings for the workloads the operator manages. Every setting in this section is optional. A setting that is
+                  absent keeps the value provided via the Helm chart. A setting that is present replaces the Helm value, and the
+                  fields it leaves out take their defaults, not the values provided via Helm: resources are merged with the default
+                  resources per resource, probes with the default probes per field, and the required and the preferred node affinity
+                  each replace their default. An empty object
+                  (e.g. containerResources: {}, probes: {}, nodeAffinity: {}) therefore means the defaults, and an empty mTls
+                  disables mTLS. Empty labels, annotations, podLabels, podAnnotations, tolerations and sysctls and an empty
+                  priorityClassName count as absent. A setting that Kubernetes would reject in the pod template of the workload, and
+                  an invalid GOMEMLIMIT, are rejected. A setting that replaces a custom Helm value with a different one is reported
+                  as a warning in the operator log, and as an admission warning when spec.components is created or changed.
                 properties:
                   agent0Connector:
                     description: |-
                       Settings for the agent0-connector. Its cluster role rules can only be configured via the Helm chart, since the
-                      operator can only grant permissions it holds itself. Its allowed kubectl commands can also only be configured via
-                      the Helm chart (operator.agent0Connector.allowedKubectlCommands).
+                      operator can only grant permissions it holds itself.
                     properties:
+                      allowedKubectlCommands:
+                        description: |-
+                          The kubectl commands the agent0-connector may execute (Helm value operator.agent0Connector.allowedKubectlCommands).
+                          The settings are merged with the defaults of the Helm chart per command, not with the commands provided via Helm:
+                          a command that is not set here keeps its default. At least one command needs to stay enabled. Allowing a command
+                          does not grant the RBAC permissions it needs (Helm value operator.agent0Connector.clusterRole.rules).
+                        properties:
+                          apiResources:
+                            description: kubectl api-resources, enabled by default.
+                            type: boolean
+                          apiVersions:
+                            description: kubectl api-versions, enabled by default.
+                            type: boolean
+                          auth:
+                            description: kubectl auth, enabled by default.
+                            type: boolean
+                          clusterInfo:
+                            description: kubectl cluster-info, enabled by default.
+                            type: boolean
+                          events:
+                            description: |-
+                              kubectl events, disabled by default. Events are not redacted, only enable this if no sensitive information like
+                              credentials, API tokens, secrets or customer PII is leaked into event bodies. It needs RBAC access to events (core
+                              API group) and events.events.k8s.io. While it is disabled, reading events via kubectl get is rejected as well.
+                            type: boolean
+                          explain:
+                            description: kubectl explain, enabled by default.
+                            type: boolean
+                          get:
+                            description: kubectl get, enabled by default. It is the
+                              main kubectl command that Agent0 uses.
+                            type: boolean
+                          logs:
+                            description: |-
+                              kubectl logs, disabled by default. Logs cannot be redacted reliably, only enable this if no sensitive information is
+                              leaked into logs. It needs RBAC access to pods/log, and also lifts the redaction of container termination messages
+                              (which can hold log output) in the output of kubectl get.
+                            type: boolean
+                          top:
+                            description: kubectl top, enabled by default.
+                            type: boolean
+                          version:
+                            description: kubectl version, enabled by default.
+                            type: boolean
+                        type: object
                       annotations:
                         additionalProperties:
                           type: string
@@ -310,12 +362,264 @@ spec:
                           Additional annotations for the workload. They replace the annotations provided via the Helm chart, empty
                           annotations keep them.
                         type: object
+                      containerResources:
+                        description: The resources of the agent0-connector container
+                          (Helm value operator.agent0Connector.containerResources).
+                        properties:
+                          gomemlimit:
+                            description: |-
+                              The GOMEMLIMIT environment variable, in the format of the Go runtime (e.g. 400MiB, not 400Mi), or off. If it is
+                              empty (recommended), the operator derives it from the memory limit. It must be greater than 0 and below the
+                              effective memory limit. In collectorContainerResources, it should also be below the memory_limiter soft limit.
+                            pattern: ^(off|[0-9]+(([KMGT]i)?B)?)$
+                            type: string
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource limits. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default limit, and -1 removes it. A default limit below the request set in requests is raised to that request.
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource requests. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default request, and -1 removes it. A default request above the limit set in limits is lowered to that limit.
+                              A request above the limit set in limits is rejected.
+                            type: object
+                        type: object
+                      enablePprof:
+                        description: |-
+                          Whether to enable pprof for the agent0-connector pod (Helm value operator.agent0Connector.enablePprof, default
+                          false). Only enable this if instructed by Dash0 support.
+                        type: boolean
                       labels:
                         additionalProperties:
                           type: string
                         description: Additional labels for the workload. They replace
                           the labels provided via the Helm chart, empty labels keep
                           them.
+                        type: object
+                      maxConcurrentCommands:
+                        description: |-
+                          The number of command requests the agent0-connector executes at the same time (Helm value
+                          operator.agent0Connector.maxConcurrentCommands, default 2). Raising this value requires raising
+                          containerResources.limits.memory correspondingly, and containerResources.gomemlimit, if it is set.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      nodeAffinity:
+                        description: |-
+                          The node affinity for the pods of the workload. It is merged with the default node affinity of the Helm chart,
+                          not with the one provided via Helm: requiredDuringSchedulingIgnoredDuringExecution and
+                          preferredDuringSchedulingIgnoredDuringExecution each replace their default, unless they are absent. The default
+                          requires nodes that are not labelled with dash0.com/enable=false and run Linux, and has no preferred node
+                          affinity. requiredDuringSchedulingIgnoredDuringExecution with an empty list of nodeSelectorTerms removes the
+                          required node affinity.
+                        properties:
+                          preferredDuringSchedulingIgnoredDuringExecution:
+                            description: |-
+                              The scheduler will prefer to schedule pods to nodes that satisfy
+                              the affinity expressions specified by this field, but it may choose
+                              a node that violates one or more of the expressions. The node that is
+                              most preferred is the one with the greatest sum of weights, i.e.
+                              for each node that meets all of the scheduling requirements (resource
+                              request, requiredDuringScheduling affinity expressions, etc.),
+                              compute a sum by iterating through the elements of this field and adding
+                              "weight" to the sum if the node matches the corresponding matchExpressions; the
+                              node(s) with the highest sum are the most preferred.
+                            items:
+                              description: |-
+                                An empty preferred scheduling term matches all objects with implicit weight 0
+                                (i.e. it's a no-op). A null preferred scheduling term matches no objects (i.e. is also a no-op).
+                              properties:
+                                preference:
+                                  description: A node selector term, associated with
+                                    the corresponding weight.
+                                  properties:
+                                    matchExpressions:
+                                      description: A list of node selector requirements
+                                        by node's labels.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                    matchFields:
+                                      description: A list of node selector requirements
+                                        by node's fields.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                weight:
+                                  description: Weight associated with matching the
+                                    corresponding nodeSelectorTerm, in the range 1-100.
+                                  format: int32
+                                  type: integer
+                              required:
+                              - preference
+                              - weight
+                              type: object
+                            type: array
+                            x-kubernetes-list-type: atomic
+                          requiredDuringSchedulingIgnoredDuringExecution:
+                            description: |-
+                              If the affinity requirements specified by this field are not met at
+                              scheduling time, the pod will not be scheduled onto the node.
+                              If the affinity requirements specified by this field cease to be met
+                              at some point during pod execution (e.g. due to an update), the system
+                              may or may not try to eventually evict the pod from its node.
+                            properties:
+                              nodeSelectorTerms:
+                                description: Required. A list of node selector terms.
+                                  The terms are ORed.
+                                items:
+                                  description: |-
+                                    A null or empty node selector term matches no objects. The requirements of
+                                    them are ANDed.
+                                    The TopologySelectorTerm type implements a subset of the NodeSelectorTerm.
+                                  properties:
+                                    matchExpressions:
+                                      description: A list of node selector requirements
+                                        by node's labels.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                    matchFields:
+                                      description: A list of node selector requirements
+                                        by node's fields.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            required:
+                            - nodeSelectorTerms
+                            type: object
+                            x-kubernetes-map-type: atomic
                         type: object
                       podAnnotations:
                         additionalProperties:
@@ -331,6 +635,48 @@ spec:
                           Additional labels for the pods of the workload. They replace the pod labels provided via the Helm chart, empty
                           pod labels keep them.
                         type: object
+                      tolerations:
+                        description: |-
+                          Tolerations for the pods of the workload. They replace the tolerations provided via the Helm chart, empty
+                          tolerations keep them. Only the operators Equal and Exists are supported.
+                        items:
+                          description: |-
+                            The pod this Toleration is attached to tolerates any taint that matches
+                            the triple <key,value,effect> using the matching operator <operator>.
+                          properties:
+                            effect:
+                              description: |-
+                                Effect indicates the taint effect to match. Empty means match all taint effects.
+                                When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                              type: string
+                            key:
+                              description: |-
+                                Key is the taint key that the toleration applies to. Empty means match all taint keys.
+                                If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                              type: string
+                            operator:
+                              description: |-
+                                Operator represents a key's relationship to the value.
+                                Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                                Exists is equivalent to wildcard for value, so that a pod can
+                                tolerate all taints of a particular category.
+                                Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
+                              type: string
+                            tolerationSeconds:
+                              description: |-
+                                TolerationSeconds represents the period of time the toleration (which must be
+                                of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+                                it is not set, which means tolerate the taint forever (do not evict). Zero and
+                                negative values will be treated as 0 (evict immediately) by the system.
+                              format: int64
+                              type: integer
+                            value:
+                              description: |-
+                                Value is the taint value the toleration matches to.
+                                If the operator is Exists, the value should be empty, otherwise just a regular string.
+                              type: string
+                          type: object
+                        type: array
                     type: object
                   daemonSetCollector:
                     description: Settings for the OpenTelemetry collector DaemonSet.
@@ -342,12 +688,364 @@ spec:
                           Additional annotations for the workload. They replace the annotations provided via the Helm chart, empty
                           annotations keep them.
                         type: object
+                      collectorContainerResources:
+                        description: |-
+                          The resources of the OpenTelemetry collector container (Helm value
+                          operator.collectors.daemonSetCollectorContainerResources).
+                        properties:
+                          gomemlimit:
+                            description: |-
+                              The GOMEMLIMIT environment variable, in the format of the Go runtime (e.g. 400MiB, not 400Mi), or off. If it is
+                              empty (recommended), the operator derives it from the memory limit. It must be greater than 0 and below the
+                              effective memory limit. In collectorContainerResources, it should also be below the memory_limiter soft limit.
+                            pattern: ^(off|[0-9]+(([KMGT]i)?B)?)$
+                            type: string
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource limits. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default limit, and -1 removes it. A default limit below the request set in requests is raised to that request.
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource requests. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default request, and -1 removes it. A default request above the limit set in limits is lowered to that limit.
+                              A request above the limit set in limits is rejected.
+                            type: object
+                        type: object
+                      configurationReloaderContainerResources:
+                        description: |-
+                          The resources of the configuration reloader container (Helm value
+                          operator.collectors.daemonSetConfigurationReloaderContainerResources).
+                        properties:
+                          gomemlimit:
+                            description: |-
+                              The GOMEMLIMIT environment variable, in the format of the Go runtime (e.g. 400MiB, not 400Mi), or off. If it is
+                              empty (recommended), the operator derives it from the memory limit. It must be greater than 0 and below the
+                              effective memory limit. In collectorContainerResources, it should also be below the memory_limiter soft limit.
+                            pattern: ^(off|[0-9]+(([KMGT]i)?B)?)$
+                            type: string
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource limits. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default limit, and -1 removes it. A default limit below the request set in requests is raised to that request.
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource requests. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default request, and -1 removes it. A default request above the limit set in limits is lowered to that limit.
+                              A request above the limit set in limits is rejected.
+                            type: object
+                        type: object
+                      filelogOffsetStorageVolume:
+                        description: |-
+                          A volume for the offsets of the filelog receiver (Helm value operator.collectors.filelogOffsetSyncStorageVolume),
+                          as an alternative to the default ConfigMap-based storage, which is limited to 1 MB. It replaces the volume provided
+                          via the Helm chart.
+                        properties:
+                          hostPath:
+                            description: |-
+                              A directory on the nodes for the offsets, mounted as a hostPath volume of type DirectoryOrCreate. Each pod of the
+                              DaemonSet writes to a subdirectory named after its node.
+                            properties:
+                              path:
+                                description: The path of the directory on the nodes.
+                                minLength: 1
+                                type: string
+                                x-kubernetes-validations:
+                                - message: path must not contain '..'
+                                  rule: '!self.matches(''(^|/)[.][.](/|$)'')'
+                            required:
+                            - path
+                            type: object
+                          persistentVolumeClaim:
+                            description: |-
+                              A persistent volume claim for the offsets. All pods of the DaemonSet mount the same claim, each one writes to its
+                              own subdirectory, hence the claim needs to support the ReadWriteMany access mode when the cluster has more than one
+                              node.
+                            properties:
+                              claimName:
+                                description: The name of the persistent volume claim
+                                  in the operator's namespace.
+                                minLength: 1
+                                type: string
+                            required:
+                            - claimName
+                            type: object
+                        type: object
+                        x-kubernetes-validations:
+                        - message: exactly one of persistentVolumeClaim and hostPath
+                            must be set
+                          rule: has(self.persistentVolumeClaim) != has(self.hostPath)
+                      filelogOffsetSyncContainerResources:
+                        description: |-
+                          The resources of the filelog offset sync container and of the filelog offset sync init container (Helm value
+                          operator.collectors.daemonSetFileLogOffsetSyncContainerResources).
+                        properties:
+                          gomemlimit:
+                            description: |-
+                              The GOMEMLIMIT environment variable, in the format of the Go runtime (e.g. 400MiB, not 400Mi), or off. If it is
+                              empty (recommended), the operator derives it from the memory limit. It must be greater than 0 and below the
+                              effective memory limit. In collectorContainerResources, it should also be below the memory_limiter soft limit.
+                            pattern: ^(off|[0-9]+(([KMGT]i)?B)?)$
+                            type: string
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource limits. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default limit, and -1 removes it. A default limit below the request set in requests is raised to that request.
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource requests. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default request, and -1 removes it. A default request above the limit set in limits is lowered to that limit.
+                              A request above the limit set in limits is rejected.
+                            type: object
+                        type: object
                       labels:
                         additionalProperties:
                           type: string
                         description: Additional labels for the workload. They replace
                           the labels provided via the Helm chart, empty labels keep
                           them.
+                        type: object
+                      nodeAffinity:
+                        description: |-
+                          The node affinity for the pods of the workload. It is merged with the default node affinity of the Helm chart,
+                          not with the one provided via Helm: requiredDuringSchedulingIgnoredDuringExecution and
+                          preferredDuringSchedulingIgnoredDuringExecution each replace their default, unless they are absent. The default
+                          requires nodes that are not labelled with dash0.com/enable=false and run Linux, and has no preferred node
+                          affinity. requiredDuringSchedulingIgnoredDuringExecution with an empty list of nodeSelectorTerms removes the
+                          required node affinity.
+                        properties:
+                          preferredDuringSchedulingIgnoredDuringExecution:
+                            description: |-
+                              The scheduler will prefer to schedule pods to nodes that satisfy
+                              the affinity expressions specified by this field, but it may choose
+                              a node that violates one or more of the expressions. The node that is
+                              most preferred is the one with the greatest sum of weights, i.e.
+                              for each node that meets all of the scheduling requirements (resource
+                              request, requiredDuringScheduling affinity expressions, etc.),
+                              compute a sum by iterating through the elements of this field and adding
+                              "weight" to the sum if the node matches the corresponding matchExpressions; the
+                              node(s) with the highest sum are the most preferred.
+                            items:
+                              description: |-
+                                An empty preferred scheduling term matches all objects with implicit weight 0
+                                (i.e. it's a no-op). A null preferred scheduling term matches no objects (i.e. is also a no-op).
+                              properties:
+                                preference:
+                                  description: A node selector term, associated with
+                                    the corresponding weight.
+                                  properties:
+                                    matchExpressions:
+                                      description: A list of node selector requirements
+                                        by node's labels.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                    matchFields:
+                                      description: A list of node selector requirements
+                                        by node's fields.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                weight:
+                                  description: Weight associated with matching the
+                                    corresponding nodeSelectorTerm, in the range 1-100.
+                                  format: int32
+                                  type: integer
+                              required:
+                              - preference
+                              - weight
+                              type: object
+                            type: array
+                            x-kubernetes-list-type: atomic
+                          requiredDuringSchedulingIgnoredDuringExecution:
+                            description: |-
+                              If the affinity requirements specified by this field are not met at
+                              scheduling time, the pod will not be scheduled onto the node.
+                              If the affinity requirements specified by this field cease to be met
+                              at some point during pod execution (e.g. due to an update), the system
+                              may or may not try to eventually evict the pod from its node.
+                            properties:
+                              nodeSelectorTerms:
+                                description: Required. A list of node selector terms.
+                                  The terms are ORed.
+                                items:
+                                  description: |-
+                                    A null or empty node selector term matches no objects. The requirements of
+                                    them are ANDed.
+                                    The TopologySelectorTerm type implements a subset of the NodeSelectorTerm.
+                                  properties:
+                                    matchExpressions:
+                                      description: A list of node selector requirements
+                                        by node's labels.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                    matchFields:
+                                      description: A list of node selector requirements
+                                        by node's fields.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            required:
+                            - nodeSelectorTerms
+                            type: object
+                            x-kubernetes-map-type: atomic
                         type: object
                       podAnnotations:
                         additionalProperties:
@@ -363,6 +1061,242 @@ spec:
                           Additional labels for the pods of the workload. They replace the pod labels provided via the Helm chart, empty
                           pod labels keep them.
                         type: object
+                      priorityClassName:
+                        description: The priority class name for the pods. It replaces
+                          the one provided via the Helm chart, an empty value keeps
+                          it.
+                        type: string
+                      probes:
+                        description: |-
+                          The timing settings of the liveness, readiness and startup probes. The operator always sets the probe handler
+                          itself. The settings are merged with the default probes of the Helm chart per field, not with the probes provided
+                          via Helm: a probe or a field that is not set here keeps its default. The defaults are initialDelaySeconds 0,
+                          periodSeconds 2, timeoutSeconds 1, and failureThreshold 20 for the liveness, 3 for the readiness and 45 for the
+                          startup probe.
+                        properties:
+                          liveness:
+                            description: The timing settings of the liveness probe.
+                            properties:
+                              failureThreshold:
+                                description: The minimum number of consecutive failures
+                                  for the probe to be considered failed after having
+                                  succeeded.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              initialDelaySeconds:
+                                description: The number of seconds after the container
+                                  has started before the probe is initiated.
+                                format: int32
+                                minimum: 0
+                                type: integer
+                              periodSeconds:
+                                description: How often (in seconds) to perform the
+                                  probe.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              successThreshold:
+                                description: |-
+                                  The minimum number of consecutive successes for the probe to be considered successful after having failed. Must
+                                  be 1 for the liveness and the startup probe.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              terminationGracePeriodSeconds:
+                                description: |-
+                                  The duration in seconds the pod needs to terminate gracefully upon probe failure, overriding the
+                                  terminationGracePeriodSeconds of the pod. Must not be set for the readiness probe.
+                                format: int64
+                                minimum: 1
+                                type: integer
+                              timeoutSeconds:
+                                description: The number of seconds after which the
+                                  probe times out.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                            type: object
+                          readiness:
+                            description: The timing settings of the readiness probe.
+                            properties:
+                              failureThreshold:
+                                description: The minimum number of consecutive failures
+                                  for the probe to be considered failed after having
+                                  succeeded.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              initialDelaySeconds:
+                                description: The number of seconds after the container
+                                  has started before the probe is initiated.
+                                format: int32
+                                minimum: 0
+                                type: integer
+                              periodSeconds:
+                                description: How often (in seconds) to perform the
+                                  probe.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              successThreshold:
+                                description: |-
+                                  The minimum number of consecutive successes for the probe to be considered successful after having failed. Must
+                                  be 1 for the liveness and the startup probe.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              terminationGracePeriodSeconds:
+                                description: |-
+                                  The duration in seconds the pod needs to terminate gracefully upon probe failure, overriding the
+                                  terminationGracePeriodSeconds of the pod. Must not be set for the readiness probe.
+                                format: int64
+                                minimum: 1
+                                type: integer
+                              timeoutSeconds:
+                                description: The number of seconds after which the
+                                  probe times out.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                            type: object
+                          startup:
+                            description: The timing settings of the startup probe.
+                            properties:
+                              failureThreshold:
+                                description: The minimum number of consecutive failures
+                                  for the probe to be considered failed after having
+                                  succeeded.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              initialDelaySeconds:
+                                description: The number of seconds after the container
+                                  has started before the probe is initiated.
+                                format: int32
+                                minimum: 0
+                                type: integer
+                              periodSeconds:
+                                description: How often (in seconds) to perform the
+                                  probe.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              successThreshold:
+                                description: |-
+                                  The minimum number of consecutive successes for the probe to be considered successful after having failed. Must
+                                  be 1 for the liveness and the startup probe.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              terminationGracePeriodSeconds:
+                                description: |-
+                                  The duration in seconds the pod needs to terminate gracefully upon probe failure, overriding the
+                                  terminationGracePeriodSeconds of the pod. Must not be set for the readiness probe.
+                                format: int64
+                                minimum: 1
+                                type: integer
+                              timeoutSeconds:
+                                description: The number of seconds after which the
+                                  probe times out.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                            type: object
+                        type: object
+                        x-kubernetes-validations:
+                        - message: liveness.successThreshold must be 1
+                          rule: '!has(self.liveness) || !has(self.liveness.successThreshold)
+                            || self.liveness.successThreshold == 1'
+                        - message: startup.successThreshold must be 1
+                          rule: '!has(self.startup) || !has(self.startup.successThreshold)
+                            || self.startup.successThreshold == 1'
+                        - message: readiness.terminationGracePeriodSeconds must not
+                            be set
+                          rule: '!has(self.readiness) || !has(self.readiness.terminationGracePeriodSeconds)'
+                      seLinuxOptions:
+                        description: |-
+                          Pod-level SELinux options (spec.securityContext.seLinuxOptions, Helm value
+                          operator.collectors.daemonSetSeLinuxOptions). They replace the SELinux options provided via the Helm chart as a
+                          whole, an empty object removes them. By default, the pods have no SELinux options.
+                        properties:
+                          level:
+                            description: Level is SELinux level label that applies
+                              to the container.
+                            type: string
+                          role:
+                            description: Role is a SELinux role label that applies
+                              to the container.
+                            type: string
+                          type:
+                            description: Type is a SELinux type label that applies
+                              to the container.
+                            type: string
+                          user:
+                            description: User is a SELinux user label that applies
+                              to the container.
+                            type: string
+                        type: object
+                      sysctls:
+                        description: |-
+                          Pod-level sysctls (spec.securityContext.sysctls). They replace the sysctls provided via the Helm chart, empty
+                          sysctls keep them.
+                        items:
+                          description: Sysctl defines a kernel parameter to be set
+                          properties:
+                            name:
+                              description: Name of a property to set
+                              type: string
+                            value:
+                              description: Value of a property to set
+                              type: string
+                          required:
+                          - name
+                          - value
+                          type: object
+                        type: array
+                      tolerations:
+                        description: |-
+                          Tolerations for the pods of the workload. They replace the tolerations provided via the Helm chart, empty
+                          tolerations keep them. Only the operators Equal and Exists are supported.
+                        items:
+                          description: |-
+                            The pod this Toleration is attached to tolerates any taint that matches
+                            the triple <key,value,effect> using the matching operator <operator>.
+                          properties:
+                            effect:
+                              description: |-
+                                Effect indicates the taint effect to match. Empty means match all taint effects.
+                                When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                              type: string
+                            key:
+                              description: |-
+                                Key is the taint key that the toleration applies to. Empty means match all taint keys.
+                                If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                              type: string
+                            operator:
+                              description: |-
+                                Operator represents a key's relationship to the value.
+                                Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                                Exists is equivalent to wildcard for value, so that a pod can
+                                tolerate all taints of a particular category.
+                                Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
+                              type: string
+                            tolerationSeconds:
+                              description: |-
+                                TolerationSeconds represents the period of time the toleration (which must be
+                                of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+                                it is not set, which means tolerate the taint forever (do not evict). Zero and
+                                negative values will be treated as 0 (evict immediately) by the system.
+                              format: int64
+                              type: integer
+                            value:
+                              description: |-
+                                Value is the taint value the toleration matches to.
+                                If the operator is Exists, the value should be empty, otherwise just a regular string.
+                              type: string
+                          type: object
+                        type: array
                     type: object
                   deploymentCollector:
                     description: Settings for the OpenTelemetry collector Deployment
@@ -375,12 +1309,288 @@ spec:
                           Additional annotations for the workload. They replace the annotations provided via the Helm chart, empty
                           annotations keep them.
                         type: object
+                      collectorContainerResources:
+                        description: |-
+                          The resources of the OpenTelemetry collector container (Helm value
+                          operator.collectors.deploymentCollectorContainerResources).
+                        properties:
+                          gomemlimit:
+                            description: |-
+                              The GOMEMLIMIT environment variable, in the format of the Go runtime (e.g. 400MiB, not 400Mi), or off. If it is
+                              empty (recommended), the operator derives it from the memory limit. It must be greater than 0 and below the
+                              effective memory limit. In collectorContainerResources, it should also be below the memory_limiter soft limit.
+                            pattern: ^(off|[0-9]+(([KMGT]i)?B)?)$
+                            type: string
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource limits. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default limit, and -1 removes it. A default limit below the request set in requests is raised to that request.
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource requests. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default request, and -1 removes it. A default request above the limit set in limits is lowered to that limit.
+                              A request above the limit set in limits is rejected.
+                            type: object
+                        type: object
+                      configurationReloaderContainerResources:
+                        description: |-
+                          The resources of the configuration reloader container (Helm value
+                          operator.collectors.deploymentConfigurationReloaderContainerResources).
+                        properties:
+                          gomemlimit:
+                            description: |-
+                              The GOMEMLIMIT environment variable, in the format of the Go runtime (e.g. 400MiB, not 400Mi), or off. If it is
+                              empty (recommended), the operator derives it from the memory limit. It must be greater than 0 and below the
+                              effective memory limit. In collectorContainerResources, it should also be below the memory_limiter soft limit.
+                            pattern: ^(off|[0-9]+(([KMGT]i)?B)?)$
+                            type: string
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource limits. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default limit, and -1 removes it. A default limit below the request set in requests is raised to that request.
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource requests. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default request, and -1 removes it. A default request above the limit set in limits is lowered to that limit.
+                              A request above the limit set in limits is rejected.
+                            type: object
+                        type: object
                       labels:
                         additionalProperties:
                           type: string
                         description: Additional labels for the workload. They replace
                           the labels provided via the Helm chart, empty labels keep
                           them.
+                        type: object
+                      nodeAffinity:
+                        description: |-
+                          The node affinity for the pods of the workload. It is merged with the default node affinity of the Helm chart,
+                          not with the one provided via Helm: requiredDuringSchedulingIgnoredDuringExecution and
+                          preferredDuringSchedulingIgnoredDuringExecution each replace their default, unless they are absent. The default
+                          requires nodes that are not labelled with dash0.com/enable=false and run Linux, and has no preferred node
+                          affinity. requiredDuringSchedulingIgnoredDuringExecution with an empty list of nodeSelectorTerms removes the
+                          required node affinity.
+                        properties:
+                          preferredDuringSchedulingIgnoredDuringExecution:
+                            description: |-
+                              The scheduler will prefer to schedule pods to nodes that satisfy
+                              the affinity expressions specified by this field, but it may choose
+                              a node that violates one or more of the expressions. The node that is
+                              most preferred is the one with the greatest sum of weights, i.e.
+                              for each node that meets all of the scheduling requirements (resource
+                              request, requiredDuringScheduling affinity expressions, etc.),
+                              compute a sum by iterating through the elements of this field and adding
+                              "weight" to the sum if the node matches the corresponding matchExpressions; the
+                              node(s) with the highest sum are the most preferred.
+                            items:
+                              description: |-
+                                An empty preferred scheduling term matches all objects with implicit weight 0
+                                (i.e. it's a no-op). A null preferred scheduling term matches no objects (i.e. is also a no-op).
+                              properties:
+                                preference:
+                                  description: A node selector term, associated with
+                                    the corresponding weight.
+                                  properties:
+                                    matchExpressions:
+                                      description: A list of node selector requirements
+                                        by node's labels.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                    matchFields:
+                                      description: A list of node selector requirements
+                                        by node's fields.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                weight:
+                                  description: Weight associated with matching the
+                                    corresponding nodeSelectorTerm, in the range 1-100.
+                                  format: int32
+                                  type: integer
+                              required:
+                              - preference
+                              - weight
+                              type: object
+                            type: array
+                            x-kubernetes-list-type: atomic
+                          requiredDuringSchedulingIgnoredDuringExecution:
+                            description: |-
+                              If the affinity requirements specified by this field are not met at
+                              scheduling time, the pod will not be scheduled onto the node.
+                              If the affinity requirements specified by this field cease to be met
+                              at some point during pod execution (e.g. due to an update), the system
+                              may or may not try to eventually evict the pod from its node.
+                            properties:
+                              nodeSelectorTerms:
+                                description: Required. A list of node selector terms.
+                                  The terms are ORed.
+                                items:
+                                  description: |-
+                                    A null or empty node selector term matches no objects. The requirements of
+                                    them are ANDed.
+                                    The TopologySelectorTerm type implements a subset of the NodeSelectorTerm.
+                                  properties:
+                                    matchExpressions:
+                                      description: A list of node selector requirements
+                                        by node's labels.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                    matchFields:
+                                      description: A list of node selector requirements
+                                        by node's fields.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            required:
+                            - nodeSelectorTerms
+                            type: object
+                            x-kubernetes-map-type: atomic
                         type: object
                       podAnnotations:
                         additionalProperties:
@@ -396,10 +1606,264 @@ spec:
                           Additional labels for the pods of the workload. They replace the pod labels provided via the Helm chart, empty
                           pod labels keep them.
                         type: object
+                      priorityClassName:
+                        description: The priority class name for the pods. It replaces
+                          the one provided via the Helm chart, an empty value keeps
+                          it.
+                        type: string
+                      probes:
+                        description: |-
+                          The timing settings of the liveness, readiness and startup probes. The operator always sets the probe handler
+                          itself. The settings are merged with the default probes of the Helm chart per field, not with the probes provided
+                          via Helm: a probe or a field that is not set here keeps its default. The defaults are initialDelaySeconds 0,
+                          periodSeconds 2, timeoutSeconds 1, and failureThreshold 20 for the liveness, 3 for the readiness and 45 for the
+                          startup probe.
+                        properties:
+                          liveness:
+                            description: The timing settings of the liveness probe.
+                            properties:
+                              failureThreshold:
+                                description: The minimum number of consecutive failures
+                                  for the probe to be considered failed after having
+                                  succeeded.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              initialDelaySeconds:
+                                description: The number of seconds after the container
+                                  has started before the probe is initiated.
+                                format: int32
+                                minimum: 0
+                                type: integer
+                              periodSeconds:
+                                description: How often (in seconds) to perform the
+                                  probe.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              successThreshold:
+                                description: |-
+                                  The minimum number of consecutive successes for the probe to be considered successful after having failed. Must
+                                  be 1 for the liveness and the startup probe.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              terminationGracePeriodSeconds:
+                                description: |-
+                                  The duration in seconds the pod needs to terminate gracefully upon probe failure, overriding the
+                                  terminationGracePeriodSeconds of the pod. Must not be set for the readiness probe.
+                                format: int64
+                                minimum: 1
+                                type: integer
+                              timeoutSeconds:
+                                description: The number of seconds after which the
+                                  probe times out.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                            type: object
+                          readiness:
+                            description: The timing settings of the readiness probe.
+                            properties:
+                              failureThreshold:
+                                description: The minimum number of consecutive failures
+                                  for the probe to be considered failed after having
+                                  succeeded.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              initialDelaySeconds:
+                                description: The number of seconds after the container
+                                  has started before the probe is initiated.
+                                format: int32
+                                minimum: 0
+                                type: integer
+                              periodSeconds:
+                                description: How often (in seconds) to perform the
+                                  probe.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              successThreshold:
+                                description: |-
+                                  The minimum number of consecutive successes for the probe to be considered successful after having failed. Must
+                                  be 1 for the liveness and the startup probe.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              terminationGracePeriodSeconds:
+                                description: |-
+                                  The duration in seconds the pod needs to terminate gracefully upon probe failure, overriding the
+                                  terminationGracePeriodSeconds of the pod. Must not be set for the readiness probe.
+                                format: int64
+                                minimum: 1
+                                type: integer
+                              timeoutSeconds:
+                                description: The number of seconds after which the
+                                  probe times out.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                            type: object
+                          startup:
+                            description: The timing settings of the startup probe.
+                            properties:
+                              failureThreshold:
+                                description: The minimum number of consecutive failures
+                                  for the probe to be considered failed after having
+                                  succeeded.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              initialDelaySeconds:
+                                description: The number of seconds after the container
+                                  has started before the probe is initiated.
+                                format: int32
+                                minimum: 0
+                                type: integer
+                              periodSeconds:
+                                description: How often (in seconds) to perform the
+                                  probe.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              successThreshold:
+                                description: |-
+                                  The minimum number of consecutive successes for the probe to be considered successful after having failed. Must
+                                  be 1 for the liveness and the startup probe.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              terminationGracePeriodSeconds:
+                                description: |-
+                                  The duration in seconds the pod needs to terminate gracefully upon probe failure, overriding the
+                                  terminationGracePeriodSeconds of the pod. Must not be set for the readiness probe.
+                                format: int64
+                                minimum: 1
+                                type: integer
+                              timeoutSeconds:
+                                description: The number of seconds after which the
+                                  probe times out.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                            type: object
+                        type: object
+                        x-kubernetes-validations:
+                        - message: liveness.successThreshold must be 1
+                          rule: '!has(self.liveness) || !has(self.liveness.successThreshold)
+                            || self.liveness.successThreshold == 1'
+                        - message: startup.successThreshold must be 1
+                          rule: '!has(self.startup) || !has(self.startup.successThreshold)
+                            || self.startup.successThreshold == 1'
+                        - message: readiness.terminationGracePeriodSeconds must not
+                            be set
+                          rule: '!has(self.readiness) || !has(self.readiness.terminationGracePeriodSeconds)'
+                      sysctls:
+                        description: |-
+                          Pod-level sysctls (spec.securityContext.sysctls). They replace the sysctls provided via the Helm chart, empty
+                          sysctls keep them.
+                        items:
+                          description: Sysctl defines a kernel parameter to be set
+                          properties:
+                            name:
+                              description: Name of a property to set
+                              type: string
+                            value:
+                              description: Value of a property to set
+                              type: string
+                          required:
+                          - name
+                          - value
+                          type: object
+                        type: array
+                      tolerations:
+                        description: |-
+                          Tolerations for the pods of the workload. They replace the tolerations provided via the Helm chart, empty
+                          tolerations keep them. Only the operators Equal and Exists are supported.
+                        items:
+                          description: |-
+                            The pod this Toleration is attached to tolerates any taint that matches
+                            the triple <key,value,effect> using the matching operator <operator>.
+                          properties:
+                            effect:
+                              description: |-
+                                Effect indicates the taint effect to match. Empty means match all taint effects.
+                                When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                              type: string
+                            key:
+                              description: |-
+                                Key is the taint key that the toleration applies to. Empty means match all taint keys.
+                                If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                              type: string
+                            operator:
+                              description: |-
+                                Operator represents a key's relationship to the value.
+                                Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                                Exists is equivalent to wildcard for value, so that a pod can
+                                tolerate all taints of a particular category.
+                                Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
+                              type: string
+                            tolerationSeconds:
+                              description: |-
+                                TolerationSeconds represents the period of time the toleration (which must be
+                                of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+                                it is not set, which means tolerate the taint forever (do not evict). Zero and
+                                negative values will be treated as 0 (evict immediately) by the system.
+                              format: int64
+                              type: integer
+                            value:
+                              description: |-
+                                Value is the taint value the toleration matches to.
+                                If the operator is Exists, the value should be empty, otherwise just a regular string.
+                              type: string
+                          type: object
+                        type: array
+                    type: object
+                  instrumentationInitContainer:
+                    description: Settings for the init container that the operator
+                      adds to instrumented workloads.
+                    properties:
+                      resources:
+                        description: |-
+                          The resources of the init container (Helm value operator.initContainerResources). Instrumented workloads get
+                          changed resources on their next update, e.g. via kubectl rollout restart.
+                        properties:
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource limits. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default limit, and -1 removes it. A default limit below the request set in requests is raised to that request.
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource requests. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default request, and -1 removes it. A default request above the limit set in limits is lowered to that limit.
+                              A request above the limit set in limits is rejected.
+                            type: object
+                        type: object
                     type: object
                   targetAllocator:
                     description: Settings for the OpenTelemetry target-allocator.
                     properties:
+                      allowInsecureAuthSecrets:
+                        description: |-
+                          Whether the target-allocator serves the credentials for metrics endpoints which require authorization over plain
+                          HTTP instead of mTLS. Only enable this if the transport security between the target-allocator and the collectors
+                          is guaranteed by other means, for example by a service mesh (Helm value
+                          operator.targetAllocator.allowInsecureAuthSecrets, default false).
+                        type: boolean
                       annotations:
                         additionalProperties:
                           type: string
@@ -407,12 +1871,276 @@ spec:
                           Additional annotations for the workload. They replace the annotations provided via the Helm chart, empty
                           annotations keep them.
                         type: object
+                      containerResources:
+                        description: The resources of the target-allocator container
+                          (Helm value operator.targetAllocator.containerResources).
+                        properties:
+                          gomemlimit:
+                            description: |-
+                              The GOMEMLIMIT environment variable, in the format of the Go runtime (e.g. 400MiB, not 400Mi), or off. If it is
+                              empty (recommended), the operator derives it from the memory limit. It must be greater than 0 and below the
+                              effective memory limit. In collectorContainerResources, it should also be below the memory_limiter soft limit.
+                            pattern: ^(off|[0-9]+(([KMGT]i)?B)?)$
+                            type: string
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource limits. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default limit, and -1 removes it. A default limit below the request set in requests is raised to that request.
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource requests. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default request, and -1 removes it. A default request above the limit set in limits is lowered to that limit.
+                              A request above the limit set in limits is rejected.
+                            type: object
+                        type: object
                       labels:
                         additionalProperties:
                           type: string
                         description: Additional labels for the workload. They replace
                           the labels provided via the Helm chart, empty labels keep
                           them.
+                        type: object
+                      mTls:
+                        description: |-
+                          Settings for mTLS between the target-allocator and the collectors (Helm value operator.targetAllocator.mTls). They
+                          replace the mTLS settings provided via the Helm chart as a whole, an empty object disables mTLS.
+                        properties:
+                          clientCertSecretName:
+                            description: The name of the secret in the operator's
+                              namespace that contains the client (collector) certificate.
+                            type: string
+                          enabled:
+                            description: |-
+                              Whether to enable mTLS between the target-allocator and the collectors. Defaults to false, also when mTLS is
+                              enabled via Helm. Enabling mTLS requires serverCertSecretName and clientCertSecretName.
+                            type: boolean
+                          serverCertSecretName:
+                            description: The name of the secret in the operator's
+                              namespace that contains the server certificate.
+                            type: string
+                        type: object
+                        x-kubernetes-validations:
+                        - message: serverCertSecretName and clientCertSecretName are
+                            required when mTLS is enabled
+                          rule: '!has(self.enabled) || !self.enabled || (has(self.serverCertSecretName)
+                            && size(self.serverCertSecretName) > 0 && has(self.clientCertSecretName)
+                            && size(self.clientCertSecretName) > 0)'
+                      nodeAffinity:
+                        description: |-
+                          The node affinity for the pods of the workload. It is merged with the default node affinity of the Helm chart,
+                          not with the one provided via Helm: requiredDuringSchedulingIgnoredDuringExecution and
+                          preferredDuringSchedulingIgnoredDuringExecution each replace their default, unless they are absent. The default
+                          requires nodes that are not labelled with dash0.com/enable=false and run Linux, and has no preferred node
+                          affinity. requiredDuringSchedulingIgnoredDuringExecution with an empty list of nodeSelectorTerms removes the
+                          required node affinity.
+                        properties:
+                          preferredDuringSchedulingIgnoredDuringExecution:
+                            description: |-
+                              The scheduler will prefer to schedule pods to nodes that satisfy
+                              the affinity expressions specified by this field, but it may choose
+                              a node that violates one or more of the expressions. The node that is
+                              most preferred is the one with the greatest sum of weights, i.e.
+                              for each node that meets all of the scheduling requirements (resource
+                              request, requiredDuringScheduling affinity expressions, etc.),
+                              compute a sum by iterating through the elements of this field and adding
+                              "weight" to the sum if the node matches the corresponding matchExpressions; the
+                              node(s) with the highest sum are the most preferred.
+                            items:
+                              description: |-
+                                An empty preferred scheduling term matches all objects with implicit weight 0
+                                (i.e. it's a no-op). A null preferred scheduling term matches no objects (i.e. is also a no-op).
+                              properties:
+                                preference:
+                                  description: A node selector term, associated with
+                                    the corresponding weight.
+                                  properties:
+                                    matchExpressions:
+                                      description: A list of node selector requirements
+                                        by node's labels.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                    matchFields:
+                                      description: A list of node selector requirements
+                                        by node's fields.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                weight:
+                                  description: Weight associated with matching the
+                                    corresponding nodeSelectorTerm, in the range 1-100.
+                                  format: int32
+                                  type: integer
+                              required:
+                              - preference
+                              - weight
+                              type: object
+                            type: array
+                            x-kubernetes-list-type: atomic
+                          requiredDuringSchedulingIgnoredDuringExecution:
+                            description: |-
+                              If the affinity requirements specified by this field are not met at
+                              scheduling time, the pod will not be scheduled onto the node.
+                              If the affinity requirements specified by this field cease to be met
+                              at some point during pod execution (e.g. due to an update), the system
+                              may or may not try to eventually evict the pod from its node.
+                            properties:
+                              nodeSelectorTerms:
+                                description: Required. A list of node selector terms.
+                                  The terms are ORed.
+                                items:
+                                  description: |-
+                                    A null or empty node selector term matches no objects. The requirements of
+                                    them are ANDed.
+                                    The TopologySelectorTerm type implements a subset of the NodeSelectorTerm.
+                                  properties:
+                                    matchExpressions:
+                                      description: A list of node selector requirements
+                                        by node's labels.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                    matchFields:
+                                      description: A list of node selector requirements
+                                        by node's fields.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            required:
+                            - nodeSelectorTerms
+                            type: object
+                            x-kubernetes-map-type: atomic
                         type: object
                       podAnnotations:
                         additionalProperties:
@@ -428,6 +2156,48 @@ spec:
                           Additional labels for the pods of the workload. They replace the pod labels provided via the Helm chart, empty
                           pod labels keep them.
                         type: object
+                      tolerations:
+                        description: |-
+                          Tolerations for the pods of the workload. They replace the tolerations provided via the Helm chart, empty
+                          tolerations keep them. Only the operators Equal and Exists are supported.
+                        items:
+                          description: |-
+                            The pod this Toleration is attached to tolerates any taint that matches
+                            the triple <key,value,effect> using the matching operator <operator>.
+                          properties:
+                            effect:
+                              description: |-
+                                Effect indicates the taint effect to match. Empty means match all taint effects.
+                                When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                              type: string
+                            key:
+                              description: |-
+                                Key is the taint key that the toleration applies to. Empty means match all taint keys.
+                                If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                              type: string
+                            operator:
+                              description: |-
+                                Operator represents a key's relationship to the value.
+                                Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                                Exists is equivalent to wildcard for value, so that a pod can
+                                tolerate all taints of a particular category.
+                                Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
+                              type: string
+                            tolerationSeconds:
+                              description: |-
+                                TolerationSeconds represents the period of time the toleration (which must be
+                                of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+                                it is not set, which means tolerate the taint forever (do not evict). Zero and
+                                negative values will be treated as 0 (evict immediately) by the system.
+                              format: int64
+                              type: integer
+                            value:
+                              description: |-
+                                Value is the taint value the toleration matches to.
+                                If the operator is Exists, the value should be empty, otherwise just a regular string.
+                              type: string
+                          type: object
+                        type: array
                     type: object
                 type: object
               export:
@@ -454,8 +2224,8 @@ spec:
                         description: |-
                           The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
                           dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
-                          needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom
-                          https://app.dash0.com -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always
+                          needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied from
+                          https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. The correct endpoint value will always
                           start with "https://api." and end in ".dash0.com"
                         type: string
                       authorization:
@@ -468,7 +2238,7 @@ spec:
                             description: |-
                               A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
                               ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-                              https://app.dash0.com -> organization settings -> "Auth Tokens".
+                              https://app.dash0.com/settings/auth-tokens.
                             properties:
                               key:
                                 default: token
@@ -488,24 +2258,23 @@ spec:
                             description: |-
                               The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
                               to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-                              token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
-                              "Auth Tokens".
+                              token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
                             type: string
                         type: object
                       dataset:
                         description: |-
                           The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
-                          identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
-                          identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
-                          optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
-                          authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
+                          identifier, not its display name; for example, a dataset named "Production" can have the identifier "prod". The
+                          identifier can be looked up in https://app.dash0.com/settings/datasets. This property is optional. If omitted, no
+                          dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token. API
+                          access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                         type: string
                       endpoint:
                         description: |-
                           The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
-                          needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
-                          https://app.dash0.com -> organization settings -> "Endpoints". The correct endpoint value will always start with
-                          `ingress.` and end in `dash0.com:4317`.
+                          needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
+                          https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. The correct endpoint value will always
+                          start with `ingress.` and end in `dash0.com:4317`.
                         minLength: 1
                         type: string
                       keepalive:
@@ -735,8 +2504,8 @@ spec:
                           description: |-
                             The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
                             dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
-                            needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom
-                            https://app.dash0.com -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always
+                            needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied from
+                            https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. The correct endpoint value will always
                             start with "https://api." and end in ".dash0.com"
                           type: string
                         authorization:
@@ -749,7 +2518,7 @@ spec:
                               description: |-
                                 A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
                                 ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-                                https://app.dash0.com -> organization settings -> "Auth Tokens".
+                                https://app.dash0.com/settings/auth-tokens.
                               properties:
                                 key:
                                   default: token
@@ -769,24 +2538,23 @@ spec:
                               description: |-
                                 The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
                                 to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-                                token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
-                                "Auth Tokens".
+                                token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
                               type: string
                           type: object
                         dataset:
                           description: |-
                             The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
-                            identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
-                            identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
-                            optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
-                            authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
+                            identifier, not its display name; for example, a dataset named "Production" can have the identifier "prod". The
+                            identifier can be looked up in https://app.dash0.com/settings/datasets. This property is optional. If omitted, no
+                            dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token. API
+                            access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                           type: string
                         endpoint:
                           description: |-
                             The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
-                            needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
-                            https://app.dash0.com -> organization settings -> "Endpoints". The correct endpoint value will always start with
-                            `ingress.` and end in `dash0.com:4317`.
+                            needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
+                            https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. The correct endpoint value will always
+                            start with `ingress.` and end in `dash0.com:4317`.
                           minLength: 1
                           type: string
                         keepalive:
@@ -1356,8 +3124,8 @@ spec:
                                 description: |-
                                   The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
                                   dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
-                                  needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom
-                                  https://app.dash0.com -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always
+                                  needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied from
+                                  https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. The correct endpoint value will always
                                   start with "https://api." and end in ".dash0.com"
                                 type: string
                               authorization:
@@ -1370,7 +3138,7 @@ spec:
                                     description: |-
                                       A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
                                       ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-                                      https://app.dash0.com -> organization settings -> "Auth Tokens".
+                                      https://app.dash0.com/settings/auth-tokens.
                                     properties:
                                       key:
                                         default: token
@@ -1392,24 +3160,23 @@ spec:
                                     description: |-
                                       The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
                                       to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-                                      token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
-                                      "Auth Tokens".
+                                      token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
                                     type: string
                                 type: object
                               dataset:
                                 description: |-
                                   The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
-                                  identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
-                                  identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
-                                  optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
-                                  authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
+                                  identifier, not its display name; for example, a dataset named "Production" can have the identifier "prod". The
+                                  identifier can be looked up in https://app.dash0.com/settings/datasets. This property is optional. If omitted, no
+                                  dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token. API
+                                  access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                                 type: string
                               endpoint:
                                 description: |-
                                   The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
-                                  needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
-                                  https://app.dash0.com -> organization settings -> "Endpoints". The correct endpoint value will always start with
-                                  `ingress.` and end in `dash0.com:4317`.
+                                  needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
+                                  https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. The correct endpoint value will always
+                                  start with `ingress.` and end in `dash0.com:4317`.
                                 minLength: 1
                                 type: string
                               keepalive:
@@ -1643,8 +3410,8 @@ spec:
                                   description: |-
                                     The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
                                     dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
-                                    needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom
-                                    https://app.dash0.com -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always
+                                    needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied from
+                                    https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. The correct endpoint value will always
                                     start with "https://api." and end in ".dash0.com"
                                   type: string
                                 authorization:
@@ -1657,7 +3424,7 @@ spec:
                                       description: |-
                                         A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
                                         ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-                                        https://app.dash0.com -> organization settings -> "Auth Tokens".
+                                        https://app.dash0.com/settings/auth-tokens.
                                       properties:
                                         key:
                                           default: token
@@ -1679,24 +3446,23 @@ spec:
                                       description: |-
                                         The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
                                         to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-                                        token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
-                                        "Auth Tokens".
+                                        token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
                                       type: string
                                   type: object
                                 dataset:
                                   description: |-
                                     The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
-                                    identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
-                                    identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
-                                    optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
-                                    authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
+                                    identifier, not its display name; for example, a dataset named "Production" can have the identifier "prod". The
+                                    identifier can be looked up in https://app.dash0.com/settings/datasets. This property is optional. If omitted, no
+                                    dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token. API
+                                    access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                                   type: string
                                 endpoint:
                                   description: |-
                                     The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
-                                    needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
-                                    https://app.dash0.com -> organization settings -> "Endpoints". The correct endpoint value will always start with
-                                    `ingress.` and end in `dash0.com:4317`.
+                                    needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
+                                    https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. The correct endpoint value will always
+                                    start with `ingress.` and end in `dash0.com:4317`.
                                   minLength: 1
                                   type: string
                                 keepalive:
@@ -2347,7 +4113,7 @@ spec:
                               description: |-
                                 A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
                                 ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-                                https://app.dash0.com -> organization settings -> "Auth Tokens".
+                                https://app.dash0.com/settings/auth-tokens.
                               properties:
                                 key:
                                   default: token
@@ -2367,8 +4133,7 @@ spec:
                               description: |-
                                 The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
                                 to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-                                token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
-                                "Auth Tokens".
+                                token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
                               type: string
                           type: object
                         locationId:
@@ -3045,8 +4810,8 @@ spec:
                                 description: |-
                                   The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
                                   dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
-                                  needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom
-                                  https://app.dash0.com -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always
+                                  needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied from
+                                  https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. The correct endpoint value will always
                                   start with "https://api." and end in ".dash0.com"
                                 type: string
                               authorization:
@@ -3059,7 +4824,7 @@ spec:
                                     description: |-
                                       A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
                                       ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-                                      https://app.dash0.com -> organization settings -> "Auth Tokens".
+                                      https://app.dash0.com/settings/auth-tokens.
                                     properties:
                                       key:
                                         default: token
@@ -3081,24 +4846,23 @@ spec:
                                     description: |-
                                       The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
                                       to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-                                      token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
-                                      "Auth Tokens".
+                                      token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
                                     type: string
                                 type: object
                               dataset:
                                 description: |-
                                   The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
-                                  identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
-                                  identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
-                                  optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
-                                  authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
+                                  identifier, not its display name; for example, a dataset named "Production" can have the identifier "prod". The
+                                  identifier can be looked up in https://app.dash0.com/settings/datasets. This property is optional. If omitted, no
+                                  dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token. API
+                                  access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                                 type: string
                               endpoint:
                                 description: |-
                                   The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
-                                  needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
-                                  https://app.dash0.com -> organization settings -> "Endpoints". The correct endpoint value will always start with
-                                  `ingress.` and end in `dash0.com:4317`.
+                                  needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
+                                  https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. The correct endpoint value will always
+                                  start with `ingress.` and end in `dash0.com:4317`.
                                 minLength: 1
                                 type: string
                               keepalive:
@@ -3332,8 +5096,8 @@ spec:
                                   description: |-
                                     The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
                                     dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
-                                    needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom
-                                    https://app.dash0.com -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always
+                                    needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied from
+                                    https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. The correct endpoint value will always
                                     start with "https://api." and end in ".dash0.com"
                                   type: string
                                 authorization:
@@ -3346,7 +5110,7 @@ spec:
                                       description: |-
                                         A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
                                         ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-                                        https://app.dash0.com -> organization settings -> "Auth Tokens".
+                                        https://app.dash0.com/settings/auth-tokens.
                                       properties:
                                         key:
                                           default: token
@@ -3368,24 +5132,23 @@ spec:
                                       description: |-
                                         The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
                                         to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-                                        token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
-                                        "Auth Tokens".
+                                        token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
                                       type: string
                                   type: object
                                 dataset:
                                   description: |-
                                     The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
-                                    identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
-                                    identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
-                                    optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
-                                    authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
+                                    identifier, not its display name; for example, a dataset named "Production" can have the identifier "prod". The
+                                    identifier can be looked up in https://app.dash0.com/settings/datasets. This property is optional. If omitted, no
+                                    dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token. API
+                                    access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                                   type: string
                                 endpoint:
                                   description: |-
                                     The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
-                                    needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
-                                    https://app.dash0.com -> organization settings -> "Endpoints". The correct endpoint value will always start with
-                                    `ingress.` and end in `dash0.com:4317`.
+                                    needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
+                                    https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. The correct endpoint value will always
+                                    start with `ingress.` and end in `dash0.com:4317`.
                                   minLength: 1
                                   type: string
                                 keepalive:

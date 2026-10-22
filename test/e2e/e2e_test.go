@@ -242,6 +242,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					Entry("should instrument new Node.js deployments", workloadTypeDeployment, runtimeTypeNodeJs),
 					Entry("should instrument new JVM deployments", workloadTypeDeployment, runtimeTypeJvm),
 					Entry("should instrument new .NET deployments", workloadTypeDeployment, runtimeTypeDotnet),
+					Entry("should instrument new .NET 6 deployments", workloadTypeDeployment, runtimeTypeDotnet6),
 					Entry("should instrument new .NET 8 deployments", workloadTypeDeployment, runtimeTypeDotnet8),
 					Entry("should instrument new Python deployments", workloadTypeDeployment, runtimeTypePython),
 					Entry("should instrument new Ruby deployments", workloadTypeDeployment, runtimeTypeRuby),
@@ -3172,7 +3173,9 @@ spec:
 				g.Expect(response.Stderr).To(Equal(
 					"dash0 agent0-connector rejected the command: the kubectl command \"cluster-info\" has been " +
 						"disabled in the configuration of the agent0-connector (via the Helm value " +
-						"operator.agent0Connector.allowedKubectlCommands), the only allowed kubectl commands are " +
+						"operator.agent0Connector.allowedKubectlCommands, or " +
+						"spec.components.agent0Connector.allowedKubectlCommands of the Dash0OperatorConfiguration " +
+						"resource), the only allowed kubectl commands are " +
 						"\"api-resources\", \"api-versions\", \"auth\", \"explain\", \"get\", \"logs\", \"top\" " +
 						"and \"version\"",
 				))
@@ -3256,7 +3259,9 @@ spec:
 				g.Expect(response.Stderr).To(Equal(
 					"dash0 agent0-connector rejected the command: the kubectl command \"events\" has been " +
 						"disabled in the configuration of the agent0-connector (via the Helm value " +
-						"operator.agent0Connector.allowedKubectlCommands), the only allowed kubectl commands are " +
+						"operator.agent0Connector.allowedKubectlCommands, or " +
+						"spec.components.agent0Connector.allowedKubectlCommands of the Dash0OperatorConfiguration " +
+						"resource), the only allowed kubectl commands are " +
 						"\"api-resources\", \"api-versions\", \"auth\", \"explain\", \"get\", \"logs\", \"top\" " +
 						"and \"version\"",
 				))
@@ -4371,7 +4376,7 @@ spec:
 
 		Describe("when component settings are configured via Helm and in the operator configuration resource", func() {
 			BeforeAll(func() {
-				By("deploy the Dash0 operator with a DaemonSet label")
+				By("deploy the Dash0 operator with a DaemonSet toleration")
 				deployOperatorWithoutAutoOperationConfiguration(
 					operatorNamespace,
 					operatorHelmChart,
@@ -4379,7 +4384,8 @@ spec:
 					"",
 					&images,
 					map[string]string{
-						"operator.collectors.daemonSetLabels.e2e-component-label": "from-helm",
+						"operator.collectors.daemonSetTolerations[0].key":      "e2e-helm-toleration",
+						"operator.collectors.daemonSetTolerations[0].operator": "Exists",
 					},
 				)
 				time.Sleep(10 * time.Second)
@@ -4403,10 +4409,10 @@ spec:
 					TelemetryCollectionEnabled: true,
 				}, operatorNamespace, operatorHelmChart)
 
-				By("verifying that the DaemonSet uses the label provided via Helm")
+				By("verifying that the DaemonSet uses the toleration provided via Helm")
 				Eventually(func(g Gomega) {
-					g.Expect(readCollectorDaemonSetComponentLabel(g, operatorNamespace)).
-						To(Equal("from-helm"))
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, "{.spec.template.spec.tolerations[*].key}")).
+						To(Equal("e2e-helm-toleration"))
 				}, 60*time.Second, time.Second).Should(Succeed())
 
 				By("adding component settings to the Dash0 operator configuration resource")
@@ -4418,17 +4424,30 @@ spec:
 					"--type",
 					"merge",
 					"-p",
-					`{"spec":{"components":{"daemonSetCollector":{"labels":{"e2e-component-label":"from-resource"}}}}}`,
+					`{"spec":{"components":{"daemonSetCollector":{`+
+						`"tolerations":[{"key":"e2e-resource-toleration","operator":"Exists"}],`+
+						`"labels":{"e2e-component-label":"from-resource"},`+
+						`"collectorContainerResources":{"limits":{"memory":"550Mi"},"gomemlimit":"400MiB"}}}}}`,
 				))
 				Expect(err).ToNot(HaveOccurred())
 				Expect(output).To(ContainSubstring(
-					"spec.components.daemonSetCollector.labels overrides the custom Helm value " +
-						"operator.collectors.daemonSetLabels"))
+					"spec.components.daemonSetCollector.tolerations overrides the custom Helm value " +
+						"operator.collectors.daemonSetTolerations"))
 
 				By("verifying that the DaemonSet uses the settings of the resource")
 				Eventually(func(g Gomega) {
-					g.Expect(readCollectorDaemonSetComponentLabel(g, operatorNamespace)).
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, "{.spec.template.spec.tolerations[*].key}")).
+						To(Equal("e2e-resource-toleration"))
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, "{.metadata.labels.e2e-component-label}")).
 						To(Equal("from-resource"))
+					collector := `{.spec.template.spec.containers[?(@.name=="opentelemetry-collector")]`
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, collector+".resources.limits.memory}")).
+						To(Equal("550Mi"))
+					// The request is not set in the resource and keeps its default.
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, collector+".resources.requests.memory}")).
+						To(Equal("500Mi"))
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace,
+						collector+`.env[?(@.name=="GOMEMLIMIT")].value}`)).To(Equal("400MiB"))
 				}, 60*time.Second, time.Second).Should(Succeed())
 			})
 		})
@@ -4629,6 +4648,7 @@ spec:
 				}).Should(Succeed())
 
 				verifyThatCollectorIsRemovedEventually()
+				verifyThatOperatorManagedClusterScopedResourcesAreRemovedEventually()
 			}
 
 			Describe("when uninstalling the operator via helm", func() {

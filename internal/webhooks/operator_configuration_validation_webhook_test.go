@@ -8,6 +8,8 @@ import (
 	"net/http"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -809,7 +811,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 			Components: &dash0v1alpha1.OperatorConfigurationComponents{
 				Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{
-					WorkloadSettings: dash0v1alpha1.WorkloadSettings{Labels: map[string]string{"team": "observability"}},
+					MaxConcurrentCommands: new(int32(4)),
 				},
 			},
 		}
@@ -824,34 +826,91 @@ var _ = Describe("The validation webhook for the operator configuration resource
 
 		It("should return a warning for a setting that overrides a different value provided via the Helm chart", func() {
 			extraConfig := util.ExtraConfigDefaults
-			extraConfig.Agent0ConnectorLabels = map[string]string{"team": "other"}
+			extraConfig.Agent0ConnectorMaxConcurrentCommands = 3
 			handler := NewOperatorConfigurationValidationWebhookHandler(
 				k8sClient, true, false, false, extraConfig, util.ExtraConfigDefaults)
 			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(componentsSpec))
 			Expect(response.Allowed).To(BeTrue())
 			Expect(response.Warnings).To(ConsistOf(
-				`spec.components.agent0Connector.labels overrides the custom Helm value ` +
-					`operator.agent0Connector.labels: {"team":"observability"} instead of {"team":"other"}`))
+				"spec.components.agent0Connector.maxConcurrentCommands overrides the custom Helm value " +
+					"operator.agent0Connector.maxConcurrentCommands: 4 instead of 3"))
 		})
 
 		It("should use the extra configuration from the latest update", func() {
 			handler := NewOperatorConfigurationValidationWebhookHandler(
 				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 			extraConfig := util.ExtraConfigDefaults
-			extraConfig.Agent0ConnectorLabels = map[string]string{"team": "other"}
+			extraConfig.Agent0ConnectorMaxConcurrentCommands = 3
 			handler.UpdateExtraConfig(ctx, extraConfig, logd.FromContext(ctx))
 			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(componentsSpec))
 			Expect(response.Allowed).To(BeTrue())
 			Expect(response.Warnings).To(HaveLen(1))
 		})
 
+		It("should reject a resource request that is greater than the limit", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+				Components: &dash0v1alpha1.OperatorConfigurationComponents{
+					InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{
+						Resources: &dash0v1alpha1.ContainerResources{
+							Limits:   corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("64Mi")},
+							Requests: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("128Mi")},
+						},
+					},
+				},
+			}
+			expectedMessage := "The provided Dash0 operator configuration resource has invalid component settings: " +
+				"spec.components.instrumentationInitContainer.resources.requests[memory]: Invalid value: \"128Mi\": " +
+				"must be less than or equal to the memory limit of 64Mi."
+			request := operatorConfigurationAdmissionRequest(spec)
+			for _, operation := range []admissionv1.Operation{admissionv1.Create, admissionv1.Update} {
+				request.Operation = operation
+				response := handler.Handle(ctx, request)
+				Expect(response.Allowed).To(BeFalse())
+				Expect(response.Result.Message).To(Equal(expectedMessage))
+			}
+		})
+
+		It("should reject allowed kubectl commands that disable every command", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+				Components: &dash0v1alpha1.OperatorConfigurationComponents{
+					Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{
+						AllowedKubectlCommands: &dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands{
+							ApiResources: new(false),
+							ApiVersions:  new(false),
+							Auth:         new(false),
+							ClusterInfo:  new(false),
+							Explain:      new(false),
+							Get:          new(false),
+							Top:          new(false),
+							Version:      new(false),
+						},
+					},
+				},
+			}
+			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(spec))
+			Expect(response.Allowed).To(BeFalse())
+			Expect(response.Result.Message).To(ContainSubstring(
+				"spec.components.agent0Connector.allowedKubectlCommands: Forbidden: at least one kubectl command"))
+		})
+
 		Describe("updates that leave spec.components unchanged", func() {
-			// A label with an invalid key, e.g. stored before the validation has been introduced.
+			// A GOMEMLIMIT that is not below the memory limit, e.g. in a resource stored without the validation webhook.
 			invalidSpec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
 				Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 				Components: &dash0v1alpha1.OperatorConfigurationComponents{
 					DaemonSetCollector: &dash0v1alpha1.DaemonSetCollectorSettings{
-						WorkloadSettings: dash0v1alpha1.WorkloadSettings{Labels: map[string]string{"in valid": "value"}},
+						CollectorContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+							ContainerResources: dash0v1alpha1.ContainerResources{
+								Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("500Mi")},
+							},
+							GoMemLimit: "600MiB",
+						},
 					},
 				},
 			}
@@ -868,13 +927,11 @@ var _ = Describe("The validation webhook for the operator configuration resource
 
 			It("should allow an update of other fields without checking spec.components again", func() {
 				extraConfig := util.ExtraConfigDefaults
-				extraConfig.Agent0ConnectorLabels = map[string]string{"team": "other"}
+				extraConfig.Agent0ConnectorMaxConcurrentCommands = 3
 				handler := NewOperatorConfigurationValidationWebhookHandler(
 					k8sClient, true, false, false, extraConfig, util.ExtraConfigDefaults)
 				spec := *invalidSpec.DeepCopy()
-				spec.Components.Agent0Connector = &dash0v1alpha1.Agent0ConnectorSettings{
-					WorkloadSettings: dash0v1alpha1.WorkloadSettings{Labels: map[string]string{"team": "observability"}},
-				}
+				spec.Components.Agent0Connector = &dash0v1alpha1.Agent0ConnectorSettings{MaxConcurrentCommands: new(int32(4))}
 				updatedSpec := *spec.DeepCopy()
 				updatedSpec.ClusterName = "updated-cluster-name"
 				response := handler.Handle(ctx, updateRequest(spec, updatedSpec))
@@ -886,13 +943,13 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				handler := NewOperatorConfigurationValidationWebhookHandler(
 					k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 				updatedSpec := *invalidSpec.DeepCopy()
-				updatedSpec.Components.Agent0Connector = &dash0v1alpha1.Agent0ConnectorSettings{
-					WorkloadSettings: dash0v1alpha1.WorkloadSettings{Labels: map[string]string{"team": "observability"}},
-				}
+				updatedSpec.Components.Agent0Connector =
+					&dash0v1alpha1.Agent0ConnectorSettings{MaxConcurrentCommands: new(int32(4))}
 				response := handler.Handle(ctx, updateRequest(invalidSpec, updatedSpec))
 				Expect(response.Allowed).To(BeFalse())
 				Expect(response.Result.Message).To(ContainSubstring(
-					`spec.components.daemonSetCollector.labels: Invalid value: "in valid"`))
+					"spec.components.daemonSetCollector.collectorContainerResources.gomemlimit: Invalid value: " +
+						"\"600MiB\": must be less than the memory limit of 500Mi"))
 			})
 
 			It("should reject an update with an OldObject that cannot be decoded", func() {
@@ -904,6 +961,46 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				Expect(response.Allowed).To(BeFalse())
 				Expect(response.Result.Code).To(Equal(int32(http.StatusBadRequest)))
 			})
+		})
+
+		It("should accept a required node affinity without node selector terms, which removes the default", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(
+				dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					Components: &dash0v1alpha1.OperatorConfigurationComponents{
+						TargetAllocator: &dash0v1alpha1.TargetAllocatorSettings{
+							WorkloadSettings: dash0v1alpha1.WorkloadSettings{
+								NodeAffinity: &corev1.NodeAffinity{
+									RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+										NodeSelectorTerms: []corev1.NodeSelectorTerm{},
+									},
+								},
+							},
+						},
+					},
+				}))
+			Expect(response.Allowed).To(BeTrue())
+			Expect(response.Warnings).To(BeEmpty())
+		})
+
+		It("should check a GOMEMLIMIT against the default memory limit if the setting does not set one", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(
+				dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					Components: &dash0v1alpha1.OperatorConfigurationComponents{
+						TargetAllocator: &dash0v1alpha1.TargetAllocatorSettings{
+							ContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{GoMemLimit: "600MiB"},
+						},
+					},
+				}))
+			Expect(response.Allowed).To(BeFalse())
+			Expect(response.Result.Message).To(ContainSubstring(
+				"spec.components.targetAllocator.containerResources.gomemlimit: Invalid value: \"600MiB\": must be " +
+					"less than the memory limit of 500Mi"))
 		})
 	})
 

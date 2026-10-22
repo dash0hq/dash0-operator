@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"net/http"
 	"slices"
@@ -111,27 +110,6 @@ func NewResourceToRequestsResult(
 	}
 }
 
-func NewResourceToRequestsResultSingleItemSuccess(
-	apiConfig ApiConfig,
-	request *http.Request,
-	itemName string,
-	origin string,
-) *ResourceToRequestsResult {
-	return NewResourceToRequestsResult(
-		apiConfig,
-		[]WrappedApiRequest{
-			{
-				Request:  request,
-				ItemName: itemName,
-				Origin:   origin,
-			},
-		},
-		nil,
-		nil,
-		nil,
-	)
-}
-
 // NewResourceToRequestsResultSingleItemApiClientCall creates a result with a single call via the Dash0 API client.
 func NewResourceToRequestsResultSingleItemApiClientCall(
 	apiConfig ApiConfig,
@@ -218,12 +196,6 @@ func (m *ResourceToRequestsResult) TotalProcessed() int {
 	return len(m.ApiRequests) + len(m.ValidationIssues) + len(m.SynchronizationErrors)
 }
 
-// HttpApiSyncReconciler is implemented by API sync reconcilers that still send raw HTTP requests (WrappedApiRequest
-// with Request set) instead of using the dash0-api-client-go client pool.
-type HttpApiSyncReconciler interface {
-	HttpClient() *http.Client
-}
-
 // ApiSyncReconciler is the common interface for reconcilers that synchonize their Kubernetes resources to the Dash0
 // API. This can either be resource types owned by the Dash0 operator (like Dash0SyntheticCheck), which then also
 // implement the OwnedResourceReconciler interface, or third-party resource types (like PrometheusRule or
@@ -236,18 +208,13 @@ type ApiSyncReconciler interface {
 	ControllerName() string
 	K8sClient() client.Client
 
-	// MapResourceToHttpRequests converts a Kubernetes resource object to a list of HTTP requests that can be sent to
-	// the Dash0 API. It returns:
+	// MapResourceToApiCalls converts a Kubernetes resource object to a list of calls to the Dash0 API via the Dash0
+	// API client (see ApiClientCall). It returns:
 	// - the total number of eligible items in the Kubernetes resource,
 	// - the request objects for which the conversion was successful,
 	// - validation issues for items that were invalid and
 	// - synchronization errors that occurred during the conversion.
-	MapResourceToHttpRequests(*preconditionValidationResult, ApiConfig, apiAction, logd.Logger) *ResourceToRequestsResult
-
-	ExtractIdFromResponseBody(
-		responseBytes []byte,
-		logger logd.Logger,
-	) (string, error)
+	MapResourceToApiCalls(*preconditionValidationResult, ApiConfig, apiAction, logd.Logger) *ResourceToRequestsResult
 }
 
 // OwnedResourceReconciler extends the ApiSyncReconciler interface with methods that are specific to resource types
@@ -266,18 +233,15 @@ type OwnedResourceReconciler interface {
 	)
 }
 
-// WrappedApiRequest bundles a request for the Dash0 API with additional metadata. The request is either a raw
-// http.Request (Request) or a call via the Dash0 API client (ApiClientCall), exactly one of the two is set.
+// WrappedApiRequest bundles a call via the Dash0 API client (ApiClientCall) with additional metadata.
 type WrappedApiRequest struct {
-	Request       *http.Request
 	ApiClientCall *ApiClientCall
 	ItemName      string
 	Origin        string
-	ApiConfig     ApiConfig
 }
 
 // ApiClientCall is a deferred call to the Dash0 API via the Dash0 API client. Method and Url describe the HTTP request
-// the call will issue, they are only used for logging and error messages.
+// the call will issue, they are used for logging and error messages, and to tell DELETE calls apart from upserts.
 type ApiClientCall struct {
 	Method string
 	Url    string
@@ -286,57 +250,16 @@ type ApiClientCall struct {
 }
 
 func (r *WrappedApiRequest) method() string {
-	if r.ApiClientCall != nil {
-		return r.ApiClientCall.Method
-	}
-	return r.Request.Method
+	return r.ApiClientCall.Method
 }
 
 func (r *WrappedApiRequest) url() string {
-	if r.ApiClientCall != nil {
-		return r.ApiClientCall.Url
-	}
-	return r.Request.URL.String()
-}
-
-type Dash0ApiObjectWithOrigin struct {
-	Origin string `json:"origin"`
-}
-
-// Dash0ApiCrdObjectWithOrigin represents the response format from APIs that return full CRD objects (e.g., the
-// recording rules API), where the origin is nested inside metadata.labels.
-type Dash0ApiCrdObjectWithOrigin struct {
-	Metadata struct {
-		Labels map[string]string `json:"labels"`
-	} `json:"metadata"`
-}
-
-type Dash0ApiObjectWithMetadata struct {
-	Metadata Dash0ApiObjectMetadata `json:"metadata"`
-}
-
-type Dash0ApiObjectMetadata struct {
-	Labels Dash0ApiObjectLabels `json:"labels"`
+	return r.ApiClientCall.Url
 }
 
 type Dash0ApiObjectLabels struct {
-	Id          string `json:"dash0.com/id,omitempty"`
-	Origin      string `json:"dash0.com/origin,omitempty"`
-	ApiEndpoint string `json:"dash0.com/apiEndpoint"`
-	Dataset     string `json:"dash0.com/dataset"`
-}
-
-type Dash0DashboardResponse struct {
-	Metadata Dash0DashboardMetadata `json:"metadata"`
-}
-
-type Dash0DashboardMetadata struct {
-	Dash0Extensions Dash0ApiResponseWithOriginAsId `json:"dash0Extensions"`
-}
-
-type Dash0ApiResponseWithOriginAsId struct {
-	Origin  string `json:"id"`
-	Dataset string `json:"dataset"`
+	Id     string
+	Origin string
 }
 
 type SuccessfulSynchronizationResult struct {
@@ -510,7 +433,7 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 
 	if preconditionChecksResult.syncDisabledViaLabel {
 		// The resource has the label dash0.com/enable=false set; thus we override the API action unconditionally with
-		// delete, that is, we ask MapResourceToHttpRequests to create HTTP DELETE requests. For most purposes it would
+		// delete, that is, we ask MapResourceToApiCalls to create HTTP DELETE requests. For most purposes it would
 		// be enough to ignore resources with that label entirely and issue no HTTP requests, but when a resource has
 		// been synchronized earlier, and then the dash0.com/enable=false is added after the fact, we need to delete the
 		// object in Dash0 to get back into a consistent state.
@@ -552,7 +475,7 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 			continue
 		}
 
-		resourceToRequestsResult := apiSyncReconciler.MapResourceToHttpRequests(
+		resourceToRequestsResult := apiSyncReconciler.MapResourceToApiCalls(
 			preconditionChecksResult,
 			validatedApiConfig.ApiConfig,
 			action,
@@ -581,7 +504,6 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 				validatedApiConfig.ApiConfig,
 				existingOriginsFromApi,
 				resourceToRequestsResult,
-				logger,
 			)
 		}
 		if action == deleteAction && resourceToRequestsResult.IsNoOp() {
@@ -613,15 +535,15 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 		var httpErrorStatusCodes map[string]int
 		if len(resourceToRequestsResult.ApiRequests) > 0 {
 			successfullySynchronized, httpErrors, httpErrorStatusCodes =
-				executeAllHttpRequests(ctx, apiSyncReconciler, resourceToRequestsResult.ApiRequests, logger)
+				executeAllApiCalls(ctx, apiSyncReconciler, resourceToRequestsResult.ApiRequests, logger)
 		}
 		if len(httpErrors) > 0 {
 			if resourceToRequestsResult.SynchronizationErrors == nil {
 				resourceToRequestsResult.SynchronizationErrors = make(map[string]string)
 			}
-			// In theory, the following map merge could overwrite synchronization errors from the MapResourceToHttpRequests
-			// stage with errors occurring in executeAllHttpRequests, but items that have an error in
-			// MapResourceToHttpRequests are never converted to requests, so the two maps are disjoint.
+			// In theory, the following map merge could overwrite synchronization errors from the MapResourceToApiCalls
+			// stage with errors occurring in executeAllApiCalls, but items that have an error in
+			// MapResourceToApiCalls are never converted to requests, so the two maps are disjoint.
 			maps.Copy(resourceToRequestsResult.SynchronizationErrors, httpErrors)
 			if resourceToRequestsResult.SynchronizationErrorStatusCodes == nil {
 				resourceToRequestsResult.SynchronizationErrorStatusCodes = make(map[string]int)
@@ -1108,7 +1030,7 @@ func fetchExistingOriginsForResource(
 			logger,
 		)
 	case mapsToMultipleApiObjects:
-		return fetchOriginsOfResource(thirdPartyResourceReconciler, preconditionChecksResult, apiConfig, logger)
+		return fetchOriginsOfResource(ctx, thirdPartyResourceReconciler, preconditionChecksResult, apiConfig, logger)
 	default:
 		// For resource types with a one-to-one relationship between K8s resource and Dash0 API object (like Perses
 		// dashboards), fetching the origins of a single resource would not save any requests.
@@ -1142,62 +1064,18 @@ func filterOriginsOfResourceInNamespace(
 
 // fetchOriginsOfResource fetches the origins of the Dash0 API objects for a given Kubernetes resource from the backend.
 func fetchOriginsOfResource(
+	ctx context.Context,
 	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	logger logd.Logger,
 ) ([]string, bool, error) {
-	requests, err :=
-		thirdPartyResourceReconciler.FetchExistingResourceOriginsRequests(preconditionChecksResult, apiConfig)
-	if err != nil {
-		logger.Error(err, "cannot create request to fetch existing resource origins")
-		return nil, false, err
-	}
-	origins, err := executeFetchExistingOriginsRequests(thirdPartyResourceReconciler, requests, logger)
+	origins, err :=
+		thirdPartyResourceReconciler.FetchExistingResourceOrigins(ctx, preconditionChecksResult, apiConfig, logger)
 	if err != nil {
 		return nil, false, err
 	}
 	return origins, true, nil
-}
-
-// executeFetchExistingOriginsRequests executes the given requests to list Dash0 API objects, one after another, and
-// returns the combined origins from all responses. It stops at the first request that fails or whose response cannot
-// be parsed, and returns that error without any origins, so the caller never works with a partial list.
-func executeFetchExistingOriginsRequests(
-	apiSyncReconciler ApiSyncReconciler,
-	fetchExistingOriginsRequests []*http.Request,
-	logger logd.Logger,
-) ([]string, error) {
-	var allExistingOrigins []string
-	for _, fetchExistingOriginsRequest := range fetchExistingOriginsRequests {
-		actionLabel := fmt.Sprintf(
-			"fetch existing origins: %s %s",
-			fetchExistingOriginsRequest.Method,
-			fetchExistingOriginsRequest.URL.String(),
-		)
-		responseBytes, err := executeSingleHttpRequest(
-			apiSyncReconciler,
-			fetchExistingOriginsRequest,
-			actionLabel,
-			true,
-			logger,
-		)
-		if err != nil {
-			logger.Error(err, "cannot fetch existing origins")
-			return nil, err
-		}
-		origins, err := extractOriginsFromResponse(responseBytes, logger)
-		if err != nil {
-			return nil, err
-		}
-		allExistingOrigins = append(allExistingOrigins, origins...)
-	}
-	logger.Info(
-		fmt.Sprintf("existing origins for this %s", apiSyncReconciler.ShortName()),
-		"origins",
-		allExistingOrigins,
-	)
-	return allExistingOrigins, nil
 }
 
 // existingOriginsInNamespace holds the origins of all Dash0 API objects that have been synchronized from one Kubernetes
@@ -1248,65 +1126,11 @@ func (o *existingOriginsInNamespace) get(
 	return fetchResult.origins, fetchResult.err
 }
 
-// extractOriginsFromResponse parses a JSON array response and extracts origin strings. It handles two formats:
-// 1. Flat format: [{"origin": "..."}] (used by the check-rules API)
-// 2. CRD format: [{"metadata": {"labels": {"dash0.com/origin": "..."}}}] (used by the recording rules API)
-func extractOriginsFromResponse(responseBytes []byte, logger logd.Logger) ([]string, error) {
-	// Try flat format first (check-rules API).
-	flatObjects := make([]Dash0ApiObjectWithOrigin, 0)
-	errFlatFormat := json.Unmarshal(responseBytes, &flatObjects)
-	if errFlatFormat == nil {
-		var origins []string
-		for _, obj := range flatObjects {
-			if obj.Origin != "" {
-				origins = append(origins, obj.Origin)
-			}
-		}
-		if len(origins) > 0 {
-			return origins, nil
-		}
-	}
-
-	// Try format where the origin is in the labels (recording rules API).
-	objectsWithOriginLabel := make([]Dash0ApiCrdObjectWithOrigin, 0)
-	errObjectsWithOriginLabel := json.Unmarshal(responseBytes, &objectsWithOriginLabel)
-	if errObjectsWithOriginLabel == nil {
-		var origins []string
-		for _, obj := range objectsWithOriginLabel {
-			if origin, ok := obj.Metadata.Labels["dash0.com/origin"]; ok && origin != "" {
-				origins = append(origins, origin)
-			}
-		}
-		if len(origins) > 0 {
-			return origins, nil
-		}
-	}
-
-	// If no attempt yielded origins and there were parsing errors (invalid JSON etc.), log and return
-	if errFlatFormat != nil || errObjectsWithOriginLabel != nil {
-		joinedError := errors.Join(errFlatFormat, errObjectsWithOriginLabel)
-		logger.Error(
-			joinedError,
-			"cannot parse responses after querying existing origins",
-			"response",
-			string(responseBytes),
-		)
-		return nil, joinedError
-	}
-
-	// If both parsing attempts yielded no origins, log and return empty.
-	if len(responseBytes) > 2 { // "[]" is 2 bytes
-		logger.Warn("no origins found in response", "responseLength", len(responseBytes), "response", string(responseBytes))
-	}
-	return nil, nil
-}
-
 func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 	apiSyncReconciler ApiSyncReconciler,
 	apiConfig ApiConfig,
 	existingOriginsFromApi []string,
 	resourceToRequestsResult *ResourceToRequestsResult,
-	logger logd.Logger,
 ) {
 	thirdPartyResourceReconciler, ok := apiSyncReconciler.(ThirdPartyResourceReconciler)
 	if !ok {
@@ -1315,15 +1139,13 @@ func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 		// Dash0 API objects.
 		return
 	}
-	deleteHttpRequests, deleteSynchronizationErrors := thirdPartyResourceReconciler.CreateDeleteRequests(
+	deleteApiCalls := thirdPartyResourceReconciler.CreateDeleteRequests(
 		apiConfig,
 		existingOriginsFromApi,
 		resourceToRequestsResult.OriginsInResource,
-		logger,
 	)
-	resourceToRequestsResult.OrphanDeletesTotal = len(deleteHttpRequests)
-	maps.Copy(resourceToRequestsResult.SynchronizationErrors, deleteSynchronizationErrors)
-	resourceToRequestsResult.ApiRequests = slices.Concat(resourceToRequestsResult.ApiRequests, deleteHttpRequests)
+	resourceToRequestsResult.OrphanDeletesTotal = len(deleteApiCalls)
+	resourceToRequestsResult.ApiRequests = slices.Concat(resourceToRequestsResult.ApiRequests, deleteApiCalls)
 }
 
 // removeDeleteRequestsForObjectsThatDoNotExist drops all DELETE requests for objects whose origin is not in the list of
@@ -1356,15 +1178,11 @@ func structToMap(obj any) (*unstructured.Unstructured, error) {
 	}, nil
 }
 
-func addAuthorizationHeader(req *http.Request, token string) {
-	req.Header.Set(util.AuthorizationHeaderName, util.RenderAuthorizationHeader(token))
-}
-
-// executeAllHttpRequests executes all HTTP requests in the given list and returns the names of the items that were
-// successfully synchronized, a map of name to error message for items that were rejected by the Dash0 API, and a map of
-// name to HTTP status code for the failed items (0 if the failure was a transport-level error where no HTTP response
-// was received). The keys of the two maps are identical.
-func executeAllHttpRequests(
+// executeAllApiCalls executes the Dash0 API client calls of all requests in the given list and returns the names
+// of the items that were successfully synchronized, a map of name to error message for items that were rejected by the
+// Dash0 API, and a map of name to HTTP status code for the failed items (0 if the failure was a transport-level error
+// where no HTTP response was received). The keys of the two maps are identical.
+func executeAllApiCalls(
 	ctx context.Context,
 	apiSyncReconciler ApiSyncReconciler,
 	allRequests []WrappedApiRequest,
@@ -1382,29 +1200,17 @@ func executeAllHttpRequests(
 			apiRequest.url(),
 		)
 		isDelete := apiRequest.method() == http.MethodDelete
-		var id string
-		var err error
-		if apiRequest.ApiClientCall != nil {
-			id, err = executeApiClientCall(ctx, apiRequest.ApiClientCall, actionLabel, isDelete, logger)
-		} else {
-			var responseBytes []byte
-			responseBytes, err = executeSingleHttpRequest(apiSyncReconciler, apiRequest.Request, actionLabel, !isDelete, logger)
-			if err == nil && !isDelete {
-				id, _ = apiSyncReconciler.ExtractIdFromResponseBody(responseBytes, logger)
-			}
-		}
+		id, err := executeApiClientCall(ctx, apiRequest.ApiClientCall, actionLabel, isDelete, logger)
 		if err != nil {
 			httpErrors[apiRequest.ItemName] = err.Error()
 			httpErrorStatusCodes[apiRequest.ItemName] = httpStatusCodeFromError(err)
 		} else {
 			// The Dash0ApiObjectLabels will be used to provide additional information in the resources status when
-			// we write the synchronization results, like the object's Dash0 id, origin and dataset.
+			// we write the synchronization results, like the object's Dash0 id and origin.
 			// We do not receive a response body from HTTP DELETE requests, so the id will be omitted for deletes.
 			labels := Dash0ApiObjectLabels{
-				Id:          id,
-				Origin:      apiRequest.Origin,
-				ApiEndpoint: apiRequest.ApiConfig.Endpoint,
-				Dataset:     apiRequest.ApiConfig.Dataset,
+				Id:     id,
+				Origin: apiRequest.Origin,
 			}
 			syncResponse := SuccessfulSynchronizationResult{
 				ItemName: apiRequest.ItemName,
@@ -1419,75 +1225,8 @@ func executeAllHttpRequests(
 	return successfullySynchronized, httpErrors, httpErrorStatusCodes
 }
 
-// executeSingleHttpRequest executes a single HTTP request and reads the response body. Retry and rate limiting are
-// handled by the transport layer of the HTTP client (provided by dash0-api-client-go).
-func executeSingleHttpRequest(
-	apiSyncReconciler ApiSyncReconciler,
-	req *http.Request,
-	actionLabel string,
-	expectBody bool,
-	logger logd.Logger,
-) ([]byte, error) {
-	logger.Info(fmt.Sprintf("executing HTTP request to %s", actionLabel))
-
-	httpApiSyncReconciler, ok := apiSyncReconciler.(HttpApiSyncReconciler)
-	if !ok || httpApiSyncReconciler.HttpClient() == nil {
-		err := fmt.Errorf(
-			"cannot %s, the %s reconciler does not support raw HTTP requests",
-			actionLabel,
-			apiSyncReconciler.ShortName(),
-		)
-		logger.Error(err, "missing HTTP client")
-		return nil, err
-	}
-	res, err := httpApiSyncReconciler.HttpClient().Do(req)
-	if err != nil {
-		logger.Error(
-			err,
-			fmt.Sprintf("unable to execute the HTTP request to %s", actionLabel),
-		)
-		return nil, err
-	}
-
-	isUnexpectedStatusCode := res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices
-	if req.Method == http.MethodDelete {
-		isUnexpectedStatusCode = res.StatusCode != http.StatusNotFound && isUnexpectedStatusCode
-	}
-	if isUnexpectedStatusCode {
-		// HTTP status is not 2xx, treat this as an error.
-		// convertNon2xxStatusCodeToError will also consume and close the response body.
-		err = convertNon2xxStatusCodeToError(res, actionLabel)
-		logger.Error(err, "unexpected status code")
-		return nil, err
-	}
-
-	// HTTP status code was 2xx, read the response body and return it.
-	defer func() {
-		_ = res.Body.Close()
-	}()
-
-	responseBytes, err := io.ReadAll(res.Body)
-	if err != nil {
-		logger.Error(
-			err,
-			fmt.Sprintf(
-				"unable to read the HTTP response body for %s at %s",
-				apiSyncReconciler.ShortName(),
-				req.URL.String(),
-			),
-		)
-		return nil, err
-	}
-	if len(responseBytes) > 0 {
-		return responseBytes, nil
-	} else if expectBody {
-		return nil, fmt.Errorf("unexpected nil/empty response body")
-	}
-	return make([]byte, 0), nil
-}
-
 // executeApiClientCall executes a single call via the Dash0 API client and returns the Dash0 id of the synchronized
-// object. Errors are converted to the same format and status code semantics as errors from executeSingleHttpRequest.
+// object. Errors are converted with convertApiClientError, so they carry the HTTP status code of the failed request.
 func executeApiClientCall(
 	ctx context.Context,
 	apiClientCall *ApiClientCall,
@@ -1570,33 +1309,6 @@ func httpStatusCodeFromError(err error) int {
 		return apiErr.statusCode
 	}
 	return 0
-}
-
-func convertNon2xxStatusCodeToError(
-	res *http.Response,
-	actionLabel string,
-) error {
-	defer func() {
-		_ = res.Body.Close()
-	}()
-	errorResponseBody, readErr := io.ReadAll(res.Body)
-	if readErr != nil {
-		readBodyErr := fmt.Errorf(
-			"unable to read the API response payload after receiving status code %d when "+
-				"trying to %s",
-			res.StatusCode,
-			actionLabel,
-		)
-		return &apiSyncHttpError{statusCode: res.StatusCode, err: readBodyErr}
-	}
-
-	statusCodeErr := fmt.Errorf(
-		"unexpected status code %d when trying to %s, response body is %s",
-		res.StatusCode,
-		actionLabel,
-		string(errorResponseBody),
-	)
-	return &apiSyncHttpError{statusCode: res.StatusCode, err: statusCodeErr}
 }
 
 // writeSynchronizationResult writes the result of a synchronization attempt to the status of a Kubernetes

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/cisco-open/k8s-objectmatcher/patch"
@@ -17,6 +18,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -41,6 +43,13 @@ type OTelColResourceManager struct {
 	collectorConfig                  util.CollectorConfig
 	obsoleteResourcesHaveBeenDeleted atomic.Bool
 	kubeletStatsReceiverConfig       atomic.Pointer[util.KubeletStatsReceiverConfig]
+	leaderElectionAware              util.LeaderElectionAware
+
+	// reportMutex guards the reporter and reportsHaveBeenSkipped, and serializes the leader check of
+	// reportGoMemLimitInversions with ConsumeSkippedReports.
+	reportMutex                 sync.Mutex
+	reportsHaveBeenSkipped      bool
+	goMemLimitInversionReporter util.GoMemLimitInversionReporter
 }
 
 const (
@@ -66,12 +75,14 @@ func NewOTelColResourceManager(
 	scheme *runtime.Scheme,
 	operatorManagerDeployment *appsv1.Deployment,
 	collectorConfig util.CollectorConfig,
+	leaderElectionAware util.LeaderElectionAware,
 ) *OTelColResourceManager {
 	return &OTelColResourceManager{
 		Client:                    k8sClient,
 		scheme:                    scheme,
 		operatorManagerDeployment: operatorManagerDeployment,
 		collectorConfig:           collectorConfig,
+		leaderElectionAware:       leaderElectionAware,
 	}
 }
 
@@ -248,10 +259,21 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	if err != nil {
 		return false, false, err
 	}
+	m.reportGoMemLimitInversions(util.GoMemLimitInversionSources{
+		EffectiveConfig:                 extraConfig,
+		Deployed:                        deployedCollectors(desiredState, config.NamePrefix),
+		OperatorConfigurationComponents: util.OperatorConfigurationComponentsOf(operatorConfigurationResource),
+		SignalControlComponents:         util.SignalControlComponentsOf(signalControlResource),
+	}, logger)
 	resourcesHaveBeenCreated := false
 	resourcesHaveBeenUpdated := false
 	for _, wrapper := range desiredState {
 		desiredResource := wrapper.object
+		if err = resources.SetOwnerReference(
+			m.operatorManagerDeployment, operatorConfigurationResource, m.scheme, desiredResource, logger,
+		); err != nil {
+			return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err
+		}
 		isNew, isChanged, err := m.createOrUpdateResource(
 			ctx,
 			desiredResource,
@@ -318,9 +340,6 @@ func (m *OTelColResourceManager) createResource(
 	desiredResource client.Object,
 	logger logd.Logger,
 ) error {
-	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
-		return err
-	}
 	if err := patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
 		return err
 	}
@@ -342,9 +361,6 @@ func (m *OTelColResourceManager) updateResource(
 	desiredResource client.Object,
 	logger logd.Logger,
 ) (bool, error) {
-	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
-		return false, err
-	}
 	// This will change the collector daemonset and collector deployment one more time after it has been created
 	// initially, by setting their own UID as an environment variable in all containers. Obviously, this cannot be done
 	// when creating the daemonset/deployment. The next reconcile cycle after creating the resources will set the UID
@@ -473,6 +489,8 @@ func (m *OTelColResourceManager) DeleteResources(
 			m.collectorConfig.OperatorNamespace,
 		),
 	)
+	// Log the GOMEMLIMIT inversions of the removed collectors again once they are redeployed.
+	m.resetReports()
 
 	config := &oTelColConfig{
 		OperatorNamespace: m.collectorConfig.OperatorNamespace,
@@ -691,6 +709,63 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 	return kubeletStatsReceiverConfig
 }
 
+// reportGoMemLimitInversions logs the GOMEMLIMIT inversions of the deployed collectors (see
+// util.GoMemLimitInversionReporter), but only on the replica that is the leader: other replicas also render the
+// collector resources after an extra config change. A skipped report is made up for once the replica has become
+// leader, see ConsumeSkippedReports.
+func (m *OTelColResourceManager) reportGoMemLimitInversions(
+	sources util.GoMemLimitInversionSources,
+	logger logd.Logger,
+) {
+	m.reportMutex.Lock()
+	defer m.reportMutex.Unlock()
+	if !m.leaderElectionAware.IsLeader() {
+		if util.HasCollectorGoMemLimitInversions(sources) {
+			m.reportsHaveBeenSkipped = true
+		}
+		return
+	}
+	m.goMemLimitInversionReporter.Report(sources, logger)
+}
+
+// deployedCollectors returns the main collectors that the desired state contains.
+func deployedCollectors(desiredState []clientObject, namePrefix string) util.DeployedCollectors {
+	var deployed util.DeployedCollectors
+	for _, wrapper := range desiredState {
+		switch object := wrapper.object.(type) {
+		case *appsv1.DaemonSet:
+			if object.Name == DaemonSetName(namePrefix) {
+				deployed.DaemonSetCollector = true
+			}
+		case *appsv1.Deployment:
+			switch object.Name {
+			case DeploymentName(namePrefix):
+				deployed.DeploymentCollector = true
+			case SignalControlCollectorDeploymentName(namePrefix):
+				deployed.SignalControlCollector = true
+			}
+		}
+	}
+	return deployed
+}
+
+// ConsumeSkippedReports reports whether warnings about GOMEMLIMIT inversions have been skipped since the last call,
+// because this replica was not the leader at that time.
+func (m *OTelColResourceManager) ConsumeSkippedReports() bool {
+	m.reportMutex.Lock()
+	defer m.reportMutex.Unlock()
+	reportsHaveBeenSkipped := m.reportsHaveBeenSkipped
+	m.reportsHaveBeenSkipped = false
+	return reportsHaveBeenSkipped
+}
+
+// resetReports makes the next report log all GOMEMLIMIT inversions again.
+func (m *OTelColResourceManager) resetReports() {
+	m.reportMutex.Lock()
+	defer m.reportMutex.Unlock()
+	m.goMemLimitInversionReporter.Reset()
+}
+
 // globalFilter returns the cluster-wide filters of the operator configuration resource, or nil if it has none.
 func globalFilter(operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration) *dash0common.Filter {
 	filter := operatorConfigurationResource.Spec.Filter
@@ -711,6 +786,29 @@ func globalNormalizedTransform(
 		return nil
 	}
 	return transform
+}
+
+// ReservoirEphemeralStorageRequest returns the ephemeral-storage request that the operator derives for the disk-backed
+// trace reservoir of the given resource; it is added to the Signal Control collector container unless the container has
+// an explicit ephemeral-storage request other than 0. Returns false if the resource does not use a disk-backed reservoir.
+func ReservoirEphemeralStorageRequest(signalControlResource *dash0v1alpha1.Dash0SignalControl) (resource.Quantity, bool) {
+	spec := signalControlResource.Spec
+	reservoir := spec.Sampling.Reservoir
+	if !pointers.ReadBoolPointerWithDefault(spec.Enabled, true) ||
+		!pointers.ReadBoolPointerWithDefault(spec.Sampling.Enabled, true) ||
+		reservoir == nil || reservoir.Type == nil || *reservoir.Type != dash0v1alpha1.ReservoirTypeDisk {
+		return resource.Quantity{}, false
+	}
+	return reservoirDerivedStorage(reservoirMaxDiskBytes(reservoir)), true
+}
+
+// reservoirMaxDiskBytes returns maxDiskBytes of the trace reservoir (reservoirDefaultMaxDiskBytes if unset), raised to
+// reservoirMaxDiskBytesFloor.
+func reservoirMaxDiskBytes(reservoir *dash0v1alpha1.ReservoirConfig) int64 {
+	if reservoir.MaxDiskBytes == nil {
+		return reservoirDefaultMaxDiskBytes
+	}
+	return max(reservoir.MaxDiskBytes.Value(), reservoirMaxDiskBytesFloor)
 }
 
 func signalControlConfigFromResource(
@@ -747,18 +845,12 @@ func signalControlConfigFromResource(
 		if r.Type != nil && *r.Type != "" {
 			samplingReservoirType = string(*r.Type)
 		}
-		if r.MaxDiskBytes != nil {
-			maxDiskBytes := r.MaxDiskBytes.Value()
-			if maxDiskBytes < reservoirMaxDiskBytesFloor {
-				if samplingEnabled {
-					logger.WarnTelemetryCollectionIssue(fmt.Sprintf("The configured trace reservoir maxDiskBytes "+
-						"(%d bytes) is below the minimum of %d bytes; the minimum is used instead.",
-						maxDiskBytes, reservoirMaxDiskBytesFloor))
-				}
-				maxDiskBytes = reservoirMaxDiskBytesFloor
-			}
-			samplingReservoirMaxDiskBytes = maxDiskBytes
+		if r.MaxDiskBytes != nil && r.MaxDiskBytes.Value() < reservoirMaxDiskBytesFloor && samplingEnabled {
+			logger.WarnTelemetryCollectionIssue(fmt.Sprintf("The configured trace reservoir maxDiskBytes "+
+				"(%d bytes) is below the minimum of %d bytes; the minimum is used instead.",
+				r.MaxDiskBytes.Value(), reservoirMaxDiskBytesFloor))
 		}
+		samplingReservoirMaxDiskBytes = reservoirMaxDiskBytes(r)
 		if r.MaxMemoryBytes != nil {
 			samplingReservoirMaxMemoryBytes = r.MaxMemoryBytes.Value()
 		}

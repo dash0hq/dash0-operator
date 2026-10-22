@@ -4,14 +4,19 @@
 package util
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
+	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/utils/ptr"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 )
@@ -19,6 +24,8 @@ import (
 const (
 	operatorConfigurationKind = "Dash0OperatorConfiguration"
 	signalControlKind         = "Dash0SignalControl"
+
+	filelogOffsetStorageVolumeName = "filelogreceiver-offsets"
 
 	// maxSettingLengthInWarning is the maximum length of a value that ComponentSettingConflict.String includes. The API
 	// server truncates every admission warning to 256 characters once the warnings of a request exceed 4096 characters.
@@ -29,13 +36,27 @@ const (
 
 // The names of the components in spec.components of the custom resources.
 const (
-	componentDaemonSetCollector     = "daemonSetCollector"
-	componentDeploymentCollector    = "deploymentCollector"
-	componentTargetAllocator        = "targetAllocator"
-	componentAgent0Connector        = "agent0Connector"
-	componentSignalControlCollector = "collector"
-	componentEdgeProxy              = "edgeProxy"
+	componentInstrumentationInitContainer = "instrumentationInitContainer"
+	componentDaemonSetCollector           = "daemonSetCollector"
+	componentDeploymentCollector          = "deploymentCollector"
+	componentTargetAllocator              = "targetAllocator"
+	componentAgent0Connector              = "agent0Connector"
+	componentSignalControlCollector       = "collector"
+	componentEdgeProxy                    = "edgeProxy"
 )
+
+// deprecatedHelmValues maps the Helm values that have a deprecated predecessor to that predecessor. If the deprecated
+// Helm value is set, it replaces the current one, see templates/operator/extra-config-map.yaml.
+var deprecatedHelmValues = map[string]string{
+	"operator.collectors.daemonSetCollectorContainerResources": "operator.collectorDaemonSetCollectorContainerResources",
+	"operator.collectors.daemonSetConfigurationReloaderContainerResources": "operator." +
+		"collectorDaemonSetConfigurationReloaderContainerResources",
+	"operator.collectors.daemonSetFileLogOffsetSyncContainerResources": "operator." +
+		"collectorDaemonSetFileLogOffsetSyncContainerResources",
+	"operator.collectors.deploymentCollectorContainerResources": "operator.collectorDeploymentCollectorContainerResources",
+	"operator.collectors.deploymentConfigurationReloaderContainerResources": "operator." +
+		"collectorDeploymentConfigurationReloaderContainerResources",
+}
 
 // ComponentSettingConflict is a setting that is configured both via the Helm chart and via spec.components of a custom
 // resource, with different values. The value of the custom resource takes effect.
@@ -46,6 +67,8 @@ type ComponentSettingConflict struct {
 	Path string
 	// HelmValue is the name of the Helm value.
 	HelmValue string
+	// DeprecatedHelmValue is the name of the deprecated Helm value for the same setting, if there is one.
+	DeprecatedHelmValue string
 	// HelmSetting is the value provided via the Helm chart.
 	HelmSetting string
 	// ResourceSetting is the value provided via the custom resource, which takes effect.
@@ -56,17 +79,26 @@ type ComponentSettingConflict struct {
 // contains control characters, since the API server drops warnings with control characters.
 func (c ComponentSettingConflict) String() string {
 	if !fitsIntoWarning(c.HelmSetting) || !fitsIntoWarning(c.ResourceSetting) {
-		return fmt.Sprintf("%s overrides the custom Helm value %s", c.Path, c.HelmValue)
+		return fmt.Sprintf("%s overrides the custom Helm value %s", c.Path, c.HelmValueNames())
 	}
 	return fmt.Sprintf(
 		"%s overrides the custom Helm value %s: %s instead of %s",
-		c.Path, c.HelmValue, c.ResourceSetting, c.HelmSetting,
+		c.Path, c.HelmValueNames(), c.ResourceSetting, c.HelmSetting,
 	)
 }
 
 // IsSameSetting reports whether both conflicts concern the same setting, regardless of the values.
 func (c ComponentSettingConflict) IsSameSetting(other ComponentSettingConflict) bool {
 	return c.Resource == other.Resource && c.Path == other.Path && c.HelmValue == other.HelmValue
+}
+
+// HelmValueNames returns the name of the Helm value, followed by the name of the deprecated Helm value for the same
+// setting, if there is one.
+func (c ComponentSettingConflict) HelmValueNames() string {
+	if c.DeprecatedHelmValue == "" {
+		return c.HelmValue
+	}
+	return fmt.Sprintf("%s (or %s)", c.HelmValue, c.DeprecatedHelmValue)
 }
 
 func fitsIntoWarning(setting string) bool {
@@ -83,8 +115,9 @@ type ComponentSettingsCheck struct {
 }
 
 // EffectiveExtraConfig applies spec.components of the given resources (either may be nil) to the extra config. A
-// setting replaces the value provided via the Helm chart. Invalid settings are rejected by the validating webhooks (see
-// CheckComponentSettings). Neither the file configuration nor the resources are modified.
+// setting replaces the value provided via the Helm chart, the fields it leaves out are taken from the given defaults
+// (see mergeContainerResources, mergeNodeAffinity and mergeProbe). Invalid settings are rejected by the
+// validating webhooks (see CheckComponentSettings). Neither the file configuration nor the resources are modified.
 func EffectiveExtraConfig(
 	fileConfig ExtraConfig,
 	defaults ExtraConfig,
@@ -99,6 +132,24 @@ func EffectiveExtraConfig(
 		false,
 	)
 	return effective
+}
+
+// EffectiveInstrumentationInitContainerResources returns spec.components.instrumentationInitContainer.resources merged
+// with the default resources (see mergeContainerResources), or nil if the setting is absent.
+func EffectiveInstrumentationInitContainerResources(
+	defaults ExtraConfig,
+	components *dash0v1alpha1.OperatorConfigurationComponents,
+) *corev1.ResourceRequirements {
+	if components == nil || components.InstrumentationInitContainer == nil ||
+		components.InstrumentationInitContainer.Resources == nil {
+		return nil
+	}
+	return new(mergeContainerResources(
+		defaults.InstrumentationInitContainerResources,
+		dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+			ContainerResources: *components.InstrumentationInitContainer.Resources,
+		},
+	).ToResourceRequirements())
 }
 
 // OperatorConfigurationComponentsOf returns spec.components of the resource, or nil if the resource is nil.
@@ -134,7 +185,8 @@ func ComponentSettingConflicts(
 }
 
 // CheckComponentSettings returns the conflicts (see ComponentSettingConflicts) and the invalid settings in
-// spec.components (rejected by the API server). Either one of the components may be nil.
+// spec.components (rejected by the API server or the Go runtime, or contradicting another setting). Either one of the
+// components may be nil.
 func CheckComponentSettings(
 	fileConfig ExtraConfig,
 	defaults ExtraConfig,
@@ -145,8 +197,8 @@ func CheckComponentSettings(
 		Conflicts: ComponentSettingConflicts(
 			fileConfig, defaults, operatorConfigurationComponents, signalControlComponents),
 	}
-	errs := validateOperatorConfigurationComponents(operatorConfigurationComponents)
-	errs = append(errs, validateSignalControlComponents(signalControlComponents)...)
+	errs := validateOperatorConfigurationComponents(operatorConfigurationComponents, &defaults)
+	errs = append(errs, validateSignalControlComponents(signalControlComponents, &defaults)...)
 	for _, err := range errs {
 		check.Invalid = append(check.Invalid, err.Error())
 	}
@@ -166,7 +218,7 @@ func resolveComponentSettings(
 	var conflicts []ComponentSettingConflict
 	if operatorConfigurationComponents != nil {
 		m := &componentSettingsApplier{resource: operatorConfigurationKind, report: report}
-		m.applyOperatorConfigurationComponents(&effective, operatorConfigurationComponents)
+		m.applyOperatorConfigurationComponents(&effective, &defaults, operatorConfigurationComponents)
 		conflicts = append(conflicts, m.conflicts...)
 	}
 	if signalControlComponents != nil {
@@ -191,6 +243,8 @@ type workloadFields struct {
 	annotations    *map[string]string
 	podLabels      *map[string]string
 	podAnnotations *map[string]string
+	tolerations    *[]corev1.Toleration
+	nodeAffinity   **corev1.NodeAffinity
 }
 
 // workloadHelmValues are the names of the Helm values for the settings of one workload.
@@ -199,16 +253,53 @@ type workloadHelmValues struct {
 	annotations    string
 	podLabels      string
 	podAnnotations string
+	tolerations    string
+	nodeAffinity   string
+}
+
+// collectorPodFields points to the fields of the extra configuration that hold the pod settings of one collector.
+type collectorPodFields struct {
+	sysctls           *[]corev1.Sysctl
+	probes            *CollectorProbes
+	priorityClassName *string
+}
+
+type collectorPodHelmValues struct {
+	sysctls           string
+	probes            string
+	priorityClassName string
+}
+
+// targetAllocatorMTls holds the fields of the extra configuration for the target-allocator mTLS settings, which are
+// replaced together.
+type targetAllocatorMTls struct {
+	Enabled              bool   `json:"enabled"`
+	ServerCertSecretName string `json:"serverCertSecretName"`
+	ClientCertSecretName string `json:"clientCertSecretName"`
+}
+
+// withoutUnusedSecretNames leaves out the secret names if mTLS is disabled, since they are only used with mTLS.
+func (t targetAllocatorMTls) withoutUnusedSecretNames() targetAllocatorMTls {
+	if !t.Enabled {
+		return targetAllocatorMTls{}
+	}
+	return t
 }
 
 // collectorHelmValues returns the names of the Helm values for a collector, which are all derived from one prefix, e.g.
 // operator.collectors.daemonSet -> operator.collectors.daemonSetLabels.
-func collectorHelmValues(prefix string) workloadHelmValues {
+func collectorHelmValues(prefix string) (workloadHelmValues, collectorPodHelmValues) {
 	return workloadHelmValues{
 		labels:         prefix + "Labels",
 		annotations:    prefix + "Annotations",
 		podLabels:      prefix + "PodLabels",
 		podAnnotations: prefix + "PodAnnotations",
+		tolerations:    prefix + "Tolerations",
+		nodeAffinity:   prefix + "NodeAffinity",
+	}, collectorPodHelmValues{
+		sysctls:           prefix + "Sysctls",
+		probes:            prefix + "Probes",
+		priorityClassName: prefix + "PriorityClassName",
 	}
 }
 
@@ -220,54 +311,224 @@ func nestedHelmValues(prefix string) workloadHelmValues {
 		annotations:    prefix + ".annotations",
 		podLabels:      prefix + ".podLabels",
 		podAnnotations: prefix + ".podAnnotations",
+		tolerations:    prefix + ".tolerations",
+		nodeAffinity:   prefix + ".nodeAffinity",
 	}
 }
 
 func (m *componentSettingsApplier) applyOperatorConfigurationComponents(
 	effective *ExtraConfig,
+	defaults *ExtraConfig,
 	components *dash0v1alpha1.OperatorConfigurationComponents,
 ) {
 	const path = componentSettingsPath
 
+	if initContainer := components.InstrumentationInitContainer; initContainer != nil && initContainer.Resources != nil {
+		m.applyContainerResources(
+			path+"."+componentInstrumentationInitContainer+".resources",
+			"operator.initContainerResources",
+			&effective.InstrumentationInitContainerResources,
+			defaults.InstrumentationInitContainerResources,
+			&dash0v1alpha1.ContainerResourcesWithGoMemLimit{ContainerResources: *initContainer.Resources},
+		)
+	}
+
 	if daemonSet := components.DaemonSetCollector; daemonSet != nil {
 		p := path + "." + componentDaemonSetCollector
-		m.applyWorkload(p, collectorHelmValues("operator.collectors.daemonSet"), workloadFields{
+		m.applyContainerResources(
+			p+".collectorContainerResources",
+			"operator.collectors.daemonSetCollectorContainerResources",
+			&effective.CollectorDaemonSetCollectorContainerResources,
+			defaults.CollectorDaemonSetCollectorContainerResources,
+			daemonSet.CollectorContainerResources,
+		)
+		m.applyContainerResources(
+			p+".configurationReloaderContainerResources",
+			"operator.collectors.daemonSetConfigurationReloaderContainerResources",
+			&effective.CollectorDaemonSetConfigurationReloaderContainerResources,
+			defaults.CollectorDaemonSetConfigurationReloaderContainerResources,
+			daemonSet.ConfigurationReloaderContainerResources,
+		)
+		m.applyContainerResources(
+			p+".filelogOffsetSyncContainerResources",
+			"operator.collectors.daemonSetFileLogOffsetSyncContainerResources",
+			&effective.CollectorDaemonSetFileLogOffsetSyncContainerResources,
+			defaults.CollectorDaemonSetFileLogOffsetSyncContainerResources,
+			daemonSet.FilelogOffsetSyncContainerResources,
+		)
+		workloadHelm, podHelm := collectorHelmValues("operator.collectors.daemonSet")
+		m.applyWorkload(p, workloadHelm, workloadFields{
 			labels:         &effective.CollectorDaemonSetLabels,
 			annotations:    &effective.CollectorDaemonSetAnnotations,
 			podLabels:      &effective.CollectorDaemonSetPodLabels,
 			podAnnotations: &effective.CollectorDaemonSetPodAnnotations,
-		}, daemonSet.WorkloadSettings)
+			tolerations:    &effective.DaemonSetTolerations,
+			nodeAffinity:   &effective.DaemonSetNodeAffinity,
+		}, defaults.DaemonSetNodeAffinity, daemonSet.WorkloadSettings)
+		m.applyCollectorPod(p, podHelm, collectorPodFields{
+			sysctls:           &effective.DaemonSetSysctls,
+			probes:            &effective.DaemonSetProbes,
+			priorityClassName: &effective.CollectorDaemonSetPriorityClassName,
+		}, defaults.DaemonSetProbes, daemonSet.CollectorPodSettings)
+		if seLinuxOptions := daemonSet.SELinuxOptions; seLinuxOptions != nil {
+			var value *corev1.SELinuxOptions
+			if *seLinuxOptions != (corev1.SELinuxOptions{}) {
+				value = seLinuxOptions.DeepCopy()
+			}
+			replaceValue(m, p+".seLinuxOptions", "operator.collectors.daemonSetSeLinuxOptions",
+				&effective.DaemonSetSELinuxOptions, nil, value)
+		}
+		if volume := daemonSet.FilelogOffsetStorageVolume; volume != nil {
+			var volumeSource corev1.VolumeSource
+			if volume.HostPath != nil {
+				volumeSource.HostPath = &corev1.HostPathVolumeSource{
+					Path: volume.HostPath.Path,
+					Type: new(corev1.HostPathDirectoryOrCreate),
+				}
+			} else if volume.PersistentVolumeClaim != nil {
+				volumeSource.PersistentVolumeClaim = &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: volume.PersistentVolumeClaim.ClaimName,
+				}
+			}
+			if volumeSource != (corev1.VolumeSource{}) {
+				replaceValue(m, p+".filelogOffsetStorageVolume", "operator.collectors.filelogOffsetSyncStorageVolume",
+					&effective.CollectorFilelogOffsetStorageVolume, nil, &corev1.Volume{
+						Name:         filelogOffsetStorageVolumeName,
+						VolumeSource: volumeSource,
+					})
+			}
+		}
 	}
 
 	if deployment := components.DeploymentCollector; deployment != nil {
 		p := path + "." + componentDeploymentCollector
-		m.applyWorkload(p, collectorHelmValues("operator.collectors.deployment"), workloadFields{
+		m.applyContainerResources(
+			p+".collectorContainerResources",
+			"operator.collectors.deploymentCollectorContainerResources",
+			&effective.CollectorDeploymentCollectorContainerResources,
+			defaults.CollectorDeploymentCollectorContainerResources,
+			deployment.CollectorContainerResources,
+		)
+		m.applyContainerResources(
+			p+".configurationReloaderContainerResources",
+			"operator.collectors.deploymentConfigurationReloaderContainerResources",
+			&effective.CollectorDeploymentConfigurationReloaderContainerResources,
+			defaults.CollectorDeploymentConfigurationReloaderContainerResources,
+			deployment.ConfigurationReloaderContainerResources,
+		)
+		workloadHelm, podHelm := collectorHelmValues("operator.collectors.deployment")
+		m.applyWorkload(p, workloadHelm, workloadFields{
 			labels:         &effective.CollectorDeploymentLabels,
 			annotations:    &effective.CollectorDeploymentAnnotations,
 			podLabels:      &effective.CollectorDeploymentPodLabels,
 			podAnnotations: &effective.CollectorDeploymentPodAnnotations,
-		}, deployment.WorkloadSettings)
+			tolerations:    &effective.DeploymentTolerations,
+			nodeAffinity:   &effective.DeploymentNodeAffinity,
+		}, defaults.DeploymentNodeAffinity, deployment.WorkloadSettings)
+		m.applyCollectorPod(p, podHelm, collectorPodFields{
+			sysctls:           &effective.DeploymentSysctls,
+			probes:            &effective.DeploymentProbes,
+			priorityClassName: &effective.CollectorDeploymentPriorityClassName,
+		}, defaults.DeploymentProbes, deployment.CollectorPodSettings)
 	}
 
 	if targetAllocator := components.TargetAllocator; targetAllocator != nil {
 		p := path + "." + componentTargetAllocator
+		m.applyContainerResources(
+			p+".containerResources",
+			"operator.targetAllocator.containerResources",
+			&effective.TargetAllocatorContainerResources,
+			defaults.TargetAllocatorContainerResources,
+			targetAllocator.ContainerResources,
+		)
 		m.applyWorkload(p, nestedHelmValues("operator.targetAllocator"), workloadFields{
 			labels:         &effective.TargetAllocatorLabels,
 			annotations:    &effective.TargetAllocatorAnnotations,
 			podLabels:      &effective.TargetAllocatorPodLabels,
 			podAnnotations: &effective.TargetAllocatorPodAnnotations,
-		}, targetAllocator.WorkloadSettings)
+			tolerations:    &effective.TargetAllocatorTolerations,
+			nodeAffinity:   &effective.TargetAllocatorNodeAffinity,
+		}, defaults.TargetAllocatorNodeAffinity, targetAllocator.WorkloadSettings)
+		if mTls := targetAllocator.MTls; mTls != nil {
+			current := targetAllocatorMTls{
+				Enabled:              effective.TargetAllocatorMtlsEnabled,
+				ServerCertSecretName: effective.TargetAllocatorMtlsServerCertSecretName,
+				ClientCertSecretName: effective.TargetAllocatorMtlsClientCertSecretName,
+			}.withoutUnusedSecretNames()
+			replaceValue(m, p+".mTls", "operator.targetAllocator.mTls", &current, targetAllocatorMTls{
+				Enabled:              defaults.TargetAllocatorMtlsEnabled,
+				ServerCertSecretName: defaults.TargetAllocatorMtlsServerCertSecretName,
+				ClientCertSecretName: defaults.TargetAllocatorMtlsClientCertSecretName,
+			}.withoutUnusedSecretNames(), targetAllocatorMTls{
+				Enabled:              ptr.Deref(mTls.Enabled, false),
+				ServerCertSecretName: mTls.ServerCertSecretName,
+				ClientCertSecretName: mTls.ClientCertSecretName,
+			}.withoutUnusedSecretNames())
+			effective.TargetAllocatorMtlsEnabled = current.Enabled
+			effective.TargetAllocatorMtlsServerCertSecretName = current.ServerCertSecretName
+			effective.TargetAllocatorMtlsClientCertSecretName = current.ClientCertSecretName
+		}
+		replaceValueIfSet(m, p+".allowInsecureAuthSecrets", "operator.targetAllocator.allowInsecureAuthSecrets",
+			&effective.TargetAllocatorAllowInsecureAuthSecrets, defaults.TargetAllocatorAllowInsecureAuthSecrets,
+			targetAllocator.AllowInsecureAuthSecrets)
 	}
 
 	if agent0Connector := components.Agent0Connector; agent0Connector != nil {
 		p := path + "." + componentAgent0Connector
+		replaceValueIfSet(m, p+".maxConcurrentCommands", "operator.agent0Connector.maxConcurrentCommands",
+			&effective.Agent0ConnectorMaxConcurrentCommands, defaults.Agent0ConnectorMaxConcurrentCommands,
+			agent0Connector.MaxConcurrentCommands)
+		replaceValueIfSet(m, p+".enablePprof", "operator.agent0Connector.enablePprof",
+			&effective.Agent0ConnectorEnablePprof, defaults.Agent0ConnectorEnablePprof, agent0Connector.EnablePprof)
+		if allowedKubectlCommands := agent0Connector.AllowedKubectlCommands; allowedKubectlCommands != nil {
+			replaceValue(m, p+".allowedKubectlCommands", "operator.agent0Connector.allowedKubectlCommands",
+				&effective.Agent0ConnectorAllowedKubectlCommands, defaults.Agent0ConnectorAllowedKubectlCommands,
+				mergeAllowedKubectlCommands(defaults.Agent0ConnectorAllowedKubectlCommands, allowedKubectlCommands))
+		}
+		m.applyContainerResources(
+			p+".containerResources",
+			"operator.agent0Connector.containerResources",
+			&effective.Agent0ConnectorContainerResources,
+			defaults.Agent0ConnectorContainerResources,
+			agent0Connector.ContainerResources,
+		)
 		m.applyWorkload(p, nestedHelmValues("operator.agent0Connector"), workloadFields{
 			labels:         &effective.Agent0ConnectorLabels,
 			annotations:    &effective.Agent0ConnectorAnnotations,
 			podLabels:      &effective.Agent0ConnectorPodLabels,
 			podAnnotations: &effective.Agent0ConnectorPodAnnotations,
-		}, agent0Connector.WorkloadSettings)
+			tolerations:    &effective.Agent0ConnectorTolerations,
+			nodeAffinity:   &effective.Agent0ConnectorNodeAffinity,
+		}, defaults.Agent0ConnectorNodeAffinity, agent0Connector.WorkloadSettings)
 	}
+}
+
+// mergeAllowedKubectlCommands merges the allowed kubectl commands with the default ones per command.
+func mergeAllowedKubectlCommands(
+	defaults map[string]bool,
+	settings *dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands,
+) map[string]bool {
+	merged := maps.Clone(defaults)
+	if merged == nil {
+		merged = map[string]bool{}
+	}
+	for kubectlCommand, allowed := range map[string]*bool{
+		"api-resources": settings.ApiResources,
+		"api-versions":  settings.ApiVersions,
+		"auth":          settings.Auth,
+		"cluster-info":  settings.ClusterInfo,
+		"events":        settings.Events,
+		"explain":       settings.Explain,
+		"get":           settings.Get,
+		"logs":          settings.Logs,
+		"top":           settings.Top,
+		"version":       settings.Version,
+	} {
+		if allowed != nil {
+			merged[kubectlCommand] = *allowed
+		}
+	}
+	return merged
 }
 
 func (m *componentSettingsApplier) applySignalControlComponents(
@@ -281,12 +542,34 @@ func (m *componentSettingsApplier) applySignalControlComponents(
 		p := path + "." + componentSignalControlCollector
 		replaceValueIfSet(m, p+".replicas", "operator.collectors.signalControlCollectorReplicas",
 			&effective.SignalControlCollectorReplicas, defaults.SignalControlCollectorReplicas, collector.Replicas)
-		m.applyWorkload(p, collectorHelmValues("operator.collectors.signalControlCollector"), workloadFields{
+		m.applyContainerResources(
+			p+".collectorContainerResources",
+			"operator.collectors.signalControlCollectorContainerResources",
+			&effective.SignalControlCollectorContainerResources,
+			defaults.SignalControlCollectorContainerResources,
+			collector.CollectorContainerResources,
+		)
+		m.applyContainerResources(
+			p+".configurationReloaderContainerResources",
+			"operator.collectors.signalControlCollectorConfigurationReloaderContainerResources",
+			&effective.SignalControlCollectorConfigurationReloaderContainerResources,
+			defaults.SignalControlCollectorConfigurationReloaderContainerResources,
+			collector.ConfigurationReloaderContainerResources,
+		)
+		workloadHelm, podHelm := collectorHelmValues("operator.collectors.signalControlCollector")
+		m.applyWorkload(p, workloadHelm, workloadFields{
 			labels:         &effective.SignalControlCollectorLabels,
 			annotations:    &effective.SignalControlCollectorAnnotations,
 			podLabels:      &effective.SignalControlCollectorPodLabels,
 			podAnnotations: &effective.SignalControlCollectorPodAnnotations,
-		}, collector.WorkloadSettings)
+			tolerations:    &effective.SignalControlCollectorTolerations,
+			nodeAffinity:   &effective.SignalControlCollectorNodeAffinity,
+		}, defaults.SignalControlCollectorNodeAffinity, collector.WorkloadSettings)
+		m.applyCollectorPod(p, podHelm, collectorPodFields{
+			sysctls:           &effective.SignalControlCollectorSysctls,
+			probes:            &effective.SignalControlCollectorProbes,
+			priorityClassName: &effective.SignalControlCollectorPriorityClassName,
+		}, defaults.SignalControlCollectorProbes, collector.CollectorPodSettings)
 	}
 
 	if edgeProxy := components.EdgeProxy; edgeProxy != nil {
@@ -295,12 +578,21 @@ func (m *componentSettingsApplier) applySignalControlComponents(
 			&effective.EdgeProxyReplicas, defaults.EdgeProxyReplicas, edgeProxy.Replicas)
 		replaceValueIfSet(m, p+".enablePprof", "operator.signalControl.edgeProxy.enablePprof",
 			&effective.EdgeProxyEnablePprof, defaults.EdgeProxyEnablePprof, edgeProxy.EnablePprof)
+		m.applyContainerResources(
+			p+".containerResources",
+			"operator.signalControl.edgeProxy.containerResources",
+			&effective.EdgeProxyContainerResources,
+			defaults.EdgeProxyContainerResources,
+			edgeProxy.ContainerResources,
+		)
 		m.applyWorkload(p, nestedHelmValues("operator.signalControl.edgeProxy"), workloadFields{
 			labels:         &effective.EdgeProxyLabels,
 			annotations:    &effective.EdgeProxyAnnotations,
 			podLabels:      &effective.EdgeProxyPodLabels,
 			podAnnotations: &effective.EdgeProxyPodAnnotations,
-		}, edgeProxy.WorkloadSettings)
+			tolerations:    &effective.EdgeProxyTolerations,
+			nodeAffinity:   &effective.EdgeProxyNodeAffinity,
+		}, defaults.EdgeProxyNodeAffinity, edgeProxy.WorkloadSettings)
 	}
 }
 
@@ -308,6 +600,7 @@ func (m *componentSettingsApplier) applyWorkload(
 	path string,
 	helm workloadHelmValues,
 	fields workloadFields,
+	defaultNodeAffinity *corev1.NodeAffinity,
 	settings dash0v1alpha1.WorkloadSettings,
 ) {
 	if len(settings.Labels) > 0 {
@@ -323,6 +616,152 @@ func (m *componentSettingsApplier) applyWorkload(
 		replaceValue(m, path+".podAnnotations", helm.podAnnotations, fields.podAnnotations, nil,
 			maps.Clone(settings.PodAnnotations))
 	}
+	if len(settings.Tolerations) > 0 {
+		tolerations := make([]corev1.Toleration, 0, len(settings.Tolerations))
+		for _, toleration := range settings.Tolerations {
+			tolerations = append(tolerations, *toleration.DeepCopy())
+		}
+		replaceValue(m, path+".tolerations", helm.tolerations, fields.tolerations, nil, tolerations)
+	}
+	if nodeAffinity := settings.NodeAffinity; nodeAffinity != nil {
+		replaceValue(m, path+".nodeAffinity", helm.nodeAffinity, fields.nodeAffinity, defaultNodeAffinity,
+			mergeNodeAffinity(defaultNodeAffinity, nodeAffinity))
+	}
+}
+
+// mergeNodeAffinity merges a node affinity setting with the default node affinity: the required and the preferred node
+// affinity of the setting each replace the respective default unless they are absent. A required node affinity without
+// node selector terms removes the default required node affinity.
+func mergeNodeAffinity(defaults *corev1.NodeAffinity, settings *corev1.NodeAffinity) *corev1.NodeAffinity {
+	merged := ptr.Deref(defaults.DeepCopy(), corev1.NodeAffinity{})
+	settings = settings.DeepCopy()
+	if required := settings.RequiredDuringSchedulingIgnoredDuringExecution; required != nil {
+		merged.RequiredDuringSchedulingIgnoredDuringExecution = nil
+		if len(required.NodeSelectorTerms) > 0 {
+			merged.RequiredDuringSchedulingIgnoredDuringExecution = required
+		}
+	}
+	if preferred := settings.PreferredDuringSchedulingIgnoredDuringExecution; len(preferred) > 0 {
+		merged.PreferredDuringSchedulingIgnoredDuringExecution = preferred
+	}
+	if merged.RequiredDuringSchedulingIgnoredDuringExecution == nil &&
+		len(merged.PreferredDuringSchedulingIgnoredDuringExecution) == 0 {
+		return nil
+	}
+	return &merged
+}
+
+func (m *componentSettingsApplier) applyCollectorPod(
+	path string,
+	helm collectorPodHelmValues,
+	fields collectorPodFields,
+	defaultProbes CollectorProbes,
+	settings dash0v1alpha1.CollectorPodSettings,
+) {
+	if len(settings.Sysctls) > 0 {
+		replaceValue(m, path+".sysctls", helm.sysctls, fields.sysctls, nil, slices.Clone(settings.Sysctls))
+	}
+	if probes := settings.Probes; probes != nil {
+		replaceValue(m, path+".probes", helm.probes, fields.probes, defaultProbes, CollectorProbes{
+			Liveness:  mergeProbe(defaultProbes.Liveness, probes.Liveness),
+			Readiness: mergeProbe(defaultProbes.Readiness, probes.Readiness),
+			Startup:   mergeProbe(defaultProbes.Startup, probes.Startup),
+		})
+	}
+	if settings.PriorityClassName != "" {
+		replaceValue(m, path+".priorityClassName", helm.priorityClassName, fields.priorityClassName, "",
+			settings.PriorityClassName)
+	}
+}
+
+// mergeProbe merges the timing settings of a probe with the default probe per field.
+func mergeProbe(defaultProbe corev1.Probe, settings *dash0v1alpha1.ProbeSettings) corev1.Probe {
+	probe := *defaultProbe.DeepCopy()
+	if settings == nil {
+		return probe
+	}
+	setIfPresent := func(target *int32, value *int32) {
+		if value != nil {
+			*target = *value
+		}
+	}
+	setIfPresent(&probe.InitialDelaySeconds, settings.InitialDelaySeconds)
+	setIfPresent(&probe.TimeoutSeconds, settings.TimeoutSeconds)
+	setIfPresent(&probe.PeriodSeconds, settings.PeriodSeconds)
+	setIfPresent(&probe.SuccessThreshold, settings.SuccessThreshold)
+	setIfPresent(&probe.FailureThreshold, settings.FailureThreshold)
+	if settings.TerminationGracePeriodSeconds != nil {
+		probe.TerminationGracePeriodSeconds = ptr.To(*settings.TerminationGracePeriodSeconds)
+	}
+	return probe
+}
+
+// applyContainerResources merges the resources with the default resources (see mergeContainerResources), unless the
+// setting is absent.
+func (m *componentSettingsApplier) applyContainerResources(
+	path string,
+	helmValue string,
+	target *ResourceRequirementsWithGoMemLimit,
+	defaults ResourceRequirementsWithGoMemLimit,
+	settings *dash0v1alpha1.ContainerResourcesWithGoMemLimit,
+) {
+	if settings == nil {
+		return
+	}
+	replaceValue(m, path, helmValue, target, defaults, mergeContainerResources(defaults, *settings))
+}
+
+// removeResourceQuantity is the value that removes a resource from the limits or the requests of a container, including
+// its default.
+var removeResourceQuantity = resource.MustParse("-1")
+
+func isRemoveResourceQuantity(quantity resource.Quantity) bool {
+	return quantity.Cmp(removeResourceQuantity) == 0
+}
+
+// mergeContainerResources merges the resources of a setting with the default resources per resource name, -1 removes a
+// resource including its default. A default that contradicts a value of the setting is adjusted: a default request
+// above a limit of the setting is lowered to that limit, a default limit below a request of the setting is raised.
+func mergeContainerResources(
+	defaults ResourceRequirementsWithGoMemLimit,
+	settings dash0v1alpha1.ContainerResourcesWithGoMemLimit,
+) ResourceRequirementsWithGoMemLimit {
+	limits := mergeResourceList(defaults.Limits, settings.Limits)
+	requests := mergeResourceList(defaults.Requests, settings.Requests)
+	for name, request := range requests {
+		limit, hasLimit := limits[name]
+		if !hasLimit || request.Cmp(limit) <= 0 {
+			continue
+		}
+		if _, isSetting := settings.Requests[name]; !isSetting {
+			requests[name] = limit.DeepCopy()
+		} else if _, isSetting = settings.Limits[name]; !isSetting {
+			limits[name] = request.DeepCopy()
+		}
+	}
+	return ResourceRequirementsWithGoMemLimit{
+		Limits:     limits,
+		Requests:   requests,
+		GoMemLimit: cmp.Or(settings.GoMemLimit, defaults.GoMemLimit),
+	}
+}
+
+func mergeResourceList(defaults corev1.ResourceList, settings corev1.ResourceList) corev1.ResourceList {
+	merged := defaults.DeepCopy()
+	for name, quantity := range settings {
+		if isRemoveResourceQuantity(quantity) {
+			delete(merged, name)
+			continue
+		}
+		if merged == nil {
+			merged = corev1.ResourceList{}
+		}
+		merged[name] = quantity.DeepCopy()
+	}
+	if len(merged) == 0 {
+		return nil
+	}
+	return merged
 }
 
 // replaceValueIfSet replaces the target with the value of the setting, unless the setting is nil, see replaceValue.
@@ -361,15 +800,19 @@ func (m *componentSettingsApplier) conflict(path string, helmValue string, helmS
 		return
 	}
 	m.conflicts = append(m.conflicts, ComponentSettingConflict{
-		Resource:        m.resource,
-		Path:            path,
-		HelmValue:       helmValue,
-		HelmSetting:     formatSetting(helmSetting),
-		ResourceSetting: formatSetting(resourceSetting),
+		Resource:            m.resource,
+		Path:                path,
+		HelmValue:           helmValue,
+		DeprecatedHelmValue: deprecatedHelmValues[helmValue],
+		HelmSetting:         formatSetting(helmSetting),
+		ResourceSetting:     formatSetting(resourceSetting),
 	})
 }
 
 func formatSetting(setting any) string {
+	if s, isString := setting.(string); isString {
+		return s
+	}
 	serialized, err := json.Marshal(setting)
 	if err != nil {
 		return fmt.Sprintf("%v", setting)

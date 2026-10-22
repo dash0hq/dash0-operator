@@ -7,8 +7,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-logr/logr/funcr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -128,6 +132,138 @@ var _ = Describe("collector memory derivation", func() {
 		})
 	})
 
+	Describe("GoMemLimitInversionReporter", func() {
+		var logged []string
+		var recordingLogger logd.Logger
+
+		BeforeEach(func() {
+			logged = nil
+			recordingLogger = logd.NewLogger(funcr.New(func(_ string, args string) {
+				logged = append(logged, args)
+			}, funcr.Options{}))
+		})
+
+		configWithDaemonSetGoMemLimit := func(goMemLimit string) ExtraConfig {
+			ec := ExtraConfigDefaults
+			ec.CollectorDaemonSetCollectorContainerResources = ResourceRequirementsWithGoMemLimit{
+				Limits:     corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("500Mi")},
+				GoMemLimit: goMemLimit,
+			}
+			return ec
+		}
+
+		allDeployed := DeployedCollectors{DaemonSetCollector: true, DeploymentCollector: true, SignalControlCollector: true}
+		withDaemonSetCollectorResources := &dash0v1alpha1.OperatorConfigurationComponents{
+			DaemonSetCollector: &dash0v1alpha1.DaemonSetCollectorSettings{
+				CollectorContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{},
+			},
+		}
+
+		// sources describes an effective configuration with the given GOMEMLIMIT for the DaemonSet collector, whose
+		// resources come from spec.components.
+		sources := func(goMemLimit string) GoMemLimitInversionSources {
+			return GoMemLimitInversionSources{
+				EffectiveConfig:                 configWithDaemonSetGoMemLimit(goMemLimit),
+				Deployed:                        allDeployed,
+				OperatorConfigurationComponents: withDaemonSetCollectorResources,
+			}
+		}
+
+		It("logs an inversion that spec.components introduces only once while it stays the same", func() {
+			reporter := &GoMemLimitInversionReporter{}
+			reporter.Report(sources("450MiB"), recordingLogger)
+			Expect(logged).To(HaveLen(1))
+			Expect(logged[0]).To(ContainSubstring("450MiB"))
+			Expect(logged[0]).To(ContainSubstring(`"setting"="Dash0OperatorConfiguration ` +
+				`spec.components.daemonSetCollector.collectorContainerResources.gomemlimit"`))
+			reporter.Report(sources("450MiB"), recordingLogger)
+			Expect(logged).To(HaveLen(1))
+			Expect(HasCollectorGoMemLimitInversions(sources("450MiB"))).To(BeTrue())
+		})
+
+		It("logs an inversion of the extra config map with the name of the Helm value", func() {
+			reporter := &GoMemLimitInversionReporter{}
+			helmOnly := sources("450MiB")
+			helmOnly.OperatorConfigurationComponents = &dash0v1alpha1.OperatorConfigurationComponents{
+				DeploymentCollector: &dash0v1alpha1.DeploymentCollectorSettings{
+					CollectorContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{},
+				},
+			}
+			reporter.Report(helmOnly, recordingLogger)
+			Expect(logged).To(HaveLen(1))
+			Expect(logged[0]).To(ContainSubstring(`"setting"="operator.collectors.daemonSetCollectorContainerResources ` +
+				`(or operator.collectorDaemonSetCollectorContainerResources)"`))
+			Expect(HasCollectorGoMemLimitInversions(helmOnly)).To(BeTrue())
+		})
+
+		It("does not log an inversion that the effective configuration does not have", func() {
+			reporter := &GoMemLimitInversionReporter{}
+			reporter.Report(sources("300MiB"), recordingLogger)
+			Expect(logged).To(BeEmpty())
+			Expect(HasCollectorGoMemLimitInversions(sources("300MiB"))).To(BeFalse())
+		})
+
+		It("does not log an inversion of a collector that is not deployed", func() {
+			config := ExtraConfigDefaults
+			config.SignalControlCollectorContainerResources = ResourceRequirementsWithGoMemLimit{
+				Limits:     corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("500Mi")},
+				GoMemLimit: "450MiB",
+			}
+			notDeployed := GoMemLimitInversionSources{
+				EffectiveConfig: config,
+				Deployed:        DeployedCollectors{DaemonSetCollector: true, DeploymentCollector: true},
+				SignalControlComponents: &dash0v1alpha1.SignalControlComponents{
+					Collector: &dash0v1alpha1.SignalControlCollectorSettings{
+						CollectorContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{},
+					},
+				},
+			}
+			reporter := &GoMemLimitInversionReporter{}
+			reporter.Report(notDeployed, recordingLogger)
+			Expect(logged).To(BeEmpty())
+			Expect(HasCollectorGoMemLimitInversions(notDeployed)).To(BeFalse())
+
+			deployed := notDeployed
+			deployed.Deployed = allDeployed
+			reporter.Report(deployed, recordingLogger)
+			Expect(logged).To(HaveLen(1))
+			Expect(logged[0]).To(ContainSubstring(`"setting"="Dash0SignalControl ` +
+				`spec.components.collector.collectorContainerResources.gomemlimit"`))
+		})
+
+		It("describes every main collector", func() {
+			collectors := goMemLimitCollectors(GoMemLimitInversionSources{})
+			for name := range (&ExtraConfig{}).mainCollectorMemoryResources() {
+				Expect(collectors).To(HaveKey(name))
+			}
+		})
+
+		It("logs again when the inversion changes", func() {
+			reporter := &GoMemLimitInversionReporter{}
+			reporter.Report(sources("450MiB"), recordingLogger)
+			reporter.Report(sources("400MiB"), recordingLogger)
+			Expect(logged).To(HaveLen(2))
+			Expect(logged[1]).To(ContainSubstring("400MiB"))
+		})
+
+		It("logs an inversion again after it has been resolved in between", func() {
+			reporter := &GoMemLimitInversionReporter{}
+			reporter.Report(sources("450MiB"), recordingLogger)
+			reporter.Report(sources("300MiB"), recordingLogger)
+			Expect(logged).To(HaveLen(1))
+			reporter.Report(sources("450MiB"), recordingLogger)
+			Expect(logged).To(HaveLen(2))
+		})
+
+		It("logs an unchanged inversion again after a reset", func() {
+			reporter := &GoMemLimitInversionReporter{}
+			reporter.Report(sources("450MiB"), recordingLogger)
+			reporter.Reset()
+			reporter.Report(sources("450MiB"), recordingLogger)
+			Expect(logged).To(HaveLen(2))
+		})
+	})
+
 	DescribeTable("parseGoMemLimitMiB",
 		func(value string, expectMiB int, expectOk bool) {
 			mib, ok := parseGoMemLimitMiB(value)
@@ -145,6 +281,27 @@ var _ = Describe("collector memory derivation", func() {
 		Entry("fractional value is rejected", "12.5MiB", 0, false),
 		Entry("non-numeric value is rejected", "abc", 0, false),
 		Entry("empty value is rejected", "", 0, false),
+	)
+
+	DescribeTable("parseGoMemLimitBytes",
+		func(value string, expectBytes int64, expectOk bool) {
+			bytes, ok := parseGoMemLimitBytes(value)
+			Expect(ok).To(Equal(expectOk))
+			if expectOk {
+				Expect(bytes).To(Equal(expectBytes))
+			}
+		},
+		Entry("MiB suffix", "348MiB", int64(348<<20), true),
+		Entry("GiB suffix", "2GiB", int64(2<<30), true),
+		Entry("plain byte suffix", "2097152B", int64(2097152), true),
+		Entry("bare byte count", "2097152", int64(2097152), true),
+		Entry("fractional value is rejected", "12.5MiB", int64(0), false),
+		Entry("empty value is rejected", "", int64(0), false),
+		Entry("off is rejected", "off", int64(0), false),
+		Entry("negative value is rejected", "-1MiB", int64(0), false),
+		Entry("decimal unit is rejected", "400MB", int64(0), false),
+		Entry("overflow is rejected", "8589934592TiB", int64(0), false),
+		Entry("whitespace is rejected", "1 GiB", int64(0), false),
 	)
 
 	DescribeTable("DeriveGoMemLimitFromLimit",

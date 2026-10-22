@@ -47,7 +47,6 @@ type PrometheusRuleCrdReconciler struct {
 	queue                    *ThirdPartyResourceSyncQueue
 	leaderElectionAware      util.LeaderElectionAware
 	mgr                      ctrl.Manager
-	httpClient               *http.Client
 	apiClientPool            *ApiClientPool
 	skipNameValidation       bool
 	prometheusRuleReconciler *PrometheusRuleReconciler
@@ -59,7 +58,6 @@ type PrometheusRuleReconciler struct {
 	apiReader                  client.Reader
 	pseudoClusterUid           types.UID
 	queue                      *ThirdPartyResourceSyncQueue
-	httpClient                 *http.Client
 	apiClientPool              *ApiClientPool
 	defaultApiConfigs          selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs       selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
@@ -100,7 +98,6 @@ func NewPrometheusRuleCrdReconciler(
 	apiReader client.Reader,
 	queue *ThirdPartyResourceSyncQueue,
 	leaderElectionAware util.LeaderElectionAware,
-	httpClient *http.Client,
 	apiClientPool *ApiClientPool,
 ) *PrometheusRuleCrdReconciler {
 	return &PrometheusRuleCrdReconciler{
@@ -108,7 +105,6 @@ func NewPrometheusRuleCrdReconciler(
 		apiReader:           apiReader,
 		queue:               queue,
 		leaderElectionAware: leaderElectionAware,
-		httpClient:          httpClient,
 		apiClientPool:       apiClientPool,
 	}
 }
@@ -174,7 +170,6 @@ func (r *PrometheusRuleCrdReconciler) CreateThirdPartyResourceReconciler(pseudoC
 		apiReader:            r.apiReader,
 		queue:                r.queue,
 		pseudoClusterUid:     pseudoClusterUid,
-		httpClient:           r.httpClient,
 		apiClientPool:        r.apiClientPool,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
@@ -410,10 +405,6 @@ func (r *PrometheusRuleReconciler) ApiReader() client.Reader {
 	return r.apiReader
 }
 
-func (r *PrometheusRuleReconciler) HttpClient() *http.Client {
-	return r.httpClient
-}
-
 func (r *PrometheusRuleReconciler) IsSynchronizationEnabled(monitoringResource *dash0v1beta1.Dash0Monitoring) bool {
 	if monitoringResource == nil {
 		return false
@@ -544,53 +535,104 @@ func (r *PrometheusRuleReconciler) MapsToMultipleApiObjects() bool {
 	return true
 }
 
-func (r *PrometheusRuleReconciler) FetchExistingResourceOriginsRequests(
+func (r *PrometheusRuleReconciler) FetchExistingResourceOrigins(
+	ctx context.Context,
 	preconditionValidationResult *preconditionValidationResult,
 	apiConfig ApiConfig,
-) ([]*http.Request, error) {
-	return r.createFetchOriginsRequests(
-		r.renderRuleOriginPrefix(preconditionValidationResult, url.QueryEscape(apiConfig.Dataset)),
+	logger logd.Logger,
+) ([]string, error) {
+	return r.fetchExistingOrigins(
+		ctx,
+		r.renderRuleOriginPrefix(preconditionValidationResult, apiConfig.Dataset),
 		apiConfig,
+		logger,
 	)
 }
 
 func (r *PrometheusRuleReconciler) FetchExistingNamespaceOrigins(
-	_ context.Context,
+	ctx context.Context,
 	namespace string,
 	apiConfig ApiConfig,
 	logger logd.Logger,
 ) ([]string, error) {
-	requests, err := r.createFetchOriginsRequests(
-		r.renderRuleOriginPrefixForNamespace(namespace, url.QueryEscape(apiConfig.Dataset)),
+	return r.fetchExistingOrigins(
+		ctx,
+		r.renderRuleOriginPrefixForNamespace(namespace, apiConfig.Dataset),
 		apiConfig,
+		logger,
 	)
-	if err != nil {
-		logger.Error(err, "cannot create request to fetch existing origins in namespace", "namespace", namespace)
-		return nil, err
-	}
-	return executeFetchExistingOriginsRequests(r, requests, logger)
 }
 
-// createFetchOriginsRequests creates the requests for fetching the origins of all existing alerting and recording
-// rules whose origin starts with the given prefix.
-func (r *PrometheusRuleReconciler) createFetchOriginsRequests(
+// fetchExistingOrigins lists the origins of all existing check rules and recording rules whose origin starts with the
+// given prefix. It stops at the first list call that fails and returns that error without any origins, so the caller
+// never works with a partial list.
+func (r *PrometheusRuleReconciler) fetchExistingOrigins(
+	ctx context.Context,
 	originPrefix string,
 	apiConfig ApiConfig,
-) ([]*http.Request, error) {
-	var requests []*http.Request
-	for _, listUrl := range []string{
-		r.renderCheckRuleListUrl(originPrefix, apiConfig.Endpoint, apiConfig.Dataset),
-		r.renderRecordingRuleListUrl(originPrefix, apiConfig.Endpoint, apiConfig.Dataset),
-	} {
-		req, err := http.NewRequest(http.MethodGet, listUrl, nil)
+	logger logd.Logger,
+) ([]string, error) {
+	dataset := apiConfig.Dataset
+	withOriginPrefix := dash0apiclient.WithOriginPrefix(originPrefix)
+	listCalls := []struct {
+		url         string
+		listOrigins func(dash0apiclient.Client) ([]string, error)
+	}{
+		{
+			url: r.renderCheckRuleListUrl(originPrefix, apiConfig.Endpoint, dataset),
+			listOrigins: func(apiClient dash0apiclient.Client) ([]string, error) {
+				checkRules, err := apiClient.ListCheckRules(ctx, &dataset, withOriginPrefix)
+				if err != nil {
+					return nil, err
+				}
+				var origins []string
+				for _, checkRule := range checkRules {
+					if checkRule != nil && checkRule.Origin != nil && *checkRule.Origin != "" {
+						origins = append(origins, *checkRule.Origin)
+					}
+				}
+				return origins, nil
+			},
+		},
+		{
+			url: r.renderRecordingRuleListUrl(originPrefix, apiConfig.Endpoint, dataset),
+			listOrigins: func(apiClient dash0apiclient.Client) ([]string, error) {
+				recordingRules, err := apiClient.ListRecordingRules(ctx, &dataset, withOriginPrefix)
+				if err != nil {
+					return nil, err
+				}
+				var origins []string
+				for _, recordingRule := range recordingRules {
+					if recordingRule == nil || recordingRule.Metadata.Labels == nil {
+						continue
+					}
+					if origin := (*recordingRule.Metadata.Labels)[dash0apiclient.LabelOrigin]; origin != "" {
+						origins = append(origins, origin)
+					}
+				}
+				return origins, nil
+			},
+		},
+	}
+
+	var allExistingOrigins []string
+	for _, listCall := range listCalls {
+		actionLabel := fmt.Sprintf("fetch existing origins: %s %s", http.MethodGet, listCall.url)
+		logger.Info(fmt.Sprintf("executing HTTP request to %s", actionLabel))
+		apiClient, err := r.apiClientPool.Get(apiConfig.Endpoint, apiConfig.Token)
+		var origins []string
+		if err == nil {
+			origins, err = listCall.listOrigins(apiClient)
+		}
 		if err != nil {
+			err = convertApiClientError(err, actionLabel, false)
+			logger.Error(err, "cannot fetch existing origins")
 			return nil, err
 		}
-		addAuthorizationHeader(req, apiConfig.Token)
-		req.Header.Set(util.AcceptHeaderName, util.ApplicationJsonMediaType)
-		requests = append(requests, req)
+		allExistingOrigins = append(allExistingOrigins, origins...)
 	}
-	return requests, nil
+	logger.Info(fmt.Sprintf("existing origins for this %s", r.ShortName()), "origins", allExistingOrigins)
+	return allExistingOrigins, nil
 }
 
 func (r *PrometheusRuleReconciler) IsOriginOfResource(
@@ -601,7 +643,7 @@ func (r *PrometheusRuleReconciler) IsOriginOfResource(
 	return strings.HasPrefix(origin, r.renderRuleOriginPrefix(preconditionValidationResult, apiConfig.Dataset))
 }
 
-func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
+func (r *PrometheusRuleReconciler) MapResourceToApiCalls(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,
@@ -868,7 +910,7 @@ func (r *PrometheusRuleReconciler) createRecordingRuleDeleteApiClientCall(
 }
 
 // renderCheckRuleListUrl renders the URL to fetch the list of existing check rules with the given origin prefix from
-// the Dash0 API.
+// the Dash0 API. The URL is only used for logging and error messages, the request is sent by the Dash0 API client.
 func (r *PrometheusRuleReconciler) renderCheckRuleListUrl(
 	originPrefix string,
 	endpoint string,
@@ -878,7 +920,7 @@ func (r *PrometheusRuleReconciler) renderCheckRuleListUrl(
 		"%sapi/alerting/check-rules?dataset=%s&originPrefix=%s",
 		endpoint,
 		url.QueryEscape(dataset),
-		originPrefix,
+		url.QueryEscape(originPrefix),
 	)
 }
 
@@ -993,7 +1035,7 @@ func (r *PrometheusRuleReconciler) renderRuleOriginPrefixForNamespace(
 }
 
 // renderRecordingRuleListUrl renders the URL to fetch the list of existing recording rules with the given origin prefix
-// from the Dash0 API.
+// from the Dash0 API. The URL is only used for logging and error messages, the request is sent by the Dash0 API client.
 func (r *PrometheusRuleReconciler) renderRecordingRuleListUrl(
 	originPrefix string,
 	endpoint string,
@@ -1003,7 +1045,7 @@ func (r *PrometheusRuleReconciler) renderRecordingRuleListUrl(
 		"%sapi/recording-rules?dataset=%s&originPrefix=%s",
 		endpoint,
 		url.QueryEscape(dataset),
-		originPrefix,
+		url.QueryEscape(originPrefix),
 	)
 }
 
@@ -1100,7 +1142,7 @@ func mapToPrometheusAlertRule(checkRule *CheckRule) (*dash0apiclient.PrometheusA
 // if the conversion is successful and there are no validation issues. Otherwise, a list of validation issues is
 // returned. There are also rules which we want to silently skip, in which case no rule and no validation issues are
 // returned, but the boolean return value is false.
-// Note: recording rules (rule.Record != "") are handled separately in MapResourceToHttpRequests and should not reach
+// Note: recording rules (rule.Record != "") are handled separately in MapResourceToApiCalls and should not reach
 // this function.
 func convertAlertingRuleToCheckRule(
 	rule prometheusv1.Rule,
@@ -1272,8 +1314,7 @@ func (r *PrometheusRuleReconciler) CreateDeleteRequests(
 	apiConfig ApiConfig,
 	existingOriginsFromApi []string,
 	originsInResource []string,
-	_ logd.Logger,
-) ([]WrappedApiRequest, map[string]string) {
+) []WrappedApiRequest {
 	var deleteRequests []WrappedApiRequest
 	for _, existingOrigin := range existingOriginsFromApi {
 		if !slices.Contains(originsInResource, existingOrigin) {
@@ -1295,24 +1336,7 @@ func (r *PrometheusRuleReconciler) CreateDeleteRequests(
 			}
 		}
 	}
-	return deleteRequests, nil
-}
-
-func (r *PrometheusRuleReconciler) ExtractIdFromResponseBody(
-	responseBytes []byte,
-	logger logd.Logger,
-) (id string, err error) {
-	objectWithMetadata := Dash0ApiObjectWithMetadata{}
-	if err := json.Unmarshal(responseBytes, &objectWithMetadata); err != nil {
-		logger.Error(
-			err,
-			"cannot parse response, will not extract the synchronized object's ID",
-			"response",
-			string(responseBytes),
-		)
-		return "", err
-	}
-	return objectWithMetadata.Metadata.Labels.Id, nil
+	return deleteRequests
 }
 
 func (*PrometheusRuleReconciler) UpdateSynchronizationResultsInDash0MonitoringStatus(

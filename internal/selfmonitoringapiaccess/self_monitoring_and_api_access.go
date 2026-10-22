@@ -7,6 +7,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/netip"
+	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -74,6 +78,11 @@ const (
 	// pods. It is distinct from the suffixes used for the data-pipeline exporters ("DEFAULT_N", "NS/..._N"), so the
 	// generated names never collide with those.
 	selfMonitoringHeaderSecretNameSuffix = "SELF_MONITORING"
+
+	grpcDnsSchemeWithoutAuthority = "dns:///"
+
+	grpcUnixSocketReason = "the unix sockets of an export are not reachable from the operator manager pod, and the " +
+		"self-monitoring telemetry of the OpenTelemetry collectors does not support unix sockets"
 )
 
 // selfMonitoringExportNameSuffix is the exporter name suffix used when deriving secret-backed header environment
@@ -86,6 +95,13 @@ var selfMonitoringExportNameSuffix = exporters.NameSuffixDefault(0)
 var (
 	// See https://kubernetes.io/docs/tasks/inject-data-application/define-interdependent-environment-variables/
 	selfMonitoringAuthHeaderValue = fmt.Sprintf("Bearer $(%s)", CollectorSelfMonitoringAuthTokenEnvVarName)
+
+	// grpcTargetSchemeRegex matches gRPC targets with a scheme, including those without slashes (e.g. unix:path), but not
+	// host:port. Like gRPC, it treats the schemes of the default gRPC resolvers as scheme even if a digit follows (e.g.
+	// dns:10.0.0.1:4317).
+	grpcTargetSchemeRegex = regexp.MustCompile(
+		`^((?i:dns|passthrough|unix|unix-abstract):|[a-zA-Z][a-zA-Z0-9+.-]*:([^0-9]|$))`,
+	)
 
 	collectorMetricsSelfMonitoringPrelude = `
     metrics:
@@ -244,12 +260,58 @@ func convertResourceToGrpcExportConfiguration(
 		)
 		return SelfMonitoringConfiguration{}, nil
 	}
+	if address, hasMissingSlash := addressOfDnsTargetWithMissingSlash(grpcExport.Endpoint); hasMissingSlash {
+		logger.ErrorTelemetryCollectionIssue(
+			fmt.Errorf("invalid gRPC export endpoint %s", grpcExport.Endpoint),
+			fmt.Sprintf(
+				"The gRPC export endpoint %s is not a valid gRPC target: gRPC interprets %s as the DNS server to use, "+
+					"and the target address is missing. Probably a slash is missing, use dns:///%s instead. Exporting "+
+					"telemetry to this endpoint will fail, and the OpenTelemetry collectors and other operator "+
+					"components will not send self-monitoring telemetry. The operator manager sends its own logs and "+
+					"metrics to %s instead, as it would for dns:///%s.",
+				grpcExport.Endpoint,
+				address,
+				address,
+				operatorManagerGrpcEndpoint(grpcExport),
+				address,
+			),
+		)
+	} else if hasUnsupportedGrpcSelfMonitoringScheme(grpcExport.Endpoint) {
+		if reason := unusableGrpcTargetReason(grpcExport.Endpoint); reason == "" {
+			logger.Warn(
+				fmt.Sprintf(
+					"The gRPC export endpoint %s has a format that only the operator manager supports for "+
+						"self-monitoring telemetry. The self-monitoring telemetry of the OpenTelemetry collectors and "+
+						"other operator components will probably not be sent. Use an endpoint without scheme, or with "+
+						"one of the schemes http://, https:// or dns:///.",
+					grpcExport.Endpoint,
+				),
+			)
+		} else {
+			logger.Warn(
+				fmt.Sprintf(
+					"The gRPC export endpoint %s cannot be used for self-monitoring telemetry: %s. Self-monitoring "+
+						"telemetry will not be sent. Use an endpoint without scheme, or with one of the schemes "+
+						"http://, https:// or dns:///.",
+					grpcExport.Endpoint,
+					reason,
+				),
+			)
+		}
+	}
+	// For unsupported endpoints (including a dns:// endpoint with a missing slash), the messages above already cover the
+	// self-monitoring telemetry of the collectors and other components.
+	if !hasUnsupportedGrpcSelfMonitoringScheme(grpcExport.Endpoint) {
+		warnIfInsecureSkipVerifyIsIgnored(grpcExport.InsecureSkipVerify, grpcSelfMonitoringEndpoint(grpcExport), logger)
+	}
 	return SelfMonitoringConfiguration{
 		SelfMonitoringEnabled: selfMonitoringEnabled,
 		Export: dash0common.Export{
 			Grpc: &dash0common.GrpcConfiguration{
-				Endpoint: grpcExport.Endpoint,
-				Headers:  grpcExport.Headers,
+				Endpoint:           grpcExport.Endpoint,
+				Headers:            grpcExport.Headers,
+				Insecure:           grpcExport.Insecure,
+				InsecureSkipVerify: grpcExport.InsecureSkipVerify,
 			},
 		},
 		ResolvedSecretHeaderValues: resolvedSecretHeaderValues,
@@ -278,17 +340,37 @@ func convertResourceToHttpExportConfiguration(
 		)
 		return SelfMonitoringConfiguration{}, nil
 	}
+	warnIfInsecureSkipVerifyIsIgnored(httpExport.InsecureSkipVerify, httpExport.Endpoint, logger)
 	return SelfMonitoringConfiguration{
 		SelfMonitoringEnabled: selfMonitoringEnabled,
 		Export: dash0common.Export{
 			Http: &dash0common.HttpConfiguration{
-				Endpoint: httpExport.Endpoint,
-				Headers:  httpExport.Headers,
-				Encoding: httpExport.Encoding,
+				Endpoint:           httpExport.Endpoint,
+				Headers:            httpExport.Headers,
+				Encoding:           httpExport.Encoding,
+				InsecureSkipVerify: httpExport.InsecureSkipVerify,
 			},
 		},
 		ResolvedSecretHeaderValues: resolvedSecretHeaderValues,
 	}, nil
+}
+
+// warnIfInsecureSkipVerifyIsIgnored logs a warning if the export skips certificate verification for an endpoint that is
+// not http:// (the collector uses TLS for endpoints without scheme), since only the operator manager supports that for
+// self-monitoring, but not the collector internal telemetry and the Go SDK configured via env vars.
+func warnIfInsecureSkipVerifyIsIgnored(insecureSkipVerify *bool, selfMonitoringEndpoint string, logger logd.Logger) {
+	if !strings.HasPrefix(strings.ToLower(selfMonitoringEndpoint), "http://") &&
+		pointers.ReadBoolPointerWithDefault(insecureSkipVerify, false) {
+		logger.Warn(
+			fmt.Sprintf(
+				"The export to %s sets insecureSkipVerify, which only the operator manager supports for "+
+					"self-monitoring telemetry. The OpenTelemetry collectors and other operator components send their "+
+					"self-monitoring telemetry with certificate verification, which will fail if the certificate of "+
+					"the endpoint cannot be verified.",
+				selfMonitoringEndpoint,
+			),
+		)
+	}
 }
 
 // resolveSelfMonitoringHeaderSecrets returns a map with every secret-backed header value (valueFrom.secretKeyRef)
@@ -658,7 +740,7 @@ func ConvertExportConfigurationToEnvVarSettings(selfMonitoringExport dash0common
 
 	if selfMonitoringExport.Grpc != nil {
 		return EndpointAndHeaders{
-			Endpoint: prependProtocol(selfMonitoringExport.Grpc.Endpoint, "dns://"),
+			Endpoint: grpcSelfMonitoringEndpoint(selfMonitoringExport.Grpc),
 			Protocol: common.ProtocolGrpc,
 			Headers:  selfMonitoringExport.Grpc.Headers,
 		}
@@ -680,14 +762,160 @@ func ConvertExportConfigurationToEnvVarSettings(selfMonitoringExport dash0common
 }
 
 func prependProtocol(endpoint string, defaultProtocol string) string {
-	// Most gRPC implementations are fine without a protocol, but the Go SDK with gRPC requires the endpoint with a
-	// protocol when setting it via OTEL_EXPORTER_OTLP_ENDPOINT, see
-	// https://github.com/open-telemetry/opentelemetry-go/pull/5632.
+	// The Go SDK with gRPC requires the endpoint with a protocol when setting it via OTEL_EXPORTER_OTLP_ENDPOINT.
 	if !common.EndpointHasScheme(endpoint) {
-		// See https://grpc.github.io/grpc/core/md_doc_naming.html
 		return defaultProtocol + endpoint
 	}
 	return endpoint
+}
+
+// grpcSelfMonitoringEndpoint renders the endpoint of a gRPC export for self-monitoring. The consumers (the collector's
+// internal telemetry, the Go SDK via OTEL_EXPORTER_OTLP_ENDPOINT and the operator manager) only handle the schemes
+// http:// (plaintext) and https:// (TLS) consistently, so endpoints without a scheme (or with dns:///) get one derived
+// from Insecure.
+func grpcSelfMonitoringEndpoint(grpcExport *dash0common.GrpcConfiguration) string {
+	endpoint := grpcExport.Endpoint
+	endpointLowerCase := strings.ToLower(endpoint)
+	// gRPC reads the address after dns:/// as host[:port], even if it looks like a scheme (e.g. dns:///unix:4317).
+	hasDnsSchemeWithoutAuthority := strings.HasPrefix(endpointLowerCase, grpcDnsSchemeWithoutAuthority)
+	if hasDnsSchemeWithoutAuthority {
+		endpoint = endpoint[len(grpcDnsSchemeWithoutAuthority):]
+		endpointLowerCase = strings.ToLower(endpoint)
+	}
+	// The collector only recognizes the lower case schemes.
+	for _, scheme := range []string{"http://", "https://"} {
+		if strings.HasPrefix(endpointLowerCase, scheme) {
+			return scheme + endpoint[len(scheme):]
+		}
+	}
+	if !hasDnsSchemeWithoutAuthority && grpcTargetSchemeRegex.MatchString(endpoint) {
+		return endpoint
+	}
+	if pointers.ReadBoolPointerWithDefault(grpcExport.Insecure, false) {
+		return "http://" + endpoint
+	}
+	return "https://" + endpoint
+}
+
+// hasUnsupportedGrpcSelfMonitoringScheme returns true if grpcSelfMonitoringEndpoint cannot convert the endpoint to an
+// http:// or https:// URL, e.g. for dns://dns-server/host:port or unix:///path.
+func hasUnsupportedGrpcSelfMonitoringScheme(endpoint string) bool {
+	rendered := strings.ToLower(grpcSelfMonitoringEndpoint(&dash0common.GrpcConfiguration{Endpoint: endpoint}))
+	return !strings.HasPrefix(rendered, "http://") && !strings.HasPrefix(rendered, "https://")
+}
+
+// unusableGrpcTargetReason returns why the operator manager cannot use the gRPC target, or an empty string if it can.
+// The operator manager passes endpoints without http:// or https:// to gRPC unchanged.
+func unusableGrpcTargetReason(endpoint string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return dnsFallbackReason(endpoint, "it cannot be parsed as a gRPC target")
+	}
+	// same as the endpoint of a gRPC resolver target
+	address := u.Path
+	if address == "" {
+		address = u.Opaque
+	}
+	address = strings.TrimPrefix(address, "/")
+	switch u.Scheme {
+	case "dns":
+		return dnsTargetReason(address, u.Host)
+	case "passthrough":
+		if address == "" {
+			return "the target address is missing"
+		}
+		// gRPC dials passthrough addresses starting with unix: as unix sockets
+		if strings.HasPrefix(address, "unix:") {
+			return grpcUnixSocketReason
+		}
+		if _, port, err := net.SplitHostPort(address); err != nil || port == "" {
+			return fmt.Sprintf("the target address %s is not of the form host:port, which passthrough requires", address)
+		} else if _, err = net.LookupPort("tcp", port); err != nil {
+			return fmt.Sprintf("the port %s of the target address %s is unknown", port, address)
+		}
+		return ""
+	case "unix", "unix-abstract":
+		return grpcUnixSocketReason
+	default:
+		// e.g. host:https, which url.Parse reads as scheme host
+		return dnsFallbackReason(
+			endpoint,
+			fmt.Sprintf("%s is not a scheme of the gRPC resolvers dns, passthrough, unix or unix-abstract", u.Scheme),
+		)
+	}
+}
+
+// dnsFallbackReason mirrors gRPC, which passes a target that it cannot parse or that has an unregistered scheme to the
+// dns resolver as dns:///<target>. It returns an empty string if the dns resolver can use the target, otherwise reason.
+func dnsFallbackReason(endpoint string, reason string) string {
+	u, err := url.Parse(grpcDnsSchemeWithoutAuthority + endpoint)
+	if err != nil {
+		return "it cannot be parsed as a gRPC target"
+	}
+	if dnsTargetReason(strings.TrimPrefix(u.Path, "/"), "") == "" {
+		return ""
+	}
+	return reason
+}
+
+// dnsTargetReason returns why the gRPC dns resolver cannot use the target address and DNS server, or an empty string
+// if it can. Like the resolver, it only uses the DNS server for host names, not for IP addresses.
+func dnsTargetReason(address string, dnsServer string) string {
+	if address == "" {
+		return "the target address is missing"
+	}
+	host, port, ok := splitDnsTarget(address, "443")
+	if !ok {
+		return fmt.Sprintf("the target address %s is not of the form host[:port]", address)
+	}
+	if _, err := net.LookupPort("tcp", port); err != nil {
+		return fmt.Sprintf("the port %s of the target address %s is unknown", port, address)
+	}
+	if _, err := netip.ParseAddr(host); err != nil && dnsServer != "" {
+		if _, _, ok = splitDnsTarget(dnsServer, "53"); !ok {
+			return fmt.Sprintf("the DNS server %s is not of the form host[:port]", dnsServer)
+		}
+	}
+	return ""
+}
+
+// splitDnsTarget mirrors the address parsing of the gRPC dns resolver, which adds the default port if there is none.
+func splitDnsTarget(target string, defaultPort string) (string, string, bool) {
+	if _, err := netip.ParseAddr(target); err == nil {
+		return target, defaultPort, true
+	}
+	if host, port, err := net.SplitHostPort(target); err == nil {
+		return host, port, port != ""
+	}
+	host, port, err := net.SplitHostPort(target + ":" + defaultPort)
+	return host, port, err == nil
+}
+
+// addressOfDnsTargetWithMissingSlash returns the address of a dns:// endpoint that lacks the third slash, e.g. host:4317
+// for dns://host:4317 (which gRPC interprets as a DNS server without target address), if dns:///<address> would be a
+// valid target.
+func addressOfDnsTargetWithMissingSlash(endpoint string) (string, bool) {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Scheme != "dns" || u.Host == "" || strings.Trim(u.Path, "/") != "" {
+		return "", false
+	}
+	if unusableGrpcTargetReason(grpcDnsSchemeWithoutAuthority+u.Host) != "" {
+		return "", false
+	}
+	return u.Host, true
+}
+
+// operatorManagerGrpcEndpoint renders the endpoint of a gRPC export for the self-monitoring telemetry of the operator
+// manager. In contrast to grpcSelfMonitoringEndpoint, it also accepts a dns:// endpoint with a missing slash, so the
+// operator manager can still report the invalid endpoint.
+func operatorManagerGrpcEndpoint(grpcExport *dash0common.GrpcConfiguration) string {
+	if address, hasMissingSlash := addressOfDnsTargetWithMissingSlash(grpcExport.Endpoint); hasMissingSlash {
+		return grpcSelfMonitoringEndpoint(&dash0common.GrpcConfiguration{
+			Endpoint: grpcDnsSchemeWithoutAuthority + address,
+			Insecure: grpcExport.Insecure,
+		})
+	}
+	return grpcSelfMonitoringEndpoint(grpcExport)
 }
 
 // ConvertExportConfigurationToCollectorMetricsSelfMonitoringPipelineString is used to create a snippet that can be
@@ -766,14 +994,15 @@ func convertGrpcExportConfigurationToCollectorLogSelfMonitoringPipelineString(
 	prelude string,
 	grpcExport *dash0common.GrpcConfiguration,
 ) string {
+	endpoint := grpcSelfMonitoringEndpoint(grpcExport)
 	pipeline := prelude +
 		fmt.Sprintf(
 			`
                 protocol: grpc
                 endpoint: %s`,
-			prependProtocol(grpcExport.Endpoint, "dns://"),
+			endpoint,
 		)
-	pipeline = addInsecureFlagIfNecessary(pipeline, grpcExport.Endpoint)
+	pipeline = addInsecureFlagIfNecessary(pipeline, endpoint)
 	pipeline = appendHeadersToCollectorLogSelfMonitoringPipelineString(pipeline, grpcExport.Headers, "GRPC")
 	pipeline += "\n"
 	return pipeline
