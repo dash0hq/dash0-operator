@@ -40,8 +40,8 @@ type Export struct {
 type Dash0Configuration struct {
 	// The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
 	// needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
-	// https://app.dash0.com/settings/endpoints -> "OTLP via gRPC". The correct endpoint value will always start with
-	// `ingress.` and end in `dash0.com:4317`.
+	// https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. The correct endpoint value will always
+	// start with `ingress.` and end in `dash0.com:4317`.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
@@ -61,9 +61,9 @@ type Dash0Configuration struct {
 
 	// The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
 	// dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
-	// needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom
-	// https://app.dash0.com/settings/endpoints -> "API". The correct endpoint value will always start with
-	// "https://api." and end in ".dash0.com"
+	// needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied from
+	// https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. The correct endpoint value will always
+	// start with "https://api." and end in ".dash0.com"
 	//
 	// +kubebuilder:validation:Optional
 	ApiEndpoint string `json:"apiEndpoint,omitempty"`

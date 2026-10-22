@@ -49,7 +49,7 @@ Here is a list of configuration options for this resource:
   The URL of the Dash0 ingress endpoint to which telemetry data will be sent.
   This property is mandatory.
   Replace the value in the example above with the OTLP/gRPC endpoint of your Dash0 organization.
-  The correct gRPC endpoint can be copied from https://app.dash0.com/settings/endpoints → "OTLP via gRPC".
+  The correct gRPC endpoint can be copied from https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc.
   Note that the correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
   Including a protocol prefix (e.g. `https://`) is optional.
 
@@ -82,7 +82,7 @@ Here is a list of configuration options for this resource:
   views, notification channels, spam filters and signal-to-metrics rules via the operator.
   This property is optional.
   The value needs to be the API endpoint of your Dash0 organization.
-  The correct API endpoint can be copied from https://app.dash0.com/settings/endpoints → "API".
+  The correct API endpoint can be copied from https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http.
   The correct endpoint value will always start with "https://api." and end in ".dash0.com".
   If this property is omitted, managing dashboards, check rules, synthetic checks, views, notification channels, spam
   filters and signal-to-metrics rules via the operator will not work.
@@ -1102,7 +1102,7 @@ See https://kubernetes.io/docs/concepts/configuration/secret/ for more informati
 
 Use the `spec.exports[].dash0.dataset` property to configure the dataset that should be used for the telemetry data.
 The value is the dataset's identifier, not its display name.
-For example, a dataset named `prod` can have the identifier `default`; in that case, use `dataset: default`.
+For example, a dataset named `Production` can have the identifier `prod`; in that case, use `dataset: prod`.
 The identifier can be looked up in https://app.dash0.com/settings/datasets.
 If the property is omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
 authorization token: a token that is limited to a single dataset writes to that dataset, any other token writes to its
