@@ -372,7 +372,8 @@ operator:
       # If you manage the PersesDashboard CRD via GitOps (Argo CD, Flux, etc.) and do not want the Dash0 operator to
       # patch it, set this to false. With auto-patch disabled, you are responsible for ensuring that some conversion
       # webhook for the PersesDashboard CRD is configured; or to only deploy v1alpha2 resources. Otherwise, v1alpha1 dashboard
-      # resources will lose fields when stored.
+      # resources will lose fields when stored. With auto-patch disabled, the operator is also not granted the
+      # permission to patch the CRD.
       autoPatchConversionWebhook: true
 
   # settings for the service account to be used

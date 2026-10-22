@@ -1,0 +1,25 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0View
+metadata:
+  name: error-logs
+spec:
+  type: logs
+  display:
+    name: Error logs
+    description: Log records with severity error or higher.
+  filter:
+    - key: otel.log.severity.number
+      operator: gte
+      value: "17"
+  table:
+    columns:
+      - colSize: min-content
+        key: otel.log.time
+        label: Time
+      - key: dash0.resource.id
+        label: Resource
+      - key: otel.log.body
+        label: Body
+    sort:
+      - direction: descending
+        key: otel.log.time

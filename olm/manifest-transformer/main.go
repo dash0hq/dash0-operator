@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Command manifest-transformer turns the output of "helm template" for the Dash0 operator Helm chart into the manifests
-// that are handed to "operator-sdk generate bundle" when the OLM bundle is generated. It reads the rendered chart from
-// stdin, writes the transformed manifests to stdout and reports every change on stderr.
+// that are handed to "operator-sdk generate bundle" when the OLM bundle is generated. It reads the rendered chart and,
+// optionally, the CSV base from stdin, writes the transformed manifests to stdout and reports every change on stderr.
 package main
 
 import (

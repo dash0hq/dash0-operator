@@ -48,3 +48,8 @@ test-resources/*.env
 
 # cluster diagnostics collected by the GKE Autopilot WorkloadAllowlist check on failure
 /gke-ap-allowlist-check-diagnostics
+
+# the OLM bundle and the intermediate files of its generation (make olm-bundle)
+/bundle/
+/bundle.Dockerfile
+/olm/build/
