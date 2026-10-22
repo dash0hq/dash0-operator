@@ -10,6 +10,24 @@ spec:
     enabled: true
   components:
     daemonSetCollector:
+      collectorContainerResources:
+        limits:
+          memory: 700Mi
+        requests:
+          memory: 700Mi
+        gomemlimit: 500MiB
+      configurationReloaderContainerResources:
+        limits:
+          memory: 32Mi
+        requests:
+          memory: 16Mi
+        gomemlimit: 24MiB
+      filelogOffsetSyncContainerResources:
+        limits:
+          memory: 40Mi
+        requests:
+          memory: 40Mi
+        gomemlimit: 32MiB
       labels:
         dash0.com/component-settings-test: custom-resource
       annotations:
@@ -58,6 +76,18 @@ spec:
       priorityClassName: d0-otelcol-daemonset-prio
 
     deploymentCollector:
+      collectorContainerResources:
+        limits:
+          memory: 600Mi
+        requests:
+          memory: 600Mi
+        gomemlimit: 450MiB
+      configurationReloaderContainerResources:
+        limits:
+          memory: 32Mi
+        requests:
+          memory: 16Mi
+        gomemlimit: 24MiB
       labels:
         dash0.com/component-settings-test: custom-resource
       annotations:
@@ -92,6 +122,14 @@ spec:
       priorityClassName: d0-otelcol-deployment-prio
 
     targetAllocator:
+      containerResources:
+        limits:
+          cpu: 300m
+          memory: 400Mi
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        gomemlimit: 320MiB
       labels:
         dash0.com/component-settings-test: custom-resource
       annotations:
@@ -124,6 +162,12 @@ spec:
       allowInsecureAuthSecrets: false
 
     agent0Connector:
+      containerResources:
+        limits:
+          memory: 320Mi
+        requests:
+          memory: 96Mi
+        gomemlimit: 190MiB
       labels:
         dash0.com/component-settings-test: custom-resource
       annotations:

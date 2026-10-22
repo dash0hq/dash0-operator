@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 
@@ -59,6 +60,20 @@ var _ = Describe("component settings", func() {
 		return corev1.Toleration{Key: key, Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule}
 	}
 
+	memoryLimit := func(limit string) dash0v1alpha1.ContainerResources {
+		return dash0v1alpha1.ContainerResources{
+			Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse(limit)},
+		}
+	}
+
+	daemonSetCollectorResources := func(
+		settings *dash0v1alpha1.ContainerResourcesWithGoMemLimit,
+	) *dash0v1alpha1.OperatorConfigurationComponents {
+		return &dash0v1alpha1.OperatorConfigurationComponents{
+			DaemonSetCollector: &dash0v1alpha1.DaemonSetCollectorSettings{CollectorContainerResources: settings},
+		}
+	}
+
 	Describe("without component settings", func() {
 		It("should return the file configuration unchanged", func() {
 			fileConfig := ExtraConfigDefaults
@@ -108,6 +123,19 @@ var _ = Describe("component settings", func() {
 	})
 
 	Describe("empty objects", func() {
+		It("should apply empty container resources as the default resources", func() {
+			fileConfig := ExtraConfigDefaults
+			fileConfig.CollectorDaemonSetCollectorContainerResources = ResourceRequirementsWithGoMemLimit{
+				Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")},
+			}
+			components := daemonSetCollectorResources(&dash0v1alpha1.ContainerResourcesWithGoMemLimit{})
+			effective, conflicts := resolveOperatorConfiguration(fileConfig, components)
+			Expect(toJson(effective.CollectorDaemonSetCollectorContainerResources)).To(
+				MatchJSON(toJson(ExtraConfigDefaults.CollectorDaemonSetCollectorContainerResources)))
+			Expect(conflicts).To(HaveLen(1))
+			Expect(invalidSettings(components, nil)).To(BeEmpty())
+		})
+
 		DescribeTable("should apply empty probe settings as the default probes",
 			func(probes *dash0v1alpha1.CollectorProbeSettings) {
 				fileConfig := ExtraConfigDefaults
@@ -339,6 +367,407 @@ var _ = Describe("component settings", func() {
 		})
 	})
 
+	Describe("container resources", func() {
+		It("should merge the resources with the defaults, not with the resources of the Helm chart", func() {
+			fileConfig := ExtraConfigDefaults
+			fileConfig.CollectorDaemonSetCollectorContainerResources = ResourceRequirementsWithGoMemLimit{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("1"),
+					corev1.ResourceMemory: resource.MustParse("750Mi"),
+				},
+				Requests: corev1.ResourceList{
+					corev1.ResourceMemory: resource.MustParse("750Mi"),
+				},
+				GoMemLimit: "600MiB",
+			}
+			effective, conflicts := resolveOperatorConfiguration(fileConfig, daemonSetCollectorResources(
+				&dash0v1alpha1.ContainerResourcesWithGoMemLimit{ContainerResources: memoryLimit("1Gi")}))
+			Expect(toJson(effective.CollectorDaemonSetCollectorContainerResources)).To(
+				MatchJSON(`{"limits":{"memory":"1Gi"},"requests":{"memory":"500Mi"}}`))
+			Expect(conflicts).To(ConsistOf(ComponentSettingConflict{
+				Resource:            "Dash0OperatorConfiguration",
+				Path:                "spec.components.daemonSetCollector.collectorContainerResources",
+				HelmValue:           "operator.collectors.daemonSetCollectorContainerResources",
+				DeprecatedHelmValue: "operator.collectorDaemonSetCollectorContainerResources",
+				HelmSetting: `{"limits":{"cpu":"1","memory":"750Mi"},"requests":{"memory":"750Mi"},` +
+					`"gomemlimit":"600MiB"}`,
+				ResourceSetting: `{"limits":{"memory":"1Gi"},"requests":{"memory":"500Mi"}}`,
+			}))
+			Expect(conflicts[0].String()).To(Equal(
+				"spec.components.daemonSetCollector.collectorContainerResources overrides the custom Helm value " +
+					"operator.collectors.daemonSetCollectorContainerResources (or " +
+					"operator.collectorDaemonSetCollectorContainerResources)"))
+			Expect(toJson(fileConfig.CollectorDaemonSetCollectorContainerResources.Limits)).To(
+				MatchJSON(`{"cpu":"1","memory":"750Mi"}`))
+		})
+
+		It("should keep the defaults of the resources that the setting leaves out", func() {
+			effective, conflicts := resolveSignalControl(ExtraConfigDefaults, &dash0v1alpha1.SignalControlComponents{
+				EdgeProxy: &dash0v1alpha1.EdgeProxySettings{
+					ContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+						ContainerResources: dash0v1alpha1.ContainerResources{
+							Limits: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("1")},
+						},
+					},
+				},
+			})
+			Expect(toJson(effective.EdgeProxyContainerResources)).To(MatchJSON(
+				`{"limits":{"cpu":"1","memory":"512Mi"},"requests":{"cpu":"50m","memory":"128Mi"}}`))
+			Expect(conflicts).To(BeEmpty())
+		})
+
+		It("should lower a default request above a limit of the setting to that limit", func() {
+			components := daemonSetCollectorResources(
+				&dash0v1alpha1.ContainerResourcesWithGoMemLimit{ContainerResources: memoryLimit("300Mi")})
+			effective, conflicts := resolveOperatorConfiguration(ExtraConfigDefaults, components)
+			Expect(toJson(effective.CollectorDaemonSetCollectorContainerResources)).To(
+				MatchJSON(`{"limits":{"memory":"300Mi"},"requests":{"memory":"300Mi"}}`))
+			Expect(conflicts).To(BeEmpty())
+			Expect(invalidSettings(components, nil)).To(BeEmpty())
+		})
+
+		It("should raise a default limit below a request of the setting to that request", func() {
+			components := daemonSetCollectorResources(&dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+				ContainerResources: dash0v1alpha1.ContainerResources{
+					Requests: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")},
+				},
+			})
+			effective, _ := resolveOperatorConfiguration(ExtraConfigDefaults, components)
+			Expect(toJson(effective.CollectorDaemonSetCollectorContainerResources)).To(
+				MatchJSON(`{"limits":{"memory":"1Gi"},"requests":{"memory":"1Gi"}}`))
+			Expect(invalidSettings(components, nil)).To(BeEmpty())
+		})
+
+		DescribeTable("should remove a resource including its default with -1",
+			func(settings dash0v1alpha1.ContainerResources, expected string) {
+				components := &dash0v1alpha1.SignalControlComponents{
+					EdgeProxy: &dash0v1alpha1.EdgeProxySettings{
+						ContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{ContainerResources: settings},
+					},
+				}
+				effective, _ := resolveSignalControl(ExtraConfigDefaults, components)
+				Expect(toJson(effective.EdgeProxyContainerResources)).To(MatchJSON(expected))
+				Expect(invalidSettings(nil, components)).To(BeEmpty())
+			},
+			Entry("a limit", dash0v1alpha1.ContainerResources{
+				Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("-1")},
+			}, `{"limits":{"cpu":"500m"},"requests":{"cpu":"50m","memory":"128Mi"}}`),
+			Entry("a request, written as millicores", dash0v1alpha1.ContainerResources{
+				Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("-1000m")},
+			}, `{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"memory":"128Mi"}}`),
+			Entry("all resources", dash0v1alpha1.ContainerResources{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("-1"),
+					corev1.ResourceMemory: resource.MustParse("-1"),
+				},
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("-1"),
+					corev1.ResourceMemory: resource.MustParse("-1"),
+				},
+			}, `{}`),
+			Entry("a limit, together with a request above the default limit", dash0v1alpha1.ContainerResources{
+				Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("-1")},
+				Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("2")},
+			}, `{"limits":{"memory":"512Mi"},"requests":{"cpu":"2","memory":"128Mi"}}`),
+		)
+
+		It("should report negative quantities other than -1 as invalid", func() {
+			Expect(invalidSettings(daemonSetCollectorResources(&dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+				ContainerResources: dash0v1alpha1.ContainerResources{
+					Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("-2")},
+				},
+			}), nil)).To(ConsistOf(
+				`spec.components.daemonSetCollector.collectorContainerResources.limits[memory]: Invalid value: "-2": ` +
+					`must be greater than 0, or -1 to remove the resource`,
+			))
+		})
+
+		It("should report a limit of 0 as invalid, but not a request of 0", func() {
+			Expect(invalidSettings(daemonSetCollectorResources(&dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+				ContainerResources: dash0v1alpha1.ContainerResources{
+					Limits:   corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("0")},
+					Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("0")},
+				},
+				GoMemLimit: "1TiB",
+			}), nil)).To(ConsistOf(
+				`spec.components.daemonSetCollector.collectorContainerResources.limits[memory]: Invalid value: "0": ` +
+					`must be greater than 0, or -1 to remove the resource`,
+			))
+		})
+
+		DescribeTable("should apply and validate the resources of every container",
+			func(
+				components func(
+					*dash0v1alpha1.ContainerResourcesWithGoMemLimit,
+				) (*dash0v1alpha1.OperatorConfigurationComponents, *dash0v1alpha1.SignalControlComponents),
+				effectiveResources func(*ExtraConfig) *ResourceRequirementsWithGoMemLimit,
+				path string,
+			) {
+				operatorConfigurationComponents, signalControlComponents := components(
+					&dash0v1alpha1.ContainerResourcesWithGoMemLimit{ContainerResources: memoryLimit("123Mi")})
+				effective, _ := resolve(
+					ExtraConfigDefaults, ExtraConfigDefaults, operatorConfigurationComponents, signalControlComponents)
+				Expect(effectiveResources(&effective).Limits.Memory().String()).To(Equal("123Mi"))
+
+				operatorConfigurationComponents, signalControlComponents = components(
+					&dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+						ContainerResources: dash0v1alpha1.ContainerResources{
+							Limits:   corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("100Mi")},
+							Requests: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("200Mi")},
+						},
+					})
+				Expect(invalidSettings(operatorConfigurationComponents, signalControlComponents)).To(ConsistOf(
+					path + `.requests[memory]: Invalid value: "200Mi": must be less than or equal to the memory limit ` +
+						`of 100Mi`))
+
+				defaults := ExtraConfigDefaults
+				operatorConfigurationComponents, signalControlComponents = components(
+					&dash0v1alpha1.ContainerResourcesWithGoMemLimit{GoMemLimit: "100GiB"})
+				Expect(invalidSettings(operatorConfigurationComponents, signalControlComponents)).To(ConsistOf(
+					path + `.gomemlimit: Invalid value: "100GiB": must be less than the memory limit of ` +
+						effectiveResources(&defaults).Limits.Memory().String()))
+			},
+			Entry("DaemonSet collector",
+				func(r *dash0v1alpha1.ContainerResourcesWithGoMemLimit) (
+					*dash0v1alpha1.OperatorConfigurationComponents, *dash0v1alpha1.SignalControlComponents,
+				) {
+					return &dash0v1alpha1.OperatorConfigurationComponents{
+						DaemonSetCollector: &dash0v1alpha1.DaemonSetCollectorSettings{CollectorContainerResources: r},
+					}, nil
+				},
+				func(c *ExtraConfig) *ResourceRequirementsWithGoMemLimit {
+					return &c.CollectorDaemonSetCollectorContainerResources
+				},
+				"spec.components.daemonSetCollector.collectorContainerResources"),
+			Entry("DaemonSet configuration reloader",
+				func(r *dash0v1alpha1.ContainerResourcesWithGoMemLimit) (
+					*dash0v1alpha1.OperatorConfigurationComponents, *dash0v1alpha1.SignalControlComponents,
+				) {
+					return &dash0v1alpha1.OperatorConfigurationComponents{
+						DaemonSetCollector: &dash0v1alpha1.DaemonSetCollectorSettings{
+							ConfigurationReloaderContainerResources: r,
+						},
+					}, nil
+				},
+				func(c *ExtraConfig) *ResourceRequirementsWithGoMemLimit {
+					return &c.CollectorDaemonSetConfigurationReloaderContainerResources
+				},
+				"spec.components.daemonSetCollector.configurationReloaderContainerResources"),
+			Entry("DaemonSet filelog offset sync",
+				func(r *dash0v1alpha1.ContainerResourcesWithGoMemLimit) (
+					*dash0v1alpha1.OperatorConfigurationComponents, *dash0v1alpha1.SignalControlComponents,
+				) {
+					return &dash0v1alpha1.OperatorConfigurationComponents{
+						DaemonSetCollector: &dash0v1alpha1.DaemonSetCollectorSettings{FilelogOffsetSyncContainerResources: r},
+					}, nil
+				},
+				func(c *ExtraConfig) *ResourceRequirementsWithGoMemLimit {
+					return &c.CollectorDaemonSetFileLogOffsetSyncContainerResources
+				},
+				"spec.components.daemonSetCollector.filelogOffsetSyncContainerResources"),
+			Entry("deployment collector",
+				func(r *dash0v1alpha1.ContainerResourcesWithGoMemLimit) (
+					*dash0v1alpha1.OperatorConfigurationComponents, *dash0v1alpha1.SignalControlComponents,
+				) {
+					return &dash0v1alpha1.OperatorConfigurationComponents{
+						DeploymentCollector: &dash0v1alpha1.DeploymentCollectorSettings{CollectorContainerResources: r},
+					}, nil
+				},
+				func(c *ExtraConfig) *ResourceRequirementsWithGoMemLimit {
+					return &c.CollectorDeploymentCollectorContainerResources
+				},
+				"spec.components.deploymentCollector.collectorContainerResources"),
+			Entry("deployment configuration reloader",
+				func(r *dash0v1alpha1.ContainerResourcesWithGoMemLimit) (
+					*dash0v1alpha1.OperatorConfigurationComponents, *dash0v1alpha1.SignalControlComponents,
+				) {
+					return &dash0v1alpha1.OperatorConfigurationComponents{
+						DeploymentCollector: &dash0v1alpha1.DeploymentCollectorSettings{
+							ConfigurationReloaderContainerResources: r,
+						},
+					}, nil
+				},
+				func(c *ExtraConfig) *ResourceRequirementsWithGoMemLimit {
+					return &c.CollectorDeploymentConfigurationReloaderContainerResources
+				},
+				"spec.components.deploymentCollector.configurationReloaderContainerResources"),
+			Entry("target-allocator",
+				func(r *dash0v1alpha1.ContainerResourcesWithGoMemLimit) (
+					*dash0v1alpha1.OperatorConfigurationComponents, *dash0v1alpha1.SignalControlComponents,
+				) {
+					return &dash0v1alpha1.OperatorConfigurationComponents{
+						TargetAllocator: &dash0v1alpha1.TargetAllocatorSettings{ContainerResources: r},
+					}, nil
+				},
+				func(c *ExtraConfig) *ResourceRequirementsWithGoMemLimit { return &c.TargetAllocatorContainerResources },
+				"spec.components.targetAllocator.containerResources"),
+			Entry("agent0-connector",
+				func(r *dash0v1alpha1.ContainerResourcesWithGoMemLimit) (
+					*dash0v1alpha1.OperatorConfigurationComponents, *dash0v1alpha1.SignalControlComponents,
+				) {
+					return &dash0v1alpha1.OperatorConfigurationComponents{
+						Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{ContainerResources: r},
+					}, nil
+				},
+				func(c *ExtraConfig) *ResourceRequirementsWithGoMemLimit { return &c.Agent0ConnectorContainerResources },
+				"spec.components.agent0Connector.containerResources"),
+			Entry("Signal Control collector",
+				func(r *dash0v1alpha1.ContainerResourcesWithGoMemLimit) (
+					*dash0v1alpha1.OperatorConfigurationComponents, *dash0v1alpha1.SignalControlComponents,
+				) {
+					return nil, &dash0v1alpha1.SignalControlComponents{
+						Collector: &dash0v1alpha1.SignalControlCollectorSettings{CollectorContainerResources: r},
+					}
+				},
+				func(c *ExtraConfig) *ResourceRequirementsWithGoMemLimit {
+					return &c.SignalControlCollectorContainerResources
+				},
+				"spec.components.collector.collectorContainerResources"),
+			Entry("Signal Control configuration reloader",
+				func(r *dash0v1alpha1.ContainerResourcesWithGoMemLimit) (
+					*dash0v1alpha1.OperatorConfigurationComponents, *dash0v1alpha1.SignalControlComponents,
+				) {
+					return nil, &dash0v1alpha1.SignalControlComponents{
+						Collector: &dash0v1alpha1.SignalControlCollectorSettings{
+							ConfigurationReloaderContainerResources: r,
+						},
+					}
+				},
+				func(c *ExtraConfig) *ResourceRequirementsWithGoMemLimit {
+					return &c.SignalControlCollectorConfigurationReloaderContainerResources
+				},
+				"spec.components.collector.configurationReloaderContainerResources"),
+			Entry("Edge Proxy",
+				func(r *dash0v1alpha1.ContainerResourcesWithGoMemLimit) (
+					*dash0v1alpha1.OperatorConfigurationComponents, *dash0v1alpha1.SignalControlComponents,
+				) {
+					return nil, &dash0v1alpha1.SignalControlComponents{
+						EdgeProxy: &dash0v1alpha1.EdgeProxySettings{ContainerResources: r},
+					}
+				},
+				func(c *ExtraConfig) *ResourceRequirementsWithGoMemLimit { return &c.EdgeProxyContainerResources },
+				"spec.components.edgeProxy.containerResources"),
+		)
+
+		It("should not report resources that are only written differently", func() {
+			fileConfig := ExtraConfigDefaults
+			fileConfig.CollectorDaemonSetCollectorContainerResources = ResourceRequirementsWithGoMemLimit{
+				Limits:   corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1024Mi")},
+				Requests: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("500Mi")},
+			}
+			_, conflicts := resolveOperatorConfiguration(fileConfig, daemonSetCollectorResources(
+				&dash0v1alpha1.ContainerResourcesWithGoMemLimit{ContainerResources: memoryLimit("1Gi")}))
+			Expect(conflicts).To(BeEmpty())
+		})
+
+		It("should report resources with a request that is greater than the limit as invalid", func() {
+			Expect(invalidSettings(&dash0v1alpha1.OperatorConfigurationComponents{
+				TargetAllocator: &dash0v1alpha1.TargetAllocatorSettings{
+					ContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+						ContainerResources: dash0v1alpha1.ContainerResources{
+							Limits:   corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("300Mi")},
+							Requests: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("400Mi")},
+						},
+					},
+				},
+			}, nil)).To(ConsistOf(
+				`spec.components.targetAllocator.containerResources.requests[memory]: Invalid value: "400Mi": ` +
+					`must be less than or equal to the memory limit of 300Mi`,
+			))
+		})
+
+		It("should report invalid resources of the Signal Control resource", func() {
+			Expect(invalidSettings(nil, &dash0v1alpha1.SignalControlComponents{
+				EdgeProxy: &dash0v1alpha1.EdgeProxySettings{
+					ContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+						ContainerResources: dash0v1alpha1.ContainerResources{
+							Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m")},
+							Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("200m")},
+						},
+					},
+				},
+			})).To(ConsistOf(
+				`spec.components.edgeProxy.containerResources.requests[cpu]: Invalid value: "200m": ` +
+					`must be less than or equal to the cpu limit of 100m`,
+			))
+		})
+	})
+
+	Describe("GOMEMLIMIT", func() {
+		It("should apply a GOMEMLIMIT together with the limits of the setting", func() {
+			components := daemonSetCollectorResources(&dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+				ContainerResources: memoryLimit("1Gi"),
+				GoMemLimit:         "800MiB",
+			})
+			effective, conflicts := resolveOperatorConfiguration(ExtraConfigDefaults, components)
+			Expect(toJson(effective.CollectorDaemonSetCollectorContainerResources)).To(
+				MatchJSON(`{"limits":{"memory":"1Gi"},"requests":{"memory":"500Mi"},"gomemlimit":"800MiB"}`))
+			Expect(conflicts).To(BeEmpty())
+			Expect(invalidSettings(components, nil)).To(BeEmpty())
+		})
+
+		It("should not keep the GOMEMLIMIT of the Helm chart if the setting does not provide one", func() {
+			fileConfig := ExtraConfigDefaults
+			fileConfig.CollectorDaemonSetCollectorContainerResources.GoMemLimit = "400MiB"
+			effective, conflicts := resolveOperatorConfiguration(fileConfig, daemonSetCollectorResources(
+				&dash0v1alpha1.ContainerResourcesWithGoMemLimit{ContainerResources: memoryLimit("300Mi")}))
+			Expect(effective.CollectorDaemonSetCollectorContainerResources.GoMemLimit).To(BeEmpty())
+			Expect(conflicts).To(HaveLen(1))
+			Expect(conflicts[0].Path).To(Equal("spec.components.daemonSetCollector.collectorContainerResources"))
+		})
+
+		DescribeTable("should check the GOMEMLIMIT against the memory limit the container gets",
+			func(settings *dash0v1alpha1.ContainerResourcesWithGoMemLimit, expectedInvalid []string) {
+				Expect(invalidSettings(daemonSetCollectorResources(settings), nil)).To(Equal(expectedInvalid))
+			},
+			Entry("above the default memory limit", &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+				GoMemLimit: "600MiB",
+			}, []string{`spec.components.daemonSetCollector.collectorContainerResources.gomemlimit: Invalid value: ` +
+				`"600MiB": must be less than the memory limit of 500Mi`}),
+			Entry("below the default memory limit", &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+				GoMemLimit: "400MiB",
+			}, nil),
+			Entry("below a default memory limit that is raised to the request", &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+				ContainerResources: dash0v1alpha1.ContainerResources{
+					Requests: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")},
+				},
+				GoMemLimit: "800MiB",
+			}, nil),
+			Entry("without a memory limit", &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+				ContainerResources: memoryLimit("-1"),
+				GoMemLimit:         "600MiB",
+			}, nil),
+		)
+
+		It("should accept off as GOMEMLIMIT", func() {
+			Expect(invalidSettings(daemonSetCollectorResources(&dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+				ContainerResources: memoryLimit("300Mi"),
+				GoMemLimit:         "off",
+			}), nil)).To(BeEmpty())
+		})
+
+		DescribeTable("should report an invalid GOMEMLIMIT",
+			func(settings *dash0v1alpha1.ContainerResourcesWithGoMemLimit, expectedReason string) {
+				invalid := invalidSettings(daemonSetCollectorResources(settings), nil)
+				Expect(invalid).To(HaveLen(1))
+				Expect(invalid[0]).To(ContainSubstring(
+					"spec.components.daemonSetCollector.collectorContainerResources." + expectedReason))
+			},
+			Entry("a decimal unit", &dash0v1alpha1.ContainerResourcesWithGoMemLimit{GoMemLimit: "400MB"},
+				`gomemlimit: Invalid value: "400MB": must be off or a positive number of bytes`),
+			Entry("zero", &dash0v1alpha1.ContainerResourcesWithGoMemLimit{GoMemLimit: "0"},
+				`gomemlimit: Invalid value: "0": must be off or a positive number of bytes`),
+			Entry("the memory limit", &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+				ContainerResources: memoryLimit("300Mi"),
+				GoMemLimit:         "300MiB",
+			}, `gomemlimit: Invalid value: "300MiB": must be less than the memory limit of 300Mi`),
+			Entry("above the memory limit", &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+				ContainerResources: memoryLimit("300Mi"),
+				GoMemLimit:         "400MiB",
+			}, `gomemlimit: Invalid value: "400MiB": must be less than the memory limit of 300Mi`),
+		)
+	})
+
 	Describe("validation", func() {
 		daemonSetCollector := func(
 			settings dash0v1alpha1.DaemonSetCollectorSettings,
@@ -414,6 +843,21 @@ var _ = Describe("component settings", func() {
 			Entry("an invalid priority class name", daemonSetCollector(dash0v1alpha1.DaemonSetCollectorSettings{
 				CollectorPodSettings: dash0v1alpha1.CollectorPodSettings{PriorityClassName: "High_Priority"},
 			}), `spec.components.daemonSetCollector.priorityClassName: Invalid value: "High_Priority"`),
+			Entry("an unsupported resource", daemonSetCollector(dash0v1alpha1.DaemonSetCollectorSettings{
+				CollectorContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+					ContainerResources: dash0v1alpha1.ContainerResources{
+						Limits: corev1.ResourceList{"nvidia.com/gpu": resource.MustParse("1")},
+					},
+				},
+			}), `spec.components.daemonSetCollector.collectorContainerResources.limits[nvidia.com/gpu]: `+
+				`Unsupported value: "nvidia.com/gpu"`),
+			Entry("a negative quantity", daemonSetCollector(dash0v1alpha1.DaemonSetCollectorSettings{
+				CollectorContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+					ContainerResources: dash0v1alpha1.ContainerResources{
+						Requests: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("-1Gi")},
+					},
+				},
+			}), `spec.components.daemonSetCollector.collectorContainerResources.requests[memory]: Invalid value: "-1Gi"`),
 		)
 
 		It("should report the invalid settings of all components of both resources", func() {
@@ -828,12 +1272,19 @@ var _ = Describe("component settings", func() {
 				EdgeProxy: &dash0v1alpha1.EdgeProxySettings{
 					Replicas:    new(int32(3)),
 					EnablePprof: new(true),
+					ContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+						ContainerResources: dash0v1alpha1.ContainerResources{
+							Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m")},
+						},
+					},
 				},
 			})
 			Expect(effective.SignalControlCollectorReplicas).To(Equal(int32(3)))
 			Expect(effective.SignalControlCollectorPodLabels).To(Equal(map[string]string{"team": "observability"}))
 			Expect(effective.EdgeProxyReplicas).To(Equal(int32(3)))
 			Expect(effective.EdgeProxyEnablePprof).To(BeTrue())
+			Expect(toJson(effective.EdgeProxyContainerResources)).To(MatchJSON(
+				`{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}`))
 			Expect(conflicts).To(ConsistOf(ComponentSettingConflict{
 				Resource:        "Dash0SignalControl",
 				Path:            "spec.components.edgeProxy.replicas",
@@ -868,6 +1319,15 @@ var _ = Describe("component settings", func() {
 			ExtraConfigDefaults,
 			&dash0v1alpha1.OperatorConfigurationComponents{
 				DaemonSetCollector: &dash0v1alpha1.DaemonSetCollectorSettings{
+					CollectorContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+						ContainerResources: dash0v1alpha1.ContainerResources{
+							Limits:   corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("100Mi")},
+							Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("1")},
+						},
+					},
+					ConfigurationReloaderContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+						ContainerResources: memoryLimit("-1"),
+					},
 					WorkloadSettings: dash0v1alpha1.WorkloadSettings{
 						Labels: map[string]string{"a": "b"},
 						NodeAffinity: &corev1.NodeAffinity{
@@ -900,7 +1360,15 @@ var _ = Describe("component settings", func() {
 					},
 				},
 			},
-			nil,
+			&dash0v1alpha1.SignalControlComponents{
+				EdgeProxy: &dash0v1alpha1.EdgeProxySettings{
+					ContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+						ContainerResources: dash0v1alpha1.ContainerResources{
+							Limits: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("1")},
+						},
+					},
+				},
+			},
 		)
 		Expect(toJson(ExtraConfigDefaults)).To(MatchJSON(defaultsBefore))
 	})

@@ -45,6 +45,35 @@ type SignalControlComponents struct {
 	EdgeProxy *EdgeProxySettings `json:"edgeProxy,omitempty"`
 }
 
+// ContainerResources are the resource requests and limits of a container.
+type ContainerResources struct {
+	// The resource limits. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+	// its default limit, and -1 removes it. A default limit below the request set in requests is raised to that request.
+	//
+	// +kubebuilder:validation:Optional
+	Limits corev1.ResourceList `json:"limits,omitempty"`
+
+	// The resource requests. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+	// its default request, and -1 removes it. A default request above the limit set in limits is lowered to that limit.
+	// A request above the limit set in limits is rejected.
+	//
+	// +kubebuilder:validation:Optional
+	Requests corev1.ResourceList `json:"requests,omitempty"`
+}
+
+// ContainerResourcesWithGoMemLimit are the resource requests and limits of a container that runs a Go process.
+type ContainerResourcesWithGoMemLimit struct {
+	ContainerResources `json:",inline"`
+
+	// The GOMEMLIMIT environment variable, in the format of the Go runtime (e.g. 400MiB, not 400Mi), or off. If it is
+	// empty (recommended), the operator derives it from the memory limit. It must be greater than 0 and below the
+	// effective memory limit. In collectorContainerResources, it should also be below the memory_limiter soft limit.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Pattern=`^(off|[0-9]+(([KMGT]i)?B)?)$`
+	GoMemLimit string `json:"gomemlimit,omitempty"`
+}
+
 // ProbeSettings are the timing settings of a probe.
 type ProbeSettings struct {
 	// The number of seconds after the container has started before the probe is initiated.
@@ -175,6 +204,24 @@ type CollectorPodSettings struct {
 
 // DaemonSetCollectorSettings are the settings for the OpenTelemetry collector DaemonSet.
 type DaemonSetCollectorSettings struct {
+	// The resources of the OpenTelemetry collector container (Helm value
+	// operator.collectors.daemonSetCollectorContainerResources).
+	//
+	// +kubebuilder:validation:Optional
+	CollectorContainerResources *ContainerResourcesWithGoMemLimit `json:"collectorContainerResources,omitempty"`
+
+	// The resources of the configuration reloader container (Helm value
+	// operator.collectors.daemonSetConfigurationReloaderContainerResources).
+	//
+	// +kubebuilder:validation:Optional
+	ConfigurationReloaderContainerResources *ContainerResourcesWithGoMemLimit `json:"configurationReloaderContainerResources,omitempty"`
+
+	// The resources of the filelog offset sync container and of the filelog offset sync init container (Helm value
+	// operator.collectors.daemonSetFileLogOffsetSyncContainerResources).
+	//
+	// +kubebuilder:validation:Optional
+	FilelogOffsetSyncContainerResources *ContainerResourcesWithGoMemLimit `json:"filelogOffsetSyncContainerResources,omitempty"`
+
 	WorkloadSettings     `json:",inline"`
 	CollectorPodSettings `json:",inline"`
 
@@ -233,12 +280,29 @@ type FilelogOffsetStoragePersistentVolumeClaim struct {
 
 // DeploymentCollectorSettings are the settings for the OpenTelemetry collector Deployment (cluster-metrics-collector).
 type DeploymentCollectorSettings struct {
+	// The resources of the OpenTelemetry collector container (Helm value
+	// operator.collectors.deploymentCollectorContainerResources).
+	//
+	// +kubebuilder:validation:Optional
+	CollectorContainerResources *ContainerResourcesWithGoMemLimit `json:"collectorContainerResources,omitempty"`
+
+	// The resources of the configuration reloader container (Helm value
+	// operator.collectors.deploymentConfigurationReloaderContainerResources).
+	//
+	// +kubebuilder:validation:Optional
+	ConfigurationReloaderContainerResources *ContainerResourcesWithGoMemLimit `json:"configurationReloaderContainerResources,omitempty"`
+
 	WorkloadSettings     `json:",inline"`
 	CollectorPodSettings `json:",inline"`
 }
 
 // TargetAllocatorSettings are the settings for the OpenTelemetry target-allocator.
 type TargetAllocatorSettings struct {
+	// The resources of the target-allocator container (Helm value operator.targetAllocator.containerResources).
+	//
+	// +kubebuilder:validation:Optional
+	ContainerResources *ContainerResourcesWithGoMemLimit `json:"containerResources,omitempty"`
+
 	WorkloadSettings `json:",inline"`
 
 	// Settings for mTLS between the target-allocator and the collectors (Helm value operator.targetAllocator.mTls). They
@@ -279,6 +343,11 @@ type TargetAllocatorMTls struct {
 
 // Agent0ConnectorSettings are the settings for the agent0-connector Deployment.
 type Agent0ConnectorSettings struct {
+	// The resources of the agent0-connector container (Helm value operator.agent0Connector.containerResources).
+	//
+	// +kubebuilder:validation:Optional
+	ContainerResources *ContainerResourcesWithGoMemLimit `json:"containerResources,omitempty"`
+
 	WorkloadSettings `json:",inline"`
 }
 
@@ -290,6 +359,20 @@ type SignalControlCollectorSettings struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Minimum=1
 	Replicas *int32 `json:"replicas,omitempty"`
+
+	// The resources of the OpenTelemetry collector container (Helm value
+	// operator.collectors.signalControlCollectorContainerResources). With the disk-backed trace reservoir, the operator
+	// derives an ephemeral-storage request from spec.sampling.reservoir.maxDiskBytes and adds it if no request other
+	// than 0 is set. A lower ephemeral-storage limit is rejected, since the reservoir counts towards the limit.
+	//
+	// +kubebuilder:validation:Optional
+	CollectorContainerResources *ContainerResourcesWithGoMemLimit `json:"collectorContainerResources,omitempty"`
+
+	// The resources of the configuration reloader container (Helm value
+	// operator.collectors.signalControlCollectorConfigurationReloaderContainerResources).
+	//
+	// +kubebuilder:validation:Optional
+	ConfigurationReloaderContainerResources *ContainerResourcesWithGoMemLimit `json:"configurationReloaderContainerResources,omitempty"`
 
 	WorkloadSettings     `json:",inline"`
 	CollectorPodSettings `json:",inline"`
@@ -308,6 +391,11 @@ type EdgeProxySettings struct {
 	//
 	// +kubebuilder:validation:Optional
 	EnablePprof *bool `json:"enablePprof,omitempty"`
+
+	// The resources of the Edge Proxy container (Helm value operator.signalControl.edgeProxy.containerResources).
+	//
+	// +kubebuilder:validation:Optional
+	ContainerResources *ContainerResourcesWithGoMemLimit `json:"containerResources,omitempty"`
 
 	WorkloadSettings `json:",inline"`
 }

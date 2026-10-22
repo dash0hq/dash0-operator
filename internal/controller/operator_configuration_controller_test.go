@@ -1402,6 +1402,7 @@ func createReconcilerWithManagers(
 			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
 			TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 		},
+		NewLeaderElectionAwareMock(true),
 	)
 	collectorManager := collectors.NewCollectorManager(
 		k8sClient,

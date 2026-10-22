@@ -6,6 +6,8 @@ package collectors
 import (
 	"context"
 	"slices"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-logr/logr/funcr"
@@ -16,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
@@ -42,6 +45,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 	var createdObjectsCollectorManagerTest []client.Object
 
 	var collectorManager *CollectorManager
+	var leaderElectionAware *LeaderElectionAwareMock
 
 	BeforeAll(func() {
 		EnsureOperatorNamespaceExists(ctx, k8sClient)
@@ -50,6 +54,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 
 	BeforeEach(func() {
 		createdObjectsCollectorManagerTest = make([]client.Object, 0)
+		leaderElectionAware = NewLeaderElectionAwareMock(true)
 		oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
 			k8sClient,
 			k8sClient.Scheme(),
@@ -60,6 +65,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 				OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
 				TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 			},
+			leaderElectionAware,
 		)
 		collectorManager = NewCollectorManager(
 			k8sClient,
@@ -575,6 +581,11 @@ var _ = Describe("The collector manager", Ordered, func() {
 			spec := OperatorConfigurationResourceDefaultSpec
 			spec.Components = &dash0v1alpha1.OperatorConfigurationComponents{
 				DaemonSetCollector: &dash0v1alpha1.DaemonSetCollectorSettings{
+					CollectorContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+						ContainerResources: dash0v1alpha1.ContainerResources{
+							Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("700Mi")},
+						},
+					},
 					WorkloadSettings: dash0v1alpha1.WorkloadSettings{
 						Labels:      map[string]string{"daemonset-label": "resource"},
 						Tolerations: []corev1.Toleration{resourceToleration},
@@ -633,6 +644,12 @@ var _ = Describe("The collector manager", Ordered, func() {
 			Expect(ds.Labels).ToNot(HaveKey("helm-label"))
 			Expect(ds.Spec.Template.Labels).To(HaveKeyWithValue("helm-pod-label", "helm"))
 			Expect(ds.Spec.Template.Spec.Tolerations).To(Equal([]corev1.Toleration{resourceToleration}))
+			collectorContainerIdx := slices.IndexFunc(ds.Spec.Template.Spec.Containers, func(c corev1.Container) bool {
+				return c.Name == "opentelemetry-collector"
+			})
+			collectorContainer := ds.Spec.Template.Spec.Containers[collectorContainerIdx]
+			Expect(collectorContainer.Resources.Limits.Memory().String()).To(Equal("700Mi"))
+			Expect(collectorContainer.Resources.Requests.Memory().String()).To(Equal("500Mi"))
 
 			deployment := VerifyResourceExists(
 				ctx, k8sClient, operatorNamespace, ExpectedDeploymentName, &appsv1.Deployment{},
@@ -645,6 +662,156 @@ var _ = Describe("The collector manager", Ordered, func() {
 			Expect(signalControlCollector.Spec.Replicas).To(Equal(ptr.To(int32(3))))
 			Expect(signalControlCollector.Spec.Template.Annotations).To(
 				HaveKeyWithValue("signal-control-annotation", "resource"))
+		})
+	})
+
+	Describe("when this replica becomes leader", func() {
+		const goMemLimitWarning = "the configured GOMEMLIMIT is not below the memory_limiter soft limit"
+		// the final log message of createOrUpdateOpenTelemetryCollector, whether resources have changed or not
+		const reconciliationFinished = `"msg"="OpenTelemetry collector Kubernetes resources `
+
+		var mutex sync.Mutex
+		var logged []string
+		var recordingCtx context.Context
+
+		countLogged := func(substring string) int {
+			mutex.Lock()
+			defer mutex.Unlock()
+			count := 0
+			for _, entry := range logged {
+				if strings.Contains(entry, substring) {
+					count++
+				}
+			}
+			return count
+		}
+
+		BeforeEach(func() {
+			monitoringResource := EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, monitoringResource)
+
+			logged = nil
+			recordingCtx = log.IntoContext(ctx, funcr.New(func(_ string, args string) {
+				mutex.Lock()
+				defer mutex.Unlock()
+				logged = append(logged, args)
+			}, funcr.Options{Verbosity: 1}))
+		})
+
+		createOperatorConfigurationWithGoMemLimitInversion := func() {
+			spec := OperatorConfigurationResourceDefaultSpec
+			spec.Components = &dash0v1alpha1.OperatorConfigurationComponents{
+				DaemonSetCollector: &dash0v1alpha1.DaemonSetCollectorSettings{
+					CollectorContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+						ContainerResources: dash0v1alpha1.ContainerResources{
+							Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("500Mi")},
+						},
+						GoMemLimit: "450MiB",
+					},
+				},
+			}
+			CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, spec)
+		}
+
+		AfterEach(func() {
+			_, err := collectorManager.oTelColResourceManager.DeleteResources(ctx, util.ExtraConfigDefaults, logger)
+			Expect(err).ToNot(HaveOccurred())
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
+		})
+
+		It("should reconcile again to log the warnings that have been skipped before", func() {
+			createOperatorConfigurationWithGoMemLimitInversion()
+			leaderElectionAware.SetLeader(false)
+			_, err := collectorManager.ReconcileOpenTelemetryCollector(recordingCtx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(countLogged(goMemLimitWarning)).To(Equal(0))
+
+			leaderElectionAware.SetLeader(true)
+			collectorManager.NotifyOperatorManagerJustBecameLeader(recordingCtx, logd.FromContext(recordingCtx))
+			Eventually(func() int {
+				return countLogged(reconciliationFinished)
+			}, 5*time.Second, 20*time.Millisecond).Should(Equal(2))
+			Expect(countLogged(goMemLimitWarning)).To(Equal(1))
+		})
+
+		It("should not reconcile again if no warnings have been skipped", func() {
+			createOperatorConfigurationWithGoMemLimitInversion()
+			_, err := collectorManager.ReconcileOpenTelemetryCollector(recordingCtx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(countLogged(reconciliationFinished)).To(Equal(1))
+
+			collectorManager.NotifyOperatorManagerJustBecameLeader(recordingCtx, logd.FromContext(recordingCtx))
+			Consistently(func() int {
+				return countLogged(reconciliationFinished)
+			}, 500*time.Millisecond, 100*time.Millisecond).Should(Equal(1))
+			Expect(countLogged(goMemLimitWarning)).To(Equal(1))
+		})
+
+		DescribeTable("an inversion in the Signal Control resource",
+			func(enabled bool, expectedWarnings int) {
+				CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
+				scResource := &dash0v1alpha1.Dash0SignalControl{
+					ObjectMeta: metav1.ObjectMeta{Name: "dash0-signal-control-test"},
+					Spec: dash0v1alpha1.Dash0SignalControlSpec{
+						Enabled: ptr.To(enabled),
+						Components: &dash0v1alpha1.SignalControlComponents{
+							Collector: &dash0v1alpha1.SignalControlCollectorSettings{
+								CollectorContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+									ContainerResources: dash0v1alpha1.ContainerResources{
+										Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("500Mi")},
+									},
+									GoMemLimit: "450MiB",
+								},
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, scResource)).To(Succeed())
+				createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, scResource)
+				collectorManager = newCollectorManagerWithSignalControlEnabled()
+
+				_, err := collectorManager.ReconcileOpenTelemetryCollector(recordingCtx)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(countLogged(goMemLimitWarning)).To(Equal(expectedWarnings))
+			},
+			Entry("should be logged if Signal Control is enabled", true, 1),
+			Entry("should not be logged if Signal Control is disabled", false, 0),
+		)
+
+		It("should reconcile again for an inversion in the extra config map", func() {
+			CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
+			extraConfig := util.ExtraConfigDefaults
+			extraConfig.CollectorDaemonSetCollectorContainerResources = util.ResourceRequirementsWithGoMemLimit{
+				Limits:     corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("500Mi")},
+				GoMemLimit: "450MiB",
+			}
+			collectorManager.extraConfig.Store(&extraConfig)
+			leaderElectionAware.SetLeader(false)
+			_, err := collectorManager.ReconcileOpenTelemetryCollector(recordingCtx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(countLogged(goMemLimitWarning)).To(Equal(0))
+
+			leaderElectionAware.SetLeader(true)
+			collectorManager.NotifyOperatorManagerJustBecameLeader(recordingCtx, logd.FromContext(recordingCtx))
+			Eventually(func() int {
+				return countLogged(reconciliationFinished)
+			}, 5*time.Second, 20*time.Millisecond).Should(Equal(2))
+			Expect(countLogged(goMemLimitWarning)).To(Equal(1))
+		})
+
+		It("should not log an inversion in the extra config map that spec.components replaces", func() {
+			createOperatorConfigurationWithGoMemLimitInversion()
+			extraConfig := util.ExtraConfigDefaults
+			extraConfig.CollectorDaemonSetCollectorContainerResources = util.ResourceRequirementsWithGoMemLimit{
+				Limits:     corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("500Mi")},
+				GoMemLimit: "400MiB",
+			}
+			collectorManager.extraConfig.Store(&extraConfig)
+			_, err := collectorManager.ReconcileOpenTelemetryCollector(recordingCtx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(countLogged(goMemLimitWarning)).To(Equal(1))
+			Expect(countLogged(`"gomemlimit"="450MiB"`)).To(Equal(1))
+			Expect(countLogged(`"gomemlimit"="400MiB"`)).To(Equal(0))
 		})
 	})
 
@@ -826,6 +993,7 @@ func newCollectorManagerWithSignalControlEnabled() *CollectorManager {
 			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
 			TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 		},
+		NewLeaderElectionAwareMock(true),
 	)
 	return NewCollectorManager(
 		k8sClient,

@@ -1032,7 +1032,8 @@ operator:
       limits:
         # cpu: (no cpu limit by default)
         memory: 1Gi
-        # ephemeral-storage: (no ephemeral-storage limit by default)
+        # ephemeral-storage: (no ephemeral-storage limit by default; with the disk type of the tail-sampling
+        # reservoir, the limit must be at least the ephemeral-storage request derived from maxDiskBytes)
       # The GOMEMLIMIT environment variable value for the collector container. Leaving this empty is recommended: the
       # operator then derives GOMEMLIMIT and the memory_limiter thresholds from
       # signalControlCollectorContainerResources.limits.memory, keeping GOMEMLIMIT < memory_limiter soft limit <
