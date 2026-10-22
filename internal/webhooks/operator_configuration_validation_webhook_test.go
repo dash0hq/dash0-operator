@@ -811,7 +811,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 			Components: &dash0v1alpha1.OperatorConfigurationComponents{
 				Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{
-					WorkloadSettings: dash0v1alpha1.WorkloadSettings{Labels: map[string]string{"team": "observability"}},
+					MaxConcurrentCommands: new(int32(4)),
 				},
 			},
 		}
@@ -826,21 +826,21 @@ var _ = Describe("The validation webhook for the operator configuration resource
 
 		It("should return a warning for a setting that overrides a different value provided via the Helm chart", func() {
 			extraConfig := util.ExtraConfigDefaults
-			extraConfig.Agent0ConnectorLabels = map[string]string{"team": "other"}
+			extraConfig.Agent0ConnectorMaxConcurrentCommands = 3
 			handler := NewOperatorConfigurationValidationWebhookHandler(
 				k8sClient, true, false, false, extraConfig, util.ExtraConfigDefaults)
 			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(componentsSpec))
 			Expect(response.Allowed).To(BeTrue())
 			Expect(response.Warnings).To(ConsistOf(
-				`spec.components.agent0Connector.labels overrides the custom Helm value ` +
-					`operator.agent0Connector.labels: {"team":"observability"} instead of {"team":"other"}`))
+				"spec.components.agent0Connector.maxConcurrentCommands overrides the custom Helm value " +
+					"operator.agent0Connector.maxConcurrentCommands: 4 instead of 3"))
 		})
 
 		It("should use the extra configuration from the latest update", func() {
 			handler := NewOperatorConfigurationValidationWebhookHandler(
 				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 			extraConfig := util.ExtraConfigDefaults
-			extraConfig.Agent0ConnectorLabels = map[string]string{"team": "other"}
+			extraConfig.Agent0ConnectorMaxConcurrentCommands = 3
 			handler.UpdateExtraConfig(ctx, extraConfig, logd.FromContext(ctx))
 			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(componentsSpec))
 			Expect(response.Allowed).To(BeTrue())
@@ -873,6 +873,32 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			}
 		})
 
+		It("should reject allowed kubectl commands that disable every command", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+				Components: &dash0v1alpha1.OperatorConfigurationComponents{
+					Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{
+						AllowedKubectlCommands: &dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands{
+							ApiResources: new(false),
+							ApiVersions:  new(false),
+							Auth:         new(false),
+							ClusterInfo:  new(false),
+							Explain:      new(false),
+							Get:          new(false),
+							Top:          new(false),
+							Version:      new(false),
+						},
+					},
+				},
+			}
+			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(spec))
+			Expect(response.Allowed).To(BeFalse())
+			Expect(response.Result.Message).To(ContainSubstring(
+				"spec.components.agent0Connector.allowedKubectlCommands: Forbidden: at least one kubectl command"))
+		})
+
 		Describe("updates that leave spec.components unchanged", func() {
 			// A GOMEMLIMIT that is not below the memory limit, e.g. in a resource stored without the validation webhook.
 			invalidSpec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
@@ -901,13 +927,11 @@ var _ = Describe("The validation webhook for the operator configuration resource
 
 			It("should allow an update of other fields without checking spec.components again", func() {
 				extraConfig := util.ExtraConfigDefaults
-				extraConfig.Agent0ConnectorLabels = map[string]string{"team": "other"}
+				extraConfig.Agent0ConnectorMaxConcurrentCommands = 3
 				handler := NewOperatorConfigurationValidationWebhookHandler(
 					k8sClient, true, false, false, extraConfig, util.ExtraConfigDefaults)
 				spec := *invalidSpec.DeepCopy()
-				spec.Components.Agent0Connector = &dash0v1alpha1.Agent0ConnectorSettings{
-					WorkloadSettings: dash0v1alpha1.WorkloadSettings{Labels: map[string]string{"team": "observability"}},
-				}
+				spec.Components.Agent0Connector = &dash0v1alpha1.Agent0ConnectorSettings{MaxConcurrentCommands: new(int32(4))}
 				updatedSpec := *spec.DeepCopy()
 				updatedSpec.ClusterName = "updated-cluster-name"
 				response := handler.Handle(ctx, updateRequest(spec, updatedSpec))
@@ -919,9 +943,8 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				handler := NewOperatorConfigurationValidationWebhookHandler(
 					k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 				updatedSpec := *invalidSpec.DeepCopy()
-				updatedSpec.Components.Agent0Connector = &dash0v1alpha1.Agent0ConnectorSettings{
-					WorkloadSettings: dash0v1alpha1.WorkloadSettings{Labels: map[string]string{"team": "observability"}},
-				}
+				updatedSpec.Components.Agent0Connector =
+					&dash0v1alpha1.Agent0ConnectorSettings{MaxConcurrentCommands: new(int32(4))}
 				response := handler.Handle(ctx, updateRequest(invalidSpec, updatedSpec))
 				Expect(response.Allowed).To(BeFalse())
 				Expect(response.Result.Message).To(ContainSubstring(

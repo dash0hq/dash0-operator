@@ -30,8 +30,7 @@ type OperatorConfigurationComponents struct {
 	TargetAllocator *TargetAllocatorSettings `json:"targetAllocator,omitempty"`
 
 	// Settings for the agent0-connector. Its cluster role rules can only be configured via the Helm chart, since the
-	// operator can only grant permissions it holds itself. Its allowed kubectl commands can also only be configured via
-	// the Helm chart (operator.agent0Connector.allowedKubectlCommands).
+	// operator can only grant permissions it holds itself.
 	//
 	// +kubebuilder:validation:Optional
 	Agent0Connector *Agent0ConnectorSettings `json:"agent0Connector,omitempty"`
@@ -357,12 +356,85 @@ type TargetAllocatorMTls struct {
 
 // Agent0ConnectorSettings are the settings for the agent0-connector Deployment.
 type Agent0ConnectorSettings struct {
+	// The number of command requests the agent0-connector executes at the same time (Helm value
+	// operator.agent0Connector.maxConcurrentCommands, default 2). Raising this value requires raising
+	// containerResources.limits.memory correspondingly, and containerResources.gomemlimit, if it is set.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum=1
+	MaxConcurrentCommands *int32 `json:"maxConcurrentCommands,omitempty"`
+
+	// The kubectl commands the agent0-connector may execute (Helm value operator.agent0Connector.allowedKubectlCommands).
+	// The settings are merged with the defaults of the Helm chart per command, not with the commands provided via Helm:
+	// a command that is not set here keeps its default. At least one command needs to stay enabled. Allowing a command
+	// does not grant the RBAC permissions it needs (Helm value operator.agent0Connector.clusterRole.rules).
+	//
+	// +kubebuilder:validation:Optional
+	AllowedKubectlCommands *Agent0ConnectorAllowedKubectlCommands `json:"allowedKubectlCommands,omitempty"`
+
 	// The resources of the agent0-connector container (Helm value operator.agent0Connector.containerResources).
 	//
 	// +kubebuilder:validation:Optional
 	ContainerResources *ContainerResourcesWithGoMemLimit `json:"containerResources,omitempty"`
 
 	WorkloadSettings `json:",inline"`
+}
+
+// Agent0ConnectorAllowedKubectlCommands enables or disables the kubectl commands the agent0-connector may execute.
+type Agent0ConnectorAllowedKubectlCommands struct {
+	// kubectl api-resources, enabled by default.
+	//
+	// +kubebuilder:validation:Optional
+	ApiResources *bool `json:"apiResources,omitempty"`
+
+	// kubectl api-versions, enabled by default.
+	//
+	// +kubebuilder:validation:Optional
+	ApiVersions *bool `json:"apiVersions,omitempty"`
+
+	// kubectl auth, enabled by default.
+	//
+	// +kubebuilder:validation:Optional
+	Auth *bool `json:"auth,omitempty"`
+
+	// kubectl cluster-info, enabled by default.
+	//
+	// +kubebuilder:validation:Optional
+	ClusterInfo *bool `json:"clusterInfo,omitempty"`
+
+	// kubectl events, disabled by default. Events are not redacted, only enable this if no sensitive information like
+	// credentials, API tokens, secrets or customer PII is leaked into event bodies. It needs RBAC access to events (core
+	// API group) and events.events.k8s.io. While it is disabled, reading events via kubectl get is rejected as well.
+	//
+	// +kubebuilder:validation:Optional
+	Events *bool `json:"events,omitempty"`
+
+	// kubectl explain, enabled by default.
+	//
+	// +kubebuilder:validation:Optional
+	Explain *bool `json:"explain,omitempty"`
+
+	// kubectl get, enabled by default. It is the main kubectl command that Agent0 uses.
+	//
+	// +kubebuilder:validation:Optional
+	Get *bool `json:"get,omitempty"`
+
+	// kubectl logs, disabled by default. Logs cannot be redacted reliably, only enable this if no sensitive information is
+	// leaked into logs. It needs RBAC access to pods/log, and also lifts the redaction of container termination messages
+	// (which can hold log output) in the output of kubectl get.
+	//
+	// +kubebuilder:validation:Optional
+	Logs *bool `json:"logs,omitempty"`
+
+	// kubectl top, enabled by default.
+	//
+	// +kubebuilder:validation:Optional
+	Top *bool `json:"top,omitempty"`
+
+	// kubectl version, enabled by default.
+	//
+	// +kubebuilder:validation:Optional
+	Version *bool `json:"version,omitempty"`
 }
 
 // SignalControlCollectorSettings are the settings for the Signal Control collector Deployment.

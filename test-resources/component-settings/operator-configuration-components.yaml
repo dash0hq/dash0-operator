@@ -169,6 +169,9 @@ spec:
       allowInsecureAuthSecrets: false
 
     agent0Connector:
+      maxConcurrentCommands: 3
+      allowedKubectlCommands:
+        explain: false
       containerResources:
         limits:
           memory: 320Mi
