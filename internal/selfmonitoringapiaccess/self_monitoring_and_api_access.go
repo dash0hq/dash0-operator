@@ -267,11 +267,12 @@ func convertResourceToGrpcExportConfiguration(
 				"The gRPC export endpoint %s is not a valid gRPC target: gRPC interprets %s as the DNS server to use, "+
 					"and the target address is missing. Probably a slash is missing, use dns:///%s instead. Exporting "+
 					"telemetry to this endpoint will fail, and the OpenTelemetry collectors and other operator "+
-					"components will not send self-monitoring telemetry. For the operator manager, the endpoint has "+
-					"been adapted to dns:///%s, so that the operator manager can still send its own logs and metrics.",
+					"components will not send self-monitoring telemetry. The operator manager sends its own logs and "+
+					"metrics to %s instead, as it would for dns:///%s.",
 				grpcExport.Endpoint,
 				address,
 				address,
+				operatorManagerGrpcEndpoint(grpcExport),
 				address,
 			),
 		)
