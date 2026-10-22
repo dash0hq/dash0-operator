@@ -631,8 +631,8 @@ run_helm() {
   if [[ "${TA_ALLOW_INSECURE_AUTH_SECRETS:-}" = "true" ]]; then
     helm_install_command+=" --set operator.targetAllocator.allowInsecureAuthSecrets=true"
   fi
-  if [[ -n "${TA_RESTRICT_TO_NAMESPACES:-}" ]]; then
-    helm_install_command+=" --set operator.targetAllocator.restrictToNamespaces={$TA_RESTRICT_TO_NAMESPACES}"
+  if [[ -n "${TA_ALLOW_SECRET_ACCESS_IN_NAMESPACES:-}" ]]; then
+    helm_install_command+=" --set operator.targetAllocator.allowSecretAccessInNamespaces={$TA_ALLOW_SECRET_ACCESS_IN_NAMESPACES}"
   fi
   if [[ "${COMPONENT_SETTINGS_VIA_HELM:-}" = "true" ]]; then
     helm_install_command+=" --values test-resources/component-settings/helm-values.yaml"
@@ -1208,14 +1208,15 @@ deploy_cadvisor_scrapeconfig() {
   if [[ "${DEPLOY_CADVISOR_SCRAPECONFIG:-}" != "true" ]]; then
     return
   fi
+  local namespace="${1:-$target_namespace}"
   # On GKE Autopilot the kube-apiserver -> kubelet proxy is not available, so use the variant that scrapes the
   # kubelet directly (see cadvisor-scrapeconfig-autopilot.yaml.template).
   local scrapeconfig_file="test-resources/customresources/prometheus/cadvisor-scrapeconfig.yaml"
   if [[ "${GKE_AUTOPILOT_ENABLED:-}" = "true" ]]; then
     scrapeconfig_file="test-resources/customresources/prometheus/cadvisor-scrapeconfig-autopilot.yaml"
   fi
-  echo "STEP $step_counter: deploy a ScrapeConfig for scraping cadvisor metrics to ${target_namespace}"
-  kubectl apply -n "$target_namespace" -f "$scrapeconfig_file"
+  echo "STEP $step_counter: deploy a ScrapeConfig for scraping cadvisor metrics to ${namespace}"
+  kubectl apply -n "$namespace" -f "$scrapeconfig_file"
   finish_step
 }
 

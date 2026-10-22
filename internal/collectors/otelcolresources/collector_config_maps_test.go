@@ -8203,43 +8203,6 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			tlsConfig := ReadFromMap(taConfig, []string{"tls"})
 			Expect(tlsConfig).To(BeNil())
 		})
-
-		It("should render the target-allocator config if at least one namespace with Prometheus scraping is listed in restrictToNamespaces", func() {
-			config := &oTelColConfig{
-				OperatorNamespace:                   OperatorNamespace,
-				NamePrefix:                          namePrefix,
-				Exporters:                           cmTestSingleDefaultOtlpExporter(),
-				TargetAllocatorNamePrefix:           TargetAllocatorPrefixTest,
-				TargetAllocatorRestrictToNamespaces: []string{"ns2", "ns4"},
-				PrometheusCrdSupportEnabled:         true,
-			}
-			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, nsWithPrometheusScraping, nil, nil, emptyTargetAllocatorMtlsConfig, false)
-
-			Expect(err).ToNot(HaveOccurred())
-			collectorConfig := parseConfigMapContent(configMap)
-			taConfig := ReadFromMap(collectorConfig, []string{"receivers", "prometheus", "target_allocator"})
-			Expect(taConfig).ToNot(BeNil())
-		})
-
-		It("should not render the target-allocator config but keep the annotation-based scrape configs if no namespace with Prometheus scraping is listed in restrictToNamespaces", func() {
-			config := &oTelColConfig{
-				OperatorNamespace:                   OperatorNamespace,
-				NamePrefix:                          namePrefix,
-				Exporters:                           cmTestSingleDefaultOtlpExporter(),
-				TargetAllocatorNamePrefix:           TargetAllocatorPrefixTest,
-				TargetAllocatorRestrictToNamespaces: []string{"ns4"},
-				PrometheusCrdSupportEnabled:         true,
-			}
-			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, nsWithPrometheusScraping, nil, nil, emptyTargetAllocatorMtlsConfig, false)
-
-			Expect(err).ToNot(HaveOccurred())
-			collectorConfig := parseConfigMapContent(configMap)
-			taConfig := ReadFromMap(collectorConfig, []string{"receivers", "prometheus", "target_allocator"})
-			Expect(taConfig).To(BeNil())
-			scrapeConfigs, ok := ReadFromMap(collectorConfig, []string{"receivers", "prometheus", "config", "scrape_configs"}).([]any)
-			Expect(ok).To(BeTrue())
-			Expect(scrapeConfigs).ToNot(BeEmpty())
-		})
 	})
 
 	Describe("target-allocator self-monitoring", func() {

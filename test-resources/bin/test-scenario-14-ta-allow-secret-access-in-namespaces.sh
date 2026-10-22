@@ -3,9 +3,10 @@
 # SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-# Deploys the operator with Prometheus CRD support and operator.targetAllocator.restrictToNamespaces set to the target
-# namespace, with ServiceMonitors and Dash0 monitoring resources in the target namespace and in the namespaces
-# test-namespace-2 and test-namespace-3, which are not listed. See CONTRIBUTING.md for the expected outcome.
+# Deploys the operator with Prometheus CRD support and operator.targetAllocator.allowSecretAccessInNamespaces set to the
+# target namespace, with ServiceMonitors and Dash0 monitoring resources in the target namespace and in the namespaces
+# test-namespace-2 and test-namespace-3, which are not listed. The cadvisor ScrapeConfig, which references a secret, is
+# deployed to the target namespace and to test-namespace-2. See CONTRIBUTING.md for the expected outcome.
 
 set -euo pipefail
 
@@ -31,8 +32,10 @@ USE_CERT_MANAGER="true"
 PROMETHEUS_CRD_SUPPORT_ENABLED="true"
 TA_MTLS_ENABLED="${TA_MTLS_ENABLED:-true}"
 TA_ALLOW_INSECURE_AUTH_SECRETS="${TA_ALLOW_INSECURE_AUTH_SECRETS:-false}"
-TA_RESTRICT_TO_NAMESPACES="${TA_RESTRICT_TO_NAMESPACES:-$target_namespace}"
+TA_ALLOW_SECRET_ACCESS_IN_NAMESPACES="${TA_ALLOW_SECRET_ACCESS_IN_NAMESPACES:-$target_namespace}"
 DEPLOY_CADVISOR_SCRAPECONFIG="true"
+# The operator manager logs the namespaces in which the target-allocator cannot read secrets at debug level.
+DEVELOPMENT_MODE="true"
 
 # shellcheck source=./lib/util
 source "$scripts_lib/util"
@@ -51,10 +54,10 @@ echo "STEP $step_counter: creating target namespaces (if necessary)"
 ensure_namespace_exists "${target_namespace}"
 ensure_namespace_exists test-namespace-2
 ensure_namespace_exists test-namespace-3
-IFS=',' read -r -a restrict_to_namespaces <<< "$TA_RESTRICT_TO_NAMESPACES"
-for restrict_to_namespace in "${restrict_to_namespaces[@]}"; do
+IFS=',' read -r -a secret_access_namespaces <<< "$TA_ALLOW_SECRET_ACCESS_IN_NAMESPACES"
+for secret_access_namespace in "${secret_access_namespaces[@]}"; do
   # The Helm chart creates a role binding in every listed namespace, so they need to exist before deploying it.
-  ensure_namespace_exists "$restrict_to_namespace"
+  ensure_namespace_exists "$secret_access_namespace"
 done
 finish_step
 
@@ -109,6 +112,9 @@ finish_step
 echo "STEP $step_counter: deploy scrapeconfig for scraping cadvisor metrics"
 deploy_cadvisor_scrapeconfig
 finish_step
+
+# The target-allocator cannot read the secret referenced by this ScrapeConfig, so it rejects it.
+deploy_cadvisor_scrapeconfig test-namespace-2
 
 if [[ "${DEPLOY_MONITORING_RESOURCE:-}" != "false" ]]; then
   echo "STEP $step_counter: deploy the Dash0 monitoring resources to namespace ${target_namespace}, test-namespace-2 and test-namespace-3"

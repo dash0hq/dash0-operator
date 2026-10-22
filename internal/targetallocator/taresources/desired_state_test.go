@@ -324,53 +324,37 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 		Expect(ReadFromMap(taConfig, []string{"https", "enabled"})).To(Equal(true))
 	})
 
-	It("should grant cluster-wide access to secrets if restrictToNamespaces is not set", func() {
+	It("should grant cluster-wide access to secrets if allowSecretAccessInNamespaces is not set", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        TargetAllocatorPrefixTest,
 			Images:            TestImages,
-		}, nil, util.ExtraConfig{})
+		}, []string{"namespace-a"}, util.ExtraConfig{})
 		Expect(err).ToNot(HaveOccurred())
 
 		Expect(clusterRoleResources(getClusterRole(desiredState))).To(ContainElement("secrets"))
+		taConfig := parseConfigMapContent(getConfigMap(desiredState))
+		Expect(ReadFromMap(taConfig, []string{"prometheus_cr", "secret_namespaces"})).To(BeNil())
 	})
 
-	It("should not grant cluster-wide access to secrets if restrictToNamespaces is set", func() {
+	It("should restrict access to secrets to the namespaces in allowSecretAccessInNamespaces", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        TargetAllocatorPrefixTest,
 			Images:            TestImages,
-		}, []string{"namespace-a"}, util.ExtraConfig{
-			TargetAllocatorRestrictToNamespaces: []string{"namespace-a"},
+		}, []string{"namespace-a", "namespace-c"}, util.ExtraConfig{
+			TargetAllocatorAllowSecretAccessInNamespaces: []string{"namespace-b", "namespace-a", "namespace-b"},
 		})
 		Expect(err).ToNot(HaveOccurred())
 
 		resources := clusterRoleResources(getClusterRole(desiredState))
 		Expect(resources).ToNot(ContainElement("secrets"))
 		Expect(resources).To(ContainElements("namespaces", "pods", "servicemonitors"))
-	})
-})
-
-var _ = Describe("FilterNamespacesByRestriction", func() {
-	It("should allow all namespaces if restrictToNamespaces is empty", func() {
-		allowed, excluded := FilterNamespacesByRestriction([]string{"namespace-a", "namespace-b"}, nil)
-		Expect(allowed).To(Equal([]string{"namespace-a", "namespace-b"}))
-		Expect(excluded).To(BeEmpty())
-	})
-
-	It("should exclude namespaces that are not listed in restrictToNamespaces", func() {
-		allowed, excluded := FilterNamespacesByRestriction(
-			[]string{"namespace-a", "namespace-b", "namespace-c"},
-			[]string{"namespace-c", "namespace-a", "namespace-x"},
-		)
-		Expect(allowed).To(Equal([]string{"namespace-a", "namespace-c"}))
-		Expect(excluded).To(Equal([]string{"namespace-b"}))
-	})
-
-	It("should exclude all namespaces if none of them is listed in restrictToNamespaces", func() {
-		allowed, excluded := FilterNamespacesByRestriction([]string{"namespace-a"}, []string{"namespace-x"})
-		Expect(allowed).To(BeEmpty())
-		Expect(excluded).To(Equal([]string{"namespace-a"}))
+		taConfig := parseConfigMapContent(getConfigMap(desiredState))
+		Expect(ReadFromMap(taConfig, []string{"prometheus_cr", "allow_namespaces"})).To(
+			Equal([]any{"namespace-a", "namespace-c"}))
+		Expect(ReadFromMap(taConfig, []string{"prometheus_cr", "secret_namespaces"})).To(
+			Equal([]any{"namespace-a", "namespace-b"}))
 	})
 })
 

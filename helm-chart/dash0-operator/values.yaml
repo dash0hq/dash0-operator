@@ -1213,14 +1213,17 @@ operator:
     # target-allocator and the collectors is guaranteed by other means, for example by a service mesh.
     allowInsecureAuthSecrets: false
 
-    # An optional list of namespaces to which the target-allocator is restricted. If set, it only watches Prometheus
-    # CRDs and reads secrets in these namespaces (plus secrets in the operator namespace), and the operator manager
-    # loses its cluster-wide read access to secrets. If empty (the default), both can read secrets in all namespaces.
+    # An optional list of namespaces in which the target-allocator may read secrets referenced by Prometheus CRDs. If
+    # set, the target-allocator can only read secrets in these namespaces, and the operator manager loses its
+    # cluster-wide read access to secrets. Prometheus CRDs in other namespaces are still watched, but the ones that
+    # reference a secret are rejected and not scraped. Authentication via secrets (for example basic auth, a bearer
+    # token or OAuth2) and TLS settings from secrets (for example a CA certificate or a client certificate) therefore
+    # do not work there. If empty (the default), both can read secrets in all namespaces.
     # Listing a namespace does not enable scraping in it by itself: Prometheus CRD support still needs to be enabled,
     # and the namespace still needs a Dash0Monitoring resource with Prometheus scraping enabled (which is the default).
     # Every listed namespace must exist at install/upgrade time, since a role binding is created in it. See
     # https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/metrics-and-scraping#restricting-access-to-secrets
-    restrictToNamespaces: []
+    allowSecretAccessInNamespaces: []
 
     # Resource settings for the target-allocator container of the target-allocator deployment managed by the operator.
     containerResources:

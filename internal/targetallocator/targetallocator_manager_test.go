@@ -350,9 +350,9 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 			tatest.VerifyTargetAllocatorConfigMapContainsNamespaces(ctx, k8sClient, operatorNamespace, []string{testNamespace1, testNamespace2})
 		})
 
-		It("should only watch namespaces that are listed in restrictToNamespaces", func() {
+		It("should still watch all namespaces with PrometheusScraping if allowSecretAccessInNamespaces is set", func() {
 			extraConfig := util.ExtraConfigDefaults
-			extraConfig.TargetAllocatorRestrictToNamespaces = []string{testNamespace1, testNamespace3}
+			extraConfig.TargetAllocatorAllowSecretAccessInNamespaces = []string{testNamespace1, testNamespace3}
 			targetAllocatorManager.extraConfig.Store(&extraConfig)
 			tatest.CreateDefaultOperatorConfigurationResourceWithPrometheusCrdSupport(
 				ctx,
@@ -374,7 +374,7 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(hasBeenReconciled).To(BeTrue())
 			tatest.VerifyTargetAllocatorResources(ctx, k8sClient, operatorNamespace)
-			tatest.VerifyTargetAllocatorConfigMapContainsNamespaces(ctx, k8sClient, operatorNamespace, []string{testNamespace1})
+			tatest.VerifyTargetAllocatorConfigMapContainsNamespaces(ctx, k8sClient, operatorNamespace, []string{testNamespace1, testNamespace2})
 
 			clusterRole := &rbacv1.ClusterRole{}
 			Expect(k8sClient.Get(
@@ -385,28 +385,6 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 			for _, rule := range clusterRole.Rules {
 				Expect(rule.Resources).ToNot(ContainElement("secrets"))
 			}
-		})
-
-		It("should not create the target-allocator if no namespace with PrometheusScraping is listed in restrictToNamespaces", func() {
-			extraConfig := util.ExtraConfigDefaults
-			extraConfig.TargetAllocatorRestrictToNamespaces = []string{testNamespace3}
-			targetAllocatorManager.extraConfig.Store(&extraConfig)
-			tatest.CreateDefaultOperatorConfigurationResourceWithPrometheusCrdSupport(
-				ctx,
-				k8sClient,
-			)
-
-			firstName := types.NamespacedName{Namespace: testNamespace1, Name: "dash0-monitoring-test-resource-1"}
-			firstMonitoringResource := tatest.EnsureMonitoringResourceWithPrometheusScrapingExistsInNamespaceAndIsAvailable(ctx, k8sClient, firstName)
-			createdObjectsTargetAllocatorManagerTest = append(createdObjectsTargetAllocatorManagerTest, firstMonitoringResource)
-
-			hasBeenReconciled, err := targetAllocatorManager.ReconcileTargetAllocator(
-				ctx,
-				TriggeredByDash0ResourceReconcile,
-			)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(hasBeenReconciled).To(BeTrue())
-			tatest.VerifyTargetAllocatorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 
 		It("should not delete the target-allocator if some monitoring resources still have PrometheusScraping enabled", func() {
@@ -700,6 +678,34 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(hasBeenReconciled).To(BeTrue())
 			tatest.VerifyTargetAllocatorResources(ctx, k8sClient, operatorNamespace)
+		})
+	})
+
+	Describe("when logging namespaces without secret access", func() {
+		expectedMessage := func(namespace string) string {
+			return fmt.Sprintf("The Dash0Monitoring resource in namespace \"%s\" has Prometheus scraping enabled, but "+
+				"the namespace is not listed in the Helm value operator.targetAllocator.allowSecretAccessInNamespaces. "+
+				"The target-allocator cannot read secrets in this namespace. Prometheus CRDs (PodMonitor, ServiceMonitor, "+
+				"ScrapeConfig) in this namespace that reference a secret will be rejected by the target-allocator.",
+				namespace)
+		}
+
+		It("should not log anything if allowSecretAccessInNamespaces is not set", func() {
+			capturingLogger, capturingLogSink := NewCapturingLogger()
+			logNamespacesWithoutSecretAccess([]string{testNamespace1, testNamespace2}, nil, capturingLogger)
+			capturingLogSink.HasNoLogMessages(Default)
+		})
+
+		It("should log a message for every namespace that is not listed in allowSecretAccessInNamespaces", func() {
+			capturingLogger, capturingLogSink := NewCapturingLogger()
+			logNamespacesWithoutSecretAccess(
+				[]string{testNamespace1, testNamespace2, testNamespace3},
+				[]string{testNamespace1},
+				capturingLogger,
+			)
+			capturingLogSink.HasNoLogMessage(Default, expectedMessage(testNamespace1))
+			capturingLogSink.HasLogMessage(Default, expectedMessage(testNamespace2))
+			capturingLogSink.HasLogMessage(Default, expectedMessage(testNamespace3))
 		})
 	})
 })

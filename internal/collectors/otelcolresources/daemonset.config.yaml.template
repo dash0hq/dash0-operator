@@ -325,7 +325,7 @@ receivers:
       server_config:
         endpoint: "localhost:9191"
     {{- end }}
-    {{- if and .PrometheusCrdSupportEnabled .TargetAllocatorWatchesAtLeastOneNamespace }}
+    {{- if and .PrometheusCrdSupportEnabled $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
     target_allocator:
       {{- if .TargetAllocatorMtlsEnabled }}
       endpoint: https://{{ .TargetAllocatorServiceName }}:443

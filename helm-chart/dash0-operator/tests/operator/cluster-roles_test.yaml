@@ -165,7 +165,7 @@ tests:
         name: dash0-operator-manager-iac
       documentIndex: 1
 
-  - it: should grant cluster-wide access to secrets if restrictToNamespaces is not set for the target-allocator
+  - it: should grant cluster-wide access to secrets if allowSecretAccessInNamespaces is not set for the target-allocator
     asserts:
       - contains:
           path: rules
@@ -187,11 +187,11 @@ tests:
           name: dash0-operator-target-allocator-secrets
         not: true
 
-  - it: should not grant cluster-wide access to secrets if restrictToNamespaces is set for the target-allocator
+  - it: should not grant cluster-wide access to secrets if allowSecretAccessInNamespaces is set for the target-allocator
     set:
       operator:
         targetAllocator:
-          restrictToNamespaces:
+          allowSecretAccessInNamespaces:
             - namespace-a
     asserts:
       - hasDocuments:
@@ -222,7 +222,7 @@ tests:
       operator:
         telemetryCollectionEnabled: false
         targetAllocator:
-          restrictToNamespaces:
+          allowSecretAccessInNamespaces:
             - namespace-a
     asserts:
       - hasDocuments:

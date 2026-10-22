@@ -695,7 +695,7 @@ rules:
   - get
   - list
   - watch
-{{- if not .Values.operator.targetAllocator.restrictToNamespaces }}
+{{- if not .Values.operator.targetAllocator.allowSecretAccessInNamespaces }}
 - apiGroups:
   - ""
   resources:
@@ -713,11 +713,10 @@ rules:
 {{ end }}
 
 ---
-{{ if and .Values.operator.telemetryCollectionEnabled .Values.operator.targetAllocator.restrictToNamespaces }}
+{{ if and .Values.operator.telemetryCollectionEnabled .Values.operator.targetAllocator.allowSecretAccessInNamespaces }}
 {{/*
 The -target-allocator-secrets cluster role grants the OTel target-allocator read access to secrets in the namespaces
-listed in operator.targetAllocator.restrictToNamespaces and in the operator namespace, see
-role-binding-target-allocator-secrets.yaml.
+listed in operator.targetAllocator.allowSecretAccessInNamespaces, see role-binding-target-allocator-secrets.yaml.
 */}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

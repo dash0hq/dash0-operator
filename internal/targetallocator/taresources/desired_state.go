@@ -74,6 +74,7 @@ type ConfigMapParams struct {
 	CollectorNamespace               string
 	CollectorComponent               string
 	NamespacesWithPrometheusScraping []string
+	SecretNamespaces                 []string
 
 	MtlsEnabled bool
 	CertsDir    string
@@ -105,6 +106,12 @@ prometheus_cr:
   {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
   allow_namespaces:
   {{- range $i, $namespace := .NamespacesWithPrometheusScraping }}
+    - {{ $namespace }}
+  {{- end }}
+  {{- end }}
+  {{- if .SecretNamespaces }}
+  secret_namespaces:
+  {{- range $namespace := .SecretNamespaces }}
     - {{ $namespace }}
   {{- end }}
   {{- end }}
@@ -171,10 +178,16 @@ func assembleConfigMap(
 			return nil, fmt.Errorf("failed to parse target-allocator config template: %w", err)
 		}
 
+		// sort and deduplicate namespaces so we don't re-trigger reconciliation because of unstable ordering
+		secretNamespaces := slices.Clone(extraConfig.TargetAllocatorAllowSecretAccessInNamespaces)
+		slices.Sort(secretNamespaces)
+		secretNamespaces = slices.Compact(secretNamespaces)
+
 		cmp := ConfigMapParams{
 			CollectorNamespace:               c.OperatorNamespace,
 			CollectorComponent:               c.CollectorComponent,
 			NamespacesWithPrometheusScraping: namespacesWithPrometheusScraping,
+			SecretNamespaces:                 secretNamespaces,
 			MtlsEnabled:                      extraConfig.TargetAllocatorMtlsEnabled,
 			CertsDir:                         targetAllocatorCertsVolumeDir,
 			AllowInsecureAuthSecrets:         extraConfig.TargetAllocatorAllowInsecureAuthSecrets,
@@ -227,8 +240,8 @@ func assembleClusterRole(c *targetAllocatorConfig, extraConfig util.ExtraConfig)
 		"endpoints",
 		"pods",
 	}
-	// With restrictToNamespaces set, the Helm chart grants access to secrets via namespaced role bindings.
-	if len(extraConfig.TargetAllocatorRestrictToNamespaces) == 0 {
+	// With allowSecretAccessInNamespaces set, the Helm chart grants access to secrets via namespaced role bindings.
+	if len(extraConfig.TargetAllocatorAllowSecretAccessInNamespaces) == 0 {
 		coreResources = append(coreResources, "secrets")
 	}
 	return &rbacv1.ClusterRole{
@@ -519,24 +532,6 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 }
 
 // ---utils---
-
-// FilterNamespacesByRestriction splits the given namespaces into the ones the target-allocator is allowed to watch and
-// the ones it is not allowed to watch. If restrictToNamespaces is empty, all namespaces are allowed.
-func FilterNamespacesByRestriction(namespaces []string, restrictToNamespaces []string) ([]string, []string) {
-	if len(restrictToNamespaces) == 0 {
-		return namespaces, nil
-	}
-	allowed := make([]string, 0, len(namespaces))
-	var excluded []string
-	for _, namespace := range namespaces {
-		if slices.Contains(restrictToNamespaces, namespace) {
-			allowed = append(allowed, namespace)
-		} else {
-			excluded = append(excluded, namespace)
-		}
-	}
-	return allowed, excluded
-}
 
 func ConfigMapName(namePrefix string) string {
 	return resources.RenderName(namePrefix, targetAllocatorDeploymentNameSuffix, "cm")

@@ -226,7 +226,6 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
 		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume
 	}
-	config.TargetAllocatorRestrictToNamespaces = extraConfig.TargetAllocatorRestrictToNamespaces
 	config.DaemonSetCollectorMemoryLimit = *extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Memory()
 	config.DeploymentCollectorMemoryLimit = *extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory()
 	config.SignalControlCollectorMemoryLimit = *extraConfig.SignalControlCollectorContainerResources.Limits.Memory()

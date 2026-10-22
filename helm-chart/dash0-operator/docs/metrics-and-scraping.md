@@ -176,15 +176,19 @@ You can restrict this access to a list of namespaces via the Helm chart:
 ```yaml
 operator:
   targetAllocator:
-    restrictToNamespaces:
+    allowSecretAccessInNamespaces:
       - namespace-a
       - namespace-b
 ```
 
-If this list is set, the Target Allocator can only read secrets in the listed namespaces and in the Dash0 operator namespace, and the operator manager only in the Dash0 operator namespace.
+If this list is set, the Target Allocator can only read secrets in the listed namespaces, and the operator manager only in the Dash0 operator namespace.
+The list only restricts access to secrets.
+It does not change which namespaces are watched.
+The Target Allocator still watches Prometheus CRDs in all namespaces that have a Dash0 monitoring resource with [Prometheus scraping](configuration.md#monitoringresource.spec.prometheusScraping.enabled) enabled (which is the default), provided that [support for Prometheus CRDs](#support-for-prometheus-crds) is enabled.
+In a namespace that is not on the list, Prometheus CRDs without a secret reference are scraped as usual.
+Prometheus CRDs that reference a secret are rejected by the Target Allocator, and their targets are not scraped.
+This means that authentication via secrets (for example basic auth, a bearer token or OAuth2) and TLS settings from secrets (for example a CA certificate for verifying the target's certificate, or a client certificate) do not work in such a namespace.
 Listing a namespace does not enable scraping in it by itself.
-The Target Allocator only watches Prometheus CRDs in a listed namespace if [support for Prometheus CRDs](#support-for-prometheus-crds) is enabled and the namespace has a Dash0 monitoring resource with [Prometheus scraping](configuration.md#monitoringresource.spec.prometheusScraping.enabled) enabled (which is the default).
-For Dash0 monitoring resources with Prometheus scraping enabled outside of this list, the operator logs a warning and ignores the Prometheus CRDs in their namespace.
 Scraping pods via the `prometheus.io/*` annotations (see [Scraping Prometheus Endpoints](#scraping-prometheus-endpoints)) is not affected by this list.
 
 All listed namespaces need to exist when the Helm chart is installed or upgraded, since a role binding is created in each of them.

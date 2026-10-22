@@ -120,7 +120,6 @@ type oTelColConfig struct {
 	K8sAttributesShareProcessor                      bool
 	PrometheusCrdSupportEnabled                      bool
 	TargetAllocatorNamePrefix                        string
-	TargetAllocatorRestrictToNamespaces              []string
 	Agent0ConnectorEnabled                           bool
 	Agent0ConnectorDeploymentName                    string
 	SyntheticsWorkerDeploymentNames                  []string

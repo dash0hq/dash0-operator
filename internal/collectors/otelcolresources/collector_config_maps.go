@@ -102,7 +102,6 @@ type collectorConfigurationTemplateValues struct {
 	TargetAllocatorAppKubernetesIoInstance           string
 	TargetAllocatorAppKubernetesIoName               string
 	TargetAllocatorServiceName                       string
-	TargetAllocatorWatchesAtLeastOneNamespace        bool
 	TargetAllocatorMtlsEnabled                       bool
 	TargetAllocatorMtlsClientCertsDir                string
 	Agent0ConnectorEnabled                           bool
@@ -392,10 +391,6 @@ func newCollectorConfigurationTemplateValues(
 		)
 
 	targetAllocatorServiceName := taresources.ServiceName(config.TargetAllocatorNamePrefix)
-	targetAllocatorWatchedNamespaces, _ := taresources.FilterNamespacesByRestriction(
-		namespacesWithPrometheusScraping,
-		config.TargetAllocatorRestrictToNamespaces,
-	)
 
 	memoryLimiterLimitMiB := 0
 	memoryLimiterSpikeMiB := 0
@@ -422,7 +417,6 @@ func newCollectorConfigurationTemplateValues(
 		TargetAllocatorAppKubernetesIoName:               taresources.AppKubernetesIoNameValue,
 		TargetAllocatorAppKubernetesIoInstance:           taresources.AppKubernetesIoInstanceValue,
 		TargetAllocatorServiceName:                       targetAllocatorServiceName,
-		TargetAllocatorWatchesAtLeastOneNamespace:        len(targetAllocatorWatchedNamespaces) > 0,
 		TargetAllocatorMtlsEnabled:                       targetAllocatorMtlsConfig.Enabled,
 		TargetAllocatorMtlsClientCertsDir:                targetAllocatorCertsVolumeDir,
 		Agent0ConnectorEnabled:                           config.Agent0ConnectorEnabled,
