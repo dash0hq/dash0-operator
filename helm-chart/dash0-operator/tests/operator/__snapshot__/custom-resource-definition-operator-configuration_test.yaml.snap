@@ -1674,6 +1674,39 @@ custom resource definition for operator configuration should match snapshot:
                                 type: object
                               type: array
                           type: object
+                        instrumentationInitContainer:
+                          description: Settings for the init container that the operator adds to instrumented workloads.
+                          properties:
+                            resources:
+                              description: |-
+                                The resources of the init container (Helm value operator.initContainerResources). Instrumented workloads get
+                                changed resources on their next update, e.g. via kubectl rollout restart.
+                              properties:
+                                limits:
+                                  additionalProperties:
+                                    anyOf:
+                                      - type: integer
+                                      - type: string
+                                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                    x-kubernetes-int-or-string: true
+                                  description: |-
+                                    The resource limits. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                                    its default limit, and -1 removes it. A default limit below the request set in requests is raised to that request.
+                                  type: object
+                                requests:
+                                  additionalProperties:
+                                    anyOf:
+                                      - type: integer
+                                      - type: string
+                                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                    x-kubernetes-int-or-string: true
+                                  description: |-
+                                    The resource requests. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                                    its default request, and -1 removes it. A default request above the limit set in limits is lowered to that limit.
+                                    A request above the limit set in limits is rejected.
+                                  type: object
+                              type: object
+                          type: object
                         targetAllocator:
                           description: Settings for the OpenTelemetry target-allocator.
                           properties:

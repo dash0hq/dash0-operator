@@ -58,6 +58,10 @@ func validateOperatorConfigurationComponents(
 	}
 	path := field.NewPath(componentSettingsPath)
 	var errs field.ErrorList
+	if initContainer := components.InstrumentationInitContainer; initContainer != nil && initContainer.Resources != nil {
+		errs = append(errs, validateContainerResources(
+			path.Child(componentInstrumentationInitContainer, "resources"), initContainer.Resources)...)
+	}
 	if daemonSet := components.DaemonSetCollector; daemonSet != nil {
 		p := path.Child(componentDaemonSetCollector)
 		errs = append(errs, validateContainerResourcesWithGoMemLimit(p.Child("collectorContainerResources"),

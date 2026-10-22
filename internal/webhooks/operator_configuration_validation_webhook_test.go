@@ -853,18 +853,16 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
 				Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 				Components: &dash0v1alpha1.OperatorConfigurationComponents{
-					TargetAllocator: &dash0v1alpha1.TargetAllocatorSettings{
-						ContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
-							ContainerResources: dash0v1alpha1.ContainerResources{
-								Limits:   corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("64Mi")},
-								Requests: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("128Mi")},
-							},
+					InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{
+						Resources: &dash0v1alpha1.ContainerResources{
+							Limits:   corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("64Mi")},
+							Requests: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("128Mi")},
 						},
 					},
 				},
 			}
 			expectedMessage := "The provided Dash0 operator configuration resource has invalid component settings: " +
-				"spec.components.targetAllocator.containerResources.requests[memory]: Invalid value: \"128Mi\": " +
+				"spec.components.instrumentationInitContainer.resources.requests[memory]: Invalid value: \"128Mi\": " +
 				"must be less than or equal to the memory limit of 64Mi."
 			request := operatorConfigurationAdmissionRequest(spec)
 			for _, operation := range []admissionv1.Operation{admissionv1.Create, admissionv1.Update} {

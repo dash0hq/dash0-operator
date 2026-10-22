@@ -93,6 +93,7 @@ var _ = Describe("component settings", func() {
 				fileConfig,
 				ExtraConfigDefaults,
 				&dash0v1alpha1.OperatorConfigurationComponents{
+					InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{},
 					DaemonSetCollector: &dash0v1alpha1.DaemonSetCollectorSettings{
 						WorkloadSettings: dash0v1alpha1.WorkloadSettings{
 							Labels:      map[string]string{},
@@ -134,6 +135,26 @@ var _ = Describe("component settings", func() {
 				MatchJSON(toJson(ExtraConfigDefaults.CollectorDaemonSetCollectorContainerResources)))
 			Expect(conflicts).To(HaveLen(1))
 			Expect(invalidSettings(components, nil)).To(BeEmpty())
+		})
+
+		It("should apply empty resources of the instrumentation init container as the default resources", func() {
+			fileConfig := ExtraConfigDefaults
+			fileConfig.InstrumentationInitContainerResources = ResourceRequirementsWithGoMemLimit{
+				Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("128Mi")},
+			}
+			components := &dash0v1alpha1.OperatorConfigurationComponents{
+				InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{
+					Resources: &dash0v1alpha1.ContainerResources{},
+				},
+			}
+			effective, conflicts := resolveOperatorConfiguration(fileConfig, components)
+			Expect(effective.InstrumentationInitContainerResources).To(Equal(ResourceRequirementsWithGoMemLimit{}))
+			Expect(conflicts).To(HaveLen(1))
+			Expect(conflicts[0].HelmValue).To(Equal("operator.initContainerResources"))
+
+			effective, _ = resolve(fileConfig, ExtraConfigDefaultsFor(true), components, nil)
+			Expect(toJson(effective.InstrumentationInitContainerResources)).To(
+				MatchJSON(toJson(ExtraConfigDefaultsFor(true).InstrumentationInitContainerResources)))
 		})
 
 		DescribeTable("should apply empty probe settings as the default probes",
@@ -482,6 +503,26 @@ var _ = Describe("component settings", func() {
 			))
 		})
 
+		It("should merge the resources of the instrumentation init container with the defaults", func() {
+			components := &dash0v1alpha1.OperatorConfigurationComponents{
+				InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{
+					Resources: &dash0v1alpha1.ContainerResources{
+						Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("256Mi")},
+					},
+				},
+			}
+			Expect(toJson(EffectiveInstrumentationInitContainerResources(ExtraConfigDefaultsFor(true), components))).To(
+				MatchJSON(`{"limits":{"ephemeral-storage":"500Mi","memory":"256Mi"},` +
+					`"requests":{"cpu":"100m","ephemeral-storage":"500Mi","memory":"128Mi"}}`))
+			Expect(toJson(EffectiveInstrumentationInitContainerResources(ExtraConfigDefaults, components))).To(
+				MatchJSON(`{"limits":{"memory":"256Mi"}}`))
+			Expect(EffectiveInstrumentationInitContainerResources(ExtraConfigDefaults,
+				&dash0v1alpha1.OperatorConfigurationComponents{
+					InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{},
+				})).To(BeNil())
+			Expect(EffectiveInstrumentationInitContainerResources(ExtraConfigDefaults, nil)).To(BeNil())
+		})
+
 		It("should report a limit of 0 as invalid, but not a request of 0", func() {
 			Expect(invalidSettings(daemonSetCollectorResources(&dash0v1alpha1.ContainerResourcesWithGoMemLimit{
 				ContainerResources: dash0v1alpha1.ContainerResources{
@@ -660,6 +701,47 @@ var _ = Describe("component settings", func() {
 			Expect(conflicts).To(BeEmpty())
 		})
 
+		It("should apply the resources of the instrumentation init container", func() {
+			fileConfig := ExtraConfigDefaults
+			fileConfig.InstrumentationInitContainerResources = ResourceRequirementsWithGoMemLimit{
+				Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("128Mi")},
+			}
+			effective, conflicts := resolveOperatorConfiguration(
+				fileConfig,
+				&dash0v1alpha1.OperatorConfigurationComponents{
+					InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{
+						Resources: &dash0v1alpha1.ContainerResources{
+							Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("50m")},
+						},
+					},
+				})
+			Expect(toJson(effective.InstrumentationInitContainerResources)).To(MatchJSON(`{"requests":{"cpu":"50m"}}`))
+			Expect(conflicts).To(HaveLen(1))
+			Expect(conflicts[0].Path).To(Equal("spec.components.instrumentationInitContainer.resources"))
+			Expect(conflicts[0].HelmValue).To(Equal("operator.initContainerResources"))
+		})
+
+		It("should use the GKE Autopilot defaults of the init container as the baseline for conflicts", func() {
+			fileConfig := ExtraConfigDefaultsFor(true)
+			components := &dash0v1alpha1.OperatorConfigurationComponents{
+				InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{
+					Resources: &dash0v1alpha1.ContainerResources{
+						Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("200m")},
+					},
+				},
+			}
+
+			effective, conflicts := resolve(fileConfig, ExtraConfigDefaultsFor(true), components, nil)
+			Expect(conflicts).To(BeEmpty())
+			Expect(toJson(effective.InstrumentationInitContainerResources)).To(MatchJSON(
+				`{"limits":{"ephemeral-storage":"500Mi"},` +
+					`"requests":{"cpu":"200m","ephemeral-storage":"500Mi","memory":"128Mi"}}`))
+
+			_, conflicts = resolve(fileConfig, ExtraConfigDefaultsFor(false), components, nil)
+			Expect(conflicts).To(HaveLen(1))
+			Expect(conflicts[0].HelmValue).To(Equal("operator.initContainerResources"))
+		})
+
 		It("should report resources with a request that is greater than the limit as invalid", func() {
 			Expect(invalidSettings(&dash0v1alpha1.OperatorConfigurationComponents{
 				TargetAllocator: &dash0v1alpha1.TargetAllocatorSettings{
@@ -676,6 +758,28 @@ var _ = Describe("component settings", func() {
 			))
 		})
 
+		It("should not report valid resources as invalid", func() {
+			Expect(invalidSettings(
+				&dash0v1alpha1.OperatorConfigurationComponents{
+					InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{
+						Resources: &dash0v1alpha1.ContainerResources{
+							Limits:   corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")},
+							Requests: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1024Mi")},
+						},
+					},
+				},
+				&dash0v1alpha1.SignalControlComponents{
+					EdgeProxy: &dash0v1alpha1.EdgeProxySettings{
+						ContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+							ContainerResources: dash0v1alpha1.ContainerResources{
+								Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("2")},
+							},
+						},
+					},
+				},
+			)).To(BeEmpty())
+		})
+
 		It("should report invalid resources of the Signal Control resource", func() {
 			Expect(invalidSettings(nil, &dash0v1alpha1.SignalControlComponents{
 				EdgeProxy: &dash0v1alpha1.EdgeProxySettings{
@@ -688,6 +792,20 @@ var _ = Describe("component settings", func() {
 				},
 			})).To(ConsistOf(
 				`spec.components.edgeProxy.containerResources.requests[cpu]: Invalid value: "200m": ` +
+					`must be less than or equal to the cpu limit of 100m`,
+			))
+		})
+
+		It("should report an explicit request above the limit of the same resource as invalid", func() {
+			Expect(invalidSettings(&dash0v1alpha1.OperatorConfigurationComponents{
+				InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{
+					Resources: &dash0v1alpha1.ContainerResources{
+						Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m")},
+						Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("200m")},
+					},
+				},
+			}, nil)).To(ConsistOf(
+				`spec.components.instrumentationInitContainer.resources.requests[cpu]: Invalid value: "200m": ` +
 					`must be less than or equal to the cpu limit of 100m`,
 			))
 		})
@@ -863,6 +981,11 @@ var _ = Describe("component settings", func() {
 		It("should report the invalid settings of all components of both resources", func() {
 			Expect(invalidSettings(
 				&dash0v1alpha1.OperatorConfigurationComponents{
+					InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{
+						Resources: &dash0v1alpha1.ContainerResources{
+							Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("-64Mi")},
+						},
+					},
 					DeploymentCollector: &dash0v1alpha1.DeploymentCollectorSettings{
 						CollectorPodSettings: dash0v1alpha1.CollectorPodSettings{PriorityClassName: "High_Priority"},
 					},
@@ -883,6 +1006,8 @@ var _ = Describe("component settings", func() {
 					},
 				},
 			)).To(ConsistOf(
+				ContainSubstring(`spec.components.instrumentationInitContainer.resources.limits[memory]: `+
+					`Invalid value: "-64Mi"`),
 				ContainSubstring(`spec.components.deploymentCollector.priorityClassName: Invalid value: "High_Priority"`),
 				ContainSubstring(`spec.components.targetAllocator.labels: Invalid value: "in valid"`),
 				ContainSubstring(`spec.components.agent0Connector.annotations: Invalid value: "in valid"`),
