@@ -671,21 +671,14 @@ func (r *PrometheusRuleReconciler) MapResourceToApiCalls(
 	allSynchronizationErrors := make(map[string]string)
 	allSynchronizationErrorStatusCodes := make(map[string]int)
 
-	for _, group := range ruleSpec.Groups {
-		duplicateOrigins := make(map[string]int, len(group.Rules))
+	ruleOrigins := r.renderRuleOrigins(preconditionChecksResult, apiConfig.Dataset, ruleSpec.Groups)
+	for groupIdx, group := range ruleSpec.Groups {
 		for ruleIdx, rule := range group.Rules {
 			if rule.Record != "" {
 				// This is a recording rule.
 				recordingRulesTotal++
 				ruleName := fmt.Sprintf("%s - %s", group.Name, rule.Record)
-				ruleOrigin :=
-					r.renderRuleOrigin(
-						preconditionChecksResult,
-						apiConfig.Dataset,
-						duplicateOrigins,
-						group.Name,
-						rule.Record,
-					)
+				ruleOrigin := ruleOrigins[groupIdx][ruleIdx]
 				// Rules that cannot be synchronized keep their origin in originsInResource, so that the most recent
 				// state that has been synchronized to Dash0 is not deleted as an orphan.
 				originsInResource = append(originsInResource, ruleOrigin)
@@ -722,14 +715,7 @@ func (r *PrometheusRuleReconciler) MapResourceToApiCalls(
 					itemNameSuffix = strconv.Itoa(ruleIdx)
 				}
 				checkRuleName := fmt.Sprintf("%s - %s", group.Name, itemNameSuffix)
-				checkRuleOrigin :=
-					r.renderRuleOrigin(
-						preconditionChecksResult,
-						apiConfig.Dataset,
-						duplicateOrigins,
-						group.Name,
-						rule.Alert,
-					)
+				checkRuleOrigin := ruleOrigins[groupIdx][ruleIdx]
 				checkRule, validationIssues, ok := convertAlertingRuleToCheckRule(
 					rule,
 					action,
@@ -939,13 +925,75 @@ func (r *PrometheusRuleReconciler) renderCheckRuleUrl(
 	)
 }
 
-// renderRuleOrigin renders the origin of a single alerting or recording rule.
+// renderRuleOrigins renders the unique origins of all alerting and recording rules in the given groups. The result has
+// one slice per group, which holds the origin of each rule of that group, in the order of the rules.
+func (r *PrometheusRuleReconciler) renderRuleOrigins(
+	preconditionChecksResult *preconditionValidationResult,
+	dataset string,
+	groups []prometheusv1.RuleGroup,
+) [][]string {
+	// About duplicate origins: Origins must be unique within a dataset, and they need to be stable against reordering
+	// of rules within a group or deletion of individual rules from a group. We derive the origin from the group name
+	// and the name of the individual rule. The group name is guaranteed to be unique within a PrometheusRule
+	// resource, due to a "x-kubernetes-list-type: map" plus "x-kubernetes-list-map-keys: [name]" annotation in the CRD.
+	// The rule name field has no such guarantee, duplicate names within a group are possible. Also, since "_" can occur
+	// in group and rule names, two different combinations of group and rule name can render the same origin (e.g.
+	// group "a_b" with rule "c" and group "a" with rule "b_c").
+	// In a first pass, each rule gets the origin derived from its group and rule name, unless an earlier rule already
+	// got that origin. In a second pass, each of the remaining rules gets that origin with a counter appended, which
+	// starts at 1 for each origin and skips all origins that are already taken (e.g. "..._alert_1", "..._alert_2").
+	// Thus, a rule whose derived origin is unique always keeps it, even if it is literally named like the suffixed
+	// origin of a duplicate (e.g. "alert_1").
+	// (One downside of this approach is that _within a set of rules with colliding origins_, reordering rules or
+	// deleting one of the rules can lead to one rule taking over the origin of another rule, which we generally avoid
+	// for rules without duplicate names. Duplicate names should be fairly uncommon in practice, they can be considered
+	// a configuration error, so this downside is acceptable.)
+	type ruleIndex struct {
+		groupIdx int
+		ruleIdx  int
+	}
+	origins := make([][]string, len(groups))
+	producedOrigins := make(map[string]int)
+	var duplicates []ruleIndex
+	for groupIdx, group := range groups {
+		origins[groupIdx] = make([]string, len(group.Rules))
+		for ruleIdx, rule := range group.Rules {
+			ruleName := rule.Record
+			if ruleName == "" {
+				ruleName = rule.Alert
+			}
+			origin := r.renderRuleOrigin(preconditionChecksResult, dataset, group.Name, ruleName)
+			origins[groupIdx][ruleIdx] = origin
+			if _, isDuplicate := producedOrigins[origin]; isDuplicate {
+				duplicates = append(duplicates, ruleIndex{groupIdx: groupIdx, ruleIdx: ruleIdx})
+				continue
+			}
+			producedOrigins[origin] = 1
+		}
+	}
+	for _, duplicate := range duplicates {
+		origin := origins[duplicate.groupIdx][duplicate.ruleIdx]
+		for {
+			duplicationIndex := producedOrigins[origin]
+			producedOrigins[origin]++
+			candidate := origin + "_" + strconv.Itoa(duplicationIndex)
+			if _, isDuplicate := producedOrigins[candidate]; !isDuplicate {
+				producedOrigins[candidate] = 1
+				origins[duplicate.groupIdx][duplicate.ruleIdx] = candidate
+				break
+			}
+		}
+	}
+	return origins
+}
+
+// renderRuleOrigin renders the origin of a single alerting or recording rule, derived from its group and rule name.
 // The origin has the pattern
 // "dash0-operator_${clusterUid}_${dataset}_${namespace}_${prometheusrule_resource_name}_${group.name}_${ruleName}".
+// The origin is not necessarily unique, see renderRuleOrigins.
 func (r *PrometheusRuleReconciler) renderRuleOrigin(
 	preconditionChecksResult *preconditionValidationResult,
 	dataset string,
-	duplicateOrigins map[string]int,
 	groupName string,
 	ruleName string,
 ) string {
@@ -970,33 +1018,12 @@ func (r *PrometheusRuleReconciler) renderRuleOrigin(
 	sanitizedRuleName = strings.ReplaceAll(sanitizedRuleName, "%", "|")
 	sanitizedRuleName = strings.ReplaceAll(sanitizedRuleName, ":", "|")
 
-	origin := fmt.Sprintf(
+	return fmt.Sprintf(
 		"%s%s_%s",
 		r.renderRuleOriginPrefix(preconditionChecksResult, dataset),
 		sanitizedGroupName,
 		sanitizedRuleName,
 	)
-
-	// About duplicate origins: Origins must be unique within a dataset, and they need to be stable against reordering
-	// of rules within a group or deletion of individual rules from a group. We derive the origin from the group name
-	// and the name of the individual rule. The group name is guaranteed to be unique within a PrometheusRule
-	// resource, due to a "x-kubernetes-list-type: map" plus "x-kubernetes-list-map-keys: [name]" annotation in the CRD.
-	// The rule name field has no such guarantee, duplicate names within a group are possible.
-	// We keep track of all produced origins within a group in the duplicateOrigins map[string]int. Once an origin
-	// string has been produced for the first time, we set the value for this origin to 1. The counter is increased
-	// each time the origin is produced again. Starting with the second time we see the same origin (i.e. the first
-	// duplicate), the counter is also appended to the origin to ensure unique origins.
-	// (One downside of this approach is that _within a set of rules with identical group & rule name_, reordering
-	// rules or deleting one of the rules can lead to one rule taking over the origin of another rule, which we
-	// generally avoid for rules without duplicate names. Duplicate names should be fairly uncommon in
-	// practice, they can be considered a configuration error, so this downside is acceptable.)
-	if duplicationIndexForThisOrigin, isDuplicate := duplicateOrigins[origin]; isDuplicate {
-		duplicateOrigins[origin]++
-		origin = origin + "_" + strconv.Itoa(duplicationIndexForThisOrigin)
-	} else {
-		duplicateOrigins[origin] = 1
-	}
-	return origin
 }
 
 // renderRuleOriginPrefix renders the common origin prefix for all alerting or recording rules that are
