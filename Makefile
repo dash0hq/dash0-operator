@@ -824,6 +824,10 @@ olm-bundle: operator-sdk ## Generate the OLM bundle (bundle/ and bundle.Dockerfi
 olm-bundle-validate: operator-sdk ## Validate the OLM bundle, including the optional operatorframework checks.
 	$(OPERATOR_SDK) bundle validate ./bundle --select-optional suite=operatorframework
 
+.PHONY: olm-scorecard
+olm-scorecard: operator-sdk ## Run the operator-sdk scorecard tests for the OLM bundle in the current kubectl context.
+	$(OPERATOR_SDK) scorecard ./bundle --wait-time 5m
+
 .PHONY: olm-bundle-image
 olm-bundle-image: ## Build the OLM bundle image locally, the image is not pushed.
 	@$(call build_container_image,$(BUNDLE_IMAGE_REPOSITORY),$(BUNDLE_IMAGE_TAG),.,bundle.Dockerfile)
@@ -850,6 +854,7 @@ OPERATOR_SDK ?= $(LOCALBIN)/operator-sdk
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.7.1
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
+# Keep the scorecard-test image tags in config/scorecard/config.yaml in sync with this version.
 OPERATOR_SDK_VERSION ?= v1.42.3
 
 .PHONY: kustomize

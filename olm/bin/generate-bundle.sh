@@ -43,7 +43,7 @@ echo "transforming the rendered chart and the CSV base"
 echo "generating the bundle"
 {
   cat "$work_dir/manifests.yaml"
-  for f in config/samples/*.yaml; do
+  for f in config/samples/*.yaml config/scorecard/config.yaml; do
     echo "---"
     cat "$f"
   done
