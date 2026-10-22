@@ -115,10 +115,10 @@ var _ = Describe("environment variable fallback for command-line flags", func() 
 		)
 	})
 
-	Context("envVarNameForFlag", func() {
+	Context("EnvVarNameForFlag", func() {
 		DescribeTable("derives the fallback env var name from the flag name",
 			func(flagName, expected string) {
-				Expect(envVarNameForFlag(flagName)).To(Equal(expected))
+				Expect(EnvVarNameForFlag(flagName)).To(Equal(expected))
 			},
 			Entry("trims the dash0- prefix", "dash0-log-level", "DASH0_LOG_LEVEL"),
 			Entry("adds the DASH0_ prefix to an unprefixed flag", "leader-elect", "DASH0_LEADER_ELECT"),
@@ -128,6 +128,16 @@ var _ = Describe("environment variable fallback for command-line flags", func() 
 				"instrumentation-delay-after-each-workload-millis",
 				"DASH0_INSTRUMENTATION_DELAY_AFTER_EACH_WORKLOAD_MILLIS"),
 		)
+	})
+
+	Context("NewOperatorManagerFlagSet", func() {
+		It("defines the command-line flags of the operator manager, without the zap flags", func() {
+			fs := NewOperatorManagerFlagSet()
+			Expect(fs.Lookup("dash0-log-level")).NotTo(BeNil())
+			fs.VisitAll(func(f *flag.Flag) {
+				Expect(f.Name).NotTo(HavePrefix("zap-"))
+			})
+		})
 	})
 
 	Context("loggableValue", func() {
@@ -149,7 +159,7 @@ var _ = Describe("environment variable fallback for command-line flags", func() 
 				if strings.HasPrefix(f.Name, "zap-") {
 					return
 				}
-				name := envVarNameForFlag(f.Name)
+				name := EnvVarNameForFlag(f.Name)
 				if other, dup := seen[name]; dup {
 					Fail(fmt.Sprintf("env var %s is derived from both --%s and --%s", name, other, f.Name))
 				}
@@ -163,7 +173,7 @@ var _ = Describe("environment variable fallback for command-line flags", func() 
 				if strings.HasPrefix(f.Name, "zap-") {
 					return
 				}
-				name := envVarNameForFlag(f.Name)
+				name := EnvVarNameForFlag(f.Name)
 				Expect(reserved).NotTo(
 					HaveKey(name),
 					"flag --%s derives to reserved env var %s", f.Name, name)

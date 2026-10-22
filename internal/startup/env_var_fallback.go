@@ -18,15 +18,24 @@ type appliedEnvVar struct {
 	value  string
 }
 
-// envVarNameForFlag derives the environment variable that acts as a fallback for a command-line flag. The "dash0-"
+// EnvVarNameForFlag derives the environment variable that acts as a fallback for a command-line flag. The "dash0-"
 // prefix is trimmed before the "DASH0_" prefix is added, so --dash0-log-level maps to DASH0_LOG_LEVEL rather than
 // DASH0_DASH0_LOG_LEVEL; every other flag simply gains the DASH0_ prefix.
-func envVarNameForFlag(flagName string) string {
+func EnvVarNameForFlag(flagName string) string {
 	return "DASH0_" + strings.ToUpper(strings.ReplaceAll(strings.TrimPrefix(flagName, "dash0-"), "-", "_"))
 }
 
+// NewOperatorManagerFlagSet returns a new flag set on which all command-line flags of the operator manager are defined
+// (without the zap flags). It is meant for tools that need to know the flag surface, like the transformer that renders
+// the manifests of the OLM bundle.
+func NewOperatorManagerFlagSet() *flag.FlagSet {
+	fs := flag.NewFlagSet("dash0-operator-manager", flag.ContinueOnError)
+	defineCommandLineArguments(fs)
+	return fs
+}
+
 // applyEnvironmentVariableDefaults fills every flag in fs that was not set on the command line from its corresponding
-// DASH0_* environment variable (see envVarNameForFlag). This lets an OLM Subscription, which can inject env vars but not
+// DASH0_* environment variable (see EnvVarNameForFlag). This lets an OLM Subscription, which can inject env vars but not
 // container args, configure the full flag surface. Explicit command-line arguments always win. Flags registered by
 // controller-runtime's zap options (prefixed "zap-") are excluded, and an environment variable that is unset or empty
 // is treated as absent. It returns the applied (flag, envVar, value) triples so the caller can log them once logging is
@@ -43,7 +52,7 @@ func applyEnvironmentVariableDefaults(fs *flag.FlagSet) ([]appliedEnvVar, error)
 		if setErr != nil || explicit[f.Name] || strings.HasPrefix(f.Name, "zap-") {
 			return
 		}
-		envVar := envVarNameForFlag(f.Name)
+		envVar := EnvVarNameForFlag(f.Name)
 		value, ok := os.LookupEnv(envVar)
 		if !ok || value == "" {
 			return
