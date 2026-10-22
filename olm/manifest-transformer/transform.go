@@ -32,9 +32,11 @@ const (
 	helmHookAnnotation    = "helm.sh/hook"
 	versionLabel          = "app.kubernetes.io/version"
 
+	kindClusterServiceVersion    = "ClusterServiceVersion"
 	kindCustomResourceDefinition = "CustomResourceDefinition"
 	kindDeployment               = "Deployment"
 	managerContainerName         = "manager"
+	containerImageAnnotation     = "containerImage"
 
 	// OLM mounts the webhook serving certificate at the default path of the controller-runtime webhook server.
 	webhookServingCertsPath = "/tmp/k8s-webhook-server/serving-certs"
@@ -48,12 +50,13 @@ const (
 )
 
 var (
-	// supportedKinds lists the kinds the chart renders for the bundle; anything else (for example the OpenShift
-	// SecurityContextConstraints or the Secret with the generated webhook certificate) means that olm/values-olm.yaml
-	// no longer matches the chart.
+	// supportedKinds lists the kinds the chart renders for the bundle, plus the CSV base; anything else (for example the
+	// OpenShift SecurityContextConstraints or the Secret with the generated webhook certificate) means that
+	// olm/values-olm.yaml no longer matches the chart.
 	supportedKinds = []string{
 		"ClusterRole",
 		"ClusterRoleBinding",
+		kindClusterServiceVersion,
 		"ConfigMap",
 		kindCustomResourceDefinition,
 		kindDeployment,
@@ -100,7 +103,9 @@ func transform(in io.Reader, out io.Writer, log io.Writer, version string) error
 		return err
 	}
 	kept := make([]*unstructured.Unstructured, 0, len(docs))
+	var csvs []*unstructured.Unstructured
 	deployments := 0
+	managerImage := ""
 	for _, doc := range docs {
 		if _, isHook := doc.GetAnnotations()[helmHookAnnotation]; isHook {
 			fmt.Fprintf(log, "dropped the Helm hook %s %s\n", doc.GetKind(), doc.GetName())
@@ -123,16 +128,38 @@ func transform(in io.Reader, out io.Writer, log io.Writer, version string) error
 		}
 		if doc.GetKind() == kindDeployment {
 			deployments++
-			if err = transformDeployment(doc, version, log); err != nil {
+			if managerImage, err = transformDeployment(doc, version, log); err != nil {
 				return fmt.Errorf("the Deployment %s: %w", doc.GetName(), err)
 			}
+		}
+		if doc.GetKind() == kindClusterServiceVersion {
+			csvs = append(csvs, doc)
 		}
 		kept = append(kept, doc)
 	}
 	if deployments != 1 {
 		return fmt.Errorf("expected exactly one Deployment, found %d", deployments)
 	}
+	if len(csvs) > 1 {
+		return fmt.Errorf("expected at most one ClusterServiceVersion, found %d", len(csvs))
+	}
+	for _, csv := range csvs {
+		setContainerImage(csv, managerImage, log)
+	}
 	return writeDocuments(out, kept)
+}
+
+// setContainerImage sets the containerImage annotation of the CSV base to the image of the manager container, since the
+// image tag changes with every release.
+func setContainerImage(csv *unstructured.Unstructured, image string, log io.Writer) {
+	annotations := csv.GetAnnotations()
+	if annotations == nil {
+		annotations = map[string]string{}
+	}
+	annotations[containerImageAnnotation] = image
+	csv.SetAnnotations(annotations)
+	fmt.Fprintf(log, "set the annotation %s of the ClusterServiceVersion %s to %s\n",
+		containerImageAnnotation, csv.GetName(), image)
 }
 
 func readDocuments(in io.Reader) ([]*unstructured.Unstructured, error) {
@@ -266,10 +293,12 @@ func updateLabels(labels map[string]string, version string) map[string]string {
 	return labels
 }
 
-func transformDeployment(doc *unstructured.Unstructured, version string, log io.Writer) error {
+// transformDeployment adapts the Deployment of the operator manager to OLM and returns the image of the manager
+// container.
+func transformDeployment(doc *unstructured.Unstructured, version string, log io.Writer) (string, error) {
 	deployment := &appsv1.Deployment{}
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(doc.Object, deployment); err != nil {
-		return fmt.Errorf("cannot parse the Deployment: %w", err)
+		return "", fmt.Errorf("cannot parse the Deployment: %w", err)
 	}
 	deployment.Spec.Template.Labels = updateLabels(deployment.Spec.Template.Labels, version)
 
@@ -278,35 +307,39 @@ func transformDeployment(doc *unstructured.Unstructured, version string, log io.
 		return c.Name == managerContainerName
 	})
 	if containerIdx < 0 {
-		return fmt.Errorf("there is no container named %s", managerContainerName)
+		return "", fmt.Errorf("there is no container named %s", managerContainerName)
 	}
 	container := &podSpec.Containers[containerIdx]
+	if container.Image == "" {
+		return "", fmt.Errorf("the container %s has no image", managerContainerName)
+	}
 
 	if err := convertArgsToEnvVars(container, log); err != nil {
-		return err
+		return "", err
 	}
 	webhookServiceName := deployment.Name + olmWebhookServiceNameSuffix
 	if err := setEnvVar(container, webhookServiceNameEnvVarName, webhookServiceName); err != nil {
-		return err
+		return "", err
 	}
 	fmt.Fprintf(log, "set %s to %s, the name of the webhook service OLM creates\n",
 		webhookServiceNameEnvVarName, webhookServiceName)
 	if err := disableAgent0Connector(container, log); err != nil {
-		return err
+		return "", err
 	}
 	if err := removeWebhookCertificateVolume(podSpec, container, log); err != nil {
-		return err
+		return "", err
 	}
 	if err := addRelatedImageEnvVars(container, log); err != nil {
-		return err
+		return "", err
 	}
+	image := container.Image
 
 	transformed, err := runtime.DefaultUnstructuredConverter.ToUnstructured(deployment)
 	if err != nil {
-		return fmt.Errorf("cannot convert the Deployment: %w", err)
+		return "", fmt.Errorf("cannot convert the Deployment: %w", err)
 	}
 	doc.Object = transformed
-	return nil
+	return image, nil
 }
 
 // convertArgsToEnvVars replaces every container arg that is not in fixedArgs with the environment variable the operator

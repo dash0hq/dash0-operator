@@ -1,0 +1,131 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Seamless Upgrades
+    categories: Monitoring,Logging & Tracing
+    description: The Dash0 Operator gets OpenTelemetry data flowing from your applications and infrastructure to Dash0.
+    repository: https://github.com/dash0hq/dash0-operator
+    support: Dash0
+  name: dash0-operator.v0.0.0
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: Enables monitoring for a namespace, i.e. workload instrumentation, log collection and metric scraping.
+      displayName: Dash0 Monitoring
+      kind: Dash0Monitoring
+      name: dash0monitorings.operator.dash0.com
+      version: v1beta1
+    - description: Cluster-wide settings of the operator, including where telemetry is exported to.
+      displayName: Dash0 Operator Configuration
+      kind: Dash0OperatorConfiguration
+      name: dash0operatorconfigurations.operator.dash0.com
+      version: v1alpha1
+    - description: Enables and configures Signal Control.
+      displayName: Dash0 Signal Control
+      kind: Dash0SignalControl
+      name: dash0signalcontrols.operator.dash0.com
+      version: v1alpha1
+    - description: A Dash0 sampling rule, synchronized to Dash0.
+      displayName: Dash0 Sampling Rule
+      kind: Dash0SamplingRule
+      name: dash0samplingrules.operator.dash0.com
+      version: v1alpha1
+    - description: A Dash0 notification channel, synchronized to Dash0.
+      displayName: Dash0 Notification Channel
+      kind: Dash0NotificationChannel
+      name: dash0notificationchannels.operator.dash0.com
+      version: v1beta1
+    - description: A Dash0 signal-to-metrics rule, synchronized to Dash0.
+      displayName: Dash0 Signal To Metrics
+      kind: Dash0SignalToMetrics
+      name: dash0signaltometrics.operator.dash0.com
+      version: v1alpha1
+    - description: A Dash0 spam filter, synchronized to Dash0.
+      displayName: Dash0 Spam Filter
+      kind: Dash0SpamFilter
+      name: dash0spamfilters.operator.dash0.com
+      version: v1alpha1
+    - description: A Dash0 synthetic check, synchronized to Dash0.
+      displayName: Dash0 Synthetic Check
+      kind: Dash0SyntheticCheck
+      name: dash0syntheticchecks.operator.dash0.com
+      version: v1alpha1
+    - description: A Dash0 time series aggregation, synchronized to Dash0.
+      displayName: Dash0 Time Series Aggregation
+      kind: Dash0TimeSeriesAggregation
+      name: dash0timeseriesaggregations.operator.dash0.com
+      version: v1alpha1
+    - description: A Dash0 view, synchronized to Dash0.
+      displayName: Dash0 View
+      kind: Dash0View
+      name: dash0views.operator.dash0.com
+      version: v1alpha1
+    - description: A Dash0 team, synchronized to Dash0.
+      displayName: Dash0 Team
+      kind: Dash0Team
+      name: dash0teams.dash0.com
+      version: v1alpha1
+    - description: An OpenSLO service level objective, synchronized to Dash0.
+      displayName: SLO
+      kind: SLO
+      name: slos.openslo.com
+      version: v1
+  description: |
+    The Dash0 Operator makes observability easy for every Kubernetes setup. Install the operator into your cluster to get
+    OpenTelemetry data flowing from your applications and infrastructure to Dash0.
+
+    After installing the operator, create a `Dash0OperatorConfiguration` resource with the export settings for your Dash0
+    organization, and a `Dash0Monitoring` resource in every namespace that should be monitored.
+
+    Settings that the Helm chart exposes as command-line arguments of the operator manager can be changed via
+    `spec.config.env` of the `Subscription`, see the
+    [documentation](https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/overview). OpenShift and GKE
+    Autopilot are not supported by this bundle.
+  displayName: Dash0 Operator
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - OpenTelemetry
+  - Observability
+  - Monitoring
+  - Dash0
+  - Node.js
+  - Java
+  - JVM
+  - .NET
+  - Python
+  - Ruby
+  links:
+  - name: Dash0
+    url: https://www.dash0.com/
+  - name: Source Code
+    url: https://github.com/dash0hq/dash0-operator
+  - name: Documentation
+    url: https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/overview
+  maintainers:
+  - email: bastian.krol@dash0.com
+    name: Bastian Krol
+  - email: petra.bierleutgeb@dash0.com
+    name: Petra Bierleutgeb
+  - email: felix.thieltges@dash0.com
+    name: Felix Thieltges
+  maturity: alpha
+  minKubeVersion: 1.21.0
+  provider:
+    name: Dash0 Inc.
+    url: https://www.dash0.com/
+  version: 0.0.0

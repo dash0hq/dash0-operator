@@ -205,6 +205,17 @@ spec:
 `
 	crdManifest                  = crdHeader + crdConversion + crdVersions
 	crdManifestWithoutConversion = crdHeader + crdVersions
+
+	csvManifest = `
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  name: dash0-operator.v0.0.0
+  annotations:
+    capabilities: Seamless Upgrades
+spec:
+  displayName: Dash0 Operator
+`
 )
 
 var _ = Describe("the OLM manifest transformer", func() {
@@ -252,6 +263,29 @@ metadata:
 	It("fails with more than one Deployment", func() {
 		Expect(runTransform(deploymentManifest, deploymentManifest)).To(
 			MatchError("expected exactly one Deployment, found 2"))
+	})
+
+	It("sets the containerImage annotation of the ClusterServiceVersion to the manager image", func() {
+		out, log := transformSuccessfully(csvManifest, deploymentManifest)
+
+		csv := parseOutput(out)[0]
+		Expect(csv.GetAnnotations()).To(Equal(map[string]string{
+			"capabilities":   "Seamless Upgrades",
+			"containerImage": "operator-controller:latest",
+		}))
+		Expect(log).To(ContainSubstring(
+			"set the annotation containerImage of the ClusterServiceVersion dash0-operator.v0.0.0 to " +
+				"operator-controller:latest"))
+	})
+
+	It("fails with more than one ClusterServiceVersion", func() {
+		Expect(runTransform(csvManifest, csvManifest, deploymentManifest)).To(
+			MatchError("expected at most one ClusterServiceVersion, found 2"))
+	})
+
+	It("fails if the manager container has no image", func() {
+		err := runTransform(deploymentWith("        image: \"operator-controller:latest\"\n", ""))
+		Expect(err).To(MatchError(ContainSubstring("the container manager has no image")))
 	})
 
 	It("removes the placeholder annotation and keeps other annotations", func() {
