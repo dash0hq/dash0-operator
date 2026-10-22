@@ -266,7 +266,7 @@ helm upgrade --install \
 ```
 
 Both `serverAddress` and a token are mandatory when `operator.agent0Connector.enabled` is `true`.
-The `serverAddress` can be copied from https://app.dash0.com/settings/endpoints → Outbound Connector.
+The `serverAddress` can be copied from https://app.dash0.com/goto/settings/endpoints?endpoint_type=outbound_connector.
 The authorization token is the same kind of token used for the configuration and telemetry export.
 Auth tokens can be managed and copied from https://app.dash0.com/settings/auth-tokens.
 

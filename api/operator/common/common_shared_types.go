@@ -39,19 +39,19 @@ type Export struct {
 // Dash0Configuration describes to which Dash0 ingress endpoint telemetry data will be sent.
 type Dash0Configuration struct {
 	// The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
-	// needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
-	// https://app.dash0.com -> organization settings -> "Endpoints". The correct endpoint value will always start with
-	// `ingress.` and end in `dash0.com:4317`.
+	// needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
+	// https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. The correct endpoint value will always
+	// start with `ingress.` and end in `dash0.com:4317`.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	Endpoint string `json:"endpoint"`
 
 	// The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
-	// identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
-	// identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
-	// optional. If omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
-	// authorization token. API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
+	// identifier, not its display name; for example, a dataset named "Production" can have the identifier "prod". The
+	// identifier can be looked up in https://app.dash0.com/settings/datasets. This property is optional. If omitted, no
+	// dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token. API
+	// access (dashboards, check rules, etc.) uses the dataset "default" in that case.
 	Dataset string `json:"dataset,omitempty"`
 
 	// Mandatory authorization settings for sending data to Dash0.
@@ -61,8 +61,8 @@ type Dash0Configuration struct {
 
 	// The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
 	// dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
-	// needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom
-	// https://app.dash0.com -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always
+	// needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied from
+	// https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. The correct endpoint value will always
 	// start with "https://api." and end in ".dash0.com"
 	//
 	// +kubebuilder:validation:Optional
@@ -82,15 +82,14 @@ type Dash0Configuration struct {
 type Authorization struct {
 	// The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
 	// to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-	// token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
-	// "Auth Tokens".
+	// token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
 	//
 	// +kubebuilder:validation:Optional
 	Token *string `json:"token,omitempty"` // either token or secret ref, with token taking precedence
 
 	// A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
 	// ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-	// https://app.dash0.com -> organization settings -> "Auth Tokens".
+	// https://app.dash0.com/settings/auth-tokens.
 	//
 	// +kubebuilder:validation:Optional
 	SecretRef *SecretRef `json:"secretRef,omitempty"`
