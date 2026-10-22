@@ -1575,15 +1575,16 @@ operator:
       # grants read-only access to a fixed set of well-known resource types. The default rules are listed in
       # helm-chart/dash0-operator/files/agent0-connector-default-cluster-role-rules.yaml.
       #
-      # The rules configured here replace the default rules for the agent0-connector cluster role, they are not merged
-      # with the defaults. Configuring custom rules can also be used to restrict agent0-connector's access in the
+      # The rules configured here *replace* the default rules for the agent0-connector cluster role, they are not merged
+      # with the defaults. Use the additionalRules setting instead of the rules setting if you want to keep the default
+      # rules and add more rules on top of them. Only one of rules and additionalRules can be set, setting both makes
+      # the Helm installation fail.
+      #
+      # Configuring custom rules via the rules setting can also be used to restrict agent0-connector's access in the
       # cluster, by granting access to fewer resource types. Configuring custom rules can also be used to widen
       # agent0-connector's access, for example to a resource type the default rules do not cover. All rules configured
       # here will also be granted to the operator manager, as it can only grant permissions to agent0-connector it holds
       # itself.
-      #
-      # To start from the current default rules, read them from the cluster and edit the copy:
-      #   kubectl get clusterrole dash0-operator-manager-agent0-connector-ro -o yaml
       #
       # Prefer naming the resource types explicitly over granting a wildcard.
       #
@@ -1660,6 +1661,34 @@ operator:
       #     verbs: ["get"]
       rules: []
 
+      # Additional RBAC rules for the cluster role of the agent0-connector. By default, this list is empty. The rules
+      # configured here are added to the default rules (see
+      # helm-chart/dash0-operator/files/agent0-connector-default-cluster-role-rules.yaml), that is, the agent0-connector
+      # is granted the default rules plus the rules listed here. This is the recommended way to allow access to
+      # additional resource types. Additional rules can only widen the agent0-connector's access, to restrict it, use
+      # rules (see above) instead.
+      #
+      # Only one of rules and additionalRules can be set, setting both makes the Helm installation fail.
+      #
+      # The same restrictions as for rules apply: only read-only rules are accepted, and all additional rules will also
+      # be granted to the operator manager.
+      #
+      # **IMPORTANT:** Allowing access to additional resources can have security implications. When you set up
+      # additional custom rules here, it becomes your responsibility to make sure they still match your security needs.
+      # Only grant access to additional resources types when you are confident that it cannot be used to access
+      # sensitive data (auth tokens, credentials, API secrets, PII etc.) in the cluster. Failure to do so makes that
+      # sensitive data accessible to anyone who has access to your Dash0 organization.
+      #
+      # Example:
+      # additionalRules:
+      #   - apiGroups: [""]
+      #     resources: ["configmaps"]
+      #     verbs: ["get", "list"]
+      #   - apiGroups: ["example.com"]
+      #     resources: ["widgets"]
+      #     verbs: ["get", "list"]
+      additionalRules: []
+
     # The kubectl commands the agent0-connector may execute on behalf of Agent0. A command set to false is rejected by
     # the agent0-connector. Note that Helm merges the map you provide with the defaults below, so this is not an
     # exclusive list: to disable a command that is enabled by default, you need to set it to false explicitly. Commands
@@ -1668,7 +1697,8 @@ operator:
     # the agent0-connector always rejects (e.g. "kubectl describe", or any command that modifies the cluster state)
     # cannot be enabled here. Listing any other key than the ones below fails the installation. Disabling all commands
     # also fails the installation - set operator.agent0Connector.enabled=false instead. Allowing a command does not
-    # automatically grant the RBAC permissions it needs, see operator.agent0Connector.clusterRole.rules.
+    # automatically grant the RBAC permissions it needs, see operator.agent0Connector.clusterRole.additionalRules and
+    # operator.agent0Connector.clusterRole.rules.
     allowedKubectlCommands:
       api-resources: true
       auth: true
@@ -1678,8 +1708,9 @@ operator:
       # credentials, API tokens, secrets or customer PII is leaked into event bodies. If in doubt, leave it disabled.
       # Kubernetes events can also be collected as normal telemetry via the operator, which is also available to
       # Agent0 then. If you want to allow access to events, you also need to allow RBAC access to events (core API
-      # group) and events.events.k8s.io via operator.agent0Connector.clusterRole.rules. While events is disabled, reading
-      # events via "kubectl get events" is rejected as well.
+      # group) and events.events.k8s.io via operator.agent0Connector.clusterRole.additionalRules (or
+      # operator.agent0Connector.clusterRole.rules). While events is disabled, reading events via "kubectl get events"
+      # is rejected as well.
       events: false
       explain: true
       # kubectl get is the main kubectl command that Agent0 uses. Disabling it will likely render the agent0-connector
@@ -1690,7 +1721,7 @@ operator:
       # information like credentials, API tokens, secrets or customer PII into logs in the cluster. If in doubt,
       # leave it disabled. Pod logs can also be collected via OTLP, and are then also available to Agent0.
       # If you want to allow access to logs, you also need to allow RBAC access to pods/log (core API group) via
-      # operator.agent0Connector.clusterRole.rules.
+      # operator.agent0Connector.clusterRole.additionalRules (or operator.agent0Connector.clusterRole.rules).
       logs: false
       top: true
       version: true

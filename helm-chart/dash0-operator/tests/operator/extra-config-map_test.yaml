@@ -1127,6 +1127,60 @@ tests:
       - failedTemplate:
           errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: the verb "patch" is not allowed'
 
+  - it: should render the default agent0-connector cluster role rules plus the additional rules when additional rules are set
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            additionalRules:
+              - apiGroups: ["example.com"]
+                resources: ["widgets"]
+                verbs: ["get", "list"]
+    asserts:
+      # the first default rule
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            agent0ConnectorClusterRoleRules:
+              - apiGroups:
+                - ""
+                resources:
+                - componentstatuses
+      # the last default rule, followed by the additional rule
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: '    - /version/\n    verbs:\n    - get\n  - apiGroups:\n    - example.com\n    resources:\n    - widgets\n    verbs:\n    - get\n    - list\n'
+
+  - it: should not render agent0-connector cluster role rules when additional rules are set but the agent0-connector is disabled
+    set:
+      operator:
+        agent0Connector:
+          enabled: false
+          clusterRole:
+            additionalRules:
+              - apiGroups: ["example.com"]
+                resources: ["widgets"]
+                verbs: ["get", "list"]
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0ConnectorClusterRoleRules
+
+  - it: should reject additional agent0-connector cluster role rules with a write verb
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            additionalRules:
+              - apiGroups: [""]
+                resources: ["pods"]
+                verbs: ["get", "list", "patch"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.additionalRules\[0\]: the verb "patch" is not allowed'
+
   - it: should render the default allowed kubectl commands for the agent0-connector
     set:
       operator:

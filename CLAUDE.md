@@ -118,8 +118,9 @@ rule wins. `TestWholeUrlCredentialWinsOverUrlFields` pins that ordering.
 
 Kubernetes secrets are the one resource type that is not redacted but blocked: listing them and checking for the
 presence of a particular one is allowed (assuming custom RBAC rules have been applied via
-`operator.agent0Connector.clusterRole.rules`), serializing their data is not (see `sensitiveResourceTypes` and
-`sensitiveContentRequested` in `images/agent0-connector/src/kubectl/validation.go`).
+`operator.agent0Connector.clusterRole.rules` or `operator.agent0Connector.clusterRole.additionalRules`), serializing
+their data is not (see `sensitiveResourceTypes` and `sensitiveContentRequested` in
+`images/agent0-connector/src/kubectl/validation.go`).
 
 When adding a new Dash0 CRD, it also needs to be added to the two copies of the default RBAC rules of the
 agent0-connector's ClusterRole: helm-chart/dash0-operator/files/agent0-connector-default-cluster-role-rules.yaml, from
