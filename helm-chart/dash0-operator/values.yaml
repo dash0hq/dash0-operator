@@ -1540,6 +1540,13 @@ operator:
     # of 30 seconds, hence down-sizing to 1 is not recommended.
     maxConcurrentCommands: 2
 
+    # If set to true, pprof will be enabled for the agent0-connector pod. The agent0-connector serves pprof on the
+    # loopback address 127.0.0.1:1777, reachable via kubectl port-forward, see
+    # https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/troubleshooting#agent0-connector-heap-profile.
+    # The default is false, do not override this unless explicitly instructed by Dash0 support. Remove the override
+    # after the agent0-connector troubleshooting is finished. Changing the flag will restart the agent0-connector pod.
+    enablePprof: false
+
     # Additional labels to be set on the agent0-connector deployment managed by the operator.
     labels: {}
 

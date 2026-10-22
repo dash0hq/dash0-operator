@@ -457,6 +457,7 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.Agent0ConnectorContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.Agent0ConnectorContainerResources.Requests.Memory().String()).To(Equal("64Mi"))
 					Expect(extraConfig.Agent0ConnectorMaxConcurrentCommands).To(Equal(int32(2)))
+					Expect(extraConfig.Agent0ConnectorEnablePprof).To(BeFalse())
 					Expect(extraConfig.Agent0ConnectorAllowedKubectlCommands).To(
 						Equal(ExtraConfigDefaults.Agent0ConnectorAllowedKubectlCommands))
 					Expect(extraConfig.Agent0ConnectorNodeAffinity).To(Equal(defaultNodeAffinity()))
@@ -1664,6 +1665,7 @@ var extraConfigKeysToHelmValues = map[string]string{
 	"edgeProxyPodAnnotations":                                       "operator.signalControl.edgeProxy.podAnnotations",
 	"agent0ConnectorContainerResources":                             "operator.agent0Connector.containerResources",
 	"agent0ConnectorMaxConcurrentCommands":                          "operator.agent0Connector.maxConcurrentCommands",
+	"agent0ConnectorEnablePprof":                                    "operator.agent0Connector.enablePprof",
 	"agent0ConnectorAllowedKubectlCommands":                         "operator.agent0Connector.allowedKubectlCommands",
 	"agent0ConnectorClusterRoleRules":                               "operator.agent0Connector.clusterRole.rules",
 	"agent0ConnectorLabels":                                         "operator.agent0Connector.labels",

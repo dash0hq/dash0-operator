@@ -1046,6 +1046,45 @@ var _ = Describe("component settings", func() {
 		})
 	})
 
+	Describe("agent0-connector pprof", func() {
+		It("should enable pprof for the agent0-connector", func() {
+			effective, conflicts := resolveOperatorConfiguration(ExtraConfigDefaults,
+				&dash0v1alpha1.OperatorConfigurationComponents{
+					Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{EnablePprof: new(true)},
+				})
+			Expect(effective.Agent0ConnectorEnablePprof).To(BeTrue())
+			Expect(conflicts).To(BeEmpty())
+		})
+
+		It("should disable pprof and report a conflict if the Helm chart enables it", func() {
+			fileConfig := ExtraConfigDefaults
+			fileConfig.Agent0ConnectorEnablePprof = true
+			effective, conflicts := resolveOperatorConfiguration(fileConfig,
+				&dash0v1alpha1.OperatorConfigurationComponents{
+					Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{EnablePprof: new(false)},
+				})
+			Expect(effective.Agent0ConnectorEnablePprof).To(BeFalse())
+			Expect(conflicts).To(ConsistOf(ComponentSettingConflict{
+				Resource:        "Dash0OperatorConfiguration",
+				Path:            "spec.components.agent0Connector.enablePprof",
+				HelmValue:       "operator.agent0Connector.enablePprof",
+				HelmSetting:     "true",
+				ResourceSetting: "false",
+			}))
+		})
+
+		It("should keep the Helm value if the setting is not provided", func() {
+			fileConfig := ExtraConfigDefaults
+			fileConfig.Agent0ConnectorEnablePprof = true
+			effective, conflicts := resolveOperatorConfiguration(fileConfig,
+				&dash0v1alpha1.OperatorConfigurationComponents{
+					Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{},
+				})
+			Expect(effective.Agent0ConnectorEnablePprof).To(BeTrue())
+			Expect(conflicts).To(BeEmpty())
+		})
+	})
+
 	Describe("allowed kubectl commands", func() {
 		allowedKubectlCommands := func(
 			settings dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands,

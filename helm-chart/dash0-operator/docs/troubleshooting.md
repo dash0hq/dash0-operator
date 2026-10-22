@@ -10,6 +10,7 @@ This guide covers common troubleshooting procedures for the Dash0 operator.
   - [Collector Deployment Heap Profile](#collector-deployment-heap-profile)
   - [SignalControl Collector Heap Profile](#signalcontrol-collector-heap-profile)
   - [Edge Proxy Heap Profile](#edge-proxy-heap-profile)
+  - [Agent0-Connector Heap Profile](#agent0-connector-heap-profile)
   - [Auxiliary Container Heap Profiles](#auxiliary-container-heap-profiles)
 
 ## Create Heap Profiles
@@ -78,6 +79,22 @@ To get a heap profile from the Edge Proxy (only present when SignalControl is en
    `curl http://localhost:8012/debug/pprof/heap > dash0-edge-proxy.out`.
 6. Terminate the `kubectl port-forward` command.
 7. Redeploy the operator without the Helm setting `operator.signalControl.edgeProxy.enablePprof=true`.
+
+### Agent0-Connector Heap Profile
+
+To get a heap profile from the agent0-connector (only present when the agent0-connector is enabled):
+
+1. Deploy the operator manager with the additional Helm value `operator.agent0Connector.enablePprof=true`.
+   Note that this will restart the agent0-connector pod.
+2. Take note of the namespace the operator is deployed in (default: `dash0-system`).
+3. Run `kubectl get pod -n <operator-namespace> -l app.kubernetes.io/name=dash0-agent0-connector` to get the name of
+   the agent0-connector pod.
+4. Using the information from the previous two steps, run
+   `kubectl port-forward -n <operator-namespace> <agent0-connector-pod-name> 1777`.
+5. In a separate shell, while the `kubectl port-forward` command from the previous step is still running, run
+   `curl http://localhost:1777/debug/pprof/heap > dash0-agent0-connector.out`.
+6. Terminate the `kubectl port-forward` command.
+7. Redeploy the operator without the Helm setting `operator.agent0Connector.enablePprof=true`.
 
 ### Auxiliary Container Heap Profiles
 

@@ -478,6 +478,8 @@ func (m *componentSettingsApplier) applyOperatorConfigurationComponents(
 		replaceValueIfSet(m, p+".maxConcurrentCommands", "operator.agent0Connector.maxConcurrentCommands",
 			&effective.Agent0ConnectorMaxConcurrentCommands, defaults.Agent0ConnectorMaxConcurrentCommands,
 			agent0Connector.MaxConcurrentCommands)
+		replaceValueIfSet(m, p+".enablePprof", "operator.agent0Connector.enablePprof",
+			&effective.Agent0ConnectorEnablePprof, defaults.Agent0ConnectorEnablePprof, agent0Connector.EnablePprof)
 		if allowedKubectlCommands := agent0Connector.AllowedKubectlCommands; allowedKubectlCommands != nil {
 			replaceValue(m, p+".allowedKubectlCommands", "operator.agent0Connector.allowedKubectlCommands",
 				&effective.Agent0ConnectorAllowedKubectlCommands, defaults.Agent0ConnectorAllowedKubectlCommands,

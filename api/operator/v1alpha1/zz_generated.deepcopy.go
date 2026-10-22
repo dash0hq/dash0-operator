@@ -113,6 +113,11 @@ func (in *Agent0ConnectorSettings) DeepCopyInto(out *Agent0ConnectorSettings) {
 		*out = new(Agent0ConnectorAllowedKubectlCommands)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.EnablePprof != nil {
+		in, out := &in.EnablePprof, &out.EnablePprof
+		*out = new(bool)
+		**out = **in
+	}
 	if in.ContainerResources != nil {
 		in, out := &in.ContainerResources, &out.ContainerResources
 		*out = new(ContainerResourcesWithGoMemLimit)

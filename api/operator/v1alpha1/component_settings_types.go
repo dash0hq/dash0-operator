@@ -372,6 +372,12 @@ type Agent0ConnectorSettings struct {
 	// +kubebuilder:validation:Optional
 	AllowedKubectlCommands *Agent0ConnectorAllowedKubectlCommands `json:"allowedKubectlCommands,omitempty"`
 
+	// Whether to enable pprof for the agent0-connector pod (Helm value operator.agent0Connector.enablePprof, default
+	// false). Only enable this if instructed by Dash0 support.
+	//
+	// +kubebuilder:validation:Optional
+	EnablePprof *bool `json:"enablePprof,omitempty"`
+
 	// The resources of the agent0-connector container (Helm value operator.agent0Connector.containerResources).
 	//
 	// +kubebuilder:validation:Optional
