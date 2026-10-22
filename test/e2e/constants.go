@@ -12,6 +12,7 @@ const (
 	applicationPathDotnet    = "test-resources/dotnet"
 	workloadNameDotnet       = "dash0-operator-dotnet-test"
 	releaseNameDotnetPrefix  = "dotnet"
+	releaseNameDotnet6Prefix = "dotnet6"
 	releaseNameDotnet8Prefix = "dotnet8"
 
 	runtimeTypeLabelJvm  = "JVM"
