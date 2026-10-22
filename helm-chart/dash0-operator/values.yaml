@@ -1452,7 +1452,7 @@ operator:
   # Settings related to the Agent0 connector (experimental).
   agent0Connector:
 
-    # The agent0-connector feature is currently experimental, do not enable it.
+    # The agent0-connector feature is currently experimental.
     #
     # All other settings in operator.agent0Connector will be ignored if operator.agent0Connector.enabled is false.
     #
@@ -1467,20 +1467,23 @@ operator:
     # The address (host:port) of the Dash0 backend service the agent0-connector pod connects to. This value is mandatory
     # when operator.agent0Connector.enabled is true; the Helm installation will fail if it is left empty in that case.
     # If operator.agent0Connector.enabled is false, this value will be ignored.
+    #
+    # The value needs to be the "Outbound Connector" endpoint of your Dash0 organization. The correct endpoint can be
+    # copied from https://app.dash0.com/settings/endpoints -> "Outbound Connector". The correct endpoint value will
+    # always start with `outbound-connector.` and end in `dash0.com:443`.
     serverAddress: ""
 
     # The Dash0 authorization token for the agent0-connector. Either this value or the
     # operator.agent0Connector.secretRef configuration has to be provided if operator.agent0Connector.enabled is true.
     # If operator.agent0Connector.enabled is false, this value will be ignored.
-    # If both token and secretRef are provided, the token will be used and secretRef will be ignored. The authorization
-    # token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
-    # "Auth Tokens".
+    # If both token and secretRef are provided, the token will be used and secretRef will be ignored. An authorization
+    # token for your Dash0 organization can be obtained from (or created at) https://app.dash0.com/settings/auth-tokens.
     token:
 
     # A reference to a Kubernetes secret containing the Dash0 authorization token for the agent0-connector. This
     # property is optional, and is ignored if either operator.agent0Connector.enabled is false or
-    # operator.agent0Connector.token is set. The authorization token for your Dash0 organization can be copied from
-    # https://app.dash0.com -> organization settings -> "Auth Tokens".
+    # operator.agent0Connector.token is set. An authorization token for your Dash0 organization can be obtained from
+    # (or created at) https://app.dash0.com/settings/auth-tokens.
     secretRef:
       # The name of the secret containing the Dash0 authorization token. For a secret created with:
       # kubectl create secret generic \
