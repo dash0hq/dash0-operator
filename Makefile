@@ -420,7 +420,7 @@ perses-crd-version-check: ## Check whether all references to the PersesDashboard
 	./test-resources/bin/perses-crd-version-check.sh
 
 .PHONY: lint
-lint: go-version-check golangci-lint ginkgo-suite-check internal-config-map-lint helm-chart-lint shellcheck-lint jactionlint instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check ## Run all static code analysis checks (Go, Helm, shell scripts, GitHub Actions workflows, etc.).
+lint: go-version-check golangci-lint ginkgo-suite-check internal-config-map-lint helm-chart-lint shellcheck-lint jactionlint instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check olm-bundle-check olm-bundle-validate ## Run all static code analysis checks (Go, Helm, shell scripts, GitHub Actions workflows, OLM bundle, etc.).
 
 .PHONY: lint-fix
 lint-fix: golangci-lint-fix
@@ -740,7 +740,7 @@ push-image-target-allocator: ## Push the OpenTelemetry target-allocator containe
 push-image-agent0-connector: ## Push the agent0-connector container image.
 	@$(call push_container_image,$(AGENT0_CONNECTOR_IMAGE_REPOSITORY),$(AGENT0_CONNECTOR_IMAGE_TAG))
 
-# The settings for rendering the Helm chart with the images that this repository builds, used by deploy and olm-bundle.
+# The settings for rendering the Helm chart with the images that this repository builds, used by deploy and olm-test-bundle.
 HELM_BUILT_IMAGE_SETTINGS = \
 	--set operator.image.repository=$(CONTROLLER_IMAGE_REPOSITORY) \
 	--set operator.image.tag=$(CONTROLLER_IMAGE_TAG) \
@@ -799,8 +799,20 @@ BUNDLE_CHANNELS ?= stable
 BUNDLE_DEFAULT_CHANNEL ?= stable
 BUNDLE_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)dash0-operator-bundle
 BUNDLE_IMAGE_TAG ?= v$(BUNDLE_VERSION)
+BUNDLE_DIR ?= bundle
 
-# The Signal Control collector and Edge Proxy images are not built in this repository. The bundle keeps the images of
+# The committed bundle ignores BUNDLE_VERSION, BUNDLE_CHANNELS, BUNDLE_DEFAULT_CHANNEL and the image settings of this
+# Makefile, so that these settings in the environment cannot change its content. It keeps the images of the chart, but
+# sets the tags that values.yaml pins to 0.0.0, the appVersion of the chart in the repository, so that updating the
+# pinned tags leaves bundle/ as is.
+OLM_COMMITTED_BUNDLE_VERSION = 0.0.1
+OLM_COMMITTED_BUNDLE_CHANNEL = stable
+OLM_COMMITTED_BUNDLE_HELM_SETTINGS = \
+	--set operator.signalControlCollectorImage.tag=0.0.0 \
+	--set operator.edgeProxyImage.tag=0.0.0 \
+	--set operator.syntheticsWorkerImage.tag=0.0.0
+
+# The Signal Control collector and Edge Proxy images are not built in this repository. A test bundle keeps the images of
 # the chart unless SIGNAL_CONTROL_COLLECTOR_IMAGE_* or EDGE_PROXY_IMAGE_* are set via the environment or command line.
 helm_set_if_overridden = $(if $(filter environment command,$(origin $(2))),--set $(1)=$($(2)))
 OLM_HELM_IMAGE_SETTINGS = \
@@ -812,25 +824,40 @@ OLM_HELM_IMAGE_SETTINGS = \
 	$(call helm_set_if_overridden,operator.edgeProxyImage.tag,EDGE_PROXY_IMAGE_TAG) \
 	$(call helm_set_if_overridden,operator.edgeProxyImage.pullPolicy,EDGE_PROXY_IMAGE_PULL_POLICY)
 
+# $(1): bundle version, $(2): channels, $(3): default channel, $(4): additional arguments for helm template
+define generate_olm_bundle
+BUNDLE_VERSION=$(1) \
+BUNDLE_CHANNELS=$(2) \
+BUNDLE_DEFAULT_CHANNEL=$(3) \
+BUNDLE_DIR="$(BUNDLE_DIR)" \
+OPERATOR_SDK=$(OPERATOR_SDK) \
+olm/bin/generate-bundle.sh $(4)
+endef
+
 .PHONY: olm-bundle
-olm-bundle: operator-sdk ## Generate the OLM bundle (bundle/ and bundle.Dockerfile) from the Helm chart.
-	BUNDLE_VERSION=$(BUNDLE_VERSION) \
-	BUNDLE_CHANNELS=$(BUNDLE_CHANNELS) \
-	BUNDLE_DEFAULT_CHANNEL=$(BUNDLE_DEFAULT_CHANNEL) \
-	OPERATOR_SDK=$(OPERATOR_SDK) \
-	olm/bin/generate-bundle.sh $(OLM_HELM_IMAGE_SETTINGS)
+olm-bundle: operator-sdk ## Generate the committed OLM bundle from the Helm chart, into BUNDLE_DIR (default: bundle).
+	OLM_TEST_BUNDLE=false $(call generate_olm_bundle,$(OLM_COMMITTED_BUNDLE_VERSION),$(OLM_COMMITTED_BUNDLE_CHANNEL),$(OLM_COMMITTED_BUNDLE_CHANNEL),$(OLM_COMMITTED_BUNDLE_HELM_SETTINGS))
+
+.PHONY: olm-test-bundle
+olm-test-bundle: operator-sdk ## Generate an OLM bundle with the BUNDLE_* and image settings of this Makefile into BUNDLE_DIR, e.g. olm/build/test-bundle.
+	OLM_TEST_BUNDLE=true $(call generate_olm_bundle,$(BUNDLE_VERSION),$(BUNDLE_CHANNELS),$(BUNDLE_DEFAULT_CHANNEL),$(OLM_HELM_IMAGE_SETTINGS))
+
+.PHONY: olm-bundle-check
+olm-bundle-check: ## Check that the committed OLM bundle in bundle/ is up to date.
+	olm/bin/check-bundle.sh
 
 .PHONY: olm-bundle-validate
-olm-bundle-validate: operator-sdk ## Validate the OLM bundle, including the optional operatorframework checks.
-	$(OPERATOR_SDK) bundle validate ./bundle --select-optional suite=operatorframework
+olm-bundle-validate: operator-sdk ## Validate the OLM bundle in BUNDLE_DIR, including the optional operatorframework and community checks.
+	$(OPERATOR_SDK) bundle validate "$(BUNDLE_DIR)" --select-optional suite=operatorframework
+	$(OPERATOR_SDK) bundle validate "$(BUNDLE_DIR)" --select-optional name=community
 
 .PHONY: olm-scorecard
-olm-scorecard: operator-sdk ## Run the operator-sdk scorecard tests for the OLM bundle in the current kubectl context.
-	$(OPERATOR_SDK) scorecard ./bundle --wait-time 5m
+olm-scorecard: operator-sdk ## Run the operator-sdk scorecard tests for the OLM bundle in BUNDLE_DIR in the current kubectl context.
+	$(OPERATOR_SDK) scorecard "$(BUNDLE_DIR)" --wait-time 5m
 
 .PHONY: olm-bundle-image
-olm-bundle-image: ## Build the OLM bundle image locally, the image is not pushed.
-	@$(call build_container_image,$(BUNDLE_IMAGE_REPOSITORY),$(BUNDLE_IMAGE_TAG),.,bundle.Dockerfile)
+olm-bundle-image: ## Build the image of the OLM bundle in BUNDLE_DIR locally, the image is not pushed.
+	@$(call build_container_image,$(BUNDLE_IMAGE_REPOSITORY),$(BUNDLE_IMAGE_TAG),$(BUNDLE_DIR),$(BUNDLE_DIR)/bundle.Dockerfile)
 
 .PHONY: push-olm-bundle-image
 push-olm-bundle-image: ## Push the OLM bundle image.

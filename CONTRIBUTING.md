@@ -620,3 +620,26 @@ serves these images is required.
 
 A test scenario is available in [test-resources/bin/test-scenario-10-signal-control.sh](test-resources/bin/test-scenario-10-signal-control.sh)
 and example sampling rules can be found in [test-resources/customresources/dash0samplingrule](test-resources/customresources/dash0samplingrule).
+
+## OLM Bundle
+
+The OLM bundle in `bundle/` is generated from the Helm chart (including its CRD templates), the CSV base in
+`config/manifests`, the samples in `config/samples`, the scorecard configuration in `config/scorecard`, the generation
+code and `olm/values-olm.yaml` in `olm/`, the `PROJECT` file and the OLM settings in the `Makefile`
+(`OPERATOR_SDK_VERSION`, `OLM_COMMITTED_BUNDLE_*`).
+After changing any of them, run `make olm-bundle` and commit the changes in `bundle/`.
+`make lint` fails if `bundle/` is not up to date.
+
+The committed bundle references the image tag `0.0.0` and is not meant to be installed.
+To install the operator via OLM in a test cluster, use a test bundle with your own images:
+
+- [test-resources/bin/deploy-olm.sh](test-resources/bin/deploy-olm.sh) installs OLM into the cluster of the current
+  kube context.
+- [test-resources/bin/test-olm-bundle.sh](test-resources/bin/test-olm-bundle.sh) builds the images, generates a test
+  bundle into `olm/build/test-bundle` via `make olm-test-bundle`, installs it with `operator-sdk run bundle` and creates
+  a `Dash0OperatorConfiguration` and a `Dash0Monitoring` resource. The comment at the top of the script lists the
+  required environment variables. OLM pulls the operator images and the bundle image from the registry of
+  `IMAGE_REPOSITORY_PREFIX`, so they have to be pushed there, for example with `PUSH_BUILT_IMAGES=true`.
+  `test-resources/bin/test-olm-bundle.sh cleanup` removes the operator again,
+  [test-resources/bin/delete-olm.sh](test-resources/bin/delete-olm.sh) removes OLM.
+- `make olm-scorecard BUNDLE_DIR=olm/build/test-bundle` runs the operator-sdk scorecard tests against the test bundle.
