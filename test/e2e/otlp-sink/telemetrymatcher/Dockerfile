@@ -25,7 +25,6 @@ RUN CGO_ENABLED=0 \
     GOOS=${TARGETOS:-linux} \
     GOARCH=${TARGETARCH} \
     go build \
-    -ldflags '-extldflags "-static"' \
     -v \
     telemetrymatcher
 
