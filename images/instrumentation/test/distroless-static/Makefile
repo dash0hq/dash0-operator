@@ -29,4 +29,4 @@ build: $(TEST_CASE_NAMES)
 
 $(TEST_CASE_NAMES):
 	cd $(TEST_CASES_DIR)/$@/ && \
-	CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags '-extldflags "-static"' -v .
+	CGO_ENABLED=0 GOOS=$${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v .
