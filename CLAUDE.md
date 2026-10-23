@@ -65,13 +65,17 @@ After changing Go code, run `make golangci-lint`.
 After changing the Helm chart, run `make helm-chart-lint`.
 After changing or creating bash scripts, run `make shellcheck-lint` to verify they have no issues.
 After changing GitHub Actions workflows, composite actions or `.github/dependabot.yml`, run `make jactionlint`.
+After changing the Helm chart, `config/manifests`, `config/samples`, `config/scorecard`, `olm/`, `PROJECT`, the CRDs
+or the OLM settings in the Makefile (`OPERATOR_SDK_VERSION`, `OLM_COMMITTED_BUNDLE_*`), run `make olm-bundle` to
+regenerate the committed OLM bundle in `bundle/`; `make olm-bundle-check` fails otherwise.
 
 ### Changing the Kubernetes Custom Resource Definitions
 
 Start by making changes to the Go code in `api/operator`.
 Then run `make manifests generate` to update the Kustomize source files in `config/crd`.
 The resulting changes in the directory `config/crd` need to be carried over to the respective files in
-`helm-chart/dash0-operator/templates/operator`, which are the Helm chart templates.
+`helm-chart/dash0-operator/templates/operator`, which are the Helm chart templates. The test in `olm/crds` fails when
+a CRD template of the chart differs from `config/crd/bases`.
 
 CRD specs must be fully typed with structured Go types (enums, nested objects, required/optional markers, and
 kubebuilder validation annotations). Do not use opaque string fields to hold structured data. Validate the Go types

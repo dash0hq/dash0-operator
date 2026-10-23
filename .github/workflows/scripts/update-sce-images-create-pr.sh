@@ -84,11 +84,13 @@ update_expected_tag_in_tests() {
 }
 
 # Aborts if any file other than values.yaml and the Helm chart unit tests pins one of the image tags, since this script
-# would leave such a reference behind and the bump would break the build.
+# would leave such a reference behind and the bump would break the build. The committed OLM bundle in bundle/ always
+# uses the tag 0.0.0 for these images (see OLM_COMMITTED_BUNDLE_HELM_SETTINGS in the Makefile).
 assert_no_other_pinned_references() {
   local img="$1"
   local other_files
-  other_files=$(git grep -lE "ghcr\.io/dash0hq/${img}:v?[0-9]+" -- . ":!${values_file}" ":!${test_file}" || true)
+  other_files=$(git grep -lE "ghcr\.io/dash0hq/${img}:v?[0-9]+" -- . ":!${values_file}" ":!${test_file}" \
+    ":!bundle/" || true)
   if [[ -n "$other_files" ]]; then
     echo "Error: ${img} is pinned to a tag in unexpected files, update this script to rewrite them, too:" >&2
     echo "$other_files" >&2
