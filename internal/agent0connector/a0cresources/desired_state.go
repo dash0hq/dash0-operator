@@ -436,9 +436,11 @@ func assembleClusterRole(c *util.Agent0ConnectorConfig, extraConfig util.ExtraCo
 	}
 }
 
-// clusterRoleRules returns the rules for the agent0-connector's cluster role: the custom rules configured via the Helm
-// chart value operator.agent0Connector.clusterRole.rules if there are any, the default RBAC rules
-// (defaultAgent0ConnectorRbacRules) otherwise.
+// clusterRoleRules returns the rules for the agent0-connector's cluster role: the rules from the extra config map if
+// there are any, the default RBAC rules (defaultAgent0ConnectorRbacRules) otherwise. The Helm chart renders rules into
+// the extra config map when either operator.agent0Connector.clusterRole.rules (which replace the default rules) or
+// operator.agent0Connector.clusterRole.additionalRules (which the chart merges with its copy of the default rules) is
+// set.
 func clusterRoleRules(extraConfig util.ExtraConfig) []rbacv1.PolicyRule {
 	if len(extraConfig.Agent0ConnectorClusterRoleRules) > 0 {
 		return cloneRbacRules(extraConfig.Agent0ConnectorClusterRoleRules)

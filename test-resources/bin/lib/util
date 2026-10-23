@@ -648,6 +648,9 @@ run_helm() {
     helm_install_command+=" --set operator.agent0Connector.serverAddress=$agent0_connector_server_address"
     helm_install_command+=" --set operator.agent0Connector.secretRef.name=dash0-authorization-secret"
     helm_install_command+=" --set operator.agent0Connector.secretRef.key=token"
+    if [[ "${AGENT0_CONNECTOR_INSECURE:-}" = "true" ]]; then
+      helm_install_command+=" --set operator.agent0Connector.insecure=true"
+    fi
   fi
   if [[ "${DEVELOPMENT_MODE:-}" != "false" ]]; then
   helm_install_command+=" --set operator.developmentMode=true"

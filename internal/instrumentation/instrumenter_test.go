@@ -9,6 +9,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -579,6 +580,53 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			},
 		}),
 		)
+
+		Describe("when a workload that needs no other update has a leftover webhook-ignore-once label", func() {
+			It("should remove the label from a deployment that is already instrumented by the same version", func() {
+				name := UniqueName(DeploymentNamePrefix)
+				deployment := InstrumentedDeployment(namespace, name)
+				AddLabel(&deployment.ObjectMeta, "dash0.com/webhook-ignore-once", "true")
+				CreateWorkload(ctx, k8sClient, deployment)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, deployment)
+
+				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+				deployment = GetDeployment(ctx, k8sClient, namespace, name)
+				VerifyModifiedDeployment(deployment, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
+				VerifyWebhookIgnoreOnceLabelIsAbsent(&deployment.ObjectMeta)
+				VerifyNoEvents(ctx, clientset, namespace)
+			})
+
+			It("should remove the label from a deployment with the opt-out label", func() {
+				name := UniqueName(DeploymentNamePrefix)
+				deployment := DeploymentWithOptOutLabel(namespace, name)
+				AddLabel(&deployment.ObjectMeta, "dash0.com/webhook-ignore-once", "true")
+				CreateWorkload(ctx, k8sClient, deployment)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, deployment)
+
+				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+				deployment = GetDeployment(ctx, k8sClient, namespace, name)
+				VerifyDeploymentWithOptOutLabel(deployment)
+				VerifyWebhookIgnoreOnceLabelIsAbsent(&deployment.ObjectMeta)
+				VerifyNoEvents(ctx, clientset, namespace)
+			})
+
+			It("should remove the label from a deployment that cannot be instrumented", func() {
+				name := UniqueName(DeploymentNamePrefix)
+				deployment := BasicDeployment(namespace, name)
+				deployment.Spec.Template.Spec.OS = &corev1.PodOS{Name: corev1.Windows}
+				AddLabel(&deployment.ObjectMeta, "dash0.com/webhook-ignore-once", "true")
+				CreateWorkload(ctx, k8sClient, deployment)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, deployment)
+
+				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+				deployment = GetDeployment(ctx, k8sClient, namespace, name)
+				VerifyUnmodifiedDeployment(deployment)
+				VerifyWebhookIgnoreOnceLabelIsAbsent(&deployment.ObjectMeta)
+			})
+		})
 
 		DescribeTable("when uninstrumenting workloads when the Dash0 monitoring resource is deleted", func(config WorkloadTestConfig) {
 			name := UniqueName(config.WorkloadNamePrefix)
