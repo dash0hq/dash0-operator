@@ -5,4 +5,4 @@
 
 # Deliberately add a requirement that conflicts with the Dash0 OpenTelemetry Python distro, to verify this case is
 # detected correctly and the distro deactivates itself instead of running with an incompatible dependency.
-opentelemetry-api==1.40.0
+opentelemetry-api==1.45.1
