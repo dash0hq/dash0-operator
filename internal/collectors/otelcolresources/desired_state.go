@@ -414,14 +414,6 @@ var (
 	}
 
 	deploymentReplicas int32 = 1
-
-	// SignalControlCollectorDefaultReplicas is used when the extra config map specifies a replica count below 1. Two
-	// replicas halve the per-process concentration of the RED connector's cardinality tracking and of the sampling
-	// reservoir compared to a single pod, and let a rolling update proceed without emptying the pool. The topology
-	// spread constraints bias them onto separate zones and nodes, and the pod disruption budget keeps a voluntary
-	// disruption from taking down both; neither is a hard guarantee, see
-	// signalControlCollectorTopologySpreadConstraints.
-	SignalControlCollectorDefaultReplicas int32 = 2
 )
 
 func assembleDesiredStateForUpsert(
@@ -2083,10 +2075,6 @@ func assembleSignalControlCollectorDeployment(
 	}
 
 	replicas := extraConfig.SignalControlCollectorReplicas
-	if replicas < 1 {
-		replicas = SignalControlCollectorDefaultReplicas
-	}
-
 	templateLabels :=
 		addGkeAutopilotAllowlistMatchLabel(config, signalControlMatchLabels, gkeAutopilotAllowlistLabelSignalControlValue)
 	collectorDeployment := &appsv1.Deployment{
