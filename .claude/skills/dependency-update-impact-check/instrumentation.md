@@ -68,7 +68,7 @@ Every hand-over between these pieces is an interface:
   * post-processing (deleted files and directories)
   * the destination layout under `/dash0-instrumentation`
 * Build scripts: `images/instrumentation/dotnet/download-instrumentation.sh`,
-  `images/instrumentation/python/extract-flattened-requirements.sh`, `images/instrumentation/ruby/install-bundle.sh`.
+  `images/instrumentation/ruby/install-bundle.sh`.
 * Documented behavior and supported runtime versions: `helm-chart/dash0-operator/docs/auto-instrumentation.md` and
   `helm-chart/dash0-operator/README.md`.
 * Test expectations, which also show which behavior the operator relies on:
