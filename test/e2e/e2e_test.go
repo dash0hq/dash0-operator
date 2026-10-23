@@ -4204,13 +4204,12 @@ spec:
 				)
 
 				By("verifying that the Node.js deployment has been instrumented by the previous operator release")
-				verifyThatWorkloadHasBeenInstrumented(
+				verifyThatWorkloadHasBeenInstrumentedByPreviousRelease(
 					applicationUnderTestNamespace,
 					runtimeTypeNodeJs,
 					workloadTypeDeployment,
 					testId,
 					createContainerImagesForHelmChartVersion(previousChartVersion),
-					"controller",
 				)
 
 				// The published chart versions used when the test suite runs against the published Helm chart might both
