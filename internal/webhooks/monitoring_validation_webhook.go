@@ -319,6 +319,15 @@ func (h *MonitoringValidationWebhookHandler) validateTelemetryRelatedSettingsIfT
 			"telemetryCollection.enabled=true in the operator configuration resource or set " +
 			"eventCollection.enabled=false in the monitoring resource (or leave it unspecified)."), true
 	}
+	// Kubernetes object collection is opt-in, so unlike the settings above an unspecified value never conflicts; the
+	// mutating webhook does not derive it from telemetryCollection.enabled either.
+	if pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.KubernetesObjectCollection.Enabled, false) {
+		return admission.Denied("The Dash0 operator configuration resource has telemetry collection disabled " +
+			"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
+			"kubernetesObjectCollection.enabled=true. This is an invalid combination. Please either set " +
+			"telemetryCollection.enabled=true in the operator configuration resource or set " +
+			"kubernetesObjectCollection.enabled=false in the monitoring resource (or leave it unspecified)."), true
+	}
 	if pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScraping.Enabled, true) {
 		return admission.Denied("The Dash0 operator configuration resource has telemetry collection disabled " +
 			"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
