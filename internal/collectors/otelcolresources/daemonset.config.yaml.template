@@ -339,6 +339,7 @@ receivers:
         ca_file: {{ .TargetAllocatorMtlsClientCertsDir }}/ca.crt
         cert_file: {{ .TargetAllocatorMtlsClientCertsDir }}/tls.crt
         key_file: {{ .TargetAllocatorMtlsClientCertsDir }}/tls.key
+        reload_interval: 5m
       {{- end }}
     {{- end }}
     config:

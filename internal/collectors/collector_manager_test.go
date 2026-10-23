@@ -743,6 +743,62 @@ var _ = Describe("The collector manager", Ordered, func() {
 		})
 	})
 
+	Describe("when tracking the target-allocator mTLS client cert secret", func() {
+		AfterEach(func() {
+			_, err := collectorManager.oTelColResourceManager.DeleteResources(ctx, util.ExtraConfigDefaults, logger)
+			Expect(err).ToNot(HaveOccurred())
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
+		})
+
+		reconcile := func() {
+			GinkgoHelper()
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
+		}
+
+		It("should not track a secret before the first reconciliation or if mTLS is disabled", func() {
+			Expect(collectorManager.TargetAllocatorMtlsClientCertSecretName()).To(BeEmpty())
+			CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
+			reconcile()
+			Expect(collectorManager.TargetAllocatorMtlsClientCertSecretName()).To(BeEmpty())
+		})
+
+		It("should track the client cert secret from the Helm values", func() {
+			CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
+			fileConfig := util.ExtraConfigDefaults
+			fileConfig.TargetAllocatorMtlsEnabled = true
+			fileConfig.TargetAllocatorMtlsServerCertSecretName = "helm-server-cert"
+			fileConfig.TargetAllocatorMtlsClientCertSecretName = "helm-client-cert"
+			collectorManager.extraConfig.Store(&fileConfig)
+
+			reconcile()
+			Expect(collectorManager.TargetAllocatorMtlsClientCertSecretName()).To(Equal("helm-client-cert"))
+		})
+
+		It("should track the client cert secret from the operator configuration resource", func() {
+			spec := OperatorConfigurationResourceDefaultSpec
+			spec.Components = &dash0v1alpha1.OperatorConfigurationComponents{
+				TargetAllocator: &dash0v1alpha1.TargetAllocatorSettings{
+					MTls: &dash0v1alpha1.TargetAllocatorMTls{
+						Enabled:              ptr.To(true),
+						ServerCertSecretName: "resource-server-cert",
+						ClientCertSecretName: "resource-client-cert",
+					},
+				},
+			}
+			CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, spec)
+			fileConfig := util.ExtraConfigDefaults
+			fileConfig.TargetAllocatorMtlsEnabled = true
+			fileConfig.TargetAllocatorMtlsServerCertSecretName = "helm-server-cert"
+			fileConfig.TargetAllocatorMtlsClientCertSecretName = "helm-client-cert"
+			collectorManager.extraConfig.Store(&fileConfig)
+
+			reconcile()
+			Expect(collectorManager.TargetAllocatorMtlsClientCertSecretName()).To(Equal("resource-client-cert"))
+		})
+	})
+
 	Describe("when this replica becomes leader", func() {
 		const goMemLimitWarning = "the configured GOMEMLIMIT is not below the memory_limiter soft limit"
 		// the final log message of createOrUpdateOpenTelemetryCollector, whether resources have changed or not
