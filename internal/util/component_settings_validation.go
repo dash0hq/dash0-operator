@@ -5,6 +5,7 @@ package util
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 
@@ -29,6 +30,14 @@ const (
 )
 
 var (
+	// supportedContainerResourceNames is a subset of the resources the API server accepts for containers: extended
+	// resources and huge pages come with additional constraints and are of no use for the workloads of the operator.
+	supportedContainerResourceNames = []corev1.ResourceName{
+		corev1.ResourceCPU,
+		corev1.ResourceMemory,
+		corev1.ResourceEphemeralStorage,
+	}
+
 	supportedTaintEffects = []corev1.TaintEffect{
 		corev1.TaintEffectNoSchedule,
 		corev1.TaintEffectPreferNoSchedule,
@@ -39,38 +48,68 @@ var (
 )
 
 // validateOperatorConfigurationComponents validates spec.components of the operator configuration resource, which may
-// be nil.
+// be nil. The defaults are the ones the settings are merged with.
 func validateOperatorConfigurationComponents(
 	components *dash0v1alpha1.OperatorConfigurationComponents,
+	defaults *ExtraConfig,
 ) field.ErrorList {
 	if components == nil {
 		return nil
 	}
 	path := field.NewPath(componentSettingsPath)
 	var errs field.ErrorList
+	if initContainer := components.InstrumentationInitContainer; initContainer != nil && initContainer.Resources != nil {
+		errs = append(errs, validateContainerResources(
+			path.Child(componentInstrumentationInitContainer, "resources"), initContainer.Resources)...)
+	}
 	if daemonSet := components.DaemonSetCollector; daemonSet != nil {
 		p := path.Child(componentDaemonSetCollector)
+		errs = append(errs, validateContainerResourcesWithGoMemLimit(p.Child("collectorContainerResources"),
+			daemonSet.CollectorContainerResources, defaults.CollectorDaemonSetCollectorContainerResources)...)
+		errs = append(errs, validateContainerResourcesWithGoMemLimit(p.Child("configurationReloaderContainerResources"),
+			daemonSet.ConfigurationReloaderContainerResources,
+			defaults.CollectorDaemonSetConfigurationReloaderContainerResources)...)
+		errs = append(errs, validateContainerResourcesWithGoMemLimit(p.Child("filelogOffsetSyncContainerResources"),
+			daemonSet.FilelogOffsetSyncContainerResources,
+			defaults.CollectorDaemonSetFileLogOffsetSyncContainerResources)...)
 		errs = append(errs, validateWorkloadSettings(p, daemonSet.WorkloadSettings)...)
 		errs = append(errs, validateCollectorPodSettings(p, daemonSet.CollectorPodSettings)...)
 	}
 	if deployment := components.DeploymentCollector; deployment != nil {
 		p := path.Child(componentDeploymentCollector)
+		errs = append(errs, validateContainerResourcesWithGoMemLimit(p.Child("collectorContainerResources"),
+			deployment.CollectorContainerResources, defaults.CollectorDeploymentCollectorContainerResources)...)
+		errs = append(errs, validateContainerResourcesWithGoMemLimit(p.Child("configurationReloaderContainerResources"),
+			deployment.ConfigurationReloaderContainerResources,
+			defaults.CollectorDeploymentConfigurationReloaderContainerResources)...)
 		errs = append(errs, validateWorkloadSettings(p, deployment.WorkloadSettings)...)
 		errs = append(errs, validateCollectorPodSettings(p, deployment.CollectorPodSettings)...)
 	}
 	if targetAllocator := components.TargetAllocator; targetAllocator != nil {
-		errs = append(errs,
-			validateWorkloadSettings(path.Child(componentTargetAllocator), targetAllocator.WorkloadSettings)...)
+		p := path.Child(componentTargetAllocator)
+		errs = append(errs, validateContainerResourcesWithGoMemLimit(p.Child("containerResources"),
+			targetAllocator.ContainerResources, defaults.TargetAllocatorContainerResources)...)
+		errs = append(errs, validateWorkloadSettings(p, targetAllocator.WorkloadSettings)...)
 	}
 	if agent0Connector := components.Agent0Connector; agent0Connector != nil {
-		errs = append(errs,
-			validateWorkloadSettings(path.Child(componentAgent0Connector), agent0Connector.WorkloadSettings)...)
+		p := path.Child(componentAgent0Connector)
+		errs = append(errs, validateContainerResourcesWithGoMemLimit(p.Child("containerResources"),
+			agent0Connector.ContainerResources, defaults.Agent0ConnectorContainerResources)...)
+		if agent0Connector.AllowedKubectlCommands != nil {
+			errs = append(errs, validateAllowedKubectlCommands(p.Child("allowedKubectlCommands"),
+				agent0Connector.AllowedKubectlCommands, defaults.Agent0ConnectorAllowedKubectlCommands)...)
+		}
+		errs = append(errs, validateWorkloadSettings(p, agent0Connector.WorkloadSettings)...)
 	}
 	return errs
 }
 
-// validateSignalControlComponents validates spec.components of the Signal Control resource, which may be nil.
-func validateSignalControlComponents(components *dash0v1alpha1.SignalControlComponents) field.ErrorList {
+// validateSignalControlComponents validates spec.components of the Signal Control resource, which may be nil. The
+// defaults are the ones the settings are merged with.
+func validateSignalControlComponents(
+	components *dash0v1alpha1.SignalControlComponents,
+	defaults *ExtraConfig,
+) field.ErrorList {
 	if components == nil {
 		return nil
 	}
@@ -78,11 +117,19 @@ func validateSignalControlComponents(components *dash0v1alpha1.SignalControlComp
 	var errs field.ErrorList
 	if collector := components.Collector; collector != nil {
 		p := path.Child(componentSignalControlCollector)
+		errs = append(errs, validateContainerResourcesWithGoMemLimit(p.Child("collectorContainerResources"),
+			collector.CollectorContainerResources, defaults.SignalControlCollectorContainerResources)...)
+		errs = append(errs, validateContainerResourcesWithGoMemLimit(p.Child("configurationReloaderContainerResources"),
+			collector.ConfigurationReloaderContainerResources,
+			defaults.SignalControlCollectorConfigurationReloaderContainerResources)...)
 		errs = append(errs, validateWorkloadSettings(p, collector.WorkloadSettings)...)
 		errs = append(errs, validateCollectorPodSettings(p, collector.CollectorPodSettings)...)
 	}
 	if edgeProxy := components.EdgeProxy; edgeProxy != nil {
-		errs = append(errs, validateWorkloadSettings(path.Child(componentEdgeProxy), edgeProxy.WorkloadSettings)...)
+		p := path.Child(componentEdgeProxy)
+		errs = append(errs, validateContainerResourcesWithGoMemLimit(p.Child("containerResources"),
+			edgeProxy.ContainerResources, defaults.EdgeProxyContainerResources)...)
+		errs = append(errs, validateWorkloadSettings(p, edgeProxy.WorkloadSettings)...)
 	}
 	return errs
 }
@@ -105,6 +152,78 @@ func validateCollectorPodSettings(path *field.Path, settings dash0v1alpha1.Colle
 		errs = append(errs, validatePriorityClassName(path.Child("priorityClassName"), settings.PriorityClassName)...)
 	}
 	return errs
+}
+
+// validateContainerResourcesWithGoMemLimit validates the resources and checks the GOMEMLIMIT against the memory limit
+// the container gets, i.e. the one that results from merging the resources with the given defaults.
+func validateContainerResourcesWithGoMemLimit(
+	path *field.Path,
+	settings *dash0v1alpha1.ContainerResourcesWithGoMemLimit,
+	defaults ResourceRequirementsWithGoMemLimit,
+) field.ErrorList {
+	if settings == nil {
+		return nil
+	}
+	errs := validateContainerResources(path, &settings.ContainerResources)
+	return append(errs, validateGoMemLimit(path.Child("gomemlimit"), settings.GoMemLimit,
+		mergeContainerResources(defaults, *settings).Limits)...)
+}
+
+// validateContainerResources validates the resources of a setting. A request above a limit is only rejected if both
+// are set explicitly. A default that contradicts an explicit value is adjusted instead, see mergeContainerResources.
+func validateContainerResources(path *field.Path, settings *dash0v1alpha1.ContainerResources) field.ErrorList {
+	errs := validateResourceList(path.Child("limits"), settings.Limits, true)
+	errs = append(errs, validateResourceList(path.Child("requests"), settings.Requests, false)...)
+	for _, name := range slices.Sorted(maps.Keys(settings.Requests)) {
+		request := settings.Requests[name]
+		if limit, hasLimit := settings.Limits[name]; hasLimit && !isRemoveResourceQuantity(limit) &&
+			request.Cmp(limit) > 0 {
+			errs = append(errs, field.Invalid(path.Child("requests").Key(string(name)), request.String(),
+				fmt.Sprintf("must be less than or equal to the %s limit of %s", name, limit.String())))
+		}
+	}
+	return errs
+}
+
+// validateResourceList rejects unsupported resources and negative quantities other than -1. A limit of 0 is rejected as
+// well, since it would be read as no limit, and -1 already removes a limit.
+func validateResourceList(path *field.Path, resources corev1.ResourceList, isLimits bool) field.ErrorList {
+	var errs field.ErrorList
+	for _, name := range slices.Sorted(maps.Keys(resources)) {
+		resourcePath := path.Key(string(name))
+		if !slices.Contains(supportedContainerResourceNames, name) {
+			errs = append(errs, field.NotSupported(resourcePath, name, supportedContainerResourceNames))
+		}
+		quantity := resources[name]
+		if isLimits && quantity.IsZero() || quantity.Sign() < 0 && !isRemoveResourceQuantity(quantity) {
+			minimum := "greater than or equal to 0"
+			if isLimits {
+				minimum = "greater than 0"
+			}
+			errs = append(errs, field.Invalid(resourcePath, quantity.String(),
+				fmt.Sprintf("must be %s, or -1 to remove the resource", minimum)))
+		}
+	}
+	return errs
+}
+
+// validateGoMemLimit checks that a GOMEMLIMIT is greater than 0, can be parsed by the Go runtime (which aborts the
+// process otherwise) and is below the memory limit of the container.
+func validateGoMemLimit(path *field.Path, goMemLimit string, limits corev1.ResourceList) field.ErrorList {
+	if goMemLimit == "" || goMemLimit == goMemLimitOff {
+		return nil
+	}
+	bytes, ok := parseGoMemLimitBytes(goMemLimit)
+	if !ok || bytes == 0 {
+		return field.ErrorList{field.Invalid(path, goMemLimit,
+			"must be off or a positive number of bytes that fits into a 64-bit integer, with an optional B, KiB, MiB, "+
+				"GiB or TiB suffix")}
+	}
+	if limit, hasLimit := limits[corev1.ResourceMemory]; hasLimit && !limit.IsZero() && bytes >= limit.Value() {
+		return field.ErrorList{field.Invalid(path, goMemLimit,
+			fmt.Sprintf("must be less than the memory limit of %s", limit.String()))}
+	}
+	return nil
 }
 
 func validateLabels(path *field.Path, labels map[string]string) field.ErrorList {
@@ -251,6 +370,23 @@ func validateSysctls(path *field.Path, sysctls []corev1.Sysctl) field.ErrorList 
 		names.Insert(sysctl.Name)
 	}
 	return errs
+}
+
+// validateAllowedKubectlCommands checks that at least one kubectl command stays enabled after merging the settings with
+// the defaults, since the agent0-connector terminates without any allowed command.
+func validateAllowedKubectlCommands(
+	path *field.Path,
+	settings *dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands,
+	defaults map[string]bool,
+) field.ErrorList {
+	for _, allowed := range mergeAllowedKubectlCommands(defaults, settings) {
+		if allowed {
+			return nil
+		}
+	}
+	return field.ErrorList{field.Forbidden(path,
+		"at least one kubectl command needs to be enabled, set spec.agent0Connector.enabled to false instead if "+
+			"Agent0 should not execute any kubectl command")}
 }
 
 func validatePriorityClassName(path *field.Path, priorityClassName string) field.ErrorList {

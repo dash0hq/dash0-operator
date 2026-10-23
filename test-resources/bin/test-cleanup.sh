@@ -180,3 +180,6 @@ kubectl delete clusterrole        --ignore-not-found prometheus-cadvisor prometh
 kubectl delete clusterrolebinding --ignore-not-found prometheus-cadvisor prometheus-cadvisor-autopilot
 kubectl delete -n "$target_namespace" serviceaccount --ignore-not-found prometheus-cadvisor prometheus-cadvisor-autopilot
 kubectl delete -n "$target_namespace" secret         --ignore-not-found prometheus-sa-token prometheus-sa-token-autopilot
+# test scenario 14 also deploys the ScrapeConfig to test-namespace-2
+kubectl delete -n test-namespace-2 serviceaccount --ignore-not-found prometheus-cadvisor prometheus-cadvisor-autopilot
+kubectl delete -n test-namespace-2 secret         --ignore-not-found prometheus-sa-token prometheus-sa-token-autopilot

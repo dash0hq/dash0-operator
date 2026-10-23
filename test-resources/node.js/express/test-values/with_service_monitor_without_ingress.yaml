@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# Like with_service_monitor.yaml, but without an ingress, so that the deployment can be installed in more than one
+# namespace (ingress-nginx rejects two ingresses with the same host and path).
+deployment:
+  enabled: true
+  ingressPath: ""
+  prometheus:
+    annotations:
+      enabled: false
+    serviceMonitor:
+      enabled: true

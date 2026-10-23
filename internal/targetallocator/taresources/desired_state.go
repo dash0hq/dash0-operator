@@ -74,6 +74,7 @@ type ConfigMapParams struct {
 	CollectorNamespace               string
 	CollectorComponent               string
 	NamespacesWithPrometheusScraping []string
+	SecretNamespaces                 []string
 
 	MtlsEnabled bool
 	CertsDir    string
@@ -105,6 +106,12 @@ prometheus_cr:
   {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
   allow_namespaces:
   {{- range $i, $namespace := .NamespacesWithPrometheusScraping }}
+    - {{ $namespace }}
+  {{- end }}
+  {{- end }}
+  {{- if .SecretNamespaces }}
+  secret_namespaces:
+  {{- range $namespace := .SecretNamespaces }}
     - {{ $namespace }}
   {{- end }}
   {{- end }}
@@ -147,7 +154,7 @@ func assembleDesiredState(
 	}
 	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccount(config)))
 	desiredState = append(desiredState, addCommonMetadata(cm))
-	desiredState = append(desiredState, addCommonMetadata(assembleClusterRole(config)))
+	desiredState = append(desiredState, addCommonMetadata(assembleClusterRole(config, extraConfig)))
 	desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleBinding(config)))
 	desiredState = append(desiredState, addCommonMetadata(assembleService(config, extraConfig)))
 	desiredState = append(desiredState, addCommonMetadata(deployment))
@@ -171,10 +178,16 @@ func assembleConfigMap(
 			return nil, fmt.Errorf("failed to parse target-allocator config template: %w", err)
 		}
 
+		// sort and deduplicate namespaces so we don't re-trigger reconciliation because of unstable ordering
+		secretNamespaces := slices.Clone(extraConfig.TargetAllocatorAllowSecretAccessInNamespaces)
+		slices.Sort(secretNamespaces)
+		secretNamespaces = slices.Compact(secretNamespaces)
+
 		cmp := ConfigMapParams{
 			CollectorNamespace:               c.OperatorNamespace,
 			CollectorComponent:               c.CollectorComponent,
 			NamespacesWithPrometheusScraping: namespacesWithPrometheusScraping,
+			SecretNamespaces:                 secretNamespaces,
 			MtlsEnabled:                      extraConfig.TargetAllocatorMtlsEnabled,
 			CertsDir:                         targetAllocatorCertsVolumeDir,
 			AllowInsecureAuthSecrets:         extraConfig.TargetAllocatorAllowInsecureAuthSecrets,
@@ -218,7 +231,19 @@ func assembleServiceAccount(c *targetAllocatorConfig) *corev1.ServiceAccount {
 	}
 }
 
-func assembleClusterRole(c *targetAllocatorConfig) *rbacv1.ClusterRole {
+func assembleClusterRole(c *targetAllocatorConfig, extraConfig util.ExtraConfig) *rbacv1.ClusterRole {
+	coreResources := []string{
+		"namespaces",
+		"nodes",
+		"nodes/metrics",
+		"services",
+		"endpoints",
+		"pods",
+	}
+	// With allowSecretAccessInNamespaces set, the Helm chart grants access to secrets via namespaced role bindings.
+	if len(extraConfig.TargetAllocatorAllowSecretAccessInNamespaces) == 0 {
+		coreResources = append(coreResources, "secrets")
+	}
 	return &rbacv1.ClusterRole{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "rbac.authorization.k8s.io/v1",
@@ -247,16 +272,8 @@ func assembleClusterRole(c *targetAllocatorConfig) *rbacv1.ClusterRole {
 			},
 			{
 				APIGroups: []string{""},
-				Resources: []string{
-					"namespaces",
-					"nodes",
-					"nodes/metrics",
-					"services",
-					"endpoints",
-					"pods",
-					"secrets",
-				},
-				Verbs: []string{"get", "list", "watch"},
+				Resources: coreResources,
+				Verbs:     []string{"get", "list", "watch"},
 			},
 			{
 				APIGroups: []string{""},

@@ -242,6 +242,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					Entry("should instrument new Node.js deployments", workloadTypeDeployment, runtimeTypeNodeJs),
 					Entry("should instrument new JVM deployments", workloadTypeDeployment, runtimeTypeJvm),
 					Entry("should instrument new .NET deployments", workloadTypeDeployment, runtimeTypeDotnet),
+					Entry("should instrument new .NET 6 deployments", workloadTypeDeployment, runtimeTypeDotnet6),
 					Entry("should instrument new .NET 8 deployments", workloadTypeDeployment, runtimeTypeDotnet8),
 					Entry("should instrument new Python deployments", workloadTypeDeployment, runtimeTypePython),
 					Entry("should instrument new Ruby deployments", workloadTypeDeployment, runtimeTypeRuby),
@@ -3172,7 +3173,9 @@ spec:
 				g.Expect(response.Stderr).To(Equal(
 					"dash0 agent0-connector rejected the command: the kubectl command \"cluster-info\" has been " +
 						"disabled in the configuration of the agent0-connector (via the Helm value " +
-						"operator.agent0Connector.allowedKubectlCommands), the only allowed kubectl commands are " +
+						"operator.agent0Connector.allowedKubectlCommands, or " +
+						"spec.components.agent0Connector.allowedKubectlCommands of the Dash0OperatorConfiguration " +
+						"resource), the only allowed kubectl commands are " +
 						"\"api-resources\", \"api-versions\", \"auth\", \"explain\", \"get\", \"logs\", \"top\" " +
 						"and \"version\"",
 				))
@@ -3256,7 +3259,9 @@ spec:
 				g.Expect(response.Stderr).To(Equal(
 					"dash0 agent0-connector rejected the command: the kubectl command \"events\" has been " +
 						"disabled in the configuration of the agent0-connector (via the Helm value " +
-						"operator.agent0Connector.allowedKubectlCommands), the only allowed kubectl commands are " +
+						"operator.agent0Connector.allowedKubectlCommands, or " +
+						"spec.components.agent0Connector.allowedKubectlCommands of the Dash0OperatorConfiguration " +
+						"resource), the only allowed kubectl commands are " +
 						"\"api-resources\", \"api-versions\", \"auth\", \"explain\", \"get\", \"logs\", \"top\" " +
 						"and \"version\"",
 				))
@@ -4421,7 +4426,8 @@ spec:
 					"-p",
 					`{"spec":{"components":{"daemonSetCollector":{`+
 						`"tolerations":[{"key":"e2e-resource-toleration","operator":"Exists"}],`+
-						`"labels":{"e2e-component-label":"from-resource"}}}}}`,
+						`"labels":{"e2e-component-label":"from-resource"},`+
+						`"collectorContainerResources":{"limits":{"memory":"550Mi"},"gomemlimit":"400MiB"}}}}}`,
 				))
 				Expect(err).ToNot(HaveOccurred())
 				Expect(output).To(ContainSubstring(
@@ -4434,6 +4440,14 @@ spec:
 						To(Equal("e2e-resource-toleration"))
 					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, "{.metadata.labels.e2e-component-label}")).
 						To(Equal("from-resource"))
+					collector := `{.spec.template.spec.containers[?(@.name=="opentelemetry-collector")]`
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, collector+".resources.limits.memory}")).
+						To(Equal("550Mi"))
+					// The request is not set in the resource and keeps its default.
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, collector+".resources.requests.memory}")).
+						To(Equal("500Mi"))
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace,
+						collector+`.env[?(@.name=="GOMEMLIMIT")].value}`)).To(Equal("400MiB"))
 				}, 60*time.Second, time.Second).Should(Succeed())
 			})
 		})
@@ -4634,6 +4648,7 @@ spec:
 				}).Should(Succeed())
 
 				verifyThatCollectorIsRemovedEventually()
+				verifyThatOperatorManagedClusterScopedResourcesAreRemovedEventually()
 			}
 
 			Describe("when uninstalling the operator via helm", func() {

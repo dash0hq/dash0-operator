@@ -7,11 +7,13 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"sync/atomic"
 
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -181,6 +183,11 @@ func (m *TargetAllocatorManager) reconcileTargetAllocator(ctx context.Context, l
 		err = m.removeTargetAllocator(ctx, extraConfig, logger)
 		return err == nil, err
 	} else {
+		logNamespacesWithoutSecretAccess(
+			namespacesWithPrometheusScraping,
+			extraConfig.TargetAllocatorAllowSecretAccessInNamespaces,
+			logger,
+		)
 		logger.Info(
 			fmt.Sprintf("Telemetry collection and support for Prometheus CRDs has been enabled via the operator configuration "+
 				"resource (\"%s\"), the Dash0 OpenTelemetry target-allocator will be created or updated.",
@@ -188,6 +195,7 @@ func (m *TargetAllocatorManager) reconcileTargetAllocator(ctx context.Context, l
 		)
 		err = m.createOrUpdateTargetAllocator(
 			ctx,
+			operatorConfigurationResource,
 			namespacesWithPrometheusScraping,
 			extraConfig,
 			logger,
@@ -196,8 +204,31 @@ func (m *TargetAllocatorManager) reconcileTargetAllocator(ctx context.Context, l
 	}
 }
 
+func logNamespacesWithoutSecretAccess(
+	namespacesWithPrometheusScraping []string,
+	allowSecretAccessInNamespaces []string,
+	logger logd.Logger,
+) {
+	if len(allowSecretAccessInNamespaces) == 0 {
+		return
+	}
+	for _, namespace := range namespacesWithPrometheusScraping {
+		if slices.Contains(allowSecretAccessInNamespaces, namespace) {
+			continue
+		}
+		logger.Debug(
+			fmt.Sprintf("The Dash0Monitoring resource in namespace \"%s\" has Prometheus scraping enabled, but the "+
+				"namespace is not listed in the Helm value operator.targetAllocator.allowSecretAccessInNamespaces. The "+
+				"target-allocator cannot read secrets in this namespace. Prometheus CRDs (PodMonitor, ServiceMonitor, "+
+				"ScrapeConfig) in this namespace that reference a secret will be rejected by the target-allocator.",
+				namespace),
+		)
+	}
+}
+
 func (m *TargetAllocatorManager) createOrUpdateTargetAllocator(
 	ctx context.Context,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	namespacesWithPrometheusScraping []string,
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
@@ -206,6 +237,7 @@ func (m *TargetAllocatorManager) createOrUpdateTargetAllocator(
 		m.targetAllocatorResourceManager.CreateOrUpdateTargetAllocatorResources(
 			ctx,
 			extraConfig,
+			operatorConfigurationResource,
 			namespacesWithPrometheusScraping,
 			logger)
 

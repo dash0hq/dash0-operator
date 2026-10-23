@@ -307,8 +307,9 @@ helm_command+=" --set operator.collectors.signalControlCollectorReplicas=1"
 helm_command+=" --set operator.signalControlCollectorImage.pullPolicy=IfNotPresent"
 helm_command+=" --set operator.edgeProxyImage.pullPolicy=IfNotPresent"
 # agent0-connector: insecure adds the optional env var DASH0_AGENT0_CONNECTOR_INSECURE to the operator manager and the
-# agent0-connector.
+# agent0-connector, enablePprof adds the optional env var DASH0_PPROF_PORT to the agent0-connector.
 helm_command+=" --set operator.agent0Connector.enabled=true"
+helm_command+=" --set operator.agent0Connector.enablePprof=true"
 helm_command+=" --set operator.agent0Connector.serverAddress=agent0.dummy-url.aws.dash0.com:4317"
 helm_command+=" --set operator.agent0Connector.secretRef.name=dash0-authorization-secret"
 helm_command+=" --set operator.agent0Connector.secretRef.key=token"

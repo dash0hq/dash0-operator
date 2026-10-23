@@ -8,13 +8,10 @@ import "fmt"
 type WorkloadModifierActor string
 
 const (
-	AuthorizationHeaderName  = "Authorization"
-	ContentTypeHeaderName    = "Content-Type"
-	AcceptHeaderName         = "Accept"
-	ApplicationJsonMediaType = "application/json"
-	Dash0DatasetHeaderName   = "Dash0-Dataset"
-	DatasetDefault           = "default"
-	FieldManager             = "dash0-operator"
+	AuthorizationHeaderName = "Authorization"
+	Dash0DatasetHeaderName  = "Dash0-Dataset"
+	DatasetDefault          = "default"
+	FieldManager            = "dash0-operator"
 
 	OperatorConfigurationAutoResourceName = "dash0-operator-configuration-auto-resource"
 	MonitoringAutoResourceDefaultName     = "dash0-monitoring-auto-resource"

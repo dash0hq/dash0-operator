@@ -103,7 +103,7 @@ func (m *SyntheticsWorkerResourceManager) CreateOrUpdateSyntheticsWorkerResource
 	results := make([]InstanceResult, 0, len(instances))
 	var transientErrs []error
 	for _, instance := range instances {
-		result := m.createOrUpdateInstance(ctx, instance, selfMonitoring, logger)
+		result := m.createOrUpdateInstance(ctx, operatorConfigurationResource, instance, selfMonitoring, logger)
 		results = append(results, result)
 		// A non-blocking per-instance error is already reflected in its InstanceResult; every other one must reach the
 		// feature-wide error too, or the instance is silently never retried.
@@ -121,6 +121,7 @@ func (m *SyntheticsWorkerResourceManager) CreateOrUpdateSyntheticsWorkerResource
 
 func (m *SyntheticsWorkerResourceManager) createOrUpdateInstance(
 	ctx context.Context,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	instance dash0v1alpha1.SyntheticsWorkerInstance,
 	selfMonitoring selfMonitoringInput,
 	logger logd.Logger,
@@ -149,6 +150,12 @@ func (m *SyntheticsWorkerResourceManager) createOrUpdateInstance(
 	}
 
 	for _, wrapper := range desiredState {
+		if err = resources.SetOwnerReference(
+			m.operatorManagerDeployment, operatorConfigurationResource, m.scheme, wrapper.object, logger,
+		); err != nil {
+			result.Err = err
+			return result
+		}
 		isNew, isChanged, err := m.createOrUpdateResource(ctx, wrapper.object, logger)
 		if err != nil {
 			logger.Error(err, "error while creating/updating synthetics-worker resource")
@@ -216,9 +223,6 @@ func (m *SyntheticsWorkerResourceManager) createResource(
 	desiredResource client.Object,
 	logger logd.Logger,
 ) error {
-	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
-		return err
-	}
 	if err := patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
 		return err
 	}
@@ -239,9 +243,6 @@ func (m *SyntheticsWorkerResourceManager) updateResource(
 	desiredResource client.Object,
 	logger logd.Logger,
 ) (bool, error) {
-	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
-		return false, err
-	}
 
 	desiredResourceForComparison := desiredResource.DeepCopyObject().(client.Object)
 	resources.AdoptGkeAutopilotResourceAdjustments(existingResource, desiredResourceForComparison, logger)

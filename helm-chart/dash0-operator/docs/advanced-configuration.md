@@ -295,7 +295,12 @@ value; for a collector it must stay below the derived soft limit, or the operato
 The SignalControl collector only exists when SignalControl Edge is enabled. Unlike the other two collectors it
 processes the Dash0-bound telemetry of the whole cluster, so its memory requirement scales with total telemetry volume
 rather than with per-node volume. Its replica count is configured separately via
-`operator.collectors.signalControlCollectorReplicas` (default `2`).
+`operator.collectors.signalControlCollectorReplicas` (default `2`). When the tail-sampling reservoir of the
+Dash0SignalControl resource uses the disk type, the operator derives an `ephemeral-storage` request from its
+`maxDiskBytes` (unless an `ephemeral-storage` request is set explicitly). The `ephemeral-storage` limit of the
+SignalControl collector container must be at least that derived value, even with an explicit request, since the
+reservoir counts towards the limit. Otherwise, creating a Dash0SignalControl resource or changing its `sampling` or
+`components` is rejected.
 
 Its replicas are distributed as evenly as possible over the cluster's availability zones and nodes: the operator sets
 `topologySpreadConstraints` with `maxSkew: 1` on `topology.kubernetes.io/zone` and on `kubernetes.io/hostname`. Since
@@ -631,6 +636,17 @@ spec:
             value: my-value
 ```
 
+### Endpoint Formats for gRPC Exports
+
+The `endpoint` of a `grpc` export can have one of the following formats:
+
+| Format                  | Example                                     |
+|-------------------------|---------------------------------------------|
+| `host:port` (no scheme) | `otel-collector.observability:4317`         |
+| `https://host:port`     | `https://otel-collector.observability:4317` |
+| `http://host:port`      | `http://otel-collector.observability:4317`  |
+| `dns:///host:port`      | `dns:///otel-collector.observability:4317`  |
+
 ### Configuring Other Backends Via Helm
 
 The same exports can be configured via the Helm value `operator.exports`, which lets the operator create the operator
@@ -773,6 +789,12 @@ Please note that it is a validation error to set both `insecure` and `insecureSk
 
 - For HTTP, the connection security is automatically detected based on whether the endpoint URL starts with `http://` or `https://`
 - When using TLS, you can set `insecureSkipVerify: true` to disable the verification of the server's certificate chain, which can be useful when using self-signed certificates.
+
+#### Self-Monitoring Telemetry
+
+For self-monitoring telemetry, `insecureSkipVerify` is only applied by the operator manager, for both `grpc` and `http`
+exports. The OpenTelemetry collectors and other operator components send their self-monitoring telemetry with
+certificate verification, which fails if the certificate of the endpoint cannot be verified.
 
 ## Related Documentation
 

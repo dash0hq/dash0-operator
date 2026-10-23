@@ -14,6 +14,18 @@ spec:
   components:
     collector:
       replicas: 1
+      collectorContainerResources:
+        limits:
+          memory: 1200Mi
+        requests:
+          memory: 1Gi
+        gomemlimit: 900MiB
+      configurationReloaderContainerResources:
+        limits:
+          memory: 32Mi
+        requests:
+          memory: 16Mi
+        gomemlimit: 24MiB
       labels:
         dash0.com/component-settings-test: custom-resource
       annotations:
@@ -56,6 +68,13 @@ spec:
     edgeProxy:
       replicas: 1
       enablePprof: true
+      containerResources:
+        limits:
+          cpu: 400m
+          memory: 256Mi
+        requests:
+          cpu: 25m
+        gomemlimit: 200MiB
       labels:
         dash0.com/component-settings-test: custom-resource
       annotations:

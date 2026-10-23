@@ -4,6 +4,7 @@
 package controller
 
 import (
+	"container/list"
 	"fmt"
 	"strings"
 	"sync"
@@ -11,9 +12,17 @@ import (
 	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 )
 
+// maxPooledApiClients is the number of clients the pool keeps before it evicts the least recently used one.
+const maxPooledApiClients = 50
+
 type apiClientKey struct {
 	endpoint string
 	token    string
+}
+
+type pooledApiClient struct {
+	key       apiClientKey
+	apiClient dash0apiclient.Client
 }
 
 // invalidAuthTokenError is returned for a token that the Dash0 API client refuses to use. The Dash0 API would reject
@@ -31,12 +40,15 @@ func (e *invalidAuthTokenError) Unwrap() error {
 }
 
 // ApiClientPool hands out Dash0 API clients per (endpoint, token) combination. All clients share one transport, so
-// retries, rate limiting and the concurrency limit apply globally across all API endpoints and tokens.
+// retries, rate limiting and the concurrency limit apply globally across all API endpoints and tokens. The pool holds at
+// most maxPooledApiClients clients and evicts the least recently used one when it is full, so clients (and tokens) for
+// endpoint/token combinations that are no longer in use do not pile up.
 type ApiClientPool struct {
 	transport *dash0apiclient.Transport
 	userAgent string
 	mutex     sync.Mutex
-	clients   map[apiClientKey]dash0apiclient.Client
+	clients   map[apiClientKey]*list.Element
+	lru       *list.List
 }
 
 // NewApiClientPool creates a pool whose clients all use the given shared transport and user agent.
@@ -44,7 +56,8 @@ func NewApiClientPool(transport *dash0apiclient.Transport, userAgent string) *Ap
 	return &ApiClientPool{
 		transport: transport,
 		userAgent: userAgent,
-		clients:   make(map[apiClientKey]dash0apiclient.Client),
+		clients:   make(map[apiClientKey]*list.Element),
+		lru:       list.New(),
 	}
 }
 
@@ -54,8 +67,9 @@ func (p *ApiClientPool) Get(endpoint string, token string) (dash0apiclient.Clien
 	key := apiClientKey{endpoint: endpoint, token: token}
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	if apiClient, ok := p.clients[key]; ok {
-		return apiClient, nil
+	if element, ok := p.clients[key]; ok {
+		p.lru.MoveToFront(element)
+		return element.Value.(*pooledApiClient).apiClient, nil
 	}
 	if !strings.HasPrefix(token, dash0apiclient.AuthTokenPrefixStatic) && !strings.HasPrefix(token, dash0apiclient.AuthTokenPrefixOAuth) {
 		return nil, &invalidAuthTokenError{
@@ -75,6 +89,11 @@ func (p *ApiClientPool) Get(endpoint string, token string) (dash0apiclient.Clien
 	if err != nil {
 		return nil, err
 	}
-	p.clients[key] = apiClient
+	if p.lru.Len() >= maxPooledApiClients {
+		oldest := p.lru.Back()
+		p.lru.Remove(oldest)
+		delete(p.clients, oldest.Value.(*pooledApiClient).key)
+	}
+	p.clients[key] = p.lru.PushFront(&pooledApiClient{key: key, apiClient: apiClient})
 	return apiClient, nil
 }

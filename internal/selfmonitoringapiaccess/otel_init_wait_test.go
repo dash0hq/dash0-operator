@@ -148,11 +148,117 @@ var _ = Describe(
 					)
 					config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
 					Expect(config).NotTo(BeNil())
-					Expect(config.Endpoint).To(Equal(EndpointGrpcTest))
+					Expect(config.Endpoint).To(Equal(EndpointGrpcWithProtocolTest))
 					Expect(config.Protocol).To(Equal(common.ProtocolGrpc))
 					Expect(config.Headers).To(HaveLen(2))
 					Expect(config.Headers["Plain"]).To(Equal("plain-value"))
 					Expect(config.Headers["Authorization"]).To(Equal("Bearer " + AuthorizationTokenTestFromSecret))
+				})
+
+				It("should use the http scheme for an insecure gRPC export without scheme", func() {
+					oTelSdkStarter.SetOTelSdkParameters(
+						ctx,
+						dash0common.Export{
+							Grpc: &dash0common.GrpcConfiguration{
+								Endpoint: EndpointGrpcTest,
+								Insecure: new(true),
+							},
+						},
+						nil,
+						nil,
+						ClusterUidTest,
+						ClusterNameTest,
+						OperatorNamespace,
+						OperatorManagerDeploymentUID,
+						OperatorManagerDeploymentName,
+						OperatorVersionTest,
+						false,
+						logger,
+					)
+					config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
+					Expect(config).NotTo(BeNil())
+					Expect(config.Endpoint).To(Equal("http://" + EndpointGrpcTest))
+					Expect(config.Protocol).To(Equal(common.ProtocolGrpc))
+					Expect(config.Insecure).To(BeTrue())
+					Expect(config.InsecureSkipVerify).To(BeFalse())
+				})
+
+				It("should pass a gRPC target with a scheme unchanged and keep insecureSkipVerify", func() {
+					oTelSdkStarter.SetOTelSdkParameters(
+						ctx,
+						dash0common.Export{
+							Grpc: &dash0common.GrpcConfiguration{
+								Endpoint:           "dns://dns-server/" + EndpointGrpcTest,
+								InsecureSkipVerify: new(true),
+							},
+						},
+						nil,
+						nil,
+						ClusterUidTest,
+						ClusterNameTest,
+						OperatorNamespace,
+						OperatorManagerDeploymentUID,
+						OperatorManagerDeploymentName,
+						OperatorVersionTest,
+						false,
+						logger,
+					)
+					config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
+					Expect(config).NotTo(BeNil())
+					Expect(config.Endpoint).To(Equal("dns://dns-server/" + EndpointGrpcTest))
+					Expect(config.Insecure).To(BeFalse())
+					Expect(config.InsecureSkipVerify).To(BeTrue())
+				})
+
+				It("should use the address of a dns endpoint with a missing slash", func() {
+					oTelSdkStarter.SetOTelSdkParameters(
+						ctx,
+						dash0common.Export{
+							Grpc: &dash0common.GrpcConfiguration{
+								Endpoint: "dns://" + EndpointGrpcTest,
+								Insecure: new(true),
+							},
+						},
+						nil,
+						nil,
+						ClusterUidTest,
+						ClusterNameTest,
+						OperatorNamespace,
+						OperatorManagerDeploymentUID,
+						OperatorManagerDeploymentName,
+						OperatorVersionTest,
+						false,
+						logger,
+					)
+					config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
+					Expect(config).NotTo(BeNil())
+					Expect(config.Endpoint).To(Equal("http://" + EndpointGrpcTest))
+				})
+
+				It("should keep insecureSkipVerify of an HTTP export", func() {
+					oTelSdkStarter.SetOTelSdkParameters(
+						ctx,
+						dash0common.Export{
+							Http: &dash0common.HttpConfiguration{
+								Endpoint:           EndpointHttpTest,
+								InsecureSkipVerify: new(true),
+							},
+						},
+						nil,
+						nil,
+						ClusterUidTest,
+						ClusterNameTest,
+						OperatorNamespace,
+						OperatorManagerDeploymentUID,
+						OperatorManagerDeploymentName,
+						OperatorVersionTest,
+						false,
+						logger,
+					)
+					config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
+					Expect(config).NotTo(BeNil())
+					Expect(config.Insecure).To(BeFalse())
+					Expect(config.InsecureSkipVerify).To(BeTrue())
 				})
 
 				It("should include resolved HTTP export headers in the OTel SDK config", func() {
