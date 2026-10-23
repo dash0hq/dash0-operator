@@ -62,6 +62,11 @@ type checkRuleRequestExpectation struct {
 	alert string
 }
 
+type ruleWithExpectedOrigin struct {
+	itemName string
+	origin   string
+}
+
 var _ = Describe(
 	"The Prometheus rule controller", Ordered, func() {
 		ctx := context.Background()
@@ -2654,7 +2659,6 @@ spec:
 							Expect(resourceToRequestsResult.ApiRequests[i].Origin).To(Equal(expectedOrigin))
 						}
 
-						// The API path of a duplicate carries the duplication counter twice, see renderRuleOrigin.
 						verifyRuleApiClientCall(
 							resourceToRequestsResult.ApiRequests[0],
 							recorder,
@@ -2673,21 +2677,21 @@ spec:
 							resourceToRequestsResult.ApiRequests[2],
 							recorder,
 							"group-1 - alert-1",
-							checkRuleApiBasePath+"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_1_1",
+							checkRuleApiBasePath+"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_1",
 							"expression 3",
 						)
 						verifyRuleApiClientCall(
 							resourceToRequestsResult.ApiRequests[3],
 							recorder,
 							"group-1 - alert-1",
-							checkRuleApiBasePath+"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_2_2",
+							checkRuleApiBasePath+"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_2",
 							"expression 4",
 						)
 						verifyRuleApiClientCall(
 							resourceToRequestsResult.ApiRequests[4],
 							recorder,
 							"group-1 - alert-2",
-							recordingRuleApiBasePath+"dash0-operator___test-namespace_prometheus-rule_group-1_alert-2_1_1",
+							recordingRuleApiBasePath+"dash0-operator___test-namespace_prometheus-rule_group-1_alert-2_1",
 							"expression 5",
 						)
 						verifyRuleApiClientCall(
@@ -2698,6 +2702,127 @@ spec:
 							"expression 6",
 						)
 					},
+				)
+
+				DescribeTable(
+					"should create unique origins if a rule name collides with the origin of another rule",
+					func(groupsYaml string, expectedRules []ruleWithExpectedOrigin) {
+						prometheusRule := map[string]any{}
+						prometheusRuleYaml := `
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: prometheus-rule
+spec:
+  groups:
+` + groupsYaml
+						Expect(yaml.Unmarshal([]byte(prometheusRuleYaml), &prometheusRule)).To(Succeed())
+						apiConfig := ApiConfig{Endpoint: "https://api.example.com/", Token: AuthorizationTokenTest}
+						preconditionValidationResult := &preconditionValidationResult{
+							k8sName:             "prometheus-rule",
+							k8sNamespace:        TestNamespaceName,
+							resource:            prometheusRule,
+							validatedApiConfigs: []ValidatedApiConfigAndToken{{}},
+						}
+						resourceToRequestsResult :=
+							prometheusRuleReconciler.MapResourceToApiCalls(
+								preconditionValidationResult,
+								apiConfig,
+								upsertAction,
+								logger,
+							)
+						Expect(resourceToRequestsResult.ValidationIssues).To(BeEmpty())
+						Expect(resourceToRequestsResult.SynchronizationErrors).To(BeEmpty())
+						Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(len(expectedRules)))
+						expectedOrigins := make([]string, 0, len(expectedRules))
+						for i, expectedRule := range expectedRules {
+							origin := "dash0-operator___test-namespace_prometheus-rule_" + expectedRule.origin
+							expectedOrigins = append(expectedOrigins, origin)
+							Expect(resourceToRequestsResult.ApiRequests[i].Origin).To(Equal(origin))
+							verifyRuleApiClientCall(
+								resourceToRequestsResult.ApiRequests[i],
+								recorder,
+								expectedRule.itemName,
+								checkRuleApiBasePath+origin,
+								fmt.Sprintf("expression %d", i+1),
+							)
+						}
+						Expect(resourceToRequestsResult.OriginsInResource).To(Equal(expectedOrigins))
+					},
+					Entry(
+						"rule named like the origin of a preceding duplicate",
+						`
+  - name: group-1
+    rules:
+    - alert: alert-1
+      expr: "expression 1"
+    - alert: alert-1
+      expr: "expression 2"
+    - alert: alert-1_1
+      expr: "expression 3"
+`,
+						[]ruleWithExpectedOrigin{
+							{itemName: "group-1 - alert-1", origin: "group-1_alert-1"},
+							{itemName: "group-1 - alert-1", origin: "group-1_alert-1_2"},
+							{itemName: "group-1 - alert-1_1", origin: "group-1_alert-1_1"},
+						},
+					),
+					Entry(
+						"rule named like the origin of a subsequent duplicate",
+						`
+  - name: group-1
+    rules:
+    - alert: alert-1_1
+      expr: "expression 1"
+    - alert: alert-1
+      expr: "expression 2"
+    - alert: alert-1
+      expr: "expression 3"
+`,
+						[]ruleWithExpectedOrigin{
+							{itemName: "group-1 - alert-1_1", origin: "group-1_alert-1_1"},
+							{itemName: "group-1 - alert-1", origin: "group-1_alert-1"},
+							{itemName: "group-1 - alert-1", origin: "group-1_alert-1_2"},
+						},
+					),
+					Entry(
+						"rule named like the origin of a duplicate in the middle of the duplicates",
+						`
+  - name: group-1
+    rules:
+    - alert: alert-1
+      expr: "expression 1"
+    - alert: alert-1
+      expr: "expression 2"
+    - alert: alert-1
+      expr: "expression 3"
+    - alert: alert-1_2
+      expr: "expression 4"
+`,
+						[]ruleWithExpectedOrigin{
+							{itemName: "group-1 - alert-1", origin: "group-1_alert-1"},
+							{itemName: "group-1 - alert-1", origin: "group-1_alert-1_1"},
+							{itemName: "group-1 - alert-1", origin: "group-1_alert-1_3"},
+							{itemName: "group-1 - alert-1_2", origin: "group-1_alert-1_2"},
+						},
+					),
+					Entry(
+						"group and rule names that render the same origin across groups",
+						`
+  - name: group_a
+    rules:
+    - alert: alert-1
+      expr: "expression 1"
+  - name: group
+    rules:
+    - alert: a_alert-1
+      expr: "expression 2"
+`,
+						[]ruleWithExpectedOrigin{
+							{itemName: "group_a - alert-1", origin: "group_a_alert-1"},
+							{itemName: "group - a_alert-1", origin: "group_a_alert-1_1"},
+						},
+					),
 				)
 
 				DescribeTable(
