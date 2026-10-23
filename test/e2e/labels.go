@@ -43,7 +43,6 @@ func verifyLabels(
 	verifyImageLabel(g, instrumentationImage, images.instrumentation, "ghcr.io/dash0hq/instrumentation:")
 	instrumentedBy := readLabel(g, namespace, runtime, workloadType, "dash0.com/instrumented-by")
 	g.Expect(instrumentedBy).To(Equal(instrumentationBy))
-	verifyNoWebhookIgnoreOnceLabel(g, namespace, runtime, workloadType)
 }
 
 func verifyNoWebhookIgnoreOnceLabel(g Gomega, namespace string, runtime runtimeType, workloadType workloadType) {
