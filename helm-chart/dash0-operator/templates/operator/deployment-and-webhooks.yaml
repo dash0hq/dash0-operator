@@ -526,6 +526,10 @@ spec:
 Webhook Configurations
 ----------------------
 */}}
+{{- if and .Values.operator.certManager.useCertManager (empty .Values.operator.certManager.certManagerAnnotations) }}
+{{- fail "Error: operator.certManager.useCertManager is set to true, but you did not provide any annotations in operator.certManager.certManagerAnnotations. Please refer to the instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#using-cert-manager." -}}
+{{- end }}
+{{- if not (include "dash0-operator.signalControlSceOnlyMode" .) }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
@@ -540,9 +544,6 @@ metadata:
     {{- include "dash0-operator.caBundleInjectionLabel" . | nindent 4 }}
     {{- end }}
   {{- if .Values.operator.certManager.useCertManager }}
-  {{- if empty .Values.operator.certManager.certManagerAnnotations }}
-  {{- fail "Error: operator.certManager.useCertManager is set to true, but you did not provide any annotations in operator.certManager.certManagerAnnotations. Please refer to the instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#using-cert-manager." -}}
-  {{- end }}
   {{- with .Values.operator.certManager.certManagerAnnotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -633,6 +634,7 @@ webhooks:
     scope: Namespaced
   sideEffects: None
   timeoutSeconds: 5
+{{- end }}{{/* closes "if not (include dash0-operator.signalControlSceOnlyMode)" */}}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration

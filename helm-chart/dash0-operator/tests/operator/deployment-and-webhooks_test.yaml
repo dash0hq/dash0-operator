@@ -1561,6 +1561,59 @@ tests:
           path: spec.template.spec.containers[0].env[21].name
           value: K8S_POD_UID
 
+  - it: should pass both flags that SCE-only mode is derived from
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        telemetryCollectionEnabled: false
+        signalControl:
+          enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --dash0-telemetry-collection-enabled=false
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --dash0-feature-signal-control-enabled=true
+
+  - it: should not render the injector webhook in SCE-only mode
+    set:
+      operator:
+        telemetryCollectionEnabled: false
+        signalControl:
+          enabled: true
+    asserts:
+      - containsDocument:
+          kind: MutatingWebhookConfiguration
+          apiVersion: admissionregistration.k8s.io/v1
+          name: dash0-operator-injector
+        not: true
+
+  - it: should render the injector webhook when Signal Control is enabled together with telemetry collection
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-injector
+    set:
+      operator:
+        signalControl:
+          enabled: true
+    asserts:
+      - isKind:
+          of: MutatingWebhookConfiguration
+
+  - it: should render the injector webhook when telemetry collection is disabled without Signal Control
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-injector
+    set:
+      operator:
+        telemetryCollectionEnabled: false
+    asserts:
+      - isKind:
+          of: MutatingWebhookConfiguration
+
   - it: should support custom Signal Control collector and Edge Proxy images with pull policies
     chart:
       version: 1.2.3

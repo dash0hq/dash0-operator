@@ -2444,6 +2444,37 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(serviceExtensions).To(ContainElement("dash0settingsonedgeextension"))
 		})
 
+		DescribeTable("should batch received telemetry only in SCE-only mode [SignalControl]",
+			func(exporters otlpExporters, sceOnlyMode bool, expectedProcessors []any) {
+				configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
+					OperatorNamespace: OperatorNamespace,
+					NamePrefix:        namePrefix,
+					Exporters:         exporters,
+					SignalControl: SignalControlConfig{
+						Enabled:     true,
+						Endpoint:    "decision-maker.example.com:443",
+						ApiEndpoint: "https://control-plane-api.dash0.com",
+						Dataset:     "default",
+					},
+					SignalControlSceOnlyMode: sceOnlyMode,
+				}, monitoredNamespaces, false)
+
+				Expect(err).ToNot(HaveOccurred())
+				pipelines := readPipelines(parseConfigMapContent(configMap))
+				for _, pipeline := range []string{"traces/otlp-to-sc", "metrics/otlp-to-sc", "logs/otlp-to-sc"} {
+					Expect(readPipelineProcessors(pipelines, pipeline)).To(Equal(expectedProcessors), pipeline)
+				}
+			},
+			Entry("without routing, SCE-only mode", cmTestSingleDefaultOtlpExporter(), true,
+				[]any{"memory_limiter", "batch"}),
+			Entry("without routing, regular mode", cmTestSingleDefaultOtlpExporter(), false,
+				[]any{"memory_limiter"}),
+			Entry("with routing, SCE-only mode", cmTestMultipleNamespacedOtlpExporters(), true,
+				[]any{"memory_limiter", "batch"}),
+			Entry("with routing, regular mode", cmTestMultipleNamespacedOtlpExporters(), false,
+				[]any{"memory_limiter"}),
+		)
+
 		It("should subscribe the settings extension to the Edge Proxy when the Edge Proxy is enabled [SignalControl]", func() {
 			edgeProxyEndpoint := namePrefix + "-edge-proxy." + OperatorNamespace + ".svc.cluster.local:8011"
 			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{

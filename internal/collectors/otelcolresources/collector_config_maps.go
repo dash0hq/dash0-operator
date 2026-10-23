@@ -131,6 +131,7 @@ type collectorConfigurationTemplateValues struct {
 	SignalControlGatewayActive                       bool
 	SignalControlCollectorServiceName                string
 	SignalControlCollectorDeploymentName             string
+	SignalControlSceOnlyMode                         bool
 	// MemoryLimiterLimitMiB and MemoryLimiterSpikeLimitMiB are the memory_limiter limit_mib / spike_limit_mib
 	// derived from the collector container memory limit. When MemoryLimiterLimitMiB is zero (no limit set), the
 	// template falls back to the percentage-based memory_limiter configuration.
@@ -446,6 +447,7 @@ func newCollectorConfigurationTemplateValues(
 		SignalControlGatewayActive:                       config.signalControlGatewayActive(),
 		SignalControlCollectorServiceName:                SignalControlCollectorServiceName(config.NamePrefix),
 		SignalControlCollectorDeploymentName:             SignalControlCollectorDeploymentName(config.NamePrefix),
+		SignalControlSceOnlyMode:                         config.SignalControlSceOnlyMode,
 		MemoryLimiterLimitMiB:                            memoryLimiterLimitMiB,
 		MemoryLimiterSpikeLimitMiB:                       memoryLimiterSpikeMiB,
 	}

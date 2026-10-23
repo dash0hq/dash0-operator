@@ -51,6 +51,9 @@ const (
 	logMsgTelemetryDisabled string = "Telemetry collection has been disabled explicitly via the operator configuration " +
 		"resource (\"%s\"), property telemetryCollection.enabled=false, no Dash0 OpenTelemetry collector " +
 		"will be created, existing Dash0 OpenTelemetry collectors (if any) will be removed."
+	logMsgSceOnlyModeWithoutSignalControl string = "SCE-only mode is active, but there is no enabled Dash0SignalControl " +
+		"resource or the operator configuration has no Dash0 export. No OpenTelemetry collector will be deployed, " +
+		"telemetry sent to the Signal Control collector service will be lost."
 )
 
 func NewCollectorManager(
@@ -203,7 +206,9 @@ func (m *CollectorManager) reconcileOpenTelemetryCollector(ctx context.Context, 
 		logger.WarnTelemetryCollectionIssue(logMsgOperatorConfigMissing)
 		err = m.removeOpenTelemetryCollector(ctx, extraConfig, logger)
 		return err == nil, err
-	} else if !pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.TelemetryCollection.Enabled, true) {
+	} else if !pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.TelemetryCollection.Enabled, true) &&
+		// SCE-only mode implies telemetryCollection.enabled=false, but the Signal Control collector is still deployed.
+		!m.oTelColResourceManager.SignalControlSceOnlyMode() {
 		logger.Info(fmt.Sprintf(logMsgTelemetryDisabled, operatorConfigurationResource.Name))
 		err = m.removeOpenTelemetryCollector(ctx, extraConfig, logger)
 		return err == nil, err
@@ -217,6 +222,8 @@ func (m *CollectorManager) reconcileOpenTelemetryCollector(ctx context.Context, 
 		// availability zones.
 		if signalControlResource != nil && signalControlEnabled {
 			m.warnAboutInsufficientZoneCoverage(ctx, extraConfig, logger)
+		} else if m.oTelColResourceManager.SignalControlSceOnlyMode() {
+			logger.WarnTelemetryCollectionIssue(logMsgSceOnlyModeWithoutSignalControl)
 		}
 		err = m.createOrUpdateOpenTelemetryCollector(
 			ctx,

@@ -187,6 +187,106 @@ tests:
           name: dash0-operator-target-allocator-secrets
         not: true
 
+  - it: should only grant the permissions for managing collectors and listing pods in SCE-only mode
+    set:
+      operator:
+        telemetryCollectionEnabled: false
+        signalControl:
+          enabled: true
+    asserts:
+      - hasDocuments:
+          count: 3
+      - containsDocument:
+          kind: ClusterRole
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-collector
+        documentIndex: 2
+      - containsDocument:
+          kind: ClusterRole
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-instrument
+        not: true
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - apps
+            resources:
+              - daemonsets
+              - deployments
+            verbs:
+              - create
+              - delete
+              - get
+              - list
+              - patch
+              - update
+              - watch
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-collector
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - ""
+            resources:
+              - pods
+            verbs:
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-collector
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - ""
+            resources:
+              - namespaces
+            verbs:
+              - list
+              - watch
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-collector
+      - notContains:
+          path: rules
+          content:
+            apiGroups:
+              - ""
+            resources:
+              - secrets
+            verbs:
+              - get
+              - list
+              - watch
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-collector
+      - notContains:
+          path: rules
+          content:
+            apiGroups:
+              - ""
+            resources:
+              - nodes/proxy
+            verbs:
+              - get
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-collector
+      - notContains:
+          path: rules
+          content:
+            nonResourceURLs:
+              - /metrics
+            verbs:
+              - get
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-collector
+
   - it: should not grant cluster-wide access to secrets if allowSecretAccessInNamespaces is set for the target-allocator
     set:
       operator:

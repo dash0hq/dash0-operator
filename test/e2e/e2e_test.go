@@ -2483,6 +2483,132 @@ log_statements:
 
 	}) // end of suite "with the Signal Control feature enabled"
 
+	Context("with Signal Control-only mode enabled", Ordered, func() {
+		BeforeAll(func() {
+			By("deploying the Dash0 operator in SCE-only mode")
+			Expect(deployOperator(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				"",
+				&images,
+				&startup.OperatorConfigurationValues{
+					Endpoint:                   defaultEndpoint,
+					ApiEndpoint:                dash0ApiMockServiceBaseUrl,
+					Token:                      defaultToken,
+					TelemetryCollectionEnabled: false,
+				},
+				map[string]string{
+					"operator.signalControl.enabled": "true",
+				},
+			)).To(Succeed())
+
+			installDash0ApiMock()
+			installControlPlaneMock()
+			installDecisionMakerMock()
+
+			deploySignalControlResource(signalControlValues{
+				DecisionMakerEndpoint:   decisionMakerMockGrpcEndpoint,
+				ControlPlaneApiEndpoint: controlPlaneMockServiceBaseUrl,
+			})
+		})
+
+		AfterEach(func() {
+			cleanupStoredApiRequests()
+		})
+
+		AfterAll(func() {
+			removeSignalControlResource()
+			uninstallDecisionMakerMock()
+			uninstallControlPlaneMock()
+			uninstallDash0ApiMock()
+			undeployOperator(operatorNamespace)
+		})
+
+		It("deploys only the Signal Control collector and the Edge Proxy", func() {
+			By("verifying the Signal Control collector deployment and service have been created")
+			Eventually(func(g Gomega) {
+				g.Expect(runAndIgnoreOutput(exec.Command(
+					"kubectl", "-n", operatorNamespace, "get", signalControlCollectorNameQualified,
+				))).To(Succeed())
+				g.Expect(runAndIgnoreOutput(exec.Command(
+					"kubectl", "-n", operatorNamespace, "get", signalControlCollectorServiceNameQualified,
+				))).To(Succeed())
+			}, 60*time.Second, pollingInterval).Should(Succeed())
+			Expect(runAndIgnoreOutput(exec.Command(
+				"kubectl",
+				"-n", operatorNamespace,
+				"rollout", "status", signalControlCollectorNameQualified,
+				"--timeout=120s",
+			))).To(Succeed())
+
+			By("waiting for the Edge Proxy deployment to become available")
+			Eventually(func(g Gomega) {
+				g.Expect(runAndIgnoreOutput(exec.Command(
+					"kubectl",
+					"-n", operatorNamespace,
+					"wait", "--for=condition=Available",
+					"deployment/"+operatorHelmReleaseName+"-edge-proxy",
+					"--timeout=30s",
+				))).To(Succeed())
+			}, 120*time.Second, 2*time.Second).Should(Succeed())
+
+			By("validating that the daemonset collector, the deployment collector and the target allocator do not exist")
+			Consistently(func(g Gomega) {
+				verifyCollectorDaemonSetIsNotPresent(g)
+				verifyCollectorDeploymentIsNotPresent(g)
+			}, 20*time.Second, pollingInterval).Should(Succeed())
+			verifyThatTargetAllocatorIsNotDeployed(operatorNamespace)
+		})
+
+		It("exports telemetry that is sent directly to the Signal Control collector service", func() {
+			timestampLowerBound := time.Now()
+			metricName := "e2e.sce_only.test_gauge"
+
+			By("sending a metric via OTLP/HTTP to the Signal Control collector service")
+			Eventually(func(g Gomega) {
+				g.Expect(sendMetricToSignalControlCollector(applicationUnderTestNamespace, metricName)).To(Succeed())
+			}, 120*time.Second, 2*time.Second).Should(Succeed())
+
+			By("verifying the metric has been exported")
+			Eventually(func(g Gomega) {
+				askTelemetryMatcherForMetricNames(
+					g,
+					shared.ExpectAtLeastOne,
+					[]string{metricName},
+					timestampLowerBound,
+				)
+			}, 60*time.Second, pollingInterval).Should(Succeed())
+		})
+
+		It("should synchronize a Perses dashboard to the Dash0 API", func() {
+			deployDash0MonitoringResourceWithRetry(
+				applicationUnderTestNamespace,
+				// The monitoring validation webhook rejects instrumentWorkloads.mode=all when telemetry collection is
+				// disabled.
+				dash0MonitoringValues{
+					InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeNone,
+				},
+				operatorNamespace,
+			)
+			defer undeployDash0MonitoringResource(applicationUnderTestNamespace)
+
+			deployPersesDashboardResource(applicationUnderTestNamespace, persesDashboardV1Alpha2)
+			defer removePersesDashboardResource(applicationUnderTestNamespace, persesDashboardV1Alpha2)
+
+			//nolint:lll
+			routeRegex := "/api/dashboards/dash0-operator_.*_default_e2e-test-ns_perses-dashboard-e2e-test-v1alpha2\\?dataset=default"
+
+			By("verifying the dashboard has been synchronized to the Dash0 API via PUT")
+			req := fetchCapturedApiRequest(0)
+			Expect(req.Method).To(Equal("PUT"))
+			Expect(req.Url).To(MatchRegexp(routeRegex))
+			Expect(req.Body).ToNot(BeNil())
+			Expect(*req.Body).To(ContainSubstring("This is a test dashboard."))
+			verifyApiSyncRequest(req)
+		})
+	}) // end of suite "with Signal Control-only mode enabled"
+
 	Context("with the agent0-connector enabled", Ordered, func() {
 		var pseudoClusterUid string
 

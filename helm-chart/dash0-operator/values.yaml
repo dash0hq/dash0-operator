@@ -197,16 +197,21 @@ operator:
   profilingEnabled: false
 
   # An opt-out for telemetry collection. If set to false, the operator will not deploy any OpenTelemetry collectors
-  # to the cluster, and no telemetry will be collected. This is useful if you want to use the operator only for
-  # infrastructure-as-code purposes (dashboards, check rules, etc.) without having it collect telemetry. Setting this to
-  # false also implicitly disables all other telemetry-collection related settings (see above), except for
-  # self-monitoring telemetry from the operator (which can be enabled or disabled independently).
+  # to the cluster (except in SCE-only mode, see below), and no telemetry will be collected. This is useful if you want
+  # to use the operator only for infrastructure-as-code purposes (dashboards, check rules, etc.) without having it
+  # collect telemetry. Setting this to false also implicitly disables all other telemetry-collection related settings
+  # (see above), except for self-monitoring telemetry from the operator (which can be enabled or disabled
+  # independently).
+  #
+  # If this is set to false and operator.signalControl.enabled is set to true, the operator runs in SCE-only mode: it
+  # only deploys the Signal Control collector and the Edge Proxy, see operator.signalControl.enabled.
   #
   # This setting is optional, it defaults to true.
   #
   # By default (i.e. if this setting is true), the operator Helm chart will set up all necessary permissions to manage
   # OpenTelemetry collectors and the target allocator, including permissions to create ClusterRoles. If set to false,
-  # these RBAC permissions will not be granted, and the operator will run with a reduced set of RBAC permissions.
+  # these RBAC permissions will not be granted, and the operator will run with a reduced set of RBAC permissions. In
+  # SCE-only mode, the permissions to manage OpenTelemetry collectors are still granted.
   #
   # If this is set to false, and operator.dash0Export.enabled is also false (i.e. the Dash0OperatorConfiguration
   # resource is managed manually), it will not be possible to set spec.telemetryCollection.enabled to true in the
@@ -1386,6 +1391,11 @@ operator:
   # Settings related to Signal Control.
   signalControl:
     # Whether to enable Signal Control features for this operator install.
+    #
+    # If this is set to true and operator.telemetryCollectionEnabled is set to false, the operator only deploys the
+    # Signal Control collector and the Edge Proxy (SCE-only mode), and applications send OTLP directly to the Signal
+    # Control collector. Switching an existing installation to this mode requires a re-install. See
+    # https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/signal-control-edge#sce-only-mode.
     enabled: false
 
     # Settings for the Edge Proxy deployed when signalControl.enabled=true.
