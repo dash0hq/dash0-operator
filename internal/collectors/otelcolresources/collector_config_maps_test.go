@@ -5900,6 +5900,147 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		})
 	})
 
+	Describe("Signal Control cardholder data redaction [SignalControl]", func() {
+		redactionSC := func() SignalControlConfig {
+			return SignalControlConfig{
+				Enabled:                        true,
+				CardholderDataRedactionEnabled: true,
+				Endpoint:                       "decision-maker.example.com:443",
+				ApiEndpoint:                    "https://control-plane-api.dash0.com",
+				Dataset:                        "default",
+			}
+		}
+
+		allComponentsSC := func() SignalControlConfig {
+			sc := redactionSC()
+			sc.SamplingEnabled = true
+			sc.SpamFilterEnabled = true
+			sc.SignalToMetricsEnabled = true
+			sc.LogEnrichmentEnabled = true
+			return sc
+		}
+
+		assembleWith := func(sc SignalControlConfig, exporters otlpExporters) map[string]interface{} {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         exporters,
+				SignalControl:     sc,
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, false)
+			Expect(err).ToNot(HaveOccurred())
+			return parseConfigMapContent(configMap)
+		}
+
+		lastProcessor := func(pipelines map[string]any, pipelineName string) any {
+			processors := readPipelineProcessors(pipelines, pipelineName)
+			Expect(processors).ToNot(BeEmpty(), pipelineName)
+			return processors[len(processors)-1]
+		}
+
+		It("runs redaction last in every default Signal Control pipeline [SignalControl]", func() {
+			collectorConfig := assembleWith(allComponentsSC(), cmTestSingleDefaultOtlpExporter())
+			pipelines := readPipelines(collectorConfig)
+
+			Expect(readPipelineProcessors(pipelines, "traces/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0operation",
+				"dash0filter",
+				"dash0redaction",
+			}))
+			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0filter",
+				"dash0redaction",
+			}))
+			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0logparser",
+				"dash0loggrouping",
+				"dash0filter",
+				"dash0redaction",
+			}))
+
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors["dash0redaction"]).To(Equal(map[string]interface{}{
+				"metric_recorder": "dash0metricrecorder",
+			}))
+
+			assertCollectorConfigStructurallyValid(collectorConfig, "signal-control/redaction-default")
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/redaction-default")
+		})
+
+		It("runs redaction when all other Signal Control components are disabled [SignalControl]", func() {
+			collectorConfig := assembleWith(redactionSC(), cmTestSingleDefaultOtlpExporter())
+			pipelines := readPipelines(collectorConfig)
+
+			Expect(readPipelineProcessors(pipelines, "traces/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0operation",
+				"dash0redaction",
+			}))
+			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0redaction",
+			}))
+			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0redaction",
+			}))
+
+			assertCollectorConfigStructurallyValid(collectorConfig, "signal-control/redaction-only")
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/redaction-only")
+		})
+
+		It("wires a redaction instance per dataset branch into the namespaced pipelines [SignalControl]", func() {
+			collectorConfig := assembleWith(allComponentsSC(), cmTestNamespacedMultiDatasetExporters())
+			pipelines := readPipelines(collectorConfig)
+			processors := collectorConfig["processors"].(map[string]interface{})
+
+			for _, idx := range []string{"0", "1"} {
+				branch := namespace1 + "/" + idx
+				for _, signal := range []string{"traces", "metrics", "logs"} {
+					Expect(lastProcessor(pipelines, signal+"/sc/ns/"+branch)).
+						To(Equal("dash0redaction/ns/"+branch), signal+" "+branch)
+				}
+				Expect(processors["dash0redaction/ns/"+branch]).To(Equal(map[string]interface{}{
+					"metric_recorder": "dash0metricrecorder/ns/" + branch,
+				}), branch)
+			}
+			for _, signal := range []string{"traces", "metrics", "logs"} {
+				Expect(lastProcessor(pipelines, signal+"/sc/default")).To(Equal("dash0redaction"), signal)
+			}
+
+			assertCollectorConfigStructurallyValid(collectorConfig, "signal-control/redaction-ns")
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/redaction-ns")
+		})
+
+		It("declares no redaction processor when disabled [SignalControl]", func() {
+			sc := allComponentsSC()
+			sc.CardholderDataRedactionEnabled = false
+			collectorConfig := assembleWith(sc, cmTestNamespacedMultiDatasetExporters())
+
+			for name := range topLevelComponentKeys(collectorConfig, "processors") {
+				Expect(name).ToNot(HavePrefix("dash0redaction"))
+			}
+			pipelines := readPipelines(collectorConfig)
+			for pipelineName := range pipelines {
+				for _, processor := range readPipelineProcessors(pipelines, pipelineName) {
+					Expect(processor).ToNot(HavePrefix("dash0redaction"), pipelineName)
+				}
+			}
+		})
+	})
+
 	Describe("Signal Control metering [SignalControl]", func() {
 		meteringSC := func() SignalControlConfig {
 			return SignalControlConfig{

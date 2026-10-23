@@ -61,8 +61,8 @@ spec:
             description: |-
               Dash0SignalControlSpec describes the cluster-wide configuration for the Signal Control tail-sampling feature.
               When enabled, the operator modifies the collector pipeline to include tail-sampling components (dash0resource,
-              dash0operation, dash0filter, dash0sampling processors, dash0redmetrics and dash0signaltometrics connectors)
-              and optionally deploys the Edge Proxy.
+              dash0operation, dash0filter, dash0sampling, dash0redaction processors, dash0redmetrics and dash0signaltometrics
+              connectors) and optionally deploys the Edge Proxy.
             properties:
               components:
                 description: |-
@@ -1135,6 +1135,27 @@ spec:
                     format: int32
                     minimum: 1
                     type: integer
+                type: object
+              redaction:
+                description: |-
+                  Configuration for redacting sensitive data from telemetry before it leaves the cluster. Each kind of sensitive
+                  data is enabled individually. Redaction runs after every other Signal Control processor that changes telemetry
+                  content. Only telemetry destined for Dash0 passes through the Signal Control collector, telemetry sent to other
+                  exporters is not redacted. This setting is optional, all kinds of redaction are disabled by default.
+                properties:
+                  cardholderData:
+                    description: |-
+                      Configuration for redacting cardholder data (payment card numbers, card verification codes, track data and PIN
+                      blocks) via the dash0redaction processor.
+                    properties:
+                      enabled:
+                        default: false
+                        description: Whether to redact cardholder data. This setting
+                          is optional, it defaults to false.
+                        type: boolean
+                    required:
+                    - enabled
+                    type: object
                 type: object
               sampling:
                 description: Configuration for the dash0sampling processor in the

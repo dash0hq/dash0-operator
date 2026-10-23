@@ -36,8 +36,8 @@ type Dash0SignalControl struct {
 
 // Dash0SignalControlSpec describes the cluster-wide configuration for the Signal Control tail-sampling feature.
 // When enabled, the operator modifies the collector pipeline to include tail-sampling components (dash0resource,
-// dash0operation, dash0filter, dash0sampling processors, dash0redmetrics and dash0signaltometrics connectors)
-// and optionally deploys the Edge Proxy.
+// dash0operation, dash0filter, dash0sampling, dash0redaction processors, dash0redmetrics and dash0signaltometrics
+// connectors) and optionally deploys the Edge Proxy.
 type Dash0SignalControlSpec struct {
 	// Whether Signal Control is enabled. When disabled, no Signal Control components are added to the collector pipeline
 	// and no Signal Control resources (e.g. Edge Proxy) are deployed, regardless of other settings in this resource. This
@@ -92,6 +92,14 @@ type Dash0SignalControlSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	LogEnrichment LogEnrichmentConfig `json:"logEnrichment,omitempty"`
+
+	// Configuration for redacting sensitive data from telemetry before it leaves the cluster. Each kind of sensitive
+	// data is enabled individually. Redaction runs after every other Signal Control processor that changes telemetry
+	// content. Only telemetry destined for Dash0 passes through the Signal Control collector, telemetry sent to other
+	// exporters is not redacted. This setting is optional, all kinds of redaction are disabled by default.
+	//
+	// +kubebuilder:validation:Optional
+	Redaction RedactionConfig `json:"redaction,omitempty"`
 
 	// The Dash0 API endpoint used by the dash0settingsonedge extension to fetch settings and rules (it queries
 	// {endpoint}/api/edge/settings on the region-bound Dash0 public API). This setting is optional. When not set,
@@ -471,6 +479,27 @@ type LogEnrichmentConfig struct {
 	//
 	// +kubebuilder:validation:Optional
 	GroupingCacheExpiration *metav1.Duration `json:"groupingCacheExpiration,omitempty"`
+}
+
+// RedactionConfig configures which kinds of sensitive data are redacted from telemetry in the Signal Control
+// collector.
+type RedactionConfig struct {
+	// Configuration for redacting cardholder data (payment card numbers, card verification codes, track data and PIN
+	// blocks) via the dash0redaction processor.
+	//
+	// +kubebuilder:validation:Optional
+	CardholderData CardholderDataRedactionConfig `json:"cardholderData,omitempty"`
+}
+
+// CardholderDataRedactionConfig configures the redaction of cardholder data. Primary account numbers are masked to
+// their first six and last four digits, sensitive authentication data (card verification codes, track data, PIN
+// blocks) is replaced as a whole. Matching values are redacted in place, signals are never dropped. Detection is
+// pattern-based and cannot catch encoded, encrypted, or split card numbers.
+type CardholderDataRedactionConfig struct {
+	// Whether to redact cardholder data. This setting is optional, it defaults to false.
+	//
+	// +kubebuilder:default=false
+	Enabled *bool `json:"enabled"`
 }
 
 // Dash0SignalControlStatus defines the observed state of the Dash0SignalControl resource.

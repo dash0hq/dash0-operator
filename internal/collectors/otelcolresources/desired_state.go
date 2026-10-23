@@ -54,6 +54,7 @@ type SignalControlConfig struct {
 	LogPatternRefreshInterval          string
 	LogParserCacheExpiration           string
 	LogGroupingCacheExpiration         string
+	CardholderDataRedactionEnabled     bool
 	OperationPreferSpanName            bool
 	OperationCardinalityRules          []SignalControlCardinalityRule
 	Endpoint                           string

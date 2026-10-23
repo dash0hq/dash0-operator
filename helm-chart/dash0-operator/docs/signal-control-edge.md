@@ -14,6 +14,8 @@ metering counters, which are classified internal: they are not billed at ingest 
 - the operation processor derives useful attributes and normalizes high-cardinality attributes
 - log enrichment applies centrally learned log patterns, setting the OTLP severity, a normalized message and the
 matched pattern on each log record (opt-in)
+- cardholder data redaction masks payment card numbers and removes card verification codes, track data and PIN blocks
+before telemetry leaves the cluster (opt-in)
 
 Tail-sampling decisions that require cross-collector coordination are made by the Dash0 Decision Maker (SaaS-side).
 Sampling rules, spam filters, and signal-to-metrics rules are configured as Kubernetes custom resources and synced to the
@@ -59,8 +61,9 @@ decisions are pending, raise the memory limit for clusters with high trace volum
 Once the helm install or upgrade has completed, the next step is to create a `Dash0SignalControl` resource.
 Note that this resource is a singleton: only one instance may exist per cluster.
 
-Since every component except log enrichment defaults to enabled, a minimal resource with an empty spec turns on the full
-SCE pipeline, including the Edge Proxy (recommended whenever you run more than one collector instance):
+Since every component except log enrichment and cardholder data redaction defaults to enabled, a minimal resource with
+an empty spec turns on the full SCE pipeline, including the Edge Proxy (recommended whenever you run more than one
+collector instance):
 
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
@@ -159,6 +162,39 @@ spec:
 
 The pattern refresh interval and the two cache expirations under `spec.logEnrichment` are optional; they are listed with
 all other fields and their defaults in the field reference linked in the [Quickstart](#quickstart).
+
+### Cardholder data redaction
+
+Cardholder data redaction removes payment card data from telemetry inside the cluster, so it never reaches Dash0
+unredacted. The `dash0redaction` processor scans log bodies, the attributes of log records, spans, span events, span
+links and metric data points, span names and span event names. Resource attributes are only checked by key, e.g.
+`card_number` or `cvv`. A primary account number is masked to its first six and last four digits
+(`411111******1111`); card verification codes, track data and PIN blocks are replaced with `<REDACTED>`. Matching values
+are redacted in place, signals are never dropped. Detection is pattern-based and cannot catch encoded, encrypted, or
+split card numbers, so not emitting cardholder data at the source remains the primary safeguard.
+
+The processor runs last in each of the SignalControl collector's traces, metrics and logs pipelines, after every other
+SCE processor that changes telemetry. RED metrics and signal-to-metrics are derived from the redacted telemetry.
+Telemetry that the per-node collector sends to a non-Dash0 exporter does not pass through the SignalControl collector
+and is not redacted.
+
+Telemetry redacted in the cluster is marked as such, and Dash0 does not redact it a second time. The processor reports
+the number of scanned and redacted items as `dash0.redaction.items_scanned` and `dash0.redaction.items_redacted`.
+
+Cardholder data redaction is off by default. To turn it on, set `spec.redaction.cardholderData.enabled: true` on the
+`Dash0SignalControl` resource:
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SignalControl
+metadata:
+  name: dash0-signal-control
+spec:
+  redaction:
+    cardholderData:
+      enabled: true
+  # ... other settings
+```
 
 ### Zone-aware routing
 

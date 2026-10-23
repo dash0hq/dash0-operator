@@ -1709,6 +1709,37 @@ var _ = Describe("signalControlConfigFromResource", func() {
 		Expect(config.LogGroupingCacheExpiration).To(BeEmpty())
 	})
 
+	It("should have cardholder data redaction disabled by default", func() {
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+			},
+		}
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.CardholderDataRedactionEnabled).To(BeFalse())
+	})
+
+	DescribeTable("should map the cardholder data redaction setting",
+		func(enabled bool) {
+			resource := &dash0v1alpha1.Dash0SignalControl{
+				Spec: dash0v1alpha1.Dash0SignalControlSpec{
+					Enabled:   boolPtr(true),
+					EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+					Redaction: dash0v1alpha1.RedactionConfig{
+						CardholderData: dash0v1alpha1.CardholderDataRedactionConfig{
+							Enabled: boolPtr(enabled),
+						},
+					},
+				},
+			}
+			config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+			Expect(config.CardholderDataRedactionEnabled).To(Equal(enabled))
+		},
+		Entry("enabled", true),
+		Entry("disabled", false),
+	)
+
 	It("should default sampling tunables to empty fallback ratio and debug off", func() {
 		resource := &dash0v1alpha1.Dash0SignalControl{
 			Spec: dash0v1alpha1.Dash0SignalControlSpec{
