@@ -186,6 +186,11 @@ func shouldBeInstrumented(objectMeta *metav1.ObjectMeta, autoInstrumentationLabe
 	return labelSelector.Matches(labels.Set(objectMeta.Labels))
 }
 
+// HasWebhookIgnoreOnceLabel reports whether the label dash0.com/webhook-ignore-once=true is present.
+func HasWebhookIgnoreOnceLabel(objectMeta *metav1.ObjectMeta) bool {
+	return objectMeta.Labels[webhookIgnoreOnceLabelKey] == "true"
+}
+
 // RemoveWebhookIgnoreOnceLabel removes the label dash0.com/webhook-ignore-once=true from the given labels and reports
 // whether it was present.
 func RemoveWebhookIgnoreOnceLabel(labels map[string]string) bool {
