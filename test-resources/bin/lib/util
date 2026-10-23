@@ -648,6 +648,9 @@ run_helm() {
     helm_install_command+=" --set operator.agent0Connector.serverAddress=$agent0_connector_server_address"
     helm_install_command+=" --set operator.agent0Connector.secretRef.name=dash0-authorization-secret"
     helm_install_command+=" --set operator.agent0Connector.secretRef.key=token"
+    if [[ "${AGENT0_CONNECTOR_INSECURE:-}" = "true" ]]; then
+      helm_install_command+=" --set operator.agent0Connector.insecure=true"
+    fi
   fi
   if [[ "${DEVELOPMENT_MODE:-}" != "false" ]]; then
   helm_install_command+=" --set operator.developmentMode=true"
@@ -866,19 +869,6 @@ run_helm() {
   fi
   if [[ "${FEATURE_SIGNAL_CONTROL_ENABLED:-}" = "true" ]]; then
     helm_install_command+=" --set operator.signalControl.enabled=true"
-  fi
-  if [[ "${AGENT0_CONNECTOR_ENABLED:-}" = "true" ]]; then
-    if [[ -z "${DASH0_OUTBOUND_CONNECTOR_ENDPOINT:-}" ]]; then
-      echo "error: AGENT0_CONNECTOR_ENABLED is true, but DASH0_OUTBOUND_CONNECTOR_ENDPOINT is not set"
-      exit 1
-    fi
-    helm_install_command+=" --set operator.agent0Connector.enabled=true"
-    helm_install_command+=" --set operator.agent0Connector.serverAddress=${DASH0_OUTBOUND_CONNECTOR_ENDPOINT}"
-    helm_install_command+=" --set operator.agent0Connector.secretRef.name=dash0-authorization-secret"
-    helm_install_command+=" --set operator.agent0Connector.secretRef.key=token"
-    if [[ "${AGENT0_CONNECTOR_INSECURE:-}" = "true" ]]; then
-      helm_install_command+=" --set operator.agent0Connector.insecure=true"
-    fi
   fi
   if [[ -n "${OPERATOR_REPLICAS:-}" ]]; then
     helm_install_command+=" --set operator.replicaCount=${OPERATOR_REPLICAS:-1}"

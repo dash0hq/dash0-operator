@@ -6,11 +6,10 @@
 set -euo pipefail
 
 # Deploys the operator with the agent0-connector enabled. The agent0-connector connects to
-# DASH0_OUTBOUND_CONNECTOR_ENDPOINT. Set AGENT0_CONNECTOR_INSECURE=true for a plaintext connection.
+# AGENT0_CONNECTOR_SERVER_ADDRESS. Set AGENT0_CONNECTOR_INSECURE=true for a plaintext connection.
 #
-# Run this with TELEMETRY_COLLECTION_ENABLED=false (no collectors, no target allocator), an empty DASH0_API_ENDPOINT,
-# and potentially even SELF_MONITORING_ENABLED=false to have the operator only deploy agent0-connector, with everything
-# else switched off.
+# Run this with TELEMETRY_COLLECTION_ENABLED=false (no collectors, no target allocator), and potentially even
+# SELF_MONITORING_ENABLED=false to have the operator only deploy agent0-connector, with everything else switched off.
 
 project_root="$(dirname "${BASH_SOURCE[0]}")"/../..
 scripts_lib="test-resources/bin/lib"
@@ -32,9 +31,11 @@ source "$scripts_lib/util"
 
 load_env_file
 
-if [[ -z "${DASH0_OUTBOUND_CONNECTOR_ENDPOINT:-}" ]]; then
-  echo "error: DASH0_OUTBOUND_CONNECTOR_ENDPOINT is not set"
-  exit 1
+if [[ -z "${AGENT0_CONNECTOR_SERVER_ADDRESS:-}" ]]; then
+  # Without AGENT0_CONNECTOR_SERVER_ADDRESS agent0-connector will be deployed with a dummy server address. Good enough
+  # to test managing the agent0-connector workload works as expected, but not for actually establishing a connection to
+  # Agent0.
+  echo "warn: AGENT0_CONNECTOR_SERVER_ADDRESS is not set. Use the Outbound Connector endpoint of your Dash0 organization, see https://app.dash0.com/goto/settings/endpoints?endpoint_type=outbound_connector."
 fi
 export AGENT0_CONNECTOR_ENABLED=true
 

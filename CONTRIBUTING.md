@@ -168,6 +168,8 @@ there to always have them set automatically instead of providing them with every
 
 Moving beyond the quickstart instructions, here are more details on the test scripts and all available parameters:
 
+* `test-resources/bin/test-scenario-*.sh`: Not every single test scenario is listed here individually, consult the file
+  names and comments to see what is available.
 * `test-resources/bin/test-scenario-01-aum-operator-cr.sh`: Deploys an application under monitoring (this is
   abbreviated to "aum" in the name of the script) to the namespace `test-namespace`, then it deploys the operator to
   the namespace `operator-namespace`, and finally it deploys the Dash0 monitoring resource to `test-namespace`. This is a test
@@ -175,8 +177,6 @@ Moving beyond the quickstart instructions, here are more details on the test scr
 * `test-resources/bin/test-scenario-02-operator-cr-aum.sh`: Deploys the operator to `operator-namespace`, then the
   Dash0 monitoring resource to namespace `test-namespace`, and finally an application under monitoring to the namespace
   `test-namespace`. This is a test scenario for instrumenting _new_ workloads at deploy time via the admission webhook.
-* `test-resources/bin/test-scenario-*.sh`: Not every single test scenario is listed here individually, consult the file
-  names and comments to see what is available.
 * `test-resources/bin/test-scenario-12-component-settings.sh`: Deploys the operator with Signal Control and the
   agent0-connector, then sets the component settings via `spec.components` of the operator configuration resource and
   of the Signal Control resource (see `test-resources/component-settings`). Some of them are also set to different
@@ -206,7 +206,7 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       workloads there as well.
     * `AGENT0_CONNECTOR_ENABLED`: Set this to "true" to enable the agent0-connector. The agent0-connector connects to
       `AGENT0_CONNECTOR_SERVER_ADDRESS` and authenticates with the token from the secret `dash0-authorization-secret`.
-      This defaults to "false", except in test scenarios 12 and 13, where it defaults to "true".
+      This defaults to "false", except in test scenario 12, and it is always enabled in scenario 13.
     * `AGENT0_CONNECTOR_ENABLE_PPROF`: Set to "true" to enable pprof for the agent0-connector pod (only relevant with
       `AGENT0_CONNECTOR_ENABLED=true`).
       See [Create Heap Profiles](helm-chart/dash0-operator/docs/troubleshooting.md#create-heap-profiles) for
@@ -215,8 +215,8 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       TLS, for example for an outbound connector running locally.
       This defaults to "false".
     * `AGENT0_CONNECTOR_SERVER_ADDRESS`: The server address of the agent0-connector, used with
-      `AGENT0_CONNECTOR_ENABLED=true`. It defaults to an unreachable address, so that only the agent0-connector
-      Deployment can be inspected.
+      `AGENT0_CONNECTOR_ENABLED=true`. It defaults to an unreachable address.
+      Use the Outbound Connector endpoint of your Dash0 organization, see https://app.dash0.com/goto/settings/endpoints?endpoint_type=outbound_connector.
     * `ALLOWED_KUBECTXS`: A comma separated lists of Kubernetes contexts that the script are allowed to use. The scripts
       will refuse to deploy to/delete from any context not on this list. This is a protection against accidentally
       deploying something to or deleting something from a production Kubernetes context.
@@ -248,8 +248,6 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `DASH0_NAMESPACED_AUTHORIZATION_TOKEN`: Token used exclusively by the test script for namespaced exporters. It
       will be placed in the monitoring resource of the test namespace to override the default config from the operator
       configuration resource.
-    * `DASH0_OUTBOUND_CONNECTOR_ENDPOINT`: The endpoint of the outbound connector the agent0-connector connects to
-      (`host:port`). Required when `AGENT0_CONNECTOR_ENABLED` is "true".
     * `DEPLOY_APPLICATION_UNDER_MONITORING`: Set this to "false" to skip deploying a workload in the test namespace.
       This is assumed to be "true" by default.
     * `DEPLOY_NGINX_INGRESS`: Set this to "false" to skip deploying an nginx ingress to the cluster.
