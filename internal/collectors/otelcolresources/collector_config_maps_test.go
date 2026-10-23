@@ -8179,6 +8179,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(tlsConfig["ca_file"]).To(Equal(fmt.Sprintf("%s/ca.crt", targetAllocatorCertsVolumeDir)))
 			Expect(tlsConfig["cert_file"]).To(Equal(fmt.Sprintf("%s/tls.crt", targetAllocatorCertsVolumeDir)))
 			Expect(tlsConfig["key_file"]).To(Equal(fmt.Sprintf("%s/tls.key", targetAllocatorCertsVolumeDir)))
+			Expect(tlsConfig["reload_interval"]).To(Equal("5m"))
 		})
 
 		It("should use the target-allocator HTTP endpoint if mTLS is disabled", func() {

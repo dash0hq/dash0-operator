@@ -154,6 +154,9 @@ operator:
       clientCertSecretName: "ta-mtls-client-cert-secret"
 ```
 
+The collectors reload the client certificate and key from the client certificate secret at runtime, at most five minutes after they have changed.
+They cannot reload the CA certificate at runtime; when the `ca.crt` entry of the client certificate secret changes, the operator restarts the collector pods.
+
 #### Allowing Insecure Auth Secrets
 
 If the transport security between the OpenTelemetry Target Allocator and the collectors is already guaranteed by other means, for example by a service mesh, you can skip the mTLS setup and let the Target Allocator serve the credentials over plain HTTP instead:

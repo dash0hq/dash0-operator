@@ -2235,6 +2235,45 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		)))
 	})
 
+	It("should add the target-allocator mTLS CA hash to the daemonset pod template", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			Images:                                           TestImages,
+			TargetAllocatorMtlsCaSha:                         "ca-sha",
+		}, nil, util.ExtraConfig{
+			TargetAllocatorMtlsEnabled:              true,
+			TargetAllocatorMtlsClientCertSecretName: "ta-mtls-client-cert-secret",
+			CollectorDaemonSetPodAnnotations: map[string]string{
+				"ds-pod-annotation":                "ds-pod-annotation-value",
+				targetAllocatorMtlsCaShaAnnotation: "user-value",
+			},
+		})
+
+		Expect(err).ToNot(HaveOccurred())
+		annotations := getDaemonSet(desiredState).Spec.Template.Annotations
+		Expect(annotations).To(HaveKeyWithValue(targetAllocatorMtlsCaShaAnnotation, "ca-sha"))
+		Expect(annotations).To(HaveKeyWithValue("ds-pod-annotation", "ds-pod-annotation-value"))
+		Expect(getDeployment(desiredState).Spec.Template.Annotations).ToNot(HaveKey(targetAllocatorMtlsCaShaAnnotation))
+	})
+
+	It("should not add a target-allocator mTLS CA hash to the daemonset pod template if there is none", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			Images:                                           TestImages,
+		}, nil, util.ExtraConfig{})
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(getDaemonSet(desiredState).Spec.Template.Annotations).To(BeNil())
+	})
+
 	It("should omit the filelog offset container but add the volume ownership container if a PVC volume is provided for filelog offset storage", func() {
 		offsetStorageVolume := corev1.Volume{
 			Name: "filelogreceiver-offsets",
