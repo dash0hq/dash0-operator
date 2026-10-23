@@ -760,3 +760,154 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: "range can't iterate over get"
+
+  - it: should reject custom cluster role rules which are not a list
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              pods:
+                apiGroups: [""]
+                resources: ["pods"]
+                verbs: ["get"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.rules must be a list of RBAC policy rules'
+
+  - it: should render the default rules plus the additional cluster role rules for the agent0-connector
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            additionalRules:
+              - apiGroups: [""]
+                resources: ["configmaps"]
+                verbs: ["get", "list"]
+              - apiGroups: ["example.com"]
+                resources: ["widgets"]
+                verbs: ["get", "list"]
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - ""
+            resources:
+              - configmaps
+            verbs:
+              - get
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - example.com
+            resources:
+              - widgets
+            verbs:
+              - get
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      # The default rules are kept, the additional rules extend them.
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - apps
+            resources:
+              - controllerrevisions
+              - daemonsets
+              - deployments
+              - replicasets
+              - statefulsets
+            verbs:
+              - get
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+
+  - it: should reject setting both custom cluster role rules and additional cluster role rules
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                resources: ["pods"]
+                verbs: ["get", "list"]
+            additionalRules:
+              - apiGroups: [""]
+                resources: ["configmaps"]
+                verbs: ["get", "list"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.rules and operator.agent0Connector.clusterRole.additionalRules are mutually exclusive'
+
+  - it: should reject additional cluster role rules with a write verb
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            additionalRules:
+              - apiGroups: [""]
+                resources: ["pods"]
+                verbs: ["get", "list", "delete"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.additionalRules\[0\]: the verb "delete" is not allowed'
+
+  - it: should reject additional cluster role rules which grant create beyond the self subject review API
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            additionalRules:
+              - apiGroups: [""]
+                resources: ["pods"]
+                verbs: ["get"]
+              - apiGroups: ["authorization.k8s.io", ""]
+                resources: ["selfsubjectaccessreviews", "pods"]
+                verbs: ["create"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.additionalRules\[1\]: the verb "create" is not allowed'
+
+  - it: should reject a malformed additional cluster role rule
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            additionalRules:
+              - apiGroups: [""]
+                verbs: ["get"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.additionalRules\[0\]: a rule for regular resources must supply at least one resource'
+
+  - it: should reject additional cluster role rules which are not a list
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            additionalRules:
+              configmaps:
+                apiGroups: [""]
+                resources: ["configmaps"]
+                verbs: ["get", "list"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.additionalRules must be a list of RBAC policy rules'

@@ -2490,15 +2490,7 @@ log_statements:
 			By("installing the outbound-connector mock")
 			installOutboundConnectorMock()
 
-			By("determining the pseudo cluster UID (the UID of the kube-system namespace)")
-			clusterUid, err := run(exec.Command(
-				"kubectl",
-				"get", "namespace", "kube-system",
-				"-o", "jsonpath={.metadata.uid}",
-			), false)
-			Expect(err).ToNot(HaveOccurred())
-			pseudoClusterUid = strings.TrimSpace(clusterUid)
-			Expect(pseudoClusterUid).ToNot(BeEmpty())
+			pseudoClusterUid = determinePseudoClusterUid()
 
 			By("deploying the Dash0 operator with the agent0-connector enabled")
 			deployOperatorWithDefaultAutoOperationConfiguration(
@@ -2783,13 +2775,18 @@ spec:
 		)
 	}) // end of suite "with the agent0-connector enabled"
 
-	Context("with the agent0-connector enabled and a manually managed operator configuration resource", Ordered, func() {
+	Context("with the agent0-connector enabled, a manually managed operator configuration resource, and additional "+
+		"cluster role rules", Ordered, func() {
+		var pseudoClusterUid string
+
 		BeforeAll(func() {
 			By("installing the outbound-connector mock")
 			installOutboundConnectorMock()
 
-			By("deploying the Dash0 operator with the agent0-connector enabled, but without an operator configuration " +
-				"resource")
+			pseudoClusterUid = determinePseudoClusterUid()
+
+			By("deploying the Dash0 operator with the agent0-connector enabled and additional cluster role rules, " +
+				"but without an operator configuration resource")
 			deployOperatorWithoutAutoOperationConfiguration(
 				operatorNamespace,
 				operatorHelmChart,
@@ -2801,6 +2798,12 @@ spec:
 					"operator.agent0Connector.serverAddress": outboundConnectorMockGrpcEndpoint,
 					"operator.agent0Connector.token":         agent0ConnectorDummyToken,
 					"operator.agent0Connector.insecure":      "true",
+
+					// The additional rules are added to the default rules: they grant read access to config maps,
+					// which the default rules deliberately exclude.
+					"operator.agent0Connector.clusterRole.additionalRules[0].apiGroups[0]": "",
+					"operator.agent0Connector.clusterRole.additionalRules[0].resources":    "{configmaps}",
+					"operator.agent0Connector.clusterRole.additionalRules[0].verbs":        "{get,list}",
 				},
 			)
 
@@ -2822,10 +2825,21 @@ spec:
 			uninstallOutboundConnectorMock()
 		})
 
-		It("removes the agent0-connector when the operator configuration resource opts out, and redeploys it when the "+
-			"opt-out is revoked", func() {
+		verifyDefaultAndAdditionalRulesAreGranted := func() {
+			// namespaces are granted by the default rules, config maps by the additional rules.
+			verifyAgent0ConnectorCommandIsAllowedByRbac(
+				pseudoClusterUid, []string{"get", "namespaces"}, "kube-system")
+			verifyAgent0ConnectorCommandIsAllowedByRbac(
+				pseudoClusterUid, []string{"get", "configmaps", "--all-namespaces"}, rootCaConfigMapName)
+			verifyAgent0ConnectorCommandIsForbiddenByRbac(
+				pseudoClusterUid, []string{"get", "secrets", "--all-namespaces"}, "secrets")
+		}
+
+		It("grants the default rules plus the additional rules, removes the agent0-connector when the operator "+
+			"configuration resource opts out, and redeploys it when the opt-out is revoked", func() {
 			waitForAgent0ConnectorDeploymentToBecomeAvailable()
 			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceManuallyManagedName)
+			verifyDefaultAndAdditionalRulesAreGranted()
 
 			By("opting out of the agent0-connector via the operator configuration resource")
 			updateOperatorConfigurationAgent0ConnectorEnabled(
@@ -2840,8 +2854,10 @@ spec:
 
 			waitForAgent0ConnectorDeploymentToBecomeAvailable()
 			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceManuallyManagedName)
+			verifyDefaultAndAdditionalRulesAreGranted()
 		})
-	}) // end of suite "with the agent0-connector enabled and a manually managed operator configuration resource"
+	}) // end of suite "with the agent0-connector enabled, a manually managed operator configuration resource, and
+	// additional cluster role rules"
 
 	Context("with the synthetics-worker enabled and a manually managed operator configuration resource", Ordered, func() {
 		BeforeAll(func() {
@@ -2920,15 +2936,7 @@ spec:
 			By("installing the outbound-connector mock")
 			installOutboundConnectorMock()
 
-			By("determining the pseudo cluster UID (the UID of the kube-system namespace)")
-			clusterUid, err := run(exec.Command(
-				"kubectl",
-				"get", "namespace", "kube-system",
-				"-o", "jsonpath={.metadata.uid}",
-			), false)
-			Expect(err).ToNot(HaveOccurred())
-			pseudoClusterUid = strings.TrimSpace(clusterUid)
-			Expect(pseudoClusterUid).ToNot(BeEmpty())
+			pseudoClusterUid = determinePseudoClusterUid()
 
 			By("deploying a config map holding a credential")
 			applyConfigMapCmd := exec.Command("kubectl", "apply", "-f", "-")
