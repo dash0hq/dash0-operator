@@ -99,17 +99,18 @@ type ExtraConfig struct {
 
 	SignalControlCollectorProbes CollectorProbes `json:"signalControlCollectorProbes"`
 
-	TargetAllocatorMtlsEnabled              bool                               `json:"targetAllocatorMtlsEnabled,omitempty"`
-	TargetAllocatorMtlsServerCertSecretName string                             `json:"targetAllocatorMtlsServerCertSecretName,omitempty"`
-	TargetAllocatorMtlsClientCertSecretName string                             `json:"targetAllocatorMtlsClientCertSecretName,omitempty"`
-	TargetAllocatorAllowInsecureAuthSecrets bool                               `json:"targetAllocatorAllowInsecureAuthSecrets,omitempty"`
-	TargetAllocatorContainerResources       ResourceRequirementsWithGoMemLimit `json:"targetAllocatorContainerResources"`
-	TargetAllocatorLabels                   map[string]string                  `json:"targetAllocatorLabels,omitempty"`
-	TargetAllocatorAnnotations              map[string]string                  `json:"targetAllocatorAnnotations,omitempty"`
-	TargetAllocatorPodLabels                map[string]string                  `json:"targetAllocatorPodLabels,omitempty"`
-	TargetAllocatorPodAnnotations           map[string]string                  `json:"targetAllocatorPodAnnotations,omitempty"`
-	TargetAllocatorTolerations              []corev1.Toleration                `json:"targetAllocatorTolerations,omitempty"`
-	TargetAllocatorNodeAffinity             *corev1.NodeAffinity               `json:"targetAllocatorNodeAffinity,omitempty"`
+	TargetAllocatorMtlsEnabled                   bool                               `json:"targetAllocatorMtlsEnabled,omitempty"`
+	TargetAllocatorMtlsServerCertSecretName      string                             `json:"targetAllocatorMtlsServerCertSecretName,omitempty"`
+	TargetAllocatorMtlsClientCertSecretName      string                             `json:"targetAllocatorMtlsClientCertSecretName,omitempty"`
+	TargetAllocatorAllowInsecureAuthSecrets      bool                               `json:"targetAllocatorAllowInsecureAuthSecrets,omitempty"`
+	TargetAllocatorAllowSecretAccessInNamespaces []string                           `json:"targetAllocatorAllowSecretAccessInNamespaces,omitempty"`
+	TargetAllocatorContainerResources            ResourceRequirementsWithGoMemLimit `json:"targetAllocatorContainerResources"`
+	TargetAllocatorLabels                        map[string]string                  `json:"targetAllocatorLabels,omitempty"`
+	TargetAllocatorAnnotations                   map[string]string                  `json:"targetAllocatorAnnotations,omitempty"`
+	TargetAllocatorPodLabels                     map[string]string                  `json:"targetAllocatorPodLabels,omitempty"`
+	TargetAllocatorPodAnnotations                map[string]string                  `json:"targetAllocatorPodAnnotations,omitempty"`
+	TargetAllocatorTolerations                   []corev1.Toleration                `json:"targetAllocatorTolerations,omitempty"`
+	TargetAllocatorNodeAffinity                  *corev1.NodeAffinity               `json:"targetAllocatorNodeAffinity,omitempty"`
 
 	EdgeProxyReplicas           int32                              `json:"edgeProxyReplicas,omitempty"`
 	EdgeProxyEnablePprof        bool                               `json:"edgeProxyEnablePprof,omitempty"`
@@ -123,6 +124,7 @@ type ExtraConfig struct {
 	EdgeProxyPodAnnotations map[string]string `json:"edgeProxyPodAnnotations,omitempty"`
 
 	Agent0ConnectorMaxConcurrentCommands  int32                              `json:"agent0ConnectorMaxConcurrentCommands,omitempty"`
+	Agent0ConnectorEnablePprof            bool                               `json:"agent0ConnectorEnablePprof,omitempty"`
 	Agent0ConnectorClusterRoleRules       []rbacv1.PolicyRule                `json:"agent0ConnectorClusterRoleRules,omitempty"`
 	Agent0ConnectorAllowedKubectlCommands map[string]bool                    `json:"agent0ConnectorAllowedKubectlCommands,omitempty"`
 	Agent0ConnectorContainerResources     ResourceRequirementsWithGoMemLimit `json:"agent0ConnectorContainerResources"`

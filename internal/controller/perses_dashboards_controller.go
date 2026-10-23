@@ -771,7 +771,7 @@ func (r *PersesDashboardReconciler) IsOriginOfResource(
 	return origin == dashboardOrigin
 }
 
-func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
+func (r *PersesDashboardReconciler) MapResourceToApiCalls(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,
@@ -924,30 +924,12 @@ func (r *PersesDashboardReconciler) CreateDeleteRequests(
 	_ ApiConfig,
 	_ []string,
 	_ []string,
-	_ logd.Logger,
-) ([]WrappedApiRequest, map[string]string) {
+) []WrappedApiRequest {
 	// The mechanism to delete individual dashboards when synchronizing one Kubernetes PersesDashboard resource is not
 	// required, since each PersesDashboard only contains one dashboard. It is only needed when the resource type holds
 	// multiple objects that are synchronized (as it is the case for PrometheusRule). Thus, this controller does not
 	// need to implement this method.
-	return nil, nil
-}
-
-func (r *PersesDashboardReconciler) ExtractIdFromResponseBody(
-	responseBytes []byte,
-	logger logd.Logger,
-) (id string, err error) {
-	objectWithMetadata := Dash0ApiObjectWithMetadata{}
-	if err := json.Unmarshal(responseBytes, &objectWithMetadata); err != nil {
-		logger.Error(
-			err,
-			"cannot parse response, will not extract the synchronized object's ID",
-			"response",
-			string(responseBytes),
-		)
-		return "", err
-	}
-	return objectWithMetadata.Metadata.Labels.Id, nil
+	return nil
 }
 
 func (*PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringStatus(

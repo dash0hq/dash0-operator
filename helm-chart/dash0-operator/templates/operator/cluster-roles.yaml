@@ -696,6 +696,7 @@ rules:
   - get
   - list
   - watch
+{{- if not .Values.operator.targetAllocator.allowSecretAccessInNamespaces }}
 # The target allocator resolves secrets referenced by Prometheus CRDs in any namespace.
 - apiGroups:
   - ""
@@ -705,6 +706,7 @@ rules:
   - get
   - list
   - watch
+{{- end }}
 - nonResourceURLs:
   - /metrics
   verbs:
@@ -730,6 +732,34 @@ monitoring validation webhook reads namespaces via the cache if spec.autoMonitor
   - list
   - watch
 {{- end }}
+
+{{ end }}
+
+---
+{{ if and .Values.operator.telemetryCollectionEnabled .Values.operator.targetAllocator.allowSecretAccessInNamespaces }}
+{{/*
+The -target-allocator-secrets cluster role grants the OTel target-allocator read access to secrets in the namespaces
+listed in operator.targetAllocator.allowSecretAccessInNamespaces, see role-binding-target-allocator-secrets.yaml.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-target-allocator-secrets
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: cluster-role-target-allocator-secrets
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
 
 {{ end }}
 

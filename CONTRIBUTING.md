@@ -175,14 +175,25 @@ Moving beyond the quickstart instructions, here are more details on the test scr
 * `test-resources/bin/test-scenario-02-operator-cr-aum.sh`: Deploys the operator to `operator-namespace`, then the
   Dash0 monitoring resource to namespace `test-namespace`, and finally an application under monitoring to the namespace
   `test-namespace`. This is a test scenario for instrumenting _new_ workloads at deploy time via the admission webhook.
-* `test-resources/bin/test-scenario-12-component-settings.sh`: Deploys the operator with Signal Control, then sets the
-  component settings via `spec.components` of the operator configuration resource and of the Signal Control resource
-  (see `test-resources/component-settings`). Some of them are also set to different values via Helm, which the
-  operator reports with a warning ("overrides the custom Helm value").
+* `test-resources/bin/test-scenario-12-component-settings.sh`: Deploys the operator with Signal Control and the
+  agent0-connector, then sets the component settings via `spec.components` of the operator configuration resource and
+  of the Signal Control resource (see `test-resources/component-settings`). Some of them are also set to different
+  values via Helm, which the operator reports with a warning ("overrides the custom Helm value").
 * `test-resources/bin/test-scenario-13-signal-control-only.sh`: Deploys the operator with Signal Control in SCE-only
   mode (`FEATURE_SIGNAL_CONTROL_ENABLED=true` and `TELEMETRY_COLLECTION_ENABLED=false`), so that only the Signal
   Control collector and the Edge Proxy are deployed. By default, it deploys neither an application under monitoring
   nor a monitoring resource.
+* `test-resources/bin/test-scenario-14-ta-allow-secret-access-in-namespaces.sh`: Deploys the operator with Prometheus
+  CRD support and `operator.targetAllocator.allowSecretAccessInNamespaces` set to the target namespace (or to
+  `TA_ALLOW_SECRET_ACCESS_IN_NAMESPACES`), plus ServiceMonitors and Dash0 monitoring resources in the target namespace
+  and in `test-namespace-2` and `test-namespace-3`. The cadvisor ScrapeConfig, which references a secret, is deployed
+  to the target namespace and to `test-namespace-2`. Expected outcome (with the default for
+  `TA_ALLOW_SECRET_ACCESS_IN_NAMESPACES`): the ServiceMonitors in all three namespaces and the cadvisor ScrapeConfig in
+  the target namespace are scraped, the target allocator rejects the cadvisor ScrapeConfig in `test-namespace-2`, the
+  operator manager logs a debug message for `test-namespace-2` and `test-namespace-3` (the script always enables
+  development mode), and neither the `dash0-operator-manager-collector` cluster role nor the cluster role that the
+  operator creates for the target allocator grant access to secrets. Secrets are only granted via the
+  `dash0-operator-target-allocator-secrets` role binding in the target namespace.
 * `test-resources/bin/test-cleanup.sh`: This script removes all resources created by the other scripts. **You should
   always run this script after running any of the scenario scripts, when you are done with your tests, otherwise the
   e2e tests will fail the next time you start them.** Note that all scenario scripts call the cleanup at the beginning,
@@ -195,6 +206,16 @@ Moving beyond the quickstart instructions, here are more details on the test scr
 * Additional parameterization can be achieved via environment variables. Here is a full list of all available variables.
     * `ADDITIONAL_NAMESPACES`: Create two more test namespaces (in addition to the usual one test namespace) and deploy
       workloads there as well.
+    * `AGENT0_CONNECTOR_ENABLED`: Set this to "true" to enable the agent0-connector, with the token from the secret
+      `dash0-authorization-secret`.
+      This defaults to "false", except in test scenario 12, where it defaults to "true".
+    * `AGENT0_CONNECTOR_ENABLE_PPROF`: Set to "true" to enable pprof for the agent0-connector pod (only relevant with
+      `AGENT0_CONNECTOR_ENABLED=true`).
+      See [Create Heap Profiles](helm-chart/dash0-operator/docs/troubleshooting.md#create-heap-profiles) for
+      instructions on creating heap profiles.
+    * `AGENT0_CONNECTOR_SERVER_ADDRESS`: The server address of the agent0-connector, used with
+      `AGENT0_CONNECTOR_ENABLED=true`. It defaults to an unreachable address, so that only the agent0-connector
+      Deployment can be inspected.
     * `ALLOWED_KUBECTXS`: A comma separated lists of Kubernetes contexts that the script are allowed to use. The scripts
       will refuse to deploy to/delete from any context not on this list. This is a protection against accidentally
       deploying something to or deleting something from a production Kubernetes context.
@@ -335,6 +356,9 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `TA_ALLOW_INSECURE_AUTH_SECRETS`: Set this to "true" to have the target allocator serve the credentials for
       metrics endpoints which require authorization over plain HTTP, instead of over mTLS.
       This defaults to "false".
+    * `TA_ALLOW_SECRET_ACCESS_IN_NAMESPACES`: Set this to a comma-separated list of namespaces to only let the target
+      allocator read secrets in these namespaces (`operator.targetAllocator.allowSecretAccessInNamespaces`).
+      This is unset by default, except in test scenario 14, where it defaults to the target namespace.
     * `TA_MTLS_ENABLED`: Set this to "true" to enable mTLS for the communication between the target allocator and the
       collectors. Requires `USE_CERT_MANAGER=true`, since the certificates are provisioned via cert-manager.
       This defaults to "false", except in test scenario 06, where it defaults to "true".

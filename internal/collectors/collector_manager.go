@@ -80,7 +80,6 @@ func NewCollectorManager(
 func (m *CollectorManager) UpdateExtraConfig(ctx context.Context, newConfig util.ExtraConfig, logger logd.Logger) {
 	previousConfig := m.extraConfig.Swap(&newConfig)
 	if previousConfig == nil || !reflect.DeepEqual(*previousConfig, newConfig) {
-		util.WarnOnCollectorGoMemLimitInversion(newConfig, logger)
 		hasBeenReconciled, err := m.ReconcileOpenTelemetryCollector(ctx)
 		if err != nil {
 			logger.ErrorTelemetryCollectionIssue(err, "Failed to create/update collector resources after extra config map update.")
@@ -93,12 +92,31 @@ func (m *CollectorManager) UpdateExtraConfig(ctx context.Context, newConfig util
 	}
 }
 
+// NotifyOperatorManagerJustBecameLeader reconciles the collector resources again if warnings about GOMEMLIMIT
+// inversions have been skipped while this replica was not the leader, so that these warnings are logged now.
+func (m *CollectorManager) NotifyOperatorManagerJustBecameLeader(ctx context.Context, logger logd.Logger) {
+	if !m.oTelColResourceManager.ConsumeSkippedReports() {
+		return
+	}
+	logger.Info("reconciling the collector resources to report warnings that have been skipped before this replica " +
+		"became leader")
+	go func() {
+		if _, err := m.ReconcileOpenTelemetryCollector(ctx); err != nil {
+			logger.ErrorTelemetryCollectionIssue(
+				err,
+				"Failed to reconcile the collector resources after this replica has become leader.",
+			)
+		}
+	}()
+}
+
 // ReconcileOpenTelemetryCollector can be triggered by a
 //  1. a reconcile request from the Dash0OperatorConfiguration resource.
 //  2. a reconcile request from a Dash0Monitoring resource in the cluster.
 //  3. a change event on one of the OpenTelemetry collector related resources that the operator manages (a change to one
 //     of "our" config maps or similar).
 //  4. a file change event picked up by the extra config map watcher
+//  5. this replica becoming leader after warnings about GOMEMLIMIT inversions have been skipped
 //
 // Returns a boolean flag indicating whether the reconciliation has been performed (true) or has been cancelled, due
 // to another reconciliation already being in progress or because the resource has been deleted by the operator.

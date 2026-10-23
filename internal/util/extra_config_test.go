@@ -434,6 +434,7 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.TargetAllocatorMtlsServerCertSecretName).To(Equal(""))
 					Expect(extraConfig.TargetAllocatorMtlsClientCertSecretName).To(Equal(""))
 					Expect(extraConfig.TargetAllocatorAllowInsecureAuthSecrets).To(BeFalse())
+					Expect(extraConfig.TargetAllocatorAllowSecretAccessInNamespaces).To(BeEmpty())
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Cpu().String()).To(Equal("200m"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Requests.Cpu().String()).To(Equal("200m"))
@@ -456,6 +457,7 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.Agent0ConnectorContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.Agent0ConnectorContainerResources.Requests.Memory().String()).To(Equal("64Mi"))
 					Expect(extraConfig.Agent0ConnectorMaxConcurrentCommands).To(Equal(int32(2)))
+					Expect(extraConfig.Agent0ConnectorEnablePprof).To(BeFalse())
 					Expect(extraConfig.Agent0ConnectorAllowedKubectlCommands).To(
 						Equal(ExtraConfigDefaults.Agent0ConnectorAllowedKubectlCommands))
 					Expect(extraConfig.Agent0ConnectorNodeAffinity).To(Equal(defaultNodeAffinity()))
@@ -766,6 +768,9 @@ targetAllocatorMtlsEnabled: true
 targetAllocatorMtlsServerCertSecretName: "ta-mtls-server-cert"
 targetAllocatorMtlsClientCertSecretName: "ta-mtls-client-cert"
 targetAllocatorAllowInsecureAuthSecrets: true
+targetAllocatorAllowSecretAccessInNamespaces:
+  - namespace-a
+  - namespace-b
 targetAllocatorContainerResources:
   limits:
     cpu: 500m
@@ -952,6 +957,7 @@ monitoringTemplate:
 					Expect(extraConfig.TargetAllocatorMtlsServerCertSecretName).To(Equal("ta-mtls-server-cert"))
 					Expect(extraConfig.TargetAllocatorMtlsClientCertSecretName).To(Equal("ta-mtls-client-cert"))
 					Expect(extraConfig.TargetAllocatorAllowInsecureAuthSecrets).To(BeTrue())
+					Expect(extraConfig.TargetAllocatorAllowSecretAccessInNamespaces).To(Equal([]string{"namespace-a", "namespace-b"}))
 
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Cpu().String()).To(Equal("500m"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Memory().String()).To(Equal("806Mi"))
@@ -1640,6 +1646,7 @@ var extraConfigKeysToHelmValues = map[string]string{
 	"targetAllocatorMtlsServerCertSecretName":                       "operator.targetAllocator.mTls.serverCertSecretName",
 	"targetAllocatorMtlsClientCertSecretName":                       "operator.targetAllocator.mTls.clientCertSecretName",
 	"targetAllocatorAllowInsecureAuthSecrets":                       "operator.targetAllocator.allowInsecureAuthSecrets",
+	"targetAllocatorAllowSecretAccessInNamespaces":                  "operator.targetAllocator.allowSecretAccessInNamespaces",
 	"targetAllocatorContainerResources":                             "operator.targetAllocator.containerResources",
 	"targetAllocatorLabels":                                         "operator.targetAllocator.labels",
 	"targetAllocatorAnnotations":                                    "operator.targetAllocator.annotations",
@@ -1658,6 +1665,7 @@ var extraConfigKeysToHelmValues = map[string]string{
 	"edgeProxyPodAnnotations":                                       "operator.signalControl.edgeProxy.podAnnotations",
 	"agent0ConnectorContainerResources":                             "operator.agent0Connector.containerResources",
 	"agent0ConnectorMaxConcurrentCommands":                          "operator.agent0Connector.maxConcurrentCommands",
+	"agent0ConnectorEnablePprof":                                    "operator.agent0Connector.enablePprof",
 	"agent0ConnectorAllowedKubectlCommands":                         "operator.agent0Connector.allowedKubectlCommands",
 	"agent0ConnectorClusterRoleRules":                               "operator.agent0Connector.clusterRole.rules",
 	"agent0ConnectorLabels":                                         "operator.agent0Connector.labels",

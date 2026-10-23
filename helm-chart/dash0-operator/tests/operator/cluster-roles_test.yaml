@@ -165,7 +165,7 @@ tests:
         name: dash0-operator-manager-iac
       documentIndex: 1
 
-  - it: should grant cluster-wide permissions for secrets to the manager by default
+  - it: should grant cluster-wide access to secrets if allowSecretAccessInNamespaces is not set for the target-allocator
     asserts:
       - contains:
           path: rules
@@ -181,6 +181,11 @@ tests:
         documentSelector:
           path: metadata.name
           value: dash0-operator-manager-collector
+      - containsDocument:
+          kind: ClusterRole
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-target-allocator-secrets
+        not: true
 
   - it: should only grant the permissions for managing collectors and listing pods in SCE-only mode
     set:
@@ -281,6 +286,52 @@ tests:
         documentSelector:
           path: metadata.name
           value: dash0-operator-manager-collector
+
+  - it: should not grant cluster-wide access to secrets if allowSecretAccessInNamespaces is set for the target-allocator
+    set:
+      operator:
+        targetAllocator:
+          allowSecretAccessInNamespaces:
+            - namespace-a
+    asserts:
+      - hasDocuments:
+          count: 5
+      - notContains:
+          path: rules[*].resources
+          content: secrets
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-collector
+      - equal:
+          path: rules
+          value:
+            - apiGroups:
+                - ""
+              resources:
+                - secrets
+              verbs:
+                - get
+                - list
+                - watch
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-target-allocator-secrets
+
+  - it: should not render the target-allocator secrets cluster role if telemetry collection is disabled
+    set:
+      operator:
+        telemetryCollectionEnabled: false
+        targetAllocator:
+          allowSecretAccessInNamespaces:
+            - namespace-a
+    asserts:
+      - hasDocuments:
+          count: 2
+      - containsDocument:
+          kind: ClusterRole
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-target-allocator-secrets
+        not: true
 
   - it: should not grant agent0-connector permissions by default
     asserts:

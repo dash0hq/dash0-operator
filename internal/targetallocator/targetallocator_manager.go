@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"sync/atomic"
 
 	"k8s.io/client-go/kubernetes"
@@ -182,6 +183,11 @@ func (m *TargetAllocatorManager) reconcileTargetAllocator(ctx context.Context, l
 		err = m.removeTargetAllocator(ctx, extraConfig, logger)
 		return err == nil, err
 	} else {
+		logNamespacesWithoutSecretAccess(
+			namespacesWithPrometheusScraping,
+			extraConfig.TargetAllocatorAllowSecretAccessInNamespaces,
+			logger,
+		)
 		logger.Info(
 			fmt.Sprintf("Telemetry collection and support for Prometheus CRDs has been enabled via the operator configuration "+
 				"resource (\"%s\"), the Dash0 OpenTelemetry target-allocator will be created or updated.",
@@ -195,6 +201,28 @@ func (m *TargetAllocatorManager) reconcileTargetAllocator(ctx context.Context, l
 			logger,
 		)
 		return err == nil, err
+	}
+}
+
+func logNamespacesWithoutSecretAccess(
+	namespacesWithPrometheusScraping []string,
+	allowSecretAccessInNamespaces []string,
+	logger logd.Logger,
+) {
+	if len(allowSecretAccessInNamespaces) == 0 {
+		return
+	}
+	for _, namespace := range namespacesWithPrometheusScraping {
+		if slices.Contains(allowSecretAccessInNamespaces, namespace) {
+			continue
+		}
+		logger.Debug(
+			fmt.Sprintf("The Dash0Monitoring resource in namespace \"%s\" has Prometheus scraping enabled, but the "+
+				"namespace is not listed in the Helm value operator.targetAllocator.allowSecretAccessInNamespaces. The "+
+				"target-allocator cannot read secrets in this namespace. Prometheus CRDs (PodMonitor, ServiceMonitor, "+
+				"ScrapeConfig) in this namespace that reference a secret will be rejected by the target-allocator.",
+				namespace),
+		)
 	}
 }
 

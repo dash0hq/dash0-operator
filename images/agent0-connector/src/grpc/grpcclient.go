@@ -60,7 +60,7 @@ const (
 
 	// maxConcurrentCommandsEnvVarName is the environment variable through which the operator passes how many command
 	// requests may be executed at the same time (set from the Helm value
-	// operator.agent0Connector.maxConcurrentCommands).
+	// operator.agent0Connector.maxConcurrentCommands, or spec.components.agent0Connector.maxConcurrentCommands).
 	maxConcurrentCommandsEnvVarName = "DASH0_AGENT0_CONNECTOR_MAX_CONCURRENT_COMMANDS"
 
 	// defaultMaxConcurrentCommands is the number of command requests executed at the same time when the environment
@@ -351,7 +351,8 @@ func resolveMaxConcurrentCommands(logger *slog.Logger) int {
 // DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS environment variable. The variable is mandatory; if it is not set,
 // cannot be parsed, contains a kubectl command the connector does not support or rejects unconditionally, or does not
 // allow any kubectl command, the process logs an error and exits. (When the operator deploys this workload, the
-// variable is always provided, from the Helm value operator.agent0Connector.allowedKubectlCommands.)
+// variable is always provided, from the Helm value operator.agent0Connector.allowedKubectlCommands, or
+// spec.components.agent0Connector.allowedKubectlCommands.)
 func resolveAllowedKubectlCommands(logger *slog.Logger) kubectl.AllowedKubectlCommands {
 	allowedKubectlCommands, err := kubectl.ParseAllowedKubectlCommands(os.Getenv(kubectl.AllowedKubectlCommandsEnvVarName))
 	if err != nil {

@@ -431,7 +431,6 @@ func Start() {
 		setupLog.Error(err, "cannot read extra config map file at startup")
 		os.Exit(1)
 	}
-	util.WarnOnCollectorGoMemLimitInversion(extraConfig, setupLog)
 	if err = extraConfigMapWatcher.StartWatch(extraConfigDefaults, setupLog); err != nil {
 		setupLog.Error(err, "cannot establish file watch for extra config map")
 		os.Exit(1)
@@ -1545,17 +1544,11 @@ func startOperatorManager(
 		// operator manager will terminate immediately, we need to shut down a couple of internal components before
 		// terminating (self monitoring OTel SDK shutdown etc.).
 		LeaderElectionReleaseOnCancel: false,
-	}
 
-	if !cliArgs.telemetryCollectionEnabled {
-		// If telemetry collection is disabled, we do not have the RBAC permissions to read secrets in arbitrary
-		// namespaces. As a consequence, we need to instruct controller-runtime to only list/watch secrets in the operator
-		// namespace. Otherwise, any k8sClient.Get call to fetch a secret (in particular, the Dash0 auth token secret for
-		// self-monitoring) will make controller-runtime execute a list and watch for secrets in the entire cluster, just
-		// to build its internal cache. This fails with
-		// 'User ... cannot list resource "secrets" in API group "" at the cluster scope.'
-		// if we do not have cluster-wide permissions for secrets.
-		options.Cache = cache.Options{
+		// The operator manager only reads secrets in the operator namespace and does not always hold cluster-wide
+		// permissions for secrets. Without this, the first Get for a secret would make controller-runtime list/watch
+		// secrets in the entire cluster to build its cache, which fails without cluster-wide permissions.
+		Cache: cache.Options{
 			ByObject: map[client.Object]cache.ByObject{
 				&corev1.Secret{}: {
 					Namespaces: map[string]cache.Config{
@@ -1563,8 +1556,9 @@ func startOperatorManager(
 					},
 				},
 			},
-		}
+		},
 	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), options)
 	if err != nil {
 		return fmt.Errorf("unable to create the manager: %w", err)
@@ -1869,6 +1863,11 @@ func startDash0Controllers(
 		envVars.enableRubyAutoInstrumentation,
 	)
 	clusterInstrumentationConfig.IsOpenShift = cliArgs.isOpenShift
+	if err = watchInstrumentationInitContainerResources(
+		ctx, mgr, clusterInstrumentationConfig, extraConfigDefaults,
+	); err != nil {
+		return err
+	}
 
 	startMinimumKubeletVersionDetection(
 		ctx,
@@ -1934,6 +1933,7 @@ func startDash0Controllers(
 			mgr.GetScheme(),
 			operatorDeploymentSelfReference,
 			collectorConfig,
+			leaderElectionAwareRunnable,
 		)
 		collectorManager = collectors.NewCollectorManager(
 			k8sClient,
@@ -1948,6 +1948,7 @@ func startDash0Controllers(
 		// reconciliation of the collectors. This makes sure changed resource settings, filelog offset volumes or toleration
 		// taints are applied more or less immediately. (Noticing the changed config map can take a minute or a bit more.)
 		extraConfigMapWatcher.AddClient(collectorManager)
+		leaderElectionAwareRunnable.AddLeaderElectionClient(collectorManager)
 
 		if err := setupCollectorReconciler(mgr, k8sClient, collectorManager, envVars); err != nil {
 			return err
@@ -2318,10 +2319,8 @@ func startDash0Controllers(
 			return fmt.Errorf("unable to create the instrumentation webhook: %w", err)
 		}
 		// For consistency, we update the extra config map in the instrumentation webhook handler as well.
-		// In case instrumentation-related settings have been changed (e.g., operator.initContainerResources), _new_
-		// workloads will be instrumented with the updated settings. Existing and already instrumented workloads will not
-		// be reinstrumented, and even if they are changed, the instrumentation webhook will not apply the new settings
-		// due to the HasBeenInstrumentedSuccessfullyByThisVersion check.
+		// In case instrumentation-related settings have been changed (e.g., operator.initContainerResources), workloads
+		// that are created or updated afterwards will be instrumented with the updated settings.
 		extraConfigMapWatcher.AddClient(instrumentationWebhookHandler)
 	}
 

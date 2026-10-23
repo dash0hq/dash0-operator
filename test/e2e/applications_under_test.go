@@ -34,6 +34,14 @@ func determineTestAppImages() {
 			imageTag,
 			pullPolicy,
 		)
+	testAppImages[runtimeTypeDotnet6] =
+		determineContainerImage(
+			"TEST_APP_DOTNET_6",
+			repositoryPrefix,
+			"dash0-operator-dotnet-6-test-app",
+			imageTag,
+			pullPolicy,
+		)
 	testAppImages[runtimeTypeDotnet8] =
 		determineContainerImage(
 			"TEST_APP_DOTNET_8",
@@ -347,6 +355,10 @@ func uninstallDotnetRelease(namespace string) error {
 	return runTestAppHelmUninstall(namespace, helmReleaseName(runtimeTypeDotnet, namespace))
 }
 
+func uninstallDotnet6Release(namespace string) error {
+	return runTestAppHelmUninstall(namespace, helmReleaseName(runtimeTypeDotnet6, namespace))
+}
+
 func uninstallDotnet8Release(namespace string) error {
 	return runTestAppHelmUninstall(namespace, helmReleaseName(runtimeTypeDotnet8, namespace))
 }
@@ -405,6 +417,7 @@ func killBatchJobsAndPods(namespace string) {
 func removeAllTestApplications(namespace string) {
 	By("uninstalling the test applications")
 	Expect(uninstallDotnetRelease(namespace)).To(Succeed())
+	Expect(uninstallDotnet6Release(namespace)).To(Succeed())
 	Expect(uninstallDotnet8Release(namespace)).To(Succeed())
 	Expect(uninstallJvmRelease(namespace)).To(Succeed())
 	Expect(uninstallNodeJsRelease(namespace)).To(Succeed())
