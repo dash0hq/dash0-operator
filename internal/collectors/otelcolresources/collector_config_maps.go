@@ -114,6 +114,7 @@ type collectorConfigurationTemplateValues struct {
 	OperatorVersion                                  string
 	NamespacesWithLogCollection                      []string
 	NamespacesWithEventCollection                    []string
+	NamespacesWithKubernetesObjectCollection         []string
 	NamespaceOttlFilter                              string
 	NamespacesWithPrometheusScraping                 []string
 	CustomFilters                                    customFilters
@@ -230,6 +231,7 @@ func assembleDaemonSetCollectorConfigMap(
 		monitoredNamespaces,
 		namespacesWithLogCollection,
 		nil, // namespacesWithEventCollection is not used when rendering the daemonset config map
+		nil, // namespacesWithKubernetesObjectCollection is not used when rendering the daemonset config map
 		namespacesWithPrometheusScraping,
 		filters,
 		transforms,
@@ -245,6 +247,7 @@ func assembleDeploymentCollectorConfigMap(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
 	namespacesWithEventCollection []string,
+	namespacesWithKubernetesObjectCollection []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
 	forDeletion bool,
@@ -254,6 +257,7 @@ func assembleDeploymentCollectorConfigMap(
 		monitoredNamespaces,
 		nil, // namespacesWithLogCollection is not used when rendering the deployment config map
 		namespacesWithEventCollection,
+		namespacesWithKubernetesObjectCollection,
 		nil, // namespacesWithPrometheusScraping is not used when rendering the deployment config map
 		filters,
 		transforms,
@@ -279,6 +283,7 @@ func assembleSignalControlCollectorConfigMap(
 		monitoredNamespaces,
 		nil, // namespacesWithLogCollection is not used when rendering the Signal Control collector config map
 		nil, // namespacesWithEventCollection is not used when rendering the Signal Control collector config map
+		nil, // namespacesWithKubernetesObjectCollection is not used when rendering the Signal Control collector config map
 		nil, // namespacesWithPrometheusScraping is not used when rendering the Signal Control collector config map
 		nil, // custom filters are applied upstream, in the daemonset and deployment collectors
 		nil, // custom transforms are applied upstream, in the daemonset and deployment collectors
@@ -295,6 +300,7 @@ func assembleCollectorConfigMap(
 	monitoredNamespaces []string,
 	namespacesWithLogCollection []string,
 	namespacesWithEventCollection []string,
+	namespacesWithKubernetesObjectCollection []string,
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
@@ -328,6 +334,7 @@ func assembleCollectorConfigMap(
 			monitoredNamespaces,
 			namespacesWithLogCollection,
 			namespacesWithEventCollection,
+			namespacesWithKubernetesObjectCollection,
 			namespacesWithPrometheusScraping,
 			filters,
 			transforms,
@@ -366,6 +373,7 @@ func newCollectorConfigurationTemplateValues(
 	monitoredNamespaces []string,
 	namespacesWithLogCollection []string,
 	namespacesWithEventCollection []string,
+	namespacesWithKubernetesObjectCollection []string,
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
@@ -430,6 +438,7 @@ func newCollectorConfigurationTemplateValues(
 		OperatorVersion:                                  config.Images.GetOperatorVersion(),
 		NamespacesWithLogCollection:                      namespacesWithLogCollection,
 		NamespacesWithEventCollection:                    namespacesWithEventCollection,
+		NamespacesWithKubernetesObjectCollection:         namespacesWithKubernetesObjectCollection,
 		NamespaceOttlFilter:                              namespaceOttlFilter,
 		NamespacesWithPrometheusScraping:                 namespacesWithPrometheusScraping,
 		CustomFilters:                                    customTelemetryFilters,

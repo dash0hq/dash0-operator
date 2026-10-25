@@ -35,15 +35,16 @@ import (
 // collectorConfigMatrixEntry is one configuration of the config matrix. It includes everything that is needed to render
 // and validate the collector configuration templates for a specific combination.
 type collectorConfigMatrixEntry struct {
-	name                             string
-	config                           oTelColConfig
-	monitoredNamespaces              []string
-	namespacesWithLogCollection      []string
-	namespacesWithEventCollection    []string
-	namespacesWithPrometheusScraping []string
-	filters                          []NamespacedFilter
-	transforms                       []NamespacedTransform
-	targetAllocatorMtlsConfig        TargetAllocatorMtlsConfig
+	name                                     string
+	config                                   oTelColConfig
+	monitoredNamespaces                      []string
+	namespacesWithLogCollection              []string
+	namespacesWithEventCollection            []string
+	namespacesWithKubernetesObjectCollection []string
+	namespacesWithPrometheusScraping         []string
+	filters                                  []NamespacedFilter
+	transforms                               []NamespacedTransform
+	targetAllocatorMtlsConfig                TargetAllocatorMtlsConfig
 }
 
 // renderedCollectorConfig represents a rendered collector configuration together with the name of its matrix entry and
@@ -130,12 +131,13 @@ func maximalMatrixBaseline() collectorConfigMatrixEntry {
 			EnableProfExtension:               true,
 			ProfilingEnabled:                  true,
 		},
-		monitoredNamespaces:              monitoredNamespaces,
-		namespacesWithLogCollection:      monitoredNamespaces,
-		namespacesWithEventCollection:    defaultNamespacesWithEventCollection,
-		namespacesWithPrometheusScraping: monitoredNamespaces,
-		filters:                          matrixFilters(),
-		transforms:                       matrixTransforms(),
+		monitoredNamespaces:                      monitoredNamespaces,
+		namespacesWithLogCollection:              monitoredNamespaces,
+		namespacesWithEventCollection:            defaultNamespacesWithEventCollection,
+		namespacesWithKubernetesObjectCollection: defaultNamespacesWithKubernetesObjectCollection,
+		namespacesWithPrometheusScraping:         monitoredNamespaces,
+		filters:                                  matrixFilters(),
+		transforms:                               matrixTransforms(),
 		targetAllocatorMtlsConfig: TargetAllocatorMtlsConfig{
 			Enabled:              true,
 			ClientCertSecretName: "target-allocator-client-certs",
@@ -456,6 +458,16 @@ func matrixSettings() []matrixSetting {
 					e.namespacesWithEventCollection = defaultNamespacesWithEventCollection
 				} else {
 					e.namespacesWithEventCollection = nil
+				}
+			},
+		},
+		{
+			name: "kubernetes-object-collection",
+			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				if enabled {
+					e.namespacesWithKubernetesObjectCollection = defaultNamespacesWithKubernetesObjectCollection
+				} else {
+					e.namespacesWithKubernetesObjectCollection = nil
 				}
 			},
 		},
@@ -794,6 +806,7 @@ func (e *collectorConfigMatrixEntry) templateValues() *collectorConfigurationTem
 		e.monitoredNamespaces,
 		e.namespacesWithLogCollection,
 		e.namespacesWithEventCollection,
+		e.namespacesWithKubernetesObjectCollection,
 		e.namespacesWithPrometheusScraping,
 		e.filters,
 		e.transforms,
@@ -877,11 +890,14 @@ func (e *collectorConfigMatrixEntry) renderProducerCollectorConfigs(
 	// The cluster metrics collector deployment is only created when it has something to collect; the condition has to
 	// match the one in assembleDesiredState, otherwise the matrix would validate a configuration that the operator
 	// never deploys.
-	if config.KubernetesInfrastructureMetricsCollectionEnabled || len(e.namespacesWithEventCollection) > 0 {
+	if config.KubernetesInfrastructureMetricsCollectionEnabled ||
+		len(e.namespacesWithEventCollection) > 0 ||
+		len(e.namespacesWithKubernetesObjectCollection) > 0 {
 		deploymentConfigMap, err := assembleDeploymentCollectorConfigMap(
 			config,
 			e.monitoredNamespaces,
 			e.namespacesWithEventCollection,
+			e.namespacesWithKubernetesObjectCollection,
 			e.filters,
 			e.transforms,
 			false,

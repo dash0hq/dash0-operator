@@ -1,4 +1,6 @@
 {{- $hasEventCollectionEnabledForAtLeastOneNamespace := gt (len .NamespacesWithEventCollection) 0 -}}
+{{- $hasKubernetesObjectCollectionEnabledForAtLeastOneNamespace := gt (len .NamespacesWithKubernetesObjectCollection) 0 -}}
+{{- $hasK8sLogsPipeline := or $hasEventCollectionEnabledForAtLeastOneNamespace $hasKubernetesObjectCollectionEnabledForAtLeastOneNamespace -}}
 {{- $hasNamespacedExporters := gt (len .Exporters.Namespaced) 0 -}}
 {{- /* Signal Control (SC) does not run in this collector. When the Signal Control collector deployment (the "gateway")
 is deployed, this collector forwards all Dash0-bound telemetry to it via otlp/signal-control-collector and the gateway
@@ -53,7 +55,7 @@ connectors:
     {{- end }}
 {{- end }}
   {{- end }}
-  {{- if and $hasNamespacedExporters $hasEventCollectionEnabledForAtLeastOneNamespace }}
+  {{- if and $hasNamespacedExporters $hasK8sLogsPipeline }}
   routing/logs:
 {{- if $gwDefault }}
     default_pipelines: [logs/to-signal-control{{- if $splitDefault }}, logs/export/default/passthrough{{- end }}]
@@ -105,6 +107,53 @@ receivers:
     {{- end }}
   {{- end }}
 
+  {{- if $hasKubernetesObjectCollectionEnabledForAtLeastOneNamespace }}
+  # Two receiver instances because include_initial_state is a receiver-level setting: a full snapshot on collector
+  # start is only affordable for the low-cardinality kinds. Pods and replicasets (Kubernetes keeps a history of 10
+  # replicasets per deployment by default) would blow the collector's memory limit on large clusters, so they arrive
+  # via watch events only.
+  k8s_objects/default:
+    include_initial_state: true
+    objects:
+    - name: deployments
+      mode: watch
+      namespaces:
+      {{- range $i, $namespace := .NamespacesWithKubernetesObjectCollection }}
+      - '{{ $namespace }}'
+      {{- end }}
+    - name: statefulsets
+      mode: watch
+      namespaces:
+      {{- range $i, $namespace := .NamespacesWithKubernetesObjectCollection }}
+      - '{{ $namespace }}'
+      {{- end }}
+    - name: daemonsets
+      mode: watch
+      namespaces:
+      {{- range $i, $namespace := .NamespacesWithKubernetesObjectCollection }}
+      - '{{ $namespace }}'
+      {{- end }}
+    - name: nodes
+      mode: watch
+    - name: persistentvolumes
+      mode: watch
+  k8s_objects/highcardinality:
+    include_initial_state: false
+    objects:
+    - name: pods
+      mode: watch
+      namespaces:
+      {{- range $i, $namespace := .NamespacesWithKubernetesObjectCollection }}
+      - '{{ $namespace }}'
+      {{- end }}
+    - name: replicasets
+      mode: watch
+      namespaces:
+      {{- range $i, $namespace := .NamespacesWithKubernetesObjectCollection }}
+      - '{{ $namespace }}'
+      {{- end }}
+  {{- end }}
+
 processors:
 {{- if or .SendBatchSize .SendBatchMaxSize }}
   batch:
@@ -118,7 +167,7 @@ processors:
   batch: {}
 {{- end }}
 
-  {{- if or .KubernetesInfrastructureMetricsCollectionEnabled $hasEventCollectionEnabledForAtLeastOneNamespace }}
+  {{- if or .KubernetesInfrastructureMetricsCollectionEnabled $hasK8sLogsPipeline }}
   # Enrich cluster-scoped telemetry cloud/account resource attributes (cloud.provider, cloud.platform, cloud.account.id,
   # cloud.region). Deliberately not adding node- or host-related attributes (k8s.node.*, host.*,
   # cloud.availability_zone, GCE/Azure instance identifiers) here, since that would incorrectly include node attribtues
@@ -648,14 +697,22 @@ service:
 {{- end }}
     {{- end}}
 
-    {{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}
+    {{- if $hasK8sLogsPipeline }}
     logs/k8sevents:
       receivers:
+        {{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}
         - k8s_events
+        {{- end }}
+        {{- if $hasKubernetesObjectCollectionEnabledForAtLeastOneNamespace }}
+        - k8s_objects/default
+        - k8s_objects/highcardinality
+        {{- end }}
       processors:
         - memory_limiter
         - resource_detection
+        {{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}
         - transform/k8s_events
+        {{- end }}
         - k8s_attributes
         {{- if .ClusterName }}
         - resource/clustername

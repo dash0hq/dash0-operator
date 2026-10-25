@@ -480,6 +480,9 @@ func assembleDesiredStateForUpsert(
 		monitoredNamespaces,
 		namespacesWithLogCollection,
 		namespacesWithEventCollection,
+		// namespacesWithKubernetesObjectCollection stays empty until the feature is switched on in a later step, so the
+		// k8s_objects receivers are not rendered yet.
+		nil,
 		namespacesWithPrometheusScraping,
 		filters,
 		transforms,
@@ -519,6 +522,7 @@ func assembleDesiredStateForDelete(
 		nil,
 		nil,
 		nil,
+		nil,
 		extraConfig,
 		true,
 	)
@@ -529,6 +533,7 @@ func assembleDesiredState(
 	monitoredNamespaces []string,
 	namespacesWithLogCollection []string,
 	namespacesWithEventCollection []string,
+	namespacesWithKubernetesObjectCollection []string,
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
@@ -540,6 +545,7 @@ func assembleDesiredState(
 	slices.Sort(monitoredNamespaces)
 	slices.Sort(namespacesWithLogCollection)
 	slices.Sort(namespacesWithEventCollection)
+	slices.Sort(namespacesWithKubernetesObjectCollection)
 	slices.Sort(namespacesWithPrometheusScraping)
 	slices.SortFunc(filters, func(ns1 NamespacedFilter, ns2 NamespacedFilter) int {
 		return strings.Compare(ns1.Namespace, ns2.Namespace)
@@ -620,7 +626,9 @@ func assembleDesiredState(
 	}
 	desiredState = append(desiredState, addCommonMetadata(collectorDaemonSet))
 
-	if config.KubernetesInfrastructureMetricsCollectionEnabled || len(namespacesWithEventCollection) > 0 {
+	if config.KubernetesInfrastructureMetricsCollectionEnabled ||
+		len(namespacesWithEventCollection) > 0 ||
+		len(namespacesWithKubernetesObjectCollection) > 0 {
 		desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDeployment(config)))
 		desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleForDeployment(config)))
 		desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleBindingForDeployment(config)))
@@ -628,6 +636,7 @@ func assembleDesiredState(
 			config,
 			monitoredNamespaces,
 			namespacesWithEventCollection,
+			namespacesWithKubernetesObjectCollection,
 			filters,
 			transforms,
 			forDeletion,
