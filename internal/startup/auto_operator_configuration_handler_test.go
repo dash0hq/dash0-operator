@@ -558,6 +558,7 @@ var _ = Describe(
 						Token:                 AuthorizationTokenTest,
 						SelfMonitoringEnabled: true,
 						KubernetesInfrastructureMetricsCollectionEnabled: true,
+						KubernetesObjectCollectionEnabled:                true,
 						CollectPodLabelsAndAnnotationsEnabled:            true,
 						CollectNamespaceLabelsAndAnnotationsEnabled:      true,
 						CollectNodeLabelsAndAnnotationsEnabled:           true,
@@ -587,6 +588,8 @@ var _ = Describe(
 						g.Expect(*spec.SelfMonitoring.Enabled).To(BeTrue())
 						g.Expect(spec.KubernetesInfrastructureMetricsCollection.Enabled).ToNot(BeNil())
 						g.Expect(*spec.KubernetesInfrastructureMetricsCollection.Enabled).To(BeFalse())
+						g.Expect(spec.KubernetesObjectCollection.Enabled).ToNot(BeNil())
+						g.Expect(*spec.KubernetesObjectCollection.Enabled).To(BeFalse())
 						g.Expect(spec.CollectPodLabelsAndAnnotations.Enabled).ToNot(BeNil())
 						g.Expect(*spec.CollectPodLabelsAndAnnotations.Enabled).To(BeFalse())
 						g.Expect(spec.CollectNamespaceLabelsAndAnnotations.Enabled).ToNot(BeNil())
