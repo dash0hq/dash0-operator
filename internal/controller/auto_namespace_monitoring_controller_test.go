@@ -852,6 +852,19 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 						Expect(*r.Spec.EventCollection.Enabled).To(BeFalse())
 					},
 				}),
+			Entry("returns true and updates KubernetesObjectCollection.Enabled when it differs",
+				compareMonitoringResourceAndMonitoringTemplateTest{
+					template: dash0v1alpha1.MonitoringTemplate{
+						Spec: dash0v1beta1.Dash0MonitoringSpec{
+							KubernetesObjectCollection: dash0common.KubernetesObjectCollection{Enabled: ptr.To(true)},
+						},
+					},
+					resource: &dash0v1beta1.Dash0Monitoring{ObjectMeta: metav1.ObjectMeta{Labels: autoLabel}},
+					verify: func(hasBeenUpdated bool, r *dash0v1beta1.Dash0Monitoring) {
+						Expect(hasBeenUpdated).To(BeTrue())
+						Expect(*r.Spec.KubernetesObjectCollection.Enabled).To(BeTrue())
+					},
+				}),
 			Entry("returns true and updates PrometheusScraping.Enabled when it differs",
 				compareMonitoringResourceAndMonitoringTemplateTest{
 					template: dash0v1alpha1.MonitoringTemplate{
@@ -1047,6 +1060,16 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 					}},
 					t2: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
 						EventCollection: dash0common.EventCollection{Enabled: ptr.To(false)},
+					}},
+					expect: true,
+				}),
+			Entry("KubernetesObjectCollection.Enabled differs → changed",
+				compareMonitoringTemplatesTest{
+					t1: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						KubernetesObjectCollection: dash0common.KubernetesObjectCollection{Enabled: ptr.To(true)},
+					}},
+					t2: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						KubernetesObjectCollection: dash0common.KubernetesObjectCollection{Enabled: ptr.To(false)},
 					}},
 					expect: true,
 				}),
