@@ -100,6 +100,12 @@ type Dash0MonitoringSpec struct {
 	// +kubebuilder:validation:Optional
 	EventCollection dash0common.EventCollection `json:"eventCollection,omitempty"`
 
+	// Settings for collecting the manifests of pods and workloads in the target namespace. This setting is optional,
+	// by default the operator will not collect Kubernetes object manifests.
+	//
+	// +kubebuilder:validation:Optional
+	KubernetesObjectCollection dash0common.KubernetesObjectCollection `json:"kubernetesObjectCollection,omitempty"`
+
 	// Settings for scraping Prometheus metrics from pods in the target namespace according to their
 	// prometheus.io/scrape annotations. This setting is optional, by default the operator will scrape metrics from pods
 	// with these notations in the target namespace; unless there is an operator configuration resource with
