@@ -114,7 +114,7 @@ jobs:
         # Pinning to version 0.7.2, version 0.8.0 has a bug with snapshot testing, looks like values from previous tests
         # spill over to later tests.
         run: |
-          helm plugin install https://github.com/helm-unittest/helm-unittest.git --version=0.7.2
+          helm plugin install https://github.com/helm-unittest/helm-unittest.git --version=0.7.2 --verify=false
 
       - name: run operator manager and Helm chart unit tests
         run: |
