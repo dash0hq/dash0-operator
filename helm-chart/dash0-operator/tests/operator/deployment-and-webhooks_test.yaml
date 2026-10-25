@@ -1388,6 +1388,24 @@ tests:
           path: spec.template.spec.containers[0].args[8]
           value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=false
 
+  - it: should enable Kubernetes object collection
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+        kubernetesObjectCollection:
+          enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[9]
+          value: --operator-configuration-kubernetes-object-collection-enabled=true
+
   - it: should disable pod label and annotation collection
     documentSelector:
       path: metadata.name
