@@ -1645,6 +1645,7 @@ func assembleClusterRoleForDeployment(config *oTelColConfig) *rbacv1.ClusterRole
 					"namespaces/status",
 					"nodes",
 					"nodes/spec",
+					"persistentvolumes",
 					"pods",
 					"pods/status",
 					"replicationcontrollers",
