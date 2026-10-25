@@ -84,6 +84,13 @@ type Dash0OperatorConfigurationSpec struct {
 	// +kubebuilder:validation:Optional
 	KubernetesInfrastructureMetricsCollection KubernetesInfrastructureMetricsCollection `json:"kubernetesInfrastructureMetricsCollection,omitempty"`
 
+	// Settings for collecting the manifests of Kubernetes objects cluster-wide. This setting is optional, by default
+	// the operator will not collect Kubernetes object manifests. It is a validation error to set
+	// `telemetryCollection.enabled=false` and `kubernetesObjectCollection.enabled=true` at the same time.
+	//
+	// +kubebuilder:validation:Optional
+	KubernetesObjectCollection KubernetesObjectCollection `json:"kubernetesObjectCollection,omitempty"`
+
 	// Deprecated: This setting is deprecated. Please use
 	//     kubernetesInfrastructureMetricsCollection:
 	//       enabled: false
@@ -443,6 +450,20 @@ type CollectNodeLabelsAndAnnotations struct {
 	// assumed and the operator will not collect node labels and annotations as resource attributes. It is a
 	// validation error to set `telemetryCollection.enabled=false` and
 	// `collectNodeLabelsAndAnnotations.enabled=true` at the same time.
+	//
+	// +kubebuilder:validation:Optional
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+type KubernetesObjectCollection struct {
+	// Opt-in for collecting the manifests of Kubernetes objects. If set to `true`, the operator will collect the
+	// manifests of pods and workloads in every namespace whose Dash0Monitoring resource has
+	// `kubernetesObjectCollection.enabled=true`, as well as the manifests of nodes and persistent volumes unless
+	// `collectClusterScopedObjects.enabled` is set to `false`.
+	//
+	// This setting is optional, it defaults to `false`. It is the cluster-wide switch for the feature: with it off, no
+	// manifests are collected no matter what the Dash0Monitoring resources say. It is a validation error to set
+	// `telemetryCollection.enabled=false` and `kubernetesObjectCollection.enabled=true` at the same time.
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`

@@ -155,6 +155,7 @@ type commandLineArguments struct {
 	operatorConfigurationKeepalivePermitWithoutStream                     bool
 	operatorConfigurationSelfMonitoringEnabled                            bool
 	operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled bool
+	operatorConfigurationKubernetesObjectCollectionEnabled                bool
 	operatorConfigurationCollectPodLabelsAndAnnotationsEnabled            bool
 	operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled      bool
 	operatorConfigurationCollectNodeLabelsAndAnnotationsEnabled           bool
@@ -473,6 +474,7 @@ func Start() {
 			SelfMonitoringEnabled: cliArgs.operatorConfigurationSelfMonitoringEnabled,
 			//nolint:lll
 			KubernetesInfrastructureMetricsCollectionEnabled: cliArgs.operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled,
+			KubernetesObjectCollectionEnabled:                cliArgs.operatorConfigurationKubernetesObjectCollectionEnabled,
 			InstrumentationDelivery:                          cliArgs.operatorConfigurationInstrumentationDelivery,
 			CollectPodLabelsAndAnnotationsEnabled:            cliArgs.operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
 			CollectNamespaceLabelsAndAnnotationsEnabled:      cliArgs.operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled,
@@ -637,6 +639,13 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 		"operator-configuration-kubernetes-infrastructure-metrics-collection-enabled",
 		true,
 		"The value for kubernetesInfrastructureMetricsCollection.enabled on the operator configuration resource; "+
+			"will be ignored if operator-configuration-endpoint is not set.",
+	)
+	fs.BoolVar(
+		&cliArgs.operatorConfigurationKubernetesObjectCollectionEnabled,
+		"operator-configuration-kubernetes-object-collection-enabled",
+		false,
+		"The value for kubernetesObjectCollection.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
 	fs.BoolVar(
@@ -1646,6 +1655,8 @@ func startOperatorManager(
 		cliArgs.operatorConfigurationSelfMonitoringEnabled,
 		"operator configuration kubernetes infrastructure metrics collection enabled",
 		cliArgs.operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled,
+		"operator configuration kubernetes object collection enabled",
+		cliArgs.operatorConfigurationKubernetesObjectCollectionEnabled,
 		"operator configuration collect pod labels and annotations enabled",
 		cliArgs.operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
 		"operator configuration collect namespace labels and annotations enabled",
