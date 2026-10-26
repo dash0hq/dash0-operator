@@ -1,6 +1,6 @@
 module github.com/dash0hq/dash0-operator/images/agent0-connector
 
-go 1.27.2
+go 1.27.3
 
 require (
 	github.com/dash0hq/dash0-operator/images/pkg/common v0.0.0-00010101000000-000000000000
