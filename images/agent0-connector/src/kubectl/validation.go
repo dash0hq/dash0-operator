@@ -19,6 +19,10 @@ import (
 	pb "github.com/dash0hq/dash0-operator/images/agent0-connector/proto"
 )
 
+// allowedKubectlCommandsSettings names the settings that enable or disable kubectl commands, for rejection messages.
+const allowedKubectlCommandsSettings = "(via the Helm value operator.agent0Connector.allowedKubectlCommands, or " +
+	"spec.components.agent0Connector.allowedKubectlCommands of the Dash0OperatorConfiguration resource)"
+
 // supportedKubectlCommands is the allowlist of kubectl commands the executor can run at all. Everything else is
 // rejected, independent of the command allowlist that has been configured. The list deliberately contains only kubectl
 // commands that read cluster state and never mutate it. This is additional defense-in-depth on top of the read-only
@@ -36,7 +40,8 @@ import (
 // Maintenance note: The list of supported commands is duplicated in the template
 // dash0-operator.agent0ConnectorAllowedKubectlCommands in helm-chart/dash0-operator/templates/_helpers.tpl and in
 // operator.agent0Connector.allowedKubectlCommands in helm-chart/dash0-operator/values.yaml, see
-// TestHelmChartListsEverySupportedKubectlCommand.
+// TestHelmChartListsEverySupportedKubectlCommand. The operator's Agent0ConnectorAllowedKubectlCommands type in
+// api/operator/v1alpha1/component_settings_types.go needs one field per command as well.
 var supportedKubectlCommands = map[string]struct{}{
 	"api-resources":    {},
 	"auth":             {},
@@ -344,9 +349,9 @@ func disallowedKubectlCommandRequested(
 	}
 	if !allowedKubectlCommands.Allows(parsed.kubectlCommand) {
 		return fmt.Sprintf(
-			"the kubectl command %q has been disabled in the configuration of the agent0-connector (via the Helm value "+
-				"operator.agent0Connector.allowedKubectlCommands), %s",
+			"the kubectl command %q has been disabled in the configuration of the agent0-connector %s, %s",
 			parsed.kubectlCommand,
+			allowedKubectlCommandsSettings,
 			allowedKubectlCommands.humanReadable,
 		), true
 	}
@@ -397,8 +402,7 @@ func eventsReadViaGetRequested(parsed kubectlArguments, allowedKubectlCommands A
 	for _, resourceType := range parsed.resourceTypes {
 		if _, isEvent := eventResourceTypes[resourceType]; isEvent {
 			return "reading events via \"kubectl get\" is not allowed, because the kubectl command \"events\" has " +
-				"been disabled in the configuration of the agent0-connector (via the Helm value " +
-				"operator.agent0Connector.allowedKubectlCommands)", true
+				"been disabled in the configuration of the agent0-connector " + allowedKubectlCommandsSettings, true
 		}
 	}
 	return "", false
@@ -546,9 +550,9 @@ func terminationMessageSortByRequested(
 			return fmt.Sprintf(
 				"the --sort-by expression %q is not allowed, because it addresses the termination messages of "+
 					"containers, which can hold log output, and the kubectl command \"logs\" has been disabled in the "+
-					"configuration of the agent0-connector (via the Helm value "+
-					"operator.agent0Connector.allowedKubectlCommands)",
+					"configuration of the agent0-connector %s",
 				expression,
+				allowedKubectlCommandsSettings,
 			), true
 		}
 	}

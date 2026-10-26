@@ -23,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
@@ -527,6 +528,62 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(collectorContainer.Resources.Requests.StorageEphemeral().String()).To(Equal("5Gi"))
 	})
 
+	DescribeTable("the ephemeral-storage request of the Signal Control collector with a disk reservoir",
+		func(settings *dash0v1alpha1.ContainerResourcesWithGoMemLimit, expectedEphemeralStorage string, expectedMemory string) {
+			extraConfig := util.EffectiveExtraConfig(
+				util.ExtraConfigDefaults, util.ExtraConfigDefaults, nil, &dash0v1alpha1.Dash0SignalControl{
+					Spec: dash0v1alpha1.Dash0SignalControlSpec{
+						Components: &dash0v1alpha1.SignalControlComponents{
+							Collector: &dash0v1alpha1.SignalControlCollectorSettings{CollectorContainerResources: settings},
+						},
+					},
+				})
+			desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         defaultDash0ExportersWithToken(),
+				Images:            TestImages,
+				SignalControl: SignalControlConfig{
+					Enabled:                       true,
+					SamplingEnabled:               true,
+					SamplingReservoirType:         "disk",
+					SamplingReservoirMaxDiskBytes: 1024 * 1024 * 1024,
+					SamplingReservoirMetricLevel:  "basic",
+					Endpoint:                      "decision-maker.example.com:443",
+					ApiEndpoint:                   "https://control-plane-api.dash0.com",
+					Dataset:                       "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, nil, extraConfig)
+			Expect(err).ToNot(HaveOccurred())
+
+			collectorContainer := getSignalControlCollector(desiredState).Spec.Template.Spec.Containers[0]
+			Expect(collectorContainer.Resources.Requests.StorageEphemeral().String()).To(Equal(expectedEphemeralStorage))
+			Expect(collectorContainer.Resources.Requests.Memory().String()).To(Equal(expectedMemory))
+		},
+		Entry("is derived from max disk bytes without component settings", nil, "1280Mi", "1Gi"),
+		Entry("is derived from max disk bytes if the component settings are empty",
+			&dash0v1alpha1.ContainerResourcesWithGoMemLimit{}, "1280Mi", "1Gi"),
+		Entry("is derived from max disk bytes if the component settings do not request ephemeral storage",
+			&dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+				ContainerResources: dash0v1alpha1.ContainerResources{
+					Requests: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("2Gi")},
+				},
+			}, "1280Mi", "2Gi"),
+		Entry("is taken from the component settings if they request ephemeral storage",
+			&dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+				ContainerResources: dash0v1alpha1.ContainerResources{
+					Requests: corev1.ResourceList{corev1.ResourceEphemeralStorage: resource.MustParse("3Gi")},
+				},
+			}, "3Gi", "1Gi"),
+		Entry("is derived from max disk bytes regardless of the ephemeral-storage limit of the component settings",
+			&dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+				ContainerResources: dash0v1alpha1.ContainerResources{
+					Limits: corev1.ResourceList{corev1.ResourceEphemeralStorage: resource.MustParse("1Gi")},
+				},
+			}, "1280Mi", "1Gi"),
+	)
+
 	It("should not provision the disk reservoir volume, mount, or ephemeral-storage request for an "+
 		"in-memory reservoir", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
@@ -555,6 +612,65 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Expect(vm.Name).ToNot(Equal("trace-reservoir"))
 		}
 		Expect(collectorContainer.Resources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
+	})
+
+	Describe("in SCE-only mode", func() {
+		sceOnlyConfig := func() *oTelColConfig {
+			return &oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         defaultDash0ExportersWithToken(),
+				Images:            TestImages,
+				SignalControl: SignalControlConfig{
+					Enabled:     true,
+					Endpoint:    "decision-maker.example.com:443",
+					ApiEndpoint: "https://control-plane-api.dash0.com",
+					Dataset:     "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				SignalControlSceOnlyMode:                         true,
+			}
+		}
+
+		It("should only contain the Signal Control collector resources", func() {
+			monitoringResources := []dash0v1beta1.Dash0Monitoring{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      MonitoringResourceName,
+						Namespace: "namespace-1",
+					},
+					Spec: dash0v1beta1.Dash0MonitoringSpec{
+						LogCollection:   dash0common.LogCollection{Enabled: new(true)},
+						EventCollection: dash0common.EventCollection{Enabled: new(true)},
+					},
+				},
+			}
+			desiredState, err := assembleDesiredStateForUpsert(
+				sceOnlyConfig(), monitoringResources, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+
+			// config map, service, pod disruption budget, deployment
+			Expect(desiredState).To(HaveLen(4))
+			Expect(getSignalControlCollector(desiredState)).ToNot(BeNil())
+			Expect(getDaemonSet(desiredState)).To(BeNil())
+			Expect(getDeployment(desiredState)).To(BeNil())
+		})
+
+		It("should contain no resources if Signal Control is not active", func() {
+			config := sceOnlyConfig()
+			config.SignalControl.Enabled = false
+			desiredState, err := assembleDesiredStateForUpsert(config, nil, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(desiredState).To(BeEmpty())
+		})
+
+		It("should still contain the producer collectors when assembling the desired state for deletion", func() {
+			desiredState, err := assembleDesiredStateForDelete(sceOnlyConfig(), util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(getSignalControlCollector(desiredState)).ToNot(BeNil())
+			Expect(getDaemonSet(desiredState)).ToNot(BeNil())
+			Expect(getDeployment(desiredState)).ToNot(BeNil())
+		})
 	})
 
 	It("should describe the desired state as a set of Kubernetes client objects", func() {
@@ -1611,7 +1727,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			daemonSet,
 			collectorSelfMonitoringExpectations{
 				exportIsDash0: false,
-				endpoint:      "dns://" + EndpointGrpcTest,
+				endpoint:      EndpointGrpcWithProtocolTest,
 				protocol:      common.ProtocolGrpc,
 				otlpHeaders: map[string]string{
 					"Key": "Value",

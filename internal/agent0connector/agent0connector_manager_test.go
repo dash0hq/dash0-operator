@@ -233,6 +233,11 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 		spec := OperatorConfigurationResourceDefaultSpec
 		spec.Components = &dash0v1alpha1.OperatorConfigurationComponents{
 			Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{
+				MaxConcurrentCommands: new(int32(5)),
+				EnablePprof:           new(true),
+				AllowedKubectlCommands: &dash0v1alpha1.Agent0ConnectorAllowedKubectlCommands{
+					Logs: new(true),
+				},
 				WorkloadSettings: dash0v1alpha1.WorkloadSettings{
 					Tolerations: []corev1.Toleration{
 						{Key: "resource-key", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule},
@@ -242,6 +247,8 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 		}
 		CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, spec)
 		manager := newManagerWithExtraConfig(util.ExtraConfig{
+			Agent0ConnectorMaxConcurrentCommands:  3,
+			Agent0ConnectorAllowedKubectlCommands: map[string]bool{"get": true},
 			Agent0ConnectorTolerations: []corev1.Toleration{
 				{Key: "helm-key", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule},
 			},
@@ -256,6 +263,14 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 			deployment)).To(Succeed())
 		Expect(deployment.Spec.Template.Spec.Tolerations).To(HaveLen(1))
 		Expect(deployment.Spec.Template.Spec.Tolerations[0].Key).To(Equal("resource-key"))
+		Expect(deployment.Spec.Template.Spec.Containers[0].Env).To(ContainElements(
+			corev1.EnvVar{Name: "DASH0_AGENT0_CONNECTOR_MAX_CONCURRENT_COMMANDS", Value: "5"},
+			corev1.EnvVar{Name: "DASH0_PPROF_PORT", Value: "1777"},
+			corev1.EnvVar{
+				Name:  "DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS",
+				Value: "api-resources,api-versions,auth,cluster-info,explain,get,logs,top,version",
+			},
+		))
 	})
 
 	It("does not report an error when the agent0-connector is misconfigured", func() {

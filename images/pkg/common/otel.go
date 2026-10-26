@@ -5,10 +5,12 @@ package common // import "github.com/dash0hq/dash0-operator/images/pkg/common"
 
 import (
 	"context"
+	"crypto/tls"
 	"log"
 	"net/url"
 	"os"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,13 +29,20 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/dash0hq/dash0-operator/images/pkg/nodeuid"
 )
 
 type OTelSdkConfig struct {
-	Endpoint         string
-	Protocol         string
+	Endpoint string
+	Protocol string
+	// Insecure disables TLS for gRPC endpoints without http:// or https:// scheme. For all other endpoints, the scheme
+	// determines whether TLS is used.
+	Insecure bool
+	// InsecureSkipVerify skips the verification of the server certificate for endpoints that use TLS.
+	InsecureSkipVerify bool
+
 	ServiceName      string
 	ServiceVersion   string
 	PseudoClusterUid string
@@ -332,12 +341,20 @@ func createMetricExporterFromConfig(ctx context.Context, oTelSdkConfig *OTelSdkC
 	switch protocol {
 	case ProtocolGrpc:
 		var options []otlpmetricgrpc.Option
-		if EndpointHasScheme(oTelSdkConfig.Endpoint) {
+		if hasHttpOrHttpsScheme(oTelSdkConfig.Endpoint) {
 			log.Printf("Using a gRPC export for self-monitoring metrics (via WithEndpointURL): %s \n", oTelSdkConfig.Endpoint)
 			options = []otlpmetricgrpc.Option{otlpmetricgrpc.WithEndpointURL(oTelSdkConfig.Endpoint)}
 		} else {
+			// WithEndpoint passes the endpoint to gRPC unchanged, so gRPC targets like dns://dns-server/host:port work.
 			log.Printf("Using a gRPC export for self-monitoring metrics (via WithEndpoint): %s\n", oTelSdkConfig.Endpoint)
 			options = []otlpmetricgrpc.Option{otlpmetricgrpc.WithEndpoint(oTelSdkConfig.Endpoint)}
+			if oTelSdkConfig.Insecure {
+				options = append(options, otlpmetricgrpc.WithInsecure())
+			}
+		}
+		if tlsConfig := tlsConfigWithoutVerification(oTelSdkConfig); tlsConfig != nil {
+			log.Printf("Skipping the certificate verification for self-monitoring metrics\n")
+			options = append(options, otlpmetricgrpc.WithTLSCredentials(credentials.NewTLS(tlsConfig)))
 		}
 		if len(oTelSdkConfig.Headers) > 0 {
 			options = append(options, otlpmetricgrpc.WithHeaders(oTelSdkConfig.Headers))
@@ -360,6 +377,10 @@ func createMetricExporterFromConfig(ctx context.Context, oTelSdkConfig *OTelSdkC
 		} else {
 			log.Printf("Using an HTTP export for self-monitoring metrics (via WithEndpoint): %s\n", oTelSdkConfig.Endpoint)
 			options = []otlpmetrichttp.Option{otlpmetrichttp.WithEndpoint(oTelSdkConfig.Endpoint)}
+		}
+		if tlsConfig := tlsConfigWithoutVerification(oTelSdkConfig); tlsConfig != nil {
+			log.Printf("Skipping the certificate verification for self-monitoring metrics\n")
+			options = append(options, otlpmetrichttp.WithTLSClientConfig(tlsConfig))
 		}
 		if len(oTelSdkConfig.Headers) > 0 {
 			options = append(options, otlpmetrichttp.WithHeaders(oTelSdkConfig.Headers))
@@ -390,12 +411,20 @@ func createLogExporterFromConfig(ctx context.Context, oTelSdkConfig *OTelSdkConf
 	switch protocol {
 	case ProtocolGrpc:
 		var options []otlploggrpc.Option
-		if EndpointHasScheme(oTelSdkConfig.Endpoint) {
+		if hasHttpOrHttpsScheme(oTelSdkConfig.Endpoint) {
 			log.Printf("Using a gRPC export for logs self-monitoring (via WithEndpointURL): %s \n", oTelSdkConfig.Endpoint)
 			options = []otlploggrpc.Option{otlploggrpc.WithEndpointURL(oTelSdkConfig.Endpoint)}
 		} else {
+			// WithEndpoint passes the endpoint to gRPC unchanged, so gRPC targets like dns://dns-server/host:port work.
 			log.Printf("Using a gRPC export for logs self-monitoring (via WithEndpoint): %s\n", oTelSdkConfig.Endpoint)
 			options = []otlploggrpc.Option{otlploggrpc.WithEndpoint(oTelSdkConfig.Endpoint)}
+			if oTelSdkConfig.Insecure {
+				options = append(options, otlploggrpc.WithInsecure())
+			}
+		}
+		if tlsConfig := tlsConfigWithoutVerification(oTelSdkConfig); tlsConfig != nil {
+			log.Printf("Skipping the certificate verification for logs self-monitoring\n")
+			options = append(options, otlploggrpc.WithTLSCredentials(credentials.NewTLS(tlsConfig)))
 		}
 		if len(oTelSdkConfig.Headers) > 0 {
 			options = append(options, otlploggrpc.WithHeaders(oTelSdkConfig.Headers))
@@ -418,6 +447,10 @@ func createLogExporterFromConfig(ctx context.Context, oTelSdkConfig *OTelSdkConf
 		} else {
 			log.Printf("Using an HTTP export for logs self-monitoring (via WithEndpoint): %s\n", oTelSdkConfig.Endpoint)
 			options = []otlploghttp.Option{otlploghttp.WithEndpoint(oTelSdkConfig.Endpoint)}
+		}
+		if tlsConfig := tlsConfigWithoutVerification(oTelSdkConfig); tlsConfig != nil {
+			log.Printf("Skipping the certificate verification for logs self-monitoring\n")
+			options = append(options, otlploghttp.WithTLSClientConfig(tlsConfig))
 		}
 		if len(oTelSdkConfig.Headers) > 0 {
 			options = append(options, otlploghttp.WithHeaders(oTelSdkConfig.Headers))
@@ -572,4 +605,30 @@ func ShutDownOTelSdkThreadSafe(ctx context.Context) {
 
 func EndpointHasScheme(endpoint string) bool {
 	return endpointSchemeRegex.MatchString(endpoint)
+}
+
+func hasHttpOrHttpsScheme(endpoint string) bool {
+	endpointLowerCase := strings.ToLower(endpoint)
+	return strings.HasPrefix(endpointLowerCase, "http://") || strings.HasPrefix(endpointLowerCase, "https://")
+}
+
+// tlsConfigWithoutVerification returns a TLS config that skips the verification of the server certificate if that is
+// requested and the endpoint uses TLS, otherwise nil. The OTel exporters prefer TLS credentials over an insecure
+// connection, so they must not be set for plaintext endpoints.
+func tlsConfigWithoutVerification(oTelSdkConfig *OTelSdkConfig) *tls.Config {
+	if !oTelSdkConfig.InsecureSkipVerify || usesPlaintext(oTelSdkConfig) {
+		return nil
+	}
+	return &tls.Config{InsecureSkipVerify: true}
+}
+
+func usesPlaintext(oTelSdkConfig *OTelSdkConfig) bool {
+	endpointLowerCase := strings.ToLower(oTelSdkConfig.Endpoint)
+	if strings.HasPrefix(endpointLowerCase, "http://") {
+		return true
+	}
+	if strings.HasPrefix(endpointLowerCase, "https://") {
+		return false
+	}
+	return oTelSdkConfig.Insecure
 }

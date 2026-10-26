@@ -16,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
@@ -37,19 +38,23 @@ const (
 
 	// allowedKubectlCommandsEnvVarName is the environment variable through which the agent0-connector workload
 	// receives the comma-separated list of kubectl commands it may execute (see the Helm value
-	// operator.agent0Connector.allowedKubectlCommands). The variable is required, the agent0-connector terminates with
-	// an error if it is absent, empty, cannot be parsed, or contains a kubectl command the agent0-connector does not
-	// support.
+	// operator.agent0Connector.allowedKubectlCommands or spec.components.agent0Connector.allowedKubectlCommands). The
+	// variable is required, the agent0-connector terminates with an error if it is absent, empty, cannot be parsed, or
+	// contains a kubectl command the agent0-connector does not support.
 	allowedKubectlCommandsEnvVarName = "DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS"
 
 	// defaultMaxConcurrentCommands is the number of command requests the agent0-connector executes at the same time when
 	// the extra config specifies a value below 1. It is bounded by memory: a request that returns the maximum output
 	// size costs about 90 MiB, most of it in the kubectl child process and in parsing the output in order to redact
 	// credentials from it. Raising it requires raising the container's memory limit and GOMEMLIMIT as well, which is why
-	// it is configurable via the Helm value operator.agent0Connector.maxConcurrentCommands. It mirrors
-	// defaultMaxConcurrentCommands in images/agent0-connector/src/grpc/grpcclient.go, the fallback within the workload
-	// itself.
+	// it is configurable via the Helm value operator.agent0Connector.maxConcurrentCommands (or
+	// spec.components.agent0Connector.maxConcurrentCommands). It mirrors defaultMaxConcurrentCommands in
+	// images/agent0-connector/src/grpc/grpcclient.go, the fallback within the workload itself.
 	defaultMaxConcurrentCommands int32 = 2
+
+	// pprofPort is the port on which the agent0-connector serves pprof on the loopback address, if pprof is enabled via
+	// the Helm value operator.agent0Connector.enablePprof or spec.components.agent0Connector.enablePprof.
+	pprofPort = "1777"
 
 	// label values
 	appKubernetesIoNameValue      = agent0Connector
@@ -431,9 +436,11 @@ func assembleClusterRole(c *util.Agent0ConnectorConfig, extraConfig util.ExtraCo
 	}
 }
 
-// clusterRoleRules returns the rules for the agent0-connector's cluster role: the custom rules configured via the Helm
-// chart value operator.agent0Connector.clusterRole.rules if there are any, the default RBAC rules
-// (defaultAgent0ConnectorRbacRules) otherwise.
+// clusterRoleRules returns the rules for the agent0-connector's cluster role: the rules from the extra config map if
+// there are any, the default RBAC rules (defaultAgent0ConnectorRbacRules) otherwise. The Helm chart renders rules into
+// the extra config map when either operator.agent0Connector.clusterRole.rules (which replace the default rules) or
+// operator.agent0Connector.clusterRole.additionalRules (which the chart merges with its copy of the default rules) is
+// set.
 func clusterRoleRules(extraConfig util.ExtraConfig) []rbacv1.PolicyRule {
 	if len(extraConfig.Agent0ConnectorClusterRoleRules) > 0 {
 		return cloneRbacRules(extraConfig.Agent0ConnectorClusterRoleRules)
@@ -680,6 +687,13 @@ func assembleDeployment(
 		Name:  allowedKubectlCommandsEnvVarName,
 		Value: joinAllowedKubectlCommands(extraConfig.Agent0ConnectorAllowedKubectlCommands),
 	})
+
+	if extraConfig.Agent0ConnectorEnablePprof {
+		container.Env = append(container.Env, corev1.EnvVar{
+			Name:  common.PprofPortEnvVarName,
+			Value: pprofPort,
+		})
+	}
 
 	if c.Insecure {
 		container.Env = append(container.Env, corev1.EnvVar{

@@ -459,7 +459,7 @@ rules:
   - update
 
 ---
-{{ if .Values.operator.telemetryCollectionEnabled }}
+{{ if or .Values.operator.telemetryCollectionEnabled (include "dash0-operator.signalControlSceOnlyMode" .) }}
 {{/*
 The -manager-collector cluster role holds permissions for managing OpenTelemetry collectors and the target allocator.
 */}}
@@ -536,6 +536,7 @@ rules:
   - patch
   - update
   - watch
+{{- if .Values.operator.telemetryCollectionEnabled }}
 
 # Permissions required due to the fact that the operator needs to create dedicated service accounts/cluster roles/
 # cluster role bindings for the OTel collector daemonset/deployment and give it a set of permissions; which it can only
@@ -695,6 +696,8 @@ rules:
   - get
   - list
   - watch
+{{- if not .Values.operator.targetAllocator.allowSecretAccessInNamespaces }}
+# The target allocator resolves secrets referenced by Prometheus CRDs in any namespace.
 - apiGroups:
   - ""
   resources:
@@ -703,10 +706,60 @@ rules:
   - get
   - list
   - watch
+{{- end }}
 - nonResourceURLs:
   - /metrics
   verbs:
   - get
+{{- else }}
+
+{{- /*
+In SCE-only mode, the operator creates no service accounts/cluster roles for collectors or the target allocator, so it
+does not need the permissions above. It lists pods to warn about workloads that are still instrumented, and the
+monitoring validation webhook reads namespaces via the cache if spec.autoMonitorNamespaces is enabled.
+*/}}
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - list
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - list
+  - watch
+{{- end }}
+
+{{ end }}
+
+---
+{{ if and .Values.operator.telemetryCollectionEnabled .Values.operator.targetAllocator.allowSecretAccessInNamespaces }}
+{{/*
+The -target-allocator-secrets cluster role grants the OTel target-allocator read access to secrets in the namespaces
+listed in operator.targetAllocator.allowSecretAccessInNamespaces, see role-binding-target-allocator-secrets.yaml.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-target-allocator-secrets
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: cluster-role-target-allocator-secrets
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
 
 {{ end }}
 
@@ -779,10 +832,10 @@ Kubernetes' privilege-escalation prevention only allows the operator to grant pe
 hold these read permissions as well. This cluster role (and its binding) only exist when the agent0-connector feature
 is enabled (operator.agent0Connector.enabled).
 
-The rules are rendered from files/agent0-connector-default-cluster-role-rules.yaml, or from
-operator.agent0Connector.clusterRole.rules when custom rules are configured. Either way they are the same rules the
-operator grants to the agent0-connector service account, see the named template
-dash0-operator.agent0ConnectorClusterRoleRules.
+The rules are rendered from files/agent0-connector-default-cluster-role-rules.yaml (plus
+operator.agent0Connector.clusterRole.additionalRules, if set), or from operator.agent0Connector.clusterRole.rules when
+custom rules are configured. Either way they are the same rules the operator grants to the agent0-connector service
+account, see the named template dash0-operator.agent0ConnectorClusterRoleRules.
 */}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

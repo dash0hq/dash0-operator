@@ -35,7 +35,9 @@ const (
 /*
 legacyRuleOrigins is a frozen copy of how the raw-HTTP implementation of the Prometheus rule synchronization rendered
 the origin of a rule (first return value) and the origin in the request path (second return value), including its
-handling of duplicate rule names. It serves as the reference for the requests that the Dash0 API client sends.
+handling of duplicate rule names. It serves as the reference for the requests that the Dash0 API client sends. It
+deviates from the raw-HTTP implementation in one aspect: the request path of a rule with a duplicate name carries the
+duplication counter once, matching the origin that is tracked for the rule, instead of twice.
 */
 func legacyRuleOrigins(
 	dataset string,
@@ -64,7 +66,7 @@ func legacyRuleOrigins(
 	if duplicationIndexForThisOrigin, isDuplicate := duplicateOrigins[originNotUrlEncoded]; isDuplicate {
 		duplicateOrigins[originNotUrlEncoded]++
 		originNotUrlEncoded = originNotUrlEncoded + "_" + strconv.Itoa(duplicationIndexForThisOrigin)
-		originUrlEncoded = originNotUrlEncoded + "_" + strconv.Itoa(duplicationIndexForThisOrigin)
+		originUrlEncoded = originUrlEncoded + "_" + strconv.Itoa(duplicationIndexForThisOrigin)
 	} else {
 		duplicateOrigins[originNotUrlEncoded] = 1
 	}
@@ -243,21 +245,25 @@ var _ = Describe("The Prometheus rule API client calls", func() {
 		duplicateOrigins := map[string]int{}
 		expectedOrigins := make([]string, 0, len(rules))
 		expectedUrls := make([]*url.URL, 0, len(rules))
+		expectedPaths := make([]string, 0, len(rules))
 		for _, rule := range rules {
 			apiPath := legacyCheckRuleApiPath
+			apiBasePath := checkRuleApiBasePath
 			name := rule.alert
 			if rule.record != "" {
 				apiPath = legacyRecordingRuleApiPath
+				apiBasePath = recordingRuleApiBasePath
 				name = rule.record
 			}
 			origin, originInPath := legacyRuleOrigins(dataset, duplicateOrigins, groupName, name)
 			expectedOrigins = append(expectedOrigins, origin)
 			expectedUrls = append(expectedUrls, legacyRequestUrl(apiPath, originInPath, dataset))
+			expectedPaths = append(expectedPaths, apiBasePath+origin)
 		}
 
 		for _, action := range []apiAction{upsertAction, deleteAction} {
 			recorder.urls = nil
-			result := prometheusRuleReconciler.MapResourceToHttpRequests(
+			result := prometheusRuleReconciler.MapResourceToApiCalls(
 				&preconditionValidationResult{
 					k8sNamespace: "namespace",
 					k8sName:      "name",
@@ -278,6 +284,7 @@ var _ = Describe("The Prometheus rule API client calls", func() {
 			Expect(recorder.urls).To(HaveLen(len(rules)))
 			for i, recordedUrl := range recorder.urls {
 				expectUrlToBeIdentical(recordedUrl, expectedUrls[i])
+				Expect(recordedUrl.Path).To(Equal(expectedPaths[i]))
 				Expect(result.ApiRequests[i].ApiClientCall.Url).To(Equal(recordedUrl.String()))
 			}
 		}
@@ -295,7 +302,7 @@ var _ = Describe("The Prometheus rule API client calls", func() {
 
 		apiClientPool, recorder := urlRecordingApiClientPool()
 		prometheusRuleReconciler := &PrometheusRuleReconciler{pseudoClusterUid: "cluster-uid", apiClientPool: apiClientPool}
-		result := prometheusRuleReconciler.MapResourceToHttpRequests(
+		result := prometheusRuleReconciler.MapResourceToApiCalls(
 			&preconditionValidationResult{
 				k8sNamespace: "namespace",
 				k8sName:      "name",
@@ -335,7 +342,7 @@ var _ = Describe("The Prometheus rule API client calls", func() {
 		Entry("dataset with non-ASCII and reserved characters", "ä+ö&x=y"),
 	)
 
-	DescribeTable("address the same rules in Dash0 as the raw-HTTP implementation for duplicate rule names",
+	DescribeTable("address rules with duplicate names by the origin that is tracked for them",
 		func(groupName string, alertName string, recordName string) {
 			expectSameRequestsAsRawHttpImplementation(
 				"default",
@@ -368,13 +375,11 @@ var _ = Describe("The Prometheus rule API client calls", func() {
 			}
 			apiConfig := ApiConfig{Endpoint: ApiEndpointStandardizedTest, Dataset: dataset, Token: AuthorizationTokenTest}
 
-			deleteRequests, synchronizationErrors := prometheusRuleReconciler.CreateDeleteRequests(
+			deleteRequests := prometheusRuleReconciler.CreateDeleteRequests(
 				apiConfig,
 				[]string{orphanOrigin},
 				nil,
-				logger,
 			)
-			Expect(synchronizationErrors).To(BeEmpty())
 			Expect(deleteRequests).To(HaveLen(2))
 			for _, deleteRequest := range deleteRequests {
 				Expect(deleteRequest.Origin).To(Equal(orphanOrigin))
@@ -506,7 +511,7 @@ var _ = Describe("The Prometheus rule API client calls", func() {
 				otherResourceInNamespace,
 				resourceInOtherNamespace,
 			} {
-				result := prometheusRuleReconciler.MapResourceToHttpRequests(candidate, apiConfig, upsertAction, logger)
+				result := prometheusRuleReconciler.MapResourceToApiCalls(candidate, apiConfig, upsertAction, logger)
 				Expect(result.OriginsInResource).To(HaveLen(len(rules)))
 				for i, rule := range rules {
 					if rule.record != "" {

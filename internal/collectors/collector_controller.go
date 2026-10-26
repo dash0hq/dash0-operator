@@ -69,7 +69,7 @@ func (r *CollectorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
 				otelcolresources.DeploymentClusterRoleBindingName(r.oTelCollectorNamePrefix),
-				otelcolresources.DeploymentClusterRoleName(r.oTelCollectorNamePrefix),
+				otelcolresources.DaemonSetClusterRoleBindingName(r.oTelCollectorNamePrefix),
 			}, false)).
 		Watches(
 			&corev1.Service{},

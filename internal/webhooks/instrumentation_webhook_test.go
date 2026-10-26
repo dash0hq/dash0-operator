@@ -12,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
@@ -883,6 +884,10 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		It("should not instrument workloads", func() {
 			createdObjectsInstrumentationWebhookTest = verifyThatDeploymentIsNotBeingInstrumented(createdObjectsInstrumentationWebhookTest)
 		})
+
+		It("should remove the webhook-ignore-once label", func() {
+			createdObjectsInstrumentationWebhookTest = verifyThatIgnoreOnceLabelIsRemovedOnUpdate(createdObjectsInstrumentationWebhookTest)
+		})
 	})
 
 	Describe("when the Dash0 monitoring resource exists but is not available", Ordered, func() {
@@ -896,6 +901,32 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 
 		It("should not instrument workloads", func() {
 			createdObjectsInstrumentationWebhookTest = verifyThatDeploymentIsNotBeingInstrumented(createdObjectsInstrumentationWebhookTest)
+		})
+
+		It("should remove the webhook-ignore-once label", func() {
+			createdObjectsInstrumentationWebhookTest = verifyThatIgnoreOnceLabelIsRemovedOnUpdate(createdObjectsInstrumentationWebhookTest)
+		})
+	})
+
+	Describe("when the Dash0 monitoring resource exists and is marked for deletion", Ordered, func() {
+		BeforeAll(func() {
+			dash0MonitoringResource := EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			if controllerutil.AddFinalizer(dash0MonitoringResource, dash0common.MonitoringFinalizerId) {
+				Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
+			}
+			Expect(k8sClient.Delete(ctx, dash0MonitoringResource)).To(Succeed())
+		})
+
+		AfterAll(func() {
+			DeleteMonitoringResourceByName(ctx, k8sClient, MonitoringResourceQualifiedName, false)
+		})
+
+		It("should not instrument workloads", func() {
+			createdObjectsInstrumentationWebhookTest = verifyThatDeploymentIsNotBeingInstrumented(createdObjectsInstrumentationWebhookTest)
+		})
+
+		It("should remove the webhook-ignore-once label", func() {
+			createdObjectsInstrumentationWebhookTest = verifyThatIgnoreOnceLabelIsRemovedOnUpdate(createdObjectsInstrumentationWebhookTest)
 		})
 	})
 
@@ -928,6 +959,10 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 
 		It("should not instrument workloads", func() {
 			createdObjectsInstrumentationWebhookTest = verifyThatDeploymentIsNotBeingInstrumented(createdObjectsInstrumentationWebhookTest)
+		})
+
+		It("should remove the webhook-ignore-once label", func() {
+			createdObjectsInstrumentationWebhookTest = verifyThatIgnoreOnceLabelIsRemovedOnUpdate(createdObjectsInstrumentationWebhookTest)
 		})
 	})
 
@@ -964,6 +999,20 @@ func verifyThatDeploymentIsNotBeingInstrumented(createdObjects []client.Object) 
 	createdObjects = append(createdObjects, workload)
 	workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
 	VerifyUnmodifiedDeployment(workload)
+	VerifyNoEvents(ctx, clientset, TestNamespaceName)
+	return createdObjects
+}
+
+func verifyThatIgnoreOnceLabelIsRemovedOnUpdate(createdObjects []client.Object) []client.Object {
+	name := UniqueName(DeploymentNamePrefix)
+	workload := CreateBasicDeployment(ctx, k8sClient, TestNamespaceName, name)
+	createdObjects = append(createdObjects, workload)
+	workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+	AddLabel(&workload.ObjectMeta, "dash0.com/webhook-ignore-once", "true")
+	Expect(k8sClient.Update(ctx, workload)).To(Succeed())
+	workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+	VerifyUnmodifiedDeployment(workload)
+	VerifyWebhookIgnoreOnceLabelIsAbsent(&workload.ObjectMeta)
 	VerifyNoEvents(ctx, clientset, TestNamespaceName)
 	return createdObjects
 }

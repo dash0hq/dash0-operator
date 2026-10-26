@@ -80,6 +80,9 @@ TEST_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
 TEST_APP_DOTNET_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-dotnet-test-app
 TEST_APP_DOTNET_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
 
+TEST_APP_DOTNET_6_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-dotnet-6-test-app
+TEST_APP_DOTNET_6_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
+
 TEST_APP_DOTNET_8_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-dotnet-8-test-app
 TEST_APP_DOTNET_8_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
 
@@ -222,12 +225,14 @@ build-all-push-all-test-e2e: all-images push-all-images test-e2e ## Builds and p
 # would be used when simply running `ginkgo -v test/e2e`. An alternative would be to invoke ginkgo via go test, that
 # is, `go test ./test/e2e/ -v -ginkgo.v`, but that would require us to manage go test's timeout (via the -timeout
 # flag), and ginkgo's own timeout.
+# --fail-on-empty makes a GINKGO_FOCUS that matches no spec fail the run instead of passing silently, (?i) makes the
+# focus case-insensitive.
 .PHONY: test-e2e
 test-e2e: ## Run the end-to-end tests. When testing local code, container images should be built beforehand (or use target build-all-test-e2e).
 ifdef GINKGO_FOCUS
-	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v --timeout=90m -focus="$(GINKGO_FOCUS)" .
+	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v --timeout=90m --fail-on-empty -focus="(?i)$(GINKGO_FOCUS)" .
 else
-	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v --timeout=90m .
+	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v --timeout=90m --fail-on-empty .
 endif
 
 # Validates every collector configuration the operator can render against the collector binary, which rejects settings
@@ -442,6 +447,7 @@ all-auxiliary-images: \
 PHONY: test-app-images
 test-app-images: \
   test-app-image-dotnet \
+  test-app-image-dotnet-6 \
   test-app-image-dotnet-8 \
   test-app-image-jvm \
   test-app-image-nodejs \
@@ -451,6 +457,10 @@ test-app-images: \
 .PHONY: test-app-image-dotnet
 test-app-image-dotnet: ## Build the .NET test application.
 	@$(call build_container_image,$(TEST_APP_DOTNET_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_IMAGE_TAG),test-resources/dotnet)
+
+.PHONY: test-app-image-dotnet-6
+test-app-image-dotnet-6: ## Build the .NET test application with .NET 6.
+	@$(call build_container_image,$(TEST_APP_DOTNET_6_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_6_IMAGE_TAG),test-resources/dotnet,,--build-arg base_image_build=mcr.microsoft.com/dotnet/sdk:6.0-bookworm-slim --build-arg base_image_run=mcr.microsoft.com/dotnet/aspnet:6.0-bookworm-slim)
 
 .PHONY: test-app-image-dotnet-8
 test-app-image-dotnet-8: ## Build the .NET test application with .NET 8.
@@ -509,6 +519,7 @@ push-all-auxiliary-images: \
 PHONY: push-test-app-images
 push-test-app-images: \
   push-test-app-image-dotnet \
+  push-test-app-image-dotnet-6 \
   push-test-app-image-dotnet-8 \
   push-test-app-image-jvm \
   push-test-app-image-nodejs \
@@ -518,6 +529,10 @@ push-test-app-images: \
 .PHONY: push-test-app-image-dotnet
 push-test-app-image-dotnet: ## Push the .NET test app image.
 	@$(call push_container_image,$(TEST_APP_DOTNET_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_IMAGE_TAG))
+
+.PHONY: push-test-app-image-dotnet-6
+push-test-app-image-dotnet-6: ## Push the .NET 6 test app image.
+	@$(call push_container_image,$(TEST_APP_DOTNET_6_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_6_IMAGE_TAG))
 
 .PHONY: push-test-app-image-dotnet-8
 push-test-app-image-dotnet-8: ## Push the .NET 8 test app image.

@@ -153,7 +153,7 @@ var _ = BeforeSuite(func() {
 
 	Expect(SetupDash0MonitoringConversionWebhookWithManager(manager)).To(Succeed())
 
-	monitoringMutatingWebhookHandler = NewMonitoringMutatingWebhookHandler(k8sClient, OperatorNamespace)
+	monitoringMutatingWebhookHandler = NewMonitoringMutatingWebhookHandler(k8sClient, OperatorNamespace, false)
 	Expect(monitoringMutatingWebhookHandler.SetupWebhookWithManager(manager)).To(Succeed())
 
 	Expect(NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace).

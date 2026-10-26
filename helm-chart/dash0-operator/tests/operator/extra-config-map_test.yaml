@@ -219,6 +219,9 @@ tests:
             serverCertSecretName: ta-mtls-server-cert
             clientCertSecretName: ta-mtls-client-cert
           allowInsecureAuthSecrets: true
+          allowSecretAccessInNamespaces:
+            - namespace-a
+            - namespace-b
           containerResources:
             limits:
               memory: 2Gi
@@ -592,6 +595,9 @@ tests:
             targetAllocatorMtlsServerCertSecretName: "ta-mtls-server-cert"
             targetAllocatorMtlsClientCertSecretName: "ta-mtls-client-cert"
             targetAllocatorAllowInsecureAuthSecrets: true
+            targetAllocatorAllowSecretAccessInNamespaces:
+              - namespace-a
+              - namespace-b
             targetAllocatorContainerResources:
               gomemlimit: 1500MiB
               limits:
@@ -675,6 +681,7 @@ tests:
                 cpu: 20m
                 memory: 64Mi
             agent0ConnectorMaxConcurrentCommands: 4
+            agent0ConnectorEnablePprof: false
             agent0ConnectorAllowedKubectlCommands:
               api-resources: true
               api-versions: true
@@ -940,6 +947,57 @@ tests:
           path: data['extra.yaml']
           pattern: targetAllocatorPodAnnotations
 
+  - it: should render allowSecretAccessInNamespaces for the target-allocator when set
+    set:
+      operator:
+        targetAllocator:
+          allowSecretAccessInNamespaces:
+            - namespace-a
+            - namespace-b
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            targetAllocatorAllowSecretAccessInNamespaces:
+              - namespace-a
+              - namespace-b
+
+  - it: should reject an empty namespace in allowSecretAccessInNamespaces for the target-allocator
+    set:
+      operator:
+        targetAllocator:
+          allowSecretAccessInNamespaces:
+            - namespace-a
+            - ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.targetAllocator.allowSecretAccessInNamespaces must only contain valid namespace names."
+
+  - it: should reject an invalid namespace name in allowSecretAccessInNamespaces for the target-allocator
+    set:
+      operator:
+        targetAllocator:
+          allowSecretAccessInNamespaces:
+            - "namespace-a\nfoo: bar"
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.targetAllocator.allowSecretAccessInNamespaces must only contain valid namespace names."
+
+  - it: should reject a single string instead of a list for allowSecretAccessInNamespaces
+    set:
+      operator:
+        targetAllocator:
+          allowSecretAccessInNamespaces: namespace-a
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.targetAllocator.allowSecretAccessInNamespaces must be a list, e.g. --set operator.targetAllocator.allowSecretAccessInNamespaces={namespace-a,namespace-b}."
+
+  - it: should not render allowSecretAccessInNamespaces for the target-allocator by default
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: targetAllocatorAllowSecretAccessInNamespaces
+
   - it: should render agent0-connector labels and annotations when set
     set:
       operator:
@@ -1050,6 +1108,37 @@ tests:
           path: data['extra.yaml']
           pattern: agent0ConnectorMaxConcurrentCommands
 
+  - it: should disable pprof for the agent0-connector by default
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: 'agent0ConnectorEnablePprof: false'
+
+  - it: should enable pprof for the agent0-connector when set
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          enablePprof: true
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: 'agent0ConnectorEnablePprof: true'
+
+  - it: should not render the agent0-connector pprof setting when the agent0-connector is disabled
+    set:
+      operator:
+        agent0Connector:
+          enablePprof: true
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0ConnectorEnablePprof
+
   - it: should not render custom agent0-connector cluster role rules by default
     asserts:
       - notMatchRegex:
@@ -1126,6 +1215,60 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: the verb "patch" is not allowed'
+
+  - it: should render the default agent0-connector cluster role rules plus the additional rules when additional rules are set
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            additionalRules:
+              - apiGroups: ["example.com"]
+                resources: ["widgets"]
+                verbs: ["get", "list"]
+    asserts:
+      # the first default rule
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            agent0ConnectorClusterRoleRules:
+              - apiGroups:
+                - ""
+                resources:
+                - componentstatuses
+      # the last default rule, followed by the additional rule
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: '    - /version/\n    verbs:\n    - get\n  - apiGroups:\n    - example.com\n    resources:\n    - widgets\n    verbs:\n    - get\n    - list\n'
+
+  - it: should not render agent0-connector cluster role rules when additional rules are set but the agent0-connector is disabled
+    set:
+      operator:
+        agent0Connector:
+          enabled: false
+          clusterRole:
+            additionalRules:
+              - apiGroups: ["example.com"]
+                resources: ["widgets"]
+                verbs: ["get", "list"]
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0ConnectorClusterRoleRules
+
+  - it: should reject additional agent0-connector cluster role rules with a write verb
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            additionalRules:
+              - apiGroups: [""]
+                resources: ["pods"]
+                verbs: ["get", "list", "patch"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.additionalRules\[0\]: the verb "patch" is not allowed'
 
   - it: should render the default allowed kubectl commands for the agent0-connector
     set:

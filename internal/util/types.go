@@ -118,6 +118,9 @@ type CollectorConfig struct {
 	DebugVerbosityDetailed bool
 	EnableProfExtension    bool
 	CompressConfigMap      bool
+	// SignalControlSceOnlyMode is true if Signal Control is enabled and telemetry collection is disabled via Helm. If
+	// true, neither the collector DaemonSet nor the cluster metrics collector Deployment is deployed.
+	SignalControlSceOnlyMode bool
 }
 
 // KubeletStatsReceiverConfig holds the configuration for the kubeletstats receiver in the DaemonSet collector. It is
@@ -279,6 +282,10 @@ type ClusterInstrumentationConfig struct {
 	// from this value on demand, see ResolveInstrumentationDelivery.
 	requestedInstrumentationDelivery atomic.Pointer[dash0v1alpha1.InstrumentationDelivery]
 
+	// instrumentationInitContainerResources holds the init container resources from spec.components. It takes
+	// precedence over ExtraConfig.InstrumentationInitContainerResources.
+	instrumentationInitContainerResources atomic.Pointer[corev1.ResourceRequirements]
+
 	InstrumentationDelays           *DelayConfig
 	InstrumentationDebug            bool
 	EnablePythonAutoInstrumentation bool
@@ -353,6 +360,27 @@ func (c *ClusterInstrumentationConfig) UpdateRequestedInstrumentationDelivery(
 	previous := c.ResolveInstrumentationDelivery()
 	c.requestedInstrumentationDelivery.Store(&requestedInstrumentationDelivery)
 	return previous, c.resolveInstrumentationDelivery(logWarningForEmptyValue, logger)
+}
+
+// UpdateInstrumentationInitContainerResources stores the init container resources from spec.components, nil if they are
+// not set.
+func (c *ClusterInstrumentationConfig) UpdateInstrumentationInitContainerResources(
+	resources *corev1.ResourceRequirements,
+) {
+	c.instrumentationInitContainerResources.Store(resources.DeepCopy())
+}
+
+// InstrumentationInitContainerResources returns the init container resources from spec.components if they are set,
+// otherwise the ones from the extra config map.
+func (c *ClusterInstrumentationConfig) InstrumentationInitContainerResources() corev1.ResourceRequirements {
+	if resources := c.instrumentationInitContainerResources.Load(); resources != nil {
+		return *resources.DeepCopy()
+	}
+	var resources ResourceRequirementsWithGoMemLimit
+	if extraConfig := c.ExtraConfig.Load(); extraConfig != nil {
+		resources = extraConfig.InstrumentationInitContainerResources.DeepCopy()
+	}
+	return resources.ToResourceRequirements()
 }
 
 // ResolveInstrumentationDelivery resolves the stored requested instrumentation delivery setting to the effective
