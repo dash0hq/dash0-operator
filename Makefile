@@ -190,18 +190,18 @@ go-unit-tests: common-package-unit-tests nodeuid-package-unit-tests operator-man
 .PHONY: operator-manager-unit-tests
 operator-manager-unit-tests: manifests generate fmt vet envtest ## Run the Go unit tests for the operator code.
 ifdef GINKGO_FOCUS
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v -e /e2e) -ginkgo.focus="$(GINKGO_FOCUS)" -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v -e /e2e) -race -ginkgo.focus="$(GINKGO_FOCUS)" -coverprofile cover.out
 else
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v -e /e2e) -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v -e /e2e) -race -coverprofile cover.out
 endif
 
 .PHONY: common-package-unit-tests
 common-package-unit-tests: ## Run the Go unit tests for the common package (code shared between operator manager and other images, i.e. config-reloader, filelogoffsetsync).
-	go test github.com/dash0hq/dash0-operator/images/pkg/common
+	go test -race github.com/dash0hq/dash0-operator/images/pkg/common
 
 .PHONY: nodeuid-package-unit-tests
 nodeuid-package-unit-tests: ## Run the Go unit tests for the nodeuid package (shared between the operator manager, the other images, and the collector's internal-telemetry factory).
-	cd images/pkg/nodeuid && go test ./...
+	cd images/pkg/nodeuid && go test -race ./...
 
 .PHONY: agent0-connector-unit-tests
 agent0-connector-unit-tests: ## Run the Go unit tests for the agent0-connector image Go app.
@@ -209,7 +209,7 @@ agent0-connector-unit-tests: ## Run the Go unit tests for the agent0-connector i
 
 .PHONY: collector-telemetry-unit-tests
 collector-telemetry-unit-tests: ## Run the Go unit tests for the collector image's custom internal-telemetry factory.
-	cd images/collector/src/telemetry && go test ./...
+	cd images/collector/src/telemetry && go test -race ./...
 
 .PHONY: helm-unit-tests
 helm-unit-tests: ## Run the Helm chart unit tests.

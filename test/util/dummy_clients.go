@@ -5,6 +5,7 @@ package util
 
 import (
 	"context"
+	"sync/atomic"
 
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	otelmetric "go.opentelemetry.io/otel/metric"
@@ -37,7 +38,7 @@ func (c *DummyAuthTokenClient) ResetCallCounts() {
 }
 
 type DummySelfMonitoringMetricsClient struct {
-	InitializeSelfMonitoringMetricsCalls int
+	InitializeSelfMonitoringMetricsCalls atomic.Int32
 }
 
 func (c *DummySelfMonitoringMetricsClient) InitializeSelfMonitoringMetrics(
@@ -45,7 +46,7 @@ func (c *DummySelfMonitoringMetricsClient) InitializeSelfMonitoringMetrics(
 	_ string,
 	_ logd.Logger,
 ) {
-	c.InitializeSelfMonitoringMetricsCalls++
+	c.InitializeSelfMonitoringMetricsCalls.Add(1)
 }
 
 func (c *DummySelfMonitoringMetricsClient) Reset() {
@@ -53,5 +54,5 @@ func (c *DummySelfMonitoringMetricsClient) Reset() {
 }
 
 func (c *DummySelfMonitoringMetricsClient) ResetCallCounts() {
-	c.InitializeSelfMonitoringMetricsCalls = 0
+	c.InitializeSelfMonitoringMetricsCalls.Store(0)
 }
