@@ -73,6 +73,7 @@ jobs:
         with:
           mise_toml: |
             [tools]
+            helm = "4.3.0"
             shellcheck = "0.11.0"
 
       - name: shellcheck version
@@ -111,9 +112,9 @@ jobs:
 
       - name: install Helm unittest plugin
         shell: bash
-        # helm-unittest >= 1.2.0 is required for the Helm version preinstalled on the runner image (Helm 4 since
-        # Ubuntu 26.04). Importing the project's public GPG key lets Helm verify the signature of the OCI plugin
-        # package, which Helm 4 requires by default.
+        # Helm itself is pinned via mise above, so CI does not depend on whatever Helm version the runner image ships.
+        # helm-unittest >= 1.2.0 is required for Helm 4. Importing the project's public GPG key lets Helm verify the
+        # signature of the OCI plugin package, which Helm 4 requires by default.
         run: |
           curl -fsSL https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.2.1/public-key.asc | gpg --import
           gpg --export > ~/.gnupg/pubring.gpg
