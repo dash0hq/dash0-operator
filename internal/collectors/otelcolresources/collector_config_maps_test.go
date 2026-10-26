@@ -5814,6 +5814,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			Expect(ReadFromMap(collectorConfig, []string{"receivers", "k8s_objects/default"})).To(BeNil())
 			Expect(ReadFromMap(collectorConfig, []string{"receivers", "k8s_objects/highcardinality"})).To(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{"processors", "transform/k8s_objects"})).To(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{"processors", "redaction/k8s_objects"})).To(BeNil())
 			pipelines := readPipelines(collectorConfig)
 			Expect(readPipelineReceivers(pipelines, "logs/k8sevents")).To(ConsistOf("k8s_events"))
 		})
@@ -5871,10 +5873,30 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 				Expect(ReadFromMap(collectorConfig, []string{"processors", "resource_detection"})).ToNot(BeNil())
 
+				transformRaw := ReadFromMap(collectorConfig, []string{"processors", "transform/k8s_objects"})
+				Expect(transformRaw).ToNot(BeNil())
+				transformStatementGroup :=
+					transformRaw.(map[string]any)["log_statements"].([]any)[0].(map[string]any)
+				Expect(transformStatementGroup["conditions"]).To(
+					Equal([]any{`IsMap(log.body) and log.body["object"] != nil`}))
+
+				redactionRaw := ReadFromMap(collectorConfig, []string{"processors", "redaction/k8s_objects"})
+				Expect(redactionRaw).ToNot(BeNil())
+				redaction := redactionRaw.(map[string]any)
+				Expect(redaction["allow_all_keys"]).To(BeTrue())
+				Expect(redaction["blocked_key_patterns"]).To(Equal([]any{"^value$"}))
+
 				pipelines := readPipelines(collectorConfig)
 				pipelineReceivers := readPipelineReceivers(pipelines, "logs/k8sevents")
 				Expect(pipelineReceivers).To(ContainElements("k8s_objects/default", "k8s_objects/highcardinality"))
 				pipelineProcessors := readPipelineProcessors(pipelines, "logs/k8sevents")
+
+				transformIndex := indexOfPipelineEntry(pipelineProcessors, "transform/k8s_objects")
+				redactionIndex := indexOfPipelineEntry(pipelineProcessors, "redaction/k8s_objects")
+				k8sAttributesIndex := indexOfPipelineEntry(pipelineProcessors, "k8s_attributes")
+				Expect(transformIndex).To(BeNumerically(">=", 0))
+				Expect(redactionIndex).To(BeNumerically(">", transformIndex))
+				Expect(k8sAttributesIndex).To(BeNumerically(">", redactionIndex))
 				if eventCollectionEnabled {
 					Expect(pipelineReceivers).To(ContainElement("k8s_events"))
 					Expect(pipelineProcessors).To(ContainElement("transform/k8s_events"))
@@ -8459,6 +8481,15 @@ func assembleDeploymentCollectorConfigMapForTest(
 
 func parseConfigMapContent(configMap *corev1.ConfigMap) map[string]any {
 	return ParseConfigMapContent(configMap, "config.yaml")
+}
+
+func indexOfPipelineEntry(entries []any, name string) int {
+	for i, entry := range entries {
+		if entry == name {
+			return i
+		}
+	}
+	return -1
 }
 
 func k8sObjectsReceiverObjectNames(receiver map[string]any) []any {

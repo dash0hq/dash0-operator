@@ -469,6 +469,31 @@ processors:
           - delete_key(resource.attributes, "k8s.object.uid")
   {{- end }}
 
+  {{- if $hasKubernetesObjectCollectionEnabledForAtLeastOneNamespace }}
+  transform/k8s_objects:
+    error_mode: ignore
+    log_statements:
+      # Kubernetes event records share this pipeline and have string bodies; without the IsMap gate every event would
+      # raise "log bodies of type Str cannot be indexed".
+      - context: log
+        conditions:
+          - IsMap(log.body) and log.body["object"] != nil
+        statements:
+          - delete_key(log.body["object"]["metadata"], "managedFields")
+          # The last-applied-configuration annotation is a JSON string holding the whole previous spec, env values
+          # included; the redaction processor walks maps and slices but not strings inside them, so the key is deleted.
+          - delete_key(log.body["object"]["metadata"]["annotations"], "kubectl.kubernetes.io/last-applied-configuration") where log.body["object"]["metadata"]["annotations"] != nil
+          - delete_key(log.body["object"]["status"], "images") where log.body["object"]["status"]["images"] != nil
+
+  # Masks literal environment variable values (spec.containers[*].env[*].value) at any depth of the manifest. OTTL
+  # cannot iterate arrays, the redaction processor walks maps and slices recursively. References
+  # (valueFrom.secretKeyRef) are not masked, they hold no literal credential.
+  redaction/k8s_objects:
+    allow_all_keys: true
+    blocked_key_patterns:
+    - ^value$
+  {{- end }}
+
   {{- if .ClusterName }}
   resource/clustername:
     attributes:
@@ -712,6 +737,10 @@ service:
         - resource_detection
         {{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}
         - transform/k8s_events
+        {{- end }}
+        {{- if $hasKubernetesObjectCollectionEnabledForAtLeastOneNamespace }}
+        - transform/k8s_objects
+        - redaction/k8s_objects
         {{- end }}
         - k8s_attributes
         {{- if .ClusterName }}
