@@ -39,6 +39,7 @@ type OperatorConfigurationValues struct {
 	SelfMonitoringEnabled                            bool
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	KubernetesObjectCollectionEnabled                bool
+	CollectClusterScopedObjects                      bool
 	InstrumentationDelivery                          dash0v1alpha1.InstrumentationDelivery
 	CollectPodLabelsAndAnnotationsEnabled            bool
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
@@ -497,7 +498,8 @@ func convertValuesToResource(
 			Enabled: new(operatorConfigurationValues.KubernetesInfrastructureMetricsCollectionEnabled),
 		},
 		KubernetesObjectCollection: dash0v1alpha1.KubernetesObjectCollection{
-			Enabled: new(operatorConfigurationValues.KubernetesObjectCollectionEnabled),
+			Enabled:                     new(operatorConfigurationValues.KubernetesObjectCollectionEnabled),
+			CollectClusterScopedObjects: new(operatorConfigurationValues.CollectClusterScopedObjects),
 		},
 		CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 			Enabled: new(operatorConfigurationValues.CollectPodLabelsAndAnnotationsEnabled),

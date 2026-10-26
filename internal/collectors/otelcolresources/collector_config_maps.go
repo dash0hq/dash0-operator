@@ -115,6 +115,7 @@ type collectorConfigurationTemplateValues struct {
 	NamespacesWithLogCollection                      []string
 	NamespacesWithEventCollection                    []string
 	NamespacesWithKubernetesObjectCollection         []string
+	CollectClusterScopedObjects                      bool
 	NamespaceOttlFilter                              string
 	NamespacesWithPrometheusScraping                 []string
 	CustomFilters                                    customFilters
@@ -439,6 +440,7 @@ func newCollectorConfigurationTemplateValues(
 		NamespacesWithLogCollection:                      namespacesWithLogCollection,
 		NamespacesWithEventCollection:                    namespacesWithEventCollection,
 		NamespacesWithKubernetesObjectCollection:         namespacesWithKubernetesObjectCollection,
+		CollectClusterScopedObjects:                      config.CollectClusterScopedObjects,
 		NamespaceOttlFilter:                              namespaceOttlFilter,
 		NamespacesWithPrometheusScraping:                 namespacesWithPrometheusScraping,
 		CustomFilters:                                    customTelemetryFilters,

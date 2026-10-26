@@ -133,10 +133,12 @@ receivers:
       {{- range $i, $namespace := .NamespacesWithKubernetesObjectCollection }}
       - '{{ $namespace }}'
       {{- end }}
+    {{- if .CollectClusterScopedObjects }}
     - name: nodes
       mode: watch
     - name: persistentvolumes
       mode: watch
+    {{- end }}
   k8s_objects/highcardinality:
     include_initial_state: false
     objects:

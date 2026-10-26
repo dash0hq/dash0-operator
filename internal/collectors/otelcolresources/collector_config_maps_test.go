@@ -5829,9 +5829,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				}
 				configMap, err := assembleDeploymentCollectorConfigMap(
 					&oTelColConfig{
-						OperatorNamespace: OperatorNamespace,
-						NamePrefix:        namePrefix,
-						Exporters:         cmTestSingleDefaultOtlpExporter(),
+						OperatorNamespace:           OperatorNamespace,
+						NamePrefix:                  namePrefix,
+						Exporters:                   cmTestSingleDefaultOtlpExporter(),
+						CollectClusterScopedObjects: true,
 					},
 					[]string{"namespace-1", "namespace-2", "namespace-3"},
 					namespacesWithEventCollection,
@@ -5928,6 +5929,37 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Entry("without event collection", false),
 			Entry("together with event collection", true),
 		)
+
+		It("should omit nodes and persistent volumes when collecting cluster-scoped objects is disabled", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(
+				&oTelColConfig{
+					OperatorNamespace:           OperatorNamespace,
+					NamePrefix:                  namePrefix,
+					Exporters:                   cmTestSingleDefaultOtlpExporter(),
+					CollectClusterScopedObjects: false,
+				},
+				[]string{"namespace-1"},
+				nil,
+				[]string{"namespace-1"},
+				nil,
+				nil,
+				false,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			defaultInstanceRaw := ReadFromMap(collectorConfig, []string{"receivers", "k8s_objects/default"})
+			Expect(defaultInstanceRaw).ToNot(BeNil())
+			defaultInstance := defaultInstanceRaw.(map[string]any)
+			Expect(k8sObjectsReceiverObjectNames(defaultInstance)).To(
+				Equal([]any{"deployments", "statefulsets", "daemonsets"}))
+
+			highCardinalityInstanceRaw :=
+				ReadFromMap(collectorConfig, []string{"receivers", "k8s_objects/highcardinality"})
+			Expect(highCardinalityInstanceRaw).ToNot(BeNil())
+			Expect(k8sObjectsReceiverObjectNames(highCardinalityInstanceRaw.(map[string]any))).To(
+				Equal([]any{"pods", "replicasets"}))
+		})
 	})
 
 	Describe("Signal Control log enrichment [SignalControl]", func() {

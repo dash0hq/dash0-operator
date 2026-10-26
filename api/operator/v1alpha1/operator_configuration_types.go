@@ -466,6 +466,14 @@ type KubernetesObjectCollection struct {
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
+
+	// Opt-out for collecting the manifests of cluster-scoped objects (nodes and persistent volumes). This setting is
+	// optional, it defaults to `true`. It does not enable Kubernetes object collection on its own: cluster-scoped
+	// objects are only collected when `kubernetesObjectCollection.enabled` is `true` and at least one namespace has
+	// opted into Kubernetes object collection via its Dash0Monitoring resource.
+	//
+	// +kubebuilder:validation:Optional
+	CollectClusterScopedObjects *bool `json:"collectClusterScopedObjects,omitempty"`
 }
 
 type TelemetryCollection struct {
