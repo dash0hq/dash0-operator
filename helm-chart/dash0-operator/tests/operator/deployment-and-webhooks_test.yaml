@@ -1153,9 +1153,12 @@ tests:
           value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[9]
+          value: --operator-configuration-kubernetes-object-collection-enabled=false
+      - equal:
+          path: spec.template.spec.containers[0].args[10]
           value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
       - equal:
-          path: spec.template.spec.containers[0].args[12]
+          path: spec.template.spec.containers[0].args[13]
           value: --operator-configuration-prometheus-crd-support-enabled=false
 
   - it: should add args for creating an operator configuration resource with a custom dataset to the deployment
@@ -1191,15 +1194,18 @@ tests:
           value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[9]
+          value: --operator-configuration-kubernetes-object-collection-enabled=false
+      - equal:
+          path: spec.template.spec.containers[0].args[10]
           value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
       - equal:
-          path: spec.template.spec.containers[0].args[12]
+          path: spec.template.spec.containers[0].args[13]
           value: --operator-configuration-prometheus-crd-support-enabled=false
       - equal:
-          path: spec.template.spec.containers[0].args[13]
+          path: spec.template.spec.containers[0].args[14]
           value: --operator-configuration-profiling-enabled=false
       - equal:
-          path: spec.template.spec.containers[0].args[14]
+          path: spec.template.spec.containers[0].args[15]
           value: --operator-configuration-dataset=test-dataset
 
   - it: should add args for creating an operator configuration resource with keepalive settings to the deployment
@@ -1222,13 +1228,13 @@ tests:
           path: spec.template.spec.containers[0].args[3]
           value: --operator-configuration-managed-via-helm=true
       - equal:
-          path: spec.template.spec.containers[0].args[14]
+          path: spec.template.spec.containers[0].args[15]
           value: --operator-configuration-keepalive-time=30s
       - equal:
-          path: spec.template.spec.containers[0].args[15]
+          path: spec.template.spec.containers[0].args[16]
           value: --operator-configuration-keepalive-timeout=10s
       - equal:
-          path: spec.template.spec.containers[0].args[16]
+          path: spec.template.spec.containers[0].args[17]
           value: --operator-configuration-keepalive-permit-without-stream=true
 
   - it: should not add keepalive args when keepalive is not configured
@@ -1248,7 +1254,7 @@ tests:
           path: spec.template.spec.containers[0].args[3]
           value: --operator-configuration-managed-via-helm=true
       - equal:
-          path: spec.template.spec.containers[0].args[14]
+          path: spec.template.spec.containers[0].args[15]
           value: --operator-configuration-auto-monitor-namespaces-enabled=false
 
   - it: should add args for creating an operator configuration resource with a cluster name to the deployment
@@ -1284,15 +1290,18 @@ tests:
           value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[9]
+          value: --operator-configuration-kubernetes-object-collection-enabled=false
+      - equal:
+          path: spec.template.spec.containers[0].args[10]
           value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
       - equal:
-          path: spec.template.spec.containers[0].args[12]
+          path: spec.template.spec.containers[0].args[13]
           value: --operator-configuration-prometheus-crd-support-enabled=false
       - equal:
-          path: spec.template.spec.containers[0].args[13]
+          path: spec.template.spec.containers[0].args[14]
           value: --operator-configuration-profiling-enabled=false
       - equal:
-          path: spec.template.spec.containers[0].args[14]
+          path: spec.template.spec.containers[0].args[15]
           value: --operator-configuration-cluster-name=cluster-name
 
   - it: should add args for creating an operator configuration resource with a secretRef to the deployment
@@ -1332,15 +1341,18 @@ tests:
           value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[10]
-          value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
+          value: --operator-configuration-kubernetes-object-collection-enabled=false
       - equal:
           path: spec.template.spec.containers[0].args[11]
-          value: --operator-configuration-collect-namespace-labels-and-annotations-enabled=false
+          value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[12]
-          value: --operator-configuration-collect-node-labels-and-annotations-enabled=false
+          value: --operator-configuration-collect-namespace-labels-and-annotations-enabled=false
       - equal:
           path: spec.template.spec.containers[0].args[13]
+          value: --operator-configuration-collect-node-labels-and-annotations-enabled=false
+      - equal:
+          path: spec.template.spec.containers[0].args[14]
           value: --operator-configuration-prometheus-crd-support-enabled=false
 
   - it: should disable self-monitoring & Kubernetes infrastructure metrics collection
@@ -1376,6 +1388,24 @@ tests:
           path: spec.template.spec.containers[0].args[8]
           value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=false
 
+  - it: should enable Kubernetes object collection
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+        kubernetesObjectCollection:
+          enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[9]
+          value: --operator-configuration-kubernetes-object-collection-enabled=true
+
   - it: should disable pod label and annotation collection
     documentSelector:
       path: metadata.name
@@ -1395,6 +1425,9 @@ tests:
           value: --operator-configuration-managed-via-helm=true
       - equal:
           path: spec.template.spec.containers[0].args[9]
+          value: --operator-configuration-kubernetes-object-collection-enabled=false
+      - equal:
+          path: spec.template.spec.containers[0].args[10]
           value: --operator-configuration-collect-pod-labels-and-annotations-enabled=false
 
   - it: should enable namespace label and annotation collection
@@ -1415,7 +1448,7 @@ tests:
           path: spec.template.spec.containers[0].args[3]
           value: --operator-configuration-managed-via-helm=true
       - equal:
-          path: spec.template.spec.containers[0].args[10]
+          path: spec.template.spec.containers[0].args[11]
           value: --operator-configuration-collect-namespace-labels-and-annotations-enabled=true
 
   - it: should enable node label and annotation collection
@@ -1436,7 +1469,7 @@ tests:
           path: spec.template.spec.containers[0].args[3]
           value: --operator-configuration-managed-via-helm=true
       - equal:
-          path: spec.template.spec.containers[0].args[11]
+          path: spec.template.spec.containers[0].args[12]
           value: --operator-configuration-collect-node-labels-and-annotations-enabled=true
 
   - it: should enable support for prometheus crds
@@ -1457,7 +1490,7 @@ tests:
           path: spec.template.spec.containers[0].args[3]
           value: --operator-configuration-managed-via-helm=true
       - equal:
-          path: spec.template.spec.containers[0].args[12]
+          path: spec.template.spec.containers[0].args[13]
           value: --operator-configuration-prometheus-crd-support-enabled=true
 
   - it: should enable support for automatic namespace monitoring
@@ -1479,10 +1512,10 @@ tests:
           path: spec.template.spec.containers[0].args[3]
           value: --operator-configuration-managed-via-helm=true
       - equal:
-          path: spec.template.spec.containers[0].args[14]
+          path: spec.template.spec.containers[0].args[15]
           value: --operator-configuration-auto-monitor-namespaces-enabled=true
       - equal:
-          path: spec.template.spec.containers[0].args[15]
+          path: spec.template.spec.containers[0].args[16]
           value: --operator-configuration-auto-monitor-namespaces-label-selector=dash0.com/custom==false
 
   - it: should disable telemetry collection via Helm

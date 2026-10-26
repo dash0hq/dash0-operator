@@ -255,6 +255,51 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				"collectNodeLabelsAndAnnotations.enabled=false.")))
 	})
 
+	It("should reject a new operator configuration resource with telemetry collection disabled but Kubernetes object collection explicitly enabled", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					KubernetesObjectCollection: dash0v1alpha1.KubernetesObjectCollection{
+						Enabled: new(true),
+					},
+					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: new(false),
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(
+			"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The provided " +
+				"Dash0 operator configuration resource has Kubernetes object collection explicitly " +
+				"enabled, although telemetry collection is disabled. This is an invalid combination. Please either " +
+				"set telemetryCollection.enabled=true or " +
+				"kubernetesObjectCollection.enabled=false.")))
+	})
+
+	It("should accept a new operator configuration resource with telemetry collection disabled and Kubernetes object collection unspecified", func() {
+		// Kubernetes object collection is opt-in, so leaving it unspecified must not be treated as an opt-in - unlike
+		// the settings above, which the mutating webhook derives from telemetryCollection.enabled.
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: new(false),
+					},
+					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+						Enabled: new(false),
+					},
+				},
+			})
+		Expect(err).ToNot(HaveOccurred())
+	})
+
 	It("should reject a new operator configuration resource with telemetry collection disabled but Prometheus CRD support explicitly enabled", func() {
 		_, err := CreateOperatorConfigurationResource(
 			ctx,

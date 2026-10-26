@@ -149,6 +149,19 @@ operator:
   # collection will be disabled implicitly.
   kubernetesInfrastructureMetricsCollectionEnabled: true
 
+  # Settings for collecting the manifests of Kubernetes objects.
+  kubernetesObjectCollection:
+    # An opt-in for collecting the manifests of Kubernetes objects. If set to true, the operator will collect the
+    # manifests of pods and workloads in every namespace whose Dash0Monitoring resource has
+    # kubernetesObjectCollection.enabled=true, as well as the manifests of nodes and persistent volumes. This setting
+    # is optional, it defaults to false.
+    #
+    # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
+    # resource will be created by the Helm chart then.
+    # This setting has no effect if operator.telemetryCollectionEnabled is set to false, Kubernetes object collection
+    # will be disabled implicitly.
+    enabled: false
+
   # An opt-out for collecting pod labels and annotations as resource attributes. If set to false, the operator will
   # not collect convert pod labels and annotations to resource attributes. This setting is optional, it defaults to
   # true.
