@@ -111,10 +111,13 @@ jobs:
 
       - name: install Helm unittest plugin
         shell: bash
-        # Pinning to version 0.7.2, version 0.8.0 has a bug with snapshot testing, looks like values from previous tests
-        # spill over to later tests.
+        # helm-unittest >= 1.2.0 is required for the Helm version preinstalled on the runner image (Helm 4 since
+        # Ubuntu 26.04). Importing the project's public GPG key lets Helm verify the signature of the OCI plugin
+        # package, which Helm 4 requires by default.
         run: |
-          helm plugin install https://github.com/helm-unittest/helm-unittest.git --version=0.7.2 --verify=false
+          curl -fsSL https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.2.1/public-key.asc | gpg --import
+          gpg --export > ~/.gnupg/pubring.gpg
+          helm plugin install oci://ghcr.io/helm-unittest/helm-unittest/unittest:1.2.1
 
       - name: run operator manager and Helm chart unit tests
         run: |
