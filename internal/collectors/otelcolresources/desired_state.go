@@ -114,6 +114,8 @@ type oTelColConfig struct {
 	CollectPodLabelsAndAnnotationsEnabled            bool
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
 	CollectNodeLabelsAndAnnotationsEnabled           bool
+	KubernetesObjectCollectionEnabled                bool
+	CollectClusterScopedObjects                      bool
 	K8sAttributesDisableReplicasetInformer           bool
 	K8sAttributesWaitForMetadata                     bool
 	K8sAttributesWaitForMetadataTimeout              string
@@ -439,6 +441,7 @@ func assembleDesiredStateForUpsert(
 	monitoredNamespaces := make([]string, 0, len(allMonitoringResources))
 	namespacesWithLogCollection := make([]string, 0, len(allMonitoringResources))
 	namespacesWithEventCollection := make([]string, 0, len(allMonitoringResources))
+	namespacesWithKubernetesObjectCollection := make([]string, 0, len(allMonitoringResources))
 	namespacesWithPrometheusScraping := make([]string, 0, len(allMonitoringResources))
 	filters := make([]NamespacedFilter, 0, len(allMonitoringResources))
 	transforms := make([]NamespacedTransform, 0, len(allMonitoringResources))
@@ -455,6 +458,12 @@ func assembleDesiredStateForUpsert(
 		}
 		if pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.EventCollection.Enabled, true) {
 			namespacesWithEventCollection = append(namespacesWithEventCollection, namespace)
+		}
+		// Kubernetes object collection requires both the cluster-wide switch on the operator configuration resource and
+		// the per-namespace opt-in on the monitoring resource.
+		if config.KubernetesObjectCollectionEnabled &&
+			pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.KubernetesObjectCollection.Enabled, false) {
+			namespacesWithKubernetesObjectCollection = append(namespacesWithKubernetesObjectCollection, namespace)
 		}
 		if pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScraping.Enabled, true) {
 			namespacesWithPrometheusScraping = append(namespacesWithPrometheusScraping, namespace)
@@ -480,6 +489,7 @@ func assembleDesiredStateForUpsert(
 		monitoredNamespaces,
 		namespacesWithLogCollection,
 		namespacesWithEventCollection,
+		namespacesWithKubernetesObjectCollection,
 		namespacesWithPrometheusScraping,
 		filters,
 		transforms,
@@ -519,6 +529,7 @@ func assembleDesiredStateForDelete(
 		nil,
 		nil,
 		nil,
+		nil,
 		extraConfig,
 		true,
 	)
@@ -529,6 +540,7 @@ func assembleDesiredState(
 	monitoredNamespaces []string,
 	namespacesWithLogCollection []string,
 	namespacesWithEventCollection []string,
+	namespacesWithKubernetesObjectCollection []string,
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
@@ -540,6 +552,7 @@ func assembleDesiredState(
 	slices.Sort(monitoredNamespaces)
 	slices.Sort(namespacesWithLogCollection)
 	slices.Sort(namespacesWithEventCollection)
+	slices.Sort(namespacesWithKubernetesObjectCollection)
 	slices.Sort(namespacesWithPrometheusScraping)
 	slices.SortFunc(filters, func(ns1 NamespacedFilter, ns2 NamespacedFilter) int {
 		return strings.Compare(ns1.Namespace, ns2.Namespace)
@@ -620,7 +633,9 @@ func assembleDesiredState(
 	}
 	desiredState = append(desiredState, addCommonMetadata(collectorDaemonSet))
 
-	if config.KubernetesInfrastructureMetricsCollectionEnabled || len(namespacesWithEventCollection) > 0 {
+	if config.KubernetesInfrastructureMetricsCollectionEnabled ||
+		len(namespacesWithEventCollection) > 0 ||
+		len(namespacesWithKubernetesObjectCollection) > 0 {
 		desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDeployment(config)))
 		desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleForDeployment(config)))
 		desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleBindingForDeployment(config)))
@@ -628,6 +643,7 @@ func assembleDesiredState(
 			config,
 			monitoredNamespaces,
 			namespacesWithEventCollection,
+			namespacesWithKubernetesObjectCollection,
 			filters,
 			transforms,
 			forDeletion,
@@ -1645,6 +1661,7 @@ func assembleClusterRoleForDeployment(config *oTelColConfig) *rbacv1.ClusterRole
 					"namespaces/status",
 					"nodes",
 					"nodes/spec",
+					"persistentvolumes",
 					"pods",
 					"pods/status",
 					"replicationcontrollers",

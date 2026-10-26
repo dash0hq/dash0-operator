@@ -673,6 +673,49 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		})
 	})
 
+	DescribeTable(
+		"should only enable Kubernetes object collection when both the cluster-wide switch and the namespace opt-in "+
+			"are set",
+		func(clusterSwitchEnabled bool, namespaceOptIn bool) {
+			monitoringResources := []dash0v1beta1.Dash0Monitoring{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      MonitoringResourceName,
+						Namespace: "namespace-1",
+					},
+					Spec: dash0v1beta1.Dash0MonitoringSpec{
+						// Infrastructure metrics and event collection are off, so the deployment collector is only
+						// created when Kubernetes object collection is active.
+						EventCollection:            dash0common.EventCollection{Enabled: new(false)},
+						KubernetesObjectCollection: dash0common.KubernetesObjectCollection{Enabled: new(namespaceOptIn)},
+					},
+				},
+			}
+			desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+				OperatorNamespace:                 OperatorNamespace,
+				NamePrefix:                        namePrefix,
+				Exporters:                         defaultDash0ExportersWithToken(),
+				Images:                            TestImages,
+				KubernetesObjectCollectionEnabled: clusterSwitchEnabled,
+			}, monitoringResources, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+
+			if clusterSwitchEnabled && namespaceOptIn {
+				Expect(getDeployment(desiredState)).ToNot(BeNil())
+				configMapContent := getDeploymentCollectorConfigMap(desiredState).Data["config.yaml"]
+				Expect(configMapContent).To(ContainSubstring("k8s_objects/default"))
+				Expect(configMapContent).To(ContainSubstring("k8s_objects/highcardinality"))
+				Expect(configMapContent).To(ContainSubstring("- 'namespace-1'"))
+			} else {
+				Expect(getDeployment(desiredState)).To(BeNil())
+			}
+		},
+		Entry("cluster-wide switch off, namespace opt-in off", false, false),
+		Entry("cluster-wide switch off, namespace opt-in on", false, true),
+		Entry("cluster-wide switch on, namespace opt-in off", true, false),
+		Entry("cluster-wide switch on, namespace opt-in on", true, true),
+	)
+
 	It("should describe the desired state as a set of Kubernetes client objects", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,

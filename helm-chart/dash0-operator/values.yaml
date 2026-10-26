@@ -162,6 +162,12 @@ operator:
     # will be disabled implicitly.
     enabled: false
 
+    # An opt-out for collecting the manifests of cluster-scoped objects (nodes and persistent volumes). If set to
+    # false, the operator will not collect the manifests of nodes and persistent volumes. This setting is optional, it
+    # defaults to true. It does not enable Kubernetes object collection on its own, see
+    # operator.kubernetesObjectCollection.enabled above.
+    collectClusterScopedObjects: true
+
   # An opt-out for collecting pod labels and annotations as resource attributes. If set to false, the operator will
   # not collect convert pod labels and annotations to resource attributes. This setting is optional, it defaults to
   # true.
