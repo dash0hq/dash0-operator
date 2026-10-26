@@ -585,7 +585,8 @@ yaml_single_quote() {
 
 # Writes a Helm values file with a single gRPC export in operator.exports, based on
 # OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_ENDPOINT and OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_HEADERS (a
-# comma-separated list of name=value pairs), and prints the path of that file.
+# comma-separated list of name=value pairs) and OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_INSECURE (true/false), and
+# prints the path of that file.
 write_grpc_export_values_file() {
   local values_file
   values_file="$(mktemp -t dash0-operator-grpc-export-values.XXXXXX)"
@@ -594,6 +595,9 @@ write_grpc_export_values_file() {
     echo "  exports:"
     echo "    - grpc:"
     echo "        endpoint: $(yaml_single_quote "$OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_ENDPOINT")"
+    if [[ -n "${OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_INSECURE:-}" ]]; then
+      echo "        insecure: $OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_INSECURE"
+    fi
     if [[ -n "${OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_HEADERS:-}" ]]; then
       echo "        headers:"
       local header_pairs header_pair
@@ -631,8 +635,22 @@ run_helm() {
   if [[ "${TA_ALLOW_INSECURE_AUTH_SECRETS:-}" = "true" ]]; then
     helm_install_command+=" --set operator.targetAllocator.allowInsecureAuthSecrets=true"
   fi
+  if [[ -n "${TA_ALLOW_SECRET_ACCESS_IN_NAMESPACES:-}" ]]; then
+    helm_install_command+=" --set operator.targetAllocator.allowSecretAccessInNamespaces={$TA_ALLOW_SECRET_ACCESS_IN_NAMESPACES}"
+  fi
   if [[ "${COMPONENT_SETTINGS_VIA_HELM:-}" = "true" ]]; then
     helm_install_command+=" --values test-resources/component-settings/helm-values.yaml"
+  fi
+  if [[ "${AGENT0_CONNECTOR_ENABLED:-}" = "true" ]]; then
+    # Without a reachable server address, the agent0-connector keeps reconnecting, but its Deployment can be inspected.
+    helm_install_command+=" --set operator.agent0Connector.enabled=true"
+    local agent0_connector_server_address="${AGENT0_CONNECTOR_SERVER_ADDRESS:-agent0-connector.invalid:443}"
+    helm_install_command+=" --set operator.agent0Connector.serverAddress=$agent0_connector_server_address"
+    helm_install_command+=" --set operator.agent0Connector.secretRef.name=dash0-authorization-secret"
+    helm_install_command+=" --set operator.agent0Connector.secretRef.key=token"
+    if [[ "${AGENT0_CONNECTOR_INSECURE:-}" = "true" ]]; then
+      helm_install_command+=" --set operator.agent0Connector.insecure=true"
+    fi
   fi
   if [[ "${DEVELOPMENT_MODE:-}" != "false" ]]; then
   helm_install_command+=" --set operator.developmentMode=true"
@@ -648,6 +666,9 @@ run_helm() {
   fi
   if [[ "${EDGE_PROXY_ENABLE_PPROF:-}" = "true" ]]; then
     helm_install_command+=" --set operator.signalControl.edgeProxy.enablePprof=true"
+  fi
+  if [[ "${AGENT0_CONNECTOR_ENABLE_PPROF:-}" = "true" ]]; then
+    helm_install_command+=" --set operator.agent0Connector.enablePprof=true"
   fi
   if [[ -n "${OTEL_COLLECTOR_SEND_BATCH_SIZE:-}" ]]; then
     helm_install_command+=" --set operator.collectors.sendBatchSize=$OTEL_COLLECTOR_SEND_BATCH_SIZE"
@@ -835,9 +856,6 @@ run_helm() {
     if [[ "${AUTO_MONITOR_NAMESPACES_ENABLED:-}" = "true" ]]; then
       helm_install_command+=" --set operator.autoMonitorNamespaces.enabled=true"
     fi
-    if [[ "${TELEMETRY_COLLECTION_ENABLED:-}" = "false" ]]; then
-      helm_install_command+=" --set operator.telemetryCollectionEnabled=false"
-    fi
     if [[ "${ENABLE_PYTHON_AUTO_INSTRUMENTATION:-}" = "true" ]]; then
       helm_install_command+=" --set operator.instrumentation.enablePythonAutoInstrumentation=true"
     fi
@@ -845,6 +863,9 @@ run_helm() {
       helm_install_command+=" --set operator.instrumentation.enableRubyAutoInstrumentation=true"
     fi
     helm_install_command+=" --set operator.clusterName=$(kubectl config current-context)"
+  fi
+  if [[ "${TELEMETRY_COLLECTION_ENABLED:-}" = "false" ]]; then
+    helm_install_command+=" --set operator.telemetryCollectionEnabled=false"
   fi
   if [[ "${FEATURE_SIGNAL_CONTROL_ENABLED:-}" = "true" ]]; then
     helm_install_command+=" --set operator.signalControl.enabled=true"
@@ -1205,14 +1226,15 @@ deploy_cadvisor_scrapeconfig() {
   if [[ "${DEPLOY_CADVISOR_SCRAPECONFIG:-}" != "true" ]]; then
     return
   fi
+  local namespace="${1:-$target_namespace}"
   # On GKE Autopilot the kube-apiserver -> kubelet proxy is not available, so use the variant that scrapes the
   # kubelet directly (see cadvisor-scrapeconfig-autopilot.yaml.template).
   local scrapeconfig_file="test-resources/customresources/prometheus/cadvisor-scrapeconfig.yaml"
   if [[ "${GKE_AUTOPILOT_ENABLED:-}" = "true" ]]; then
     scrapeconfig_file="test-resources/customresources/prometheus/cadvisor-scrapeconfig-autopilot.yaml"
   fi
-  echo "STEP $step_counter: deploy a ScrapeConfig for scraping cadvisor metrics to ${target_namespace}"
-  kubectl apply -n "$target_namespace" -f "$scrapeconfig_file"
+  echo "STEP $step_counter: deploy a ScrapeConfig for scraping cadvisor metrics to ${namespace}"
+  kubectl apply -n "$namespace" -f "$scrapeconfig_file"
   finish_step
 }
 

@@ -9,12 +9,14 @@ line without leading space characters.
 of the daemonset collector and the cluster-metrics deployment collector via OTLP, applies Signal Control (SC) and
 exports to Dash0. It is the only collector workload that runs SC components and, whenever it exists, the only one that
 exports to Dash0; the two producer collectors keep only their non-SC components and export passthrough (non-Dash0)
-telemetry themselves.
+telemetry themselves. In SCE-only mode, no producer collectors are deployed and applications send their telemetry here
+directly.
 
 All enrichment that depends on the sending node or pod (resource_detection, k8s_attributes,
-resource/dash0_operator_attributes, custom filters and transforms, batching) has already been applied upstream and must
-NOT be repeated here: k8s_attributes' "from: connection" pod association would resolve every record to the sending
-collector's pod, and the resource_detection k8s_api/eks detectors would report this collector's node.
+resource/dash0_operator_attributes, custom filters and transforms) is applied upstream (in SCE-only mode, not at all)
+and must NOT be repeated here: k8s_attributes' "from: connection" pod association would resolve every record to the
+sending collector's pod, and the resource_detection k8s_api/eks detectors would report this collector's node. Batching
+is applied upstream as well, except in SCE-only mode, where this collector batches the received telemetry itself.
 
 The producers route on k8s.namespace.name, keep the passthrough copies locally and forward one copy of the Dash0-bound
 telemetry here. This collector applies the same k8s.namespace.name routing again to pick the (namespace, dataset)
@@ -472,6 +474,9 @@ service:
         - otlp
       processors:
         - memory_limiter
+        {{- if .SignalControlSceOnlyMode }}
+        - batch
+        {{- end }}
       exporters:
         {{- if $useRouting }}
         - routing/traces
@@ -626,6 +631,9 @@ service:
         - otlp
       processors:
         - memory_limiter
+        {{- if .SignalControlSceOnlyMode }}
+        - batch
+        {{- end }}
       exporters:
         {{- if $useRouting }}
         - routing/metrics
@@ -720,6 +728,9 @@ Dash0-Dataset header and the accountant sums what arrives, so a second delivery 
         - otlp
       processors:
         - memory_limiter
+        {{- if .SignalControlSceOnlyMode }}
+        - batch
+        {{- end }}
       exporters:
         {{- if $useRouting }}
         - routing/logs

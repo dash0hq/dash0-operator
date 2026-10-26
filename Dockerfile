@@ -29,7 +29,16 @@ ARG TARGETARCH
 # architecture of the machine running the docker build, instead of running the build via emulation (QEMU); go build
 # takes care of producing the correct binary for the target architecture on its own.
 # See https://www.docker.com/blog/faster-multi-platform-builds-dockerfile-cross-compilation-guide/.
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -a -o manager cmd/main.go
+RUN CGO_ENABLED=0 \
+    GOOS=${TARGETOS:-linux} \
+    GOARCH=${TARGETARCH} \
+    go build \
+    -ldflags '-s -w' \
+    -trimpath \
+    -v \
+    -a \
+    -o manager \
+    cmd/main.go
 
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /

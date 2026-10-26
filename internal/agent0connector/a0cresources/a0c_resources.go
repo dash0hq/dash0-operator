@@ -62,7 +62,8 @@ func (m *Agent0ConnectorResourceManager) CreateOrUpdateAgent0ConnectorResources(
 ) (bool, bool, error) {
 	if err := validateClusterRoleRules(extraConfig.Agent0ConnectorClusterRoleRules); err != nil {
 		logger.ErrorTelemetryCollectionIssue(err, "the custom cluster role rules for the agent0-connector "+
-			"(Helm value operator.agent0Connector.clusterRole.rules) are invalid, not creating or updating the "+
+			"(Helm value operator.agent0Connector.clusterRole.rules or "+
+			"operator.agent0Connector.clusterRole.additionalRules) are invalid, not creating or updating the "+
 			"agent0-connector resources")
 		// The rules only change when the extra config map changes, and that triggers a new reconciliation via
 		// UpdateExtraConfig.
@@ -96,6 +97,11 @@ func (m *Agent0ConnectorResourceManager) CreateOrUpdateAgent0ConnectorResources(
 	resourcesHaveBeenUpdated := false
 	for _, wrapper := range desiredState {
 		desiredResource := wrapper.object
+		if err = resources.SetOwnerReference(
+			m.operatorManagerDeployment, operatorConfigurationResource, m.scheme, desiredResource, logger,
+		); err != nil {
+			return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err
+		}
 		isNew, isChanged, err := m.createOrUpdateResource(ctx, desiredResource, logger)
 		if err != nil {
 			logger.Error(err, "error while creating/updating agent0-connector resource")
@@ -187,9 +193,6 @@ func (m *Agent0ConnectorResourceManager) createResource(
 	desiredResource client.Object,
 	logger logd.Logger,
 ) error {
-	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
-		return err
-	}
 	if err := patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
 		return err
 	}
@@ -211,9 +214,6 @@ func (m *Agent0ConnectorResourceManager) updateResource(
 	desiredResource client.Object,
 	logger logd.Logger,
 ) (bool, error) {
-	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
-		return false, err
-	}
 
 	desiredResourceForComparison := desiredResource.DeepCopyObject().(client.Object)
 	resources.AdoptGkeAutopilotResourceAdjustments(existingResource, desiredResourceForComparison, logger)

@@ -20,6 +20,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
@@ -44,6 +45,8 @@ var _ = BeforeSuite(func() {
 		BinaryAssetsDirectory: filepath.Join("..", "..", "..", "bin", "k8s",
 			fmt.Sprintf("%s-%s-%s", EnvtestK8sVersion, runtime.GOOS, runtime.GOARCH)),
 	}
+
+	Expect(dash0v1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
 
 	var err error
 	cfg, err = testEnv.Start()

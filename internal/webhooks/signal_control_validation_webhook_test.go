@@ -8,6 +8,8 @@ import (
 	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -330,6 +332,31 @@ var _ = Describe("The Signal Control validation webhook (component settings)", f
 				"operator.signalControl.edgeProxy.replicas: 3 instead of 4"))
 	})
 
+	It("should reject a resource request that is greater than the limit", func() {
+		handler := NewSignalControlValidationWebhookHandler(k8sClient, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+		request := signalControlAdmissionRequest(dash0v1alpha1.Dash0SignalControlSpec{
+			Components: &dash0v1alpha1.SignalControlComponents{
+				EdgeProxy: &dash0v1alpha1.EdgeProxySettings{
+					ContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+						ContainerResources: dash0v1alpha1.ContainerResources{
+							Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m")},
+							Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("200m")},
+						},
+					},
+				},
+			},
+		})
+		for _, operation := range []admissionv1.Operation{admissionv1.Create, admissionv1.Update} {
+			request.Operation = operation
+			response := handler.Handle(ctx, request)
+			Expect(response.Allowed).To(BeFalse())
+			Expect(response.Result.Message).To(Equal(
+				"The provided Signal Control resource has invalid component settings: " +
+					"spec.components.edgeProxy.containerResources.requests[cpu]: Invalid value: \"200m\": must be less " +
+					"than or equal to the cpu limit of 100m."))
+		}
+	})
+
 	It("should allow an update that leaves invalid component settings unchanged", func() {
 		handler := NewSignalControlValidationWebhookHandler(k8sClient, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 		spec := dash0v1alpha1.Dash0SignalControlSpec{
@@ -350,6 +377,138 @@ var _ = Describe("The Signal Control validation webhook (component settings)", f
 		Expect(response.Allowed).To(BeFalse())
 		Expect(response.Result.Message).To(ContainSubstring(
 			"spec.components.edgeProxy.labels: Invalid value: \"in valid\""))
+	})
+
+	Describe("ephemeral-storage limit and disk-backed trace reservoir", func() {
+		withReservoir := func(
+			reservoirType dash0v1alpha1.ReservoirType,
+			resources *dash0v1alpha1.ContainerResources,
+		) dash0v1alpha1.Dash0SignalControlSpec {
+			spec := dash0v1alpha1.Dash0SignalControlSpec{
+				Sampling: dash0v1alpha1.SamplingConfig{
+					Reservoir: &dash0v1alpha1.ReservoirConfig{
+						Type:         &reservoirType,
+						MaxDiskBytes: new(resource.MustParse("1Gi")),
+					},
+				},
+			}
+			if resources != nil {
+				spec.Components = &dash0v1alpha1.SignalControlComponents{
+					Collector: &dash0v1alpha1.SignalControlCollectorSettings{
+						CollectorContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+							ContainerResources: *resources,
+						},
+					},
+				}
+			}
+			return spec
+		}
+		ephemeralStorageLimit := func(limit string) *dash0v1alpha1.ContainerResources {
+			return &dash0v1alpha1.ContainerResources{
+				Limits: corev1.ResourceList{corev1.ResourceEphemeralStorage: resource.MustParse(limit)},
+			}
+		}
+		const expectedMessage = "The provided Signal Control resource has invalid component settings: " +
+			"spec.components.collector.collectorContainerResources.limits[ephemeral-storage]: Invalid value: \"1Gi\": " +
+			"must be at least 1280Mi, the ephemeral-storage request derived from spec.sampling.reservoir.maxDiskBytes, " +
+			"since the trace reservoir counts towards the limit."
+
+		var handler *SignalControlValidationWebhookHandler
+
+		BeforeEach(func() {
+			handler = NewSignalControlValidationWebhookHandler(k8sClient, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+		})
+
+		It("should reject a limit below the derived request", func() {
+			response := handler.Handle(ctx, signalControlAdmissionRequest(
+				withReservoir(dash0v1alpha1.ReservoirTypeDisk, ephemeralStorageLimit("1Gi"))))
+			Expect(response.Allowed).To(BeFalse())
+			Expect(response.Result.Message).To(Equal(expectedMessage))
+		})
+
+		It("should reject an update that only switches to the disk-backed reservoir", func() {
+			request := signalControlAdmissionRequest(
+				withReservoir(dash0v1alpha1.ReservoirTypeDisk, ephemeralStorageLimit("1Gi")))
+			request.Operation = admissionv1.Update
+			request.OldObject = signalControlAdmissionRequest(
+				withReservoir(dash0v1alpha1.ReservoirTypeSerializedMemory, ephemeralStorageLimit("1Gi"))).Object
+			response := handler.Handle(ctx, request)
+			Expect(response.Allowed).To(BeFalse())
+			Expect(response.Result.Message).To(Equal(expectedMessage))
+		})
+
+		It("should allow an update that leaves the reservoir and component settings unchanged", func() {
+			spec := withReservoir(dash0v1alpha1.ReservoirTypeDisk, ephemeralStorageLimit("1Gi"))
+			request := signalControlAdmissionRequest(spec)
+			request.Operation = admissionv1.Update
+			request.OldObject = signalControlAdmissionRequest(spec).Object
+			Expect(handler.Handle(ctx, request).Allowed).To(BeTrue())
+		})
+
+		It("should allow a limit that is not below the derived request", func() {
+			response := handler.Handle(ctx, signalControlAdmissionRequest(
+				withReservoir(dash0v1alpha1.ReservoirTypeDisk, ephemeralStorageLimit("1280Mi"))))
+			Expect(response.Allowed).To(BeTrue())
+		})
+
+		It("should reject a limit below the derived request with an explicit request", func() {
+			resources := ephemeralStorageLimit("1Gi")
+			resources.Requests = corev1.ResourceList{corev1.ResourceEphemeralStorage: resource.MustParse("512Mi")}
+			response := handler.Handle(ctx, signalControlAdmissionRequest(
+				withReservoir(dash0v1alpha1.ReservoirTypeDisk, resources)))
+			Expect(response.Allowed).To(BeFalse())
+			Expect(response.Result.Message).To(Equal(expectedMessage))
+		})
+
+		It("should allow a limit below the derived request without the disk-backed reservoir", func() {
+			response := handler.Handle(ctx, signalControlAdmissionRequest(
+				withReservoir(dash0v1alpha1.ReservoirTypeSerializedMemory, ephemeralStorageLimit("1Gi"))))
+			Expect(response.Allowed).To(BeTrue())
+		})
+
+		withHelmLimit := func(limit string) *SignalControlValidationWebhookHandler {
+			extraConfig := util.ExtraConfigDefaults
+			extraConfig.SignalControlCollectorContainerResources.Limits = corev1.ResourceList{
+				corev1.ResourceEphemeralStorage: resource.MustParse(limit),
+			}
+			return NewSignalControlValidationWebhookHandler(k8sClient, extraConfig, util.ExtraConfigDefaults)
+		}
+
+		It("should reject a limit provided via the Helm chart below the derived request", func() {
+			response := withHelmLimit("1Gi").Handle(ctx, signalControlAdmissionRequest(
+				withReservoir(dash0v1alpha1.ReservoirTypeDisk, nil)))
+			Expect(response.Allowed).To(BeFalse())
+			Expect(response.Result.Message).To(Equal(
+				"The provided Signal Control resource has invalid component settings: the ephemeral-storage limit 1Gi " +
+					"of the Signal Control collector, set via the Helm value " +
+					"operator.collectors.signalControlCollectorContainerResources, must be at least 1280Mi, the " +
+					"ephemeral-storage request derived from spec.sampling.reservoir.maxDiskBytes, since the trace " +
+					"reservoir counts towards the limit; raise the limit via Helm or set " +
+					"spec.components.collector.collectorContainerResources."))
+		})
+
+		It("should reject a Helm limit if spec.components only sets other collector settings", func() {
+			spec := withReservoir(dash0v1alpha1.ReservoirTypeDisk, nil)
+			spec.Components = &dash0v1alpha1.SignalControlComponents{
+				Collector: &dash0v1alpha1.SignalControlCollectorSettings{Replicas: new(int32(2))},
+			}
+			response := withHelmLimit("1Gi").Handle(ctx, signalControlAdmissionRequest(spec))
+			Expect(response.Allowed).To(BeFalse())
+			Expect(response.Result.Message).To(ContainSubstring(
+				"set via the Helm value operator.collectors.signalControlCollectorContainerResources"))
+		})
+
+		It("should allow a limit provided via the Helm chart that is not below the derived request", func() {
+			response := withHelmLimit("1280Mi").Handle(ctx, signalControlAdmissionRequest(
+				withReservoir(dash0v1alpha1.ReservoirTypeDisk, nil)))
+			Expect(response.Allowed).To(BeTrue())
+		})
+
+		It("should allow a limit provided via the Helm chart that spec.components replaces", func() {
+			response := withHelmLimit("1Gi").Handle(ctx, signalControlAdmissionRequest(
+				withReservoir(dash0v1alpha1.ReservoirTypeDisk, &dash0v1alpha1.ContainerResources{})))
+			Expect(response.Allowed).To(BeTrue())
+		})
 	})
 })
 

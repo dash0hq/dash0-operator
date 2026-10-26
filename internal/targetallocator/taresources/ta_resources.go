@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
@@ -43,6 +44,7 @@ func NewTargetAllocatorResourceManager(
 func (m *TargetAllocatorResourceManager) CreateOrUpdateTargetAllocatorResources(
 	ctx context.Context,
 	extraConfig util.ExtraConfig,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	namespacesWithPrometheusScraping []string,
 	logger logd.Logger,
 ) (bool, bool, error) {
@@ -64,6 +66,11 @@ func (m *TargetAllocatorResourceManager) CreateOrUpdateTargetAllocatorResources(
 	resourcesHaveBeenUpdated := false
 	for _, wrapper := range desiredState {
 		desiredResource := wrapper.object
+		if err = resources.SetOwnerReference(
+			m.operatorManagerDeployment, operatorConfigurationResource, m.scheme, desiredResource, logger,
+		); err != nil {
+			return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err
+		}
 		isNew, isChanged, err := m.createOrUpdateResource(
 			ctx,
 			desiredResource,
@@ -121,9 +128,6 @@ func (m *TargetAllocatorResourceManager) createResource(
 	desiredResource client.Object,
 	logger logd.Logger,
 ) error {
-	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
-		return err
-	}
 	if err := patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
 		return err
 	}
@@ -145,9 +149,6 @@ func (m *TargetAllocatorResourceManager) updateResource(
 	desiredResource client.Object,
 	logger logd.Logger,
 ) (bool, error) {
-	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
-		return false, err
-	}
 
 	desiredResourceForComparison := desiredResource.DeepCopyObject().(client.Object)
 	resources.AdoptGkeAutopilotResourceAdjustments(existingResource, desiredResourceForComparison, logger)

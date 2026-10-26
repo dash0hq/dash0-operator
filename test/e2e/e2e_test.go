@@ -242,6 +242,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					Entry("should instrument new Node.js deployments", workloadTypeDeployment, runtimeTypeNodeJs),
 					Entry("should instrument new JVM deployments", workloadTypeDeployment, runtimeTypeJvm),
 					Entry("should instrument new .NET deployments", workloadTypeDeployment, runtimeTypeDotnet),
+					Entry("should instrument new .NET 6 deployments", workloadTypeDeployment, runtimeTypeDotnet6),
 					Entry("should instrument new .NET 8 deployments", workloadTypeDeployment, runtimeTypeDotnet8),
 					Entry("should instrument new Python deployments", workloadTypeDeployment, runtimeTypePython),
 					Entry("should instrument new Ruby deployments", workloadTypeDeployment, runtimeTypeRuby),
@@ -2482,6 +2483,132 @@ log_statements:
 
 	}) // end of suite "with the Signal Control feature enabled"
 
+	Context("with Signal Control-only mode enabled", Ordered, func() {
+		BeforeAll(func() {
+			By("deploying the Dash0 operator in SCE-only mode")
+			Expect(deployOperator(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				"",
+				&images,
+				&startup.OperatorConfigurationValues{
+					Endpoint:                   defaultEndpoint,
+					ApiEndpoint:                dash0ApiMockServiceBaseUrl,
+					Token:                      defaultToken,
+					TelemetryCollectionEnabled: false,
+				},
+				map[string]string{
+					"operator.signalControl.enabled": "true",
+				},
+			)).To(Succeed())
+
+			installDash0ApiMock()
+			installControlPlaneMock()
+			installDecisionMakerMock()
+
+			deploySignalControlResource(signalControlValues{
+				DecisionMakerEndpoint:   decisionMakerMockGrpcEndpoint,
+				ControlPlaneApiEndpoint: controlPlaneMockServiceBaseUrl,
+			})
+		})
+
+		AfterEach(func() {
+			cleanupStoredApiRequests()
+		})
+
+		AfterAll(func() {
+			removeSignalControlResource()
+			uninstallDecisionMakerMock()
+			uninstallControlPlaneMock()
+			uninstallDash0ApiMock()
+			undeployOperator(operatorNamespace)
+		})
+
+		It("deploys only the Signal Control collector and the Edge Proxy", func() {
+			By("verifying the Signal Control collector deployment and service have been created")
+			Eventually(func(g Gomega) {
+				g.Expect(runAndIgnoreOutput(exec.Command(
+					"kubectl", "-n", operatorNamespace, "get", signalControlCollectorNameQualified,
+				))).To(Succeed())
+				g.Expect(runAndIgnoreOutput(exec.Command(
+					"kubectl", "-n", operatorNamespace, "get", signalControlCollectorServiceNameQualified,
+				))).To(Succeed())
+			}, 60*time.Second, pollingInterval).Should(Succeed())
+			Expect(runAndIgnoreOutput(exec.Command(
+				"kubectl",
+				"-n", operatorNamespace,
+				"rollout", "status", signalControlCollectorNameQualified,
+				"--timeout=120s",
+			))).To(Succeed())
+
+			By("waiting for the Edge Proxy deployment to become available")
+			Eventually(func(g Gomega) {
+				g.Expect(runAndIgnoreOutput(exec.Command(
+					"kubectl",
+					"-n", operatorNamespace,
+					"wait", "--for=condition=Available",
+					"deployment/"+operatorHelmReleaseName+"-edge-proxy",
+					"--timeout=30s",
+				))).To(Succeed())
+			}, 120*time.Second, 2*time.Second).Should(Succeed())
+
+			By("validating that the daemonset collector, the deployment collector and the target allocator do not exist")
+			Consistently(func(g Gomega) {
+				verifyCollectorDaemonSetIsNotPresent(g)
+				verifyCollectorDeploymentIsNotPresent(g)
+			}, 20*time.Second, pollingInterval).Should(Succeed())
+			verifyThatTargetAllocatorIsNotDeployed(operatorNamespace)
+		})
+
+		It("exports telemetry that is sent directly to the Signal Control collector service", func() {
+			timestampLowerBound := time.Now()
+			metricName := "e2e.sce_only.test_gauge"
+
+			By("sending a metric via OTLP/HTTP to the Signal Control collector service")
+			Eventually(func(g Gomega) {
+				g.Expect(sendMetricToSignalControlCollector(applicationUnderTestNamespace, metricName)).To(Succeed())
+			}, 120*time.Second, 2*time.Second).Should(Succeed())
+
+			By("verifying the metric has been exported")
+			Eventually(func(g Gomega) {
+				askTelemetryMatcherForMetricNames(
+					g,
+					shared.ExpectAtLeastOne,
+					[]string{metricName},
+					timestampLowerBound,
+				)
+			}, 60*time.Second, pollingInterval).Should(Succeed())
+		})
+
+		It("should synchronize a Perses dashboard to the Dash0 API", func() {
+			deployDash0MonitoringResourceWithRetry(
+				applicationUnderTestNamespace,
+				// The monitoring validation webhook rejects instrumentWorkloads.mode=all when telemetry collection is
+				// disabled.
+				dash0MonitoringValues{
+					InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeNone,
+				},
+				operatorNamespace,
+			)
+			defer undeployDash0MonitoringResource(applicationUnderTestNamespace)
+
+			deployPersesDashboardResource(applicationUnderTestNamespace, persesDashboardV1Alpha2)
+			defer removePersesDashboardResource(applicationUnderTestNamespace, persesDashboardV1Alpha2)
+
+			//nolint:lll
+			routeRegex := "/api/dashboards/dash0-operator_.*_default_e2e-test-ns_perses-dashboard-e2e-test-v1alpha2\\?dataset=default"
+
+			By("verifying the dashboard has been synchronized to the Dash0 API via PUT")
+			req := fetchCapturedApiRequest(0)
+			Expect(req.Method).To(Equal("PUT"))
+			Expect(req.Url).To(MatchRegexp(routeRegex))
+			Expect(req.Body).ToNot(BeNil())
+			Expect(*req.Body).To(ContainSubstring("This is a test dashboard."))
+			verifyApiSyncRequest(req)
+		})
+	}) // end of suite "with Signal Control-only mode enabled"
+
 	Context("with the agent0-connector enabled", Ordered, func() {
 		var pseudoClusterUid string
 
@@ -2489,15 +2616,7 @@ log_statements:
 			By("installing the outbound-connector mock")
 			installOutboundConnectorMock()
 
-			By("determining the pseudo cluster UID (the UID of the kube-system namespace)")
-			clusterUid, err := run(exec.Command(
-				"kubectl",
-				"get", "namespace", "kube-system",
-				"-o", "jsonpath={.metadata.uid}",
-			), false)
-			Expect(err).ToNot(HaveOccurred())
-			pseudoClusterUid = strings.TrimSpace(clusterUid)
-			Expect(pseudoClusterUid).ToNot(BeEmpty())
+			pseudoClusterUid = determinePseudoClusterUid()
 
 			By("deploying the Dash0 operator with the agent0-connector enabled")
 			deployOperatorWithDefaultAutoOperationConfiguration(
@@ -2782,13 +2901,18 @@ spec:
 		)
 	}) // end of suite "with the agent0-connector enabled"
 
-	Context("with the agent0-connector enabled and a manually managed operator configuration resource", Ordered, func() {
+	Context("with the agent0-connector enabled, a manually managed operator configuration resource, and additional "+
+		"cluster role rules", Ordered, func() {
+		var pseudoClusterUid string
+
 		BeforeAll(func() {
 			By("installing the outbound-connector mock")
 			installOutboundConnectorMock()
 
-			By("deploying the Dash0 operator with the agent0-connector enabled, but without an operator configuration " +
-				"resource")
+			pseudoClusterUid = determinePseudoClusterUid()
+
+			By("deploying the Dash0 operator with the agent0-connector enabled and additional cluster role rules, " +
+				"but without an operator configuration resource")
 			deployOperatorWithoutAutoOperationConfiguration(
 				operatorNamespace,
 				operatorHelmChart,
@@ -2800,6 +2924,12 @@ spec:
 					"operator.agent0Connector.serverAddress": outboundConnectorMockGrpcEndpoint,
 					"operator.agent0Connector.token":         agent0ConnectorDummyToken,
 					"operator.agent0Connector.insecure":      "true",
+
+					// The additional rules are added to the default rules: they grant read access to config maps,
+					// which the default rules deliberately exclude.
+					"operator.agent0Connector.clusterRole.additionalRules[0].apiGroups[0]": "",
+					"operator.agent0Connector.clusterRole.additionalRules[0].resources":    "{configmaps}",
+					"operator.agent0Connector.clusterRole.additionalRules[0].verbs":        "{get,list}",
 				},
 			)
 
@@ -2821,10 +2951,21 @@ spec:
 			uninstallOutboundConnectorMock()
 		})
 
-		It("removes the agent0-connector when the operator configuration resource opts out, and redeploys it when the "+
-			"opt-out is revoked", func() {
+		verifyDefaultAndAdditionalRulesAreGranted := func() {
+			// namespaces are granted by the default rules, config maps by the additional rules.
+			verifyAgent0ConnectorCommandIsAllowedByRbac(
+				pseudoClusterUid, []string{"get", "namespaces"}, "kube-system")
+			verifyAgent0ConnectorCommandIsAllowedByRbac(
+				pseudoClusterUid, []string{"get", "configmaps", "--all-namespaces"}, rootCaConfigMapName)
+			verifyAgent0ConnectorCommandIsForbiddenByRbac(
+				pseudoClusterUid, []string{"get", "secrets", "--all-namespaces"}, "secrets")
+		}
+
+		It("grants the default rules plus the additional rules, removes the agent0-connector when the operator "+
+			"configuration resource opts out, and redeploys it when the opt-out is revoked", func() {
 			waitForAgent0ConnectorDeploymentToBecomeAvailable()
 			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceManuallyManagedName)
+			verifyDefaultAndAdditionalRulesAreGranted()
 
 			By("opting out of the agent0-connector via the operator configuration resource")
 			updateOperatorConfigurationAgent0ConnectorEnabled(
@@ -2839,8 +2980,10 @@ spec:
 
 			waitForAgent0ConnectorDeploymentToBecomeAvailable()
 			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceManuallyManagedName)
+			verifyDefaultAndAdditionalRulesAreGranted()
 		})
-	}) // end of suite "with the agent0-connector enabled and a manually managed operator configuration resource"
+	}) // end of suite "with the agent0-connector enabled, a manually managed operator configuration resource, and
+	// additional cluster role rules"
 
 	Context("with the synthetics-worker enabled and a manually managed operator configuration resource", Ordered, func() {
 		BeforeAll(func() {
@@ -2919,15 +3062,7 @@ spec:
 			By("installing the outbound-connector mock")
 			installOutboundConnectorMock()
 
-			By("determining the pseudo cluster UID (the UID of the kube-system namespace)")
-			clusterUid, err := run(exec.Command(
-				"kubectl",
-				"get", "namespace", "kube-system",
-				"-o", "jsonpath={.metadata.uid}",
-			), false)
-			Expect(err).ToNot(HaveOccurred())
-			pseudoClusterUid = strings.TrimSpace(clusterUid)
-			Expect(pseudoClusterUid).ToNot(BeEmpty())
+			pseudoClusterUid = determinePseudoClusterUid()
 
 			By("deploying a config map holding a credential")
 			applyConfigMapCmd := exec.Command("kubectl", "apply", "-f", "-")
@@ -3172,7 +3307,9 @@ spec:
 				g.Expect(response.Stderr).To(Equal(
 					"dash0 agent0-connector rejected the command: the kubectl command \"cluster-info\" has been " +
 						"disabled in the configuration of the agent0-connector (via the Helm value " +
-						"operator.agent0Connector.allowedKubectlCommands), the only allowed kubectl commands are " +
+						"operator.agent0Connector.allowedKubectlCommands, or " +
+						"spec.components.agent0Connector.allowedKubectlCommands of the Dash0OperatorConfiguration " +
+						"resource), the only allowed kubectl commands are " +
 						"\"api-resources\", \"api-versions\", \"auth\", \"explain\", \"get\", \"logs\", \"top\" " +
 						"and \"version\"",
 				))
@@ -3256,7 +3393,9 @@ spec:
 				g.Expect(response.Stderr).To(Equal(
 					"dash0 agent0-connector rejected the command: the kubectl command \"events\" has been " +
 						"disabled in the configuration of the agent0-connector (via the Helm value " +
-						"operator.agent0Connector.allowedKubectlCommands), the only allowed kubectl commands are " +
+						"operator.agent0Connector.allowedKubectlCommands, or " +
+						"spec.components.agent0Connector.allowedKubectlCommands of the Dash0OperatorConfiguration " +
+						"resource), the only allowed kubectl commands are " +
 						"\"api-resources\", \"api-versions\", \"auth\", \"explain\", \"get\", \"logs\", \"top\" " +
 						"and \"version\"",
 				))
@@ -4191,13 +4330,12 @@ spec:
 				)
 
 				By("verifying that the Node.js deployment has been instrumented by the previous operator release")
-				verifyThatWorkloadHasBeenInstrumented(
+				verifyThatWorkloadHasBeenInstrumentedByPreviousRelease(
 					applicationUnderTestNamespace,
 					runtimeTypeNodeJs,
 					workloadTypeDeployment,
 					testId,
 					createContainerImagesForHelmChartVersion(previousChartVersion),
-					"controller",
 				)
 
 				// The published chart versions used when the test suite runs against the published Helm chart might both
@@ -4421,7 +4559,8 @@ spec:
 					"-p",
 					`{"spec":{"components":{"daemonSetCollector":{`+
 						`"tolerations":[{"key":"e2e-resource-toleration","operator":"Exists"}],`+
-						`"labels":{"e2e-component-label":"from-resource"}}}}}`,
+						`"labels":{"e2e-component-label":"from-resource"},`+
+						`"collectorContainerResources":{"limits":{"memory":"550Mi"},"gomemlimit":"400MiB"}}}}}`,
 				))
 				Expect(err).ToNot(HaveOccurred())
 				Expect(output).To(ContainSubstring(
@@ -4434,6 +4573,14 @@ spec:
 						To(Equal("e2e-resource-toleration"))
 					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, "{.metadata.labels.e2e-component-label}")).
 						To(Equal("from-resource"))
+					collector := `{.spec.template.spec.containers[?(@.name=="opentelemetry-collector")]`
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, collector+".resources.limits.memory}")).
+						To(Equal("550Mi"))
+					// The request is not set in the resource and keeps its default.
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace, collector+".resources.requests.memory}")).
+						To(Equal("500Mi"))
+					g.Expect(readCollectorDaemonSetField(g, operatorNamespace,
+						collector+`.env[?(@.name=="GOMEMLIMIT")].value}`)).To(Equal("400MiB"))
 				}, 60*time.Second, time.Second).Should(Succeed())
 			})
 		})
@@ -4634,6 +4781,7 @@ spec:
 				}).Should(Succeed())
 
 				verifyThatCollectorIsRemovedEventually()
+				verifyThatOperatorManagedClusterScopedResourcesAreRemovedEventually()
 			}
 
 			Describe("when uninstalling the operator via helm", func() {

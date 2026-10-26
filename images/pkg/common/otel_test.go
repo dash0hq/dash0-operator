@@ -5,11 +5,22 @@ package common
 
 import (
 	"context"
+	"crypto/tls"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	lognoop "go.opentelemetry.io/otel/log/noop"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	collogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
+	colmetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 func TestOTelSDKIsConfigured(t *testing.T) {
@@ -239,6 +250,207 @@ func TestInitOTelSdkWithConfigWithoutEndpointUsesNoopProviders(t *testing.T) {
 
 	// must not panic or block when there is nothing to shut down
 	ShutDownOTelSdkThreadSafe(context.Background())
+}
+
+type logsServiceServer struct {
+	collogspb.UnimplementedLogsServiceServer
+}
+
+func (logsServiceServer) Export(
+	context.Context,
+	*collogspb.ExportLogsServiceRequest,
+) (*collogspb.ExportLogsServiceResponse, error) {
+	return &collogspb.ExportLogsServiceResponse{}, nil
+}
+
+type metricsServiceServer struct {
+	colmetricspb.UnimplementedMetricsServiceServer
+}
+
+func (metricsServiceServer) Export(
+	context.Context,
+	*colmetricspb.ExportMetricsServiceRequest,
+) (*colmetricspb.ExportMetricsServiceResponse, error) {
+	return &colmetricspb.ExportMetricsServiceResponse{}, nil
+}
+
+// startGrpcServer starts an OTLP gRPC receiver, using TLS with the given (self-signed) certificate if it is not nil.
+func startGrpcServer(t *testing.T, certificate *tls.Certificate) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("cannot listen: %v", err)
+	}
+	var serverOptions []grpc.ServerOption
+	if certificate != nil {
+		serverOptions = append(serverOptions, grpc.Creds(credentials.NewServerTLSFromCert(certificate)))
+	}
+	grpcServer := grpc.NewServer(serverOptions...)
+	collogspb.RegisterLogsServiceServer(grpcServer, logsServiceServer{})
+	colmetricspb.RegisterMetricsServiceServer(grpcServer, metricsServiceServer{})
+	go func() {
+		_ = grpcServer.Serve(listener)
+	}()
+	t.Cleanup(grpcServer.Stop)
+	return listener.Addr().String()
+}
+
+func TestExportersHonorTlsSettings(t *testing.T) {
+	otlpHttpHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		w.WriteHeader(http.StatusOK)
+	})
+	httpServer := httptest.NewTLSServer(otlpHttpHandler)
+	defer httpServer.Close()
+	httpPlaintextServer := httptest.NewServer(otlpHttpHandler)
+	defer httpPlaintextServer.Close()
+	selfSignedCertificate := &httpServer.TLS.Certificates[0]
+	grpcTlsAddress := startGrpcServer(t, selfSignedCertificate)
+	grpcPlaintextAddress := startGrpcServer(t, nil)
+
+	tests := []struct {
+		name          string
+		oTelSdkConfig OTelSdkConfig
+		wantSuccess   bool
+	}{
+		{
+			name: "gRPC, https, certificate verification fails",
+			oTelSdkConfig: OTelSdkConfig{
+				Endpoint: "https://" + grpcTlsAddress,
+				Protocol: ProtocolGrpc,
+			},
+			wantSuccess: false,
+		},
+		{
+			name: "gRPC, https, insecureSkipVerify",
+			oTelSdkConfig: OTelSdkConfig{
+				Endpoint:           "https://" + grpcTlsAddress,
+				Protocol:           ProtocolGrpc,
+				InsecureSkipVerify: true,
+			},
+			wantSuccess: true,
+		},
+		{
+			name: "gRPC, no scheme, insecureSkipVerify",
+			oTelSdkConfig: OTelSdkConfig{
+				Endpoint:           grpcTlsAddress,
+				Protocol:           ProtocolGrpc,
+				InsecureSkipVerify: true,
+			},
+			wantSuccess: true,
+		},
+		{
+			name: "gRPC, gRPC target with scheme, insecureSkipVerify",
+			oTelSdkConfig: OTelSdkConfig{
+				Endpoint:           "passthrough:///" + grpcTlsAddress,
+				Protocol:           ProtocolGrpc,
+				InsecureSkipVerify: true,
+			},
+			wantSuccess: true,
+		},
+		{
+			name: "gRPC, gRPC target with scheme, insecure",
+			oTelSdkConfig: OTelSdkConfig{
+				Endpoint: "passthrough:///" + grpcPlaintextAddress,
+				Protocol: ProtocolGrpc,
+				Insecure: true,
+			},
+			wantSuccess: true,
+		},
+		{
+			name: "gRPC, dns target without slashes, insecure",
+			oTelSdkConfig: OTelSdkConfig{
+				Endpoint: "dns:" + grpcPlaintextAddress,
+				Protocol: ProtocolGrpc,
+				Insecure: true,
+			},
+			wantSuccess: true,
+		},
+		{
+			name: "gRPC, dns target without address",
+			oTelSdkConfig: OTelSdkConfig{
+				Endpoint: "dns://" + grpcPlaintextAddress,
+				Protocol: ProtocolGrpc,
+				Insecure: true,
+			},
+			wantSuccess: false,
+		},
+		{
+			name: "gRPC, http, insecureSkipVerify is ignored",
+			oTelSdkConfig: OTelSdkConfig{
+				Endpoint:           "http://" + grpcPlaintextAddress,
+				Protocol:           ProtocolGrpc,
+				InsecureSkipVerify: true,
+			},
+			wantSuccess: true,
+		},
+		{
+			name: "HTTP, https, certificate verification fails",
+			oTelSdkConfig: OTelSdkConfig{
+				Endpoint: httpServer.URL,
+				Protocol: ProtocolHttpProtobuf,
+			},
+			wantSuccess: false,
+		},
+		{
+			name: "HTTP, https, insecureSkipVerify",
+			oTelSdkConfig: OTelSdkConfig{
+				Endpoint:           httpServer.URL,
+				Protocol:           ProtocolHttpProtobuf,
+				InsecureSkipVerify: true,
+			},
+			wantSuccess: true,
+		},
+		{
+			name: "HTTP, http, insecureSkipVerify is ignored",
+			oTelSdkConfig: OTelSdkConfig{
+				Endpoint:           httpPlaintextServer.URL,
+				Protocol:           ProtocolHttpProtobuf,
+				InsecureSkipVerify: true,
+			},
+			wantSuccess: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logCtx, cancelLogCtx := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancelLogCtx()
+			logExporter := createLogExporterFromConfig(logCtx, &tt.oTelSdkConfig)
+			defer func() { _ = logExporter.Shutdown(context.Background()) }()
+			var record sdklog.Record
+			record.SetBody(attribute.StringValue("test"))
+			logErr := logExporter.Export(logCtx, []sdklog.Record{record})
+
+			metricCtx, cancelMetricCtx := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancelMetricCtx()
+			metricExporter := createMetricExporterFromConfig(metricCtx, &tt.oTelSdkConfig)
+			defer func() { _ = metricExporter.Shutdown(context.Background()) }()
+			metricErr := metricExporter.Export(metricCtx, &metricdata.ResourceMetrics{
+				ScopeMetrics: []metricdata.ScopeMetrics{{
+					Metrics: []metricdata.Metrics{{
+						Name: "test",
+						Data: metricdata.Gauge[int64]{DataPoints: []metricdata.DataPoint[int64]{{Value: 1}}},
+					}},
+				}},
+			})
+
+			if tt.wantSuccess {
+				if logErr != nil {
+					t.Errorf("log export failed: %v", logErr)
+				}
+				if metricErr != nil {
+					t.Errorf("metric export failed: %v", metricErr)
+				}
+			} else {
+				if logErr == nil {
+					t.Errorf("log export succeeded, want an error")
+				}
+				if metricErr == nil {
+					t.Errorf("metric export succeeded, want an error")
+				}
+			}
+		})
+	}
 }
 
 func attributeValue(attributes []attribute.KeyValue, key string) string {
