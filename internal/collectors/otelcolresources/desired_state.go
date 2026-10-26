@@ -114,6 +114,7 @@ type oTelColConfig struct {
 	CollectPodLabelsAndAnnotationsEnabled            bool
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
 	CollectNodeLabelsAndAnnotationsEnabled           bool
+	KubernetesObjectCollectionEnabled                bool
 	CollectClusterScopedObjects                      bool
 	K8sAttributesDisableReplicasetInformer           bool
 	K8sAttributesWaitForMetadata                     bool
@@ -440,6 +441,7 @@ func assembleDesiredStateForUpsert(
 	monitoredNamespaces := make([]string, 0, len(allMonitoringResources))
 	namespacesWithLogCollection := make([]string, 0, len(allMonitoringResources))
 	namespacesWithEventCollection := make([]string, 0, len(allMonitoringResources))
+	namespacesWithKubernetesObjectCollection := make([]string, 0, len(allMonitoringResources))
 	namespacesWithPrometheusScraping := make([]string, 0, len(allMonitoringResources))
 	filters := make([]NamespacedFilter, 0, len(allMonitoringResources))
 	transforms := make([]NamespacedTransform, 0, len(allMonitoringResources))
@@ -456,6 +458,12 @@ func assembleDesiredStateForUpsert(
 		}
 		if pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.EventCollection.Enabled, true) {
 			namespacesWithEventCollection = append(namespacesWithEventCollection, namespace)
+		}
+		// Kubernetes object collection requires both the cluster-wide switch on the operator configuration resource and
+		// the per-namespace opt-in on the monitoring resource.
+		if config.KubernetesObjectCollectionEnabled &&
+			pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.KubernetesObjectCollection.Enabled, false) {
+			namespacesWithKubernetesObjectCollection = append(namespacesWithKubernetesObjectCollection, namespace)
 		}
 		if pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScraping.Enabled, true) {
 			namespacesWithPrometheusScraping = append(namespacesWithPrometheusScraping, namespace)
@@ -481,9 +489,7 @@ func assembleDesiredStateForUpsert(
 		monitoredNamespaces,
 		namespacesWithLogCollection,
 		namespacesWithEventCollection,
-		// namespacesWithKubernetesObjectCollection stays empty until the feature is switched on in a later step, so the
-		// k8s_objects receivers are not rendered yet.
-		nil,
+		namespacesWithKubernetesObjectCollection,
 		namespacesWithPrometheusScraping,
 		filters,
 		transforms,

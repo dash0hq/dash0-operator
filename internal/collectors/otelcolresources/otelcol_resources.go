@@ -146,6 +146,11 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			operatorConfigurationResource.Spec.CollectNodeLabelsAndAnnotations.Enabled,
 			false,
 		)
+	kubernetesObjectCollectionEnabled :=
+		pointers.ReadBoolPointerWithDefault(
+			operatorConfigurationResource.Spec.KubernetesObjectCollection.Enabled,
+			false,
+		)
 	collectClusterScopedObjects :=
 		pointers.ReadBoolPointerWithDefault(
 			operatorConfigurationResource.Spec.KubernetesObjectCollection.CollectClusterScopedObjects,
@@ -208,6 +213,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		CollectPodLabelsAndAnnotationsEnabled:            collectPodLabelsAndAnnotationsEnabled,
 		CollectNamespaceLabelsAndAnnotationsEnabled:      collectNamespaceLabelsAndAnnotationsEnabled,
 		CollectNodeLabelsAndAnnotationsEnabled:           collectNodeLabelsAndAnnotationsEnabled,
+		KubernetesObjectCollectionEnabled:                kubernetesObjectCollectionEnabled,
 		CollectClusterScopedObjects:                      collectClusterScopedObjects,
 		K8sAttributesDisableReplicasetInformer:           m.collectorConfig.K8sAttributesDisableReplicasetInformer,
 		K8sAttributesWaitForMetadata:                     m.collectorConfig.K8sAttributesWaitForMetadata,
