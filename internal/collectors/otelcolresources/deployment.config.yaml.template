@@ -492,6 +492,26 @@ processors:
     allow_all_keys: true
     blocked_key_patterns:
     - ^value$
+
+  # Samples MODIFIED manifest records at one per interval per object; the emitted record is the first of the window.
+  # The include_fields key deliberately leaves out the status fields that metrics already report (replica counts), and
+  # keeps the ones they cannot reconstruct (phase, conditions, container statuses).
+  log_dedup/k8s_objects:
+    interval: 30s
+    # The conditions guard is required: without it, log_dedup adds log_count and first/last_observed_timestamp
+    # attributes to every record on the shared pipeline, Kubernetes events included. Restricting to MODIFIED also keeps
+    # the initial-state burst out of the processor's unbounded buffer; ADDED and DELETED never dedup anyway.
+    conditions:
+      - IsMap(log.body) and log.body["type"] == "MODIFIED"
+    include_fields:
+      - body.type
+      - body.object.metadata.uid
+      - body.object.metadata.labels
+      - body.object.metadata.annotations
+      - body.object.spec
+      - body.object.status.phase
+      - body.object.status.conditions
+      - body.object.status.containerStatuses
   {{- end }}
 
   {{- if .ClusterName }}
@@ -741,6 +761,7 @@ service:
         {{- if $hasKubernetesObjectCollectionEnabledForAtLeastOneNamespace }}
         - transform/k8s_objects
         - redaction/k8s_objects
+        - log_dedup/k8s_objects
         {{- end }}
         - k8s_attributes
         {{- if .ClusterName }}

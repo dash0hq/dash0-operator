@@ -5816,6 +5816,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(ReadFromMap(collectorConfig, []string{"receivers", "k8s_objects/highcardinality"})).To(BeNil())
 			Expect(ReadFromMap(collectorConfig, []string{"processors", "transform/k8s_objects"})).To(BeNil())
 			Expect(ReadFromMap(collectorConfig, []string{"processors", "redaction/k8s_objects"})).To(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{"processors", "log_dedup/k8s_objects"})).To(BeNil())
 			pipelines := readPipelines(collectorConfig)
 			Expect(readPipelineReceivers(pipelines, "logs/k8sevents")).To(ConsistOf("k8s_events"))
 		})
@@ -5886,6 +5887,22 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Expect(redaction["allow_all_keys"]).To(BeTrue())
 				Expect(redaction["blocked_key_patterns"]).To(Equal([]any{"^value$"}))
 
+				logDedupRaw := ReadFromMap(collectorConfig, []string{"processors", "log_dedup/k8s_objects"})
+				Expect(logDedupRaw).ToNot(BeNil())
+				logDedup := logDedupRaw.(map[string]any)
+				Expect(logDedup["interval"]).To(Equal("30s"))
+				Expect(logDedup["conditions"]).To(Equal([]any{`IsMap(log.body) and log.body["type"] == "MODIFIED"`}))
+				Expect(logDedup["include_fields"]).To(Equal([]any{
+					"body.type",
+					"body.object.metadata.uid",
+					"body.object.metadata.labels",
+					"body.object.metadata.annotations",
+					"body.object.spec",
+					"body.object.status.phase",
+					"body.object.status.conditions",
+					"body.object.status.containerStatuses",
+				}))
+
 				pipelines := readPipelines(collectorConfig)
 				pipelineReceivers := readPipelineReceivers(pipelines, "logs/k8sevents")
 				Expect(pipelineReceivers).To(ContainElements("k8s_objects/default", "k8s_objects/highcardinality"))
@@ -5893,10 +5910,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 				transformIndex := indexOfPipelineEntry(pipelineProcessors, "transform/k8s_objects")
 				redactionIndex := indexOfPipelineEntry(pipelineProcessors, "redaction/k8s_objects")
+				logDedupIndex := indexOfPipelineEntry(pipelineProcessors, "log_dedup/k8s_objects")
 				k8sAttributesIndex := indexOfPipelineEntry(pipelineProcessors, "k8s_attributes")
 				Expect(transformIndex).To(BeNumerically(">=", 0))
 				Expect(redactionIndex).To(BeNumerically(">", transformIndex))
-				Expect(k8sAttributesIndex).To(BeNumerically(">", redactionIndex))
+				Expect(logDedupIndex).To(BeNumerically(">", redactionIndex))
+				Expect(k8sAttributesIndex).To(BeNumerically(">", logDedupIndex))
 				if eventCollectionEnabled {
 					Expect(pipelineReceivers).To(ContainElement("k8s_events"))
 					Expect(pipelineProcessors).To(ContainElement("transform/k8s_events"))
