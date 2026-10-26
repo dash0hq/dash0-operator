@@ -46,7 +46,7 @@ func main() {
 
 	common.StartPprofServerIfConfigured(logger)
 
-	meter := common.InitOTelSdkFromEnvVars(ctx, selfmonitoring.MeterName, serviceName, containerName)
+	meter := common.InitOTelSdkFromEnvVars(ctx, selfmonitoring.MeterName, containerName)
 	selfmonitoring.InitializeMetrics(meter, logger)
 	// Deliberately shutting down with the base context: the context below is cancelled when the termination signal
 	// arrives, and a cancelled context would keep the OTel SDK from flushing the telemetry it still holds.

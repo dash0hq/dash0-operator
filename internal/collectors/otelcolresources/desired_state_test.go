@@ -3159,6 +3159,12 @@ func verifySelfMonitoringEnvVarsForContainer(
 		Expect(actualValue).To(Equal(expectedValue))
 	}
 
+	resourceAttributesEnvVar := FindEnvVarByName(envVars, util.OtelResourceAttributesEnvVarName)
+	Expect(resourceAttributesEnvVar).NotTo(BeNil())
+	Expect(resourceAttributesEnvVar.Value).To(
+		HavePrefix("service.namespace=dash0-operator,service.name=dash0-operator-collector,service.version="),
+	)
+
 	if expectations.exportIsDash0 {
 		verifyDash0SelfMonitoringEnvVars(envVars, expectations)
 	}
