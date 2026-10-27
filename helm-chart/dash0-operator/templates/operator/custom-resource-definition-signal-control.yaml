@@ -1146,7 +1146,10 @@ spec:
                   cardholderData:
                     description: |-
                       Configuration for redacting cardholder data (payment card numbers, card verification codes, track data and PIN
-                      blocks) via the dash0redaction processor.
+                      blocks) via the dash0redaction processor. Primary account numbers are masked to their first six and last four
+                      digits, sensitive authentication data (card verification codes, track data, PIN blocks) is replaced as a whole.
+                      Matching values are redacted in place, signals are never dropped. Detection is pattern-based and cannot catch
+                      encoded, encrypted, or split card numbers.
                     properties:
                       enabled:
                         default: false
