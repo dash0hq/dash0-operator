@@ -14,6 +14,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -35,7 +37,7 @@ var _ = Describe("The Signal Control resource manager", func() {
 
 	var k8sClient client.Client
 
-	newResourceManager := func(k8sClient client.Client) *SignalControlResourceManager {
+	newResourceManagerWithMode := func(k8sClient client.Client, sceOnlyMode bool) *SignalControlResourceManager {
 		return NewSignalControlResourceManager(
 			k8sClient,
 			clientgoscheme.Scheme,
@@ -49,7 +51,12 @@ var _ = Describe("The Signal Control resource manager", func() {
 			cluster.KubernetesVersionInfo{},
 			false,
 			false,
+			sceOnlyMode,
+			false,
 		)
+	}
+	newResourceManager := func(k8sClient client.Client) *SignalControlResourceManager {
+		return newResourceManagerWithMode(k8sClient, false)
 	}
 
 	BeforeEach(func() {
@@ -59,7 +66,7 @@ var _ = Describe("The Signal Control resource manager", func() {
 	desiredObjects := func() []client.Object {
 		desiredState := assembleDesiredState(
 			OperatorNamespace, testNamePrefix, minimalSignalControl, DefaultOperatorConfigurationResourceWithUid(),
-			testEdgeProxyImage, corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort,
+			testEdgeProxyImage, corev1.PullIfNotPresent, testOperatorVersion, testSelfMonitoring,
 			cluster.KubernetesVersionInfo{}, util.ExtraConfig{}, false, false, false, logger,
 		)
 		objects := make([]client.Object, 0, len(desiredState))
@@ -184,5 +191,44 @@ var _ = Describe("The Signal Control resource manager", func() {
 		reconciled := &corev1.ConfigMap{}
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(configMap), reconciled)).To(Succeed())
 		Expect(reconciled.Data).To(Equal(updated.Data))
+	})
+
+	Describe("the Edge Proxy self-monitoring", func() {
+		operatorConfig := &dash0v1alpha1.Dash0OperatorConfiguration{
+			Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(true)},
+				Exports: []dash0common.Export{{
+					Dash0: &dash0common.Dash0Configuration{
+						Endpoint:      EndpointDash0Test,
+						Authorization: dash0common.Authorization{Token: &AuthorizationTokenTest},
+					},
+				}},
+			},
+		}
+
+		It("uses the node-local collector outside of SCE-only mode", func() {
+			selfMonitoring := newResourceManager(k8sClient).edgeProxySelfMonitoring(ctx, operatorConfig, logger)
+			Expect(selfMonitoring.otlpGrpcHostPort).To(Equal(testOtlpGrpcHostPort))
+			Expect(selfMonitoring.directExport).To(BeNil())
+		})
+
+		It("exports directly in SCE-only mode, without resolved secret values", func() {
+			selfMonitoring := newResourceManagerWithMode(k8sClient, true).
+				edgeProxySelfMonitoring(ctx, operatorConfig, logger)
+			Expect(selfMonitoring.directExport).ToNot(BeNil())
+			Expect(selfMonitoring.directExport.SelfMonitoringEnabled).To(BeTrue())
+			Expect(selfMonitoring.directExport.Export.Dash0).ToNot(BeNil())
+			Expect(selfMonitoring.directExport.Export.Dash0.Endpoint).To(Equal(EndpointDash0Test))
+			Expect(selfMonitoring.directExport.Token).To(BeNil())
+			Expect(selfMonitoring.directExport.ResolvedSecretHeaderValues).To(BeNil())
+		})
+
+		It("disables the direct export in SCE-only mode when self-monitoring is disabled", func() {
+			disabled := operatorConfig.DeepCopy()
+			disabled.Spec.SelfMonitoring.Enabled = new(false)
+			selfMonitoring := newResourceManagerWithMode(k8sClient, true).edgeProxySelfMonitoring(ctx, disabled, logger)
+			Expect(selfMonitoring.directExport).ToNot(BeNil())
+			Expect(selfMonitoring.directExport.SelfMonitoringEnabled).To(BeFalse())
+		})
 	})
 })

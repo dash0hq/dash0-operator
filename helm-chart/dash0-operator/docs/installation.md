@@ -21,15 +21,13 @@ To use the operator, you will need provide two configuration values:
 * **`endpoint`**: The URL of the Dash0 ingress endpoint backend to which telemetry data will be sent.
   This property is mandatory when installing the operator.
   This is the OTLP/gRPC endpoint of your Dash0 organization.
-  The correct OTLP/gRPC endpoint can be copied from https://app.dash0.com → organization settings → "Endpoints" →
-  "OTLP/gRPC".
+  The correct gRPC endpoint can be copied from https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc.
   Note that the correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
   Including a protocol prefix (e.g. `https://`) is optional.
 * Either **`token`** or **`secretRef`**: Exactly one of these two properties needs to be provided when installing the
   operator.
     * **`token`**: This is the Dash0 authorization token of your organization.
-      The authorization token for your Dash0 organization can be copied from https://app.dash0.com → organization
-      settings → "Auth Tokens".
+      The authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
       The prefix `Bearer ` must not be included in the value.
       Note that when you provide a token, it will be rendered verbatim into a Kubernetes ConfigMap object.
       Anyone with API access to the Kubernetes cluster will be able to read the value.

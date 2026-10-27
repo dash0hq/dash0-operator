@@ -17,6 +17,7 @@ import (
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -52,6 +53,16 @@ type clientObject struct {
 	object client.Object
 }
 
+// edgeProxySelfMonitoring determines where the Edge Proxy sends its own telemetry.
+type edgeProxySelfMonitoring struct {
+	// otlpGrpcHostPort is the OTLP gRPC host port of the node-local collector daemonset pod, which receives the Edge
+	// Proxy's telemetry unless directExport is set.
+	otlpGrpcHostPort int32
+	// directExport is only set in SCE-only mode, where there is no collector daemonset.
+	directExport    *selfmonitoringapiaccess.SelfMonitoringConfiguration
+	developmentMode bool
+}
+
 func assembleDesiredState(
 	operatorNamespace string,
 	namePrefix string,
@@ -60,7 +71,7 @@ func assembleDesiredState(
 	edgeProxyImage string,
 	edgeProxyImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
-	otlpGrpcHostPort int32,
+	selfMonitoring edgeProxySelfMonitoring,
 	kubernetesApiServerVersion cluster.KubernetesVersionInfo,
 	extraConfig util.ExtraConfig,
 	forDeletion bool,
@@ -82,7 +93,7 @@ func assembleDesiredState(
 		if edgeProxyEnabled {
 			trafficDistribution := cluster.ResolveServiceTrafficDistribution(kubernetesApiServerVersion, logger)
 			desiredState = append(desiredState,
-				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, signalControlResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, otlpGrpcHostPort, extraConfig, isGkeAutopilot, isOpenShift, logger)),
+				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, signalControlResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, selfMonitoring, extraConfig, isGkeAutopilot, isOpenShift, logger)),
 				addCommonMetadata(assembleEdgeProxyService(operatorNamespace, namePrefix, trafficDistribution)),
 				addCommonMetadata(assembleEdgeProxyPodDisruptionBudget(operatorNamespace, namePrefix)),
 			)
@@ -102,7 +113,7 @@ func assembleDesiredStateForDelete(
 	namePrefix string,
 	logger logd.Logger,
 ) []clientObject {
-	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", 0, cluster.KubernetesVersionInfo{}, util.ExtraConfig{}, true, false, false, logger)
+	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", edgeProxySelfMonitoring{}, cluster.KubernetesVersionInfo{}, util.ExtraConfig{}, true, false, false, logger)
 }
 
 func assembleEdgeProxyDeployment(
@@ -113,7 +124,7 @@ func assembleEdgeProxyDeployment(
 	edgeProxyImage string,
 	edgeProxyImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
-	otlpGrpcHostPort int32,
+	selfMonitoring edgeProxySelfMonitoring,
 	extraConfig util.ExtraConfig,
 	isGkeAutopilot bool,
 	isOpenShift bool,
@@ -318,10 +329,12 @@ func assembleEdgeProxyDeployment(
 			}
 		}
 	}
-	if operatorConfig != nil && pointers.ReadBoolPointerWithDefault(operatorConfig.Spec.SelfMonitoring.Enabled, true) {
+	if selfMonitoring.directExport == nil &&
+		operatorConfig != nil &&
+		pointers.ReadBoolPointerWithDefault(operatorConfig.Spec.SelfMonitoring.Enabled, true) {
 		edgeProxyContainer.Env = append(
 			edgeProxyContainer.Env,
-			assembleSelfMonitoringEnvVars(operatorVersion, otlpGrpcHostPort)...,
+			assembleSelfMonitoringEnvVars(operatorVersion, selfMonitoring.otlpGrpcHostPort)...,
 		)
 	}
 	podSpec := corev1.PodSpec{
@@ -377,7 +390,54 @@ func assembleEdgeProxyDeployment(
 			Spec: podSpec,
 		},
 	}
+	if selfMonitoring.directExport != nil {
+		enableDirectSelfMonitoring(
+			deployment,
+			*selfMonitoring.directExport,
+			operatorVersion,
+			selfMonitoring.developmentMode,
+			isGkeAutopilot,
+			logger,
+		)
+	}
 	return deployment
+}
+
+// enableDirectSelfMonitoring points the Edge Proxy's OTel SDK directly at the self-monitoring export. This is limited
+// to Dash0 exports: the Edge Proxy only creates OTLP gRPC exporters, and the Go SDK does not reliably handle the dns://
+// endpoints generated for plain gRPC exports.
+func enableDirectSelfMonitoring(
+	deployment *appsv1.Deployment,
+	selfMonitoringConfiguration selfmonitoringapiaccess.SelfMonitoringConfiguration,
+	operatorVersion string,
+	developmentMode bool,
+	isGkeAutopilot bool,
+	logger logd.Logger,
+) {
+	if !selfMonitoringConfiguration.SelfMonitoringEnabled {
+		return
+	}
+	if isGkeAutopilot {
+		// The GKE Autopilot workload allowlist of the Edge Proxy does not permit the SELF_MONITORING_AUTH_TOKEN
+		// environment variable of the direct export, so GKE Autopilot would reject the Edge Proxy pod.
+		logger.Info("Self-monitoring for the Edge Proxy is not supported on GKE Autopilot in SCE-only mode, the Edge " +
+			"Proxy will not send self-monitoring telemetry.")
+		return
+	}
+	if selfMonitoringConfiguration.Export.Dash0 == nil {
+		logger.Info("Self-monitoring for the Edge Proxy is only supported with a Dash0 export in SCE-only mode, the " +
+			"Edge Proxy will not send self-monitoring telemetry.")
+		return
+	}
+	if err := selfmonitoringapiaccess.EnableSelfMonitoringInDeployment(
+		deployment,
+		selfMonitoringConfiguration,
+		operatorVersion,
+		developmentMode,
+		"",
+	); err != nil {
+		logger.Error(err, "cannot enable self-monitoring for the Edge Proxy")
+	}
 }
 
 // assembleSelfMonitoringEnvVars returns env vars that point the Edge Proxy's OTel SDK exporter at the node-local daemonset

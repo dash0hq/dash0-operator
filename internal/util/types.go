@@ -118,6 +118,9 @@ type CollectorConfig struct {
 	DebugVerbosityDetailed bool
 	EnableProfExtension    bool
 	CompressConfigMap      bool
+	// SignalControlSceOnlyMode is true if Signal Control is enabled and telemetry collection is disabled via Helm. If
+	// true, neither the collector DaemonSet nor the cluster metrics collector Deployment is deployed.
+	SignalControlSceOnlyMode bool
 }
 
 // KubeletStatsReceiverConfig holds the configuration for the kubeletstats receiver in the DaemonSet collector. It is

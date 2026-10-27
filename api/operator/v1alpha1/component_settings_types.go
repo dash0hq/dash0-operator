@@ -367,10 +367,17 @@ type Agent0ConnectorSettings struct {
 	// The kubectl commands the agent0-connector may execute (Helm value operator.agent0Connector.allowedKubectlCommands).
 	// The settings are merged with the defaults of the Helm chart per command, not with the commands provided via Helm:
 	// a command that is not set here keeps its default. At least one command needs to stay enabled. Allowing a command
-	// does not grant the RBAC permissions it needs (Helm value operator.agent0Connector.clusterRole.rules).
+	// does not grant the RBAC permissions it needs (Helm value operator.agent0Connector.clusterRole.additionalRules or
+	// operator.agent0Connector.clusterRole.rules).
 	//
 	// +kubebuilder:validation:Optional
 	AllowedKubectlCommands *Agent0ConnectorAllowedKubectlCommands `json:"allowedKubectlCommands,omitempty"`
+
+	// Whether to enable pprof for the agent0-connector pod (Helm value operator.agent0Connector.enablePprof, default
+	// false). Only enable this if instructed by Dash0 support.
+	//
+	// +kubebuilder:validation:Optional
+	EnablePprof *bool `json:"enablePprof,omitempty"`
 
 	// The resources of the agent0-connector container (Helm value operator.agent0Connector.containerResources).
 	//

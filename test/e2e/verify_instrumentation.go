@@ -28,6 +28,47 @@ func verifyThatWorkloadHasBeenInstrumented(
 	images Images,
 	instrumentationBy string,
 ) {
+	verifyThatWorkloadIsInstrumentedEventually(
+		namespace,
+		runtime,
+		workloadType,
+		testId,
+		images,
+		instrumentationBy,
+		true,
+	)
+}
+
+// verifyThatWorkloadHasBeenInstrumentedByPreviousRelease does not check for the absence of the
+// dash0.com/webhook-ignore-once label, since the previous release might leave it on workloads that it has instrumented
+// while the monitoring resource was not yet available.
+func verifyThatWorkloadHasBeenInstrumentedByPreviousRelease(
+	namespace string,
+	runtime runtimeType,
+	workloadType workloadType,
+	testId string,
+	images Images,
+) {
+	verifyThatWorkloadIsInstrumentedEventually(
+		namespace,
+		runtime,
+		workloadType,
+		testId,
+		images,
+		"controller",
+		false,
+	)
+}
+
+func verifyThatWorkloadIsInstrumentedEventually(
+	namespace string,
+	runtime runtimeType,
+	workloadType workloadType,
+	testId string,
+	images Images,
+	instrumentationBy string,
+	expectIgnoreOnceLabelToBeRemoved bool,
+) {
 	By(fmt.Sprintf("%s %s: waiting for the workload to get instrumented (polling its labels and events to check)",
 		runtime.runtimeTypeLabel,
 		workloadType.workloadTypeString))
@@ -41,6 +82,9 @@ func verifyThatWorkloadHasBeenInstrumented(
 			images,
 			instrumentationBy,
 		)
+		if expectIgnoreOnceLabelToBeRemoved {
+			verifyNoWebhookIgnoreOnceLabel(g, namespace, runtime, workloadType)
+		}
 		verifySuccessfulInstrumentationEvent(g, namespace, runtime, workloadType, instrumentationBy)
 	}, labelChangeTimeout, pollingInterval).Should(Succeed())
 

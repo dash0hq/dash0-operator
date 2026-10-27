@@ -33,24 +33,24 @@ operator:
     enabled: false
 
     # The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory if
-    # operator.dash0Export.enabled is true, otherwise it will be ignored. The value needs to be the OTLP/gRPC endpoint
-    # of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com -> organization
-    # settings -> "Endpoints" -> "OTLP/gRPC". The correct endpoint value will always start with `ingress.` and end in
-    # `dash0.com:4317`.
+    # operator.dash0Export.enabled is true, otherwise it will be ignored. The value needs to be the OTLP via gRPC
+    # endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
+    # https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. The correct endpoint value will always
+    # start with `ingress.` and end in `dash0.com:4317`.
     endpoint:
 
     # The identifier of the dataset to be used for reported telemetry and API access. Note that this is the dataset's
-    # identifier, not its display name; for example, a dataset named "prod" can have the identifier "default". The
-    # identifier can be looked up in https://app.dash0.com -> organization settings -> "Datasets". This property is
-    # optional. If omitted, no dataset is sent along with the telemetry and Dash0 selects the dataset based on the auth
-    # token; API access uses "default".
+    # identifier, not its display name; for example, a dataset named "Production" can have the identifier "prod". The
+    # identifier can be looked up in https://app.dash0.com/settings/datasets. This property is optional. If omitted, no
+    # dataset is sent along with the telemetry and Dash0 selects the dataset based on the auth token; API access uses
+    # "default".
     # See https://www.dash0.com/docs/dash0/miscellaneous/glossary/datasets.
     dataset:
 
     # The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
     # dashboards, check rules, synthetic checks and views via the operator. This property is mandatory. The value needs
-    # to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom
-    # https://app.dash0.com -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always
+    # to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied from
+    # https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. The correct endpoint value will always
     # start with "https://api." and end in ".dash0.com"
     apiEndpoint:
 
@@ -58,14 +58,12 @@ operator:
     # has to be provided if operator.dash0Export.enabled is true. If operator.dash0Export.enabled is false, this
     # property will be ignored.
     # If both token and secretRef are provided, the token will be used and secretRef will be ignored. The authorization
-    # token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
-    # "Auth Tokens".
+    # token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
     token:
 
     # A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
     # ignored if either operator.dash0Export.enabled is false or operator.dash0Export.token is set. The authorization
-    # token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
-    # "Auth Tokens".
+    # token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
     secretRef:
       # The name of the secret containing the Dash0 authorization token. Example: Assume you have created the Kubernetes
       # secret with the following command:
@@ -199,16 +197,21 @@ operator:
   profilingEnabled: false
 
   # An opt-out for telemetry collection. If set to false, the operator will not deploy any OpenTelemetry collectors
-  # to the cluster, and no telemetry will be collected. This is useful if you want to use the operator only for
-  # infrastructure-as-code purposes (dashboards, check rules, etc.) without having it collect telemetry. Setting this to
-  # false also implicitly disables all other telemetry-collection related settings (see above), except for
-  # self-monitoring telemetry from the operator (which can be enabled or disabled independently).
+  # to the cluster (except in SCE-only mode, see below), and no telemetry will be collected. This is useful if you want
+  # to use the operator only for infrastructure-as-code purposes (dashboards, check rules, etc.) without having it
+  # collect telemetry. Setting this to false also implicitly disables all other telemetry-collection related settings
+  # (see above), except for self-monitoring telemetry from the operator (which can be enabled or disabled
+  # independently).
+  #
+  # If this is set to false and operator.signalControl.enabled is set to true, the operator runs in SCE-only mode: it
+  # only deploys the Signal Control collector and the Edge Proxy, see operator.signalControl.enabled.
   #
   # This setting is optional, it defaults to true.
   #
   # By default (i.e. if this setting is true), the operator Helm chart will set up all necessary permissions to manage
   # OpenTelemetry collectors and the target allocator, including permissions to create ClusterRoles. If set to false,
-  # these RBAC permissions will not be granted, and the operator will run with a reduced set of RBAC permissions.
+  # these RBAC permissions will not be granted, and the operator will run with a reduced set of RBAC permissions. In
+  # SCE-only mode, the permissions to manage OpenTelemetry collectors are still granted.
   #
   # If this is set to false, and operator.dash0Export.enabled is also false (i.e. the Dash0OperatorConfiguration
   # resource is managed manually), it will not be possible to set spec.telemetryCollection.enabled to true in the
@@ -547,7 +550,7 @@ operator:
     repository: "ghcr.io/dash0hq/signal-control-collector"
     # The Signal Control collector is versioned independently of the operator, so this tag is pinned to that component
     # version; it does not track the chart appVersion.
-    tag: "1.5.1"
+    tag: "1.5.2"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -558,7 +561,7 @@ operator:
     repository: "ghcr.io/dash0hq/edge-proxy"
     # The Edge Proxy is versioned independently of the operator, so this tag is pinned to that component version; it
     # does not track the chart appVersion.
-    tag: "1.4.0"
+    tag: "1.5.2"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -1389,6 +1392,11 @@ operator:
   # Settings related to Signal Control.
   signalControl:
     # Whether to enable Signal Control features for this operator install.
+    #
+    # If this is set to true and operator.telemetryCollectionEnabled is set to false, the operator only deploys the
+    # Signal Control collector and the Edge Proxy (SCE-only mode), and applications send OTLP directly to the Signal
+    # Control collector. Switching an existing installation to this mode requires a re-install. See
+    # https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/signal-control-edge#sce-only-mode.
     enabled: false
 
     # Settings for the Edge Proxy deployed when signalControl.enabled=true.
@@ -1482,8 +1490,8 @@ operator:
     # If operator.agent0Connector.enabled is false, this value will be ignored.
     #
     # The value needs to be the "Outbound Connector" endpoint of your Dash0 organization. The correct endpoint can be
-    # copied from https://app.dash0.com/settings/endpoints -> "Outbound Connector". The correct endpoint value will
-    # always start with `outbound-connector.` and end in `dash0.com:443`.
+    # copied from https://app.dash0.com/goto/settings/endpoints?endpoint_type=outbound_connector. The correct endpoint
+    # value will always start with `outbound-connector.` and end in `dash0.com:443`.
     serverAddress: ""
 
     # The Dash0 authorization token for the agent0-connector. Either this value or the
@@ -1543,6 +1551,13 @@ operator:
     # of 30 seconds, hence down-sizing to 1 is not recommended.
     maxConcurrentCommands: 2
 
+    # If set to true, pprof will be enabled for the agent0-connector pod. The agent0-connector serves pprof on the
+    # loopback address 127.0.0.1:1777, reachable via kubectl port-forward, see
+    # https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/troubleshooting#agent0-connector-heap-profile.
+    # The default is false, do not override this unless explicitly instructed by Dash0 support. Remove the override
+    # after the agent0-connector troubleshooting is finished. Changing the flag will restart the agent0-connector pod.
+    enablePprof: false
+
     # Additional labels to be set on the agent0-connector deployment managed by the operator.
     labels: {}
 
@@ -1591,15 +1606,16 @@ operator:
       # grants read-only access to a fixed set of well-known resource types. The default rules are listed in
       # helm-chart/dash0-operator/files/agent0-connector-default-cluster-role-rules.yaml.
       #
-      # The rules configured here replace the default rules for the agent0-connector cluster role, they are not merged
-      # with the defaults. Configuring custom rules can also be used to restrict agent0-connector's access in the
+      # The rules configured here *replace* the default rules for the agent0-connector cluster role, they are not merged
+      # with the defaults. Use the additionalRules setting instead of the rules setting if you want to keep the default
+      # rules and add more rules on top of them. Only one of rules and additionalRules can be set, setting both makes
+      # the Helm installation fail.
+      #
+      # Configuring custom rules via the rules setting can also be used to restrict agent0-connector's access in the
       # cluster, by granting access to fewer resource types. Configuring custom rules can also be used to widen
       # agent0-connector's access, for example to a resource type the default rules do not cover. All rules configured
       # here will also be granted to the operator manager, as it can only grant permissions to agent0-connector it holds
       # itself.
-      #
-      # To start from the current default rules, read them from the cluster and edit the copy:
-      #   kubectl get clusterrole dash0-operator-manager-agent0-connector-ro -o yaml
       #
       # Prefer naming the resource types explicitly over granting a wildcard.
       #
@@ -1676,6 +1692,34 @@ operator:
       #     verbs: ["get"]
       rules: []
 
+      # Additional RBAC rules for the cluster role of the agent0-connector. By default, this list is empty. The rules
+      # configured here are added to the default rules (see
+      # helm-chart/dash0-operator/files/agent0-connector-default-cluster-role-rules.yaml), that is, the agent0-connector
+      # is granted the default rules plus the rules listed here. This is the recommended way to allow access to
+      # additional resource types. Additional rules can only widen the agent0-connector's access, to restrict it, use
+      # rules (see above) instead.
+      #
+      # Only one of rules and additionalRules can be set, setting both makes the Helm installation fail.
+      #
+      # The same restrictions as for rules apply: only read-only rules are accepted, and all additional rules will also
+      # be granted to the operator manager.
+      #
+      # **IMPORTANT:** Allowing access to additional resources can have security implications. When you set up
+      # additional custom rules here, it becomes your responsibility to make sure they still match your security needs.
+      # Only grant access to additional resources types when you are confident that it cannot be used to access
+      # sensitive data (auth tokens, credentials, API secrets, PII etc.) in the cluster. Failure to do so makes that
+      # sensitive data accessible to anyone who has access to your Dash0 organization.
+      #
+      # Example:
+      # additionalRules:
+      #   - apiGroups: [""]
+      #     resources: ["configmaps"]
+      #     verbs: ["get", "list"]
+      #   - apiGroups: ["example.com"]
+      #     resources: ["widgets"]
+      #     verbs: ["get", "list"]
+      additionalRules: []
+
     # The kubectl commands the agent0-connector may execute on behalf of Agent0. A command set to false is rejected by
     # the agent0-connector. Note that Helm merges the map you provide with the defaults below, so this is not an
     # exclusive list: to disable a command that is enabled by default, you need to set it to false explicitly. Commands
@@ -1684,7 +1728,8 @@ operator:
     # the agent0-connector always rejects (e.g. "kubectl describe", or any command that modifies the cluster state)
     # cannot be enabled here. Listing any other key than the ones below fails the installation. Disabling all commands
     # also fails the installation - set operator.agent0Connector.enabled=false instead. Allowing a command does not
-    # automatically grant the RBAC permissions it needs, see operator.agent0Connector.clusterRole.rules.
+    # automatically grant the RBAC permissions it needs, see operator.agent0Connector.clusterRole.additionalRules and
+    # operator.agent0Connector.clusterRole.rules.
     allowedKubectlCommands:
       api-resources: true
       auth: true
@@ -1694,8 +1739,9 @@ operator:
       # credentials, API tokens, secrets or customer PII is leaked into event bodies. If in doubt, leave it disabled.
       # Kubernetes events can also be collected as normal telemetry via the operator, which is also available to
       # Agent0 then. If you want to allow access to events, you also need to allow RBAC access to events (core API
-      # group) and events.events.k8s.io via operator.agent0Connector.clusterRole.rules. While events is disabled, reading
-      # events via "kubectl get events" is rejected as well.
+      # group) and events.events.k8s.io via operator.agent0Connector.clusterRole.additionalRules (or
+      # operator.agent0Connector.clusterRole.rules). While events is disabled, reading events via "kubectl get events"
+      # is rejected as well.
       events: false
       explain: true
       # kubectl get is the main kubectl command that Agent0 uses. Disabling it will likely render the agent0-connector
@@ -1706,7 +1752,7 @@ operator:
       # information like credentials, API tokens, secrets or customer PII into logs in the cluster. If in doubt,
       # leave it disabled. Pod logs can also be collected via OTLP, and are then also available to Agent0.
       # If you want to allow access to logs, you also need to allow RBAC access to pods/log (core API group) via
-      # operator.agent0Connector.clusterRole.rules.
+      # operator.agent0Connector.clusterRole.additionalRules (or operator.agent0Connector.clusterRole.rules).
       logs: false
       top: true
       version: true

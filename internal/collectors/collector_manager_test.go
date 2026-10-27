@@ -573,6 +573,84 @@ var _ = Describe("The collector manager", Ordered, func() {
 		})
 	})
 
+	Describe("in SCE-only mode", func() {
+		var warnings []string
+		var recordingLogger logd.Logger
+		var operatorConfiguration *dash0v1alpha1.Dash0OperatorConfiguration
+
+		BeforeEach(func() {
+			warnings = nil
+			recordingLogger = logd.NewLogger(funcr.New(func(_ string, args string) {
+				warnings = append(warnings, args)
+			}, funcr.Options{}))
+			operatorConfiguration = CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
+		})
+
+		// SCE-only mode is active when telemetry collection is disabled via Helm, which also disables it in the operator
+		// configuration resource.
+		disableTelemetryCollection := func() {
+			operatorConfiguration.Spec.TelemetryCollection.Enabled = new(false)
+			Expect(k8sClient.Update(ctx, operatorConfiguration)).To(Succeed())
+		}
+
+		AfterEach(func() {
+			_, err := collectorManager.oTelColResourceManager.DeleteResources(ctx, util.ExtraConfigDefaults, logger)
+			Expect(err).ToNot(HaveOccurred())
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
+		})
+
+		createSignalControlResource := func() {
+			scResource := &dash0v1alpha1.Dash0SignalControl{
+				ObjectMeta: metav1.ObjectMeta{Name: "dash0-signal-control-test"},
+				Spec:       dash0v1alpha1.Dash0SignalControlSpec{Enabled: ptr.To(true)},
+			}
+			Expect(k8sClient.Create(ctx, scResource)).To(Succeed())
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, scResource)
+		}
+
+		It("removes the daemonset and deployment collectors and keeps the Signal Control collector", func() {
+			createSignalControlResource()
+			collectorManager = newCollectorManagerWithSignalControlEnabled()
+			_, err := collectorManager.ReconcileOpenTelemetryCollector(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			VerifyResourceExists(ctx, k8sClient, operatorNamespace, ExpectedDaemonSetName, &appsv1.DaemonSet{})
+			VerifyResourceExists(ctx, k8sClient, operatorNamespace, ExpectedDeploymentName, &appsv1.Deployment{})
+
+			disableTelemetryCollection()
+			collectorManager = newCollectorManagerWithSceOnlyMode()
+			_, err = collectorManager.ReconcileOpenTelemetryCollector(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			VerifyResourceDoesNotExist(ctx, k8sClient, operatorNamespace, ExpectedDaemonSetName, &appsv1.DaemonSet{})
+			VerifyResourceDoesNotExist(ctx, k8sClient, operatorNamespace, ExpectedDeploymentName, &appsv1.Deployment{})
+			VerifyResourceExists(
+				ctx, k8sClient, operatorNamespace, ExpectedSignalControlCollectorName, &appsv1.Deployment{})
+			cm := GetSignalControlCollectorConfigMap(ctx, k8sClient, operatorNamespace)
+			Expect(cm.Data["config.yaml"]).To(ContainSubstring("dash0settingsonedgeextension"))
+		})
+
+		It("deploys no collector and warns when there is no Signal Control resource", func() {
+			disableTelemetryCollection()
+			collectorManager = newCollectorManagerWithSceOnlyMode()
+			_, err := collectorManager.reconcileOpenTelemetryCollector(ctx, recordingLogger)
+			Expect(err).ToNot(HaveOccurred())
+
+			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
+			VerifySignalControlCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
+			Expect(warnings).To(ContainElement(ContainSubstring("SCE-only mode is active")))
+		})
+
+		It("does not warn when the Signal Control collector is deployed", func() {
+			createSignalControlResource()
+			disableTelemetryCollection()
+			collectorManager = newCollectorManagerWithSceOnlyMode()
+			_, err := collectorManager.reconcileOpenTelemetryCollector(ctx, recordingLogger)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(warnings).ToNot(ContainElement(ContainSubstring("SCE-only mode is active")))
+		})
+	})
+
 	Describe("when component settings are configured in the custom resources", func() {
 		helmToleration := corev1.Toleration{Key: "helm", Operator: corev1.TolerationOpExists}
 		resourceToleration := corev1.Toleration{Key: "resource", Operator: corev1.TolerationOpExists}
@@ -983,6 +1061,14 @@ var _ = Describe("The collector manager", Ordered, func() {
 })
 
 func newCollectorManagerWithSignalControlEnabled() *CollectorManager {
+	return newSignalControlCollectorManager(false)
+}
+
+func newCollectorManagerWithSceOnlyMode() *CollectorManager {
+	return newSignalControlCollectorManager(true)
+}
+
+func newSignalControlCollectorManager(sceOnlyMode bool) *CollectorManager {
 	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
 		k8sClient,
 		k8sClient.Scheme(),
@@ -992,6 +1078,7 @@ func newCollectorManagerWithSignalControlEnabled() *CollectorManager {
 			OperatorNamespace:         operatorNamespace,
 			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
 			TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
+			SignalControlSceOnlyMode:  sceOnlyMode,
 		},
 		NewLeaderElectionAwareMock(true),
 	)

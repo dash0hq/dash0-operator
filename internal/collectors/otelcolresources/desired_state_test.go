@@ -614,6 +614,65 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(collectorContainer.Resources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 	})
 
+	Describe("in SCE-only mode", func() {
+		sceOnlyConfig := func() *oTelColConfig {
+			return &oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         defaultDash0ExportersWithToken(),
+				Images:            TestImages,
+				SignalControl: SignalControlConfig{
+					Enabled:     true,
+					Endpoint:    "decision-maker.example.com:443",
+					ApiEndpoint: "https://control-plane-api.dash0.com",
+					Dataset:     "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				SignalControlSceOnlyMode:                         true,
+			}
+		}
+
+		It("should only contain the Signal Control collector resources", func() {
+			monitoringResources := []dash0v1beta1.Dash0Monitoring{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      MonitoringResourceName,
+						Namespace: "namespace-1",
+					},
+					Spec: dash0v1beta1.Dash0MonitoringSpec{
+						LogCollection:   dash0common.LogCollection{Enabled: new(true)},
+						EventCollection: dash0common.EventCollection{Enabled: new(true)},
+					},
+				},
+			}
+			desiredState, err := assembleDesiredStateForUpsert(
+				sceOnlyConfig(), monitoringResources, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+
+			// config map, service, pod disruption budget, deployment
+			Expect(desiredState).To(HaveLen(4))
+			Expect(getSignalControlCollector(desiredState)).ToNot(BeNil())
+			Expect(getDaemonSet(desiredState)).To(BeNil())
+			Expect(getDeployment(desiredState)).To(BeNil())
+		})
+
+		It("should contain no resources if Signal Control is not active", func() {
+			config := sceOnlyConfig()
+			config.SignalControl.Enabled = false
+			desiredState, err := assembleDesiredStateForUpsert(config, nil, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(desiredState).To(BeEmpty())
+		})
+
+		It("should still contain the producer collectors when assembling the desired state for deletion", func() {
+			desiredState, err := assembleDesiredStateForDelete(sceOnlyConfig(), util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(getSignalControlCollector(desiredState)).ToNot(BeNil())
+			Expect(getDaemonSet(desiredState)).ToNot(BeNil())
+			Expect(getDeployment(desiredState)).ToNot(BeNil())
+		})
+	})
+
 	It("should describe the desired state as a set of Kubernetes client objects", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,

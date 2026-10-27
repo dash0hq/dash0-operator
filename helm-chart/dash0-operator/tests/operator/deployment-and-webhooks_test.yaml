@@ -1621,16 +1621,69 @@ tests:
           value: DASH0_SIGNAL_CONTROL_COLLECTOR_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[13].value
-          value: "ghcr.io/dash0hq/signal-control-collector:1.5.1"
+          value: "ghcr.io/dash0hq/signal-control-collector:1.5.2"
       - equal:
           path: spec.template.spec.containers[0].env[18].name
           value: DASH0_EDGE_PROXY_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[18].value
-          value: "ghcr.io/dash0hq/edge-proxy:1.4.0"
+          value: "ghcr.io/dash0hq/edge-proxy:1.5.2"
       - equal:
           path: spec.template.spec.containers[0].env[21].name
           value: K8S_POD_UID
+
+  - it: should pass both flags that SCE-only mode is derived from
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        telemetryCollectionEnabled: false
+        signalControl:
+          enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --dash0-telemetry-collection-enabled=false
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --dash0-feature-signal-control-enabled=true
+
+  - it: should not render the injector webhook in SCE-only mode
+    set:
+      operator:
+        telemetryCollectionEnabled: false
+        signalControl:
+          enabled: true
+    asserts:
+      - containsDocument:
+          kind: MutatingWebhookConfiguration
+          apiVersion: admissionregistration.k8s.io/v1
+          name: dash0-operator-injector
+        not: true
+
+  - it: should render the injector webhook when Signal Control is enabled together with telemetry collection
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-injector
+    set:
+      operator:
+        signalControl:
+          enabled: true
+    asserts:
+      - isKind:
+          of: MutatingWebhookConfiguration
+
+  - it: should render the injector webhook when telemetry collection is disabled without Signal Control
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-injector
+    set:
+      operator:
+        telemetryCollectionEnabled: false
+    asserts:
+      - isKind:
+          of: MutatingWebhookConfiguration
 
   - it: should support custom Signal Control collector and Edge Proxy images with pull policies
     chart:

@@ -155,10 +155,17 @@ type oTelColConfig struct {
 	DaemonSetCollectorMemoryLimit     resource.Quantity
 	DeploymentCollectorMemoryLimit    resource.Quantity
 	SignalControlCollectorMemoryLimit resource.Quantity
+	SignalControlSceOnlyMode          bool
 }
 
 func (c *oTelColConfig) usesOffsetStorageVolume() bool {
 	return c.OffsetStorageVolume != nil
+}
+
+// deploysProducerCollectors reports whether the collector daemonset and the cluster metrics collector deployment are
+// deployed, which is the case unless SCE-only mode is active.
+func (c *oTelColConfig) deploysProducerCollectors() bool {
+	return !c.SignalControlSceOnlyMode
 }
 
 // signalControlGatewayActive reports whether the dedicated Signal Control collector deployment (the "gateway") is
@@ -568,6 +575,12 @@ func assembleDesiredState(
 			return desiredState, err
 		}
 		desiredState = append(desiredState, addCommonMetadata(signalControlCollectorDeployment))
+	}
+
+	// In SCE-only mode, the producer collectors are not deployed. They are still included in the desired state for
+	// deletion, so that they are removed when SCE-only mode is enabled for an existing installation.
+	if !forDeletion && !config.deploysProducerCollectors() {
+		return desiredState, nil
 	}
 
 	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDaemonSet(config)))

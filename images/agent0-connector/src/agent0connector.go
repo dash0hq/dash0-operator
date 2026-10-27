@@ -44,6 +44,8 @@ func main() {
 	}
 	logger.Info("dash0 agent0-connector starting up")
 
+	common.StartPprofServerIfConfigured(logger)
+
 	meter := common.InitOTelSdkFromEnvVars(ctx, selfmonitoring.MeterName, serviceName, containerName)
 	selfmonitoring.InitializeMetrics(meter, logger)
 	// Deliberately shutting down with the base context: the context below is cancelled when the termination signal

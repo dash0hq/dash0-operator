@@ -648,6 +648,9 @@ run_helm() {
     helm_install_command+=" --set operator.agent0Connector.serverAddress=$agent0_connector_server_address"
     helm_install_command+=" --set operator.agent0Connector.secretRef.name=dash0-authorization-secret"
     helm_install_command+=" --set operator.agent0Connector.secretRef.key=token"
+    if [[ "${AGENT0_CONNECTOR_INSECURE:-}" = "true" ]]; then
+      helm_install_command+=" --set operator.agent0Connector.insecure=true"
+    fi
   fi
   if [[ "${DEVELOPMENT_MODE:-}" != "false" ]]; then
   helm_install_command+=" --set operator.developmentMode=true"
@@ -663,6 +666,9 @@ run_helm() {
   fi
   if [[ "${EDGE_PROXY_ENABLE_PPROF:-}" = "true" ]]; then
     helm_install_command+=" --set operator.signalControl.edgeProxy.enablePprof=true"
+  fi
+  if [[ "${AGENT0_CONNECTOR_ENABLE_PPROF:-}" = "true" ]]; then
+    helm_install_command+=" --set operator.agent0Connector.enablePprof=true"
   fi
   if [[ -n "${OTEL_COLLECTOR_SEND_BATCH_SIZE:-}" ]]; then
     helm_install_command+=" --set operator.collectors.sendBatchSize=$OTEL_COLLECTOR_SEND_BATCH_SIZE"
@@ -850,9 +856,6 @@ run_helm() {
     if [[ "${AUTO_MONITOR_NAMESPACES_ENABLED:-}" = "true" ]]; then
       helm_install_command+=" --set operator.autoMonitorNamespaces.enabled=true"
     fi
-    if [[ "${TELEMETRY_COLLECTION_ENABLED:-}" = "false" ]]; then
-      helm_install_command+=" --set operator.telemetryCollectionEnabled=false"
-    fi
     if [[ "${ENABLE_PYTHON_AUTO_INSTRUMENTATION:-}" = "true" ]]; then
       helm_install_command+=" --set operator.instrumentation.enablePythonAutoInstrumentation=true"
     fi
@@ -860,6 +863,9 @@ run_helm() {
       helm_install_command+=" --set operator.instrumentation.enableRubyAutoInstrumentation=true"
     fi
     helm_install_command+=" --set operator.clusterName=$(kubectl config current-context)"
+  fi
+  if [[ "${TELEMETRY_COLLECTION_ENABLED:-}" = "false" ]]; then
+    helm_install_command+=" --set operator.telemetryCollectionEnabled=false"
   fi
   if [[ "${FEATURE_SIGNAL_CONTROL_ENABLED:-}" = "true" ]]; then
     helm_install_command+=" --set operator.signalControl.enabled=true"

@@ -22,7 +22,7 @@ Supported runtimes for automatic workload instrumentation:
 
 * Java 8+
 * Node.js 16+
-* .NET 8+
+* .NET 6+
 * Python ([opt-in](https://github.com/dash0hq/dash0-operator/blob/0.100.0/helm-chart/dash0-operator/values.yaml#L408-L409))
 * Ruby 3.3+ ([opt-in](docs/configuration.md#ruby-auto-instrumentation))
 
@@ -37,8 +37,9 @@ Metrics and log collection are independent of the runtime of workloads.
   installing Helm.
 
 You will need:
-* **`endpoint`**: The OTLP/gRPC endpoint of your Dash0 organization (from https://app.dash0.com → organization settings → "Endpoints" → "OTLP/gRPC")
-* **`token`** or **`secretRef`**: Your Dash0 authorization token (from https://app.dash0.com → organization settings → "Auth Tokens")
+* **`endpoint`**: The OTLP/gRPC endpoint of your Dash0 organization (from
+  https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc)
+* **`token`** or **`secretRef`**: Your Dash0 authorization token (from https://app.dash0.com/settings/auth-tokens)
 
 ### Installation
 
