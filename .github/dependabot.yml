@@ -296,3 +296,29 @@ updates:
           - "*"
     commit-message:
       prefix: "test"
+
+  - package-ecosystem: "pip"
+    directories:
+      - "/images/instrumentation/test/python-dependency-conflict/test-cases/dependency-conflict"
+      - "/images/instrumentation/test/python-venv/test-cases/dependency-conflict-protobuf"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "07:35"
+      timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 4
+    groups:
+      security-updates:
+        applies-to: "security-updates"
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "test"
+    # The requirements.txt files in these directories pin versions on purpose, and the app.py next to them checks that
+    # exactly these versions are installed.
+    ignore:
+      # The version deliberately conflicts with the Dash0 Python distro's pin.
+      - dependency-name: "opentelemetry-api"
+      # The version deliberately differs from the protobuf version in the Dash0 instrumentation image.
+      - dependency-name: "protobuf"
