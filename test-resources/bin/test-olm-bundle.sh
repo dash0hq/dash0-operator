@@ -6,8 +6,10 @@
 # Installs the operator from the OLM bundle into the cluster of the current kube context (OLM must be installed, see
 # deploy-olm.sh), then creates a Dash0OperatorConfiguration and a Dash0Monitoring resource. Like in the test scenarios,
 # the operator images and the bundle image are built unless SKIP_IMAGE_BUILDS=true, and pushed if
-# PUSH_BUILT_IMAGES=true. OLM pulls the images from the registry of IMAGE_REPOSITORY_PREFIX. Requires
-# IMAGE_REPOSITORY_PREFIX, DASH0_INGRESS_ENDPOINT, DASH0_API_ENDPOINT, DASH0_AUTHORIZATION_TOKEN and ALLOWED_KUBECTXS.
+# PUSH_BUILT_IMAGES=true. OLM pulls the images from the registry of IMAGE_REPOSITORY_PREFIX, which is required. Like the
+# test scenarios, the script reads test-resources/.env, see test-resources/.env.template for DASH0_INGRESS_ENDPOINT,
+# DASH0_API_ENDPOINT, DASH0_AUTHORIZATION_TOKEN and the other settings. Set BUNDLE_REGISTRY_USE_HTTP=true if the
+# registry of the bundle image only serves plain HTTP, like the local registry of the kind setup.
 # Usage: test-resources/bin/test-olm-bundle.sh [cleanup]
 
 set -euo pipefail
@@ -23,6 +25,7 @@ source "$scripts_lib/constants"
 # shellcheck source=./lib/util
 source "$scripts_lib/util"
 
+load_env_file
 verify_kubectx
 
 bundle_version="${BUNDLE_VERSION:-0.0.1}"
@@ -49,9 +52,6 @@ if [[ "${1:-}" = "cleanup" ]]; then
 fi
 
 : "${IMAGE_REPOSITORY_PREFIX:?IMAGE_REPOSITORY_PREFIX is required}"
-: "${DASH0_INGRESS_ENDPOINT:?DASH0_INGRESS_ENDPOINT is required}"
-: "${DASH0_API_ENDPOINT:?DASH0_API_ENDPOINT is required}"
-: "${DASH0_AUTHORIZATION_TOKEN:?DASH0_AUTHORIZATION_TOKEN is required}"
 bundle_image="${BUNDLE_IMAGE_REPOSITORY:-${IMAGE_REPOSITORY_PREFIX}dash0-operator-bundle}:${BUNDLE_IMAGE_TAG:-v$bundle_version}"
 
 determine_container_images
@@ -73,8 +73,12 @@ if [[ -n "$previous_catalog" ]]; then
   echo "removing the previous installation"
   cleanup
 fi
-"$operator_sdk" run bundle "$bundle_image" \
-  --namespace "$operator_ns" --install-mode AllNamespaces --timeout 10m
+run_bundle_args=(--namespace "$operator_ns" --install-mode AllNamespaces --timeout 10m)
+# operator-sdk pulls the bundle image on this machine, not in the cluster, and uses HTTPS unless --use-http is set.
+if [[ "${BUNDLE_REGISTRY_USE_HTTP:-}" = "true" ]]; then
+  run_bundle_args+=(--use-http)
+fi
+"$operator_sdk" run bundle "$bundle_image" "${run_bundle_args[@]}"
 kubectl get csv --namespace "$operator_ns"
 
 kubectl create secret generic dash0-authorization-secret --namespace "$operator_ns" \
