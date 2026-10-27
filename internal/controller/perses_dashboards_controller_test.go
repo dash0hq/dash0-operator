@@ -791,16 +791,21 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 
 			AfterEach(
 				func() {
+					// Wait for running resyncs and queued jobs before verifying the HTTP mocks and deleting the monitoring
+					// resource, so that a job from this test cannot send requests or write a stale result during the next test.
+					waitForThirdPartyResourceSynchronizationToFinish(
+						&persesDashboardReconciler.namespacedSyncMutex,
+						testQueuePersesDashboards,
+					)
 					VerifyNoUnmatchedGockRequests()
-
-					// Make sure the work queue is empty before tearing down the monitoring resource so an in-flight synchronization job
-					// from a previous test cannot write its (potentially stale) result to the next test's monitoring resource.
-					Eventually(func(g Gomega) {
-						g.Expect(testQueuePersesDashboards.Len()).To(Equal(0))
-					}, 3*time.Second, 20*time.Millisecond).Should(Succeed())
 
 					DeleteMonitoringResourceIfItExists(ctx, k8sClient)
 					persesDashboardCrdReconciler.RemoveNamespacedApiConfigs(ctx, TestNamespaceName, logger)
+					// RemoveNamespacedApiConfigs triggers another resync if the test has set a namespaced API config.
+					waitForThirdPartyResourceSynchronizationToFinish(
+						&persesDashboardReconciler.namespacedSyncMutex,
+						testQueuePersesDashboards,
+					)
 				},
 			)
 

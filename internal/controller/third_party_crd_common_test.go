@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -19,6 +20,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/dash0hq/dash0-operator/test/util"
@@ -320,4 +322,20 @@ func resourceWithVersion(name string, resourceVersion string) *unstructured.Unst
 	resource.SetName(name)
 	resource.SetResourceVersion(resourceVersion)
 	return resource
+}
+
+// waitForThirdPartyResourceSynchronizationToFinish waits until no namespace-wide resync is running in the test namespace
+// and the given synchronization queue is empty, so that synchronization work a spec has triggered cannot spill over
+// into the next spec.
+func waitForThirdPartyResourceSynchronizationToFinish(
+	namespacedSyncMutex *selfmonitoringapiaccess.NamespaceMutex,
+	queue *ThirdPartyResourceSyncQueue,
+) {
+	GinkgoHelper()
+	// A resync adds all its jobs to the queue before it releases the lock, hence the order of the two waits.
+	namespacedSyncMutex.Lock(TestNamespaceName)
+	namespacedSyncMutex.Unlock(TestNamespaceName)
+	Eventually(func(g Gomega) {
+		g.Expect(queue.Len()).To(Equal(0))
+	}, 3*time.Second, 20*time.Millisecond).Should(Succeed())
 }

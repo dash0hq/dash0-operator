@@ -87,6 +87,7 @@ type PersesDashboardReconciler struct {
 	apiClientPool              *ApiClientPool
 	defaultApiConfigs          selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs       selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
+	namespacedSyncMutex        selfmonitoringapiaccess.NamespaceMutex
 	namespacedSyncEnabled      sync.Map
 	controllerStopFunctionLock sync.Mutex
 	controllerStopFunction     *context.CancelFunc
@@ -258,6 +259,7 @@ func (r *PersesDashboardCrdReconciler) CreateThirdPartyResourceReconciler(pseudo
 		apiClientPool:        r.apiClientPool,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
+		namespacedSyncMutex:  *selfmonitoringapiaccess.NewNamespaceMutex(),
 	}
 }
 
@@ -995,9 +997,16 @@ func (r *PersesDashboardReconciler) synchronizeNamespacedResources(
 		return
 	}
 
+	// namespacedSyncMutex is used so we don't trigger multiple syncs in parallel in a single namespace.
+	// That happens for example when a single reconcile of the monitoring resource changes the API config and enables
+	// synchronization for the namespace, triggering two resyncs.
+	r.namespacedSyncMutex.Lock(namespace)
+
 	logger.Info(fmt.Sprintf("Running synchronization of dashboards in namespace %s now.", namespace))
 
 	go func() {
+		defer r.namespacedSyncMutex.Unlock(namespace)
+
 		allDashboardResourcesInNamespace := &unstructured.UnstructuredList{}
 		allDashboardResourcesInNamespace.SetGroupVersionKind(
 			schema.GroupVersionKind{
