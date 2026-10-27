@@ -346,6 +346,77 @@ tests:
       - failedTemplate:
           errorMessage: "Error: operator.collectors.sendBatchMaxSize must not be negative."
 
+  - it: should reject operator.replicaCount 0
+    set:
+      operator:
+        replicaCount: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.replicaCount must be an integer of at least 1, but was 0."
+
+  - it: should reject a negative operator.replicaCount
+    set:
+      operator:
+        replicaCount: -1
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.replicaCount must be an integer of at least 1, but was -1."
+
+  - it: should reject a non-integer operator.replicaCount
+    set:
+      operator:
+        replicaCount: 2.5
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.replicaCount must be an integer of at least 1, but was 2.5."
+
+  - it: should reject a non-numeric operator.replicaCount
+    set:
+      operator:
+        replicaCount: abc
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.replicaCount must be an integer of at least 1, but was abc."
+
+  - it: should reject a boolean operator.replicaCount
+    set:
+      operator:
+        replicaCount: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.replicaCount must be an integer of at least 1, but was true."
+
+  - it: should reject operator.replicaCount with a leading zero
+    set:
+      operator:
+        replicaCount: "010"
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.replicaCount must be an integer of at least 1, but was 010."
+
+  - it: should accept operator.replicaCount as a numeric string
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        replicaCount: "2"
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+
+  - it: should leave the replica count to Kubernetes when operator.replicaCount is null
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        replicaCount: null
+    asserts:
+      - notExists:
+          path: spec.replicas
+
   - it: should reject sendBatchMaxSize less than 8192 when sendBatchSize is not set
     set:
       operator:

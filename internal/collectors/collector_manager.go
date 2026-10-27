@@ -250,11 +250,7 @@ func (m *CollectorManager) warnAboutInsufficientZoneCoverage(
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) {
-	replicaCount := extraConfig.SignalControlCollectorReplicas
-	if replicaCount < 1 {
-		replicaCount = otelcolresources.SignalControlCollectorDefaultReplicas
-	}
-	m.zoneCoverageReporter.Report(ctx, replicaCount, cluster.ZoneCoverageMessages{
+	m.zoneCoverageReporter.Report(ctx, extraConfig.SignalControlCollectorReplicas, cluster.ZoneCoverageMessages{
 		Warn: func(zoneCount int, replicaCount int32) string {
 			return fmt.Sprintf(
 				"The cluster has %d availability zones but the Signal Control collector runs with %d replicas, so at least "+

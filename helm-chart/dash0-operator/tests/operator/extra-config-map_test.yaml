@@ -848,6 +848,123 @@ tests:
       - failedTemplate:
           errorMessage: "Error: operator.collectors.daemonSetSeLinuxOptions must be a map with the settings user, role, type and level."
 
+  - it: should reject signalControlCollectorReplicas 0 when Signal Control is enabled
+    set:
+      operator:
+        signalControl:
+          enabled: true
+        collectors:
+          signalControlCollectorReplicas: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.signalControlCollectorReplicas must be an integer of at least 1, but was 0."
+
+  - it: should reject a negative signalControlCollectorReplicas when Signal Control is enabled
+    set:
+      operator:
+        signalControl:
+          enabled: true
+        collectors:
+          signalControlCollectorReplicas: -1
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.signalControlCollectorReplicas must be an integer of at least 1, but was -1."
+
+  - it: should reject a non-integer signalControlCollectorReplicas when Signal Control is enabled
+    set:
+      operator:
+        signalControl:
+          enabled: true
+        collectors:
+          signalControlCollectorReplicas: 2.5
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.signalControlCollectorReplicas must be an integer of at least 1, but was 2.5."
+
+  - it: should reject Edge Proxy replicas 0
+    set:
+      operator:
+        signalControl:
+          enabled: true
+          edgeProxy:
+            replicas: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.signalControl.edgeProxy.replicas must be an integer of at least 1, but was 0."
+
+  - it: should reject negative Edge Proxy replicas
+    set:
+      operator:
+        signalControl:
+          enabled: true
+          edgeProxy:
+            replicas: -1
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.signalControl.edgeProxy.replicas must be an integer of at least 1, but was -1."
+
+  - it: should reject non-numeric Edge Proxy replicas
+    set:
+      operator:
+        signalControl:
+          enabled: true
+          edgeProxy:
+            replicas: abc
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.signalControl.edgeProxy.replicas must be an integer of at least 1, but was abc."
+
+  - it: should accept replica counts given as numeric strings
+    set:
+      operator:
+        signalControl:
+          enabled: true
+          edgeProxy:
+            replicas: "4"
+        collectors:
+          signalControlCollectorReplicas: "3"
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: "signalControlCollectorReplicas: 3\n"
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: "edgeProxyReplicas: 4\n"
+
+  - it: should omit replica counts that are null, so that the operator applies its defaults
+    set:
+      operator:
+        signalControl:
+          enabled: true
+          edgeProxy:
+            replicas: null
+        collectors:
+          signalControlCollectorReplicas: null
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: signalControlCollectorReplicas
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: edgeProxyReplicas
+
+  - it: should neither render nor validate the Signal Control replica counts when Signal Control is disabled
+    set:
+      operator:
+        signalControl:
+          enabled: false
+          edgeProxy:
+            replicas: 0
+        collectors:
+          signalControlCollectorReplicas: 0
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: signalControlCollectorReplicas
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: edgeProxyReplicas
+
   - it: should render collector labels and annotations when set
     set:
       operator:
@@ -1548,7 +1665,6 @@ tests:
                 initialDelaySeconds: 0
                 periodSeconds: 2
                 timeoutSeconds: 1
-            signalControlCollectorReplicas: 2
             signalControlCollectorContainerResources:
               gomemlimit: ""
               limits:
