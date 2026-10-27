@@ -883,6 +883,9 @@ func signalControlConfigFromResource(
 	logParserCacheExpiration := durationStringOrEmpty(resource.Spec.LogEnrichment.ParserCacheExpiration)
 	logGroupingCacheExpiration := durationStringOrEmpty(resource.Spec.LogEnrichment.GroupingCacheExpiration)
 
+	cardholderDataRedactionEnabled :=
+		pointers.ReadBoolPointerWithDefault(resource.Spec.Redaction.CardholderData.Enabled, false)
+
 	operationPreferSpanName := pointers.ReadBoolPointerWithDefault(resource.Spec.OperationProcessor.PreferSpanName, false)
 	var operationCardinalityRules []SignalControlCardinalityRule
 	for _, rule := range resource.Spec.OperationProcessor.CardinalityRules {
@@ -956,6 +959,7 @@ func signalControlConfigFromResource(
 		LogPatternRefreshInterval:          logPatternRefreshInterval,
 		LogParserCacheExpiration:           logParserCacheExpiration,
 		LogGroupingCacheExpiration:         logGroupingCacheExpiration,
+		CardholderDataRedactionEnabled:     cardholderDataRedactionEnabled,
 		OperationPreferSpanName:            operationPreferSpanName,
 		OperationCardinalityRules:          operationCardinalityRules,
 		Endpoint:                           endpoint,

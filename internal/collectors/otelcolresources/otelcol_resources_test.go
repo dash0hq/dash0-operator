@@ -549,8 +549,8 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			)
 		})
 
-		DescribeTable("should collect and forward the agent0-connector's pod logs unless the resource opts out",
-			func(enabledInResource *bool, expectPodLogsToBeCollected bool) {
+		DescribeTable("should exclude the agent0-connector from the namespace filter unless the resource opts out, and never collect its pod logs",
+			func(enabledInResource *bool, expectExclusion bool) {
 				operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 				operatorConfiguration.Spec.Agent0Connector.Enabled = enabledInResource
 				_, _, err := managerWithAgent0Connector.CreateOrUpdateOpenTelemetryCollectorResources(
@@ -570,21 +570,23 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					ExpectedDaemonSetCollectorConfigMapName,
 					&corev1.ConfigMap{},
 				).(*corev1.ConfigMap)
-				podLogsPath := fmt.Sprintf(
-					"- /var/log/pods/%s_%s*/*/*.log",
+				deploymentName := a0cresources.DeploymentName(OTelCollectorNamePrefixTest)
+				exclusion := fmt.Sprintf(
+					"(resource.attributes[\"k8s.deployment.name\"] != \"%s\" or resource.attributes[\"k8s.namespace.name\"] != \"%s\")",
+					deploymentName,
 					OperatorNamespace,
-					a0cresources.DeploymentName(OTelCollectorNamePrefixTest),
 				)
-				// The receiver alone collects nothing: the pipeline that forwards its records has to be rendered as
-				// well, otherwise the collected pod logs never leave the collector.
-				selfMonitoringLogsPipeline := "logs/selfmonitoring-filelog-to-forwarder:"
-				if expectPodLogsToBeCollected {
-					Expect(configMap.Data["config.yaml"]).To(ContainSubstring(podLogsPath))
-					Expect(configMap.Data["config.yaml"]).To(ContainSubstring(selfMonitoringLogsPipeline))
+				if expectExclusion {
+					Expect(configMap.Data["config.yaml"]).To(ContainSubstring(exclusion))
 				} else {
-					Expect(configMap.Data["config.yaml"]).ToNot(ContainSubstring(podLogsPath))
-					Expect(configMap.Data["config.yaml"]).ToNot(ContainSubstring(selfMonitoringLogsPipeline))
+					Expect(configMap.Data["config.yaml"]).ToNot(ContainSubstring(exclusion))
 				}
+
+				// The agent0-connector exports its logs via OTLP, collecting its pod logs would duplicate every line.
+				podLogsPath := fmt.Sprintf("/var/log/pods/%s_%s*/*/*.log", OperatorNamespace, deploymentName)
+				Expect(configMap.Data["config.yaml"]).ToNot(ContainSubstring(podLogsPath))
+				Expect(configMap.Data["config.yaml"]).ToNot(ContainSubstring("file_log/selfmonitoring:"))
+				Expect(configMap.Data["config.yaml"]).ToNot(ContainSubstring("logs/selfmonitoring-filelog-to-forwarder:"))
 			},
 			Entry("with no explicit setting in the resource, following the Helm value", nil, true),
 			Entry("when explicitly enabled in the resource", new(true), true),
@@ -1708,6 +1710,37 @@ var _ = Describe("signalControlConfigFromResource", func() {
 		Expect(config.LogParserCacheExpiration).To(BeEmpty())
 		Expect(config.LogGroupingCacheExpiration).To(BeEmpty())
 	})
+
+	It("should have cardholder data redaction disabled by default", func() {
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+			},
+		}
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.CardholderDataRedactionEnabled).To(BeFalse())
+	})
+
+	DescribeTable("should map the cardholder data redaction setting",
+		func(enabled bool) {
+			resource := &dash0v1alpha1.Dash0SignalControl{
+				Spec: dash0v1alpha1.Dash0SignalControlSpec{
+					Enabled:   boolPtr(true),
+					EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+					Redaction: dash0v1alpha1.RedactionConfig{
+						CardholderData: dash0v1alpha1.CardholderDataRedactionConfig{
+							Enabled: boolPtr(enabled),
+						},
+					},
+				},
+			}
+			config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+			Expect(config.CardholderDataRedactionEnabled).To(Equal(enabled))
+		},
+		Entry("enabled", true),
+		Entry("disabled", false),
+	)
 
 	It("should default sampling tunables to empty fallback ratio and debug off", func() {
 		resource := &dash0v1alpha1.Dash0SignalControl{
