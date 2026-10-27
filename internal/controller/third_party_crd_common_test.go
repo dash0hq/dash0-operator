@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -320,4 +321,19 @@ func resourceWithVersion(name string, resourceVersion string) *unstructured.Unst
 	resource.SetName(name)
 	resource.SetResourceVersion(resourceVersion)
 	return resource
+}
+
+// waitForThirdPartyResourceSynchronizationToFinish waits until no namespace-wide resync started by
+// synchronizeNamespacedResources is running anymore and the given synchronization queue is empty, that is, until all
+// synchronization work a spec has triggered has been processed and cannot spill over into the next spec.
+func waitForThirdPartyResourceSynchronizationToFinish(
+	namespaceResyncsInFlight *atomic.Int32,
+	queue *ThirdPartyResourceSyncQueue,
+) {
+	GinkgoHelper()
+	// A resync adds its jobs to the queue before it finishes, hence the order of the two checks.
+	Eventually(func(g Gomega) {
+		g.Expect(namespaceResyncsInFlight.Load()).To(BeZero())
+		g.Expect(queue.Len()).To(BeZero())
+	}, 10*time.Second, 20*time.Millisecond).Should(Succeed())
 }
