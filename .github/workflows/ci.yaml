@@ -316,6 +316,17 @@ jobs:
           context: images
           file: images/agent0-connector/Dockerfile
 
+      - name: build debuginfo-proxy image
+        uses: ./.github/actions/build-image
+        with:
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          imageName: debuginfo-proxy
+          imageTitle: Dash0 Debuginfo Upload Proxy
+          imageDescription: multi-backend debuginfo upload negotiation and completion proxy
+          imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/debuginfo-proxy
+          context: images
+          file: images/debuginfo-proxy/Dockerfile
+
   e2e_tests:
     name: End-to-end Tests
     needs:
