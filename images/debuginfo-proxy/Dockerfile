@@ -3,7 +3,7 @@
 
 # Note: This Dockerfile expects dash0-operator/images as the build context.
 
-FROM --platform=${BUILDPLATFORM} golang:1.27.2-alpine3.24 AS builder
+FROM --platform=${BUILDPLATFORM} golang:1.27.3-alpine3.24 AS builder
 WORKDIR /usr/local/go/src/debuginfo-proxy
 RUN apk add --no-cache ca-certificates
 COPY debuginfo-proxy/src/go.mod debuginfo-proxy/src/go.sum ./
