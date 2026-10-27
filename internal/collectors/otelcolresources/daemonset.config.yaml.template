@@ -562,8 +562,10 @@ receivers:
   Deliberately not collecting the Signal Control collector's pod logs: like this collector, it emits its own logs via
   service.telemetry.logs, so scraping them would duplicate every line (and route them back through the collector that
   produced them).
+  Deliberately not collecting the agent0-connector's pod logs either: it exports its logs via OTLP when self-monitoring
+  is enabled, so scraping them would duplicate every line.
   */}}
-  {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .SignalControl.Enabled .SignalControl.EdgeProxyEnabled) .Agent0ConnectorEnabled) }}
+  {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .SignalControl.Enabled .SignalControl.EdgeProxyEnabled)) }}
   file_log/selfmonitoring:
     include:
       {{- if .PrometheusCrdSupportEnabled }}
@@ -571,9 +573,6 @@ receivers:
       {{- end }}
       {{- if and .SignalControl.Enabled .SignalControl.EdgeProxyEnabled }}
       - /var/log/pods/{{ .OperatorNamespace }}_{{ .SignalControl.EdgeProxyName }}*/*/*.log
-      {{- end }}
-      {{- if .Agent0ConnectorEnabled }}
-      - /var/log/pods/{{ .OperatorNamespace }}_{{ .Agent0ConnectorDeploymentName }}*/*/*.log
       {{- end }}
     # the target-allocator starts faster than the collectors are created, we therefore need to read its logs from the
     # beginning or we will miss the logs it prints during startup
@@ -1377,7 +1376,7 @@ service:
         - forward/logs-processors
     {{- end }}
 
-    {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .SignalControl.Enabled .SignalControl.EdgeProxyEnabled) .Agent0ConnectorEnabled) }}
+    {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .SignalControl.Enabled .SignalControl.EdgeProxyEnabled)) }}
     logs/selfmonitoring-filelog-to-forwarder:
       receivers:
         - file_log/selfmonitoring

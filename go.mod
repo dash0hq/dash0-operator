@@ -5,7 +5,7 @@ go 1.27.3
 require (
 	github.com/bep/debounce v1.2.1
 	github.com/cisco-open/k8s-objectmatcher v1.10.0
-	github.com/dash0hq/dash0-api-client-go v1.25.0
+	github.com/dash0hq/dash0-api-client-go v1.27.0
 	github.com/dash0hq/dash0-operator/images/pkg/common v0.0.0-00010101000000-000000000000
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-logr/logr v1.4.4
@@ -18,7 +18,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.161.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.161.0
 	github.com/perses/perses-operator v0.5.0
-	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.94.1
+	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.94.2
 	go.opentelemetry.io/collector/component v1.69.0
 	go.opentelemetry.io/collector/confmap v1.69.0
 	go.opentelemetry.io/collector/pdata v1.69.0
@@ -99,7 +99,7 @@ require (
 	github.com/knadh/koanf/maps v0.1.3 // indirect
 	github.com/knadh/koanf/providers/confmap v1.0.1 // indirect
 	github.com/knadh/koanf/v2 v2.3.8 // indirect
-	github.com/labstack/echo/v4 v4.15.4 // indirect
+	github.com/labstack/echo/v4 v4.16.1 // indirect
 	github.com/labstack/gommon v0.5.0 // indirect
 	github.com/lightstep/go-expohisto v1.0.0 // indirect
 	github.com/magefile/mage v1.15.0 // indirect

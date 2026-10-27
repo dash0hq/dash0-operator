@@ -234,7 +234,7 @@ operator:
   # resource will be created by the Helm chart then.
   clusterName: ""
 
-  # The number of replicas for the operator manager deployment.
+  # The number of replicas for the operator manager deployment. Must be at least 1.
   replicaCount: 1
 
   # Settings for GKE clusters:
@@ -550,7 +550,7 @@ operator:
     repository: "ghcr.io/dash0hq/signal-control-collector"
     # The Signal Control collector is versioned independently of the operator, so this tag is pinned to that component
     # version; it does not track the chart appVersion.
-    tag: "1.5.2"
+    tag: "1.6.0"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -561,7 +561,7 @@ operator:
     repository: "ghcr.io/dash0hq/edge-proxy"
     # The Edge Proxy is versioned independently of the operator, so this tag is pinned to that component version; it
     # does not track the chart appVersion.
-    tag: "1.5.2"
+    tag: "1.6.0"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -1025,7 +1025,8 @@ operator:
     # The number of replicas of the Signal Control collector Deployment managed by the operator. This collector only
     # exists when Signal Control is enabled (see operator.signalControl.enabled); it receives the Dash0-bound telemetry
     # of the other two collectors, applies Signal Control and exports to Dash0. More replicas spread the tail-sampling
-    # reservoir and the RED-metrics cardinality tracking over more processes; fewer replicas use less memory.
+    # reservoir and the RED-metrics cardinality tracking over more processes; fewer replicas use less memory. Must be
+    # at least 1.
     signalControlCollectorReplicas: 2
 
     # Resource settings for the collector container of the Signal Control collector pod managed by the operator. This
@@ -1406,7 +1407,7 @@ operator:
       # connections across the available pods. Defaults to 2, the availability floor: with the pod disruption budget a
       # single pod restart, rollout or node drain always leaves one pod serving the fleet. Set this to at least the
       # number of availability zones so that every zone has a local Edge Proxy pod and the decision stream does not
-      # cross zones.
+      # cross zones. Must be at least 1.
       replicas: 2
 
       # If set to true, pprof will be enabled for the Edge Proxy pods. Each container serves pprof on the loopback

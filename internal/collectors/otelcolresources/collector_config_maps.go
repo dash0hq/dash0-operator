@@ -104,8 +104,6 @@ type collectorConfigurationTemplateValues struct {
 	TargetAllocatorServiceName                       string
 	TargetAllocatorMtlsEnabled                       bool
 	TargetAllocatorMtlsClientCertsDir                string
-	Agent0ConnectorEnabled                           bool
-	Agent0ConnectorDeploymentName                    string
 	KubeletStatsReceiverConfig                       util.KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
 	IsGkeAutopilot                                   bool
@@ -420,8 +418,6 @@ func newCollectorConfigurationTemplateValues(
 		TargetAllocatorServiceName:                       targetAllocatorServiceName,
 		TargetAllocatorMtlsEnabled:                       targetAllocatorMtlsConfig.Enabled,
 		TargetAllocatorMtlsClientCertsDir:                targetAllocatorCertsVolumeDir,
-		Agent0ConnectorEnabled:                           config.Agent0ConnectorEnabled,
-		Agent0ConnectorDeploymentName:                    config.Agent0ConnectorDeploymentName,
 		KubeletStatsReceiverConfig:                       config.KubeletStatsReceiverConfig,
 		UseHostMetricsReceiver:                           config.UseHostMetricsReceiver,
 		IsGkeAutopilot:                                   config.IsGkeAutopilot,
