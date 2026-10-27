@@ -98,6 +98,8 @@ jobs:
           git diff --exit-code -- . ':(exclude)*mvnw.cmd'
 
       - name: lint
+        env:
+          GOTOOLCHAIN: auto
         run: |
           make lint
 
@@ -121,6 +123,8 @@ jobs:
           helm plugin install oci://ghcr.io/helm-unittest/helm-unittest/unittest:1.2.1
 
       - name: run operator manager and Helm chart unit tests
+        env:
+          GOTOOLCHAIN: auto
         run: |
           make test
 
