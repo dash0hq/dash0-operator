@@ -329,9 +329,11 @@ type SyntheticsWorkerInstance struct {
 	// +kubebuilder:validation:Optional
 	Authorization *dash0common.Authorization `json:"authorization,omitempty"`
 
-	// Replicas is the number of pods this instance runs. This setting is optional, it defaults to 1.
+	// Replicas is the number of pods this instance runs. It must not be negative. This setting is optional, it defaults
+	// to 1.
 	//
 	// +kubebuilder:default=1
+	// +kubebuilder:validation:Minimum=0
 	Replicas *int32 `json:"replicas,omitempty"`
 
 	// Resources describes the compute resource requirements for this instance's container. This setting is optional.

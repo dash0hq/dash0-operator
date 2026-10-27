@@ -137,7 +137,12 @@ data:
     deploymentSysctls:
       {{- toYaml .Values.operator.collectors.deploymentSysctls | nindent 6 }}
 {{- end }}
+{{- if .Values.operator.signalControl.enabled }}
+{{- include "dash0-operator.validateReplicas" (dict "name" "operator.collectors.signalControlCollectorReplicas" "value" .Values.operator.collectors.signalControlCollectorReplicas) }}
+{{- if not (kindIs "invalid" .Values.operator.collectors.signalControlCollectorReplicas) }}
     signalControlCollectorReplicas: {{ .Values.operator.collectors.signalControlCollectorReplicas }}
+{{- end }}
+{{- end }}
     signalControlCollectorContainerResources:
       {{- toYaml .Values.operator.collectors.signalControlCollectorContainerResources | nindent 6 }}
     signalControlCollectorConfigurationReloaderContainerResources:
@@ -213,7 +218,10 @@ data:
     targetAllocatorNodeAffinity:
       {{- toYaml .Values.operator.targetAllocator.nodeAffinity | nindent 6 }}
 {{- if .Values.operator.signalControl.enabled }}
+{{- include "dash0-operator.validateReplicas" (dict "name" "operator.signalControl.edgeProxy.replicas" "value" .Values.operator.signalControl.edgeProxy.replicas) }}
+{{- if not (kindIs "invalid" .Values.operator.signalControl.edgeProxy.replicas) }}
     edgeProxyReplicas: {{ .Values.operator.signalControl.edgeProxy.replicas }}
+{{- end }}
     edgeProxyEnablePprof: {{ .Values.operator.signalControl.edgeProxy.enablePprof }}
     edgeProxyContainerResources:
       {{- toYaml .Values.operator.signalControl.edgeProxy.containerResources | nindent 6 }}

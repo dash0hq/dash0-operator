@@ -507,7 +507,7 @@ deploymentNodeAffinity:
         operator: In
         values:
         - collector
-signalControlCollectorReplicas: 0
+signalControlCollectorReplicas: 4
 targetAllocatorContainerResources:
   limits:
     memory: 600Mi
@@ -530,7 +530,7 @@ agent0ConnectorAllowedKubectlCommands:
 					}))
 					Expect(extraConfig.DeploymentNodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution).To(BeNil())
 					Expect(extraConfig.DeploymentNodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution).To(HaveLen(1))
-					Expect(extraConfig.SignalControlCollectorReplicas).To(Equal(int32(0)))
+					Expect(extraConfig.SignalControlCollectorReplicas).To(Equal(int32(4)))
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits).To(HaveLen(1))
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Memory().String()).To(Equal("600Mi"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Requests).To(BeNil())
@@ -542,6 +542,36 @@ agent0ConnectorAllowedKubectlCommands:
 					Expect(extraConfig.DeploymentProbes).To(Equal(defaultCollectorProbes))
 					Expect(extraConfig.EdgeProxyNodeAffinity).To(Equal(defaultNodeAffinity()))
 				})
+
+				It("should use the default replica counts for explicit nulls", func() {
+					_, err := tmpFile.WriteString(`
+signalControlCollectorReplicas: null
+edgeProxyReplicas: null
+`)
+					Expect(err).ToNot(HaveOccurred())
+
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(extraConfig.SignalControlCollectorReplicas).To(Equal(int32(2)))
+					Expect(extraConfig.EdgeProxyReplicas).To(Equal(int32(2)))
+				})
+
+				DescribeTable("should reject replica counts below 1", func(content string, expectedError string) {
+					_, err := tmpFile.WriteString(content)
+					Expect(err).ToNot(HaveOccurred())
+
+					_, err = readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
+					Expect(err).To(MatchError(ContainSubstring(expectedError)))
+				},
+					Entry("signalControlCollectorReplicas: 0", "signalControlCollectorReplicas: 0",
+						"signalControlCollectorReplicas (operator.collectors.signalControlCollectorReplicas) must be at least 1, but was 0"),
+					Entry("signalControlCollectorReplicas: -1", "signalControlCollectorReplicas: -1",
+						"signalControlCollectorReplicas (operator.collectors.signalControlCollectorReplicas) must be at least 1, but was -1"),
+					Entry("edgeProxyReplicas: 0", "edgeProxyReplicas: 0",
+						"edgeProxyReplicas (operator.signalControl.edgeProxy.replicas) must be at least 1, but was 0"),
+					Entry("edgeProxyReplicas: -1", "edgeProxyReplicas: -1",
+						"edgeProxyReplicas (operator.signalControl.edgeProxy.replicas) must be at least 1, but was -1"),
+				)
 
 				It("should not share the defaults with the extra config that has been read", func() {
 					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
