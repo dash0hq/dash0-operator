@@ -69,10 +69,11 @@ jobs:
         run: |
           go version
 
-      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550
         with:
           mise_toml: |
             [tools]
+            helm = "4.3.0"
             shellcheck = "0.11.0"
 
       - name: shellcheck version
@@ -111,10 +112,13 @@ jobs:
 
       - name: install Helm unittest plugin
         shell: bash
-        # Pinning to version 0.7.2, version 0.8.0 has a bug with snapshot testing, looks like values from previous tests
-        # spill over to later tests.
+        # Helm itself is pinned via mise above, so CI does not depend on whatever Helm version the runner image ships.
+        # helm-unittest >= 1.2.0 is required for Helm 4. Importing the project's public GPG key lets Helm verify the
+        # signature of the OCI plugin package, which Helm 4 requires by default.
         run: |
-          helm plugin install https://github.com/helm-unittest/helm-unittest.git --version=0.7.2
+          curl -fsSL https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.2.1/public-key.asc | gpg --import
+          gpg --export > ~/.gnupg/pubring.gpg
+          helm plugin install oci://ghcr.io/helm-unittest/helm-unittest/unittest:1.2.1
 
       - name: run operator manager and Helm chart unit tests
         run: |

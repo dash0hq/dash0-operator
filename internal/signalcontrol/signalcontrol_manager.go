@@ -178,11 +178,7 @@ func (m *SignalControlManager) warnAboutInsufficientZoneCoverage(
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) {
-	replicaCount := extraConfig.EdgeProxyReplicas
-	if replicaCount < 1 {
-		replicaCount = scresources.EdgeProxyDefaultReplicas
-	}
-	m.zoneCoverageReporter.Report(ctx, replicaCount, cluster.ZoneCoverageMessages{
+	m.zoneCoverageReporter.Report(ctx, extraConfig.EdgeProxyReplicas, cluster.ZoneCoverageMessages{
 		Warn: func(zoneCount int, replicaCount int32) string {
 			return fmt.Sprintf(
 				"The cluster has %d availability zones but the Edge Proxy runs with %d replicas, so at least one zone "+

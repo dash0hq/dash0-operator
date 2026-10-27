@@ -1121,6 +1121,31 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				Expect(err).ToNot(HaveOccurred())
 			})
 
+			DescribeTable("should only accept non-negative replica counts", func(replicas int32, expectedMessage string) {
+				err := k8sClient.Create(ctx, &dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						SyntheticsWorker: dash0v1alpha1.SyntheticsWorker{
+							Enabled: new(true),
+							Instances: []dash0v1alpha1.SyntheticsWorkerInstance{{
+								LocationID: "test-location",
+								Replicas:   new(replicas),
+							}},
+						},
+					},
+				}, client.DryRunAll)
+				if expectedMessage == "" {
+					Expect(err).ToNot(HaveOccurred())
+				} else {
+					Expect(err).To(MatchError(ContainSubstring(expectedMessage)))
+				}
+			},
+				Entry("-1", int32(-1), "replicas in body should be greater than or equal to 0"),
+				Entry("0", int32(0), ""),
+				Entry("3", int32(3), ""),
+			)
+
 			It("should allow disabling the synthetics-worker", func() {
 				_, err := CreateOperatorConfigurationResource(
 					ctx,
