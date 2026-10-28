@@ -90,6 +90,8 @@ type PersesDashboardReconciler struct {
 	namespacedSyncEnabled      sync.Map
 	controllerStopFunctionLock sync.Mutex
 	controllerStopFunction     *context.CancelFunc
+	// namespaceResyncsInFlight counts the goroutines started by synchronizeNamespacedResources that have not finished.
+	namespaceResyncsInFlight atomic.Int32
 }
 
 const (
@@ -997,7 +999,9 @@ func (r *PersesDashboardReconciler) synchronizeNamespacedResources(
 
 	logger.Info(fmt.Sprintf("Running synchronization of dashboards in namespace %s now.", namespace))
 
+	r.namespaceResyncsInFlight.Add(1)
 	go func() {
+		defer r.namespaceResyncsInFlight.Add(-1)
 		allDashboardResourcesInNamespace := &unstructured.UnstructuredList{}
 		allDashboardResourcesInNamespace.SetGroupVersionKind(
 			schema.GroupVersionKind{

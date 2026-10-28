@@ -16,7 +16,6 @@ import (
 
 	prometheusv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -421,17 +420,13 @@ var _ = Describe(
 
 				AfterEach(
 					func() {
-						VerifyNoUnmatchedGockRequests()
-
-						// Make sure the work queue is empty before tearing down the monitoring resource so an in-flight synchronization job
-						// from a previous test cannot write its (potentially stale) result to the next test's monitoring resource.
-						Eventually(func(g Gomega) {
-							g.Expect(testQueuePrometheusRules.Len()).To(Equal(0))
-						}, 3*time.Second, 20*time.Millisecond).Should(Succeed())
-
-						DeleteMonitoringResourceIfItExists(ctx, k8sClient)
 						prometheusRuleCrdReconciler.RemoveNamespacedApiConfigs(ctx, TestNamespaceName, logger)
-
+						waitForThirdPartyResourceSynchronizationToFinish(
+							&prometheusRuleReconciler.namespaceResyncsInFlight,
+							testQueuePrometheusRules,
+						)
+						VerifyNoUnmatchedGockRequests()
+						DeleteMonitoringResourceIfItExists(ctx, k8sClient)
 					},
 				)
 
@@ -3730,26 +3725,7 @@ func ensurePrometheusRuleCrdExists(ctx context.Context) {
 
 func deletePrometheusRuleCrdIfItExists(ctx context.Context) {
 	if prometheusRuleCrd != nil {
-		err := k8sClient.Delete(
-			ctx, prometheusRuleCrd, &client.DeleteOptions{
-				GracePeriodSeconds: new(int64),
-			},
-		)
-		if err != nil && apierrors.IsNotFound(err) {
-			return
-		} else if err != nil {
-			Expect(err).NotTo(HaveOccurred())
-		}
-
-		Eventually(
-			func(g Gomega) {
-				err := k8sClient.Get(ctx, PrometheusRuleCrdQualifiedName, &apiextensionsv1.CustomResourceDefinition{})
-				g.Expect(err).To(HaveOccurred())
-				g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
-			},
-			3*time.Second, 20*time.Millisecond,
-		).Should(Succeed())
-
+		DeletePrometheusRuleCrdIfItExists(ctx, k8sClient)
 		prometheusRuleCrd = nil
 	}
 }

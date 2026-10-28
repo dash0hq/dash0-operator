@@ -64,6 +64,8 @@ type PrometheusRuleReconciler struct {
 	namespacedSyncEnabled      sync.Map
 	controllerStopFunctionLock sync.Mutex
 	controllerStopFunction     *context.CancelFunc
+	// namespaceResyncsInFlight counts the goroutines started by synchronizeNamespacedResources that have not finished.
+	namespaceResyncsInFlight atomic.Int32
 }
 
 // CheckRule is a validated Prometheus alerting rule in the format of the Dash0 check rules API. It is converted to the
@@ -1449,7 +1451,9 @@ func (r *PrometheusRuleReconciler) synchronizeNamespacedResources(
 
 	logger.Info(fmt.Sprintf("Running synchronization of check rules in namespace %s now.", namespace))
 
+	r.namespaceResyncsInFlight.Add(1)
 	go func() {
+		defer r.namespaceResyncsInFlight.Add(-1)
 		allRulesResourcesInNamespace := &unstructured.UnstructuredList{}
 		allRulesResourcesInNamespace.SetGroupVersionKind(
 			schema.GroupVersionKind{
