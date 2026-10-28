@@ -1,0 +1,14 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0TimeSeriesAggregation
+metadata:
+  name: aggregate-http-server-duration
+spec:
+  enabled: true
+  display:
+    name: HTTP server duration (aggregated)
+  match:
+    metricNameMatcher:
+      operator: is
+      value: http.server.duration
+  sample:
+    interval: 60s
