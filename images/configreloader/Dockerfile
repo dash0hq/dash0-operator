@@ -29,7 +29,7 @@ RUN CGO_ENABLED=0 \
     -v \
     configreloader
 
-FROM --platform=${BUILDPLATFORM} alpine:3.24.2 AS certs
+FROM --platform=${BUILDPLATFORM} alpine:3.24.3 AS certs
 RUN apk --update add ca-certificates && apk cache clean
 
 FROM scratch
