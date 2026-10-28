@@ -34,9 +34,9 @@ type ConflictReporter struct {
 	lastReported []util.ComponentSettingConflict
 }
 
-// NewConflictReporter creates a reporter. The defaults need to match the defaults of the Helm chart, see
-// util.ExtraConfigDefaultsFor. The Signal Control resource is only taken into account if signalControlEnabled is true,
-// since its custom resource definition is only installed in that case.
+// NewConflictReporter creates a reporter. The defaults need to be the ones of util.ExtraConfigDefaultsFor. The Signal
+// Control resource is only taken into account if signalControlEnabled is true, since its custom resource definition is
+// only installed in that case.
 func NewConflictReporter(
 	k8sClient client.Client,
 	extraConfig util.ExtraConfig,

@@ -240,7 +240,8 @@ type DaemonSetCollectorSettings struct {
 
 	// Pod-level SELinux options (spec.securityContext.seLinuxOptions, Helm value
 	// operator.collectors.daemonSetSeLinuxOptions). They replace the SELinux options provided via the Helm chart as a
-	// whole, an empty object removes them. By default, the pods have no SELinux options.
+	// whole, an empty object removes them. By default, the pods have no SELinux options, except on OpenShift, where they
+	// have the type spc_t.
 	//
 	// +kubebuilder:validation:Optional
 	SELinuxOptions *corev1.SELinuxOptions `json:"seLinuxOptions,omitempty"`
