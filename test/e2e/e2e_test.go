@@ -609,6 +609,43 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				})
 			})
 
+			Describe("Kubernetes object collection", func() {
+				It("collects Kubernetes object manifests with environment variable values masked", func() {
+					timestampLowerBound := time.Now()
+
+					updateKubernetesObjectCollectionEnabledOfDash0MonitoringResource(applicationUnderTestNamespace, true)
+					DeferCleanup(func() {
+						updateKubernetesObjectCollectionEnabledOfDash0MonitoringResource(applicationUnderTestNamespace, false)
+					})
+
+					By(
+						fmt.Sprintf(
+							"waiting for a Kubernetes object record for the test deployment with masked env values to be "+
+								"collected after min timestamp %v",
+							timestampLowerBound,
+						))
+
+					// The k8s_objects receiver only starts watching after the operator has re-rendered the collector
+					// configuration and the collector has reloaded it. We repeatedly install and uninstall a test
+					// workload to make sure an object change happens _after_ the watch has been established.
+					Eventually(func(g Gomega) {
+						Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+						time.Sleep(5 * time.Second)
+						Expect(uninstallNodeJsRelease(applicationUnderTestNamespace)).To(Succeed())
+						verifyAtLeastOneKubernetesObjectRecord(
+							g,
+							timestampLowerBound,
+							"deployments",
+							"dash0-operator-nodejs-20-express-test-deployment",
+							// The deployment sets the PORT env var; the collector's redaction processor must mask its
+							// value before the manifest leaves the cluster.
+							`"name":"PORT","value":"****"`,
+							`"value":"1207"`,
+						)
+					}, 3*time.Minute, 1*time.Second).Should(Succeed())
+				})
+			})
+
 			Context("synchronizing Dash0 API resources", func() {
 				BeforeAll(func() {
 					installDash0ApiMock()

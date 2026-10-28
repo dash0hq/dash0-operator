@@ -19,9 +19,14 @@ import (
 const (
 	logsJsonMaxLineLength = 1_048_576
 
-	logBodyKey     = "log.body"
-	eventReasonKey = "k8s.event.reason"
-	eventNameKey   = "k8s.event.name"
+	logBodyKey            = "log.body"
+	logBodyNotContainsKey = "log.body.does-not-contain"
+	eventReasonKey        = "k8s.event.reason"
+	eventNameKey          = "k8s.event.name"
+
+	// attributes of log records emitted by the k8sobjects receiver
+	objectResourceNameKey = "k8s.resource.name"
+	objectNameKey         = "event.name"
 )
 
 var (
@@ -97,14 +102,23 @@ func extractMatchingLogRecords(
 					logRecord,
 				)
 				logRecordMatchFn(logRecord, &logRecordMatchResult)
-				if logRecord.Timestamp().AsTime().Before(timestampLowerBound) {
+				// Records emitted by the k8sobjects receiver carry no timestamp, only an observed timestamp; an unset
+				// timestamp would read as 1970 and the record would always be discarded as too old.
+				timestampLabel := "timestamp"
+				timestamp := logRecord.Timestamp()
+				if timestamp == 0 {
+					timestampLabel = "observed timestamp"
+					timestamp = logRecord.ObservedTimestamp()
+				}
+				if timestamp.AsTime().Before(timestampLowerBound) {
 					if logRecordMatchResult.isMatch() {
 						log.Printf(
-							"Ignoring matching log record because of timestamp: lower bound: %s (%d) vs. log record: %s (%d)",
+							"Ignoring matching log record because of its %s: lower bound: %s (%d) vs. log record: %s (%d)",
+							timestampLabel,
 							timestampLowerBound.String(),
 							timestampLowerBound.UnixNano(),
-							logRecord.Timestamp().String(),
-							logRecord.Timestamp().AsTime().UnixNano(),
+							timestamp.String(),
+							timestamp.AsTime().UnixNano(),
 						)
 					}
 					// This log record is too old, it is probably from a previously running test case, ignore it.
@@ -153,7 +167,7 @@ func workloadLogsResourceMatcher(runtimeWorkloadName string, workloadType string
 		}
 	}
 }
-func workloadKubernetesEventResourceMatcher(clusterName string, namespace string) func(
+func clusterAndNamespaceResourceMatcher(clusterName string, namespace string) func(
 	plog.ResourceLogs,
 	*ResourceMatchResult[plog.ResourceLogs],
 ) {
@@ -435,5 +449,82 @@ func kubernetesEventsMatcher(
 				),
 			)
 		}
+	}
+}
+
+// kubernetesObjectsMatcher matches log records emitted by the k8sobjects receiver: the record must be for the expected
+// resource (k8s.resource.name, the plural kind) and object name (event.name), its body must contain
+// expectedLogBodyPart and must not contain forbiddenLogBodyPart.
+func kubernetesObjectsMatcher(
+	expectedObjectResourceName string,
+	expectedObjectNameContains string,
+	expectedLogBodyPart string,
+	forbiddenLogBodyPart string,
+) func(plog.LogRecord, *ObjectMatchResult[plog.ResourceLogs, plog.LogRecord]) {
+	return func(logRecord plog.LogRecord, matchResult *ObjectMatchResult[plog.ResourceLogs, plog.LogRecord]) {
+		verifyLogRecordAttributeEquals(logRecord, objectResourceNameKey, expectedObjectResourceName, matchResult)
+		verifyLogRecordAttributeContains(logRecord, objectNameKey, expectedObjectNameContains, matchResult)
+
+		logBody := logRecord.Body().AsString()
+		if strings.Contains(logBody, expectedLogBodyPart) {
+			matchResult.addPassedAssertion(logBodyKey)
+		} else {
+			matchResult.addFailedAssertion(
+				logBodyKey,
+				fmt.Sprintf("expected a string containing \"%s\" but it was \"%s\"", expectedLogBodyPart, logBody),
+			)
+		}
+		if strings.Contains(logBody, forbiddenLogBodyPart) {
+			matchResult.addFailedAssertion(
+				logBodyNotContainsKey,
+				fmt.Sprintf("expected a string not containing \"%s\" but it was \"%s\"", forbiddenLogBodyPart, logBody),
+			)
+		} else {
+			matchResult.addPassedAssertion(logBodyNotContainsKey)
+		}
+	}
+}
+
+func verifyLogRecordAttributeEquals(
+	logRecord plog.LogRecord,
+	attributeKey string,
+	expectedValue string,
+	matchResult *ObjectMatchResult[plog.ResourceLogs, plog.LogRecord],
+) {
+	value, hasValue := logRecord.Attributes().Get(attributeKey)
+	if !hasValue {
+		matchResult.addFailedAssertion(
+			attributeKey,
+			fmt.Sprintf("expected \"%s\" but the log record had no such attribute", expectedValue),
+		)
+	} else if value.Str() == expectedValue {
+		matchResult.addPassedAssertion(attributeKey)
+	} else {
+		matchResult.addFailedAssertion(
+			attributeKey,
+			fmt.Sprintf("expected \"%s\" but it was \"%s\"", expectedValue, value.Str()),
+		)
+	}
+}
+
+func verifyLogRecordAttributeContains(
+	logRecord plog.LogRecord,
+	attributeKey string,
+	expectedValuePart string,
+	matchResult *ObjectMatchResult[plog.ResourceLogs, plog.LogRecord],
+) {
+	value, hasValue := logRecord.Attributes().Get(attributeKey)
+	if !hasValue {
+		matchResult.addFailedAssertion(
+			attributeKey,
+			fmt.Sprintf("expected a string containing \"%s\" but the log record had no such attribute", expectedValuePart),
+		)
+	} else if strings.Contains(value.Str(), expectedValuePart) {
+		matchResult.addPassedAssertion(attributeKey)
+	} else {
+		matchResult.addFailedAssertion(
+			attributeKey,
+			fmt.Sprintf("expected a string containing \"%s\" but it was \"%s\"", expectedValuePart, value.Str()),
+		)
 	}
 }
