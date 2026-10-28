@@ -28,7 +28,7 @@ RUN CGO_ENABLED=0 \
     builder --config=builder/config.yaml && \
     chmod u+x /src/dist/dash0-operator-collector
 
-FROM alpine:3.24.2
+FROM alpine:3.24.3
 COPY collector/src/image/entrypoint.sh /entrypoint.sh
 COPY --from=builder /src/dist/dash0-operator-collector otelcol
 USER 65532:65532
