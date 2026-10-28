@@ -21,6 +21,7 @@ import (
 	"github.com/dash0hq/dash0-operator/images/agent0-connector/kubectl"
 	"github.com/dash0hq/dash0-operator/images/agent0-connector/selfmonitoring"
 	"github.com/dash0hq/dash0-operator/images/agent0-connector/tracecontext"
+	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -95,9 +96,13 @@ const (
 	healthyStreamThreshold = 1 * time.Minute
 )
 
-// exit terminates the process with the given exit code. Tests replace it to observe the termination without ending the
-// test process.
-var exit = os.Exit
+// exit flushes the self-monitoring telemetry and terminates the process with the given exit code; os.Exit skips
+// deferred calls, so the error log explaining the exit would otherwise never be exported. Tests replace it to observe
+// the termination without ending the test process.
+var exit = func(exitCode int) {
+	common.ShutDownOTelSdk(context.Background())
+	os.Exit(exitCode)
+}
 
 // toleratedSchemePrefixes are the protocol prefixes that resolveServerAddress accepts and removes from the configured
 // server address. Any other scheme is left alone, in particular the schemes of gRPC's own target syntax (dns://,

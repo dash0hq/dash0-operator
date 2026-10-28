@@ -90,6 +90,8 @@ type PersesDashboardReconciler struct {
 	namespacedSyncEnabled      sync.Map
 	controllerStopFunctionLock sync.Mutex
 	controllerStopFunction     *context.CancelFunc
+	// namespaceResyncsInFlight counts the goroutines started by synchronizeNamespacedResources that have not finished.
+	namespaceResyncsInFlight atomic.Int32
 }
 
 const (
@@ -717,7 +719,7 @@ func (r *PersesDashboardReconciler) FetchExistingResourceOrigins(
 	_ *preconditionValidationResult,
 	_ ApiConfig,
 	_ logd.Logger,
-) ([]string, error) {
+) ([]ApiObjectOrigin, error) {
 	// The mechanism to delete individual dashboards when synchronizing one Kubernetes PersesDashboard resource is not
 	// required, since each PersesDashboard only contains one dashboard. It is only needed when the resource type holds
 	// multiple objects that are synchronized (as it is the case for PrometheusRule). Thus, this controller does not
@@ -730,7 +732,7 @@ func (r *PersesDashboardReconciler) FetchExistingNamespaceOrigins(
 	namespace string,
 	apiConfig ApiConfig,
 	logger logd.Logger,
-) ([]string, error) {
+) ([]ApiObjectOrigin, error) {
 	// The Dash0 API does not support filtering the list of dashboards by origin, so this fetches the origins of all
 	// dashboards in the dataset. IsOriginOfResource is used to pick the origins that belong to a particular resource.
 	dataset := apiConfig.Dataset
@@ -753,10 +755,10 @@ func (r *PersesDashboardReconciler) FetchExistingNamespaceOrigins(
 		logger.Error(err, "cannot fetch existing origins", "namespace", namespace)
 		return nil, err
 	}
-	var origins []string
+	var origins []ApiObjectOrigin
 	for _, dashboard := range dashboards {
 		if dashboard != nil && dashboard.Origin != nil && *dashboard.Origin != "" {
-			origins = append(origins, *dashboard.Origin)
+			origins = append(origins, ApiObjectOrigin{Origin: *dashboard.Origin})
 		}
 	}
 	return origins, nil
@@ -922,8 +924,8 @@ func (r *PersesDashboardReconciler) renderDashboardUrl(
 
 func (r *PersesDashboardReconciler) CreateDeleteRequests(
 	_ ApiConfig,
-	_ []string,
-	_ []string,
+	_ []ApiObjectOrigin,
+	_ []ApiObjectOrigin,
 ) []WrappedApiRequest {
 	// The mechanism to delete individual dashboards when synchronizing one Kubernetes PersesDashboard resource is not
 	// required, since each PersesDashboard only contains one dashboard. It is only needed when the resource type holds
@@ -997,7 +999,9 @@ func (r *PersesDashboardReconciler) synchronizeNamespacedResources(
 
 	logger.Info(fmt.Sprintf("Running synchronization of dashboards in namespace %s now.", namespace))
 
+	r.namespaceResyncsInFlight.Add(1)
 	go func() {
+		defer r.namespaceResyncsInFlight.Add(-1)
 		allDashboardResourcesInNamespace := &unstructured.UnstructuredList{}
 		allDashboardResourcesInNamespace.SetGroupVersionKind(
 			schema.GroupVersionKind{

@@ -1,0 +1,29 @@
+# Helm values for rendering the manifests of the OLM bundle, see olm/bin/generate-bundle.sh. The value
+# "olm-bundle-placeholder" marks settings the chart requires but the bundle must not contain; the manifest transformer
+# removes them and fails if any of them is left over.
+operator:
+  certManager:
+    # OLM provides the webhook serving certificate. With useCertManager=true, the chart renders neither the certificate
+    # Secret nor caBundle.
+    useCertManager: true
+    secretName: olm-bundle-placeholder
+    certManagerAnnotations:
+      dash0.com/olm-bundle-placeholder: remove
+
+  iac:
+    persesDashboard:
+      # The auto-patch needs ca.crt, OLM only mounts tls.crt and tls.key.
+      autoPatchConversionWebhook: false
+
+  # Signal Control is switched on and off at runtime via a Dash0SignalControl resource.
+  signalControl:
+    enabled: true
+
+  # Rendered with enabled=true so that the bundle carries the RBAC rules of the agent0-connector. The manifest transformer
+  # sets DASH0_AGENT0_CONNECTOR_ENABLED=false; it is switched on via the env settings of the Subscription.
+  agent0Connector:
+    enabled: true
+    serverAddress: olm-bundle-placeholder
+    secretRef:
+      name: olm-bundle-placeholder
+      key: olm-bundle-placeholder

@@ -1,0 +1,18 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SignalToMetrics
+metadata:
+  name: checkout-endpoint-latency
+spec:
+  enabled: true
+  display:
+    name: Checkout endpoint latency
+  match:
+    signal: spans
+    filters:
+      - key: http.route
+        operator: is
+        value: /checkout
+  output:
+    name: checkout.endpoint.duration
+    description: Latency distribution of requests to the checkout endpoint
+    interval: 30s
