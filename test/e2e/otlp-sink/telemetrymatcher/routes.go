@@ -46,6 +46,7 @@ func (r *Routes) defineRoutes(router *gin.Engine) {
 	router.GET("/matching-logs", r.matchingLogsRouteHandler)
 	router.GET("/matching-metrics", r.matchingMetricsRouteHandler)
 	router.GET("/matching-events", r.matchingEventsRouteHandler)
+	router.GET("/matching-objects", r.matchingObjectsRouteHandler)
 	router.GET("/matching-profiles", r.matchingProfilesRouteHandler)
 }
 
@@ -191,7 +192,7 @@ func (r *Routes) matchingEventsRouteHandler(c *gin.Context) {
 		return
 	}
 
-	resourceMatchFn := workloadKubernetesEventResourceMatcher(
+	resourceMatchFn := clusterAndNamespaceResourceMatcher(
 		commonParams.clusterName,
 		commonParams.namespace,
 	)
@@ -219,6 +220,51 @@ func (r *Routes) matchingEventsRouteHandler(c *gin.Context) {
 		commonParams,
 		allMatchResults,
 		"event/log record",
+	)
+}
+
+// matchingObjectsRouteHandler checks for log records that represent collected Kubernetes object manifests, using the
+// given query parameters of the request.
+func (r *Routes) matchingObjectsRouteHandler(c *gin.Context) {
+	commonParams, ok := readCommonQueryParams(c)
+	if !ok {
+		return
+	}
+
+	resourceMatchFn := clusterAndNamespaceResourceMatcher(
+		commonParams.clusterName,
+		commonParams.namespace,
+	)
+	objectResourceName := c.Query(shared.QueryParamObjectResourceName)
+	objectNameContains := c.Query(shared.QueryParamObjectNameContains)
+	logBodyContainsStr := c.Query(shared.QueryParamLogBodyContains)
+	logBodyDoesNotContainStr := c.Query(shared.QueryParamLogBodyDoesNotContain)
+	logMatchFn := kubernetesObjectsMatcher(
+		objectResourceName,
+		objectNameContains,
+		logBodyContainsStr,
+		logBodyDoesNotContainStr,
+	)
+
+	allMatchResults, err := readFileAndGetMatchingLogs(
+		r.Config.LogsFile,
+		resourceMatchFn,
+		logMatchFn,
+		commonParams.timestampLowerBound,
+	)
+	if err != nil {
+		c.JSON(500, shared.ExpectationResult{
+			Success:     false,
+			Description: fmt.Sprintf("error: %v", err),
+		})
+		return
+	}
+
+	processMatchResults(
+		c,
+		commonParams,
+		allMatchResults,
+		"Kubernetes object record",
 	)
 }
 

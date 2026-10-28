@@ -34,6 +34,12 @@ const (
 	QueryParamEventReason       = "event-reason"
 	QueryParamEventNameContains = "event-name-contains"
 
+	// query parameters for matching Kubernetes object records
+
+	QueryParamObjectResourceName    = "object-resource-name"
+	QueryParamObjectNameContains    = "object-name-contains"
+	QueryParamLogBodyDoesNotContain = "log-body-does-not-contain"
+
 	// query parameters for matching metrics
 
 	QueryParamMetricsMatchMode            = "metrics-match-mode"
