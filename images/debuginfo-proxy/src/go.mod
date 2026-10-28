@@ -3,7 +3,7 @@ module github.com/dash0hq/dash0-operator/images/debuginfo-proxy
 go 1.27.3
 
 require (
-	github.com/parca-dev/parca v0.29.1-0.20261023091433-209651b3e9cb
+	github.com/parca-dev/parca v0.29.1
 	github.com/stretchr/testify v1.12.1
 	go.opentelemetry.io/collector/config/configtls v1.69.0
 	go.opentelemetry.io/collector/confmap v1.69.0
