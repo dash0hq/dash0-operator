@@ -613,9 +613,25 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				It("collects Kubernetes object manifests with environment variable values masked", func() {
 					timestampLowerBound := time.Now()
 
+					// The feature requires both switches: the cluster-wide one on the operator configuration resource
+					// and the per-namespace opt-in on the monitoring resource.
+					updateOperatorConfigurationKubernetesObjectCollectionEnabled(true)
 					updateKubernetesObjectCollectionEnabledOfDash0MonitoringResource(applicationUnderTestNamespace, true)
 					DeferCleanup(func() {
-						updateKubernetesObjectCollectionEnabledOfDash0MonitoringResource(applicationUnderTestNamespace, false)
+						// Best effort: when this is the last spec of the run, the suite teardown has already deleted
+						// both resources by the time this cleanup runs.
+						_ = runAndIgnoreOutput(exec.Command(
+							"kubectl", "patch", "-n", applicationUnderTestNamespace,
+							"Dash0Monitoring", dash0MonitoringResourceName,
+							"--type", "merge",
+							"-p", `{"spec":{"kubernetesObjectCollection":{"enabled":false}}}`,
+						))
+						_ = runAndIgnoreOutput(exec.Command(
+							"kubectl", "patch",
+							"Dash0OperatorConfiguration", dash0OperatorConfigurationResourceAutomaticallyManagedName,
+							"--type", "json",
+							"-p", `[{"op":"add","path":"/spec/kubernetesObjectCollection","value":{"enabled":false}}]`,
+						))
 					})
 
 					By(

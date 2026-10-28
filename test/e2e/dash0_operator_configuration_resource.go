@@ -223,6 +223,16 @@ func updateOperatorConfigurationAutoNamespaceMonitoringEnabled(
 	updateDash0OperatorConfigurationResource(jsonPatch)
 }
 
+func updateOperatorConfigurationKubernetesObjectCollectionEnabled(enabled bool) {
+	jsonPatch := fmt.Sprintf(`[{
+   "op":"add",
+   "path":"/spec/kubernetesObjectCollection",
+   "value":{"enabled":%t}
+	}]`, enabled)
+	updateDash0OperatorConfigurationResourceWithName(
+		dash0OperatorConfigurationResourceAutomaticallyManagedName, jsonPatch)
+}
+
 func updateOperatorConfigurationMonitoringTemplateInstrumentWorkloadsMode(
 	newInstrumentWorkloadsMode dash0common.InstrumentWorkloadsMode,
 ) {
