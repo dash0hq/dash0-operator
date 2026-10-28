@@ -238,6 +238,21 @@ func updateLogCollectionEnabledOfDash0MonitoringResource(namespace string, enabl
 	)
 }
 
+func updateKubernetesObjectCollectionEnabledOfDash0MonitoringResource(namespace string, enabled bool) {
+	updateDash0MonitoringResource(
+		namespace,
+		fmt.Sprintf(`
+{
+  "spec": {
+    "kubernetesObjectCollection": {
+      "enabled": %t
+    }
+  }
+}
+`, enabled),
+	)
+}
+
 func updateDash0MonitoringResource(
 	namespace string,
 	jsonPatch string,
