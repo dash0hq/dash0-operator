@@ -1,6 +1,6 @@
 module github.com/dash0hq/dash0-operator/test/e2e
 
-go 1.27.2
+go 1.27.3
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
@@ -48,7 +48,7 @@ require (
 	github.com/expr-lang/expr v1.17.8 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.3 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.6 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect

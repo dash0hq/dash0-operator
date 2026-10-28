@@ -30,6 +30,7 @@ updates:
     directories:
       - "/"
       - "/images/configreloader/src"
+      - "/images/debuginfo-proxy/src"
       - "/images/filelogoffsetsync/src"
       - "/images/pkg/common"
       - "test/e2e"
@@ -129,6 +130,7 @@ updates:
       - "/images/agent0-connector"
       - "/images/collector"
       - "/images/configreloader"
+      - "/images/debuginfo-proxy"
       - "/images/filelogoffsetsync"
       - "/images/filelogoffsetvolumeownership"
       - "/images/volumeownership"
