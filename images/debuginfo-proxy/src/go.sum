@@ -28,8 +28,8 @@ github.com/mitchellh/copystructure v1.2.0 h1:vpKXTN4ewci03Vljg/q9QvCGUDttBOGBIa1
 github.com/mitchellh/copystructure v1.2.0/go.mod h1:qLl+cE2AmVv+CoeAwDPye/v+N2HKCj9FbZEVFJRxO9s=
 github.com/mitchellh/reflectwalk v1.0.2 h1:G2LzWKi524PWgd3mLHV8Y5k7s6XUvT0Gef6zxSIeXaQ=
 github.com/mitchellh/reflectwalk v1.0.2/go.mod h1:mSTlrgnPZtwu0c4WaC2kGObEpuNDbx0jmZXqmk4esnw=
-github.com/parca-dev/parca v0.29.1 h1:YC5xZIXUuMlMiwP1G90nmDaXVxEnwdm7LBiGJiAhET0=
-github.com/parca-dev/parca v0.29.1/go.mod h1:XoyvX4BauOIYd3z6mg6LSiLnpI6/WjHTZAE7DtVkQx8=
+github.com/parca-dev/parca v0.29.1-0.20261023091433-209651b3e9cb h1:15hbWQoz7pNLU9tl2zI18ekgDsGnv3BFsZiqvgR/gfo=
+github.com/parca-dev/parca v0.29.1-0.20261023091433-209651b3e9cb/go.mod h1:XoyvX4BauOIYd3z6mg6LSiLnpI6/WjHTZAE7DtVkQx8=
 github.com/planetscale/vtprotobuf v0.6.1-0.20250313105119-ba97887b0a25 h1:S1hI5JiKP7883xBzZAr1ydcxrKNSVNm7+3+JwjxZEsg=
 github.com/planetscale/vtprotobuf v0.6.1-0.20250313105119-ba97887b0a25/go.mod h1:ZQntvDG8TkPgljxtA0R9frDoND4QORU1VXz015N5Ks4=
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
