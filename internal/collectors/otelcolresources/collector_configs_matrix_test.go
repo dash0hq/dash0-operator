@@ -175,6 +175,7 @@ func maximalSignalControlConfig() SignalControlConfig {
 		LogPatternRefreshInterval:          "2m",
 		LogParserCacheExpiration:           "5m",
 		LogGroupingCacheExpiration:         "5m",
+		CardholderDataRedactionEnabled:     true,
 		OperationCardinalityRules: []SignalControlCardinalityRule{
 			{
 				Id:              "rule-1",
@@ -656,6 +657,13 @@ func matrixSettings() []matrixSetting {
 					e.config.SignalControl.LogParserCacheExpiration = ""
 					e.config.SignalControl.LogGroupingCacheExpiration = ""
 				}
+			},
+		},
+		{
+			name: "signal-control-cardholder-data-redaction",
+			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				enableSignalControl(e)
+				e.config.SignalControl.CardholderDataRedactionEnabled = enabled
 			},
 		},
 		{

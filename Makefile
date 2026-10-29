@@ -71,6 +71,9 @@ AGENT0_CONNECTOR_IMAGE_TAG ?= $(IMAGE_TAG)
 AGENT0_CONNECTOR_IMAGE ?= $(AGENT0_CONNECTOR_IMAGE_REPOSITORY):$(AGENT0_CONNECTOR_IMAGE_TAG)
 AGENT0_CONNECTOR_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
 
+DEBUGINFO_PROXY_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)debuginfo-proxy
+DEBUGINFO_PROXY_IMAGE_TAG ?= $(IMAGE_TAG)
+
 # Variables for test application container images:
 
 TEST_IMAGE_REPOSITORY_PREFIX ?= $(IMAGE_REPOSITORY_PREFIX)
@@ -185,7 +188,7 @@ go-fix: ## Run go fix against code.
 test: go-unit-tests helm-unit-tests ## Run all unit tests (Go, Helm chart unit tests).
 
 .PHONY: go-unit-tests
-go-unit-tests: common-package-unit-tests nodeuid-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests collector-telemetry-unit-tests ## Run the Go unit tests for all packages.
+go-unit-tests: common-package-unit-tests nodeuid-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests collector-telemetry-unit-tests debuginfo-proxy-unit-tests ## Run the Go unit tests for all packages.
 
 .PHONY: operator-manager-unit-tests
 operator-manager-unit-tests: manifests generate fmt vet envtest ## Run the Go unit tests for the operator code.
@@ -210,6 +213,10 @@ agent0-connector-unit-tests: ## Run the Go unit tests for the agent0-connector i
 .PHONY: collector-telemetry-unit-tests
 collector-telemetry-unit-tests: ## Run the Go unit tests for the collector image's custom internal-telemetry factory.
 	cd images/collector/src/telemetry && go test ./...
+
+.PHONY: debuginfo-proxy-unit-tests
+debuginfo-proxy-unit-tests: ## Run the debuginfo upload proxy tests.
+	cd images/debuginfo-proxy/src && go test -race ./...
 
 .PHONY: helm-unit-tests
 helm-unit-tests: ## Run the Helm chart unit tests.
@@ -390,6 +397,7 @@ GO_VERSION_CHECK_GOMOD_DOCKERFILE_PAIRS := \
   dockerfile:images/agent0-connector/src/go.mod:images/agent0-connector/Dockerfile \
   dockerfile:images/collector/src/telemetry/go.mod:images/collector/Dockerfile \
   dockerfile:images/configreloader/src/go.mod:images/configreloader/Dockerfile \
+  dockerfile:images/debuginfo-proxy/src/go.mod:images/debuginfo-proxy/Dockerfile \
   dockerfile:images/filelogoffsetsync/src/go.mod:images/filelogoffsetsync/Dockerfile \
   dockerfile:test/e2e/control-plane-mock/go.mod:test/e2e/control-plane-mock/Dockerfile \
   dockerfile:test/e2e/dash0-api-mock/go.mod:test/e2e/dash0-api-mock/Dockerfile \
@@ -645,7 +653,8 @@ images: \
   image-filelog-offset-sync \
   image-filelog-offset-volume-ownership \
   image-target-allocator \
-  image-agent0-connector ## Build all container images used by the operator. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
+  image-agent0-connector \
+  image-debuginfo-proxy ## Build all container images. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
 
 define build_container_image
 $(eval $@_IMAGE_REPOSITORY = $(1))
@@ -701,6 +710,10 @@ image-target-allocator: ## Build the OpenTelemetry target-allocator container im
 image-agent0-connector: ## Build the agent0-connector container image.
 	@$(call build_container_image,$(AGENT0_CONNECTOR_IMAGE_REPOSITORY),$(AGENT0_CONNECTOR_IMAGE_TAG),images,images/agent0-connector/Dockerfile)
 
+.PHONY: image-debuginfo-proxy
+image-debuginfo-proxy: ## Build the debuginfo upload proxy container image.
+	@$(call build_container_image,$(DEBUGINFO_PROXY_IMAGE_REPOSITORY),$(DEBUGINFO_PROXY_IMAGE_TAG),images,images/debuginfo-proxy/Dockerfile)
+
 .PHONY: push-images
 push-images: \
 	push-image-controller \
@@ -710,7 +723,8 @@ push-images: \
 	push-image-filelog-offset-sync \
 	push-image-filelog-offset-volume-ownership \
 	push-image-target-allocator \
-	push-image-agent0-connector ## Push all container images using the full image reference.
+	push-image-agent0-connector \
+	push-image-debuginfo-proxy ## Push all container images using the full image reference.
 
 define push_container_image
 $(eval $@_IMAGE_REPOSITORY = $(1))
@@ -753,42 +767,53 @@ push-image-target-allocator: ## Push the OpenTelemetry target-allocator containe
 push-image-agent0-connector: ## Push the agent0-connector container image.
 	@$(call push_container_image,$(AGENT0_CONNECTOR_IMAGE_REPOSITORY),$(AGENT0_CONNECTOR_IMAGE_TAG))
 
+.PHONY: push-image-debuginfo-proxy
+push-image-debuginfo-proxy: ## Push the debuginfo upload proxy container image.
+	@$(call push_container_image,$(DEBUGINFO_PROXY_IMAGE_REPOSITORY),$(DEBUGINFO_PROXY_IMAGE_TAG))
+
+# The settings for rendering the Helm chart with the images that this repository builds, used by deploy and olm-bundle.
+HELM_BUILT_IMAGE_SETTINGS = \
+	--set operator.image.repository=$(CONTROLLER_IMAGE_REPOSITORY) \
+	--set operator.image.tag=$(CONTROLLER_IMAGE_TAG) \
+	--set operator.image.pullPolicy=$(CONTROLLER_IMAGE_PULL_POLICY) \
+	--set operator.instrumentationImage.repository=$(INSTRUMENTATION_IMAGE_REPOSITORY) \
+	--set operator.instrumentationImage.tag=$(INSTRUMENTATION_IMAGE_TAG) \
+	--set operator.instrumentationImage.pullPolicy=$(INSTRUMENTATION_IMAGE_PULL_POLICY) \
+	--set operator.collectorImage.repository=$(COLLECTOR_IMAGE_REPOSITORY) \
+	--set operator.collectorImage.tag=$(COLLECTOR_IMAGE_TAG) \
+	--set operator.collectorImage.pullPolicy=$(COLLECTOR_IMAGE_PULL_POLICY) \
+	--set operator.configurationReloaderImage.repository=$(CONFIGURATION_RELOADER_IMAGE_REPOSITORY) \
+	--set operator.configurationReloaderImage.tag=$(CONFIGURATION_RELOADER_IMAGE_TAG) \
+	--set operator.configurationReloaderImage.pullPolicy=$(CONFIGURATION_RELOADER_IMAGE_PULL_POLICY) \
+	--set operator.filelogOffsetSyncImage.repository=$(FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY) \
+	--set operator.filelogOffsetSyncImage.tag=$(FILELOG_OFFSET_SYNC_IMAGE_TAG) \
+	--set operator.filelogOffsetSyncImage.pullPolicy=$(FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY) \
+	--set operator.filelogOffsetVolumeOwnershipImage.repository=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY) \
+	--set operator.filelogOffsetVolumeOwnershipImage.tag=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG) \
+	--set operator.filelogOffsetVolumeOwnershipImage.pullPolicy=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY) \
+	--set operator.targetAllocatorImage.repository=$(TARGET_ALLOCATOR_IMAGE_REPOSITORY) \
+	--set operator.targetAllocatorImage.tag=$(TARGET_ALLOCATOR_IMAGE_TAG) \
+	--set operator.targetAllocatorImage.pullPolicy=$(TARGET_ALLOCATOR_IMAGE_PULL_POLICY) \
+	--set operator.agent0ConnectorImage.repository=$(AGENT0_CONNECTOR_IMAGE_REPOSITORY) \
+	--set operator.agent0ConnectorImage.tag=$(AGENT0_CONNECTOR_IMAGE_TAG) \
+	--set operator.agent0ConnectorImage.pullPolicy=$(AGENT0_CONNECTOR_IMAGE_PULL_POLICY)
+
+HELM_IMAGE_SETTINGS = \
+	$(HELM_BUILT_IMAGE_SETTINGS) \
+	--set operator.signalControlCollectorImage.repository=$(SIGNAL_CONTROL_COLLECTOR_IMAGE_REPOSITORY) \
+	--set operator.signalControlCollectorImage.tag=$(SIGNAL_CONTROL_COLLECTOR_IMAGE_TAG) \
+	--set operator.signalControlCollectorImage.pullPolicy=$(SIGNAL_CONTROL_COLLECTOR_IMAGE_PULL_POLICY) \
+	--set operator.edgeProxyImage.repository=$(EDGE_PROXY_IMAGE_REPOSITORY) \
+	--set operator.edgeProxyImage.tag=$(EDGE_PROXY_IMAGE_TAG) \
+	--set operator.edgeProxyImage.pullPolicy=$(EDGE_PROXY_IMAGE_PULL_POLICY)
+
 .PHONY: deploy
 deploy: ## Deploy the controller via helm to the current kubectl context.
 	test-resources/bin/render-templates.sh
 	helm upgrade --install \
 		--namespace dash0-system \
 		--create-namespace \
-		--set operator.image.repository=$(CONTROLLER_IMAGE_REPOSITORY) \
-		--set operator.image.tag=$(CONTROLLER_IMAGE_TAG) \
-		--set operator.image.pullPolicy=$(CONTROLLER_IMAGE_PULL_POLICY) \
-		--set operator.instrumentationImage.repository=$(INSTRUMENTATION_IMAGE_REPOSITORY) \
-		--set operator.instrumentationImage.tag=$(INSTRUMENTATION_IMAGE_TAG) \
-		--set operator.instrumentationImage.pullPolicy=$(INSTRUMENTATION_IMAGE_PULL_POLICY) \
-		--set operator.collectorImage.repository=$(COLLECTOR_IMAGE_REPOSITORY) \
-		--set operator.collectorImage.tag=$(COLLECTOR_IMAGE_TAG) \
-		--set operator.collectorImage.pullPolicy=$(COLLECTOR_IMAGE_PULL_POLICY) \
-		--set operator.configurationReloaderImage.repository=$(CONFIGURATION_RELOADER_IMAGE_REPOSITORY) \
-		--set operator.configurationReloaderImage.tag=$(CONFIGURATION_RELOADER_IMAGE_TAG) \
-		--set operator.configurationReloaderImage.pullPolicy=$(CONFIGURATION_RELOADER_IMAGE_PULL_POLICY) \
-		--set operator.filelogOffsetSyncImage.repository=$(FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY) \
-		--set operator.filelogOffsetSyncImage.tag=$(FILELOG_OFFSET_SYNC_IMAGE_TAG) \
-		--set operator.filelogOffsetSyncImage.pullPolicy=$(FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY) \
-		--set operator.filelogOffsetVolumeOwnershipImage.repository=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY) \
-		--set operator.filelogOffsetVolumeOwnershipImage.tag=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG) \
-		--set operator.filelogOffsetVolumeOwnershipImage.pullPolicy=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY) \
-		--set operator.targetAllocatorImage.repository=$(TARGET_ALLOCATOR_IMAGE_REPOSITORY) \
-		--set operator.targetAllocatorImage.tag=$(TARGET_ALLOCATOR_IMAGE_TAG) \
-		--set operator.targetAllocatorImage.pullPolicy=$(TARGET_ALLOCATOR_IMAGE_PULL_POLICY) \
-		--set operator.signalControlCollectorImage.repository=$(SIGNAL_CONTROL_COLLECTOR_IMAGE_REPOSITORY) \
-		--set operator.signalControlCollectorImage.tag=$(SIGNAL_CONTROL_COLLECTOR_IMAGE_TAG) \
-		--set operator.signalControlCollectorImage.pullPolicy=$(SIGNAL_CONTROL_COLLECTOR_IMAGE_PULL_POLICY) \
-		--set operator.edgeProxyImage.repository=$(EDGE_PROXY_IMAGE_REPOSITORY) \
-		--set operator.edgeProxyImage.tag=$(EDGE_PROXY_IMAGE_TAG) \
-		--set operator.edgeProxyImage.pullPolicy=$(EDGE_PROXY_IMAGE_PULL_POLICY) \
-		--set operator.agent0ConnectorImage.repository=$(AGENT0_CONNECTOR_IMAGE_REPOSITORY) \
-		--set operator.agent0ConnectorImage.tag=$(AGENT0_CONNECTOR_IMAGE_TAG) \
-		--set operator.agent0ConnectorImage.pullPolicy=$(AGENT0_CONNECTOR_IMAGE_PULL_POLICY) \
+		$(HELM_IMAGE_SETTINGS) \
 		--set operator.developmentMode=true \
 		dash0-operator \
 		$(OPERATOR_HELM_CHART)
@@ -797,6 +822,46 @@ deploy: ## Deploy the controller via helm to the current kubectl context.
 undeploy: ## Undeploy the controller via helm from the current kubectl context.
 	helm uninstall --namespace dash0-system dash0-operator --timeout 30s
 	$(KUBECTL) delete ns dash0-system
+
+##@ OLM
+
+BUNDLE_VERSION ?= 0.0.1
+BUNDLE_CHANNELS ?= stable
+BUNDLE_DEFAULT_CHANNEL ?= stable
+BUNDLE_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)dash0-operator-bundle
+BUNDLE_IMAGE_TAG ?= v$(BUNDLE_VERSION)
+
+# The Signal Control collector and Edge Proxy images are not built in this repository. The bundle keeps the images of
+# the chart unless SIGNAL_CONTROL_COLLECTOR_IMAGE_* or EDGE_PROXY_IMAGE_* are set via the environment or command line.
+helm_set_if_overridden = $(if $(filter environment command,$(origin $(2))),--set $(1)=$($(2)))
+OLM_HELM_IMAGE_SETTINGS = \
+	$(HELM_BUILT_IMAGE_SETTINGS) \
+	$(call helm_set_if_overridden,operator.signalControlCollectorImage.repository,SIGNAL_CONTROL_COLLECTOR_IMAGE_REPOSITORY) \
+	$(call helm_set_if_overridden,operator.signalControlCollectorImage.tag,SIGNAL_CONTROL_COLLECTOR_IMAGE_TAG) \
+	$(call helm_set_if_overridden,operator.signalControlCollectorImage.pullPolicy,SIGNAL_CONTROL_COLLECTOR_IMAGE_PULL_POLICY) \
+	$(call helm_set_if_overridden,operator.edgeProxyImage.repository,EDGE_PROXY_IMAGE_REPOSITORY) \
+	$(call helm_set_if_overridden,operator.edgeProxyImage.tag,EDGE_PROXY_IMAGE_TAG) \
+	$(call helm_set_if_overridden,operator.edgeProxyImage.pullPolicy,EDGE_PROXY_IMAGE_PULL_POLICY)
+
+.PHONY: olm-bundle
+olm-bundle: operator-sdk ## Generate the OLM bundle (bundle/ and bundle.Dockerfile) from the Helm chart.
+	BUNDLE_VERSION=$(BUNDLE_VERSION) \
+	BUNDLE_CHANNELS=$(BUNDLE_CHANNELS) \
+	BUNDLE_DEFAULT_CHANNEL=$(BUNDLE_DEFAULT_CHANNEL) \
+	OPERATOR_SDK=$(OPERATOR_SDK) \
+	olm/bin/generate-bundle.sh $(OLM_HELM_IMAGE_SETTINGS)
+
+.PHONY: olm-bundle-validate
+olm-bundle-validate: operator-sdk ## Validate the OLM bundle, including the optional operatorframework checks.
+	$(OPERATOR_SDK) bundle validate ./bundle --select-optional suite=operatorframework
+
+.PHONY: olm-bundle-image
+olm-bundle-image: ## Build the OLM bundle image locally, the image is not pushed.
+	@$(call build_container_image,$(BUNDLE_IMAGE_REPOSITORY),$(BUNDLE_IMAGE_TAG),.,bundle.Dockerfile)
+
+.PHONY: push-olm-bundle-image
+push-olm-bundle-image: ## Push the OLM bundle image.
+	@$(call push_container_image,$(BUNDLE_IMAGE_REPOSITORY),$(BUNDLE_IMAGE_TAG))
 
 ##@ Build Dependencies
 
@@ -811,10 +876,12 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 HUSKY ?= $(LOCALBIN)/husky
+OPERATOR_SDK ?= $(LOCALBIN)/operator-sdk
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.7.1
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
+OPERATOR_SDK_VERSION ?= v1.42.3
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
@@ -835,6 +902,14 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
 $(ENVTEST): $(LOCALBIN)
 	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+
+.PHONY: operator-sdk
+operator-sdk: $(LOCALBIN) ## Download operator-sdk locally if necessary. If wrong version is installed, it will be overwritten.
+	@test -s $(OPERATOR_SDK) && $(OPERATOR_SDK) version | grep -q $(OPERATOR_SDK_VERSION) || { \
+		set -e; \
+		curl -sSfLo $(OPERATOR_SDK) https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$(shell go env GOOS)_$(shell go env GOARCH); \
+		chmod +x $(OPERATOR_SDK); \
+	}
 
 .PHONY: husky-install
 husky-install:

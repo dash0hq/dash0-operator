@@ -153,7 +153,12 @@ func workloadLogsResourceMatcher(runtimeWorkloadName string, workloadType string
 		}
 	}
 }
-func workloadKubernetesEventResourceMatcher(clusterName string, namespace string) func(
+func workloadKubernetesEventResourceMatcher(
+	clusterName string,
+	namespace string,
+	involvedObjectNameAttribute string,
+	involvedObjectName string,
+) func(
 	plog.ResourceLogs,
 	*ResourceMatchResult[plog.ResourceLogs],
 ) {
@@ -171,6 +176,14 @@ func workloadKubernetesEventResourceMatcher(clusterName string, namespace string
 			namespace,
 			matchResult,
 		)
+		if involvedObjectNameAttribute != "" {
+			verifyResourceAttributeEquals(
+				resourceAttributes,
+				involvedObjectNameAttribute,
+				involvedObjectName,
+				matchResult,
+			)
+		}
 	}
 }
 

@@ -103,7 +103,7 @@ while IFS= read -r run; do
     [[ -z "$attempt_json" ]] && continue
 
     job=$(jq -c --arg job "$JOB_NAME" --arg step "$STEP_NAME" '
-      .jobs[]
+      .jobs[]?
       | select(.name == $job)
       | select(any(.steps[]?; .name == $step and .conclusion == "failure"))
     ' <<<"$attempt_json" || true)
@@ -124,7 +124,7 @@ while IFS= read -r run; do
     printf '  job concl: %s (started %s)\n' "$job_concl" "$started"
 
     if $extract_tests; then
-      log=$(gh api -H 'Accept: application/vnd.github+json' \
+      log=$(gh api --allow-escape-sequences -H 'Accept: application/vnd.github+json' \
         "repos/{owner}/{repo}/actions/jobs/${job_id}/logs" 2>/dev/null || true)
       if [[ -n "$log" ]]; then
         # Ginkgo colorizes its output, e.g. <ESC>[91m[FAIL]<ESC>[0m ... — the

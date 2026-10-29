@@ -9,3 +9,6 @@ spec:
     debug: true
   logEnrichment:
     enabled: true
+  redaction:
+    cardholderData:
+      enabled: true

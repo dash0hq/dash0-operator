@@ -3,7 +3,7 @@
 
 # Note: This Dockerfile expects dash0-operator/images as the build context.
 
-FROM --platform=${BUILDPLATFORM} golang:1.27.2-alpine3.24 AS builder
+FROM --platform=${BUILDPLATFORM} golang:1.27.3-alpine3.24 AS builder
 
 RUN apk add --update git make yq && apk cache clean
 
@@ -28,7 +28,7 @@ RUN CGO_ENABLED=0 \
     builder --config=builder/config.yaml && \
     chmod u+x /src/dist/dash0-operator-collector
 
-FROM alpine:3.24.2
+FROM alpine:3.24.3
 COPY collector/src/image/entrypoint.sh /entrypoint.sh
 COPY --from=builder /src/dist/dash0-operator-collector otelcol
 USER 65532:65532

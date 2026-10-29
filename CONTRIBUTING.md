@@ -166,6 +166,10 @@ Run `test-resources/bin/test-cleanup.sh` to remove the operator and the test app
 If you are using `test-resources/.env`, you can also add the environment variables (`IMAGE_REPOSITORY_PREFIX` etc.)
 there to always have them set automatically instead of providing them with every script invocation.
 
+For `test-resources/bin/test-olm-bundle.sh` with the local registry, also set `BUNDLE_REGISTRY_USE_HTTP=true`.
+The script installs the bundle with `operator-sdk run bundle`, which pulls the bundle image on your machine, not in the
+cluster, and uses HTTPS by default, but the local registry only serves plain HTTP.
+
 Moving beyond the quickstart instructions, here are more details on the test scripts and all available parameters:
 
 * `test-resources/bin/test-scenario-*.sh`: Not every single test scenario is listed here individually, consult the file

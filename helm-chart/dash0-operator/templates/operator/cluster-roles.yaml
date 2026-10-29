@@ -214,6 +214,7 @@ rules:
   - list
   - watch
 
+{{- if .Values.operator.iac.persesDashboard.autoPatchConversionWebhook }}
 # Permission to patch the Perses dashboard CRD so the operator can configure its conversion
 # webhook (scoped to that single CRD by name to avoid broad CRD-mutation privileges).
 - apiGroups:
@@ -225,6 +226,7 @@ rules:
   verbs:
   - patch
   - update
+{{- end }}
 
 # Permissions required to watch Perses dashboard resources:
 - apiGroups:
