@@ -23,10 +23,12 @@ import (
 	"github.com/dash0hq/dash0-operator/images/agent0-connector/tracecontext"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	pb "github.com/dash0hq/dash0-operator/images/agent0-connector/proto"
 )
@@ -94,6 +96,17 @@ const (
 	// stream drops, the backoff is reset to initialReconnectDelay so a single blip does not inherit a long delay that
 	// accumulated during an earlier outage.
 	healthyStreamThreshold = 1 * time.Minute
+
+	// maxRotationReconnectDelay is the upper bound of the delay before reconnecting after the backend rotated the
+	// connection (see isRoutineRotation). The actual delay is drawn uniformly from [0, maxRotationReconnectDelay), so
+	// the connector reconnects promptly, while the clients of a backend replica that closes all of its connections at
+	// once (e.g. when it shuts down) do not all reconnect at the same moment.
+	maxRotationReconnectDelay = 1 * time.Second
+
+	// routineGoAwayMarker is the part of the status message with which grpc-go reports the end of a stream whose
+	// connection had received a GOAWAY frame without an error code (NO_ERROR) before it was closed. The server sends
+	// such a GOAWAY when the connection reaches its MaxConnectionAge, and when it shuts down gracefully.
+	routineGoAwayMarker = "received prior goaway: code: NO_ERROR"
 )
 
 // exit flushes the self-monitoring telemetry and terminates the process with the given exit code; os.Exit skips
@@ -155,18 +168,19 @@ func (s *Subscriber) RunSubscriber(ctx context.Context, logger *slog.Logger) {
 			return
 		}
 
-		// Reset the backoff after a stream that stayed up long enough to be considered healthy, so a single blip does
-		// not inherit a long delay that accumulated during an earlier outage.
-		if time.Since(streamStart) >= healthyStreamThreshold {
-			reconnectDelay = initialReconnectDelay
-		}
-
-		// Always wait before reconnecting, reconnecting immediately would spin in a tight loop. The delay is jittered to
-		// avoid synchronized reconnect storms across many agent0-connector pods.
-		wait := jitter(reconnectDelay)
-		if err != nil {
+		var wait time.Duration
+		rotation := isRoutineRotation(err)
+		wait, reconnectDelay = planReconnect(rotation, time.Since(streamStart), reconnectDelay)
+		switch {
+		case rotation:
+			logger.Info(
+				"the backend rotated the connection of the command request stream, reconnecting",
+				"reason", err,
+				"retryIn", wait,
+			)
+		case err != nil:
 			logger.Warn("command request stream ended, reconnecting", "error", err, "retryIn", wait)
-		} else {
+		default:
 			logger.Info("command request stream closed by the backend, reconnecting", "retryIn", wait)
 		}
 		select {
@@ -174,9 +188,40 @@ func (s *Subscriber) RunSubscriber(ctx context.Context, logger *slog.Logger) {
 		case <-ctx.Done():
 			return
 		}
-
-		reconnectDelay = nextReconnectDelay(reconnectDelay)
 	}
+}
+
+// planReconnect returns how long to wait before reconnecting after a stream ended, and the reconnect delay to continue
+// with after that wait, given the reconnect delay the stream was opened with.
+//
+// After a routine rotation of the connection by the backend, the connector reconnects promptly, after a random delay
+// below maxRotationReconnectDelay, and the backoff starts over at initialReconnectDelay. Otherwise the wait is the
+// jittered current delay, which is reset to initialReconnectDelay first if the stream stayed up long enough to be
+// considered healthy (so a single blip does not inherit a long delay that accumulated during an earlier outage), and
+// the delay doubles for the next attempt.
+func planReconnect(
+	rotation bool,
+	streamDuration time.Duration,
+	currentDelay time.Duration,
+) (wait time.Duration, nextDelay time.Duration) {
+	if rotation {
+		return time.Duration(rand.Int64N(int64(maxRotationReconnectDelay))), initialReconnectDelay
+	}
+	if streamDuration >= healthyStreamThreshold {
+		currentDelay = initialReconnectDelay
+	}
+	// Always wait before reconnecting, reconnecting immediately would spin in a tight loop. The delay is jittered to
+	// avoid synchronized reconnect storms across many agent0-connector pods.
+	return jitter(currentDelay), nextReconnectDelay(currentDelay)
+}
+
+// isRoutineRotation reports whether a stream ended because the backend rotated its connection: the backend announced
+// the end of the connection with a GOAWAY frame without an error code - which it does when the connection reaches its
+// MaxConnectionAge or when the backend shuts down gracefully - and closed the connection after the grace period. A
+// GOAWAY with an error code (like ENHANCE_YOUR_CALM for too many keepalive pings) is not a routine rotation, and
+// neither is a connection that broke without a GOAWAY.
+func isRoutineRotation(err error) bool {
+	return status.Code(err) == codes.Unavailable && strings.Contains(err.Error(), routineGoAwayMarker)
 }
 
 // nextReconnectDelay doubles the current reconnect delay, capped at maxReconnectDelay.
