@@ -31,6 +31,7 @@ const (
 	annotationNameSpecInstrumentWorkloadsLabelSelector                       = "dash0.com/spec.instrumentWorkloads.labelSelector"
 	annotationNameStatusPreviousInstrumentWorkloadsLabelSelector             = "dash0.com/status.previousInstrumentWorkloads.labelSelector"
 	annotationNameSpecEventCollectionEnabled                                 = "dash0.com/spec.eventCollection.enabled"
+	annotationNameSpecKubernetesObjectCollectionEnabled                      = "dash0.com/spec.kubernetesObjectCollection.enabled"
 	annotationNameStatusPreviousLogCollectionEnabled                         = "dash0.com/status.previousLogCollection.enabled"
 )
 
@@ -434,6 +435,13 @@ func (dst *Dash0Monitoring) ConvertFrom(srcRaw conversion.Hub) error {
 		dst.Annotations[annotationNameSpecEventCollectionEnabled] =
 			strconv.FormatBool(*src.Spec.EventCollection.Enabled)
 	}
+	if src.Spec.KubernetesObjectCollection.Enabled != nil {
+		if dst.Annotations == nil {
+			dst.Annotations = make(map[string]string)
+		}
+		dst.Annotations[annotationNameSpecKubernetesObjectCollectionEnabled] =
+			strconv.FormatBool(*src.Spec.KubernetesObjectCollection.Enabled)
+	}
 
 	dst.Spec.LogCollection = src.Spec.LogCollection
 	dst.Spec.PrometheusScraping = src.Spec.PrometheusScraping
@@ -526,6 +534,18 @@ func (src *Dash0Monitoring) ConvertTo(dstRaw conversion.Hub) error {
 			// Deliberately not handling the error here, if the annotation has an invalid value, we ignore it.
 		}
 		delete(dst.Annotations, annotationNameSpecEventCollectionEnabled)
+
+		kubernetesObjectCollectionEnabledAnnotationValue, kubernetesObjectCollectionEnabledFound :=
+			src.Annotations[annotationNameSpecKubernetesObjectCollectionEnabled]
+		if kubernetesObjectCollectionEnabledFound &&
+			strings.TrimSpace(kubernetesObjectCollectionEnabledAnnotationValue) != "" {
+			if kubernetesObjectCollectionEnabled, err :=
+				strconv.ParseBool(kubernetesObjectCollectionEnabledAnnotationValue); err == nil {
+				dst.Spec.KubernetesObjectCollection.Enabled = ptr.To(kubernetesObjectCollectionEnabled)
+			}
+			// Deliberately not handling the error here, if the annotation has an invalid value, we ignore it.
+		}
+		delete(dst.Annotations, annotationNameSpecKubernetesObjectCollectionEnabled)
 	}
 	dst.Spec.LogCollection = src.Spec.LogCollection
 	dst.Spec.PrometheusScraping = src.Spec.PrometheusScraping
