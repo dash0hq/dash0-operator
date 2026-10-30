@@ -47,6 +47,12 @@ spec:
             description: Dash0SignalToMetricsSpec defines the desired state of a SignalToMetrics
               rule.
             properties:
+              alternativeDatasetId:
+                description: |-
+                  The slug of the dataset the metric is written to. Required when targetDatasetMode is alternative or both, must
+                  not be set otherwise.
+                pattern: \S
+                type: string
               display:
                 description: Display configuration for the rule (e.g. the human-readable
                   name shown in the Dash0 UI).
@@ -286,12 +292,28 @@ spec:
                   rule: '!has(self.maxSize) || (has(self.type) && self.type == ''exponential-histogram'')'
                 - message: count is only allowed when type is 'exponential-histogram'
                   rule: '!has(self.count) || (has(self.type) && self.type == ''exponential-histogram'')'
+              targetDatasetMode:
+                description: |-
+                  Controls the dataset the generated metric is written to. Defaults to original when absent.
+                  - original: the metric is written to the dataset the rule is synchronized to.
+                  - alternative: the metric is written to the dataset specified by alternativeDatasetId.
+                  - both: the metric is written to both datasets.
+                enum:
+                - original
+                - alternative
+                - both
+                type: string
             required:
             - display
             - enabled
             - match
             - output
             type: object
+            x-kubernetes-validations:
+            - message: alternativeDatasetId must be set when targetDatasetMode is
+                'alternative' or 'both', and must not be set otherwise
+              rule: (has(self.targetDatasetMode) && self.targetDatasetMode != 'original')
+                == has(self.alternativeDatasetId)
           status:
             description: Dash0SignalToMetricsStatus defines the observed state of
               a Dash0SignalToMetrics resource.

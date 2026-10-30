@@ -24,6 +24,8 @@ type Dash0SignalToMetrics struct {
 }
 
 // Dash0SignalToMetricsSpec defines the desired state of a SignalToMetrics rule.
+//
+// +kubebuilder:validation:XValidation:rule="(has(self.targetDatasetMode) && self.targetDatasetMode != 'original') == has(self.alternativeDatasetId)",message="alternativeDatasetId must be set when targetDatasetMode is 'alternative' or 'both', and must not be set otherwise"
 type Dash0SignalToMetricsSpec struct {
 	// Whether this rule is active.
 	// +kubebuilder:validation:Required
@@ -40,7 +42,30 @@ type Dash0SignalToMetricsSpec struct {
 	// Output controls the metric that is produced for matching signals.
 	// +kubebuilder:validation:Required
 	Output Dash0SignalToMetricsOutput `json:"output"`
+
+	// Controls the dataset the generated metric is written to. Defaults to original when absent.
+	// - original: the metric is written to the dataset the rule is synchronized to.
+	// - alternative: the metric is written to the dataset specified by alternativeDatasetId.
+	// - both: the metric is written to both datasets.
+	// +kubebuilder:validation:Optional
+	TargetDatasetMode *Dash0SignalToMetricsTargetDatasetMode `json:"targetDatasetMode,omitempty"`
+
+	// The slug of the dataset the metric is written to. Required when targetDatasetMode is alternative or both, must
+	// not be set otherwise.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Pattern=`\S`
+	AlternativeDatasetId *string `json:"alternativeDatasetId,omitempty"`
 }
+
+// Dash0SignalToMetricsTargetDatasetMode controls the dataset the generated metric is written to.
+// +kubebuilder:validation:Enum=original;alternative;both
+type Dash0SignalToMetricsTargetDatasetMode string
+
+const (
+	Dash0SignalToMetricsTargetDatasetModeOriginal    Dash0SignalToMetricsTargetDatasetMode = "original"
+	Dash0SignalToMetricsTargetDatasetModeAlternative Dash0SignalToMetricsTargetDatasetMode = "alternative"
+	Dash0SignalToMetricsTargetDatasetModeBoth        Dash0SignalToMetricsTargetDatasetMode = "both"
+)
 
 // Dash0SignalToMetricsDisplay defines display configuration.
 type Dash0SignalToMetricsDisplay struct {
