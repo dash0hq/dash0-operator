@@ -250,8 +250,9 @@ spec:
                     minLength: 1
                     type: string
                   type:
-                    description: The kind of metric computed from value (sum, gauge
-                      or exponential-histogram).
+                    description: |-
+                      The kind of metric computed from value (sum, gauge or exponential-histogram). The fields value, monotonic,
+                      maxSize and count are only allowed when type is set.
                     enum:
                     - sum
                     - gauge

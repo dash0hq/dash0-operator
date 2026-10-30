@@ -142,7 +142,8 @@ type Dash0SignalToMetricsOutput struct {
 	// +kubebuilder:validation:Optional
 	KeepSignalAttributes []Dash0SignalToMetricsMatcher `json:"keepSignalAttributes,omitempty"`
 
-	// The kind of metric computed from value (sum, gauge or exponential-histogram).
+	// The kind of metric computed from value (sum, gauge or exponential-histogram). The fields value, monotonic,
+	// maxSize and count are only allowed when type is set.
 	// +kubebuilder:validation:Optional
 	Type *Dash0SignalToMetricsOutputType `json:"type,omitempty"`
 
