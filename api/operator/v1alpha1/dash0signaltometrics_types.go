@@ -43,21 +43,17 @@ type Dash0SignalToMetricsSpec struct {
 	// +kubebuilder:validation:Required
 	Output Dash0SignalToMetricsOutput `json:"output"`
 
-	// Controls the dataset the generated metric is written to. Defaults to original when absent.
-	// - original: the metric is written to the dataset the rule is synchronized to.
-	// - alternative: the metric is written to the dataset specified by alternativeDatasetId.
-	// - both: the metric is written to both datasets.
+	// The dataset(s) the generated metric is written to (original, alternative or both). Defaults to original.
 	// +kubebuilder:validation:Optional
 	TargetDatasetMode *Dash0SignalToMetricsTargetDatasetMode `json:"targetDatasetMode,omitempty"`
 
-	// The slug of the dataset the metric is written to. Required when targetDatasetMode is alternative or both, must
-	// not be set otherwise.
+	// The slug of the alternative dataset, for targetDatasetMode alternative or both.
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Pattern=`\S`
 	AlternativeDatasetId *string `json:"alternativeDatasetId,omitempty"`
 }
 
-// Dash0SignalToMetricsTargetDatasetMode controls the dataset the generated metric is written to.
+// Dash0SignalToMetricsTargetDatasetMode is the dataset(s) a rule writes its metric to.
 // +kubebuilder:validation:Enum=original;alternative;both
 type Dash0SignalToMetricsTargetDatasetMode string
 
@@ -77,8 +73,8 @@ type Dash0SignalToMetricsDisplay struct {
 
 // Dash0SignalToMetricsMatch selects which signals are converted to metrics.
 type Dash0SignalToMetricsMatch struct {
-	// The signal type this rule applies to. Unless output.type is set, spans produce exponential histograms of the span
-	// duration and log records produce count metrics.
+	// The signal type this rule applies to. Without output.type, spans produce exponential histograms; log records
+	// produce count metrics.
 	// +kubebuilder:validation:Required
 	Signal Dash0SignalToMetricsSignalType `json:"signal"`
 
@@ -163,46 +159,36 @@ type Dash0SignalToMetricsOutput struct {
 	// +kubebuilder:validation:Optional
 	KeepResourceAttributes []Dash0SignalToMetricsMatcher `json:"keepResourceAttributes,omitempty"`
 
-	// Key matchers that select span/log record attributes to carry over as metric dimensions. For spans rules without
-	// type, the attribute otel.span.status.code is always added.
+	// Key matchers that select span/log record attributes to carry over as metric dimensions.
 	// +kubebuilder:validation:Optional
 	KeepSignalAttributes []Dash0SignalToMetricsMatcher `json:"keepSignalAttributes,omitempty"`
 
-	// The kind of metric to produce from the value expression, for both spans and logs rules. When absent, the metric
-	// is derived from the signal: an exponential histogram of the span duration for spans, a monotonic count of
-	// matching log records for logs.
-	// - sum: cumulative float64 sum of value, monotonic when monotonic is true.
-	// - gauge: float64 gauge holding the last value observed per series.
-	// - exponential-histogram: exponential histogram of value, recorded count times.
+	// The kind of metric computed from value (sum, gauge or exponential-histogram).
 	// +kubebuilder:validation:Optional
 	Type *Dash0SignalToMetricsOutputType `json:"type,omitempty"`
 
-	// OTTL value expression producing the number to record, evaluated in the span context for spans rules and the log
-	// context for logs rules. Required when type is set, must be absent otherwise. A non-numeric, nil, or failing
-	// result records no data point.
+	// OTTL expression producing the number to record. Required when type is set.
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Pattern=`\S`
 	Value *string `json:"value,omitempty"`
 
-	// Whether the sum only increases. Only allowed when type is sum. Defaults to false when absent.
+	// Whether the sum only increases. Only for type sum. Defaults to false.
 	// +kubebuilder:validation:Optional
 	Monotonic *bool `json:"monotonic,omitempty"`
 
-	// Maximum number of buckets per positive and negative range of the histogram. Only allowed when type is
-	// exponential-histogram. Defaults to 160 when absent.
+	// Maximum number of buckets per positive and negative range. Only for type exponential-histogram. Defaults to 160.
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=160
 	MaxSize *int32 `json:"maxSize,omitempty"`
 
-	// OTTL value expression for how many times value is recorded per matching signal. Only allowed when type is
-	// exponential-histogram. Defaults to "1" when absent.
+	// OTTL expression for how often value is recorded. Only for type exponential-histogram. Defaults to "1".
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Pattern=`\S`
 	Count *string `json:"count,omitempty"`
 }
 
-// Dash0SignalToMetricsOutputType is the kind of metric a rule produces from its value expression.
+// Dash0SignalToMetricsOutputType is the kind of metric a rule computes from its value expression.
 // +kubebuilder:validation:Enum=sum;gauge;exponential-histogram
 type Dash0SignalToMetricsOutputType string
 

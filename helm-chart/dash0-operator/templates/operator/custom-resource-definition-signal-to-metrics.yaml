@@ -48,9 +48,8 @@ spec:
               rule.
             properties:
               alternativeDatasetId:
-                description: |-
-                  The slug of the dataset the metric is written to. Required when targetDatasetMode is alternative or both, must
-                  not be set otherwise.
+                description: The slug of the alternative dataset, for targetDatasetMode
+                  alternative or both.
                 pattern: \S
                 type: string
               display:
@@ -122,8 +121,8 @@ spec:
                     type: array
                   signal:
                     description: |-
-                      The signal type this rule applies to. Unless output.type is set, spans produce exponential histograms of the span
-                      duration and log records produce count metrics.
+                      The signal type this rule applies to. Without output.type, spans produce exponential histograms; log records
+                      produce count metrics.
                     enum:
                     - spans
                     - logs
@@ -137,9 +136,8 @@ spec:
                   signals.
                 properties:
                   count:
-                    description: |-
-                      OTTL value expression for how many times value is recorded per matching signal. Only allowed when type is
-                      exponential-histogram. Defaults to "1" when absent.
+                    description: OTTL expression for how often value is recorded.
+                      Only for type exponential-histogram. Defaults to "1".
                     pattern: \S
                     type: string
                   description:
@@ -197,9 +195,8 @@ spec:
                       type: object
                     type: array
                   keepSignalAttributes:
-                    description: |-
-                      Key matchers that select span/log record attributes to carry over as metric dimensions. For spans rules without
-                      type, the attribute otel.span.status.code is always added.
+                    description: Key matchers that select span/log record attributes
+                      to carry over as metric dimensions.
                     items:
                       description: |-
                         Dash0SignalToMetricsMatcher is a key-less variant of an attribute filter used for keepResourceAttributes /
@@ -243,39 +240,31 @@ spec:
                       type: object
                     type: array
                   maxSize:
-                    description: |-
-                      Maximum number of buckets per positive and negative range of the histogram. Only allowed when type is
-                      exponential-histogram. Defaults to 160 when absent.
+                    description: Maximum number of buckets per positive and negative
+                      range. Only for type exponential-histogram. Defaults to 160.
                     format: int32
                     maximum: 160
                     minimum: 1
                     type: integer
                   monotonic:
-                    description: Whether the sum only increases. Only allowed when
-                      type is sum. Defaults to false when absent.
+                    description: Whether the sum only increases. Only for type sum.
+                      Defaults to false.
                     type: boolean
                   name:
                     description: The name of the resulting metric.
                     minLength: 1
                     type: string
                   type:
-                    description: |-
-                      The kind of metric to produce from the value expression, for both spans and logs rules. When absent, the metric
-                      is derived from the signal: an exponential histogram of the span duration for spans, a monotonic count of
-                      matching log records for logs.
-                      - sum: cumulative float64 sum of value, monotonic when monotonic is true.
-                      - gauge: float64 gauge holding the last value observed per series.
-                      - exponential-histogram: exponential histogram of value, recorded count times.
+                    description: The kind of metric computed from value (sum, gauge
+                      or exponential-histogram).
                     enum:
                     - sum
                     - gauge
                     - exponential-histogram
                     type: string
                   value:
-                    description: |-
-                      OTTL value expression producing the number to record, evaluated in the span context for spans rules and the log
-                      context for logs rules. Required when type is set, must be absent otherwise. A non-numeric, nil, or failing
-                      result records no data point.
+                    description: OTTL expression producing the number to record. Required
+                      when type is set.
                     pattern: \S
                     type: string
                 required:
@@ -293,11 +282,8 @@ spec:
                 - message: count is only allowed when type is 'exponential-histogram'
                   rule: '!has(self.count) || (has(self.type) && self.type == ''exponential-histogram'')'
               targetDatasetMode:
-                description: |-
-                  Controls the dataset the generated metric is written to. Defaults to original when absent.
-                  - original: the metric is written to the dataset the rule is synchronized to.
-                  - alternative: the metric is written to the dataset specified by alternativeDatasetId.
-                  - both: the metric is written to both datasets.
+                description: The dataset(s) the generated metric is written to (original,
+                  alternative or both). Defaults to original.
                 enum:
                 - original
                 - alternative
