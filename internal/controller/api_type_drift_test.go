@@ -441,11 +441,6 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 			map[string]string{
 				"alternativeDatasetId": "not supported by Dash0SignalToMetrics yet",
 				"targetDatasetMode":    "not supported by Dash0SignalToMetrics yet",
-				"output.type":          "not supported by Dash0SignalToMetrics yet",
-				"output.value":         "not supported by Dash0SignalToMetrics yet",
-				"output.monotonic":     "not supported by Dash0SignalToMetrics yet",
-				"output.maxSize":       "not supported by Dash0SignalToMetrics yet",
-				"output.count":         "not supported by Dash0SignalToMetrics yet",
 			},
 		)
 	})

@@ -67,6 +67,11 @@ var _ = Describe("Converting a Dash0SignalToMetrics to the API client's SignalTo
 						"value":    "http.",
 					},
 				},
+				"type":      "exponential-histogram",
+				"value":     "Seconds(end_time - start_time)",
+				"monotonic": false,
+				"maxSize":   float64(80),
+				"count":     "attributes[\"batch.size\"]",
 			},
 		}))
 		Expect(roundTripped["metadata"]).To(Equal(map[string]any{
@@ -140,6 +145,13 @@ func fullyPopulatedSignalToMetrics() *dash0v1alpha1.Dash0SignalToMetrics {
 						Value:    ptr.To("http."),
 					},
 				},
+				// The CRD schema does not allow monotonic together with maxSize and count, but this test only covers the
+				// field mapping.
+				Type:      ptr.To(dash0v1alpha1.Dash0SignalToMetricsOutputTypeExponentialHistogram),
+				Value:     ptr.To("Seconds(end_time - start_time)"),
+				Monotonic: ptr.To(false),
+				MaxSize:   ptr.To(int32(80)),
+				Count:     ptr.To("attributes[\"batch.size\"]"),
 			},
 		},
 		Status: dash0v1alpha1.Dash0SignalToMetricsStatus{

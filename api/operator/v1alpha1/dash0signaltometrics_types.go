@@ -52,7 +52,8 @@ type Dash0SignalToMetricsDisplay struct {
 
 // Dash0SignalToMetricsMatch selects which signals are converted to metrics.
 type Dash0SignalToMetricsMatch struct {
-	// The signal type this rule applies to. Spans produce exponential histograms; log records produce count metrics.
+	// The signal type this rule applies to. Unless output.type is set, spans produce exponential histograms of the span
+	// duration and log records produce count metrics.
 	// +kubebuilder:validation:Required
 	Signal Dash0SignalToMetricsSignalType `json:"signal"`
 
@@ -113,6 +114,11 @@ type Dash0SignalToMetricsMatcher struct {
 type Dash0SignalToMetricsFilterOperator string
 
 // Dash0SignalToMetricsOutput controls the resulting metric.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.type) == has(self.value)",message="value must be set when type is set, and must not be set otherwise"
+// +kubebuilder:validation:XValidation:rule="!has(self.monotonic) || (has(self.type) && self.type == 'sum')",message="monotonic is only allowed when type is 'sum'"
+// +kubebuilder:validation:XValidation:rule="!has(self.maxSize) || (has(self.type) && self.type == 'exponential-histogram')",message="maxSize is only allowed when type is 'exponential-histogram'"
+// +kubebuilder:validation:XValidation:rule="!has(self.count) || (has(self.type) && self.type == 'exponential-histogram')",message="count is only allowed when type is 'exponential-histogram'"
 type Dash0SignalToMetricsOutput struct {
 	// The name of the resulting metric.
 	// +kubebuilder:validation:Required
@@ -132,10 +138,54 @@ type Dash0SignalToMetricsOutput struct {
 	// +kubebuilder:validation:Optional
 	KeepResourceAttributes []Dash0SignalToMetricsMatcher `json:"keepResourceAttributes,omitempty"`
 
-	// Key matchers that select span/log record attributes to carry over as metric dimensions.
+	// Key matchers that select span/log record attributes to carry over as metric dimensions. For spans rules without
+	// type, the attribute otel.span.status.code is always added.
 	// +kubebuilder:validation:Optional
 	KeepSignalAttributes []Dash0SignalToMetricsMatcher `json:"keepSignalAttributes,omitempty"`
+
+	// The kind of metric to produce from the value expression, for both spans and logs rules. When absent, the metric
+	// is derived from the signal: an exponential histogram of the span duration for spans, a monotonic count of
+	// matching log records for logs.
+	// - sum: cumulative float64 sum of value, monotonic when monotonic is true.
+	// - gauge: float64 gauge holding the last value observed per series.
+	// - exponential-histogram: exponential histogram of value, recorded count times.
+	// +kubebuilder:validation:Optional
+	Type *Dash0SignalToMetricsOutputType `json:"type,omitempty"`
+
+	// OTTL value expression producing the number to record, evaluated in the span context for spans rules and the log
+	// context for logs rules. Required when type is set, must be absent otherwise. A non-numeric, nil, or failing
+	// result records no data point.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Pattern=`\S`
+	Value *string `json:"value,omitempty"`
+
+	// Whether the sum only increases. Only allowed when type is sum. Defaults to false when absent.
+	// +kubebuilder:validation:Optional
+	Monotonic *bool `json:"monotonic,omitempty"`
+
+	// Maximum number of buckets per positive and negative range of the histogram. Only allowed when type is
+	// exponential-histogram. Defaults to 160 when absent.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=160
+	MaxSize *int32 `json:"maxSize,omitempty"`
+
+	// OTTL value expression for how many times value is recorded per matching signal. Only allowed when type is
+	// exponential-histogram. Defaults to "1" when absent.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Pattern=`\S`
+	Count *string `json:"count,omitempty"`
 }
+
+// Dash0SignalToMetricsOutputType is the kind of metric a rule produces from its value expression.
+// +kubebuilder:validation:Enum=sum;gauge;exponential-histogram
+type Dash0SignalToMetricsOutputType string
+
+const (
+	Dash0SignalToMetricsOutputTypeSum                  Dash0SignalToMetricsOutputType = "sum"
+	Dash0SignalToMetricsOutputTypeGauge                Dash0SignalToMetricsOutputType = "gauge"
+	Dash0SignalToMetricsOutputTypeExponentialHistogram Dash0SignalToMetricsOutputType = "exponential-histogram"
+)
 
 // Dash0SignalToMetricsStatus defines the observed state of a Dash0SignalToMetrics resource.
 type Dash0SignalToMetricsStatus struct {
