@@ -157,6 +157,10 @@ type oTelColConfig struct {
 	DeploymentCollectorMemoryLimit    resource.Quantity
 	SignalControlCollectorMemoryLimit resource.Quantity
 	SignalControlSceOnlyMode          bool
+	// TargetAllocatorMtlsCaSha is a hash of the CA certificate in the target-allocator mTLS client cert secret, empty if
+	// mTLS is disabled. It is added to the daemonset collector's pod template, so that the collector pods are restarted
+	// when the CA changes; the collector reloads the client certificate and key at runtime, but not the CA.
+	TargetAllocatorMtlsCaSha string
 }
 
 func (c *oTelColConfig) usesOffsetStorageVolume() bool {
@@ -310,9 +314,13 @@ const (
 	gkeAutopilotAllowlistLabelDeploymentValue    = "dash0-opentelemetry-cluster-metrics-collector-v1.0.4"
 	gkeAutopilotAllowlistLabelSignalControlValue = "dash0-opentelemetry-signal-control-collector-v1.0.4"
 
-	targetAllocatorCertsVolumeName = "ta-mtls-certs"
-	targetAllocatorCertsVolumeDir  = "/etc/certs/ta-client"
+	targetAllocatorCertsVolumeName     = "ta-mtls-certs"
+	targetAllocatorCertsVolumeDir      = "/etc/certs/ta-client"
+	targetAllocatorMtlsCaShaAnnotation = "ta-mtls-ca-sha"
 )
+
+// TargetAllocatorMtlsCaCertKey is the key of the CA certificate in the target-allocator mTLS client cert secret.
+const TargetAllocatorMtlsCaCertKey = "ca.crt"
 
 var (
 	rbacApiVersion = fmt.Sprintf("%s/v1", rbacApiGroup)
@@ -954,7 +962,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      util.MergeMaps(templateLabels, extraConfig.CollectorDaemonSetPodLabels),
-					Annotations: util.MergeMaps(nil, extraConfig.CollectorDaemonSetPodAnnotations),
+					Annotations: util.MergeMaps(daemonSetPodTemplateAnnotations(config), extraConfig.CollectorDaemonSetPodAnnotations),
 				},
 				Spec: podSpec,
 			},
@@ -975,6 +983,13 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 	}
 
 	return collectorDaemonSet, nil
+}
+
+func daemonSetPodTemplateAnnotations(config *oTelColConfig) map[string]string {
+	if config.TargetAllocatorMtlsCaSha == "" {
+		return nil
+	}
+	return map[string]string{targetAllocatorMtlsCaShaAnnotation: config.TargetAllocatorMtlsCaSha}
 }
 
 func assembleFileLogOffsetSyncContainer(
