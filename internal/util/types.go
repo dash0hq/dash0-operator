@@ -291,6 +291,10 @@ type ClusterInstrumentationConfig struct {
 	EnablePythonAutoInstrumentation bool
 	EnableRubyAutoInstrumentation   bool
 	IsOpenShift                     bool
+
+	// InstrumentPods makes the webhook instrument pods when they are created instead of modifying the pod templates of
+	// higher-order workloads, and stops the sweep over existing workloads from modifying their pod templates.
+	InstrumentPods bool
 }
 
 func NewClusterInstrumentationConfig(

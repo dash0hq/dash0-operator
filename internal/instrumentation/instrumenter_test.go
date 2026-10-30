@@ -147,6 +147,61 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		}),
 		)
 
+		DescribeTable("when pod-level instrumentation is enabled", func(config WorkloadTestConfig) {
+			instrumenter.ClusterInstrumentationConfig.InstrumentPods = true
+			name := UniqueName(config.WorkloadNamePrefix)
+			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
+			createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload.Get())
+
+			checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+			VerifyNoEvents(ctx, clientset, namespace)
+			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
+		}, Entry("should not modify an existing cron job", WorkloadTestConfig{
+			WorkloadNamePrefix: CronJobNamePrefix,
+			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateBasicCronJob),
+			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedCronJob(workload.Get().(*batchv1.CronJob))
+			},
+		}), Entry("should not modify an existing daemon set", WorkloadTestConfig{
+			WorkloadNamePrefix: DaemonSetNamePrefix,
+			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateBasicDaemonSet),
+			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedDaemonSet(workload.Get().(*appsv1.DaemonSet))
+			},
+		}), Entry("should not modify an existing deployment", WorkloadTestConfig{
+			WorkloadNamePrefix: DeploymentNamePrefix,
+			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateBasicDeployment),
+			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedDeployment(workload.Get().(*appsv1.Deployment))
+			},
+		}), Entry("should not modify an existing job", WorkloadTestConfig{
+			WorkloadNamePrefix: JobNamePrefix,
+			CreateFn:           WrapJobFnAsTestableWorkload(CreateBasicJob),
+			GetFn:              WrapJobFnAsTestableWorkload(GetJob),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedJob(workload.Get().(*batchv1.Job))
+			},
+		}), Entry("should not modify an existing ownerless replicaset", WorkloadTestConfig{
+			WorkloadNamePrefix: ReplicaSetNamePrefix,
+			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateBasicReplicaSet),
+			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet))
+			},
+		}), Entry("should not modify an existing stateful set", WorkloadTestConfig{
+			WorkloadNamePrefix: StatefulSetNamePrefix,
+			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateBasicStatefulSet),
+			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedStatefulSet(workload.Get().(*appsv1.StatefulSet))
+			},
+		}),
+		)
+
 		Describe("when instrumenting existing workloads (special cases)", func() {
 			It("should record a failure event when attempting to instrument an existing job and add labels", func() {
 				name := UniqueName(JobNamePrefix)

@@ -213,6 +213,13 @@ func (i *Instrumenter) CheckSettingsAndInstrumentExistingWorkloads(
 		)
 		return nil
 	}
+	if i.ClusterInstrumentationConfig.InstrumentPods {
+		logger.Info(
+			"Pod-level instrumentation is enabled, existing workloads will not be modified, their pods will be " +
+				"instrumented when they are created.",
+		)
+		return nil
+	}
 
 	logger.Info("Now instrumenting existing workloads in namespace so they send telemetry to Dash0.")
 	if err := i.instrumentAllWorkloads(ctx, dash0MonitoringResource, logger); err != nil {

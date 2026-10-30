@@ -648,6 +648,11 @@ operator:
     # If set to true, it enables Ruby auto-instrumentation (beta).
     enableRubyAutoInstrumentation: false
 
+    # If set to true, the operator instruments pods when they are created, instead of modifying the pod templates of
+    # higher-order workloads like deployments, daemon sets, stateful sets, replica sets, jobs and cron jobs (opt-in,
+    # experimental). Existing pods are not restarted, they are instrumented when they are recreated.
+    instrumentPods: false
+
     # An optional delay to stagger access to the Kubernetes API server to instrument existing workloads at operator
     # startup or when enabling instrumentation for a new namespace via the Dash0Monitoring resource. This delay will be
     # applied after each individual workload.

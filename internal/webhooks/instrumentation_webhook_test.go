@@ -981,6 +981,119 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			createdObjectsInstrumentationWebhookTest = verifyThatDeploymentIsInstrumented(createdObjectsInstrumentationWebhookTest)
 		})
 	})
+
+	Describe("when pod-level instrumentation is enabled", Ordered, func() {
+		BeforeAll(func() {
+			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			instrumentationWebhookClusterConfig.InstrumentPods = true
+		})
+
+		AfterAll(func() {
+			instrumentationWebhookClusterConfig.InstrumentPods = false
+			DeleteMonitoringResource(ctx, k8sClient)
+		})
+
+		DescribeTable("should not modify new higher-order workloads", func(config WorkloadTestConfig) {
+			name := UniqueName(config.WorkloadNamePrefix)
+			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload.Get())
+			workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
+			config.VerifyFn(workload)
+			VerifyNoEvents(ctx, clientset, TestNamespaceName)
+		}, Entry("should not modify a new cron job", WorkloadTestConfig{
+			WorkloadNamePrefix: CronJobNamePrefix,
+			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateBasicCronJob),
+			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedCronJob(workload.Get().(*batchv1.CronJob))
+			},
+		}), Entry("should not modify a new daemon set", WorkloadTestConfig{
+			WorkloadNamePrefix: DaemonSetNamePrefix,
+			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateBasicDaemonSet),
+			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedDaemonSet(workload.Get().(*appsv1.DaemonSet))
+			},
+		}), Entry("should not modify a new deployment", WorkloadTestConfig{
+			WorkloadNamePrefix: DeploymentNamePrefix,
+			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateBasicDeployment),
+			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedDeployment(workload.Get().(*appsv1.Deployment))
+			},
+		}), Entry("should not modify a new job", WorkloadTestConfig{
+			WorkloadNamePrefix: JobNamePrefix,
+			CreateFn:           WrapJobFnAsTestableWorkload(CreateBasicJob),
+			GetFn:              WrapJobFnAsTestableWorkload(GetJob),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedJob(workload.Get().(*batchv1.Job))
+			},
+		}), Entry("should not modify a new replica set", WorkloadTestConfig{
+			WorkloadNamePrefix: ReplicaSetNamePrefix,
+			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateBasicReplicaSet),
+			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet))
+			},
+		}), Entry("should not modify a new stateful set", WorkloadTestConfig{
+			WorkloadNamePrefix: StatefulSetNamePrefix,
+			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateBasicStatefulSet),
+			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedStatefulSet(workload.Get().(*appsv1.StatefulSet))
+			},
+		}))
+
+		It("should not modify an updated deployment", func() {
+			name := UniqueName(DeploymentNamePrefix)
+			workload := CreateBasicDeployment(ctx, k8sClient, TestNamespaceName, name)
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
+			workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+			AddLabel(&workload.ObjectMeta, "test-label", "test-value")
+			Expect(k8sClient.Update(ctx, workload)).To(Succeed())
+			workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+			VerifyUnmodifiedDeployment(workload)
+			VerifyNoEvents(ctx, clientset, TestNamespaceName)
+		})
+
+		It("should instrument a new ownerless pod", func() {
+			name := UniqueName(PodNamePrefix)
+			workload := CreateBasicPod(ctx, k8sClient, TestNamespaceName, name)
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
+			workload = GetPod(ctx, k8sClient, TestNamespaceName, name)
+			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
+			VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
+		})
+
+		DescribeTable("should instrument a new pod owned by a higher-order workload", func(owner metav1.TypeMeta) {
+			name := UniqueName(PodNamePrefix)
+			pod := BasicPod(TestNamespaceName, name)
+			pod.OwnerReferences = []metav1.OwnerReference{{
+				APIVersion: owner.APIVersion,
+				Kind:       owner.Kind,
+				Name:       "owner",
+				UID:        "1234",
+			}}
+			workload := CreateWorkload(ctx, k8sClient, pod).(*corev1.Pod)
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
+			workload = GetPod(ctx, k8sClient, TestNamespaceName, name)
+			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
+			VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
+		}, Entry("owned by a daemon set", util.K8sTypeMetaDaemonSet),
+			Entry("owned by a job", util.K8sTypeMetaJob),
+			Entry("owned by a replica set", util.K8sTypeMetaReplicaSet),
+			Entry("owned by a stateful set", util.K8sTypeMetaStatefulSet),
+		)
+
+		It("should not instrument a new pod that has opted out of instrumentation", func() {
+			name := UniqueName(PodNamePrefix)
+			workload := CreatePodWithOptOutLabel(ctx, k8sClient, TestNamespaceName, name)
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
+			workload = GetPod(ctx, k8sClient, TestNamespaceName, name)
+			VerifyPodWithOptOutLabel(workload)
+			VerifyNoEvents(ctx, clientset, TestNamespaceName)
+		})
+	})
 })
 
 func verifyThatDeploymentIsInstrumented(createdObjects []client.Object) []client.Object {

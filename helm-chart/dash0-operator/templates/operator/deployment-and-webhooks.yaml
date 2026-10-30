@@ -353,6 +353,10 @@ spec:
         - name: DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION
           value: {{ .Values.operator.instrumentation.enableRubyAutoInstrumentation | toString | quote }}
         {{- end }}
+        {{- if .Values.operator.instrumentation.instrumentPods }}
+        - name: DASH0_INSTRUMENT_PODS
+          value: {{ .Values.operator.instrumentation.instrumentPods | toString | quote }}
+        {{- end }}
         {{- if .Values.operator.disableCollectorResourceWatches }}
         - name: DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES
           value: {{ .Values.operator.disableCollectorResourceWatches | toString | quote }}
