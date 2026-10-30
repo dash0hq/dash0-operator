@@ -110,8 +110,9 @@ spec:
                     minItems: 1
                     type: array
                   signal:
-                    description: The signal type this rule applies to. Spans produce
-                      exponential histograms; log records produce count metrics.
+                    description: |-
+                      The signal type this rule applies to. Without output.type, spans produce exponential histograms; log records
+                      produce count metrics.
                     enum:
                     - spans
                     - logs
@@ -124,6 +125,11 @@ spec:
                 description: Output controls the metric that is produced for matching
                   signals.
                 properties:
+                  count:
+                    description: OTTL expression for how often value is recorded.
+                      Only for type exponential-histogram. Defaults to "1".
+                    pattern: \S
+                    type: string
                   description:
                     description: Optional description used as metadata on the generated
                       metric.
@@ -223,14 +229,49 @@ spec:
                       - operator
                       type: object
                     type: array
+                  maxSize:
+                    description: Maximum number of buckets per positive and negative
+                      range. Only for type exponential-histogram. Defaults to 160.
+                    format: int32
+                    maximum: 160
+                    minimum: 1
+                    type: integer
+                  monotonic:
+                    description: Whether the sum only increases. Only for type sum.
+                      Defaults to false.
+                    type: boolean
                   name:
                     description: The name of the resulting metric.
                     minLength: 1
+                    type: string
+                  type:
+                    description: |-
+                      The kind of metric computed from value (sum, gauge or exponential-histogram). The fields value, monotonic,
+                      maxSize and count are only allowed when type is set.
+                    enum:
+                    - sum
+                    - gauge
+                    - exponential-histogram
+                    type: string
+                  value:
+                    description: OTTL expression producing the number to record. Required
+                      when type is set.
+                    pattern: \S
                     type: string
                 required:
                 - interval
                 - name
                 type: object
+                x-kubernetes-validations:
+                - message: value must be set when type is set, and must not be set
+                    otherwise
+                  rule: has(self.type) == has(self.value)
+                - message: monotonic is only allowed when type is 'sum'
+                  rule: '!has(self.monotonic) || (has(self.type) && self.type == ''sum'')'
+                - message: maxSize is only allowed when type is 'exponential-histogram'
+                  rule: '!has(self.maxSize) || (has(self.type) && self.type == ''exponential-histogram'')'
+                - message: count is only allowed when type is 'exponential-histogram'
+                  rule: '!has(self.count) || (has(self.type) && self.type == ''exponential-histogram'')'
             required:
             - display
             - enabled
