@@ -178,6 +178,17 @@ If the two sides trust different CAs, the collectors log `x509: certificate sign
 Collector pods that start in this state fail their startup probe and are restarted repeatedly.
 To recover, renew the server or client certificate that has been signed with the old CA key, for example with `cmctl renew <certificate-name> -n <operator-namespace>`.
 
+If you have created your certificates with an earlier version of the example template, applying the updated template does not reissue them.
+The CA certificate keeps its 90 day duration and is still renewed together with the server and client certificates.
+To migrate:
+
+1. Apply the updated template, with `$OPERATOR_NAMESPACE` replaced by the operator namespace.
+2. Renew the CA certificate with `cmctl renew ta-mtls-ca -n <operator-namespace>`.
+   Since the CA now keeps its private key, the existing server and client certificates stay valid.
+3. Wait until `kubectl get certificate ta-mtls-ca -n <operator-namespace> -o jsonpath='{.status.notAfter}'` shows a date two years in the future.
+4. Renew the server and client certificates with `cmctl renew ta-server-cert ta-client-cert -n <operator-namespace>`.
+   This puts the renewed CA certificate into the `ca.crt` entries of their secrets.
+
 #### Allowing Insecure Auth Secrets
 
 If the transport security between the OpenTelemetry Target Allocator and the collectors is already guaranteed by other means, for example by a service mesh, you can skip the mTLS setup and let the Target Allocator serve the credentials over plain HTTP instead:
