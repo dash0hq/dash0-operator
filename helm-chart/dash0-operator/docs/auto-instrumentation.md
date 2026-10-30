@@ -181,6 +181,37 @@ spec:
       - 'IsMatch(resource.attributes["k8s.pod.name"], "my-workload-name-*")'
 ```
 
+### Disabling Auto-Instrumentation for Specific Runtimes
+
+The label `dash0.com/enable: "false"` disables all workload modifications, including the improved OpenTelemetry resource attribute detection. To only disable the auto-instrumentation for specific runtimes, set the environment variable `OTEL_INJECTOR_AUTO_INSTRUMENTATION_DISABLED` on the container. The value is a comma-separated list of runtime names. Valid runtime names are `dotnet`, `jvm`, `nodejs`, `python` and `ruby`. The value `"*"` (quoted in YAML) disables the auto-instrumentation for all runtimes. The setting applies to all processes in the container, including child processes.
+
+This is useful for workloads that use an alternative JavaScript runtime like Deno and run into issues caused by the Node.js auto-instrumentation, which modifies `NODE_OPTIONS` (see [Technical Details](#technical-details)). Here is an example for disabling the Node.js auto-instrumentation for a container:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-deployment
+  labels:
+    app: my-deployment-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-deployment-app
+  template:
+    metadata:
+      labels:
+        app: my-deployment-app
+    spec:
+      containers:
+        - name: my-deployment-app
+          image: "some-image:latest"
+          env:
+            - name: OTEL_INJECTOR_AUTO_INSTRUMENTATION_DISABLED
+              value: "nodejs"
+```
+
 ## Using a Custom Label Selector to Control Auto-Instrumentation
 
 By providing a custom Kubernetes [label selector](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors) in `spec.instrumentWorkloads.labelSelector` in a Dash0 monitoring resource, you can control which workloads in this namespace will be instrumented by the Dash0 operator.
