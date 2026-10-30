@@ -101,6 +101,24 @@ func validateOperatorConfigurationComponents(
 		}
 		errs = append(errs, validateWorkloadSettings(p, agent0Connector.WorkloadSettings)...)
 	}
+	if profiler := components.EbpfProfiler; profiler != nil {
+		p := path.Child(componentEbpfProfiler)
+		errs = append(errs, validateContainerResourcesWithGoMemLimit(p.Child("containerResources"),
+			profiler.ContainerResources, defaults.EbpfProfilerContainerResources)...)
+		errs = append(errs, validateWorkloadSettings(p, profiler.WorkloadSettings)...)
+		if profiler.PriorityClassName != "" {
+			errs = append(errs, validatePriorityClassName(p.Child("priorityClassName"), profiler.PriorityClassName)...)
+		}
+	}
+	if proxy := components.DebuginfoProxy; proxy != nil {
+		p := path.Child(componentDebuginfoProxy)
+		errs = append(errs, validateContainerResourcesWithGoMemLimit(p.Child("containerResources"),
+			proxy.ContainerResources, defaults.DebuginfoProxyContainerResources)...)
+		errs = append(errs, validateWorkloadSettings(p, proxy.WorkloadSettings)...)
+		if proxy.PriorityClassName != "" {
+			errs = append(errs, validatePriorityClassName(p.Child("priorityClassName"), proxy.PriorityClassName)...)
+		}
+	}
 	return errs
 }
 

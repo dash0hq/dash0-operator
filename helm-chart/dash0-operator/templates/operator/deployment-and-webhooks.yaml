@@ -1,5 +1,8 @@
 {{- $selfManagedCertificates := not .Values.operator.certManager.useCertManager }}
 {{- $chartName := include "dash0-operator.chartName" . }}
+{{- if and .Values.operator.ebpfProfilerEnabled (not .Values.operator.telemetryCollectionEnabled) }}
+{{- fail "Error: operator.ebpfProfilerEnabled requires operator.telemetryCollectionEnabled=true." }}
+{{- end }}
 
 {{- if $selfManagedCertificates }}
 {{/*
@@ -145,7 +148,10 @@ spec:
         - --operator-configuration-collect-namespace-labels-and-annotations-enabled={{ .Values.operator.collectNamespaceLabelsAndAnnotationsEnabled }}
         - --operator-configuration-collect-node-labels-and-annotations-enabled={{ .Values.operator.collectNodeLabelsAndAnnotationsEnabled }}
         - --operator-configuration-prometheus-crd-support-enabled={{ .Values.operator.prometheusCrdSupportEnabled }}
-        - --operator-configuration-profiling-enabled={{ .Values.operator.profilingEnabled }}
+        - --operator-configuration-profiling-enabled={{ or .Values.operator.profilingEnabled .Values.operator.ebpfProfilerEnabled }}
+{{- if .Values.operator.ebpfProfilerEnabled }}
+        - --operator-configuration-ebpf-profiler-enabled=true
+{{- end }}
 {{- if .Values.operator.clusterName }}
         - --operator-configuration-cluster-name={{ .Values.operator.clusterName }}
 {{- end }}{{/*closes "if .Values.operator.clusterName" */}}
@@ -448,6 +454,22 @@ spec:
           value: {{ include "dash0-operator.legacyCertificatesSecretName" . }}
         - name: DASH0_CA_BUNDLE_TARGETS
           value: {{ include "dash0-operator.caBundleTargets" . | quote }}
+        {{- end }}
+        - name: DASH0_EBPF_PROFILER_ENABLED
+          value: {{ .Values.operator.ebpfProfilerEnabled | toString | quote }}
+        {{- if .Values.operator.ebpfProfilerEnabled }}
+        - name: DASH0_EBPF_PROFILER_IMAGE
+          value: {{ include "dash0-operator.ebpfProfilerImage" . | quote }}
+        {{- if .Values.operator.ebpfProfilerImage.pullPolicy }}
+        - name: DASH0_EBPF_PROFILER_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.ebpfProfilerImage.pullPolicy | quote }}
+        {{- end }}
+        - name: DASH0_DEBUGINFO_PROXY_IMAGE
+          value: {{ include "dash0-operator.debuginfoProxyImage" . | quote }}
+        {{- if .Values.operator.debuginfoProxyImage.pullPolicy }}
+        - name: DASH0_DEBUGINFO_PROXY_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.debuginfoProxyImage.pullPolicy | quote }}
+        {{- end }}
         {{- end }}
         ports:
         - containerPort: 9443

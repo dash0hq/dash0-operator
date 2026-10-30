@@ -587,16 +587,23 @@ edgeProxyReplicas: null
 				})
 
 				It("drift protection: the defaults are in sync with the defaults of the Helm chart", func() {
-					Expect(marshalToJson(ExtraConfigDefaults)).To(
-						MatchJSON(marshalToJson(readDefaultsOfHelmChart())),
+					defaults := map[string]any{}
+					Expect(json.Unmarshal([]byte(marshalToJson(ExtraConfigDefaults)), &defaults)).To(Succeed())
+					chartDefaults := map[string]any{}
+					Expect(json.Unmarshal([]byte(marshalToJson(readDefaultsOfHelmChart())), &chartDefaults)).To(Succeed())
+					Expect(defaults).To(
+						Equal(chartDefaults),
 						"the defaults of ExtraConfigDefaults and %s have diverged",
 						helmChartValuesFile,
 					)
 				})
 
-				It("drift protection: every field of ExtraConfig is compared with the defaults of the Helm chart", func() {
+				It("drift protection: every extra config file field is compared with the defaults of the Helm chart", func() {
 					for field := range reflect.TypeFor[ExtraConfig]().Fields() {
 						key, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+						if key == "-" {
+							continue
+						}
 						Expect(extraConfigKeysToHelmValues).To(
 							HaveKey(key),
 							"the key %s is missing from extraConfigKeysToHelmValues",

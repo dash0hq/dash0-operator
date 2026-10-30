@@ -196,6 +196,12 @@ operator:
   # disabled implicitly.
   profilingEnabled: false
 
+  # Deploy a privileged node-local eBPF profiler. Requires telemetryCollectionEnabled=true.
+  # Also enables profiling pipelines in the Helm-managed operator configuration.
+  # The namespace's Pod Security Admission policy must allow privileged pods; the chart never changes namespace labels.
+  # See docs/profiling.md for agent release compatibility, security requirements and workload customization.
+  ebpfProfilerEnabled: false
+
   # An opt-out for telemetry collection. If set to false, the operator will not deploy any OpenTelemetry collectors
   # to the cluster (except in SCE-only mode, see below), and no telemetry will be collected. This is useful if you want
   # to use the operator only for infrastructure-as-code purposes (dashboards, check rules, etc.) without having it
@@ -576,6 +582,24 @@ operator:
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
+    pullPolicy:
+
+  # The Parca agent is versioned independently of the operator, as described in docs/profiling.md.
+  ebpfProfilerImage:
+    repository: "ghcr.io/parca-dev/parca-agent"
+    # Never defaults to the operator appVersion.
+    tag: "v0.51.2"
+    # Pull by digest instead of tag; takes precedence over tag.
+    digest:
+    pullPolicy:
+
+  # The debuginfo upload proxy uses the operator release version by default.
+  debuginfoProxyImage:
+    repository: "ghcr.io/dash0hq/debuginfo-proxy"
+    # Overrides the image tag, which defaults to the chart appVersion.
+    tag:
+    # Pull by digest instead of tag; takes precedence over tag.
+    digest:
     pullPolicy:
 
   # the container image to use for the synthetics-worker component (there should usually be no reason to override

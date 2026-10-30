@@ -274,6 +274,39 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
 		})
 
+		It("should retain profiler source routing without adding ports across profiling toggles", func() {
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
+			operatorConfiguration.Spec.Profiling = &dash0v1alpha1.Profiling{
+				Enabled: ptr.To(true), EbpfProfiler: &dash0v1alpha1.EbpfProfiler{},
+			}
+			for _, tc := range []struct{ profiling, resource bool }{
+				{false, false}, {true, false}, {true, true}, {false, true}, {true, true}, {true, false},
+			} {
+				operatorConfiguration.Spec.Profiling.Enabled = ptr.To(tc.profiling)
+				operatorConfiguration.Spec.Profiling.EbpfProfiler.Enabled = ptr.To(tc.resource)
+				_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+					ctx, util.ExtraConfigDefaults, operatorConfiguration, nil, nil, logger)
+				Expect(err).ToNot(HaveOccurred())
+				service := &corev1.Service{}
+				Expect(k8sClient.Get(ctx, client.ObjectKey{
+					Namespace: OperatorNamespace, Name: ExpectedDaemonSetServiceName,
+				}, service)).To(Succeed())
+				Expect(*service.Spec.InternalTrafficPolicy).To(Equal(corev1.ServiceInternalTrafficPolicyLocal))
+				daemonSet := &appsv1.DaemonSet{}
+				Expect(k8sClient.Get(ctx, client.ObjectKey{
+					Namespace: OperatorNamespace, Name: ExpectedDaemonSetName,
+				}, daemonSet)).To(Succeed())
+				ports := daemonSet.Spec.Template.Spec.Containers[0].Ports
+				Expect(service.Spec.Ports).To(HaveLen(2))
+				Expect(ports).To(HaveLen(2))
+				collectorConfig := parseConfigMapContent(GetOTelColDaemonSetConfigMap(ctx, k8sClient, OperatorNamespace))
+				connectors := collectorConfig["connectors"].(map[string]any)
+				for _, signal := range []string{"traces", "metrics", "logs"} {
+					Expect(connectors).To(HaveKey("routing/" + signal + "-source"))
+				}
+			}
+		})
+
 		It("should make the operator configuration resource the owner of cluster-scoped resources", func() {
 			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 			_, _, err :=

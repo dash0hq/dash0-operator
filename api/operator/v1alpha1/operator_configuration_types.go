@@ -528,6 +528,127 @@ type Profiling struct {
 	// This setting is optional, it defaults to `false`.
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
+
+	// Settings for the node-level eBPF profiler. Enabling it requires profiling and telemetry collection to be enabled,
+	// and the eBPF profiler to be enabled via Helm.
+	//
+	// +kubebuilder:validation:Optional
+	EbpfProfiler *EbpfProfiler `json:"ebpfProfiler,omitempty"`
+}
+
+// EbpfProfiler configures the node-level eBPF profiler.
+type EbpfProfiler struct {
+	// Whether to deploy the eBPF profiler. This requires an explicit opt-in and defaults to false.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=false
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Settings for uploading debug information to Dash0 exports. Other export types do not receive debug information.
+	//
+	// +kubebuilder:validation:Optional
+	Debuginfo *EbpfProfilerDebuginfo `json:"debuginfo,omitempty"`
+
+	// Tracers to enable. When omitted or empty, defaults to python, hotspot, php, ruby, perl, v8, dotnet, beam, luajit,
+	// labels and cuda. An explicit list replaces these defaults. Native tracing is always enabled. Go frames use native
+	// tracing, not in-agent Go symbolization. The labels tracer enables Go goroutine labels and native custom labels.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:items:Enum=all;native;python;hotspot;php;ruby;perl;v8;dotnet;cuda;labels;beam;luajit
+	Tracers []string `json:"tracers,omitempty"`
+
+	// PID namespace translation mode. When omitted, the agent defaults to none. Use auto for nested PID namespaces,
+	// such as kind: it uses recursive translation when supported, otherwise exact. Exact collects processes in the
+	// agent's PID namespace; recursive also collects descendants and requires kernel BTF.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Enum=none;auto;exact;recursive
+	PIDNamespaceTranslationMode string `json:"pidNamespaceTranslationMode,omitempty"`
+
+	// CPU sampling frequency in samples per second. Defaults to 19.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=19
+	// +kubebuilder:validation:Minimum=1
+	CPUSamplingFrequency *int32 `json:"cpuSamplingFrequency,omitempty"`
+
+	// The probability of recording an off-CPU event, from 0 to 1. Defaults to 0, which disables off-CPU profiling.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=0
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=1
+	OffCPUThreshold *float64 `json:"offCPUThreshold,omitempty"`
+
+	// Settings for probabilistic CPU profiling. When omitted, CPU sampling is always active. Off-CPU sampling is not
+	// affected by probabilistic toggling.
+	//
+	// +kubebuilder:validation:Optional
+	ProbabilisticSampling *ProbabilisticSampling `json:"probabilisticSampling,omitempty"`
+
+	// Whether to collect error frames. Defaults to false.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=false
+	EnableErrorFrames *bool `json:"enableErrorFrames,omitempty"`
+
+	// Scaling factor for eBPF map sizes. Each increment doubles the map size. Defaults to 0.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=0
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=8
+	MapScaleFactor *int32 `json:"mapScaleFactor,omitempty"`
+
+	// The profiler's log level. When omitted, the profiler uses its default log level.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Enum=error;warn;info;debug
+	LogLevel string `json:"logLevel,omitempty"`
+}
+
+// EbpfProfilerDebuginfo configures uploads of debug information from the eBPF profiler.
+type EbpfProfilerDebuginfo struct {
+	// Whether to upload debug information to each configured Dash0 export. Defaults to true. Uploads are only active
+	// when the eBPF profiler, profiling and telemetry collection are enabled.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=true
+	UploadEnabled *bool `json:"uploadEnabled,omitempty"`
+
+	// Maximum number of concurrent uploads. Defaults to 25.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=25
+	// +kubebuilder:validation:Minimum=1
+	MaxConcurrentUploads *int32 `json:"maxConcurrentUploads,omitempty"`
+
+	// Maximum number of queued uploads. Defaults to 4096.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=4096
+	// +kubebuilder:validation:Minimum=1
+	QueueSize *int32 `json:"queueSize,omitempty"`
+}
+
+// ProbabilisticSampling configures the intervals during which CPU sampling is active. It does not affect off-CPU
+// sampling.
+type ProbabilisticSampling struct {
+	// Duration of each interval for which CPU sampling is enabled or disabled. Defaults to 1m, must be between 1m and 5m.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default="1m"
+	// +kubebuilder:validation:XValidation:rule="duration(self) >= duration('1m') && duration(self) <= duration('5m')",message="interval must be between 1m and 5m"
+	Interval metav1.Duration `json:"interval,omitempty"`
+
+	// Integer threshold for probabilistic CPU profiling, from 1 to 100. At each interval, sampling is active when a
+	// random integer from 0 to 99 is less than this threshold. Defaults to 100, which keeps CPU sampling always active.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=100
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100
+	Threshold *int32 `json:"threshold,omitempty"`
 }
 
 // Dash0OperatorConfigurationStatus defines the observed state of the Dash0 operator configuration resource.

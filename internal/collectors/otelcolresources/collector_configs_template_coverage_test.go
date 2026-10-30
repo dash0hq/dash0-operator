@@ -30,6 +30,7 @@ import (
 var conditionsWithUnreachableFalseBranch = map[string]string{
 	"LabelAndAnnotationExclusionPatterns": "derived from the non-empty labelAndAnnotationKeysExcludedFromCollection",
 	"NamespaceOttlFilter":                 "renderOttlNamespaceFilter always renders at least the k8s.namespace.name condition",
+	"PodAssociationPipelines":             "the ordinary application ingestion pipeline is always present",
 	// getDefaultOtlpExporters returns no exporters exactly when the operator configuration has no exports configured,
 	// and CollectorManager#ReconcileOpenTelemetryCollector removes the collectors instead of rendering them in that
 	// case. The default export pipelines are therefore never rendered without exporters.

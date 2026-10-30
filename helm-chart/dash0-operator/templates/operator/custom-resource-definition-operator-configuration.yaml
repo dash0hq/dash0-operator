@@ -1304,6 +1304,323 @@ spec:
                           type: object
                         type: array
                     type: object
+                  debuginfoProxy:
+                    description: Settings for the debug information upload proxy DaemonSet.
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional annotations for the workload. They replace the annotations provided via the Helm chart, empty
+                          annotations keep them.
+                        type: object
+                      containerResources:
+                        description: The resource requests, limits and GOMEMLIMIT
+                          of the proxy container.
+                        properties:
+                          gomemlimit:
+                            description: |-
+                              The GOMEMLIMIT environment variable, in the format of the Go runtime (e.g. 400MiB, not 400Mi), or off. If it is
+                              empty (recommended), the operator derives it from the memory limit. It must be greater than 0 and below the
+                              effective memory limit. In collectorContainerResources, it should also be below the memory_limiter soft limit.
+                            pattern: ^(off|[0-9]+(([KMGT]i)?B)?)$
+                            type: string
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource limits. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default limit, and -1 removes it. A default limit below the request set in requests is raised to that request.
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource requests. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default request, and -1 removes it. A default request above the limit set in limits is lowered to that limit.
+                              A request above the limit set in limits is rejected.
+                            type: object
+                        type: object
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: Additional labels for the workload. They replace
+                          the labels provided via the Helm chart, empty labels keep
+                          them.
+                        type: object
+                      nodeAffinity:
+                        description: |-
+                          The node affinity for the pods of the workload. It is merged with the default node affinity of the Helm chart,
+                          not with the one provided via Helm: requiredDuringSchedulingIgnoredDuringExecution and
+                          preferredDuringSchedulingIgnoredDuringExecution each replace their default, unless they are absent. The default
+                          requires nodes that are not labelled with dash0.com/enable=false and run Linux, and has no preferred node
+                          affinity. requiredDuringSchedulingIgnoredDuringExecution with an empty list of nodeSelectorTerms removes the
+                          required node affinity.
+                        properties:
+                          preferredDuringSchedulingIgnoredDuringExecution:
+                            description: |-
+                              The scheduler will prefer to schedule pods to nodes that satisfy
+                              the affinity expressions specified by this field, but it may choose
+                              a node that violates one or more of the expressions. The node that is
+                              most preferred is the one with the greatest sum of weights, i.e.
+                              for each node that meets all of the scheduling requirements (resource
+                              request, requiredDuringScheduling affinity expressions, etc.),
+                              compute a sum by iterating through the elements of this field and adding
+                              "weight" to the sum if the node matches the corresponding matchExpressions; the
+                              node(s) with the highest sum are the most preferred.
+                            items:
+                              description: |-
+                                An empty preferred scheduling term matches all objects with implicit weight 0
+                                (i.e. it's a no-op). A null preferred scheduling term matches no objects (i.e. is also a no-op).
+                              properties:
+                                preference:
+                                  description: A node selector term, associated with
+                                    the corresponding weight.
+                                  properties:
+                                    matchExpressions:
+                                      description: A list of node selector requirements
+                                        by node's labels.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                    matchFields:
+                                      description: A list of node selector requirements
+                                        by node's fields.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                weight:
+                                  description: Weight associated with matching the
+                                    corresponding nodeSelectorTerm, in the range 1-100.
+                                  format: int32
+                                  type: integer
+                              required:
+                              - preference
+                              - weight
+                              type: object
+                            type: array
+                            x-kubernetes-list-type: atomic
+                          requiredDuringSchedulingIgnoredDuringExecution:
+                            description: |-
+                              If the affinity requirements specified by this field are not met at
+                              scheduling time, the pod will not be scheduled onto the node.
+                              If the affinity requirements specified by this field cease to be met
+                              at some point during pod execution (e.g. due to an update), the system
+                              may or may not try to eventually evict the pod from its node.
+                            properties:
+                              nodeSelectorTerms:
+                                description: Required. A list of node selector terms.
+                                  The terms are ORed.
+                                items:
+                                  description: |-
+                                    A null or empty node selector term matches no objects. The requirements of
+                                    them are ANDed.
+                                    The TopologySelectorTerm type implements a subset of the NodeSelectorTerm.
+                                  properties:
+                                    matchExpressions:
+                                      description: A list of node selector requirements
+                                        by node's labels.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                    matchFields:
+                                      description: A list of node selector requirements
+                                        by node's fields.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            required:
+                            - nodeSelectorTerms
+                            type: object
+                            x-kubernetes-map-type: atomic
+                        type: object
+                      podAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional annotations for the pods of the workload. They replace the pod annotations provided via the Helm
+                          chart, empty pod annotations keep them.
+                        type: object
+                      podLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional labels for the pods of the workload. They replace the pod labels provided via the Helm chart, empty
+                          pod labels keep them.
+                        type: object
+                      priorityClassName:
+                        description: The priority class name for the pods. When omitted,
+                          no priority class is set.
+                        type: string
+                      tolerations:
+                        description: |-
+                          Tolerations for the pods of the workload. They replace the tolerations provided via the Helm chart, empty
+                          tolerations keep them. Only the operators Equal and Exists are supported.
+                        items:
+                          description: |-
+                            The pod this Toleration is attached to tolerates any taint that matches
+                            the triple <key,value,effect> using the matching operator <operator>.
+                          properties:
+                            effect:
+                              description: |-
+                                Effect indicates the taint effect to match. Empty means match all taint effects.
+                                When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                              type: string
+                            key:
+                              description: |-
+                                Key is the taint key that the toleration applies to. Empty means match all taint keys.
+                                If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                              type: string
+                            operator:
+                              description: |-
+                                Operator represents a key's relationship to the value.
+                                Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                                Exists is equivalent to wildcard for value, so that a pod can
+                                tolerate all taints of a particular category.
+                                Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
+                              type: string
+                            tolerationSeconds:
+                              description: |-
+                                TolerationSeconds represents the period of time the toleration (which must be
+                                of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+                                it is not set, which means tolerate the taint forever (do not evict). Zero and
+                                negative values will be treated as 0 (evict immediately) by the system.
+                              format: int64
+                              type: integer
+                            value:
+                              description: |-
+                                Value is the taint value the toleration matches to.
+                                If the operator is Exists, the value should be empty, otherwise just a regular string.
+                              type: string
+                          type: object
+                        type: array
+                    type: object
                   deploymentCollector:
                     description: Settings for the OpenTelemetry collector Deployment
                       (cluster-metrics-collector).
@@ -1783,6 +2100,323 @@ spec:
                           - value
                           type: object
                         type: array
+                      tolerations:
+                        description: |-
+                          Tolerations for the pods of the workload. They replace the tolerations provided via the Helm chart, empty
+                          tolerations keep them. Only the operators Equal and Exists are supported.
+                        items:
+                          description: |-
+                            The pod this Toleration is attached to tolerates any taint that matches
+                            the triple <key,value,effect> using the matching operator <operator>.
+                          properties:
+                            effect:
+                              description: |-
+                                Effect indicates the taint effect to match. Empty means match all taint effects.
+                                When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                              type: string
+                            key:
+                              description: |-
+                                Key is the taint key that the toleration applies to. Empty means match all taint keys.
+                                If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                              type: string
+                            operator:
+                              description: |-
+                                Operator represents a key's relationship to the value.
+                                Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                                Exists is equivalent to wildcard for value, so that a pod can
+                                tolerate all taints of a particular category.
+                                Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
+                              type: string
+                            tolerationSeconds:
+                              description: |-
+                                TolerationSeconds represents the period of time the toleration (which must be
+                                of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+                                it is not set, which means tolerate the taint forever (do not evict). Zero and
+                                negative values will be treated as 0 (evict immediately) by the system.
+                              format: int64
+                              type: integer
+                            value:
+                              description: |-
+                                Value is the taint value the toleration matches to.
+                                If the operator is Exists, the value should be empty, otherwise just a regular string.
+                              type: string
+                          type: object
+                        type: array
+                    type: object
+                  ebpfProfiler:
+                    description: Settings for the eBPF profiler DaemonSet.
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional annotations for the workload. They replace the annotations provided via the Helm chart, empty
+                          annotations keep them.
+                        type: object
+                      containerResources:
+                        description: The resource requests, limits and GOMEMLIMIT
+                          of the profiler container.
+                        properties:
+                          gomemlimit:
+                            description: |-
+                              The GOMEMLIMIT environment variable, in the format of the Go runtime (e.g. 400MiB, not 400Mi), or off. If it is
+                              empty (recommended), the operator derives it from the memory limit. It must be greater than 0 and below the
+                              effective memory limit. In collectorContainerResources, it should also be below the memory_limiter soft limit.
+                            pattern: ^(off|[0-9]+(([KMGT]i)?B)?)$
+                            type: string
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource limits. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default limit, and -1 removes it. A default limit below the request set in requests is raised to that request.
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource requests. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default request, and -1 removes it. A default request above the limit set in limits is lowered to that limit.
+                              A request above the limit set in limits is rejected.
+                            type: object
+                        type: object
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: Additional labels for the workload. They replace
+                          the labels provided via the Helm chart, empty labels keep
+                          them.
+                        type: object
+                      nodeAffinity:
+                        description: |-
+                          The node affinity for the pods of the workload. It is merged with the default node affinity of the Helm chart,
+                          not with the one provided via Helm: requiredDuringSchedulingIgnoredDuringExecution and
+                          preferredDuringSchedulingIgnoredDuringExecution each replace their default, unless they are absent. The default
+                          requires nodes that are not labelled with dash0.com/enable=false and run Linux, and has no preferred node
+                          affinity. requiredDuringSchedulingIgnoredDuringExecution with an empty list of nodeSelectorTerms removes the
+                          required node affinity.
+                        properties:
+                          preferredDuringSchedulingIgnoredDuringExecution:
+                            description: |-
+                              The scheduler will prefer to schedule pods to nodes that satisfy
+                              the affinity expressions specified by this field, but it may choose
+                              a node that violates one or more of the expressions. The node that is
+                              most preferred is the one with the greatest sum of weights, i.e.
+                              for each node that meets all of the scheduling requirements (resource
+                              request, requiredDuringScheduling affinity expressions, etc.),
+                              compute a sum by iterating through the elements of this field and adding
+                              "weight" to the sum if the node matches the corresponding matchExpressions; the
+                              node(s) with the highest sum are the most preferred.
+                            items:
+                              description: |-
+                                An empty preferred scheduling term matches all objects with implicit weight 0
+                                (i.e. it's a no-op). A null preferred scheduling term matches no objects (i.e. is also a no-op).
+                              properties:
+                                preference:
+                                  description: A node selector term, associated with
+                                    the corresponding weight.
+                                  properties:
+                                    matchExpressions:
+                                      description: A list of node selector requirements
+                                        by node's labels.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                    matchFields:
+                                      description: A list of node selector requirements
+                                        by node's fields.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                weight:
+                                  description: Weight associated with matching the
+                                    corresponding nodeSelectorTerm, in the range 1-100.
+                                  format: int32
+                                  type: integer
+                              required:
+                              - preference
+                              - weight
+                              type: object
+                            type: array
+                            x-kubernetes-list-type: atomic
+                          requiredDuringSchedulingIgnoredDuringExecution:
+                            description: |-
+                              If the affinity requirements specified by this field are not met at
+                              scheduling time, the pod will not be scheduled onto the node.
+                              If the affinity requirements specified by this field cease to be met
+                              at some point during pod execution (e.g. due to an update), the system
+                              may or may not try to eventually evict the pod from its node.
+                            properties:
+                              nodeSelectorTerms:
+                                description: Required. A list of node selector terms.
+                                  The terms are ORed.
+                                items:
+                                  description: |-
+                                    A null or empty node selector term matches no objects. The requirements of
+                                    them are ANDed.
+                                    The TopologySelectorTerm type implements a subset of the NodeSelectorTerm.
+                                  properties:
+                                    matchExpressions:
+                                      description: A list of node selector requirements
+                                        by node's labels.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                    matchFields:
+                                      description: A list of node selector requirements
+                                        by node's fields.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            required:
+                            - nodeSelectorTerms
+                            type: object
+                            x-kubernetes-map-type: atomic
+                        type: object
+                      podAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional annotations for the pods of the workload. They replace the pod annotations provided via the Helm
+                          chart, empty pod annotations keep them.
+                        type: object
+                      podLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional labels for the pods of the workload. They replace the pod labels provided via the Helm chart, empty
+                          pod labels keep them.
+                        type: object
+                      priorityClassName:
+                        description: The priority class name for the pods. When omitted,
+                          no priority class is set.
+                        type: string
                       tolerations:
                         description: |-
                           Tolerations for the pods of the workload. They replace the tolerations provided via the Helm chart, empty
@@ -4051,6 +4685,136 @@ spec:
                 description: Profiling describes the profiling configuration for the
                   operator.
                 properties:
+                  ebpfProfiler:
+                    description: |-
+                      Settings for the node-level eBPF profiler. Enabling it requires profiling and telemetry collection to be enabled,
+                      and the eBPF profiler to be enabled via Helm.
+                    properties:
+                      cpuSamplingFrequency:
+                        default: 19
+                        description: CPU sampling frequency in samples per second.
+                          Defaults to 19.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      debuginfo:
+                        description: Settings for uploading debug information to Dash0
+                          exports. Other export types do not receive debug information.
+                        properties:
+                          maxConcurrentUploads:
+                            default: 25
+                            description: Maximum number of concurrent uploads. Defaults
+                              to 25.
+                            format: int32
+                            minimum: 1
+                            type: integer
+                          queueSize:
+                            default: 4096
+                            description: Maximum number of queued uploads. Defaults
+                              to 4096.
+                            format: int32
+                            minimum: 1
+                            type: integer
+                          uploadEnabled:
+                            default: true
+                            description: |-
+                              Whether to upload debug information to each configured Dash0 export. Defaults to true. Uploads are only active
+                              when the eBPF profiler, profiling and telemetry collection are enabled.
+                            type: boolean
+                        type: object
+                      enableErrorFrames:
+                        default: false
+                        description: Whether to collect error frames. Defaults to
+                          false.
+                        type: boolean
+                      enabled:
+                        default: false
+                        description: Whether to deploy the eBPF profiler. This requires
+                          an explicit opt-in and defaults to false.
+                        type: boolean
+                      logLevel:
+                        description: The profiler's log level. When omitted, the profiler
+                          uses its default log level.
+                        enum:
+                        - error
+                        - warn
+                        - info
+                        - debug
+                        type: string
+                      mapScaleFactor:
+                        default: 0
+                        description: Scaling factor for eBPF map sizes. Each increment
+                          doubles the map size. Defaults to 0.
+                        format: int32
+                        maximum: 8
+                        minimum: 0
+                        type: integer
+                      offCPUThreshold:
+                        default: 0
+                        description: The probability of recording an off-CPU event,
+                          from 0 to 1. Defaults to 0, which disables off-CPU profiling.
+                        maximum: 1
+                        minimum: 0
+                        type: number
+                      pidNamespaceTranslationMode:
+                        description: |-
+                          PID namespace translation mode. When omitted, the agent defaults to none. Use auto for nested PID namespaces,
+                          such as kind: it uses recursive translation when supported, otherwise exact. Exact collects processes in the
+                          agent's PID namespace; recursive also collects descendants and requires kernel BTF.
+                        enum:
+                        - none
+                        - auto
+                        - exact
+                        - recursive
+                        type: string
+                      probabilisticSampling:
+                        description: |-
+                          Settings for probabilistic CPU profiling. When omitted, CPU sampling is always active. Off-CPU sampling is not
+                          affected by probabilistic toggling.
+                        properties:
+                          interval:
+                            default: 1m
+                            description: Duration of each interval for which CPU sampling
+                              is enabled or disabled. Defaults to 1m, must be between
+                              1m and 5m.
+                            type: string
+                            x-kubernetes-validations:
+                            - message: interval must be between 1m and 5m
+                              rule: duration(self) >= duration('1m') && duration(self)
+                                <= duration('5m')
+                          threshold:
+                            default: 100
+                            description: |-
+                              Integer threshold for probabilistic CPU profiling, from 1 to 100. At each interval, sampling is active when a
+                              random integer from 0 to 99 is less than this threshold. Defaults to 100, which keeps CPU sampling always active.
+                            format: int32
+                            maximum: 100
+                            minimum: 1
+                            type: integer
+                        type: object
+                      tracers:
+                        description: |-
+                          Tracers to enable. When omitted or empty, defaults to python, hotspot, php, ruby, perl, v8, dotnet, beam, luajit,
+                          labels and cuda. An explicit list replaces these defaults. Native tracing is always enabled. Go frames use native
+                          tracing, not in-agent Go symbolization. The labels tracer enables Go goroutine labels and native custom labels.
+                        items:
+                          enum:
+                          - all
+                          - native
+                          - python
+                          - hotspot
+                          - php
+                          - ruby
+                          - perl
+                          - v8
+                          - dotnet
+                          - cuda
+                          - labels
+                          - beam
+                          - luajit
+                          type: string
+                        type: array
+                    type: object
                   enabled:
                     description: |-
                       If enabled, the operator will set up the pipelines to receive, process and forward profiling data over OTLP.
