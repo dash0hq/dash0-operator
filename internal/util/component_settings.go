@@ -376,7 +376,7 @@ func (m *componentSettingsApplier) applyOperatorConfigurationComponents(
 				value = seLinuxOptions.DeepCopy()
 			}
 			replaceValue(m, p+".seLinuxOptions", "operator.collectors.daemonSetSeLinuxOptions",
-				&effective.DaemonSetSELinuxOptions, nil, value)
+				&effective.DaemonSetSELinuxOptions, defaults.DaemonSetSELinuxOptions, value)
 		}
 		if volume := daemonSet.FilelogOffsetStorageVolume; volume != nil {
 			var volumeSource corev1.VolumeSource

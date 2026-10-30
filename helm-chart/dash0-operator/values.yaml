@@ -866,7 +866,8 @@ operator:
     #     value: "3"
 
     # The pod-level SELinux options for the collector DaemonSet pods, used as is for
-    # spec.securityContext.seLinuxOptions. Unset by default.
+    # spec.securityContext.seLinuxOptions. Unset by default. With operator.openShift.enabled=true, the operator uses the
+    # type spc_t unless this value is set; set it to {} to use no SELinux options at all.
     # Example:
     # daemonSetSeLinuxOptions:
     #   type: <selinux-type>

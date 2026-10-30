@@ -829,6 +829,26 @@ tests:
           path: data['extra.yaml']
           pattern: daemonSetSeLinuxOptions
 
+  - it: should not render collector daemonSet seLinuxOptions by default on OpenShift
+    set:
+      operator:
+        openShift:
+          enabled: true
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: daemonSetSeLinuxOptions
+
+  - it: should render collector daemonSet seLinuxOptions as null when set to an empty map
+    set:
+      operator:
+        collectors:
+          daemonSetSeLinuxOptions: {}
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: "daemonSetSeLinuxOptions: null\n"
+
   - it: should reject unknown collector daemonSet seLinuxOptions settings
     set:
       operator:
@@ -844,6 +864,15 @@ tests:
       operator:
         collectors:
           daemonSetSeLinuxOptions: spc_t
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.daemonSetSeLinuxOptions must be a map with the settings user, role, type and level."
+
+  - it: should reject a collector daemonSet seLinuxOptions value that is false
+    set:
+      operator:
+        collectors:
+          daemonSetSeLinuxOptions: false
     asserts:
       - failedTemplate:
           errorMessage: "Error: operator.collectors.daemonSetSeLinuxOptions must be a map with the settings user, role, type and level."

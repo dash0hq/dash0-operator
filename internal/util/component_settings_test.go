@@ -153,9 +153,9 @@ var _ = Describe("component settings", func() {
 			Expect(conflicts).To(HaveLen(1))
 			Expect(conflicts[0].HelmValue).To(Equal("operator.initContainerResources"))
 
-			effective, _ = resolve(fileConfig, ExtraConfigDefaultsFor(true), components, nil)
+			effective, _ = resolve(fileConfig, ExtraConfigDefaultsFor(true, false), components, nil)
 			Expect(toJson(effective.InstrumentationInitContainerResources)).To(
-				MatchJSON(toJson(ExtraConfigDefaultsFor(true).InstrumentationInitContainerResources)))
+				MatchJSON(toJson(ExtraConfigDefaultsFor(true, false).InstrumentationInitContainerResources)))
 		})
 
 		DescribeTable("should apply empty probe settings as the default probes",
@@ -512,7 +512,7 @@ var _ = Describe("component settings", func() {
 					},
 				},
 			}
-			Expect(toJson(EffectiveInstrumentationInitContainerResources(ExtraConfigDefaultsFor(true), components))).To(
+			Expect(toJson(EffectiveInstrumentationInitContainerResources(ExtraConfigDefaultsFor(true, false), components))).To(
 				MatchJSON(`{"limits":{"ephemeral-storage":"500Mi","memory":"256Mi"},` +
 					`"requests":{"cpu":"100m","ephemeral-storage":"500Mi","memory":"128Mi"}}`))
 			Expect(toJson(EffectiveInstrumentationInitContainerResources(ExtraConfigDefaults, components))).To(
@@ -723,7 +723,7 @@ var _ = Describe("component settings", func() {
 		})
 
 		It("should use the GKE Autopilot defaults of the init container as the baseline for conflicts", func() {
-			fileConfig := ExtraConfigDefaultsFor(true)
+			fileConfig := ExtraConfigDefaultsFor(true, false)
 			components := &dash0v1alpha1.OperatorConfigurationComponents{
 				InstrumentationInitContainer: &dash0v1alpha1.InstrumentationInitContainerSettings{
 					Resources: &dash0v1alpha1.ContainerResources{
@@ -732,13 +732,13 @@ var _ = Describe("component settings", func() {
 				},
 			}
 
-			effective, conflicts := resolve(fileConfig, ExtraConfigDefaultsFor(true), components, nil)
+			effective, conflicts := resolve(fileConfig, ExtraConfigDefaultsFor(true, false), components, nil)
 			Expect(conflicts).To(BeEmpty())
 			Expect(toJson(effective.InstrumentationInitContainerResources)).To(MatchJSON(
 				`{"limits":{"ephemeral-storage":"500Mi"},` +
 					`"requests":{"cpu":"200m","ephemeral-storage":"500Mi","memory":"128Mi"}}`))
 
-			_, conflicts = resolve(fileConfig, ExtraConfigDefaultsFor(false), components, nil)
+			_, conflicts = resolve(fileConfig, ExtraConfigDefaultsFor(false, false), components, nil)
 			Expect(conflicts).To(HaveLen(1))
 			Expect(conflicts[0].HelmValue).To(Equal("operator.initContainerResources"))
 		})
@@ -1516,6 +1516,32 @@ var _ = Describe("component settings", func() {
 			Expect(effective.DaemonSetSELinuxOptions).To(Equal(&corev1.SELinuxOptions{Type: "helm_t", Level: "s0:c1,c2"}))
 			Expect(conflicts).To(BeEmpty())
 		})
+
+		DescribeTable("should not report replacing the OpenShift default SELinux options as a conflict",
+			func(setting *corev1.SELinuxOptions, expected *corev1.SELinuxOptions) {
+				openShiftDefaults := ExtraConfigDefaultsFor(false, true)
+				effective, conflicts := resolve(openShiftDefaults, openShiftDefaults, withSeLinuxOptions(setting), nil)
+				Expect(effective.DaemonSetSELinuxOptions).To(Equal(expected))
+				Expect(conflicts).To(BeEmpty())
+			},
+			Entry("other type", &corev1.SELinuxOptions{Type: "resource_t"}, &corev1.SELinuxOptions{Type: "resource_t"}),
+			Entry("empty object", &corev1.SELinuxOptions{}, nil),
+		)
+
+		DescribeTable("should report replacing SELinux options of the Helm chart on OpenShift as a conflict",
+			func(helmSetting *corev1.SELinuxOptions) {
+				openShiftDefaults := ExtraConfigDefaultsFor(false, true)
+				fileConfig := openShiftDefaults
+				fileConfig.DaemonSetSELinuxOptions = helmSetting
+				effective, conflicts := resolve(
+					fileConfig, openShiftDefaults, withSeLinuxOptions(&corev1.SELinuxOptions{Type: "resource_t"}), nil)
+				Expect(effective.DaemonSetSELinuxOptions).To(Equal(&corev1.SELinuxOptions{Type: "resource_t"}))
+				Expect(conflicts).To(HaveLen(1))
+				Expect(conflicts[0].HelmValue).To(Equal("operator.collectors.daemonSetSeLinuxOptions"))
+			},
+			Entry("options removed via the Helm chart", nil),
+			Entry("other type set via the Helm chart", &corev1.SELinuxOptions{Type: "helm_t"}),
+		)
 	})
 
 	Describe("Signal Control components", func() {
