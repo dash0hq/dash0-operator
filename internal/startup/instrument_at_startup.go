@@ -17,17 +17,20 @@ import (
 // Dash0-enabled namespaces, according to the respective settings of the Dash0 monitoring resource in the namespace.
 // See godoc comment on Instrumenter#InstrumentAtStartup.
 type InstrumentAtStartupRunnable struct {
-	manager      manager.Manager
-	instrumenter *instrumentation.Instrumenter
+	manager            manager.Manager
+	instrumenter       *instrumentation.Instrumenter
+	readyCheckExecuter *ReadyCheckExecuter
 }
 
 func NewInstrumentAtStartupRunnable(
 	manager manager.Manager,
 	instrumenter *instrumentation.Instrumenter,
+	readyCheckExecuter *ReadyCheckExecuter,
 ) *InstrumentAtStartupRunnable {
 	return &InstrumentAtStartupRunnable{
-		manager:      manager,
-		instrumenter: instrumenter,
+		manager:            manager,
+		instrumenter:       instrumenter,
+		readyCheckExecuter: readyCheckExecuter,
 	}
 }
 
@@ -47,10 +50,28 @@ func (r *InstrumentAtStartupRunnable) Start(ctx context.Context) error {
 	// re-instrumented when the resolved delivery mechanism changes later.
 	resolvedInstrumentationDelivery := r.instrumenter.ClusterInstrumentationConfig.
 		WaitForInstrumentationDeliveryAutoToBeResolved(ctx, cluster.InstrumentAtStartUpDeliverySettleTimeout)
+	if r.instrumenter.ClusterInstrumentationConfig.InstrumentPods && !r.waitForWebhookService(ctx, logger) {
+		return nil
+	}
 	logger.Info(
 		"instrumenting existing workloads at startup",
 		"resolved instrumentation delivery", resolvedInstrumentationDelivery,
 	)
 	r.instrumenter.InstrumentAtStartup(ctx, logger)
 	return nil
+}
+
+// waitForWebhookService blocks until the webhook service endpoint is ready. Pods evicted at startup are only instrumented
+// if the webhook is reachable when they are recreated, and without a lease holder this replica leads before that.
+func (r *InstrumentAtStartupRunnable) waitForWebhookService(ctx context.Context, logger logd.Logger) bool {
+	logger.Info("waiting for the webhook service to become available before evicting uninstrumented pods at startup")
+	webhookServiceIsAvailable, err := r.readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(ctx, logger)
+	if err != nil || !webhookServiceIsAvailable {
+		logger.Warn(
+			"the webhook service did not become available, not evicting uninstrumented pods at startup",
+			"error", err,
+		)
+		return false
+	}
+	return true
 }
