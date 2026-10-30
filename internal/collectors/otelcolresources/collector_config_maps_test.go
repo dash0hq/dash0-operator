@@ -5787,6 +5787,150 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Entry("without Kubernetes infra metrics collection", false),
 			Entry("together with Kubernetes infra metrics collection", true),
 		)
+
+		type eventFilterTransformTestConfig struct {
+			filters                     []NamespacedFilter
+			transforms                  []NamespacedTransform
+			globalFilter                *dash0common.Filter
+			globalTransform             *dash0common.NormalizedTransformSpec
+			expectedFilterConditions    []any
+			expectedTransformConditions []any
+		}
+
+		DescribeTable("should apply custom log filters and transforms to Kubernetes events",
+			func(testConfig eventFilterTransformTestConfig) {
+				configMap, err := assembleDeploymentCollectorConfigMap(
+					&oTelColConfig{
+						OperatorNamespace:         OperatorNamespace,
+						NamePrefix:                namePrefix,
+						Exporters:                 cmTestSingleDefaultOtlpExporter(),
+						GlobalFilter:              testConfig.globalFilter,
+						GlobalNormalizedTransform: testConfig.globalTransform,
+					},
+					monitoredNamespaces,
+					monitoredNamespaces,
+					testConfig.filters,
+					testConfig.transforms,
+					false,
+				)
+				Expect(err).ToNot(HaveOccurred())
+				collectorConfig := parseConfigMapContent(configMap)
+
+				filterProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "filter/logs/custom_telemetry_filter"})
+				Expect(filterProcessorRaw).ToNot(BeNil())
+				Expect(ReadFromMap(filterProcessorRaw, []string{"logs", "log_record"})).
+					To(Equal(testConfig.expectedFilterConditions))
+
+				transformProcessorRaw :=
+					ReadFromMap(collectorConfig, []string{"processors", "transform/logs/custom_telemetry_transform"})
+				Expect(transformProcessorRaw).ToNot(BeNil())
+				groupsRaw := ReadFromMap(transformProcessorRaw, []string{"log_statements"})
+				Expect(groupsRaw).To(HaveLen(1))
+				group := groupsRaw.([]any)[0]
+				Expect(ReadFromMap(group, []string{"statements"})).To(Equal([]any{"log statement"}))
+				if testConfig.expectedTransformConditions == nil {
+					Expect(ReadFromMap(group, []string{"conditions"})).To(BeNil())
+				} else {
+					Expect(ReadFromMap(group, []string{"conditions"})).To(Equal(testConfig.expectedTransformConditions))
+				}
+
+				pipelines := readPipelines(collectorConfig)
+				Expect(readPipelineProcessors(pipelines, "logs/k8sevents")).To(Equal([]any{
+					"memory_limiter",
+					"resource_detection",
+					"transform/k8s_events",
+					"k8s_attributes",
+					"resource/cluster_uid",
+					"resource/dash0_operator_attributes",
+					"filter/logs/custom_telemetry_filter",
+					"batch",
+					"transform/logs/custom_telemetry_transform",
+					"transform/resources",
+				}))
+			},
+			Entry("namespaced filters and transforms", eventFilterTransformTestConfig{
+				filters: []NamespacedFilter{
+					{
+						Namespace: namespace1,
+						Filter: dash0common.Filter{
+							Logs: &dash0common.LogFilter{
+								LogRecordFilter: []string{"log record condition"},
+							},
+						},
+					},
+				},
+				transforms: []NamespacedTransform{
+					{
+						Namespace: namespace1,
+						Transform: dash0common.NormalizedTransformSpec{
+							Logs: []dash0common.NormalizedTransformGroup{
+								{Statements: []string{"log statement"}},
+							},
+						},
+					},
+				},
+				expectedFilterConditions: []any{
+					`resource.attributes["k8s.namespace.name"] == "namespace-1" and (log record condition)`,
+				},
+				expectedTransformConditions: []any{
+					`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+				},
+			}),
+			Entry("cluster-wide filters and transforms", eventFilterTransformTestConfig{
+				globalFilter: &dash0common.Filter{
+					Logs: &dash0common.LogFilter{
+						LogRecordFilter: []string{"global log record condition"},
+					},
+				},
+				globalTransform: &dash0common.NormalizedTransformSpec{
+					Logs: []dash0common.NormalizedTransformGroup{
+						{Statements: []string{"log statement"}},
+					},
+				},
+				expectedFilterConditions: []any{"global log record condition"},
+			}),
+		)
+
+		It("should not render custom log filters and transforms if no namespace has event collection enabled", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(
+				&oTelColConfig{
+					OperatorNamespace: OperatorNamespace,
+					NamePrefix:        namePrefix,
+					Exporters:         cmTestSingleDefaultOtlpExporter(),
+					KubernetesInfrastructureMetricsCollectionEnabled: true,
+				},
+				monitoredNamespaces,
+				nil,
+				[]NamespacedFilter{
+					{
+						Namespace: namespace1,
+						Filter: dash0common.Filter{
+							Logs: &dash0common.LogFilter{
+								LogRecordFilter: []string{"log record condition"},
+							},
+						},
+					},
+				},
+				[]NamespacedTransform{
+					{
+						Namespace: namespace1,
+						Transform: dash0common.NormalizedTransformSpec{
+							Logs: []dash0common.NormalizedTransformGroup{
+								{Statements: []string{"log statement"}},
+							},
+						},
+					},
+				},
+				false,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			Expect(ReadFromMap(collectorConfig, []string{"processors", "filter/logs/custom_telemetry_filter"})).To(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{"processors", "transform/logs/custom_telemetry_transform"})).
+				To(BeNil())
+			verifyProcessorDoesNotAppearInAnyPipeline(collectorConfig, "filter/logs/custom_telemetry_filter")
+			verifyProcessorDoesNotAppearInAnyPipeline(collectorConfig, "transform/logs/custom_telemetry_transform")
+		})
 	})
 
 	Describe("Signal Control log enrichment [SignalControl]", func() {

@@ -592,6 +592,42 @@ processors:
       {{- end }}
 {{- end }}
 
+{{ if (and $hasEventCollectionEnabledForAtLeastOneNamespace .CustomFilters.HasLogFilters) }}
+  filter/logs/custom_telemetry_filter:
+    error_mode: {{ .CustomFilters.ErrorMode }}
+    logs:
+      {{- if .CustomFilters.LogRecordConditions }}
+      log_record:
+        {{- range $i, $condition := .CustomFilters.LogRecordConditions }}
+        - '{{ $condition }}'
+        {{- end }}
+      {{- end }}
+{{- end }}
+
+{{ if (and $hasEventCollectionEnabledForAtLeastOneNamespace .CustomTransforms.HasLogTransforms) }}
+  transform/logs/custom_telemetry_transform:
+    error_mode: {{ .CustomTransforms.GlobalErrorMode }}
+    log_statements:
+      {{- range $i, $group := .CustomTransforms.LogGroups }}
+      - statements:
+          {{- range $i, $statement := $group.Statements }}
+          - '{{ $statement }}'
+          {{- end }}
+      {{- if $group.Conditions }}
+        conditions:
+          {{- range $i, $condition := $group.Conditions }}
+          - '{{ $condition }}'
+          {{- end }}
+      {{- end }}
+      {{- if $group.ErrorMode }}
+        error_mode: {{ $group.ErrorMode }}
+      {{- end }}
+      {{- if $group.Context }}
+        context: {{ $group.Context }}
+      {{- end }}
+      {{- end }}
+{{- end }}
+
   memory_limiter:
     check_interval: 1s
     {{- if .MemoryLimiterLimitMiB }}
@@ -741,7 +777,13 @@ service:
         {{- end }}
         - resource/cluster_uid
         - resource/dash0_operator_attributes
+        {{- if .CustomFilters.HasLogFilters }}
+        - filter/logs/custom_telemetry_filter
+        {{- end }}
         - batch
+        {{- if .CustomTransforms.HasLogTransforms }}
+        - transform/logs/custom_telemetry_transform
+        {{- end }}
         - transform/resources
       exporters:
         {{- if $useRouting }}
