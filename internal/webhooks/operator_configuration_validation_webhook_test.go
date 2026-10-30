@@ -676,6 +676,67 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				})
 			Expect(err).ToNot(HaveOccurred())
 		})
+
+		It("should reject an update that enables telemetry collection", func() {
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+							Enabled: new(false),
+						},
+					},
+				})
+			Expect(err).ToNot(HaveOccurred())
+
+			operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+			operatorConfigurationResource.Spec.TelemetryCollection.Enabled = new(true)
+
+			Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(
+				MatchError(ContainSubstring(ErrorMessageTelemetryCollectionDisabledViaHelm)))
+		})
+
+		Describe("with telemetry collection enabled in the stored resource", func() {
+			BeforeEach(func() {
+				// Store telemetryCollection.enabled=true while telemetry collection is still enabled via Helm, then
+				// disable it via Helm.
+				operatorConfigurationValidationWebhookHandler.telemetryCollectionEnabledViaHelm = true
+				_, err := CreateOperatorConfigurationResource(
+					ctx,
+					k8sClient,
+					&dash0v1alpha1.Dash0OperatorConfiguration{
+						ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+						Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+							Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						},
+					})
+				Expect(err).ToNot(HaveOccurred())
+				operatorConfigurationValidationWebhookHandler.telemetryCollectionEnabledViaHelm = false
+			})
+
+			It("should allow an unrelated update", func() {
+				operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+				Expect(*operatorConfigurationResource.Spec.TelemetryCollection.Enabled).To(BeTrue())
+				operatorConfigurationResource.Spec.ClusterName = "cluster-name-set-after-the-fact"
+
+				Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
+			})
+
+			It("should allow disabling telemetry collection", func() {
+				operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+				operatorConfigurationResource.Spec.TelemetryCollection.Enabled = new(false)
+				operatorConfigurationResource.Spec.KubernetesInfrastructureMetricsCollection.Enabled = new(false)
+				//nolint:staticcheck
+				operatorConfigurationResource.Spec.KubernetesInfrastructureMetricsCollectionEnabled = new(false)
+				operatorConfigurationResource.Spec.CollectPodLabelsAndAnnotations.Enabled = new(false)
+				operatorConfigurationResource.Spec.PrometheusCrdSupport.Enabled = new(false)
+
+				Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
+			})
+		})
 	})
 
 	Describe("agent0-connector", func() {
