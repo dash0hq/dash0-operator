@@ -100,15 +100,21 @@ tests:
           value: metadata.name
       - equal:
           path: spec.template.spec.containers[0].env[24].name
-          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
+          value: K8S_POD_OPENSHIFT_SCC
+      - equal:
+          path: spec.template.spec.containers[0].env[24].valueFrom.fieldRef.fieldPath
+          value: metadata.annotations['openshift.io/scc']
       - equal:
           path: spec.template.spec.containers[0].env[25].name
-          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
       - equal:
           path: spec.template.spec.containers[0].env[26].name
+          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[27].name
           value: DASH0_CA_BUNDLE_TARGETS
       - notExists:
-          path: spec.template.spec.containers[0].env[27].name
+          path: spec.template.spec.containers[0].env[28].name
 
   - it: webhook certificates secret should be rendered without data
     documentSelector:
@@ -507,6 +513,32 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].args
           content: --dash0-openshift=true
+
+  - it: should not render --dash0-openshift when operator.openShift.enabled is null
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        openShift:
+          enabled: null
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --dash0-openshift=
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --dash0-openshift=false
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --dash0-openshift=true
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: K8S_POD_OPENSHIFT_SCC
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.annotations['openshift.io/scc']
 
   - it: should accept sendBatchMaxSize equal to sendBatchSize
     documentSelector:
@@ -978,15 +1010,18 @@ tests:
           value: metadata.name
       - equal:
           path: spec.template.spec.containers[0].env[43].name
-          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
+          value: K8S_POD_OPENSHIFT_SCC
       - equal:
           path: spec.template.spec.containers[0].env[44].name
-          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
       - equal:
           path: spec.template.spec.containers[0].env[45].name
+          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[46].name
           value: DASH0_CA_BUNDLE_TARGETS
       - notExists:
-          path: spec.template.spec.containers[0].env[46].name
+          path: spec.template.spec.containers[0].env[47].name
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
           value: 123m
@@ -1850,15 +1885,21 @@ tests:
           value: metadata.name
       - equal:
           path: spec.template.spec.containers[0].env[24].name
-          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
+          value: K8S_POD_OPENSHIFT_SCC
+      - equal:
+          path: spec.template.spec.containers[0].env[24].valueFrom.fieldRef.fieldPath
+          value: metadata.annotations['openshift.io/scc']
       - equal:
           path: spec.template.spec.containers[0].env[25].name
-          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
       - equal:
           path: spec.template.spec.containers[0].env[26].name
+          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[27].name
           value: DASH0_CA_BUNDLE_TARGETS
       - notExists:
-          path: spec.template.spec.containers[0].env[27].name
+          path: spec.template.spec.containers[0].env[28].name
 
   - it: deployment should support changing repositories for images
     chart:
@@ -1973,15 +2014,21 @@ tests:
           value: metadata.name
       - equal:
           path: spec.template.spec.containers[0].env[24].name
-          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
+          value: K8S_POD_OPENSHIFT_SCC
+      - equal:
+          path: spec.template.spec.containers[0].env[24].valueFrom.fieldRef.fieldPath
+          value: metadata.annotations['openshift.io/scc']
       - equal:
           path: spec.template.spec.containers[0].env[25].name
-          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
       - equal:
           path: spec.template.spec.containers[0].env[26].name
+          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[27].name
           value: DASH0_CA_BUNDLE_TARGETS
       - notExists:
-          path: spec.template.spec.containers[0].env[27].name
+          path: spec.template.spec.containers[0].env[28].name
 
   - it: webhook configurations should not render a caBundle if the live objects cannot be read
     set:

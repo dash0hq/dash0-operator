@@ -426,6 +426,7 @@ func Start() {
 		setupLog.Error(err, "invalid OTLP collector host port configuration")
 		os.Exit(1)
 	}
+	cliArgs.isOpenShift = resolveOpenShiftMode(flag.CommandLine, cliArgs.isOpenShift, setupLog)
 	extraConfigDefaults = util.ExtraConfigDefaultsFor(cliArgs.isGkeAutopilot)
 	if err = readExtraConfigMap(extraConfigDefaults); err != nil {
 		setupLog.Error(err, "cannot read extra config map file at startup")
@@ -739,9 +740,10 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 	)
 	fs.BoolVar(
 		&cliArgs.isOpenShift,
-		"dash0-openshift",
+		openShiftFlagName,
 		false,
-		"Whether the operator is running on Red Hat OpenShift.",
+		"Whether the operator is running on Red Hat OpenShift. If neither this flag nor DASH0_OPENSHIFT is set, "+
+			"OpenShift is detected via the openshift.io/scc annotation of the operator manager pod.",
 	)
 	fs.BoolVar(
 		&cliArgs.disableOpenTelemetryCollectorHostPorts,

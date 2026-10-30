@@ -118,6 +118,10 @@ deployment should match snapshot (default values):
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.name
+                - name: K8S_POD_OPENSHIFT_SCC
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.annotations['openshift.io/scc']
                 - name: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
                   value: dash0-operator-webhook-server-cert
                 - name: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
@@ -294,6 +298,10 @@ deployment should match snapshot when using cert-manager:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.name
+                - name: K8S_POD_OPENSHIFT_SCC
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.annotations['openshift.io/scc']
               image: ghcr.io/dash0hq/operator-controller:0.0.0
               livenessProbe:
                 httpGet:
