@@ -59,7 +59,9 @@ build_all_images
 push_all_images
 
 if [[ "${SKIP_IMAGE_BUILDS:-}" != "true" ]]; then
-  make olm-bundle olm-bundle-validate olm-bundle-image BUNDLE_VERSION="$bundle_version"
+  make olm-test-bundle olm-bundle-validate olm-bundle-image \
+    BUNDLE_VERSION="$bundle_version" \
+    BUNDLE_DIR=olm/build/test-bundle
 fi
 if [[ "${PUSH_BUILT_IMAGES:-}" = "true" ]]; then
   make push-olm-bundle-image BUNDLE_VERSION="$bundle_version"

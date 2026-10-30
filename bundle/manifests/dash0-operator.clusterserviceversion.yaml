@@ -1,0 +1,1936 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: |-
+      [
+        {
+          "apiVersion": "dash0.com/v1alpha1",
+          "kind": "Dash0Team",
+          "metadata": {
+            "name": "backend-team"
+          },
+          "spec": {
+            "display": {
+              "color": {
+                "from": "#6366F1",
+                "to": "#8B5CF6"
+              },
+              "description": "Owns the backend services.",
+              "name": "Backend Team"
+            },
+            "members": [
+              "alice@example.com"
+            ]
+          }
+        },
+        {
+          "apiVersion": "openslo.com/v1",
+          "kind": "SLO",
+          "metadata": {
+            "annotations": {
+              "dash0.com/display-name": "Checkout availability"
+            },
+            "name": "checkout-availability"
+          },
+          "spec": {
+            "budgetingMethod": "Occurrences",
+            "description": "99 percent of checkout HTTP requests succeed over a rolling 28-day window.",
+            "indicator": {
+              "metadata": {
+                "name": "checkout-success-ratio"
+              },
+              "spec": {
+                "ratioMetric": {
+                  "counter": true,
+                  "good": {
+                    "metricSource": {
+                      "spec": {
+                        "query": "http_server_request_duration_seconds_count{service_name=\"checkout\",http_response_status_code!~\"5..\"}"
+                      },
+                      "type": "Prometheus"
+                    }
+                  },
+                  "total": {
+                    "metricSource": {
+                      "spec": {
+                        "query": "http_server_request_duration_seconds_count{service_name=\"checkout\"}"
+                      },
+                      "type": "Prometheus"
+                    }
+                  }
+                }
+              }
+            },
+            "objectives": [
+              {
+                "displayName": "99% availability",
+                "target": 0.99
+              }
+            ],
+            "service": "checkout",
+            "timeWindow": [
+              {
+                "duration": "28d",
+                "isRolling": true
+              }
+            ]
+          }
+        },
+        {
+          "apiVersion": "operator.dash0.com/v1alpha1",
+          "kind": "Dash0OperatorConfiguration",
+          "metadata": {
+            "name": "dash0-operator-configuration"
+          },
+          "spec": {
+            "clusterName": "my-kubernetes-cluster",
+            "exports": [
+              {
+                "dash0": {
+                  "apiEndpoint": "https://api.....dash0.com",
+                  "authorization": {
+                    "secretRef": {
+                      "key": "token",
+                      "name": "dash0-authorization-secret"
+                    }
+                  },
+                  "endpoint": "ingress..."
+                }
+              }
+            ]
+          }
+        },
+        {
+          "apiVersion": "operator.dash0.com/v1alpha1",
+          "kind": "Dash0SamplingRule",
+          "metadata": {
+            "name": "keep-all-errors"
+          },
+          "spec": {
+            "conditions": {
+              "kind": "error"
+            },
+            "display": {
+              "name": "Keep all error traces"
+            },
+            "enabled": true
+          }
+        },
+        {
+          "apiVersion": "operator.dash0.com/v1alpha1",
+          "kind": "Dash0SignalControl",
+          "metadata": {
+            "name": "dash0-signal-control"
+          },
+          "spec": {
+            "enabled": true
+          }
+        },
+        {
+          "apiVersion": "operator.dash0.com/v1alpha1",
+          "kind": "Dash0SignalToMetrics",
+          "metadata": {
+            "name": "checkout-endpoint-latency"
+          },
+          "spec": {
+            "display": {
+              "name": "Checkout endpoint latency"
+            },
+            "enabled": true,
+            "match": {
+              "filters": [
+                {
+                  "key": "http.route",
+                  "operator": "is",
+                  "value": "/checkout"
+                }
+              ],
+              "signal": "spans"
+            },
+            "output": {
+              "description": "Latency distribution of requests to the checkout endpoint",
+              "interval": "30s",
+              "name": "checkout.endpoint.duration"
+            }
+          }
+        },
+        {
+          "apiVersion": "operator.dash0.com/v1alpha1",
+          "kind": "Dash0SpamFilter",
+          "metadata": {
+            "name": "drop-kube-system-logs"
+          },
+          "spec": {
+            "contexts": [
+              "log"
+            ],
+            "filter": [
+              {
+                "key": "k8s.namespace.name",
+                "operator": "is",
+                "value": "kube-system"
+              }
+            ]
+          }
+        },
+        {
+          "apiVersion": "operator.dash0.com/v1alpha1",
+          "kind": "Dash0SyntheticCheck",
+          "metadata": {
+            "name": "example-com"
+          },
+          "spec": {
+            "display": {
+              "name": "example.com"
+            },
+            "enabled": true,
+            "notifications": {
+              "channels": []
+            },
+            "plugin": {
+              "kind": "http",
+              "spec": {
+                "assertions": {
+                  "criticalAssertions": [
+                    {
+                      "kind": "status_code",
+                      "spec": {
+                        "operator": "is",
+                        "value": "200"
+                      }
+                    },
+                    {
+                      "kind": "timing",
+                      "spec": {
+                        "operator": "lte",
+                        "type": "response",
+                        "value": "5000ms"
+                      }
+                    }
+                  ],
+                  "degradedAssertions": [
+                    {
+                      "kind": "timing",
+                      "spec": {
+                        "operator": "lte",
+                        "type": "response",
+                        "value": "2000ms"
+                      }
+                    }
+                  ]
+                },
+                "request": {
+                  "headers": [],
+                  "method": "get",
+                  "queryParameters": [],
+                  "redirects": "follow",
+                  "tls": {
+                    "allowInsecure": false
+                  },
+                  "tracing": {
+                    "addTracingHeaders": false
+                  },
+                  "url": "https://www.example.com"
+                }
+              }
+            },
+            "retries": {
+              "kind": "fixed",
+              "spec": {
+                "attempts": 3,
+                "delay": "1s"
+              }
+            },
+            "schedule": {
+              "interval": "1m",
+              "locations": [
+                "de-frankfurt",
+                "us-oregon"
+              ],
+              "strategy": "all_locations"
+            }
+          }
+        },
+        {
+          "apiVersion": "operator.dash0.com/v1alpha1",
+          "kind": "Dash0TimeSeriesAggregation",
+          "metadata": {
+            "name": "aggregate-http-server-duration"
+          },
+          "spec": {
+            "display": {
+              "name": "HTTP server duration (aggregated)"
+            },
+            "enabled": true,
+            "match": {
+              "metricNameMatcher": {
+                "operator": "is",
+                "value": "http.server.duration"
+              }
+            },
+            "sample": {
+              "interval": "60s"
+            }
+          }
+        },
+        {
+          "apiVersion": "operator.dash0.com/v1alpha1",
+          "kind": "Dash0View",
+          "metadata": {
+            "name": "error-logs"
+          },
+          "spec": {
+            "display": {
+              "description": "Log records with severity error or higher.",
+              "name": "Error logs"
+            },
+            "filter": [
+              {
+                "key": "otel.log.severity.number",
+                "operator": "gte",
+                "value": "17"
+              }
+            ],
+            "table": {
+              "columns": [
+                {
+                  "colSize": "min-content",
+                  "key": "otel.log.time",
+                  "label": "Time"
+                },
+                {
+                  "key": "dash0.resource.id",
+                  "label": "Resource"
+                },
+                {
+                  "key": "otel.log.body",
+                  "label": "Body"
+                }
+              ],
+              "sort": [
+                {
+                  "direction": "descending",
+                  "key": "otel.log.time"
+                }
+              ]
+            },
+            "type": "logs"
+          }
+        },
+        {
+          "apiVersion": "operator.dash0.com/v1beta1",
+          "kind": "Dash0Monitoring",
+          "metadata": {
+            "name": "dash0-monitoring-resource"
+          },
+          "spec": {
+            "instrumentWorkloads": {
+              "mode": "all"
+            },
+            "logCollection": {
+              "enabled": true
+            },
+            "prometheusScraping": {
+              "enabled": true
+            }
+          }
+        },
+        {
+          "apiVersion": "operator.dash0.com/v1beta1",
+          "kind": "Dash0NotificationChannel",
+          "metadata": {
+            "name": "slack-alerts"
+          },
+          "spec": {
+            "display": {
+              "name": "Slack Alerts"
+            },
+            "frequency": "10m",
+            "slackConfig": {
+              "channel": "#alerts",
+              "webhookURL": "https://hooks.slack.com/services/..."
+            },
+            "type": "slack"
+          }
+        }
+      ]
+    capabilities: Seamless Upgrades
+    categories: Monitoring,Logging & Tracing
+    containerImage: ghcr.io/dash0hq/operator-controller:0.0.0
+    createdAt: "2026-10-28T16:27:31Z"
+    description: Collect traces, metrics and logs from your Kubernetes workloads and
+      infrastructure with OpenTelemetry and send them to Dash0.
+    operators.operatorframework.io/builder: operator-sdk-v1.42.3
+    operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
+    repository: https://github.com/dash0hq/dash0-operator
+    support: Dash0
+  name: dash0-operator.v0.0.1
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: A destination for Dash0 alert notifications, for example a Slack
+        channel, email recipients or a webhook.
+      displayName: Dash0 Notification Channel
+      kind: Dash0NotificationChannel
+      name: dash0notificationchannels.operator.dash0.com
+      specDescriptors:
+      - description: The name of the notification channel shown in Dash0.
+        displayName: Display
+        path: display
+      - description: The integration that notifications are sent to. Most types require
+          the matching configuration, e.g. Slack Config for "slack".
+        displayName: Type
+        path: type
+      - description: The configuration for Slack webhook notifications.
+        displayName: Slack Config
+        path: slackConfig
+      - description: How often notifications are sent, defaults to 10m.
+        displayName: Frequency
+        path: frequency
+      version: v1beta1
+    - description: Cluster-wide operator settings, such as the Dash0 endpoints and
+        auth token, the cluster name and which Kubernetes telemetry is collected.
+      displayName: Dash0 Operator Configuration
+      kind: Dash0OperatorConfiguration
+      name: dash0operatorconfigurations.operator.dash0.com
+      specDescriptors:
+      - description: The backends that telemetry and the operator's self-monitoring
+          data are sent to.
+        displayName: Exports
+        path: exports
+      - description: Added as the resource attribute k8s.cluster.name to all telemetry.
+        displayName: Cluster Name
+        path: clusterName
+      - description: Resources, scheduling and other settings of the workloads the
+          operator manages.
+        displayName: Components
+        path: components
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Only used internally.
+        displayName: Internal
+        path: __dash0_internal__normalizedTransform
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: Only used internally.
+        displayName: Internal
+        path: monitoringTemplate.spec.__dash0_internal__normalizedTransform
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      version: v1alpha1
+    - description: A tail sampling rule that decides which traces Signal Control keeps,
+        for example all traces with errors.
+      displayName: Dash0 Sampling Rule
+      kind: Dash0SamplingRule
+      name: dash0samplingrules.operator.dash0.com
+      specDescriptors:
+      - description: Whether the sampling rule is active.
+        displayName: Enabled
+        path: enabled
+      - description: The name of the sampling rule shown in Dash0.
+        displayName: Display
+        path: display
+      - description: The traces that the sampling rule applies to.
+        displayName: Conditions
+        path: conditions
+      version: v1alpha1
+    - description: Turns on Signal Control, which samples and filters telemetry inside
+        the cluster before it is sent to Dash0. Only one instance per cluster.
+      displayName: Dash0 Signal Control
+      kind: Dash0SignalControl
+      name: dash0signalcontrols.operator.dash0.com
+      specDescriptors:
+      - description: Whether Signal Control is enabled.
+        displayName: Enabled
+        path: enabled
+      - description: Resources, scheduling and other settings of the Signal Control
+          workloads.
+        displayName: Components
+        path: components
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      version: v1alpha1
+    - description: A rule that derives a custom metric from spans or log records.
+      displayName: Dash0 Signal-to-Metrics Rule
+      kind: Dash0SignalToMetrics
+      name: dash0signaltometrics.operator.dash0.com
+      specDescriptors:
+      - description: Whether the rule is active.
+        displayName: Enabled
+        path: enabled
+      - description: The name of the rule shown in Dash0.
+        displayName: Display
+        path: display
+      - description: The spans and log records that the rule applies to.
+        displayName: Match
+        path: match
+      - description: The metric that is derived from the matching spans and log records.
+        displayName: Output
+        path: output
+      version: v1alpha1
+    - description: A service level objective in the OpenSLO format.
+      displayName: Service Level Objective
+      kind: SLO
+      name: slos.openslo.com
+      specDescriptors:
+      - description: A description of the SLO.
+        displayName: Description
+        path: description
+      - description: The service that the SLO belongs to.
+        displayName: Service
+        path: service
+      - description: How the error budget is calculated, only Occurrences is supported.
+        displayName: Budgeting Method
+        path: budgetingMethod
+      - description: The time window of the SLO, only a rolling 28d window is supported.
+        displayName: Time Window
+        path: timeWindow
+      - description: The service level indicator, a ratio of good to total events.
+        displayName: Indicator
+        path: indicator
+      - description: The target of the SLO, exactly one objective is supported.
+        displayName: Objectives
+        path: objectives
+      version: v1
+    - description: A filter that drops unwanted log records, spans or metrics based
+        on their attributes.
+      displayName: Dash0 Spam Filter
+      kind: Dash0SpamFilter
+      name: dash0spamfilters.operator.dash0.com
+      specDescriptors:
+      - description: The signals that the spam filter applies to, e.g. log, span or
+          metric.
+        displayName: Contexts
+        path: contexts
+      - description: The conditions for the telemetry that is dropped.
+        displayName: Filter
+        path: filter
+      version: v1alpha1
+    - description: A synthetic check that tests an HTTP endpoint on a schedule from
+        one or more locations.
+      displayName: Dash0 Synthetic Check
+      kind: Dash0SyntheticCheck
+      name: dash0syntheticchecks.operator.dash0.com
+      specDescriptors:
+      - description: Whether the synthetic check is active.
+        displayName: Enabled
+        path: enabled
+      - description: The name of the synthetic check shown in Dash0.
+        displayName: Display
+        path: display
+      - description: The notification channels that are notified when the check fails.
+        displayName: Notifications
+        path: notifications
+      - description: The request that the check performs and the assertions on its
+          response.
+        displayName: Plugin
+        path: plugin
+      - description: Whether and how a failed check is retried.
+        displayName: Retries
+        path: retries
+      - description: How often and from which locations the check runs.
+        displayName: Schedule
+        path: schedule
+      version: v1alpha1
+    - description: A Dash0 team and its members.
+      displayName: Dash0 Team
+      kind: Dash0Team
+      name: dash0teams.dash0.com
+      specDescriptors:
+      - description: The name, description and badge color of the team shown in Dash0.
+        displayName: Display
+        path: display
+      - description: The members of the team, as member IDs or email addresses.
+        displayName: Members
+        path: members
+      version: v1alpha1
+    - description: A rule that aggregates the data points of matching metrics over
+        a fixed interval.
+      displayName: Dash0 Time Series Aggregation
+      kind: Dash0TimeSeriesAggregation
+      name: dash0timeseriesaggregations.operator.dash0.com
+      specDescriptors:
+      - description: Whether the rule is active.
+        displayName: Enabled
+        path: enabled
+      - description: The name of the rule shown in Dash0.
+        displayName: Display
+        path: display
+      - description: The metrics that the rule applies to.
+        displayName: Match
+        path: match
+      - description: How often the data points of the matching metrics are aggregated.
+        displayName: Sample
+        path: sample
+      version: v1alpha1
+    - description: A saved Dash0 view with a filter and table layout for exploring
+        telemetry such as logs, spans or metrics.
+      displayName: Dash0 View
+      kind: Dash0View
+      name: dash0views.operator.dash0.com
+      specDescriptors:
+      - description: The part of the Dash0 UI that the view applies to.
+        displayName: Type
+        path: type
+      - description: The name, description and folder of the view shown in Dash0.
+        displayName: Display
+        path: display
+      - description: The filter of the view.
+        displayName: Filter
+        path: filter
+      - description: The columns and sorting of the table.
+        displayName: Table
+        path: table
+      version: v1alpha1
+    - description: Turns on monitoring for its namespace, with automatic workload
+        instrumentation, log collection and Prometheus scraping.
+      displayName: Dash0 Monitoring
+      kind: Dash0Monitoring
+      name: dash0monitorings.operator.dash0.com
+      specDescriptors:
+      - description: Automatic instrumentation of the workloads in this namespace.
+        displayName: Instrument Workloads
+        path: instrumentWorkloads
+      - description: Collection of pod logs in this namespace.
+        displayName: Log Collection
+        path: logCollection
+      - description: Scraping of Prometheus metrics from pods in this namespace.
+        displayName: Prometheus Scraping
+        path: prometheusScraping
+      - description: Only used internally.
+        displayName: Internal
+        path: __dash0_internal__normalizedTransform
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      version: v1beta1
+  description: |
+    The Dash0 Operator brings OpenTelemetry-based observability to your Kubernetes cluster. It instruments your
+    workloads automatically, collects their traces, metrics and logs together with telemetry about the cluster itself,
+    and sends everything to Dash0.
+
+    ### Features
+
+    * **Automatic instrumentation** of Java, Node.js and .NET workloads, without changes to images or manifests.
+      Python and Ruby support (beta) is opt-in.
+    * **Log collection** from the pods in monitored namespaces.
+    * **Kubernetes infrastructure metrics** for the cluster, its nodes, pods and containers.
+    * **Prometheus scraping** of pods annotated with `prometheus.io/scrape`.
+    * **Signal Control**: tail sampling, spam filters and signal-to-metrics rules, applied inside the cluster to keep
+      the telemetry that matters and reduce egress costs.
+    * **Dash0 configuration as code**: views, synthetic checks, notification channels, teams, SLOs and more are managed
+      as Kubernetes resources and kept in sync with Dash0.
+
+    ### Getting started
+
+    Install the operator into a dedicated namespace, for example `dash0-system`. The OpenTelemetry collectors run in
+    that namespace and use host paths and host ports, so the namespace must not enforce the `baseline` or `restricted`
+    Pod Security Standard. This rules out the `operators` namespace that OLM creates, which enforces `baseline`.
+
+    After the installation:
+
+    1. Create a Secret with your Dash0 auth token in the operator's namespace.
+    2. Create a `Dash0OperatorConfiguration` resource with the OTLP and API endpoints of your Dash0 organization and a
+       reference to that Secret.
+    3. Create a `Dash0Monitoring` resource in each namespace you want to monitor. Most Dash0 configuration resources,
+       like views and synthetic checks, are only synchronized in namespaces that have a `Dash0Monitoring` resource.
+
+    Some operator settings are read from `DASH0_*` environment variables, which can be set in `spec.config.env` of the
+    Subscription. For example, `DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION=true` turns on Python instrumentation.
+
+    This bundle does not support OpenShift or GKE Autopilot.
+  displayName: Dash0 Operator
+  install:
+    spec:
+      clusterPermissions:
+      - rules:
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0operatorconfigurations
+          verbs:
+          - create
+          - delete
+          - deletecollection
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0operatorconfigurations/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0operatorconfigurations/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0monitorings
+          verbs:
+          - create
+          - delete
+          - deletecollection
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0monitorings/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0monitorings/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - events.k8s.io
+          resources:
+          - events
+          verbs:
+          - create
+          - list
+          - patch
+          - update
+        - apiGroups:
+          - ""
+          resources:
+          - namespaces
+          verbs:
+          - get
+        - apiGroups:
+          - ""
+          resources:
+          - events
+          verbs:
+          - list
+          - patch
+          - update
+        - apiGroups:
+          - ""
+          resources:
+          - nodes
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - apps
+          resources:
+          - deployments/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - apiextensions.k8s.io
+          resources:
+          - customresourcedefinitions
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - perses.dev
+          resources:
+          - persesdashboards
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - monitoring.coreos.com
+          resources:
+          - prometheusrules
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0syntheticchecks
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0syntheticchecks/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - openslo.com
+          resources:
+          - slos
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - openslo.com
+          resources:
+          - slos/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0signaltometrics
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0signaltometrics/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0views
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0views/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0notificationchannels
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0notificationchannels/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - dash0.com
+          resources:
+          - dash0teams
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - dash0.com
+          resources:
+          - dash0teams/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0spamfilters
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0spamfilters/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0timeseriesaggregations
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0timeseriesaggregations/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0signalcontrols
+          verbs:
+          - create
+          - delete
+          - deletecollection
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0signalcontrols/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0signalcontrols/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0samplingrules
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0samplingrules/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - ""
+          resources:
+          - configmaps
+          - serviceaccounts
+          - services
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - rbac.authorization.k8s.io
+          resources:
+          - clusterroles
+          - clusterrolebindings
+          - roles
+          - rolebindings
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - apps
+          resources:
+          - daemonsets
+          - deployments
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - policy
+          resources:
+          - poddisruptionbudgets
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - ""
+          resources:
+          - configmaps
+          - pods
+          - persistentvolumes
+          - persistentvolumeclaims
+          - namespaces
+          - nodes
+          - nodes/stats
+          - endpoints
+          - services
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - ""
+          resources:
+          - nodes/proxy
+          verbs:
+          - get
+        - apiGroups:
+          - apps
+          resources:
+          - replicasets
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - extensions
+          resources:
+          - replicasets
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - ""
+          resources:
+          - events
+          - namespaces
+          - namespaces/status
+          - nodes
+          - nodes/spec
+          - pods
+          - pods/status
+          - replicationcontrollers
+          - replicationcontrollers/status
+          - resourcequotas
+          - services
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - apps
+          resources:
+          - daemonsets
+          - deployments
+          - replicasets
+          - statefulsets
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - extensions
+          resources:
+          - daemonsets
+          - deployments
+          - replicasets
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - batch
+          resources:
+          - jobs
+          - cronjobs
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - autoscaling
+          resources:
+          - horizontalpodautoscalers
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - monitoring.coreos.com
+          resources:
+          - podmonitors
+          - probes
+          - prometheusrules
+          - scrapeconfigs
+          - servicemonitors
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - apps
+          resources:
+          - statefulsets
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - ""
+          resources:
+          - namespaces
+          - nodes
+          - nodes/metrics
+          - services
+          - pods
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - ""
+          resources:
+          - configmaps
+          verbs:
+          - get
+        - apiGroups:
+          - discovery.k8s.io
+          resources:
+          - endpointslices
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - networking.k8s.io
+          resources:
+          - ingresses
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - ""
+          resources:
+          - secrets
+          verbs:
+          - get
+          - list
+          - watch
+        - nonResourceURLs:
+          - /metrics
+          verbs:
+          - get
+        - apiGroups:
+          - apps
+          resources:
+          - daemonsets
+          - deployments
+          - replicasets
+          - statefulsets
+          verbs:
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - batch
+          resources:
+          - cronjobs
+          - jobs
+          verbs:
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - ""
+          resources:
+          - pods
+          verbs:
+          - delete
+          - get
+          - list
+        - apiGroups:
+          - ""
+          resources:
+          - componentstatuses
+          - endpoints
+          - limitranges
+          - namespaces
+          - nodes
+          - persistentvolumeclaims
+          - persistentvolumes
+          - podtemplates
+          - pods
+          - replicationcontrollers
+          - resourcequotas
+          - serviceaccounts
+          - services
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - apps
+          resources:
+          - controllerrevisions
+          - daemonsets
+          - deployments
+          - replicasets
+          - statefulsets
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - batch
+          resources:
+          - cronjobs
+          - jobs
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - autoscaling
+          resources:
+          - horizontalpodautoscalers
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - policy
+          resources:
+          - poddisruptionbudgets
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - networking.k8s.io
+          resources:
+          - ingressclasses
+          - ingresses
+          - ipaddresses
+          - networkpolicies
+          - servicecidrs
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - discovery.k8s.io
+          resources:
+          - endpointslices
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - storage.k8s.io
+          resources:
+          - csidrivers
+          - csinodes
+          - csistoragecapacities
+          - storageclasses
+          - volumeattachments
+          - volumeattributesclasses
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - scheduling.k8s.io
+          resources:
+          - priorityclasses
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - node.k8s.io
+          resources:
+          - runtimeclasses
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - coordination.k8s.io
+          resources:
+          - leases
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - certificates.k8s.io
+          resources:
+          - certificatesigningrequests
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - flowcontrol.apiserver.k8s.io
+          resources:
+          - flowschemas
+          - prioritylevelconfigurations
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - resource.k8s.io
+          resources:
+          - deviceclasses
+          - resourceclaims
+          - resourceclaimtemplates
+          - resourceslices
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - metrics.k8s.io
+          resources:
+          - nodes
+          - pods
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - apiextensions.k8s.io
+          resources:
+          - customresourcedefinitions
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - apiregistration.k8s.io
+          resources:
+          - apiservices
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - admissionregistration.k8s.io
+          resources:
+          - mutatingadmissionpolicies
+          - mutatingadmissionpolicybindings
+          - mutatingwebhookconfigurations
+          - validatingadmissionpolicies
+          - validatingadmissionpolicybindings
+          - validatingwebhookconfigurations
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - rbac.authorization.k8s.io
+          resources:
+          - clusterrolebindings
+          - clusterroles
+          - rolebindings
+          - roles
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - authorization.k8s.io
+          resources:
+          - selfsubjectaccessreviews
+          - selfsubjectrulesreviews
+          verbs:
+          - create
+        - apiGroups:
+          - dash0.com
+          resources:
+          - dash0teams
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0monitorings
+          - dash0notificationchannels
+          - dash0operatorconfigurations
+          - dash0samplingrules
+          - dash0signalcontrols
+          - dash0signaltometrics
+          - dash0spamfilters
+          - dash0syntheticchecks
+          - dash0timeseriesaggregations
+          - dash0views
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - openslo.com
+          resources:
+          - slos
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - monitoring.coreos.com
+          resources:
+          - podmonitors
+          - probes
+          - prometheusrules
+          - scrapeconfigs
+          - servicemonitors
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - perses.dev
+          resources:
+          - persesdashboards
+          verbs:
+          - get
+          - list
+        - nonResourceURLs:
+          - /api
+          - /api/*
+          - /apis
+          - /apis/*
+          - /healthz
+          - /livez
+          - /openapi
+          - /openapi/*
+          - /readyz
+          - /version
+          - /version/
+          verbs:
+          - get
+        - apiGroups:
+          - ""
+          resources:
+          - serviceaccounts
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - rbac.authorization.k8s.io
+          resources:
+          - clusterroles
+          - clusterrolebindings
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - apps
+          resources:
+          - deployments
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        serviceAccountName: dash0-operator-controller
+      deployments:
+      - label:
+          app.kubernetes.io/component: controller
+          app.kubernetes.io/instance: deployment
+          app.kubernetes.io/name: dash0-operator
+          app.kubernetes.io/part-of: dash0-operator
+          app.kubernetes.io/version: 0.0.1
+          dash0.com/enable: "false"
+        name: dash0-operator-controller
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app.kubernetes.io/component: controller
+              app.kubernetes.io/name: dash0-operator
+          strategy: {}
+          template:
+            metadata:
+              annotations:
+                kubectl.kubernetes.io/default-container: manager
+              labels:
+                app.kubernetes.io/component: controller
+                app.kubernetes.io/name: dash0-operator
+            spec:
+              affinity:
+                nodeAffinity:
+                  requiredDuringSchedulingIgnoredDuringExecution:
+                    nodeSelectorTerms:
+                    - matchExpressions:
+                      - key: dash0.com/enable
+                        operator: NotIn
+                        values:
+                        - "false"
+                      - key: kubernetes.io/os
+                        operator: In
+                        values:
+                        - linux
+              automountServiceAccountToken: true
+              containers:
+              - args:
+                - --health-probe-bind-address=:8081
+                - --metrics-bind-address=127.0.0.1:8080
+                - --leader-elect
+                command:
+                - /manager
+                env:
+                - name: GOMEMLIMIT
+                  value: 205MiB
+                - name: DASH0_OPERATOR_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: DASH0_DEPLOYMENT_NAME
+                  value: dash0-operator-controller
+                - name: DASH0_WEBHOOK_SERVICE_NAME
+                  value: dash0-operator-controller-service
+                - name: DASH0_WEBHOOK_SERVICE_PORT
+                  value: "443"
+                - name: DASH0_PERSES_DASHBOARD_AUTO_PATCH_CONVERSION_WEBHOOK
+                  value: "false"
+                - name: DASH0_IAC_PERIODIC_RETRY_ENABLED
+                  value: "true"
+                - name: DASH0_IAC_PERIODIC_RETRY_INTERVAL
+                  value: 10m
+                - name: OTEL_COLLECTOR_NAME_PREFIX
+                  value: dash0-operator
+                - name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
+                  value: dash0-operator
+                - name: DASH0_OPERATOR_IMAGE
+                  value: ghcr.io/dash0hq/operator-controller:0.0.0
+                - name: DASH0_INSTRUMENTATION_IMAGE
+                  value: ghcr.io/dash0hq/instrumentation:0.0.0
+                - name: DASH0_COLLECTOR_IMAGE
+                  value: ghcr.io/dash0hq/collector:0.0.0
+                - name: DASH0_SIGNAL_CONTROL_COLLECTOR_IMAGE
+                  value: ghcr.io/dash0hq/signal-control-collector:0.0.0
+                - name: DASH0_TARGET_ALLOCATOR_IMAGE
+                  value: ghcr.io/dash0hq/target-allocator:0.0.0
+                - name: DASH0_CONFIGURATION_RELOADER_IMAGE
+                  value: ghcr.io/dash0hq/configuration-reloader:0.0.0
+                - name: DASH0_FILELOG_OFFSET_SYNC_IMAGE
+                  value: ghcr.io/dash0hq/filelog-offset-sync:0.0.0
+                - name: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE
+                  value: ghcr.io/dash0hq/filelog-offset-volume-ownership:0.0.0
+                - name: DASH0_EDGE_PROXY_IMAGE
+                  value: ghcr.io/dash0hq/edge-proxy:0.0.0
+                - name: DASH0_AGENT0_CONNECTOR_IMAGE
+                  value: ghcr.io/dash0hq/agent0-connector:0.0.0
+                - name: DASH0_AGENT0_CONNECTOR_ENABLED
+                  value: "false"
+                - name: DASH0_SYNTHETICS_WORKER_IMAGE
+                  value: ghcr.io/dash0hq/dash0-synthetics-worker:0.0.0
+                - name: K8S_POD_UID
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.uid
+                - name: K8S_NODE_IP
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: status.hostIP
+                - name: K8S_NODE_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: spec.nodeName
+                - name: K8S_POD_IP
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: status.podIP
+                - name: K8S_POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
+                - name: DASH0_TELEMETRY_COLLECTION_ENABLED
+                  value: "true"
+                - name: DASH0_FEATURE_SIGNAL_CONTROL_ENABLED
+                  value: "true"
+                - name: DASH0_FORCE_USE_OTEL_COLLECTOR_SERVICE_URL
+                  value: "false"
+                - name: DASH0_GKE_AUTOPILOT
+                  value: "false"
+                - name: DASH0_OPENSHIFT
+                  value: "false"
+                - name: DASH0_DISABLE_OTEL_COLLECTOR_HOST_PORTS
+                  value: "false"
+                - name: DASH0_OTEL_COLLECTOR_OTLP_GRPC_HOST_PORT
+                  value: "40317"
+                - name: DASH0_OTEL_COLLECTOR_OTLP_HTTP_HOST_PORT
+                  value: "40318"
+                - name: DASH0_LOG_LEVEL
+                  value: info
+                - name: RELATED_IMAGE_OPERATOR
+                  value: ghcr.io/dash0hq/operator-controller:0.0.0
+                - name: RELATED_IMAGE_INSTRUMENTATION
+                  value: ghcr.io/dash0hq/instrumentation:0.0.0
+                - name: RELATED_IMAGE_COLLECTOR
+                  value: ghcr.io/dash0hq/collector:0.0.0
+                - name: RELATED_IMAGE_SIGNAL_CONTROL_COLLECTOR
+                  value: ghcr.io/dash0hq/signal-control-collector:0.0.0
+                - name: RELATED_IMAGE_TARGET_ALLOCATOR
+                  value: ghcr.io/dash0hq/target-allocator:0.0.0
+                - name: RELATED_IMAGE_CONFIGURATION_RELOADER
+                  value: ghcr.io/dash0hq/configuration-reloader:0.0.0
+                - name: RELATED_IMAGE_FILELOG_OFFSET_SYNC
+                  value: ghcr.io/dash0hq/filelog-offset-sync:0.0.0
+                - name: RELATED_IMAGE_FILELOG_OFFSET_VOLUME_OWNERSHIP
+                  value: ghcr.io/dash0hq/filelog-offset-volume-ownership:0.0.0
+                - name: RELATED_IMAGE_EDGE_PROXY
+                  value: ghcr.io/dash0hq/edge-proxy:0.0.0
+                - name: RELATED_IMAGE_AGENT0_CONNECTOR
+                  value: ghcr.io/dash0hq/agent0-connector:0.0.0
+                - name: RELATED_IMAGE_SYNTHETICS_WORKER
+                  value: ghcr.io/dash0hq/dash0-synthetics-worker:0.0.0
+                image: ghcr.io/dash0hq/operator-controller:0.0.0
+                livenessProbe:
+                  httpGet:
+                    path: /healthz
+                    port: 8081
+                  initialDelaySeconds: 15
+                  periodSeconds: 20
+                name: manager
+                ports:
+                - containerPort: 9443
+                  name: webhook-server
+                  protocol: TCP
+                readinessProbe:
+                  httpGet:
+                    path: /readyz
+                    port: 8081
+                  initialDelaySeconds: 5
+                  periodSeconds: 5
+                resources:
+                  limits:
+                    cpu: 500m
+                    ephemeral-storage: 500Mi
+                    memory: 256Mi
+                  requests:
+                    cpu: 50m
+                    ephemeral-storage: 500Mi
+                    memory: 128Mi
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                    - ALL
+                  readOnlyRootFilesystem: true
+                  runAsNonRoot: true
+                  seccompProfile:
+                    type: RuntimeDefault
+                volumeMounts:
+                - mountPath: /etc/config
+                  name: config-volume
+                  readOnly: true
+              securityContext:
+                runAsNonRoot: true
+                seccompProfile:
+                  type: RuntimeDefault
+              serviceAccountName: dash0-operator-controller
+              terminationGracePeriodSeconds: 10
+              volumes:
+              - configMap:
+                  name: dash0-operator-extra-config
+                name: config-volume
+      permissions:
+      - rules:
+        - apiGroups:
+          - apps
+          resources:
+          - deployments
+          verbs:
+          - get
+          - list
+        - apiGroups:
+          - discovery.k8s.io
+          resources:
+          - endpointslices
+          verbs:
+          - list
+        - apiGroups:
+          - ""
+          resources:
+          - secrets
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - ""
+          resources:
+          - configmaps
+          verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+          - patch
+          - delete
+        - apiGroups:
+          - coordination.k8s.io
+          resources:
+          - leases
+          verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+          - patch
+          - delete
+        - apiGroups:
+          - ""
+          resources:
+          - events
+          verbs:
+          - create
+          - patch
+        serviceAccountName: dash0-operator-controller
+    strategy: deployment
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - OpenTelemetry
+  - Observability
+  - Monitoring
+  - Dash0
+  - Node.js
+  - Java
+  - JVM
+  - .NET
+  - Python
+  - Ruby
+  links:
+  - name: Dash0
+    url: https://www.dash0.com/
+  - name: Source Code
+    url: https://github.com/dash0hq/dash0-operator
+  - name: Documentation
+    url: https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/overview
+  maintainers:
+  - email: bastian.krol@dash0.com
+    name: Bastian Krol
+  - email: petra.bierleutgeb@dash0.com
+    name: Petra Bierleutgeb
+  - email: felix.thieltges@dash0.com
+    name: Felix Thieltges
+  maturity: alpha
+  minKubeVersion: 1.25.16
+  provider:
+    name: Dash0 Inc.
+    url: https://www.dash0.com/
+  relatedImages:
+  - image: ghcr.io/dash0hq/operator-controller:0.0.0
+    name: operator
+  - image: ghcr.io/dash0hq/instrumentation:0.0.0
+    name: instrumentation
+  - image: ghcr.io/dash0hq/collector:0.0.0
+    name: collector
+  - image: ghcr.io/dash0hq/signal-control-collector:0.0.0
+    name: signal-control-collector
+  - image: ghcr.io/dash0hq/target-allocator:0.0.0
+    name: target-allocator
+  - image: ghcr.io/dash0hq/configuration-reloader:0.0.0
+    name: configuration-reloader
+  - image: ghcr.io/dash0hq/filelog-offset-sync:0.0.0
+    name: filelog-offset-sync
+  - image: ghcr.io/dash0hq/filelog-offset-volume-ownership:0.0.0
+    name: filelog-offset-volume-ownership
+  - image: ghcr.io/dash0hq/edge-proxy:0.0.0
+    name: edge-proxy
+  - image: ghcr.io/dash0hq/agent0-connector:0.0.0
+    name: agent0-connector
+  - image: ghcr.io/dash0hq/dash0-synthetics-worker:0.0.0
+    name: synthetics-worker
+  version: 0.0.1
+  webhookdefinitions:
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: dash0-operator-controller
+    failurePolicy: Ignore
+    generateName: inject.dash0.com
+    rules:
+    - apiGroups:
+      - apps
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - daemonsets
+      - deployments
+      - replicasets
+      - statefulsets
+      scope: Namespaced
+    - apiGroups:
+      - batch
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - cronjobs
+    - apiGroups:
+      - batch
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      resources:
+      - jobs
+      scope: Namespaced
+    - apiGroups:
+      - ""
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      resources:
+      - pods
+      scope: Namespaced
+    sideEffects: None
+    targetPort: 9443
+    timeoutSeconds: 5
+    type: MutatingAdmissionWebhook
+    webhookPath: /workloads/inject
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: dash0-operator-controller
+    generateName: mutate-monitoring.dash0.com
+    rules:
+    - apiGroups:
+      - operator.dash0.com
+      apiVersions:
+      - v1beta1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - dash0monitorings
+      scope: Namespaced
+    sideEffects: None
+    targetPort: 9443
+    timeoutSeconds: 5
+    type: MutatingAdmissionWebhook
+    webhookPath: /monitoring/mutate
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: dash0-operator-controller
+    generateName: mutate-operator-configuration.dash0.com
+    rules:
+    - apiGroups:
+      - operator.dash0.com
+      apiVersions:
+      - v1alpha1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - dash0operatorconfigurations
+      scope: Cluster
+    sideEffects: None
+    targetPort: 9443
+    timeoutSeconds: 5
+    type: MutatingAdmissionWebhook
+    webhookPath: /operator-configuration/mutate
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: dash0-operator-controller
+    generateName: validate-monitoring.dash0.com
+    rules:
+    - apiGroups:
+      - operator.dash0.com
+      apiVersions:
+      - v1beta1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - dash0monitorings
+      scope: Namespaced
+    sideEffects: None
+    targetPort: 9443
+    timeoutSeconds: 5
+    type: ValidatingAdmissionWebhook
+    webhookPath: /monitoring/validate
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: dash0-operator-controller
+    generateName: validate-operator-configuration.dash0.com
+    rules:
+    - apiGroups:
+      - operator.dash0.com
+      apiVersions:
+      - v1alpha1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - dash0operatorconfigurations
+      scope: Cluster
+    sideEffects: None
+    targetPort: 9443
+    timeoutSeconds: 5
+    type: ValidatingAdmissionWebhook
+    webhookPath: /operator-configuration/validate
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: dash0-operator-controller
+    generateName: validate-signal-control.dash0.com
+    rules:
+    - apiGroups:
+      - operator.dash0.com
+      apiVersions:
+      - v1alpha1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - dash0signalcontrols
+      scope: Cluster
+    sideEffects: None
+    targetPort: 9443
+    timeoutSeconds: 5
+    type: ValidatingAdmissionWebhook
+    webhookPath: /signal-control/validate
