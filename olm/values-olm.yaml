@@ -15,6 +15,10 @@ operator:
       # The auto-patch needs ca.crt, OLM only mounts tls.crt and tls.key.
       autoPatchConversionWebhook: false
 
+  # Without --dash0-openshift, the operator detects OpenShift at runtime. The Subscription can still set DASH0_OPENSHIFT.
+  openShift:
+    enabled: null
+
   # Signal Control is switched on and off at runtime via a Dash0SignalControl resource.
   signalControl:
     enabled: true
