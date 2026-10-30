@@ -33,7 +33,6 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/profiling"
 	testutil "github.com/dash0hq/dash0-operator/test/util"
 )
@@ -280,111 +279,6 @@ func TestProfilerLifecycle(t *testing.T) {
 	}
 }
 
-func TestProfilerWaitsForCollectorSourceRouting(t *testing.T) {
-	for _, blocked := range []string{"missing-daemonset", "missing-service", "old-template", "optional-key",
-		"unobserved-generation", "no-nodes", "partial-rollout", "not-ready", "old-pod", "pod-not-ready", "terminating-old-pod"} {
-		t.Run(blocked, func(t *testing.T) {
-			r, _ := fixture(t)
-			ctx := context.Background()
-			ds := &appsv1.DaemonSet{}
-			require.NoError(t, r.Get(ctx, client.ObjectKey{Namespace: "operator", Name: otelcolresources.DaemonSetName("test")}, ds))
-			pod := &corev1.Pod{}
-			require.NoError(t, r.Get(ctx, client.ObjectKey{Namespace: "operator", Name: "ready-collector"}, pod))
-			switch blocked {
-			case "missing-daemonset":
-				require.NoError(t, r.Delete(ctx, ds))
-			case "missing-service":
-				require.NoError(t, r.Delete(ctx, &corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: "operator", Name: otelcolresources.ServiceName("test")}}))
-			case "old-template", "optional-key":
-				if blocked == "old-template" {
-					ds.Spec.Template.Spec.Volumes = nil
-				} else {
-					ds.Spec.Template.Spec.Volumes[0].ConfigMap.Optional = ptr.To(true)
-				}
-				require.NoError(t, r.Update(ctx, ds))
-			case "unobserved-generation", "no-nodes", "partial-rollout", "not-ready":
-				switch blocked {
-				case "unobserved-generation":
-					ds.Status.ObservedGeneration = 0
-				case "no-nodes":
-					ds.Status.DesiredNumberScheduled, ds.Status.UpdatedNumberScheduled, ds.Status.NumberReady = 0, 0, 0
-				case "partial-rollout":
-					ds.Status.UpdatedNumberScheduled = 0
-				case "not-ready":
-					ds.Status.NumberReady = 0
-				}
-				require.NoError(t, r.Status().Update(ctx, ds))
-			case "old-pod":
-				pod.Spec.Volumes = nil
-				require.NoError(t, r.Update(ctx, pod))
-			case "pod-not-ready":
-				pod.Status.Conditions[0].Status = corev1.ConditionFalse
-				require.NoError(t, r.Status().Update(ctx, pod))
-			case "terminating-old-pod":
-				pod.Name, pod.ResourceVersion = "old-collector", ""
-				pod.Spec.Volumes = nil
-				pod.Finalizers = []string{"test.dash0.com/hold"}
-				require.NoError(t, r.Create(ctx, pod))
-				require.NoError(t, r.Delete(ctx, pod))
-			}
-			result, err := r.Reconcile(ctx, ctrl.Request{})
-			require.NoError(t, err)
-			require.Positive(t, result.RequeueAfter)
-			for _, component := range []string{"ebpf-profiler", "debuginfo-proxy"} {
-				require.True(t, apierrors.IsNotFound(r.Get(ctx, key(component), &appsv1.DaemonSet{})))
-			}
-		})
-	}
-}
-
-func TestProfilerAdoptsRoutingAndSurvivesCollectorRollouts(t *testing.T) {
-	r, configuration := fixture(t)
-	ctx := context.Background()
-	configuration.Spec.Components = &dash0v1alpha1.OperatorConfigurationComponents{
-		EbpfProfiler: &dash0v1alpha1.EbpfProfilerSettings{WorkloadSettings: dash0v1alpha1.WorkloadSettings{
-			Annotations: map[string]string{"dash0.com/profiler-source-routing": "user-value", "custom": "retained"},
-		}},
-	}
-	require.NoError(t, r.Update(ctx, configuration))
-	collector := &appsv1.DaemonSet{}
-	require.NoError(t, r.Get(ctx, client.ObjectKey{Namespace: "operator", Name: otelcolresources.DaemonSetName("test")}, collector))
-	collector.Status.NumberReady = 0
-	require.NoError(t, r.Status().Update(ctx, collector))
-	result, err := r.Reconcile(ctx, ctrl.Request{})
-	require.NoError(t, err)
-	require.Positive(t, result.RequeueAfter)
-	collector.Status.NumberReady = 1
-	require.NoError(t, r.Status().Update(ctx, collector))
-	result, err = r.Reconcile(ctx, ctrl.Request{})
-	require.NoError(t, err)
-	require.Zero(t, result.RequeueAfter)
-	profiler := &appsv1.DaemonSet{}
-	require.NoError(t, r.Get(ctx, key("ebpf-profiler"), profiler))
-	require.Equal(t, "source-attribution-v1", profiler.Annotations["dash0.com/profiler-source-routing"])
-	require.Equal(t, "retained", profiler.Annotations["custom"])
-	collector.Status.NumberReady = 0
-	require.NoError(t, r.Status().Update(ctx, collector))
-	_, err = r.Reconcile(ctx, ctrl.Request{})
-	require.NoError(t, err)
-	require.NoError(t, r.Get(ctx, key("ebpf-profiler"), profiler))
-	delete(profiler.Annotations, "dash0.com/profiler-source-routing")
-	require.NoError(t, r.Update(ctx, profiler))
-	result, err = r.Reconcile(ctx, ctrl.Request{})
-	require.NoError(t, err)
-	require.Positive(t, result.RequeueAfter)
-	require.True(t, apierrors.IsNotFound(r.Get(ctx, key("ebpf-profiler"), profiler)), "an unadopted profiler must stop during collector migration")
-	collector.Status.NumberReady = 1
-	require.NoError(t, r.Status().Update(ctx, collector))
-	_, err = r.Reconcile(ctx, ctrl.Request{})
-	require.NoError(t, err)
-	require.NoError(t, r.Get(ctx, key("ebpf-profiler"), profiler))
-	collector.Status.NumberReady = 0
-	require.NoError(t, r.Status().Update(ctx, collector))
-	configuration.Spec.Profiling.EbpfProfiler.Enabled = ptr.To(false)
-	reconcile(t, r, configuration)
-	require.True(t, apierrors.IsNotFound(r.Get(ctx, key("ebpf-profiler"), profiler)), "collector availability must not block shutdown")
-}
-
 func TestProxyPolicyRemainsUntilPodsTerminate(t *testing.T) {
 	for _, tc := range []struct{ uploadsOnly, holdDaemonSet bool }{{false, true}, {true, true}, {true, false}} {
 		t.Run(fmt.Sprintf("uploads-only=%t/hold-daemonset=%t", tc.uploadsOnly, tc.holdDaemonSet), func(t *testing.T) {
@@ -454,7 +348,6 @@ func TestProfilerReconcilesWithNamespacedOperandPermissions(t *testing.T) {
 	require.NoError(t, err)
 	ctx := context.Background()
 	require.NoError(t, admin.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "operator"}}))
-	createReadyCollector(t, admin)
 	configuration.ResourceVersion = ""
 	require.NoError(t, admin.Create(ctx, configuration))
 	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "authorization", Namespace: "operator"}, Data: map[string][]byte{"token": []byte("initial-token")}}
@@ -542,7 +435,7 @@ func fixture(t *testing.T) (*profiling.Reconciler, *dash0v1alpha1.Dash0OperatorC
 			Authorization: dash0common.Authorization{SecretRef: &dash0common.SecretRef{Name: "authorization", Key: "token"}},
 		}}},
 	}}
-	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&appsv1.DaemonSet{}, &corev1.Pod{}).WithObjects(configuration,
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(configuration,
 		&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "authorization", Namespace: "operator"}, Data: map[string][]byte{"token": []byte("backend-token")}},
 		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "operator", Labels: map[string]string{"owned-by": "user"}}},
 	).Build()
@@ -551,40 +444,8 @@ func fixture(t *testing.T) (*profiling.Reconciler, *dash0v1alpha1.Dash0OperatorC
 	}}, Config: profiling.Config{Namespace: "operator", NamePrefix: "test", Enabled: true, TelemetryCollectionEnabled: true,
 		ProfilerImage: "ghcr.io/parca-dev/parca-agent:v0.51.2", ProxyImage: "debuginfo-proxy:test",
 	}}
-	createReadyCollector(t, c)
 	require.NoError(t, c.Get(context.Background(), client.ObjectKeyFromObject(configuration), configuration))
 	return r, configuration
-}
-
-func createReadyCollector(t *testing.T, c client.Client) {
-	t.Helper()
-	ctx := context.Background()
-	labels := map[string]string{"test-collector": "true"}
-	ds := &appsv1.DaemonSet{
-		ObjectMeta: metav1.ObjectMeta{Name: otelcolresources.DaemonSetName("test"), Namespace: "operator", Generation: 1},
-		Spec: appsv1.DaemonSetSpec{
-			Selector: &metav1.LabelSelector{MatchLabels: labels},
-			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: labels}, Spec: corev1.PodSpec{
-				Containers: []corev1.Container{{Name: "opentelemetry-collector", Image: "collector:test"}},
-				Volumes: []corev1.Volume{{Name: "configuration", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{
-					LocalObjectReference: corev1.LocalObjectReference{Name: otelcolresources.DaemonSetCollectorConfigConfigMapName("test")},
-					Items: []corev1.KeyToPath{{Key: "config.yaml", Path: "config.yaml"},
-						{Key: otelcolresources.ProfilerSourceRoutingKey, Path: otelcolresources.ProfilerSourceRoutingKey}},
-				}}}},
-			}},
-		},
-	}
-	require.NoError(t, c.Create(ctx, ds))
-	ds.Status = appsv1.DaemonSetStatus{ObservedGeneration: ds.Generation, DesiredNumberScheduled: 1, UpdatedNumberScheduled: 1, NumberReady: 1}
-	require.NoError(t, c.Status().Update(ctx, ds))
-	service := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: otelcolresources.ServiceName("test"), Namespace: "operator"},
-		Spec: corev1.ServiceSpec{Selector: labels, Ports: []corev1.ServicePort{{Port: 4317}}}}
-	require.NoError(t, c.Create(ctx, service))
-	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "ready-collector", Namespace: "operator", Labels: labels},
-		Spec: *ds.Spec.Template.Spec.DeepCopy()}
-	require.NoError(t, c.Create(ctx, pod))
-	pod.Status = corev1.PodStatus{Phase: corev1.PodRunning, Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}}
-	require.NoError(t, c.Status().Update(ctx, pod))
 }
 
 func reconcile(t *testing.T, r *profiling.Reconciler, configuration *dash0v1alpha1.Dash0OperatorConfiguration) {

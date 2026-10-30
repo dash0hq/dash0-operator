@@ -224,7 +224,7 @@ func assembleDaemonSetCollectorConfigMap(
 	targetAllocatorMtlsConfig TargetAllocatorMtlsConfig,
 	forDeletion bool,
 ) (*corev1.ConfigMap, error) {
-	configMap, err := assembleCollectorConfigMap(
+	return assembleCollectorConfigMap(
 		config,
 		monitoredNamespaces,
 		namespacesWithLogCollection,
@@ -238,14 +238,6 @@ func assembleDaemonSetCollectorConfigMap(
 		targetAllocatorMtlsConfig,
 		forDeletion,
 	)
-	if err != nil || forDeletion {
-		return configMap, err
-	}
-	if configMap.Data == nil {
-		configMap.Data = map[string]string{}
-	}
-	configMap.Data[ProfilerSourceRoutingKey] = "true"
-	return configMap, nil
 }
 
 func assembleDeploymentCollectorConfigMap(

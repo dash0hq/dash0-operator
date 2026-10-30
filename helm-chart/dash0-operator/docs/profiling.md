@@ -82,12 +82,7 @@ resource-only pod-association pipeline. It associates workload telemetry using a
 telemetry without a pod identity remains host-level and uses the default exports. Unmarked application telemetry
 retains its existing pod association. No additional receiver or port is required.
 
-Source classification remains active when profiling is disabled, including while agent Pods terminate. The collector
-DaemonSet requires a versioned ConfigMap key alongside this routing configuration, in both plain and compressed modes.
-Upgrading to this configuration rolls the collectors once. Before starting the managed profiler, the operator waits
-for the revised collectors to become Ready and for legacy collector Pods selected by the OTLP Service to disappear.
-An existing profiler that has not adopted this routing contract stops until adoption completes. Ordinary collector
-rollouts after adoption do not stop an already-adopted profiler.
+Source classification remains active when profiling is disabled, including while agent Pods terminate.
 
 The `parca.agent` attribute is reserved for profiler source routing, not authentication. Do not set a conflicting
 value on workload resources; the agent preserves existing resource attributes over external-label defaults.

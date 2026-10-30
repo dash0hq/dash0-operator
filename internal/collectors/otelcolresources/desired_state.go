@@ -279,9 +279,6 @@ const (
 	appKubernetesIoInstanceValue  = "dash0-operator"
 	appKubernetesIoManagedByValue = "dash0-operator"
 
-	// ProfilerSourceRoutingKey identifies configurations with persistent resource-only profiler attribution.
-	ProfilerSourceRoutingKey = "source-attribution-v1"
-
 	// config paths / config volume mount paths
 	collectorConfigurationYaml        = "config.yaml"
 	collectorConfigDirPath            = "/etc/otelcol/conf"
@@ -866,10 +863,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 		ClientCertSecretName: extraConfig.TargetAllocatorMtlsClientCertSecretName,
 	}
 
-	daemonSetConfigMapItems := append(slices.Clone(configMapItems), corev1.KeyToPath{
-		Key: ProfilerSourceRoutingKey, Path: ProfilerSourceRoutingKey,
-	})
-	volumes, filelogOffsetsVolume := assembleCollectorDaemonSetVolumes(config, daemonSetConfigMapItems, targetAllocatorMtlsConfig)
+	volumes, filelogOffsetsVolume := assembleCollectorDaemonSetVolumes(config, configMapItems, targetAllocatorMtlsConfig)
 	collectorContainer, err := assembleDaemonSetCollectorContainer(
 		config,
 		workloadNameEnvVar,

@@ -164,8 +164,7 @@ func VerifyDaemonSetCollectorConfigMap(
 		&corev1.ConfigMap{},
 	)
 	cm := cm_.(*corev1.ConfigMap)
-	Expect(cm.Data).To(HaveLen(2))
-	Expect(cm.Data).To(HaveKeyWithValue("source-attribution-v1", "true"))
+	Expect(cm.Data).To(HaveLen(1))
 	Expect(cm.Data).To(HaveKey("config.yaml"))
 	config := cm.Data["config.yaml"]
 	Expect(config).To(ContainSubstring(fmt.Sprintf("endpoint: \"%s\"", dash0Endpoint)))

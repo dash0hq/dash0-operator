@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/cisco-open/k8s-objectmatcher/patch"
@@ -30,7 +29,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
@@ -104,24 +102,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result
 	if !enabled {
 		return r.remove(ctx, false)
 	}
-	existing := &appsv1.DaemonSet{}
-	err = r.Get(ctx, client.ObjectKey{Namespace: r.Config.Namespace, Name: r.Config.name(profilerComponent)}, existing)
-	if err != nil && !apierrors.IsNotFound(err) {
-		return ctrl.Result{}, err
-	}
-	if existing.Annotations[sourceRoutingAnnotation] != otelcolresources.ProfilerSourceRoutingKey {
-		ready, err := r.collectorsReadyForProfiler(ctx)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		if !ready {
-			result, err := r.remove(ctx, false)
-			if result.RequeueAfter == 0 {
-				result.RequeueAfter = 5 * time.Second
-			}
-			return result, err
-		}
-	}
 	proxyConfig := proxyConfiguration{}
 	profiler := configuration.Spec.Profiling.EbpfProfiler
 	if profiler.Debuginfo == nil || ptr.Deref(profiler.Debuginfo.UploadEnabled, true) {
@@ -154,56 +134,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result
 		return r.remove(ctx, true)
 	}
 	return ctrl.Result{}, nil
-}
-
-func (r *Reconciler) collectorsReadyForProfiler(ctx context.Context) (bool, error) {
-	ds := &appsv1.DaemonSet{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: r.Config.Namespace, Name: otelcolresources.DaemonSetName(r.Config.NamePrefix)}, ds); err != nil {
-		return false, client.IgnoreNotFound(err)
-	}
-	if ds.DeletionTimestamp != nil || !r.collectorHasProfilerRouting(ds.Spec.Template.Spec) ||
-		ds.Status.ObservedGeneration < ds.Generation || ds.Status.DesiredNumberScheduled == 0 ||
-		ds.Status.UpdatedNumberScheduled != ds.Status.DesiredNumberScheduled || ds.Status.NumberReady != ds.Status.DesiredNumberScheduled {
-		return false, nil
-	}
-	service := &corev1.Service{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: r.Config.Namespace, Name: otelcolresources.ServiceName(r.Config.NamePrefix)}, service); err != nil {
-		return false, client.IgnoreNotFound(err)
-	}
-	if len(service.Spec.Selector) == 0 {
-		return false, nil
-	}
-	pods := &corev1.PodList{}
-	if err := r.List(ctx, pods, client.InNamespace(r.Config.Namespace), client.MatchingLabels(service.Spec.Selector)); err != nil {
-		return false, err
-	}
-	ready := int32(0)
-	for _, pod := range pods.Items {
-		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
-			continue
-		}
-		if pod.DeletionTimestamp != nil || !r.collectorHasProfilerRouting(pod.Spec) ||
-			!slices.ContainsFunc(pod.Status.Conditions, func(condition corev1.PodCondition) bool {
-				return condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue
-			}) {
-			return false, nil
-		}
-		ready++
-	}
-	return ready == ds.Status.DesiredNumberScheduled, nil
-}
-
-func (r *Reconciler) collectorHasProfilerRouting(spec corev1.PodSpec) bool {
-	for _, volume := range spec.Volumes {
-		cm := volume.ConfigMap
-		if cm != nil && cm.Name == otelcolresources.DaemonSetCollectorConfigConfigMapName(r.Config.NamePrefix) &&
-			!ptr.Deref(cm.Optional, false) && slices.ContainsFunc(cm.Items, func(item corev1.KeyToPath) bool {
-			return item.Key == otelcolresources.ProfilerSourceRoutingKey
-		}) {
-			return true
-		}
-	}
-	return false
 }
 
 func (r *Reconciler) proxyRevision(ctx context.Context, config proxyConfiguration) (string, error) {
