@@ -880,8 +880,10 @@ Status:
 ### Managing Dash0 Signal-to-Metrics
 
 You can manage your Dash0 signal-to-metrics rules via the Dash0 operator.
-Signal-to-metrics rules derive custom metrics from spans or log records based on user-defined filter criteria. Span
-matches produce exponential histograms (latency distributions); log record matches produce monotonic counters.
+Signal-to-metrics rules derive custom metrics from spans or log records based on user-defined filter criteria. By
+default, span matches produce exponential histograms (latency distributions) and log record matches produce monotonic
+counters. With `spec.output.type`, a rule can instead produce a sum, a gauge or an exponential histogram of a value that
+an OTTL expression computes from each matching span or log record.
 
 Pre-requisites for this feature:
 * A Dash0 operator configuration resource has to be installed in the cluster.
@@ -926,6 +928,51 @@ spec:
     description: How long calls to our checkout API take
     interval: 60s
 ```
+
+The following rule uses `spec.output.type` to sum up the response body sizes of the same requests:
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SignalToMetrics
+metadata:
+  name: checkout-response-size
+spec:
+  enabled: true
+  display:
+    name: Checkout Response Size
+  match:
+    signal: spans
+    filters:
+      - key: http.route
+        operator: is
+        value: /api/v1/checkout
+  output:
+    name: checkout.response.size
+    interval: 60s
+    type: sum
+    value: attributes["http.response.body.size"]
+    monotonic: true
+```
+
+The `output.type` field accepts the following values:
+* `sum`: a cumulative sum of `value`. Set `monotonic: true` if the sum only increases.
+* `gauge`: the last observed `value` per series.
+* `exponential-histogram`: an exponential histogram of `value`. The optional `maxSize` sets the maximum number of
+  buckets per positive and negative range (1 to 160, defaults to 160). The optional OTTL expression `count` sets how
+  many times `value` is recorded per matching span or log record (defaults to `"1"`).
+
+`value` is required when `type` is set, and must not be set otherwise. It is an OTTL value expression that is evaluated
+in the span context for `spans` rules and in the log context for `logs` rules. `monotonic` is only allowed for `sum`,
+`maxSize` and `count` are only allowed for `exponential-histogram`. Rules with `type` do not add the attribute
+`otel.span.status.code` automatically; use `keepSignalAttributes` to select the metric attributes.
+The Dash0 API validates the OTTL expressions when the rule is synchronized; an invalid expression is reported as a
+synchronization error in the status of the signal-to-metrics resource.
+
+By default, the metric is written to the dataset the rule is synchronized to. Set `spec.targetDatasetMode` to
+`alternative` to write it to the dataset with the slug given in `spec.alternativeDatasetId` instead, or to `both` to
+write it to both datasets. The alternative dataset must exist in the Dash0 organization, otherwise the synchronization
+fails. If the operator synchronizes the rule to several datasets (for example via namespace-specific Dash0 exports),
+each copy of the rule writes the metric for the signals of its own dataset to the same alternative dataset.
 
 You can opt out of synchronization for individual signal-to-metrics resources by adding the Kubernetes label
 `dash0.com/enable: false` to the resource.
