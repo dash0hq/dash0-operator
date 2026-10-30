@@ -38,6 +38,9 @@ type CollectorManager struct {
 	// zoneCoverageReporter warns when the Signal Control collector has fewer replicas than the cluster has
 	// availability zones. See cluster.ZoneCoverageReporter.
 	zoneCoverageReporter *cluster.ZoneCoverageReporter
+	// targetAllocatorMtlsClientCertSecretName is the effective name of the target-allocator mTLS client cert secret as
+	// of the most recent reconciliation, empty if mTLS is disabled. The collector reconciler watches this secret.
+	targetAllocatorMtlsClientCertSecretName atomic.Pointer[string]
 }
 
 type CollectorReconcileTrigger string
@@ -110,11 +113,28 @@ func (m *CollectorManager) NotifyOperatorManagerJustBecameLeader(ctx context.Con
 	}()
 }
 
+// TargetAllocatorMtlsClientCertSecretName returns the effective name of the target-allocator mTLS client cert secret
+// as of the most recent reconciliation, or an empty string if mTLS is disabled or no reconciliation has happened yet.
+func (m *CollectorManager) TargetAllocatorMtlsClientCertSecretName() string {
+	if secretName := m.targetAllocatorMtlsClientCertSecretName.Load(); secretName != nil {
+		return *secretName
+	}
+	return ""
+}
+
+func (m *CollectorManager) storeTargetAllocatorMtlsClientCertSecretName(extraConfig util.ExtraConfig) {
+	secretName := ""
+	if extraConfig.TargetAllocatorMtlsEnabled {
+		secretName = extraConfig.TargetAllocatorMtlsClientCertSecretName
+	}
+	m.targetAllocatorMtlsClientCertSecretName.Store(&secretName)
+}
+
 // ReconcileOpenTelemetryCollector can be triggered by a
 //  1. a reconcile request from the Dash0OperatorConfiguration resource.
 //  2. a reconcile request from a Dash0Monitoring resource in the cluster.
 //  3. a change event on one of the OpenTelemetry collector related resources that the operator manages (a change to one
-//     of "our" config maps or similar).
+//     of "our" config maps or similar), or on the target-allocator mTLS client cert secret.
 //  4. a file change event picked up by the extra config map watcher
 //  5. this replica becoming leader after warnings about GOMEMLIMIT inversions have been skipped
 //
@@ -201,6 +221,7 @@ func (m *CollectorManager) reconcileOpenTelemetryCollector(ctx context.Context, 
 	}
 	extraConfig := util.EffectiveExtraConfig(
 		*fileExtraConfig, m.extraConfigDefaults, operatorConfigurationResource, signalControlResource)
+	m.storeTargetAllocatorMtlsClientCertSecretName(extraConfig)
 
 	if operatorConfigurationResource == nil {
 		logger.WarnTelemetryCollectionIssue(logMsgOperatorConfigMissing)
