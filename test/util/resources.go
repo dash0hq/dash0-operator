@@ -436,6 +436,28 @@ func CreatePodOwnedByReplicaSet(
 	return CreateWorkload(ctx, k8sClient, PodOwnedByReplicaSet(namespace, name)).(*corev1.Pod)
 }
 
+func PodControlledBy(namespace string, name string, ownerType metav1.TypeMeta) *corev1.Pod {
+	pod := BasicPod(namespace, name)
+	pod.OwnerReferences = []metav1.OwnerReference{{
+		APIVersion: ownerType.APIVersion,
+		Kind:       ownerType.Kind,
+		Name:       "owner",
+		UID:        "35b829cb-78dc-4544-b7a9-5a8e51b7f322",
+		Controller: new(true),
+	}}
+	return pod
+}
+
+func CreatePodControlledBy(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+	ownerType metav1.TypeMeta,
+) *corev1.Pod {
+	return CreateWorkload(ctx, k8sClient, PodControlledBy(namespace, name, ownerType)).(*corev1.Pod)
+}
+
 func PodWithOptOutLabel(namespace string, name string) *corev1.Pod {
 	workload := BasicPod(namespace, name)
 	AddOptOutLabel(&workload.ObjectMeta)

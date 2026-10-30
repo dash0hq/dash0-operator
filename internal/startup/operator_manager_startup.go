@@ -1870,6 +1870,7 @@ func startDash0Controllers(
 	)
 	clusterInstrumentationConfig.IsOpenShift = cliArgs.isOpenShift
 	clusterInstrumentationConfig.InstrumentPods = envVars.instrumentPods
+	clusterInstrumentationConfig.OperatorNamespace = envVars.operatorNamespace
 	if err = watchInstrumentationInitContainerResources(
 		ctx, mgr, clusterInstrumentationConfig, extraConfigDefaults,
 	); err != nil {

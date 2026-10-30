@@ -16,6 +16,8 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -222,6 +224,25 @@ var _ = Describe(
 									AuthorizationDefaultEnvVar,
 									AuthorizationTokenTest,
 								)
+							},
+						)
+
+						It(
+							"should evict uninstrumented pods after marking the resource as available when pod-level "+
+								"instrumentation is enabled", func() {
+								monitoringReconciler.instrumenter.ClusterInstrumentationConfig.InstrumentPods = true
+								name := UniqueName(PodNamePrefix)
+								CreatePodControlledBy(ctx, k8sClient, TestNamespaceName, name, util.K8sTypeMetaReplicaSet)
+
+								triggerReconcileRequest(ctx, monitoringReconciler)
+
+								verifyMonitoringResourceIsAvailable(ctx)
+								err := k8sClient.Get(
+									ctx,
+									client.ObjectKey{Namespace: TestNamespaceName, Name: name},
+									&corev1.Pod{},
+								)
+								Expect(apierrors.IsNotFound(err)).To(BeTrue(), "expected the pod to be evicted, got %v", err)
 							},
 						)
 

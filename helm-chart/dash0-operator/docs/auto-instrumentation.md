@@ -142,10 +142,23 @@ The modifications to the pod spec are the same as with the default mode, see
 [How Automatic Workload Instrumentation Works](#how-automatic-workload-instrumentation-works); the labels and
 annotations are added to the pod instead of the workload resource.
 
+With `instrumentWorkloads.mode=all`, pods that already exist are evicted via the
+[eviction API](https://kubernetes.io/docs/concepts/scheduling-eviction/api-eviction/) if they are not instrumented or
+if their instrumentation is outdated, so that their owner recreates them and the new pods get instrumented. This happens
+when a Dash0Monitoring resource is added to a namespace, when its instrumentation settings change, and when the operator
+starts, for example after an operator upgrade.
+Only pods owned by a deployment (via its replica set), daemon set, stateful set or replica set are evicted.
+Ownerless pods, pods owned by jobs or cron jobs, and pods with any other kind of owner are not evicted, they are
+instrumented the next time they are created.
+Pods in the operator's own namespace are never evicted.
+Evictions respect pod disruption budgets; a pod whose eviction is not allowed by a pod disruption budget at that moment
+is skipped and instrumented the next time it is recreated.
+With `instrumentWorkloads.mode=created-and-updated`, existing pods are not evicted.
+
 This feature is experimental and has the following limitations:
-* Pods that already exist are not restarted, neither when the setting is enabled nor when a Dash0Monitoring resource
-  is added to a namespace. They are instrumented the next time they are recreated, for example by the next rollout of
-  their workload.
+* Evictions are not paced yet. Unless a pod disruption budget prevents it, all uninstrumented pods of a workload are
+  evicted at the same time, and a workload with a single replica is unavailable until its replacement pod is ready.
+  Consider defining pod disruption budgets for workloads that must stay available.
 * To opt out of instrumentation, the label `dash0.com/enable: "false"` (or a label that does not match a
   [custom label selector](#using-a-custom-label-selector-to-control-auto-instrumentation)) needs to be present on the
   pod itself, that is, in the pod template of the workload. A label on the workload resource's top level metadata is

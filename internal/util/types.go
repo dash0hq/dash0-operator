@@ -293,8 +293,13 @@ type ClusterInstrumentationConfig struct {
 	IsOpenShift                     bool
 
 	// InstrumentPods makes the webhook instrument pods when they are created instead of modifying the pod templates of
-	// higher-order workloads, and stops the sweep over existing workloads from modifying their pod templates.
+	// higher-order workloads. The sweep over existing workloads then evicts uninstrumented pods instead of modifying
+	// their pod templates.
 	InstrumentPods bool
+
+	// OperatorNamespace is the namespace the operator manager runs in. Pods in this namespace are never evicted for
+	// pod-level instrumentation.
+	OperatorNamespace string
 }
 
 func NewClusterInstrumentationConfig(

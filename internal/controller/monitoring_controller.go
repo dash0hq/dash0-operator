@@ -241,7 +241,13 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	monitoringResource, requiredAction, statusUpdate :=
 		r.manageInstrumentWorkloadsChanges(monitoringResource, isFirstReconcile, logger)
 
-	if r.instrumenter != nil {
+	// The webhook only instruments the pods recreated after an eviction once the monitoring resource is available, so
+	// with pod-level instrumentation, existing workloads are handled after the status update.
+	instrumentPodsAfterStatusUpdate := r.instrumenter != nil &&
+		r.instrumenter.ClusterInstrumentationConfig.InstrumentPods &&
+		(isFirstReconcile || requiredAction == util.ModificationModeInstrumentation)
+
+	if r.instrumenter != nil && !instrumentPodsAfterStatusUpdate {
 		// If telemetry collection is disabled via Helm, the instrumenter is not initialized.
 		if isFirstReconcile || requiredAction == util.ModificationModeInstrumentation {
 			if err = r.instrumenter.CheckSettingsAndInstrumentExistingWorkloads(ctx, monitoringResource, logger); err != nil {
@@ -262,6 +268,12 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if err = r.updateStatusAfterReconcile(ctx, monitoringResource, statusUpdate, logger); err != nil {
 		// The error has already been logged in updateStatusAfterReconcile
 		return ctrl.Result{}, err
+	}
+
+	if instrumentPodsAfterStatusUpdate {
+		// Errors have already been logged. Requeuing would not help, the next reconcile request would not evict pods
+		// again since the status has already been updated.
+		_ = r.instrumenter.CheckSettingsAndInstrumentExistingWorkloads(ctx, monitoringResource, logger)
 	}
 
 	r.applyApiAccessSettings(ctx, monitoringResource, logger)

@@ -650,7 +650,8 @@ operator:
 
     # If set to true, the operator instruments pods when they are created, instead of modifying the pod templates of
     # higher-order workloads like deployments, daemon sets, stateful sets, replica sets, jobs and cron jobs (opt-in,
-    # experimental). Existing pods are not restarted, they are instrumented when they are recreated.
+    # experimental). With instrumentWorkloads.mode=all, existing uninstrumented pods are evicted so that they are
+    # recreated with instrumentation.
     instrumentPods: false
 
     # An optional delay to stagger access to the Kubernetes API server to instrument existing workloads at operator

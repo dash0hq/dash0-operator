@@ -3959,6 +3959,115 @@ spec:
 			})
 		})
 
+		Describe("with pod-level instrumentation", func() {
+			BeforeAll(func() {
+				By("deploying the Dash0 operator with pod-level instrumentation")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					true,
+					map[string]string{
+						"operator.instrumentation.instrumentPods": "true",
+					},
+				)
+			})
+
+			AfterEach(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+			})
+
+			AfterAll(func() {
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should evict existing pods so that they are recreated with instrumentation", func() {
+				timestampLowerBound := time.Now()
+				evictableWorkloadTestConfigs := []runtimeWorkloadTestConfig{
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeDaemonSet, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeDeployment, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeReplicaSet, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeStatefulSet, runtime: runtimeTypeNodeJs},
+				}
+				ownerlessPodTestConfig := runtimeWorkloadTestConfig{
+					namespace:    applicationUnderTestNamespace,
+					workloadType: workloadTypePod,
+					runtime:      runtimeTypeNodeJs,
+				}
+				allWorkloadTestConfigs := append(slices.Clone(evictableWorkloadTestConfigs), ownerlessPodTestConfig)
+				testIds := make(testIdMap)
+				for _, c := range allWorkloadTestConfigs {
+					testIds[c.GetMapKey()] = generateNewTestId(c.runtime, c.workloadType)
+				}
+				deployWorkloadsInParallel(allWorkloadTestConfigs, testIds)
+				podUids := make(map[string][]string)
+				for _, c := range allWorkloadTestConfigs {
+					podUids[c.GetMapKey()] = readPodUids(c.namespace, c.runtime, c.workloadType)
+				}
+
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+
+				runInParallel(evictableWorkloadTestConfigs, func(c runtimeWorkloadTestConfig) {
+					verifyThatPodsHaveBeenInstrumentedByTheWebhook(
+						c.namespace,
+						c.runtime,
+						c.workloadType,
+						testIds[c.GetMapKey()],
+						images,
+						podUids[c.GetMapKey()],
+						timestampLowerBound,
+					)
+				})
+				verifyThatPodsHaveNeitherBeenEvictedNorInstrumented(
+					ownerlessPodTestConfig.namespace,
+					ownerlessPodTestConfig.runtime,
+					ownerlessPodTestConfig.workloadType,
+					podUids[ownerlessPodTestConfig.GetMapKey()],
+				)
+			})
+
+			It("should instrument new pods of all workload types without modifying the workloads", func() {
+				timestampLowerBound := time.Now()
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+				workloadTestConfigs := []runtimeWorkloadTestConfig{
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeCronjob, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeDaemonSet, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeDeployment, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeJob, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypePod, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeReplicaSet, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeStatefulSet, runtime: runtimeTypeNodeJs},
+				}
+				testIds := make(testIdMap)
+				for _, c := range workloadTestConfigs {
+					testIds[c.GetMapKey()] = generateNewTestId(c.runtime, c.workloadType)
+				}
+				deployWorkloadsInParallel(workloadTestConfigs, testIds)
+
+				runInParallel(workloadTestConfigs, func(c runtimeWorkloadTestConfig) {
+					verifyThatPodsHaveBeenInstrumentedByTheWebhook(
+						c.namespace,
+						c.runtime,
+						c.workloadType,
+						testIds[c.GetMapKey()],
+						images,
+						nil,
+						timestampLowerBound,
+					)
+				})
+			})
+		})
+
 		Context("with instrumentation delivery", func() {
 			Context("image volume", func() {
 				BeforeAll(func() {
