@@ -6,13 +6,18 @@ package instrumentation
 import (
 	"context"
 	"fmt"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -146,6 +151,236 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			},
 		}),
 		)
+
+		DescribeTable("when pod-level instrumentation is enabled", func(config WorkloadTestConfig) {
+			instrumenter.ClusterInstrumentationConfig.InstrumentPods = true
+			name := UniqueName(config.WorkloadNamePrefix)
+			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
+			createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload.Get())
+
+			checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+			VerifyNoEvents(ctx, clientset, namespace)
+			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
+		}, Entry("should not modify an existing cron job", WorkloadTestConfig{
+			WorkloadNamePrefix: CronJobNamePrefix,
+			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateBasicCronJob),
+			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedCronJob(workload.Get().(*batchv1.CronJob))
+			},
+		}), Entry("should not modify an existing daemon set", WorkloadTestConfig{
+			WorkloadNamePrefix: DaemonSetNamePrefix,
+			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateBasicDaemonSet),
+			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedDaemonSet(workload.Get().(*appsv1.DaemonSet))
+			},
+		}), Entry("should not modify an existing deployment", WorkloadTestConfig{
+			WorkloadNamePrefix: DeploymentNamePrefix,
+			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateBasicDeployment),
+			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedDeployment(workload.Get().(*appsv1.Deployment))
+			},
+		}), Entry("should not modify an existing job", WorkloadTestConfig{
+			WorkloadNamePrefix: JobNamePrefix,
+			CreateFn:           WrapJobFnAsTestableWorkload(CreateBasicJob),
+			GetFn:              WrapJobFnAsTestableWorkload(GetJob),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedJob(workload.Get().(*batchv1.Job))
+			},
+		}), Entry("should not modify an existing ownerless replicaset", WorkloadTestConfig{
+			WorkloadNamePrefix: ReplicaSetNamePrefix,
+			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateBasicReplicaSet),
+			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet))
+			},
+		}), Entry("should not modify an existing stateful set", WorkloadTestConfig{
+			WorkloadNamePrefix: StatefulSetNamePrefix,
+			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateBasicStatefulSet),
+			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedStatefulSet(workload.Get().(*appsv1.StatefulSet))
+			},
+		}),
+		)
+
+		DescribeTable("when pod-level instrumentation is enabled and pods exist", func(config podEvictionTestConfig) {
+			instrumenter.ClusterInstrumentationConfig.InstrumentPods = true
+			name := UniqueName(PodNamePrefix)
+			pod := CreateWorkload(ctx, k8sClient, config.podFn(name)).(*corev1.Pod)
+			if config.phase != "" {
+				pod.Status.Phase = config.phase
+				Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+			}
+			if !config.expectEviction {
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, pod)
+			}
+
+			checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+			if config.expectEviction {
+				verifyPodHasBeenEvicted(ctx, name)
+			} else {
+				verifyPodHasNotBeenEvicted(ctx, name)
+			}
+			VerifyNoEvents(ctx, clientset, namespace)
+		}, Entry("should evict an uninstrumented pod controlled by a replica set", podEvictionTestConfig{
+			podFn:          podControlledByReplicaSet,
+			expectEviction: true,
+		}), Entry("should evict an uninstrumented pod controlled by a stateful set", podEvictionTestConfig{
+			podFn: func(name string) *corev1.Pod {
+				return PodControlledBy(namespace, name, util.K8sTypeMetaStatefulSet)
+			},
+			expectEviction: true,
+		}), Entry("should evict an uninstrumented pod controlled by a daemon set", podEvictionTestConfig{
+			podFn: func(name string) *corev1.Pod {
+				return PodControlledBy(namespace, name, util.K8sTypeMetaDaemonSet)
+			},
+			expectEviction: true,
+		}), Entry("should evict a pod with outdated instrumentation", podEvictionTestConfig{
+			podFn:          outdatedInstrumentedPodControlledByReplicaSet,
+			expectEviction: true,
+		}), Entry("should not evict a pod with up-to-date instrumentation", podEvictionTestConfig{
+			podFn: func(name string) *corev1.Pod {
+				pod := InstrumentedPod(namespace, name)
+				pod.OwnerReferences = podControlledByReplicaSet(name).OwnerReferences
+				return pod
+			},
+		}), Entry("should not evict an ownerless pod", podEvictionTestConfig{
+			podFn: func(name string) *corev1.Pod {
+				return BasicPod(namespace, name)
+			},
+		}), Entry("should not evict a pod with an owner that is not its controller", podEvictionTestConfig{
+			podFn: func(name string) *corev1.Pod {
+				return PodOwnedByReplicaSet(namespace, name)
+			},
+		}), Entry("should not evict a pod controlled by a job", podEvictionTestConfig{
+			podFn: func(name string) *corev1.Pod {
+				return PodControlledBy(namespace, name, util.K8sTypeMetaJob)
+			},
+		}), Entry("should not evict a pod controlled by an unknown kind of owner", podEvictionTestConfig{
+			podFn: func(name string) *corev1.Pod {
+				return PodControlledBy(namespace, name, metav1.TypeMeta{
+					APIVersion: "core.strimzi.io/v1beta2",
+					Kind:       "StrimziPodSet",
+				})
+			},
+		}), Entry("should not evict a pod with the opt-out label", podEvictionTestConfig{
+			podFn: func(name string) *corev1.Pod {
+				pod := podControlledByReplicaSet(name)
+				AddOptOutLabel(&pod.ObjectMeta)
+				return pod
+			},
+		}), Entry("should not evict an instrumented pod with the opt-out label", podEvictionTestConfig{
+			podFn: func(name string) *corev1.Pod {
+				pod := outdatedInstrumentedPodControlledByReplicaSet(name)
+				AddOptOutLabel(&pod.ObjectMeta)
+				return pod
+			},
+		}), Entry("should not evict a pod that cannot be instrumented", podEvictionTestConfig{
+			podFn: func(name string) *corev1.Pod {
+				pod := podControlledByReplicaSet(name)
+				pod.Spec.NodeSelector = map[string]string{util.KubernetesIoOs: "windows"}
+				return pod
+			},
+		}), Entry("should not evict a pod that has succeeded", podEvictionTestConfig{
+			podFn: podControlledByReplicaSet,
+			phase: corev1.PodSucceeded,
+		}), Entry("should not evict a pod that has failed", podEvictionTestConfig{
+			podFn: podControlledByReplicaSet,
+			phase: corev1.PodFailed,
+		}),
+		)
+
+		Describe("when pod-level instrumentation is enabled (special cases for evicting pods)", func() {
+			BeforeEach(func() {
+				instrumenter.ClusterInstrumentationConfig.InstrumentPods = true
+			})
+
+			It("should not evict a pod that is being deleted", func() {
+				name := UniqueName(PodNamePrefix)
+				pod := podControlledByReplicaSet(name)
+				pod.Finalizers = []string{"dash0.com/test-finalizer"}
+				CreateWorkload(ctx, k8sClient, pod)
+				Expect(k8sClient.Delete(ctx, pod)).To(Succeed())
+				DeferCleanup(func() {
+					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), pod)).To(Succeed())
+					pod.Finalizers = nil
+					Expect(k8sClient.Update(ctx, pod)).To(Succeed())
+				})
+
+				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), pod)).To(Succeed())
+				Expect(pod.DeletionTimestamp).ToNot(BeNil())
+				Expect(pod.Finalizers).To(ConsistOf("dash0.com/test-finalizer"))
+			})
+
+			It("should not evict a pod if a pod disruption budget does not allow it", func() {
+				name := UniqueName(PodNamePrefix)
+				pod := podControlledByReplicaSet(name)
+				AddLabel(&pod.ObjectMeta, "app", name)
+				CreateWorkload(ctx, k8sClient, pod)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, pod)
+				pod.Status.Phase = corev1.PodRunning
+				Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+				pdb := &policyv1.PodDisruptionBudget{
+					ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name},
+					Spec: policyv1.PodDisruptionBudgetSpec{
+						MinAvailable: new(intstr.FromInt32(1)),
+						Selector:     &metav1.LabelSelector{MatchLabels: map[string]string{"app": name}},
+					},
+				}
+				CreateWorkload(ctx, k8sClient, pdb)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, pdb)
+
+				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+				verifyPodHasNotBeenEvicted(ctx, name)
+			})
+
+			It("should not evict pods if instrumentWorkloads.mode is created-and-updated", func() {
+				name := UniqueName(PodNamePrefix)
+				pod := CreateWorkload(ctx, k8sClient, podControlledByReplicaSet(name))
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, pod)
+				dash0MonitoringResource.Spec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeCreatedAndUpdated
+
+				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+				verifyPodHasNotBeenEvicted(ctx, name)
+			})
+
+			It("should not evict pods in the operator namespace", func() {
+				name := UniqueName(PodNamePrefix)
+				pod := CreateWorkload(ctx, k8sClient, podControlledByReplicaSet(name))
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, pod)
+				instrumenter.ClusterInstrumentationConfig.OperatorNamespace = namespace
+
+				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+				verifyPodHasNotBeenEvicted(ctx, name)
+			})
+
+			It("should not evict pods if the monitoring resource does not become available", func() {
+				originalTimeout := waitForMonitoringResourceInCacheTimeout
+				waitForMonitoringResourceInCacheTimeout = 300 * time.Millisecond
+				DeferCleanup(func() {
+					waitForMonitoringResourceInCacheTimeout = originalTimeout
+				})
+				dash0MonitoringResource.EnsureResourceIsMarkedAsDegraded("TestReason", "This resource is degraded.")
+				Expect(k8sClient.Status().Update(ctx, dash0MonitoringResource)).To(Succeed())
+				name := UniqueName(PodNamePrefix)
+				pod := CreateWorkload(ctx, k8sClient, podControlledByReplicaSet(name))
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, pod)
+
+				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+				verifyPodHasNotBeenEvicted(ctx, name)
+			})
+		})
 
 		Describe("when instrumenting existing workloads (special cases)", func() {
 			It("should record a failure event when attempting to instrument an existing job and add labels", func() {
@@ -876,6 +1111,23 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		})
 	})
 
+	It("should evict uninstrumented and outdated pods at startup when pod-level instrumentation is enabled", func() {
+		instrumenter.ClusterInstrumentationConfig.InstrumentPods = true
+		uninstrumentedPodName := UniqueName(PodNamePrefix)
+		CreateWorkload(ctx, k8sClient, podControlledByReplicaSet(uninstrumentedPodName))
+		outdatedPodName := UniqueName(PodNamePrefix)
+		CreateWorkload(ctx, k8sClient, outdatedInstrumentedPodControlledByReplicaSet(outdatedPodName))
+		ownerlessPodName := UniqueName(PodNamePrefix)
+		ownerlessPod := CreateBasicPod(ctx, k8sClient, namespace, ownerlessPodName)
+		createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, ownerlessPod)
+
+		instrumenter.InstrumentAtStartup(ctx, logger)
+
+		verifyPodHasBeenEvicted(ctx, uninstrumentedPodName)
+		verifyPodHasBeenEvicted(ctx, outdatedPodName)
+		verifyPodHasNotBeenEvicted(ctx, ownerlessPodName)
+	})
+
 	DescribeTable("should instrument existing uninstrumented workloads at startup", func(config WorkloadTestConfig) {
 		name := UniqueName(config.WorkloadNamePrefix)
 		workload := config.CreateFn(ctx, k8sClient, namespace, name)
@@ -1014,6 +1266,36 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		})
 	})
 })
+
+type podEvictionTestConfig struct {
+	podFn          func(name string) *corev1.Pod
+	phase          corev1.PodPhase
+	expectEviction bool
+}
+
+func podControlledByReplicaSet(name string) *corev1.Pod {
+	return PodControlledBy(namespace, name, util.K8sTypeMetaReplicaSet)
+}
+
+func outdatedInstrumentedPodControlledByReplicaSet(name string) *corev1.Pod {
+	pod := InstrumentedPod(namespace, name)
+	pod.OwnerReferences = podControlledByReplicaSet(name).OwnerReferences
+	pod.Labels["dash0.com/operator-image"] = olderOperatorControllerImageLabel
+	pod.Labels["dash0.com/instrumentation-image"] = olderInitContainerImageLabel
+	pod.Spec.InitContainers[0].Image = "some-registry.com:1234/dash0hq/instrumentation:2.3.4"
+	return pod
+}
+
+func verifyPodHasBeenEvicted(ctx context.Context, name string) {
+	err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, &corev1.Pod{})
+	Expect(apierrors.IsNotFound(err)).To(BeTrue(), "expected pod %s to have been evicted, but got %v", name, err)
+}
+
+func verifyPodHasNotBeenEvicted(ctx context.Context, name string) {
+	pod := &corev1.Pod{}
+	Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, pod)).To(Succeed())
+	Expect(pod.DeletionTimestamp).To(BeNil())
+}
 
 func checkSettingsAndInstrumentExistingWorkloads(
 	ctx context.Context,

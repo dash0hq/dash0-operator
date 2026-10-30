@@ -1103,6 +1103,32 @@ tests:
             name: OTEL_COLLECTOR_K8SATTRIBUTES_SHARE_PROCESSOR_BETWEEN_PIPELINES
             value: "true"
 
+  - it: should not render the instrument pods env var by default
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_INSTRUMENT_PODS
+          any: true
+
+  - it: should render the instrument pods env var when enabled
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        instrumentation:
+          instrumentPods: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_INSTRUMENT_PODS
+            value: "true"
+
   - it: should not render kubeletstats env vars when autoDetectEndpoint is true (default)
     documentSelector:
       path: metadata.name

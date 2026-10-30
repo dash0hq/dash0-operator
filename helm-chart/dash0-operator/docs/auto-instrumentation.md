@@ -8,6 +8,7 @@ This guide covers automatic workload instrumentation, including Python and Ruby 
 - [Using Image Volumes for Auto-Instrumentation Files](#using-image-volumes-for-auto-instrumentation-files)
 - [Python Auto-Instrumentation](#python-auto-instrumentation)
 - [Ruby Auto-Instrumentation](#ruby-auto-instrumentation)
+- [Pod-Level Instrumentation (Experimental)](#pod-level-instrumentation-experimental)
 - [Disabling Auto-Instrumentation for Specific Workloads](#disabling-auto-instrumentation-for-specific-workloads)
 - [Using a Custom Label Selector to Control Auto-Instrumentation](#using-a-custom-label-selector-to-control-auto-instrumentation)
 - [Specifying Additional Resource Attributes via Labels and Annotations](#specifying-additional-resource-attributes-via-labels-and-annotations)
@@ -127,6 +128,45 @@ If the Dash0 Ruby distribution cannot be loaded at all, it deactivates itself sa
 Instrumentation for a library is installed when the application loads that library, so no particular load order is required: Rails applications, applications using Bundler, and plain Ruby scripts without a `Gemfile` are all instrumented.
 
 Because the Dash0 Ruby distribution is loaded before the application's own libraries, its bundled `google-protobuf` takes precedence over the version the application declares. This only matters for applications that use protobuf themselves and depend on behavior that changed between the bundled version and their own. Set `DISALLOWED_LIB_PATH=google-protobuf` on the container to make the distribution defer to the application's copy instead; if that copy is outside the range the OTLP exporter supports, the distribution deactivates itself safely rather than break the application.
+
+## Pod-Level Instrumentation (Experimental)
+
+By default, the operator instruments workloads by modifying the pod template of the workload resource, that is, the
+deployment, daemon set, stateful set, replica set, job or cron job.
+Setting `operator.instrumentation.instrumentPods=true` via Helm switches to pod-level instrumentation: The operator
+leaves these workload resources unmodified and instead instruments each pod when it is created.
+Since the workload resources are never modified, tools that manage them (for example Terraform, Argo CD or Flux) do not
+detect any drift caused by the operator, and pods created by any kind of owner, for example by
+[Argo Rollouts](https://argoproj.github.io/rollouts/), are instrumented as well.
+The modifications to the pod spec are the same as with the default mode, see
+[How Automatic Workload Instrumentation Works](#how-automatic-workload-instrumentation-works); the labels and
+annotations are added to the pod instead of the workload resource.
+
+With `instrumentWorkloads.mode=all`, pods that already exist are evicted via the
+[eviction API](https://kubernetes.io/docs/concepts/scheduling-eviction/api-eviction/) if they are not instrumented or
+if their instrumentation is outdated, so that their owner recreates them and the new pods get instrumented. This happens
+when a Dash0Monitoring resource is added to a namespace, when its instrumentation settings change, and when the operator
+starts, for example after an operator upgrade.
+Only pods owned by a deployment (via its replica set), daemon set, stateful set or replica set are evicted.
+Ownerless pods, pods owned by jobs or cron jobs, and pods with any other kind of owner are not evicted, they are
+instrumented the next time they are created.
+Pods in the operator's own namespace are never evicted.
+Evictions respect pod disruption budgets; a pod whose eviction is not allowed by a pod disruption budget at that moment
+is skipped and instrumented the next time it is recreated.
+With `instrumentWorkloads.mode=created-and-updated`, existing pods are not evicted.
+
+This feature is experimental and has the following limitations:
+* Evictions are not paced yet. Unless a pod disruption budget prevents it, all uninstrumented pods of a workload are
+  evicted at the same time, and a workload with a single replica is unavailable until its replacement pod is ready.
+  Consider defining pod disruption budgets for workloads that must stay available.
+* To opt out of instrumentation, the label `dash0.com/enable: "false"` (or a label that does not match a
+  [custom label selector](#using-a-custom-label-selector-to-control-auto-instrumentation)) needs to be present on the
+  pod itself, that is, in the pod template of the workload. A label on the workload resource's top level metadata is
+  ignored.
+* Removing the Dash0Monitoring resource or setting `instrumentWorkloads.mode=none` does not remove the instrumentation
+  from pods that are already running. Their instrumentation is removed when they are recreated.
+* Workload resources that have been instrumented before the setting was enabled keep the instrumentation in their pod
+  template.
 
 ## Disabling Auto-Instrumentation for Specific Workloads
 

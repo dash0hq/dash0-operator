@@ -130,6 +130,7 @@ type environmentVariables struct {
 	instrumentationDebug                        bool
 	enablePythonAutoInstrumentation             bool
 	enableRubyAutoInstrumentation               bool
+	instrumentPods                              bool
 	debugVerbosityDetailed                      bool
 	disableCollectorResourceWatches             bool
 	enablePprofExtension                        bool
@@ -252,6 +253,7 @@ const (
 	instrumentationDebugEnvVarName                   = "DASH0_INSTRUMENTATION_DEBUG"
 	enablePythonAutoInstrumentationEnvVarName        = "DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION"
 	enableRubyAutoInstrumentationEnvVarName          = "DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION"
+	instrumentPodsEnvVarName                         = "DASH0_INSTRUMENT_PODS"
 	disableCollectorResourceWatchesEnvVarName        = "DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES"
 	debugVerbosityDetailedEnvVarName                 = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
 	sendBatchSizeEnvVarName                          = "OTEL_COLLECTOR_SEND_BATCH_SIZE"
@@ -1026,6 +1028,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	instrumentationDebug := readBooleanEnvVar(instrumentationDebugEnvVarName)
 	enablePythonAutoInstrumentation := readBooleanEnvVar(enablePythonAutoInstrumentationEnvVarName)
 	enableRubyAutoInstrumentation := readBooleanEnvVar(enableRubyAutoInstrumentationEnvVarName)
+	instrumentPods := readBooleanEnvVar(instrumentPodsEnvVarName)
 
 	debugVerbosityDetailed := readBooleanEnvVar(debugVerbosityDetailedEnvVarName)
 
@@ -1124,6 +1127,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		instrumentationDebug:                        instrumentationDebug,
 		enablePythonAutoInstrumentation:             enablePythonAutoInstrumentation,
 		enableRubyAutoInstrumentation:               enableRubyAutoInstrumentation,
+		instrumentPods:                              instrumentPods,
 		debugVerbosityDetailed:                      debugVerbosityDetailed,
 		disableCollectorResourceWatches:             disableCollectorResourceWatches,
 		enablePprofExtension:                        enablePprofExtension,
@@ -1710,6 +1714,8 @@ func startOperatorManager(
 		envVars.enablePythonAutoInstrumentation,
 		"Ruby auto-instrumentation enabled",
 		envVars.enableRubyAutoInstrumentation,
+		"instrument pods instead of workloads",
+		envVars.instrumentPods,
 		"watch collector resources",
 		!envVars.disableCollectorResourceWatches,
 		"Kubernetes API server version",
@@ -1863,6 +1869,8 @@ func startDash0Controllers(
 		envVars.enableRubyAutoInstrumentation,
 	)
 	clusterInstrumentationConfig.IsOpenShift = cliArgs.isOpenShift
+	clusterInstrumentationConfig.InstrumentPods = envVars.instrumentPods
+	clusterInstrumentationConfig.OperatorNamespace = envVars.operatorNamespace
 	if err = watchInstrumentationInitContainerResources(
 		ctx, mgr, clusterInstrumentationConfig, extraConfigDefaults,
 	); err != nil {
@@ -1892,7 +1900,7 @@ func startDash0Controllers(
 				return fmt.Errorf("unable to add the task for checking for instrumented pods: %w", err)
 			}
 		} else {
-			if instrumenter, err = setupInstrumenters(mgr, k8sClient, clientset, clusterInstrumentationConfig); err != nil {
+			if instrumenter, err = setupInstrumenters(mgr, k8sClient, clientset, clusterInstrumentationConfig, readyCheckExecuter); err != nil {
 				return err
 			}
 		}
@@ -2497,6 +2505,7 @@ func setupInstrumenters(
 	k8sClient client.Client,
 	clientset *kubernetes.Clientset,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
+	readyCheckExecuter *ReadyCheckExecuter,
 ) (*instrumentation.Instrumenter, error) {
 	startupInstrumenter := instrumentation.NewInstrumenter(
 		// The k8s client will be added later, in internal/startup/instrument_at_startup.go#Start.
@@ -2509,7 +2518,7 @@ func setupInstrumenters(
 	// this instrumenter only runs once at startup, this has no effect whatsoever.
 	extraConfigMapWatcher.AddClient(startupInstrumenter)
 	// register the instrument-at-startup task to run once this operator manager becomes leader
-	if err := mgr.Add(NewInstrumentAtStartupRunnable(mgr, startupInstrumenter)); err != nil {
+	if err := mgr.Add(NewInstrumentAtStartupRunnable(mgr, startupInstrumenter, readyCheckExecuter)); err != nil {
 		return nil, fmt.Errorf("unable to add instrument-at-startup task: %w", err)
 	}
 

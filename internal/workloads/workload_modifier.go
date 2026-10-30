@@ -366,7 +366,7 @@ func (m *ResourceModifier) AddLabelsToImmutableJob(job *batchv1.Job) Modificatio
 }
 
 func (m *ResourceModifier) ModifyPod(pod *corev1.Pod) ModificationResult {
-	if m.hasMatchingOwnerReference(pod, []metav1.TypeMeta{
+	if !m.clusterInstrumentationConfig.InstrumentPods && m.hasMatchingOwnerReference(pod, []metav1.TypeMeta{
 		util.K8sTypeMetaDaemonSet,
 		util.K8sTypeMetaReplicaSet,
 		util.K8sTypeMetaStatefulSet,

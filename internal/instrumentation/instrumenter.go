@@ -192,7 +192,9 @@ func (i *Instrumenter) InstrumentAtStartup(
 
 // CheckSettingsAndInstrumentExistingWorkloads is the main instrumentation function that is called in the controller's
 // reconcile loop. It checks the settings of the Dash0 monitoring resource and instruments existing workloads
-// accodingly.
+// accodingly. With pod-level instrumentation, it evicts uninstrumented pods instead of modifying workloads, so that
+// they are recreated and instrumented by the webhook. In that case, it must only be called after the monitoring
+// resource has been marked as available.
 func (i *Instrumenter) CheckSettingsAndInstrumentExistingWorkloads(
 	ctx context.Context,
 	dash0MonitoringResource *dash0v1beta1.Dash0Monitoring,
@@ -211,6 +213,17 @@ func (i *Instrumenter) CheckSettingsAndInstrumentExistingWorkloads(
 			"Instrumenting existing workloads is not enabled, only new or updated workloads will be modified (at " +
 				"deploy time) to send telemetry to Dash0.",
 		)
+		return nil
+	}
+	if i.ClusterInstrumentationConfig.InstrumentPods {
+		logger.Info(
+			"Pod-level instrumentation is enabled, existing workloads will not be modified. Now evicting " +
+				"uninstrumented pods so that they are recreated with instrumentation.",
+		)
+		if err := i.evictUninstrumentedPods(ctx, dash0MonitoringResource, logger); err != nil {
+			logger.ErrorAsWarnTelemetryCollectionIssue(err, "Evicting uninstrumented pods failed.")
+			return err
+		}
 		return nil
 	}
 
