@@ -2,6 +2,8 @@ package util
 
 import (
 	"log/slog"
+	"slices"
+	"sync"
 
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/go-logr/logr"
@@ -18,11 +20,14 @@ func NewCapturingLogger() (logd.Logger, *CapturingLogSink) {
 }
 
 type CapturingLogSink struct {
+	mutex       sync.Mutex
 	messages    []string
 	runtimeInfo logr.RuntimeInfo
 }
 
 func (s *CapturingLogSink) doLog(_ int, msg string, _ ...any) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	s.messages = append(s.messages, msg)
 }
 
@@ -51,17 +56,25 @@ func (s *CapturingLogSink) WithName(_ string) logr.LogSink {
 }
 
 func (s *CapturingLogSink) Reset() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	s.messages = nil
 }
 
+func (s *CapturingLogSink) capturedMessages() []string {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return slices.Clone(s.messages)
+}
+
 func (s *CapturingLogSink) HasLogMessage(g Gomega, message string) {
-	g.Expect(s.messages).To(ContainElement(message))
+	g.Expect(s.capturedMessages()).To(ContainElement(message))
 }
 
 func (s *CapturingLogSink) HasNoLogMessage(g Gomega, message string) {
-	g.Expect(s.messages).ToNot(ContainElement(message))
+	g.Expect(s.capturedMessages()).ToNot(ContainElement(message))
 }
 
 func (s *CapturingLogSink) HasNoLogMessages(g Gomega) {
-	g.Expect(s.messages).To(BeEmpty())
+	g.Expect(s.capturedMessages()).To(BeEmpty())
 }

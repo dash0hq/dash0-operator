@@ -6,6 +6,7 @@ package postinstall
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -44,7 +45,7 @@ var _ = Describe("Waiting for the Dash0 operator configuration auto resource", O
 
 	It("should time out if the operator configuration resource has not been created", func() {
 		startTime := time.Now()
-		var elapsedTimeNanoseconds int64
+		var elapsedTimeNanoseconds atomic.Int64
 
 		go func() {
 			defer GinkgoRecover()
@@ -53,17 +54,17 @@ var _ = Describe("Waiting for the Dash0 operator configuration auto resource", O
 					"(no more retries left): dash0operatorconfigurations.operator.dash0.com " +
 					"\"dash0-operator-configuration-auto-resource\" not found",
 			))
-			elapsedTimeNanoseconds = time.Since(startTime).Nanoseconds()
+			elapsedTimeNanoseconds.Store(time.Since(startTime).Nanoseconds())
 		}()
 
 		Eventually(func(g Gomega) {
-			verifyTimeout(g, elapsedTimeNanoseconds)
+			verifyTimeout(g, elapsedTimeNanoseconds.Load())
 		}, testTimeout, pollingInterval).Should(Succeed())
 	})
 
 	It("should time out if the operator configuration resource has been created but is not available", func() {
 		startTime := time.Now()
-		var elapsedTimeNanoseconds int64
+		var elapsedTimeNanoseconds atomic.Int64
 
 		CreateOperatorConfigurationAutoResource(ctx, k8sClient)
 
@@ -74,11 +75,11 @@ var _ = Describe("Waiting for the Dash0 operator configuration auto resource", O
 					"(no more retries left): the Dash0OperatorConfiguration resource " +
 					"dash0-operator-configuration-auto-resource is not marked as available",
 			))
-			elapsedTimeNanoseconds = time.Since(startTime).Nanoseconds()
+			elapsedTimeNanoseconds.Store(time.Since(startTime).Nanoseconds())
 		}()
 
 		Eventually(func(g Gomega) {
-			verifyTimeout(g, elapsedTimeNanoseconds)
+			verifyTimeout(g, elapsedTimeNanoseconds.Load())
 		}, testTimeout, pollingInterval).Should(Succeed())
 	})
 
