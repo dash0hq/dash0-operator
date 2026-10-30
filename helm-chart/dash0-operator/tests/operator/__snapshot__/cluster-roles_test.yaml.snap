@@ -642,6 +642,12 @@ cluster roles should match snapshot:
           - delete
           - get
           - list
+      - apiGroups:
+          - ""
+        resources:
+          - pods/eviction
+        verbs:
+          - create
 cluster roles should match snapshot with agent0-connector enabled:
   1: |
     apiVersion: rbac.authorization.k8s.io/v1
@@ -1286,6 +1292,12 @@ cluster roles should match snapshot with agent0-connector enabled:
           - delete
           - get
           - list
+      - apiGroups:
+          - ""
+        resources:
+          - pods/eviction
+        verbs:
+          - create
   5: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole

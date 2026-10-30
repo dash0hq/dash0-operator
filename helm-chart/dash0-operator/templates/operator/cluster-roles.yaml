@@ -821,6 +821,17 @@ rules:
   - get
   - list
 
+# Permissions required to evict pods with pod-level instrumentation (operator.instrumentation.instrumentPods), so that
+# their owners recreate them and the webhook instruments the new pods. These permissions are granted independently of
+# that setting, since the operator can delete pods anyway, and evicting a pod is the more restrictive operation, since
+# it respects pod disruption budgets.
+- apiGroups:
+  - ""
+  resources:
+  - pods/eviction
+  verbs:
+  - create
+
 {{ end }}
 
 ---

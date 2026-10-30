@@ -193,6 +193,21 @@ tests:
           name: dash0-operator-manager-instrument
         documentIndex: 3
 
+  - it: should grant pods/eviction regardless of pod-level instrumentation
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - ""
+            resources:
+              - pods/eviction
+            verbs:
+              - create
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-instrument
+
   - it: should not grant permissions for telemetry collection if telemetry collection is disabled
     set:
       operator:
