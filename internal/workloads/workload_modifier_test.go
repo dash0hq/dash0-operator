@@ -469,6 +469,36 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			Entry("owned by a Job", util.K8sTypeMetaJob),
 		)
 
+		DescribeTable("should instrument a basic pod owned by another higher level workload if pod-level instrumentation is enabled", func(owner metav1.TypeMeta) {
+			config := util.NewClusterInstrumentationConfig(
+				TestImages,
+				PossibleCollectorUrlsTest,
+				OTelCollectorNodeLocalBaseUrlTest,
+				util.ExtraConfigDefaults,
+				dash0v1alpha1.InstrumentationDeliveryInitContainer,
+				nil,
+				false,
+				false,
+				false,
+			)
+			config.InstrumentPods = true
+			modifier := NewResourceModifier(config, DefaultNamespaceInstrumentationConfig, testActor, logger)
+			workload := BasicPod(TestNamespaceName, PodNamePrefix)
+			workload.ObjectMeta.OwnerReferences = []metav1.OwnerReference{{
+				APIVersion: owner.APIVersion,
+				Kind:       owner.Kind,
+			}}
+			modificationResult := modifier.ModifyPod(workload)
+
+			Expect(modificationResult.HasBeenModified).To(BeTrue())
+			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
+		}, Entry("owned by a DaemonSet", util.K8sTypeMetaDaemonSet),
+			Entry("owned by a ReplicaSet", util.K8sTypeMetaReplicaSet),
+			Entry("owned by a StatefulSet", util.K8sTypeMetaStatefulSet),
+			Entry("owned by a CronJob", util.K8sTypeMetaCronJob),
+			Entry("owned by a Job", util.K8sTypeMetaJob),
+		)
+
 		It("should instrument a basic ownerless replica set", func() {
 			workload := BasicReplicaSet(TestNamespaceName, ReplicaSetNamePrefix)
 			modificationResult := workloadModifierInitCnt.ModifyReplicaSet(workload)

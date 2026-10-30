@@ -51,6 +51,7 @@ var (
 	operatorConfigurationMutatingWebhookHandler   *OperatorConfigurationMutatingWebhookHandler
 	operatorConfigurationValidationWebhookHandler *OperatorConfigurationValidationWebhookHandler
 	monitoringMutatingWebhookHandler              *MonitoringMutatingWebhookHandler
+	instrumentationWebhookClusterConfig           *util.ClusterInstrumentationConfig
 )
 
 func TestWebhook(t *testing.T) {
@@ -128,20 +129,21 @@ var _ = BeforeSuite(func() {
 	// in an actual production deployment of the operator, the Kustomize configs are still used for registering
 	// webhooks in the unit tests here; via testEnv = &envtest.Environment.WebhookInstallOptions.Paths
 
+	instrumentationWebhookClusterConfig = util.NewClusterInstrumentationConfig(
+		TestImages,
+		PossibleCollectorUrlsTest,
+		OTelCollectorNodeLocalBaseUrlTest,
+		util.ExtraConfigDefaults,
+		dash0v1alpha1.InstrumentationDeliveryInitContainer,
+		nil,
+		false,
+		false,
+		false,
+	)
 	Expect(NewInstrumentationWebhookHandler(
 		k8sClient,
 		manager.GetEventRecorder("dash0-webhook"),
-		util.NewClusterInstrumentationConfig(
-			TestImages,
-			PossibleCollectorUrlsTest,
-			OTelCollectorNodeLocalBaseUrlTest,
-			util.ExtraConfigDefaults,
-			dash0v1alpha1.InstrumentationDeliveryInitContainer,
-			nil,
-			false,
-			false,
-			false,
-		),
+		instrumentationWebhookClusterConfig,
 	).SetupWebhookWithManager(manager)).To(Succeed())
 
 	operatorConfigurationMutatingWebhookHandler = NewOperatorConfigurationMutatingWebhookHandler(k8sClient)

@@ -137,6 +137,7 @@ type environmentVariables struct {
 	instrumentationDebug                        bool
 	enablePythonAutoInstrumentation             bool
 	enableRubyAutoInstrumentation               bool
+	instrumentPods                              bool
 	debugVerbosityDetailed                      bool
 	disableCollectorResourceWatches             bool
 	enablePprofExtension                        bool
@@ -267,6 +268,7 @@ const (
 	instrumentationDebugEnvVarName                   = "DASH0_INSTRUMENTATION_DEBUG"
 	enablePythonAutoInstrumentationEnvVarName        = "DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION"
 	enableRubyAutoInstrumentationEnvVarName          = "DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION"
+	instrumentPodsEnvVarName                         = "DASH0_INSTRUMENT_PODS"
 	disableCollectorResourceWatchesEnvVarName        = "DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES"
 	debugVerbosityDetailedEnvVarName                 = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
 	sendBatchSizeEnvVarName                          = "OTEL_COLLECTOR_SEND_BATCH_SIZE"
@@ -1072,6 +1074,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	instrumentationDebug := readBooleanEnvVar(instrumentationDebugEnvVarName)
 	enablePythonAutoInstrumentation := readBooleanEnvVar(enablePythonAutoInstrumentationEnvVarName)
 	enableRubyAutoInstrumentation := readBooleanEnvVar(enableRubyAutoInstrumentationEnvVarName)
+	instrumentPods := readBooleanEnvVar(instrumentPodsEnvVarName)
 
 	debugVerbosityDetailed := readBooleanEnvVar(debugVerbosityDetailedEnvVarName)
 
@@ -1175,6 +1178,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		instrumentationDebug:                        instrumentationDebug,
 		enablePythonAutoInstrumentation:             enablePythonAutoInstrumentation,
 		enableRubyAutoInstrumentation:               enableRubyAutoInstrumentation,
+		instrumentPods:                              instrumentPods,
 		debugVerbosityDetailed:                      debugVerbosityDetailed,
 		disableCollectorResourceWatches:             disableCollectorResourceWatches,
 		enablePprofExtension:                        enablePprofExtension,
@@ -1765,6 +1769,8 @@ func startOperatorManager(
 		envVars.enablePythonAutoInstrumentation,
 		"Ruby auto-instrumentation enabled",
 		envVars.enableRubyAutoInstrumentation,
+		"instrument pods instead of workloads",
+		envVars.instrumentPods,
 		"watch collector resources",
 		!envVars.disableCollectorResourceWatches,
 		"Kubernetes API server version",
@@ -1918,6 +1924,7 @@ func startDash0Controllers(
 		envVars.enableRubyAutoInstrumentation,
 	)
 	clusterInstrumentationConfig.IsOpenShift = cliArgs.isOpenShift
+	clusterInstrumentationConfig.InstrumentPods = envVars.instrumentPods
 	if err = watchInstrumentationInitContainerResources(
 		ctx, mgr, clusterInstrumentationConfig, extraConfigDefaults,
 	); err != nil {
