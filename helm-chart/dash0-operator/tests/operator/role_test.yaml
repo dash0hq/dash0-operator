@@ -40,7 +40,14 @@ tests:
     set:
       operator.telemetryCollectionEnabled: false
       operator.ebpfProfilerEnabled: false
+      operator.signalControl.enabled: false
     asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: [""]
+            resources: [pods]
+            verbs: [list]
       - contains:
           path: rules
           content:

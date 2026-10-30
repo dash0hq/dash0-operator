@@ -82,6 +82,13 @@ resource-only pod-association pipeline. It associates workload telemetry using a
 telemetry without a pod identity remains host-level and uses the default exports. Unmarked application telemetry
 retains its existing pod association. No additional receiver or port is required.
 
+Source classification remains active when profiling is disabled, including while agent Pods terminate. The collector
+DaemonSet requires a versioned ConfigMap key alongside this routing configuration, in both plain and compressed modes.
+Upgrading to this configuration rolls the collectors once. Before starting the managed profiler, the operator waits
+for the revised collectors to become Ready and for legacy collector Pods selected by the OTLP Service to disappear.
+An existing profiler that has not adopted this routing contract stops until adoption completes. Ordinary collector
+rollouts after adoption do not stop an already-adopted profiler.
+
 The `parca.agent` attribute is reserved for profiler source routing, not authentication. Do not set a conflicting
 value on workload resources; the agent preserves existing resource attributes over external-label defaults.
 
@@ -135,6 +142,9 @@ The proxy DaemonSet rolls one node at a time with `maxSurge: 0` so old and new c
 the same node concurrently. Credential and mode changes invalidate upload routes. Updates can interrupt in-flight
 uploads, which the agent can retry. Proxy updates are not zero-downtime updates on the affected node.
 
+When removing the proxy, the operator waits for its DaemonSet and Pods to disappear before removing its NetworkPolicy
+and other dependencies. A stuck terminating Pod keeps this protection in place until termination completes.
+
 ### Sampling and workload customization
 
 The default CPU sampling frequency is 19 Hz. `offCPUThreshold` defaults to the fraction `0`,
@@ -147,8 +157,11 @@ disables service account token automounting.
 
 The operator leaves OTLP logging, GPU metrics, and GPU NVTX at the agent's enabled defaults. The default image is
 `ghcr.io/parca-dev/parca-agent`, which includes GPU metrics support, not `parca-agent-static`. GPU collection requires
-NVIDIA hardware and the corresponding driver/runtime support. To exclude CUDA tracing, configure a non-empty `tracers`
-list without `cuda` or `all`. When `offCPUThreshold` is unset or zero, the operator omits `--off-cpu-threshold` entirely.
+NVIDIA hardware and the corresponding driver/runtime support, including NVML libraries visible inside the agent
+container. The managed Pod does not request GPU devices, select an NVIDIA RuntimeClass, or inject driver libraries.
+GPU/NVTX collection with this deployment has not been validated on NVIDIA hardware; the native CPU tests do not
+establish a supported NVIDIA runtime setup. To exclude CUDA tracing, configure a non-empty `tracers` list without
+`cuda` or `all`. When `offCPUThreshold` is unset or zero, the operator omits `--off-cpu-threshold` entirely.
 
 Configure these settings under `spec.profiling.ebpfProfiler` on the `Dash0OperatorConfiguration`. Customize resources
 and scheduling separately via `spec.components.ebpfProfiler` and `spec.components.debuginfoProxy`, rather than changing

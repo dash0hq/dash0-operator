@@ -2821,6 +2821,29 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(configMapContent).To(ContainSubstring(EndpointHttpTest))
 	})
 
+	It("should require the source-attribution capability in plain and compressed daemonset configurations", func() {
+		for _, compressed := range []bool{false, true} {
+			desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace, NamePrefix: namePrefix, Images: TestImages,
+				Exporters: defaultDash0ExportersWithToken(), CompressConfigMap: compressed,
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, nil, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(getDaemonSetCollectorConfigMap(desiredState).Data).To(HaveKeyWithValue("source-attribution-v1", "true"))
+			Expect(getDeploymentCollectorConfigMap(desiredState).Data).ToNot(HaveKey("source-attribution-v1"))
+			volumeName := "opentelemetry-collector-configmap"
+			if compressed {
+				volumeName += "-compressed"
+			}
+			volume := FindVolumeByName(getDaemonSet(desiredState).Spec.Template.Spec.Volumes, volumeName)
+			Expect(volume).ToNot(BeNil())
+			Expect(ptr.Deref(volume.ConfigMap.Optional, false)).To(BeFalse())
+			Expect(volume.ConfigMap.Items).To(ContainElement(corev1.KeyToPath{Key: "source-attribution-v1", Path: "source-attribution-v1"}))
+			deploymentVolume := FindVolumeByName(getDeployment(desiredState).Spec.Template.Spec.Volumes, volumeName)
+			Expect(deploymentVolume.ConfigMap.Items).To(ConsistOf(corev1.KeyToPath{Key: "config.yaml", Path: "config.yaml"}))
+		}
+	})
+
 	It("should store the config map content as gzip-compressed binary data when CompressConfigMap is enabled", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,

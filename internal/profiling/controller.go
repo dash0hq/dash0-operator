@@ -8,6 +8,8 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"slices"
+	"time"
 
 	"github.com/cisco-open/k8s-objectmatcher/patch"
 	appsv1 "k8s.io/api/apps/v1"
@@ -28,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
@@ -99,7 +102,25 @@ func (r *Reconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result
 		configuration.Spec.Profiling != nil && ptr.Deref(configuration.Spec.Profiling.Enabled, false) &&
 		configuration.Spec.Profiling.EbpfProfiler != nil && ptr.Deref(configuration.Spec.Profiling.EbpfProfiler.Enabled, false)
 	if !enabled {
-		return ctrl.Result{}, r.remove(ctx, false)
+		return r.remove(ctx, false)
+	}
+	existing := &appsv1.DaemonSet{}
+	err = r.Get(ctx, client.ObjectKey{Namespace: r.Config.Namespace, Name: r.Config.name(profilerComponent)}, existing)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return ctrl.Result{}, err
+	}
+	if existing.Annotations[sourceRoutingAnnotation] != otelcolresources.ProfilerSourceRoutingKey {
+		ready, err := r.collectorsReadyForProfiler(ctx)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if !ready {
+			result, err := r.remove(ctx, false)
+			if result.RequeueAfter == 0 {
+				result.RequeueAfter = 5 * time.Second
+			}
+			return result, err
+		}
 	}
 	proxyConfig := proxyConfiguration{}
 	profiler := configuration.Spec.Profiling.EbpfProfiler
@@ -130,9 +151,59 @@ func (r *Reconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result
 		}
 	}
 	if !uploads {
-		return ctrl.Result{}, r.remove(ctx, true)
+		return r.remove(ctx, true)
 	}
 	return ctrl.Result{}, nil
+}
+
+func (r *Reconciler) collectorsReadyForProfiler(ctx context.Context) (bool, error) {
+	ds := &appsv1.DaemonSet{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: r.Config.Namespace, Name: otelcolresources.DaemonSetName(r.Config.NamePrefix)}, ds); err != nil {
+		return false, client.IgnoreNotFound(err)
+	}
+	if ds.DeletionTimestamp != nil || !r.collectorHasProfilerRouting(ds.Spec.Template.Spec) ||
+		ds.Status.ObservedGeneration < ds.Generation || ds.Status.DesiredNumberScheduled == 0 ||
+		ds.Status.UpdatedNumberScheduled != ds.Status.DesiredNumberScheduled || ds.Status.NumberReady != ds.Status.DesiredNumberScheduled {
+		return false, nil
+	}
+	service := &corev1.Service{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: r.Config.Namespace, Name: otelcolresources.ServiceName(r.Config.NamePrefix)}, service); err != nil {
+		return false, client.IgnoreNotFound(err)
+	}
+	if len(service.Spec.Selector) == 0 {
+		return false, nil
+	}
+	pods := &corev1.PodList{}
+	if err := r.List(ctx, pods, client.InNamespace(r.Config.Namespace), client.MatchingLabels(service.Spec.Selector)); err != nil {
+		return false, err
+	}
+	ready := int32(0)
+	for _, pod := range pods.Items {
+		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+			continue
+		}
+		if pod.DeletionTimestamp != nil || !r.collectorHasProfilerRouting(pod.Spec) ||
+			!slices.ContainsFunc(pod.Status.Conditions, func(condition corev1.PodCondition) bool {
+				return condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue
+			}) {
+			return false, nil
+		}
+		ready++
+	}
+	return ready == ds.Status.DesiredNumberScheduled, nil
+}
+
+func (r *Reconciler) collectorHasProfilerRouting(spec corev1.PodSpec) bool {
+	for _, volume := range spec.Volumes {
+		cm := volume.ConfigMap
+		if cm != nil && cm.Name == otelcolresources.DaemonSetCollectorConfigConfigMapName(r.Config.NamePrefix) &&
+			!ptr.Deref(cm.Optional, false) && slices.ContainsFunc(cm.Items, func(item corev1.KeyToPath) bool {
+			return item.Key == otelcolresources.ProfilerSourceRoutingKey
+		}) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Reconciler) proxyRevision(ctx context.Context, config proxyConfiguration) (string, error) {
@@ -204,7 +275,7 @@ func (r *Reconciler) apply(ctx context.Context, configuration *dash0v1alpha1.Das
 	return err
 }
 
-func (r *Reconciler) remove(ctx context.Context, proxyOnly bool) error {
+func (r *Reconciler) remove(ctx context.Context, proxyOnly bool) (ctrl.Result, error) {
 	objects := []client.Object{
 		&appsv1.DaemonSet{ObjectMeta: r.Config.metadata(proxyComponent)},
 		&corev1.Service{ObjectMeta: r.Config.metadata(proxyComponent)},
@@ -217,19 +288,39 @@ func (r *Reconciler) remove(ctx context.Context, proxyOnly bool) error {
 			&corev1.ServiceAccount{ObjectMeta: r.Config.metadata(profilerComponent)}}, objects...)
 	}
 	for _, object := range objects {
-		if err := r.Get(ctx, client.ObjectKeyFromObject(object), object); err != nil {
-			if apierrors.IsNotFound(err) {
+		component := object.GetLabels()[componentLabel]
+		_, daemonSet := object.(*appsv1.DaemonSet)
+		err := r.Get(ctx, client.ObjectKeyFromObject(object), object)
+		if err != nil && !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, err
+		}
+		if err == nil {
+			if object.GetLabels()[instanceLabel] != r.Config.NamePrefix || object.GetLabels()[componentLabel] != component {
 				continue
 			}
-			return err
+			propagation := metav1.DeletePropagationBackground
+			if daemonSet {
+				propagation = metav1.DeletePropagationForeground
+			}
+			if err := r.Delete(ctx, object, client.Preconditions{UID: ptr.To(object.GetUID())}, client.PropagationPolicy(propagation)); err != nil && !apierrors.IsNotFound(err) {
+				return ctrl.Result{}, err
+			}
 		}
-		if object.GetLabels()[instanceLabel] != r.Config.NamePrefix ||
-			(object.GetLabels()[componentLabel] != profilerComponent && object.GetLabels()[componentLabel] != proxyComponent) {
-			continue
-		}
-		if err := r.Delete(ctx, object, client.Preconditions{UID: ptr.To(object.GetUID())}, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil && !apierrors.IsNotFound(err) {
-			return err
+		if daemonSet {
+			pods := &corev1.PodList{}
+			if err := r.List(ctx, pods, client.InNamespace(r.Config.Namespace), client.MatchingLabels(r.Config.labels(component))); err != nil {
+				return ctrl.Result{}, err
+			}
+			if len(pods.Items) > 0 {
+				return ctrl.Result{RequeueAfter: time.Second}, nil
+			}
+			if err := r.Get(ctx, client.ObjectKeyFromObject(object), object); !apierrors.IsNotFound(err) {
+				if err != nil {
+					return ctrl.Result{}, err
+				}
+				return ctrl.Result{RequeueAfter: time.Second}, nil
+			}
 		}
 	}
-	return nil
+	return ctrl.Result{}, nil
 }

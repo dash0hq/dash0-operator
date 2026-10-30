@@ -25,10 +25,11 @@ import (
 )
 
 const (
-	profilerComponent = "ebpf-profiler"
-	proxyComponent    = "debuginfo-proxy"
-	componentLabel    = "app.kubernetes.io/component"
-	instanceLabel     = "app.kubernetes.io/instance"
+	profilerComponent       = "ebpf-profiler"
+	proxyComponent          = "debuginfo-proxy"
+	componentLabel          = "app.kubernetes.io/component"
+	instanceLabel           = "app.kubernetes.io/instance"
+	sourceRoutingAnnotation = "dash0.com/profiler-source-routing"
 )
 
 // Config contains installation-level settings for the managed profiler and proxy.
@@ -127,7 +128,9 @@ func (c Config) profiler(configuration *dash0v1alpha1.Dash0OperatorConfiguration
 	}
 	metadata := c.metadata(profilerComponent)
 	metadata.Labels = mergeLabels(settings.EbpfProfilerLabels, metadata.Labels)
-	metadata.Annotations = settings.EbpfProfilerAnnotations
+	metadata.Annotations = make(map[string]string, len(settings.EbpfProfilerAnnotations)+1)
+	maps.Copy(metadata.Annotations, settings.EbpfProfilerAnnotations)
+	metadata.Annotations[sourceRoutingAnnotation] = otelcolresources.ProfilerSourceRoutingKey
 	ds := &appsv1.DaemonSet{ObjectMeta: metadata, Spec: appsv1.DaemonSetSpec{
 		Selector: &metav1.LabelSelector{MatchLabels: c.labels(profilerComponent)},
 		Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{

@@ -125,7 +125,6 @@ type collectorConfigurationTemplateValues struct {
 	DebugVerbosityDetailed                           bool
 	EnableProfExtension                              bool
 	ProfilingEnabled                                 bool
-	EbpfProfilerEnabled                              bool
 	PodAssociationPipelines                          map[string]string
 	SignalControl                                    SignalControlConfig
 	SignalControlGatewayActive                       bool
@@ -225,7 +224,7 @@ func assembleDaemonSetCollectorConfigMap(
 	targetAllocatorMtlsConfig TargetAllocatorMtlsConfig,
 	forDeletion bool,
 ) (*corev1.ConfigMap, error) {
-	return assembleCollectorConfigMap(
+	configMap, err := assembleCollectorConfigMap(
 		config,
 		monitoredNamespaces,
 		namespacesWithLogCollection,
@@ -239,6 +238,14 @@ func assembleDaemonSetCollectorConfigMap(
 		targetAllocatorMtlsConfig,
 		forDeletion,
 	)
+	if err != nil || forDeletion {
+		return configMap, err
+	}
+	if configMap.Data == nil {
+		configMap.Data = map[string]string{}
+	}
+	configMap.Data[ProfilerSourceRoutingKey] = "true"
+	return configMap, nil
 }
 
 func assembleDeploymentCollectorConfigMap(
@@ -399,10 +406,8 @@ func newCollectorConfigurationTemplateValues(
 		memoryLimiterLimitMiB = settings.LimitMiB
 		memoryLimiterSpikeMiB = settings.SpikeMiB
 	}
-
-	podAssociationPipelines := map[string]string{"common-processors": "k8s_attributes"}
-	if config.EbpfProfilerEnabled {
-		podAssociationPipelines["ebpf-profiler"] = "k8s_attributes/profiles"
+	podAssociationPipelines := map[string]string{
+		"common-processors": "k8s_attributes", "ebpf-profiler": "k8s_attributes/profiles",
 	}
 
 	return &collectorConfigurationTemplateValues{
@@ -446,7 +451,6 @@ func newCollectorConfigurationTemplateValues(
 		DebugVerbosityDetailed:                           config.DebugVerbosityDetailed,
 		EnableProfExtension:                              config.EnableProfExtension,
 		ProfilingEnabled:                                 config.ProfilingEnabled,
-		EbpfProfilerEnabled:                              config.EbpfProfilerEnabled,
 		PodAssociationPipelines:                          podAssociationPipelines,
 		SignalControl:                                    config.SignalControl,
 		SignalControlGatewayActive:                       config.signalControlGatewayActive(),

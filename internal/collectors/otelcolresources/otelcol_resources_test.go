@@ -274,15 +274,15 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
 		})
 
-		It("should enable profiler source routing without adding ports with the eBPF opt-in", func() {
+		It("should retain profiler source routing without adding ports across profiling toggles", func() {
 			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 			operatorConfiguration.Spec.Profiling = &dash0v1alpha1.Profiling{
 				Enabled: ptr.To(true), EbpfProfiler: &dash0v1alpha1.EbpfProfiler{},
 			}
-			for _, tc := range []struct{ helm, resource bool }{
+			for _, tc := range []struct{ profiling, resource bool }{
 				{false, false}, {true, false}, {true, true}, {false, true}, {true, true}, {true, false},
 			} {
-				oTelColResourceManager.collectorConfig.EbpfProfilerEnabledViaHelm = tc.helm
+				operatorConfiguration.Spec.Profiling.Enabled = ptr.To(tc.profiling)
 				operatorConfiguration.Spec.Profiling.EbpfProfiler.Enabled = ptr.To(tc.resource)
 				_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx, util.ExtraConfigDefaults, operatorConfiguration, nil, nil, logger)
@@ -302,11 +302,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				collectorConfig := parseConfigMapContent(GetOTelColDaemonSetConfigMap(ctx, k8sClient, OperatorNamespace))
 				connectors := collectorConfig["connectors"].(map[string]any)
 				for _, signal := range []string{"traces", "metrics", "logs"} {
-					if tc.helm && tc.resource {
-						Expect(connectors).To(HaveKey("routing/" + signal + "-source"))
-					} else {
-						Expect(connectors).ToNot(HaveKey("routing/" + signal + "-source"))
-					}
+					Expect(connectors).To(HaveKey("routing/" + signal + "-source"))
 				}
 			}
 		})

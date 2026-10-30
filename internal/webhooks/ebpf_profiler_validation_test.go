@@ -60,6 +60,8 @@ func TestEbpfProfilerAdmission(t *testing.T) {
 		{name: "Helm disabled create", telemetryHelm: true, wantMessage: ErrorMessageEbpfProfilerDisabledViaHelm},
 		{name: "Helm disabled enabling update", telemetryHelm: true, oldEnabled: new(false), wantMessage: ErrorMessageEbpfProfilerDisabledViaHelm},
 		{name: "Helm disabled unrelated update", telemetryHelm: true, oldEnabled: new(true)},
+		{name: "Helm profiler and telemetry disabled unrelated update", oldEnabled: new(true)},
+		{name: "Helm profiler and telemetry disabled enabling update", oldEnabled: new(false), wantMessage: ErrorMessageEbpfProfilerDisabledViaHelm},
 		{name: "malformed old object", telemetryHelm: true, invalidOld: true, wantMessage: "could not decode OldObject for the eBPF profiler validation"},
 		{name: "profiling disabled", profilerHelm: true, telemetryHelm: true, modify: func(s *dash0v1alpha1.Dash0OperatorConfigurationSpec) {
 			s.Profiling.Enabled = new(false)

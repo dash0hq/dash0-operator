@@ -1738,21 +1738,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				connectors := collectorConfig["connectors"].(map[string]any)
 				pipelines := readPipelines(collectorConfig)
 				Expect(receivers).ToNot(HaveKey("otlp/ebpf-profiler"))
-				if !entry.config.EbpfProfilerEnabled {
-					for _, signal := range []string{"traces", "metrics", "logs"} {
-						Expect(pipelines).ToNot(HaveKey(signal + "/ebpf-profiler"))
-						Expect(pipelines).ToNot(HaveKey(signal + "/route-source"))
-						Expect(connectors).ToNot(HaveKey("routing/" + signal + "-source"))
-					}
-					continue
-				}
 				endpoint := "${env:K8S_POD_IP}:4317"
 				if entry.config.IsIPv6Cluster {
 					endpoint = "[${env:K8S_POD_IP}]:4317"
 				}
 				Expect(ReadFromMap(receivers, []string{"otlp", "protocols", "grpc", "endpoint"})).
 					To(Equal(endpoint))
-				Expect(readPipelineReceivers(pipelines, "profiles")).To(ConsistOf("otlp"))
+				if entry.config.ProfilingEnabled {
+					Expect(readPipelineReceivers(pipelines, "profiles")).To(ConsistOf("otlp"))
+				} else {
+					Expect(pipelines).ToNot(HaveKey("profiles"))
+				}
 				for _, signal := range []string{"traces", "metrics", "logs"} {
 					agentPipeline := signal + "/ebpf-profiler"
 					commonPipeline := signal + "/common-processors"
@@ -1842,7 +1838,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(basePodAssocSources).ToNot(ContainElement("container.id"))
 		})
 
-		It("should not render k8s_attributes/profiles when profiling is disabled [DaemonSet]", func() {
+		It("should retain resource-only agent association when profiling is disabled [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -1854,8 +1850,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 
 			processors := collectorConfig["processors"].(map[string]any)
-			Expect(processors).ToNot(HaveKey("k8s_attributes/profiles"))
+			Expect(processors).To(HaveKey("k8s_attributes/profiles"))
 			Expect(processors).To(HaveKey("k8s_attributes"))
+			Expect(readPipelines(collectorConfig)).ToNot(HaveKey("profiles"))
 		})
 
 		It("should export profiles via the default exporters even with namespaced exporters [DaemonSet]", func() {
@@ -5687,7 +5684,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 			LogsCommonProcessorsPipelineReceivers := readPipelineReceivers(pipelines, "logs/common-processors")
 			Expect(LogsCommonProcessorsPipelineReceivers).ToNot(BeNil())
-			Expect(LogsCommonProcessorsPipelineReceivers).To(ContainElement("forward/logs-processors"))
+			Expect(LogsCommonProcessorsPipelineReceivers).To(ConsistOf("routing/logs-source"))
 			LogsCommonProcessorsPipelineProcessors := readPipelineProcessors(pipelines, "logs/common-processors")
 			Expect(LogsCommonProcessorsPipelineProcessors).ToNot(BeNil())
 			Expect(LogsCommonProcessorsPipelineProcessors).To(ContainElement("transform/logs/filelog_service_attributes"))

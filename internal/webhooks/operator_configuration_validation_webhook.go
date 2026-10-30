@@ -369,6 +369,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) validateEbpfProfiler(
 			logger.Warn(ErrorMessageEbpfProfilerDisabledViaHelm)
 			return admission.Denied(ErrorMessageEbpfProfilerDisabledViaHelm), true
 		}
+		return admission.Response{}, false
 	}
 	if !pointers.ReadBoolPointerWithDefault(spec.Profiling.Enabled, false) {
 		logger.Warn(ErrorMessageEbpfProfilerRequiresProfiling)
@@ -380,8 +381,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) validateEbpfProfiler(
 		return admission.Denied(ErrorMessageEbpfProfilerRequiresTelemetry), true
 	}
 	debuginfo := spec.Profiling.EbpfProfiler.Debuginfo
-	if !h.EbpfProfilerEnabledViaHelm ||
-		(debuginfo != nil && !pointers.ReadBoolPointerWithDefault(debuginfo.UploadEnabled, true)) {
+	if debuginfo != nil && !pointers.ReadBoolPointerWithDefault(debuginfo.UploadEnabled, true) {
 		return admission.Response{}, false
 	}
 	dash0Exports := 0

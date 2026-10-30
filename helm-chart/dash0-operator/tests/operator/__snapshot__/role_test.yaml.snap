@@ -50,6 +50,12 @@ leader election role should match snapshot:
       - apiGroups:
           - ""
         resources:
+          - pods
+        verbs:
+          - list
+      - apiGroups:
+          - ""
+        resources:
           - services
           - serviceaccounts
         verbs:
