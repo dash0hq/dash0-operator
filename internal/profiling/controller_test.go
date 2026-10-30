@@ -239,6 +239,14 @@ func TestProfilerLifecycle(t *testing.T) {
 			case "dash0-exports":
 				configuration.Spec.Exports = []dash0common.Export{{Grpc: &dash0common.GrpcConfiguration{Endpoint: "collector:4317"}}}
 			case "profiler":
+				profiler := &appsv1.DaemonSet{}
+				require.NoError(t, r.Get(context.Background(), key("ebpf-profiler"), profiler))
+				pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
+					Name: "terminating-profiler", Namespace: "operator", Labels: profiler.Spec.Template.Labels,
+					Finalizers: []string{"test.dash0.com/hold"},
+				}}
+				require.NoError(t, r.Create(context.Background(), pod))
+				require.NoError(t, r.Delete(context.Background(), pod))
 				configuration.Spec.Profiling.EbpfProfiler.Enabled = ptr.To(false)
 			case "helm":
 				r.Config.Enabled = false
@@ -255,6 +263,9 @@ func TestProfilerLifecycle(t *testing.T) {
 			}
 			for _, object := range []client.Object{&appsv1.DaemonSet{}, &corev1.ConfigMap{}, &corev1.ServiceAccount{}, &corev1.Service{}, &networkingv1.NetworkPolicy{}} {
 				require.True(t, apierrors.IsNotFound(r.Get(context.Background(), key("debuginfo-proxy"), object)))
+			}
+			if disable == "profiler" {
+				require.NoError(t, r.Get(context.Background(), client.ObjectKey{Namespace: "operator", Name: "terminating-profiler"}, &corev1.Pod{}))
 			}
 			ds := &appsv1.DaemonSet{}
 			err := r.Get(context.Background(), key("ebpf-profiler"), ds)

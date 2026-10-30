@@ -220,6 +220,7 @@ func (r *Reconciler) remove(ctx context.Context, proxyOnly bool) (ctrl.Result, e
 	for _, object := range objects {
 		component := object.GetLabels()[componentLabel]
 		_, daemonSet := object.(*appsv1.DaemonSet)
+		drainProxy := daemonSet && component == proxyComponent
 		err := r.Get(ctx, client.ObjectKeyFromObject(object), object)
 		if err != nil && !apierrors.IsNotFound(err) {
 			return ctrl.Result{}, err
@@ -229,14 +230,14 @@ func (r *Reconciler) remove(ctx context.Context, proxyOnly bool) (ctrl.Result, e
 				continue
 			}
 			propagation := metav1.DeletePropagationBackground
-			if daemonSet {
+			if drainProxy {
 				propagation = metav1.DeletePropagationForeground
 			}
 			if err := r.Delete(ctx, object, client.Preconditions{UID: ptr.To(object.GetUID())}, client.PropagationPolicy(propagation)); err != nil && !apierrors.IsNotFound(err) {
 				return ctrl.Result{}, err
 			}
 		}
-		if daemonSet {
+		if drainProxy {
 			pods := &corev1.PodList{}
 			if err := r.List(ctx, pods, client.InNamespace(r.Config.Namespace), client.MatchingLabels(r.Config.labels(component))); err != nil {
 				return ctrl.Result{}, err

@@ -4,14 +4,10 @@
 package util
 
 import (
-	"os"
-	"path/filepath"
-
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -159,20 +155,5 @@ var _ = Describe("profiling component settings", func() {
 		check := CheckComponentSettings(fileConfig, ExtraConfigDefaults, components, nil)
 		Expect(check.Conflicts).To(BeEmpty())
 		Expect(check.Invalid).To(BeEmpty())
-	})
-
-	It("should retain profiling defaults when the extra config file omits them", func() {
-		file := filepath.Join(GinkgoT().TempDir(), "extra.yaml")
-		Expect(os.WriteFile(file, []byte("{}"), 0600)).To(Succeed())
-		config, err := readExtraConfigurationFromFile(file, ExtraConfigDefaults, false, logd.Discard())
-		Expect(err).ToNot(HaveOccurred())
-		Expect(config.EbpfProfilerContainerResources).To(Equal(ExtraConfigDefaults.EbpfProfilerContainerResources))
-		Expect(config.DebuginfoProxyContainerResources).To(Equal(ExtraConfigDefaults.DebuginfoProxyContainerResources))
-		Expect(config.EbpfProfilerNodeAffinity).To(Equal(defaultNodeAffinity()))
-		Expect(config.DebuginfoProxyNodeAffinity).To(Equal(defaultNodeAffinity()))
-		config.EbpfProfilerContainerResources.Limits[corev1.ResourceMemory] = resource.MustParse("1Gi")
-		config.DebuginfoProxyNodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = nil
-		Expect(ExtraConfigDefaults.EbpfProfilerContainerResources.Limits.Memory().String()).To(Equal("512Mi"))
-		Expect(ExtraConfigDefaults.DebuginfoProxyNodeAffinity).To(Equal(defaultNodeAffinity()))
 	})
 })

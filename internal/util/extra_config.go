@@ -135,23 +135,24 @@ type ExtraConfig struct {
 	Agent0ConnectorTolerations            []corev1.Toleration                `json:"agent0ConnectorTolerations,omitempty"`
 	Agent0ConnectorNodeAffinity           *corev1.NodeAffinity               `json:"agent0ConnectorNodeAffinity,omitempty"`
 
-	EbpfProfilerContainerResources ResourceRequirementsWithGoMemLimit `json:"ebpfProfilerContainerResources"`
-	EbpfProfilerLabels             map[string]string                  `json:"ebpfProfilerLabels,omitempty"`
-	EbpfProfilerAnnotations        map[string]string                  `json:"ebpfProfilerAnnotations,omitempty"`
-	EbpfProfilerPodLabels          map[string]string                  `json:"ebpfProfilerPodLabels,omitempty"`
-	EbpfProfilerPodAnnotations     map[string]string                  `json:"ebpfProfilerPodAnnotations,omitempty"`
-	EbpfProfilerTolerations        []corev1.Toleration                `json:"ebpfProfilerTolerations,omitempty"`
-	EbpfProfilerNodeAffinity       *corev1.NodeAffinity               `json:"ebpfProfilerNodeAffinity,omitempty"`
-	EbpfProfilerPriorityClassName  string                             `json:"ebpfProfilerPriorityClassName,omitempty"`
+	// Profiling component settings come from spec.components, not the extra config file.
+	EbpfProfilerContainerResources ResourceRequirementsWithGoMemLimit `json:"-"`
+	EbpfProfilerLabels             map[string]string                  `json:"-"`
+	EbpfProfilerAnnotations        map[string]string                  `json:"-"`
+	EbpfProfilerPodLabels          map[string]string                  `json:"-"`
+	EbpfProfilerPodAnnotations     map[string]string                  `json:"-"`
+	EbpfProfilerTolerations        []corev1.Toleration                `json:"-"`
+	EbpfProfilerNodeAffinity       *corev1.NodeAffinity               `json:"-"`
+	EbpfProfilerPriorityClassName  string                             `json:"-"`
 
-	DebuginfoProxyContainerResources ResourceRequirementsWithGoMemLimit `json:"debuginfoProxyContainerResources"`
-	DebuginfoProxyLabels             map[string]string                  `json:"debuginfoProxyLabels,omitempty"`
-	DebuginfoProxyAnnotations        map[string]string                  `json:"debuginfoProxyAnnotations,omitempty"`
-	DebuginfoProxyPodLabels          map[string]string                  `json:"debuginfoProxyPodLabels,omitempty"`
-	DebuginfoProxyPodAnnotations     map[string]string                  `json:"debuginfoProxyPodAnnotations,omitempty"`
-	DebuginfoProxyTolerations        []corev1.Toleration                `json:"debuginfoProxyTolerations,omitempty"`
-	DebuginfoProxyNodeAffinity       *corev1.NodeAffinity               `json:"debuginfoProxyNodeAffinity,omitempty"`
-	DebuginfoProxyPriorityClassName  string                             `json:"debuginfoProxyPriorityClassName,omitempty"`
+	DebuginfoProxyContainerResources ResourceRequirementsWithGoMemLimit `json:"-"`
+	DebuginfoProxyLabels             map[string]string                  `json:"-"`
+	DebuginfoProxyAnnotations        map[string]string                  `json:"-"`
+	DebuginfoProxyPodLabels          map[string]string                  `json:"-"`
+	DebuginfoProxyPodAnnotations     map[string]string                  `json:"-"`
+	DebuginfoProxyTolerations        []corev1.Toleration                `json:"-"`
+	DebuginfoProxyNodeAffinity       *corev1.NodeAffinity               `json:"-"`
+	DebuginfoProxyPriorityClassName  string                             `json:"-"`
 
 	// Actually we would like to use the types *dash0v1alpha1.MonitoringTemplate, *dash0common.Filter and
 	// *dash0common.Transform here, but that leads to circular package dependencies. We should revisit how to untangle
@@ -459,8 +460,6 @@ func readExtraConfigurationFromFile(
 		&extraConfig.Agent0ConnectorContainerResources,
 		&defaults.Agent0ConnectorContainerResources,
 	)
-	applyDefaults(&extraConfig.EbpfProfilerContainerResources, &defaults.EbpfProfilerContainerResources)
-	applyDefaults(&extraConfig.DebuginfoProxyContainerResources, &defaults.DebuginfoProxyContainerResources)
 
 	return *extraConfig, nil
 }
@@ -522,12 +521,6 @@ func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig
 	}
 	if missing("agent0ConnectorNodeAffinity") {
 		extraConfig.Agent0ConnectorNodeAffinity = defaults.Agent0ConnectorNodeAffinity.DeepCopy()
-	}
-	if missing("ebpfProfilerNodeAffinity") {
-		extraConfig.EbpfProfilerNodeAffinity = defaults.EbpfProfilerNodeAffinity.DeepCopy()
-	}
-	if missing("debuginfoProxyNodeAffinity") {
-		extraConfig.DebuginfoProxyNodeAffinity = defaults.DebuginfoProxyNodeAffinity.DeepCopy()
 	}
 }
 
