@@ -5,3 +5,17 @@ tests:
   - it: leader election role binding should match snapshot
     asserts:
       - matchSnapshot: {}
+
+  - it: should bind profiler cleanup permissions even with telemetry and profiling disabled
+    set:
+      operator.telemetryCollectionEnabled: false
+      operator.ebpfProfilerEnabled: false
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: roleRef.name
+          value: dash0-operator-manager
+      - equal:
+          path: subjects[0].name
+          value: dash0-operator-controller

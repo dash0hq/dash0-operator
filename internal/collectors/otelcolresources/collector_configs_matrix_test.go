@@ -129,6 +129,7 @@ func maximalMatrixBaseline() collectorConfigMatrixEntry {
 			SignalControlCollectorMemoryLimit: resource.MustParse("500Mi"),
 			EnableProfExtension:               true,
 			ProfilingEnabled:                  true,
+			EbpfProfilerEnabled:               true,
 		},
 		monitoredNamespaces:              monitoredNamespaces,
 		namespacesWithLogCollection:      monitoredNamespaces,
@@ -438,6 +439,18 @@ func matrixSettings() []matrixSetting {
 			name: "profiling",
 			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
 				e.config.ProfilingEnabled = enabled
+				if !enabled {
+					e.config.EbpfProfilerEnabled = false
+				}
+			},
+		},
+		{
+			name: "ebpf-profiler",
+			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				e.config.EbpfProfilerEnabled = enabled
+				if enabled {
+					e.config.ProfilingEnabled = true
+				}
 			},
 		},
 		{

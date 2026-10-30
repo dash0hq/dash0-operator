@@ -35,3 +35,39 @@ tests:
             resourceNames:
               - dash0-operator-webhook-server-cert
           any: true
+
+  - it: should retain namespace-scoped profiler cleanup permissions even with telemetry and profiling disabled
+    set:
+      operator.telemetryCollectionEnabled: false
+      operator.ebpfProfilerEnabled: false
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: [apps]
+            resources: [daemonsets]
+            verbs: [get, list, watch, create, update, patch, delete]
+      - contains:
+          path: rules
+          content:
+            apiGroups: [""]
+            resources: [services, serviceaccounts]
+            verbs: [get, list, watch, create, update, patch, delete]
+      - contains:
+          path: rules
+          content:
+            apiGroups: [networking.k8s.io]
+            resources: [networkpolicies]
+            verbs: [get, list, watch, create, update, patch, delete]
+      - contains:
+          path: rules
+          content:
+            apiGroups: [""]
+            resources: [configmaps]
+            verbs: [get, list, watch, create, update, patch, delete]
+      - contains:
+          path: rules
+          content:
+            apiGroups: [""]
+            resources: [secrets]
+            verbs: [get, list, watch]

@@ -107,8 +107,11 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[26].name
           value: DASH0_CA_BUNDLE_TARGETS
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[27].name
+          value: DASH0_EBPF_PROFILER_ENABLED
+      - notExists:
+          path: spec.template.spec.containers[0].env[28].name
 
   - it: webhook certificates secret should be rendered without data
     documentSelector:
@@ -985,8 +988,11 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[45].name
           value: DASH0_CA_BUNDLE_TARGETS
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[46].name
+          value: DASH0_EBPF_PROFILER_ENABLED
+      - notExists:
+          path: spec.template.spec.containers[0].env[47].name
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
           value: 123m
@@ -1857,8 +1863,11 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[26].name
           value: DASH0_CA_BUNDLE_TARGETS
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[27].name
+          value: DASH0_EBPF_PROFILER_ENABLED
+      - notExists:
+          path: spec.template.spec.containers[0].env[28].name
 
   - it: deployment should support changing repositories for images
     chart:
@@ -1980,8 +1989,11 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[26].name
           value: DASH0_CA_BUNDLE_TARGETS
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[27].name
+          value: DASH0_EBPF_PROFILER_ENABLED
+      - notExists:
+          path: spec.template.spec.containers[0].env[28].name
 
   - it: webhook configurations should not render a caBundle if the live objects cannot be read
     set:

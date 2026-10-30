@@ -1,0 +1,79 @@
+{{- if and .Values.operator.openShift.enabled .Values.operator.ebpfProfilerEnabled }}
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: {{ .Release.Name }}-ebpf-profiler
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: ebpf-profiler
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+allowPrivilegeEscalation: true
+allowHostDirVolumePlugin: true
+allowHostPorts: false
+allowHostNetwork: false
+allowHostPID: true
+allowHostIPC: false
+allowPrivilegedContainer: true
+allowedHostPaths:
+  - pathPrefix: /proc
+    readOnly: true
+  - pathPrefix: /sys
+    readOnly: true
+readOnlyRootFilesystem: false
+runAsUser:
+  type: RunAsAny
+seLinuxContext:
+  type: RunAsAny
+fsGroup:
+  type: RunAsAny
+supplementalGroups:
+  type: RunAsAny
+seccompProfiles:
+  - runtime/default
+  - unconfined
+volumes:
+  - configMap
+  - downwardAPI
+  - emptyDir
+  - hostPath
+  - projected
+  - secret
+users: []
+groups: []
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-ebpf-profiler-scc-use
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: ebpf-profiler
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - security.openshift.io
+    resources:
+      - securitycontextconstraints
+    resourceNames:
+      - {{ .Release.Name }}-ebpf-profiler
+    verbs:
+      - use
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-ebpf-profiler-scc-use
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: ebpf-profiler
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Name }}-ebpf-profiler-scc-use
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-ebpf-profiler
+    namespace: {{ .Release.Namespace }}
+{{- end }}

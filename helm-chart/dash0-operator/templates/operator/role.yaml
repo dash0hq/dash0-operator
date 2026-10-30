@@ -38,6 +38,46 @@ rules:
   - list
   - watch
 
+# Permissions for profiler and debuginfo proxy resources stay available when the feature is disabled, for cleanup.
+# ConfigMap management and secret reads are granted by the rules below and above, respectively.
+- apiGroups:
+  - apps
+  resources:
+  - daemonsets
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - services
+  - serviceaccounts
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - networkpolicies
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+
 {{- if not .Values.operator.certManager.useCertManager }}
 
 # Permissions required to store the webhook certificates, which the operator manages itself if cert-manager is not used:

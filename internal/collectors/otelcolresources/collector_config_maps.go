@@ -125,6 +125,8 @@ type collectorConfigurationTemplateValues struct {
 	DebugVerbosityDetailed                           bool
 	EnableProfExtension                              bool
 	ProfilingEnabled                                 bool
+	EbpfProfilerEnabled                              bool
+	PodAssociationPipelines                          map[string]string
 	SignalControl                                    SignalControlConfig
 	SignalControlGatewayActive                       bool
 	SignalControlCollectorServiceName                string
@@ -398,6 +400,11 @@ func newCollectorConfigurationTemplateValues(
 		memoryLimiterSpikeMiB = settings.SpikeMiB
 	}
 
+	podAssociationPipelines := map[string]string{"common-processors": "k8s_attributes"}
+	if config.EbpfProfilerEnabled {
+		podAssociationPipelines["ebpf-profiler"] = "k8s_attributes/profiles"
+	}
+
 	return &collectorConfigurationTemplateValues{
 		OperatorNamespace:           config.OperatorNamespace,
 		OperatorResourcesNamePrefix: config.NamePrefix,
@@ -439,6 +446,8 @@ func newCollectorConfigurationTemplateValues(
 		DebugVerbosityDetailed:                           config.DebugVerbosityDetailed,
 		EnableProfExtension:                              config.EnableProfExtension,
 		ProfilingEnabled:                                 config.ProfilingEnabled,
+		EbpfProfilerEnabled:                              config.EbpfProfilerEnabled,
+		PodAssociationPipelines:                          podAssociationPipelines,
 		SignalControl:                                    config.SignalControl,
 		SignalControlGatewayActive:                       config.signalControlGatewayActive(),
 		SignalControlCollectorServiceName:                SignalControlCollectorServiceName(config.NamePrefix),

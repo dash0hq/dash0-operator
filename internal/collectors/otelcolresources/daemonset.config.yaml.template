@@ -64,6 +64,30 @@ connectors:
   forward/profiles-default-exporter: {}
   {{- end }}
 
+  {{- if .EbpfProfilerEnabled }}
+  routing/traces-source:
+    default_pipelines: [traces/common-processors]
+    error_mode: ignore
+    table:
+      - context: resource
+        condition: attributes["parca.agent"] == "true"
+        pipelines: [traces/ebpf-profiler]
+  routing/metrics-source:
+    default_pipelines: [metrics/common-processors]
+    error_mode: ignore
+    table:
+      - context: resource
+        condition: attributes["parca.agent"] == "true"
+        pipelines: [metrics/ebpf-profiler]
+  routing/logs-source:
+    default_pipelines: [logs/common-processors]
+    error_mode: ignore
+    table:
+      - context: resource
+        condition: attributes["parca.agent"] == "true"
+        pipelines: [logs/ebpf-profiler]
+  {{- end }}
+
   {{- if $useRouting }}
   routing/traces:
 {{- if $gwDefault }}
@@ -1096,19 +1120,43 @@ service:
   {{- end }}
 
   pipelines:
+    {{- if .EbpfProfilerEnabled }}
+    traces/route-source:
+      receivers:
+        - forward/traces-processors
+      exporters:
+        - routing/traces-source
+    metrics/route-source:
+      receivers:
+        - forward/metrics-processors
+      exporters:
+        - routing/metrics-source
+    logs/route-source:
+      receivers:
+        - forward/logs-processors
+      exporters:
+        - routing/logs-source
+    {{- end }}
+
     traces/otlp-to-forwarder:
       receivers:
         - otlp
       exporters:
         - forward/traces-processors
 
-    traces/common-processors:
+{{- range $pipeline, $podAssociation := .PodAssociationPipelines }}
+{{- with $ }}
+    traces/{{ $pipeline }}:
       receivers:
+        {{- if .EbpfProfilerEnabled }}
+        - routing/traces-source
+        {{- else }}
         - forward/traces-processors
+        {{- end }}
       processors:
         - memory_limiter
         - resource_detection
-        - k8s_attributes
+        - {{ $podAssociation }}
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
@@ -1133,6 +1181,8 @@ service:
         {{- else }}
         - forward/traces-default-exporter
         {{- end }}
+{{- end }}
+{{- end }}
 
 {{- if and $useRouting $gwActive }}
 
@@ -1231,12 +1281,18 @@ service:
         - forward/metrics-processors
     {{- end }}
 
-    metrics/common-processors:
+{{- range $pipeline, $podAssociation := .PodAssociationPipelines }}
+{{- with $ }}
+    metrics/{{ $pipeline }}:
       receivers:
+        {{- if .EbpfProfilerEnabled }}
+        - routing/metrics-source
+        {{- else }}
         - forward/metrics-processors
+        {{- end }}
       processors:
         - resource_detection
-        - k8s_attributes
+        - {{ $podAssociation }}
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
@@ -1264,6 +1320,8 @@ service:
         {{- else }}
         - forward/metrics-default-exporter
         {{- end }}
+{{- end }}
+{{- end }}
 
 {{- if and $useRouting $gwActive }}
 
@@ -1368,12 +1426,18 @@ service:
         - forward/logs-processors
     {{- end }}
 
-    logs/common-processors:
+{{- range $pipeline, $podAssociation := .PodAssociationPipelines }}
+{{- with $ }}
+    logs/{{ $pipeline }}:
       receivers:
+        {{- if .EbpfProfilerEnabled }}
+        - routing/logs-source
+        {{- else }}
         - forward/logs-processors
+        {{- end }}
       processors:
         - resource_detection
-        - k8s_attributes
+        - {{ $podAssociation }}
         {{- if .NamespacesWithLogCollection }}
         - transform/logs/filelog_service_attributes
         {{- end }}
@@ -1401,6 +1465,8 @@ service:
         {{- else }}
         - forward/logs-default-exporter
         {{- end }}
+{{- end }}
+{{- end }}
 
 {{- if and $useRouting $gwActive }}
 

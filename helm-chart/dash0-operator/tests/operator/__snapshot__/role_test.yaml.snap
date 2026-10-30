@@ -36,6 +36,43 @@ leader election role should match snapshot:
           - list
           - watch
       - apiGroups:
+          - apps
+        resources:
+          - daemonsets
+        verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+          - patch
+          - delete
+      - apiGroups:
+          - ""
+        resources:
+          - services
+          - serviceaccounts
+        verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+          - patch
+          - delete
+      - apiGroups:
+          - networking.k8s.io
+        resources:
+          - networkpolicies
+        verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+          - patch
+          - delete
+      - apiGroups:
           - ""
         resourceNames:
           - dash0-operator-webhook-server-cert

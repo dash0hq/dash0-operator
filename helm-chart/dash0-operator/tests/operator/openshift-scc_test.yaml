@@ -56,3 +56,25 @@ tests:
       - equal:
           path: subjects[0].name
           value: RELEASE-NAME-opentelemetry-collector-sa
+
+  - it: should not broaden the collector SCC when profiling is enabled
+    set:
+      operator.openShift.enabled: true
+      operator.ebpfProfilerEnabled: true
+      operator.ebpfProfilerImage.tag: test-agent
+    documentSelector:
+      path: kind
+      value: SecurityContextConstraints
+    asserts:
+      - equal:
+          path: allowPrivilegedContainer
+          value: false
+      - equal:
+          path: allowHostPID
+          value: false
+      - equal:
+          path: allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: allowedCapabilities
+          value: [CHOWN]
