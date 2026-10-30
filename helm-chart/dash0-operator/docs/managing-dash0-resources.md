@@ -968,12 +968,6 @@ in the span context for `spans` rules and in the log context for `logs` rules. `
 The Dash0 API validates the OTTL expressions when the rule is synchronized; an invalid expression is reported as a
 synchronization error in the status of the signal-to-metrics resource.
 
-By default, the metric is written to the dataset the rule is synchronized to. Set `spec.targetDatasetMode` to
-`alternative` to write it to the dataset with the slug given in `spec.alternativeDatasetId` instead, or to `both` to
-write it to both datasets. The alternative dataset must exist in the Dash0 organization, otherwise the synchronization
-fails. If the operator synchronizes the rule to several datasets (for example via namespace-specific Dash0 exports),
-each copy of the rule writes the metric for the signals of its own dataset to the same alternative dataset.
-
 You can opt out of synchronization for individual signal-to-metrics resources by adding the Kubernetes label
 `dash0.com/enable: false` to the resource.
 If this label is added to a signal-to-metrics resource which has previously been synchronized to Dash0, the operator

@@ -47,11 +47,6 @@ spec:
             description: Dash0SignalToMetricsSpec defines the desired state of a SignalToMetrics
               rule.
             properties:
-              alternativeDatasetId:
-                description: The slug of the alternative dataset, for targetDatasetMode
-                  alternative or both.
-                pattern: \S
-                type: string
               display:
                 description: Display configuration for the rule (e.g. the human-readable
                   name shown in the Dash0 UI).
@@ -281,25 +276,12 @@ spec:
                   rule: '!has(self.maxSize) || (has(self.type) && self.type == ''exponential-histogram'')'
                 - message: count is only allowed when type is 'exponential-histogram'
                   rule: '!has(self.count) || (has(self.type) && self.type == ''exponential-histogram'')'
-              targetDatasetMode:
-                description: The dataset(s) the generated metric is written to (original,
-                  alternative or both). Defaults to original.
-                enum:
-                - original
-                - alternative
-                - both
-                type: string
             required:
             - display
             - enabled
             - match
             - output
             type: object
-            x-kubernetes-validations:
-            - message: alternativeDatasetId must be set when targetDatasetMode is
-                'alternative' or 'both', and must not be set otherwise
-              rule: (has(self.targetDatasetMode) && self.targetDatasetMode != 'original')
-                == has(self.alternativeDatasetId)
           status:
             description: Dash0SignalToMetricsStatus defines the observed state of
               a Dash0SignalToMetrics resource.

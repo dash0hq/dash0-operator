@@ -438,7 +438,10 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 			reflect.TypeFor[dash0v1alpha1.Dash0SignalToMetricsSpec](),
 			reflect.TypeFor[dash0apiclient.SignalToMetricsSpec](),
 			nil,
-			nil,
+			map[string]string{
+				"alternativeDatasetId": "not supported by Dash0SignalToMetrics yet",
+				"targetDatasetMode":    "not supported by Dash0SignalToMetrics yet",
+			},
 		)
 	})
 

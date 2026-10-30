@@ -24,8 +24,6 @@ type Dash0SignalToMetrics struct {
 }
 
 // Dash0SignalToMetricsSpec defines the desired state of a SignalToMetrics rule.
-//
-// +kubebuilder:validation:XValidation:rule="(has(self.targetDatasetMode) && self.targetDatasetMode != 'original') == has(self.alternativeDatasetId)",message="alternativeDatasetId must be set when targetDatasetMode is 'alternative' or 'both', and must not be set otherwise"
 type Dash0SignalToMetricsSpec struct {
 	// Whether this rule is active.
 	// +kubebuilder:validation:Required
@@ -42,26 +40,7 @@ type Dash0SignalToMetricsSpec struct {
 	// Output controls the metric that is produced for matching signals.
 	// +kubebuilder:validation:Required
 	Output Dash0SignalToMetricsOutput `json:"output"`
-
-	// The dataset(s) the generated metric is written to (original, alternative or both). Defaults to original.
-	// +kubebuilder:validation:Optional
-	TargetDatasetMode *Dash0SignalToMetricsTargetDatasetMode `json:"targetDatasetMode,omitempty"`
-
-	// The slug of the alternative dataset, for targetDatasetMode alternative or both.
-	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:Pattern=`\S`
-	AlternativeDatasetId *string `json:"alternativeDatasetId,omitempty"`
 }
-
-// Dash0SignalToMetricsTargetDatasetMode is the dataset(s) a rule writes its metric to.
-// +kubebuilder:validation:Enum=original;alternative;both
-type Dash0SignalToMetricsTargetDatasetMode string
-
-const (
-	Dash0SignalToMetricsTargetDatasetModeOriginal    Dash0SignalToMetricsTargetDatasetMode = "original"
-	Dash0SignalToMetricsTargetDatasetModeAlternative Dash0SignalToMetricsTargetDatasetMode = "alternative"
-	Dash0SignalToMetricsTargetDatasetModeBoth        Dash0SignalToMetricsTargetDatasetMode = "both"
-)
 
 // Dash0SignalToMetricsDisplay defines display configuration.
 type Dash0SignalToMetricsDisplay struct {
