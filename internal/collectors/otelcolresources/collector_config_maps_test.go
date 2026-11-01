@@ -5881,6 +5881,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					transformRaw.(map[string]any)["log_statements"].([]any)[0].(map[string]any)
 				Expect(transformStatementGroup["conditions"]).To(
 					Equal([]any{`IsMap(log.body) and log.body["object"] != nil`}))
+				Expect(transformStatementGroup["statements"]).To(Equal([]any{
+					`set(log.attributes["k8s.object.resource_version"], ` +
+						`log.body["object"]["metadata"]["resourceVersion"]) ` +
+						`where log.body["object"]["metadata"]["resourceVersion"] != nil`,
+					`delete_key(log.body["object"]["metadata"], "managedFields")`,
+					`delete_key(log.body["object"]["metadata"]["annotations"], ` +
+						`"kubectl.kubernetes.io/last-applied-configuration") ` +
+						`where log.body["object"]["metadata"]["annotations"] != nil`,
+					`delete_key(log.body["object"]["status"], "images") ` +
+						`where log.body["object"]["status"]["images"] != nil`,
+				}))
 
 				redactionRaw := ReadFromMap(collectorConfig, []string{"processors", "redaction/k8s_objects"})
 				Expect(redactionRaw).ToNot(BeNil())
