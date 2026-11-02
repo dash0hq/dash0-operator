@@ -5886,8 +5886,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						`log.body["object"]["metadata"]["resourceVersion"]) ` +
 						`where log.body["object"]["metadata"]["resourceVersion"] != nil`,
 					`delete_key(log.body["object"]["metadata"], "managedFields")`,
-					`delete_key(log.body["object"]["metadata"]["annotations"], ` +
-						`"kubectl.kubernetes.io/last-applied-configuration") ` +
+					`delete_matching_keys(log.body["object"]["metadata"]["annotations"], ` +
+						`"^(kubectl\\.kubernetes\\.io/last-applied-configuration|kapp\\.k14s\\.io/original|` +
+						`objectset\\.rio\\.cattle\\.io/applied|banzaicloud\\.com/last-applied)$") ` +
 						`where log.body["object"]["metadata"]["annotations"] != nil`,
 					`delete_key(log.body["object"]["status"], "images") ` +
 						`where log.body["object"]["status"]["images"] != nil`,
