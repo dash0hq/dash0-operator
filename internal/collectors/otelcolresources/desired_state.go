@@ -460,9 +460,12 @@ func assembleDesiredStateForUpsert(
 			namespacesWithEventCollection = append(namespacesWithEventCollection, namespace)
 		}
 		// Kubernetes object collection requires both the cluster-wide switch on the operator configuration resource and
-		// the per-namespace opt-in on the monitoring resource.
+		// the per-namespace opt-in on the monitoring resource. The operator namespace is excluded: the manifests of the
+		// operator's own workloads can embed the ingest token (the --operator-configuration-token container arg, or
+		// the last-applied annotation on the collector resources) in places the redaction processor cannot mask.
 		if config.KubernetesObjectCollectionEnabled &&
-			pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.KubernetesObjectCollection.Enabled, false) {
+			pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.KubernetesObjectCollection.Enabled, false) &&
+			namespace != config.OperatorNamespace {
 			namespacesWithKubernetesObjectCollection = append(namespacesWithKubernetesObjectCollection, namespace)
 		}
 		if pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScraping.Enabled, true) {

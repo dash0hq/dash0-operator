@@ -716,6 +716,32 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Entry("cluster-wide switch on, namespace opt-in on", true, true),
 	)
 
+	It("should not enable Kubernetes object collection for the operator namespace", func() {
+		// The manifests of the operator's own workloads can embed the ingest token in places the redaction processor
+		// cannot mask, so the operator namespace must never be part of the k8s_objects receiver configuration.
+		monitoringResources := []dash0v1beta1.Dash0Monitoring{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      MonitoringResourceName,
+					Namespace: OperatorNamespace,
+				},
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					EventCollection:            dash0common.EventCollection{Enabled: new(false)},
+					KubernetesObjectCollection: dash0common.KubernetesObjectCollection{Enabled: new(true)},
+				},
+			},
+		}
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace:                 OperatorNamespace,
+			NamePrefix:                        namePrefix,
+			Exporters:                         defaultDash0ExportersWithToken(),
+			Images:                            TestImages,
+			KubernetesObjectCollectionEnabled: true,
+		}, monitoringResources, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(getDeployment(desiredState)).To(BeNil())
+	})
+
 	It("should describe the desired state as a set of Kubernetes client objects", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
