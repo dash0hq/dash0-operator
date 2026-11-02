@@ -34,6 +34,7 @@ import (
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/profiling"
+	"github.com/dash0hq/dash0-operator/internal/profiling/prresources"
 	testutil "github.com/dash0hq/dash0-operator/test/util"
 )
 
@@ -249,9 +250,9 @@ func TestProfilerLifecycle(t *testing.T) {
 				require.NoError(t, r.Delete(context.Background(), pod))
 				configuration.Spec.Profiling.EbpfProfiler.Enabled = ptr.To(false)
 			case "helm":
-				r.Config.Enabled = false
+				r.Manager.ResourceManager.Config.Enabled = false
 			case "telemetry":
-				r.Config.TelemetryCollectionEnabled = false
+				r.Manager.ResourceManager.Config.TelemetryCollectionEnabled = false
 			case "delete":
 				require.NoError(t, r.Delete(context.Background(), configuration))
 			}
@@ -276,7 +277,7 @@ func TestProfilerLifecycle(t *testing.T) {
 				require.True(t, apierrors.IsNotFound(err))
 			}
 			if disable != "delete" {
-				r.Config.Enabled, r.Config.TelemetryCollectionEnabled = true, true
+				r.Manager.ResourceManager.Config.Enabled, r.Manager.ResourceManager.Config.TelemetryCollectionEnabled = true, true
 				configuration.Spec.Profiling.EbpfProfiler.Enabled = ptr.To(true)
 				configuration.Spec.Profiling.EbpfProfiler.Debuginfo = nil
 				configuration.Spec.Exports = []dash0common.Export{{Dash0: &dash0common.Dash0Configuration{
@@ -345,7 +346,7 @@ func TestProxyPolicyRemainsUntilPodsTerminate(t *testing.T) {
 
 func TestProfilerReconcilesWithNamespacedOperandPermissions(t *testing.T) {
 	r, configuration := fixture(t)
-	require.NoError(t, rbacv1.AddToScheme(r.Scheme))
+	require.NoError(t, rbacv1.AddToScheme(r.Scheme()))
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases", "operator.dash0.com_dash0operatorconfigurations.yaml")},
 		ErrorIfCRDPathMissing: true,
@@ -355,7 +356,7 @@ func TestProfilerReconcilesWithNamespacedOperandPermissions(t *testing.T) {
 	adminConfig, err := testEnv.Start()
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, testEnv.Stop()) })
-	admin, err := client.New(adminConfig, client.Options{Scheme: r.Scheme})
+	admin, err := client.New(adminConfig, client.Options{Scheme: r.Scheme()})
 	require.NoError(t, err)
 	ctx := context.Background()
 	require.NoError(t, admin.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "operator"}}))
@@ -385,7 +386,7 @@ func TestProfilerReconcilesWithNamespacedOperandPermissions(t *testing.T) {
 	} {
 		require.NoError(t, admin.Create(ctx, object))
 	}
-	mgr, err := ctrl.NewManager(user.Config(), ctrl.Options{Scheme: r.Scheme, Metrics: metricsserver.Options{BindAddress: "0"}})
+	mgr, err := ctrl.NewManager(user.Config(), ctrl.Options{Scheme: r.Scheme(), Metrics: metricsserver.Options{BindAddress: "0"}})
 	require.NoError(t, err)
 	require.NoError(t, r.SetupWithManager(mgr))
 	managerCtx, cancel := context.WithCancel(ctx)
@@ -450,11 +451,12 @@ func fixture(t *testing.T) (*profiling.Reconciler, *dash0v1alpha1.Dash0OperatorC
 		&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "authorization", Namespace: "operator"}, Data: map[string][]byte{"token": []byte("backend-token")}},
 		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "operator", Labels: map[string]string{"owned-by": "user"}}},
 	).Build()
-	r := &profiling.Reconciler{Client: c, Scheme: scheme, OperatorDeployment: &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
+	resourceManager := prresources.NewResourceManager(c, scheme, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
 		Name: "operator", Namespace: "operator", UID: "operator-deployment",
-	}}, Config: profiling.Config{Namespace: "operator", NamePrefix: "test", Enabled: true, TelemetryCollectionEnabled: true,
+	}}, prresources.Config{Namespace: "operator", NamePrefix: "test", Enabled: true, TelemetryCollectionEnabled: true,
 		ProfilerImage: "ghcr.io/parca-dev/parca-agent:v0.51.2", ProxyImage: "debuginfo-proxy:test",
-	}}
+	})
+	r := profiling.NewReconciler(c, profiling.NewManager(resourceManager))
 	require.NoError(t, c.Get(context.Background(), client.ObjectKeyFromObject(configuration), configuration))
 	return r, configuration
 }

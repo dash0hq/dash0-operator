@@ -58,6 +58,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/postinstall"
 	"github.com/dash0hq/dash0-operator/internal/predelete"
 	"github.com/dash0hq/dash0-operator/internal/profiling"
+	"github.com/dash0hq/dash0-operator/internal/profiling/prresources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol/scresources"
@@ -2031,16 +2032,18 @@ func startDash0Controllers(
 		return err
 	}
 
-	profilerReconciler := &profiling.Reconciler{
-		Client: k8sClient, Scheme: mgr.GetScheme(), OperatorDeployment: operatorDeploymentSelfReference,
-		Config: profiling.Config{
+	profilerResourceManager := prresources.NewResourceManager(
+		k8sClient, mgr.GetScheme(), operatorDeploymentSelfReference,
+		prresources.Config{
 			Namespace: envVars.operatorNamespace, NamePrefix: envVars.oTelCollectorNamePrefix,
 			Enabled: envVars.ebpfProfilerEnabled, TelemetryCollectionEnabled: cliArgs.telemetryCollectionEnabled,
 			ProfilerImage: envVars.ebpfProfilerImage, ProfilerImagePullPolicy: envVars.ebpfProfilerImagePullPolicy,
 			ProxyImage: envVars.debuginfoProxyImage, ProxyImagePullPolicy: envVars.debuginfoProxyImagePullPolicy,
 			IsOpenShift: cliArgs.isOpenShift,
 		},
-	}
+	)
+	profilerManager := profiling.NewManager(profilerResourceManager)
+	profilerReconciler := profiling.NewReconciler(k8sClient, profilerManager)
 	if err := profilerReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the eBPF profiler reconciler: %w", err)
 	}
