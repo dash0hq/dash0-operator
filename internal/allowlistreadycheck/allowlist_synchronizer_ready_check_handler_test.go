@@ -5,6 +5,7 @@ package allowlistreadycheck
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -50,7 +51,7 @@ var _ = Describe("Waiting for the AllowlistSynchronizer to become ready (pre-ins
 
 		It("should time out if the AllowlistSynchronizer resource does not exist", func() {
 			startTime := time.Now()
-			var elapsedTimeNanoseconds int64
+			var elapsedTimeNanoseconds atomic.Int64
 
 			go func() {
 				defer GinkgoRecover()
@@ -59,11 +60,11 @@ var _ = Describe("Waiting for the AllowlistSynchronizer to become ready (pre-ins
 						"waiting for AllowlistSynchronizer dash0-allowlist-synchronizer to become ready has timed out",
 					)),
 				)
-				elapsedTimeNanoseconds = time.Since(startTime).Nanoseconds()
+				elapsedTimeNanoseconds.Store(time.Since(startTime).Nanoseconds())
 			}()
 
 			Eventually(func(g Gomega) {
-				verifyTimeout(g, elapsedTimeNanoseconds)
+				verifyTimeout(g, elapsedTimeNanoseconds.Load())
 			}, preInstallHandlerTimeoutForTests, 100*time.Millisecond).Should(Succeed())
 		})
 
@@ -71,7 +72,7 @@ var _ = Describe("Waiting for the AllowlistSynchronizer to become ready (pre-ins
 			createAllowlistSynchronizer(ctx, nil, nil)
 
 			startTime := time.Now()
-			var elapsedTimeNanoseconds int64
+			var elapsedTimeNanoseconds atomic.Int64
 
 			go func() {
 				defer GinkgoRecover()
@@ -80,11 +81,11 @@ var _ = Describe("Waiting for the AllowlistSynchronizer to become ready (pre-ins
 						"waiting for AllowlistSynchronizer dash0-allowlist-synchronizer to become ready has timed out",
 					)),
 				)
-				elapsedTimeNanoseconds = time.Since(startTime).Nanoseconds()
+				elapsedTimeNanoseconds.Store(time.Since(startTime).Nanoseconds())
 			}()
 
 			Eventually(func(g Gomega) {
-				verifyTimeout(g, elapsedTimeNanoseconds)
+				verifyTimeout(g, elapsedTimeNanoseconds.Load())
 			}, preInstallHandlerTimeoutForTests, 100*time.Millisecond).Should(Succeed())
 		})
 
@@ -100,7 +101,7 @@ var _ = Describe("Waiting for the AllowlistSynchronizer to become ready (pre-ins
 			}, nil)
 
 			startTime := time.Now()
-			var elapsedTimeNanoseconds int64
+			var elapsedTimeNanoseconds atomic.Int64
 
 			go func() {
 				defer GinkgoRecover()
@@ -109,11 +110,11 @@ var _ = Describe("Waiting for the AllowlistSynchronizer to become ready (pre-ins
 						"waiting for AllowlistSynchronizer dash0-allowlist-synchronizer to become ready has timed out",
 					)),
 				)
-				elapsedTimeNanoseconds = time.Since(startTime).Nanoseconds()
+				elapsedTimeNanoseconds.Store(time.Since(startTime).Nanoseconds())
 			}()
 
 			Eventually(func(g Gomega) {
-				verifyTimeout(g, elapsedTimeNanoseconds)
+				verifyTimeout(g, elapsedTimeNanoseconds.Load())
 			}, preInstallHandlerTimeoutForTests, 100*time.Millisecond).Should(Succeed())
 		})
 
@@ -129,7 +130,7 @@ var _ = Describe("Waiting for the AllowlistSynchronizer to become ready (pre-ins
 			}, nil)
 
 			startTime := time.Now()
-			var elapsedTimeNanoseconds int64
+			var elapsedTimeNanoseconds atomic.Int64
 
 			go func() {
 				defer GinkgoRecover()
@@ -138,11 +139,11 @@ var _ = Describe("Waiting for the AllowlistSynchronizer to become ready (pre-ins
 						"waiting for AllowlistSynchronizer dash0-allowlist-synchronizer to become ready has timed out",
 					)),
 				)
-				elapsedTimeNanoseconds = time.Since(startTime).Nanoseconds()
+				elapsedTimeNanoseconds.Store(time.Since(startTime).Nanoseconds())
 			}()
 
 			Eventually(func(g Gomega) {
-				verifyTimeout(g, elapsedTimeNanoseconds)
+				verifyTimeout(g, elapsedTimeNanoseconds.Load())
 			}, preInstallHandlerTimeoutForTests, 100*time.Millisecond).Should(Succeed())
 		})
 
@@ -165,7 +166,7 @@ var _ = Describe("Waiting for the AllowlistSynchronizer to become ready (pre-ins
 			})
 
 			startTime := time.Now()
-			var elapsedTimeNanoseconds int64
+			var elapsedTimeNanoseconds atomic.Int64
 
 			go func() {
 				defer GinkgoRecover()
@@ -174,11 +175,11 @@ var _ = Describe("Waiting for the AllowlistSynchronizer to become ready (pre-ins
 						"waiting for AllowlistSynchronizer dash0-allowlist-synchronizer to become ready has timed out",
 					)),
 				)
-				elapsedTimeNanoseconds = time.Since(startTime).Nanoseconds()
+				elapsedTimeNanoseconds.Store(time.Since(startTime).Nanoseconds())
 			}()
 
 			Eventually(func(g Gomega) {
-				verifyTimeout(g, elapsedTimeNanoseconds)
+				verifyTimeout(g, elapsedTimeNanoseconds.Load())
 			}, preInstallHandlerTimeoutForTests, 100*time.Millisecond).Should(Succeed())
 		})
 
