@@ -1935,6 +1935,7 @@ func startDash0Controllers(
 			TargetAllocatorNamePrefix:              envVars.targetAllocatorNamePrefix,
 			Agent0ConnectorEnabledViaHelm:          envVars.agent0ConnectorEnabled,
 			SyntheticsWorkerEnabledViaHelm:         envVars.syntheticsWorkerEnabled,
+			EbpfProfilerEnabledViaHelm:             envVars.ebpfProfilerEnabled,
 			SendBatchSize:                          envVars.sendBatchSize,
 			SendBatchMaxSize:                       envVars.sendBatchMaxSize,
 			K8sAttributesDisableReplicasetInformer: envVars.k8sAttributesDisableReplicasetInformer,

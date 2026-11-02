@@ -274,14 +274,16 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
 		})
 
-		It("should retain profiler source routing without adding ports across profiling toggles", func() {
+		It("should enable profiler source routing only with profiling and the profiler enabled without adding ports", func() {
 			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 			operatorConfiguration.Spec.Profiling = &dash0v1alpha1.Profiling{
 				Enabled: ptr.To(true), EbpfProfiler: &dash0v1alpha1.EbpfProfiler{},
 			}
-			for _, tc := range []struct{ profiling, resource bool }{
-				{false, false}, {true, false}, {true, true}, {false, true}, {true, true}, {true, false},
+			for _, tc := range []struct{ helm, profiling, resource bool }{
+				{false, false, false}, {true, true, false}, {true, true, true}, {false, true, true},
+				{true, true, true}, {true, false, true}, {true, true, true}, {true, true, false},
 			} {
+				oTelColResourceManager.collectorConfig.EbpfProfilerEnabledViaHelm = tc.helm
 				operatorConfiguration.Spec.Profiling.Enabled = ptr.To(tc.profiling)
 				operatorConfiguration.Spec.Profiling.EbpfProfiler.Enabled = ptr.To(tc.resource)
 				_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
@@ -302,7 +304,13 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				collectorConfig := parseConfigMapContent(GetOTelColDaemonSetConfigMap(ctx, k8sClient, OperatorNamespace))
 				connectors := collectorConfig["connectors"].(map[string]any)
 				for _, signal := range []string{"traces", "metrics", "logs"} {
-					Expect(connectors).To(HaveKey("routing/" + signal + "-source"))
+					if tc.helm && tc.profiling && tc.resource {
+						Expect(connectors).To(HaveKey("routing/" + signal + "-source"))
+					} else {
+						Expect(connectors).ToNot(HaveKey("routing/" + signal + "-source"))
+					}
+					Expect(readPipelineProcessors(readPipelines(collectorConfig), signal+"/common-processors")).To(
+						ContainElement("filter/profiler-source"))
 				}
 			}
 		})

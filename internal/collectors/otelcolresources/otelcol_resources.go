@@ -242,8 +242,11 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		DebugVerbosityDetailed:    m.collectorConfig.DebugVerbosityDetailed,
 		EnableProfExtension:       m.collectorConfig.EnableProfExtension,
 		ProfilingEnabled:          profilingEnabled,
-		CompressConfigMap:         m.collectorConfig.CompressConfigMap,
-		SignalControlSceOnlyMode:  m.collectorConfig.SignalControlSceOnlyMode,
+		EbpfProfilerEnabled: m.collectorConfig.EbpfProfilerEnabledViaHelm && profilingEnabled &&
+			operatorConfigurationResource.Spec.Profiling.EbpfProfiler != nil &&
+			pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.Profiling.EbpfProfiler.Enabled, false),
+		CompressConfigMap:        m.collectorConfig.CompressConfigMap,
+		SignalControlSceOnlyMode: m.collectorConfig.SignalControlSceOnlyMode,
 	}
 	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
 		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume

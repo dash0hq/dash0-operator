@@ -175,7 +175,10 @@ func TestDebuginfoDestinationsAndCredentialRotation(t *testing.T) {
 		Dash0: &dash0common.Dash0Configuration{Endpoint: "http://other-backend:4317", Dataset: "second",
 			Authorization: dash0common.Authorization{Token: ptr.To("literal-backend-token")}},
 		Grpc: &dash0common.GrpcConfiguration{Endpoint: "never-debuginfo:4317"},
-	}, dash0common.Export{Http: &dash0common.HttpConfiguration{Endpoint: "http://never-http:4318"}})
+	}, dash0common.Export{Http: &dash0common.HttpConfiguration{Endpoint: "http://never-http:4318"}},
+		dash0common.Export{Dash0: &dash0common.Dash0Configuration{Endpoint: "https://user:password@bad:4317/path?secret=value"}},
+		dash0common.Export{Dash0: &dash0common.Dash0Configuration{Endpoint: "missing-port"}},
+		dash0common.Export{Dash0: &dash0common.Dash0Configuration{Endpoint: "missing-auth:4317"}})
 	reconcile(t, r, configuration)
 	cm := &corev1.ConfigMap{}
 	require.NoError(t, r.Get(context.Background(), key("debuginfo-proxy"), cm))
@@ -226,6 +229,19 @@ func TestDebuginfoDestinationsAndCredentialRotation(t *testing.T) {
 		if env.ValueFrom != nil {
 			require.Equal(t, "authorization", env.ValueFrom.SecretKeyRef.Name)
 		}
+	}
+}
+
+func TestInvalidDebuginfoDestinationsDoNotStopSampling(t *testing.T) {
+	r, configuration := fixture(t)
+	reconcile(t, r, configuration)
+	configuration.Spec.Exports = []dash0common.Export{{Dash0: &dash0common.Dash0Configuration{Endpoint: "invalid"}}}
+	reconcile(t, r, configuration)
+	profiler := &appsv1.DaemonSet{}
+	require.NoError(t, r.Get(context.Background(), key("ebpf-profiler"), profiler))
+	require.Contains(t, profiler.Spec.Template.Spec.Containers[0].Args, "--debuginfo-upload-disable")
+	for _, object := range []client.Object{&appsv1.DaemonSet{}, &corev1.ConfigMap{}, &corev1.Service{}} {
+		require.True(t, apierrors.IsNotFound(r.Get(context.Background(), key("debuginfo-proxy"), object)))
 	}
 }
 

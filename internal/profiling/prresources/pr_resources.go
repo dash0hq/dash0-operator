@@ -59,7 +59,7 @@ func (m *ResourceManager) CreateOrUpdateResources(ctx context.Context, configura
 	profiler := configuration.Spec.Profiling.EbpfProfiler
 	var err error
 	if profiler.Debuginfo == nil || ptr.Deref(profiler.Debuginfo.UploadEnabled, true) {
-		proxyConfig, err = buildProxyConfiguration(configuration)
+		proxyConfig, err = buildProxyConfiguration(ctx, configuration)
 		if err != nil {
 			return changes, err
 		}

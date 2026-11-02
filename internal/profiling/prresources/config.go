@@ -4,6 +4,7 @@
 package prresources
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 const proxyPort int32 = 7070
@@ -27,10 +29,10 @@ type proxyConfiguration struct {
 }
 
 // buildProxyConfiguration derives destinations exclusively from cluster-wide Dash0 exports.
-func buildProxyConfiguration(configuration *dash0v1alpha1.Dash0OperatorConfiguration) (proxyConfiguration, error) {
+func buildProxyConfiguration(ctx context.Context, configuration *dash0v1alpha1.Dash0OperatorConfiguration) (proxyConfiguration, error) {
 	exporters := map[string]any{}
 	var env []corev1.EnvVar
-	for _, export := range configuration.EffectiveExports() {
+	for index, export := range configuration.EffectiveExports() {
 		if export.Dash0 == nil {
 			continue
 		}
@@ -41,12 +43,14 @@ func buildProxyConfiguration(configuration *dash0v1alpha1.Dash0OperatorConfigura
 			parsed, err := url.Parse(endpoint)
 			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
 				parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
-				return proxyConfiguration{}, fmt.Errorf("invalid Dash0 debuginfo endpoint")
+				logd.FromContext(ctx).Warn("Skipping debuginfo destination with an invalid endpoint", "exportIndex", index)
+				continue
 			}
 			endpoint = parsed.Host
 		}
 		if host, port, err := net.SplitHostPort(endpoint); err != nil || host == "" || port == "" {
-			return proxyConfiguration{}, fmt.Errorf("Dash0 debuginfo endpoint must contain a host and port")
+			logd.FromContext(ctx).Warn("Skipping debuginfo destination without a host and port", "exportIndex", index)
+			continue
 		}
 		uploadDestination := *destination
 		uploadDestination.ApiEndpoint, uploadDestination.Keepalive = "", nil
@@ -62,7 +66,8 @@ func buildProxyConfiguration(configuration *dash0v1alpha1.Dash0OperatorConfigura
 		envName := "DASH0_DEBUGINFO_TOKEN_" + strings.ToUpper(id)
 		authorization, err := util.CreateEnvVarForAuthorization(destination.Authorization, envName)
 		if err != nil {
-			return proxyConfiguration{}, fmt.Errorf("Dash0 debuginfo destination requires authorization: %w", err)
+			logd.FromContext(ctx).Warn("Skipping debuginfo destination without valid authorization", "exportIndex", index)
+			continue
 		}
 		env = append(env, authorization)
 		headers := map[string]string{"authorization": "Bearer ${env:" + envName + "}"}

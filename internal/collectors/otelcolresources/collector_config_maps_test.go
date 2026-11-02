@@ -1753,6 +1753,21 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					agentPipeline := signal + "/ebpf-profiler"
 					commonPipeline := signal + "/common-processors"
 					sourceRouter := "routing/" + signal + "-source"
+					commonProcessors := readPipelineProcessors(pipelines, commonPipeline)
+					Expect(slices.Index(commonProcessors, any("filter/profiler-source"))).To(BeNumerically(">=", 0))
+					Expect(slices.Index(commonProcessors, any("filter/profiler-source"))).To(
+						BeNumerically("<", slices.Index(commonProcessors, any("k8s_attributes"))))
+					processor := collectorConfig["processors"].(map[string]any)["filter/profiler-source"]
+					context := map[string]string{"traces": "span", "metrics": "metric", "logs": "log_record"}[signal]
+					Expect(ReadFromMap(processor.(map[string]any), []string{signal, context})).To(
+						ConsistOf(`resource.attributes["parca.agent"] == "true"`))
+					if !entry.config.EbpfProfilerEnabled {
+						Expect(connectors).ToNot(HaveKey(sourceRouter))
+						Expect(pipelines).ToNot(HaveKey(signal + "/route-source"))
+						Expect(pipelines).ToNot(HaveKey(agentPipeline))
+						Expect(readPipelineReceivers(pipelines, commonPipeline)).To(ConsistOf("forward/" + signal + "-processors"))
+						continue
+					}
 					Expect(readPipelineReceivers(pipelines, signal+"/route-source")).To(ConsistOf("forward/" + signal + "-processors"))
 					Expect(readPipelineProcessors(pipelines, signal+"/route-source")).To(BeEmpty())
 					Expect(readPipelineExporters(pipelines, signal+"/route-source")).To(ConsistOf(sourceRouter))
@@ -1769,10 +1784,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					processors := readPipelineProcessors(pipelines, agentPipeline)
 					Expect(processors).To(ContainElement("k8s_attributes/profiles"))
 					Expect(processors).ToNot(ContainElement("k8s_attributes"))
+					Expect(processors).ToNot(ContainElement("filter/profiler-source"))
 					remaining := func(processors []any) []any {
 						return slices.DeleteFunc(slices.Clone(processors), func(processor any) bool {
 							return processor == "memory_limiter" || processor == "k8s_attributes" ||
-								processor == "k8s_attributes/profiles"
+								processor == "k8s_attributes/profiles" || processor == "filter/profiler-source"
 						})
 					}
 					Expect(remaining(processors)).To(Equal(remaining(readPipelineProcessors(pipelines, commonPipeline))))
@@ -1838,7 +1854,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(basePodAssocSources).ToNot(ContainElement("container.id"))
 		})
 
-		It("should retain resource-only agent association when profiling is disabled [DaemonSet]", func() {
+		It("should omit resource-only agent association when profiling is disabled [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -1850,7 +1866,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 
 			processors := collectorConfig["processors"].(map[string]any)
-			Expect(processors).To(HaveKey("k8s_attributes/profiles"))
+			Expect(processors).ToNot(HaveKey("k8s_attributes/profiles"))
 			Expect(processors).To(HaveKey("k8s_attributes"))
 			Expect(readPipelines(collectorConfig)).ToNot(HaveKey("profiles"))
 		})
@@ -5684,7 +5700,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 			LogsCommonProcessorsPipelineReceivers := readPipelineReceivers(pipelines, "logs/common-processors")
 			Expect(LogsCommonProcessorsPipelineReceivers).ToNot(BeNil())
-			Expect(LogsCommonProcessorsPipelineReceivers).To(ConsistOf("routing/logs-source"))
+			Expect(LogsCommonProcessorsPipelineReceivers).To(ConsistOf("forward/logs-processors"))
 			LogsCommonProcessorsPipelineProcessors := readPipelineProcessors(pipelines, "logs/common-processors")
 			Expect(LogsCommonProcessorsPipelineProcessors).ToNot(BeNil())
 			Expect(LogsCommonProcessorsPipelineProcessors).To(ContainElement("transform/logs/filelog_service_attributes"))

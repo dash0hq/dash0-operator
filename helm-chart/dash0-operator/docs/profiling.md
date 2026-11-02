@@ -53,6 +53,10 @@ For a Helm-managed `Dash0OperatorConfiguration`, the opt-in also enables the pro
 `spec.profiling.ebpfProfiler.enabled: true`. If you manage that resource yourself, set both
 `spec.profiling.enabled: true` and `spec.profiling.ebpfProfiler.enabled: true` there.
 
+The operator-managed profiler is not yet supported on GKE Autopilot. It requires a new workload allowlist submitted
+to Google, reviewed, and published before it can run. This review usually takes a few weeks. See the
+[GKE Autopilot notes](platform-specific.md#notes-on-gke-autopilot).
+
 ### Agent image
 
 The profiler defaults to `ghcr.io/parca-dev/parca-agent:v0.51.2`. This version is independent of the operator's
@@ -82,7 +86,10 @@ resource-only pod-association pipeline. It associates workload telemetry using a
 telemetry without a pod identity remains host-level and uses the default exports. Unmarked application telemetry
 retains its existing pod association. No additional receiver or port is required.
 
-Source classification remains active when profiling is disabled, including while agent Pods terminate.
+The source-routing and eBPF processing pipelines are rendered only when the Helm opt-in, `spec.profiling.enabled`, and
+`spec.profiling.ebpfProfiler.enabled` are all true. The common processing pipelines always drop marked profiler
+metrics, logs, and traces before Kubernetes enrichment. During collector enablement lag or agent shutdown, a
+collector without the eBPF pipelines drops these signals instead of associating them with the profiler Pod.
 
 The `parca.agent` attribute is reserved for profiler source routing, not authentication. Do not set a conflicting
 value on workload resources; the agent preserves existing resource attributes over external-label defaults.
@@ -132,6 +139,10 @@ Only Dash0 exports from the operator configuration receive debuginfo uploads. Ot
 samples, but are not debuginfo upload destinations. With zero Dash0 exports, uploads and the proxy are disabled while
 profile sampling continues. Set `spec.profiling.ebpfProfiler.debuginfo.uploadEnabled: false` globally on the
 `Dash0OperatorConfiguration` to disable uploads and the proxy even when Dash0 exports exist.
+
+The operator skips debuginfo destinations with malformed endpoints or missing authorization and logs a warning with
+the export index. Valid destinations still receive uploads. If no valid destinations remain, it disables uploads and
+removes the proxy while profile sampling continues.
 
 The proxy DaemonSet rolls one node at a time with `maxSurge: 0` so old and new configurations do not serve requests on
 the same node concurrently. Credential and mode changes invalidate upload routes. Updates can interrupt in-flight

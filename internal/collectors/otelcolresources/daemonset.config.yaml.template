@@ -64,6 +64,7 @@ connectors:
   forward/profiles-default-exporter: {}
   {{- end }}
 
+  {{- if .EbpfProfilerEnabled }}
   routing/traces-source:
     default_pipelines: [traces/common-processors]
     error_mode: ignore
@@ -85,6 +86,7 @@ connectors:
       - context: resource
         condition: attributes["parca.agent"] == "true"
         pipelines: [logs/ebpf-profiler]
+  {{- end }}
 
   {{- if $useRouting }}
   routing/traces:
@@ -592,6 +594,17 @@ receivers:
   {{- end}}
 
 processors:
+  filter/profiler-source:
+    error_mode: ignore
+    traces:
+      span:
+        - 'resource.attributes["parca.agent"] == "true"'
+    metrics:
+      metric:
+        - 'resource.attributes["parca.agent"] == "true"'
+    logs:
+      log_record:
+        - 'resource.attributes["parca.agent"] == "true"'
   {{- if or .SendBatchSize .SendBatchMaxSize }}
   batch:
     {{- if .SendBatchSize }}
@@ -713,6 +726,7 @@ processors:
     - sources:
       - from: connection
 
+  {{- if or .ProfilingEnabled .EbpfProfilerEnabled }}
   k8s_attributes/profiles:
     extract:
       metadata:
@@ -798,6 +812,7 @@ processors:
       - from: resource_attribute
         name: k8s.pod.uid
 
+  {{- end }}
   # Limit resource attributes to a reasonable maximum length. This is particularly important when transforming
   # Kubernetes pod annotations to resource attributes, which can hold up to 256KB of data.
   # Also, remove labels and annotations that are deliberately excluded from collection.
@@ -1116,6 +1131,7 @@ service:
   {{- end }}
 
   pipelines:
+    {{- if .EbpfProfilerEnabled }}
     traces/route-source:
       receivers:
         - forward/traces-processors
@@ -1131,6 +1147,7 @@ service:
         - forward/logs-processors
       exporters:
         - routing/logs-source
+    {{- end }}
 
     traces/otlp-to-forwarder:
       receivers:
@@ -1142,9 +1159,16 @@ service:
 {{- with $ }}
     traces/{{ $pipeline }}:
       receivers:
+        {{- if .EbpfProfilerEnabled }}
         - routing/traces-source
+        {{- else }}
+        - forward/traces-processors
+        {{- end }}
       processors:
         - memory_limiter
+        {{- if eq $pipeline "common-processors" }}
+        - filter/profiler-source
+        {{- end }}
         - resource_detection
         - {{ $podAssociation }}
         {{- if .ClusterName }}
@@ -1275,8 +1299,15 @@ service:
 {{- with $ }}
     metrics/{{ $pipeline }}:
       receivers:
+        {{- if .EbpfProfilerEnabled }}
         - routing/metrics-source
+        {{- else }}
+        - forward/metrics-processors
+        {{- end }}
       processors:
+        {{- if eq $pipeline "common-processors" }}
+        - filter/profiler-source
+        {{- end }}
         - resource_detection
         - {{ $podAssociation }}
         {{- if .ClusterName }}
@@ -1416,8 +1447,15 @@ service:
 {{- with $ }}
     logs/{{ $pipeline }}:
       receivers:
+        {{- if .EbpfProfilerEnabled }}
         - routing/logs-source
+        {{- else }}
+        - forward/logs-processors
+        {{- end }}
       processors:
+        {{- if eq $pipeline "common-processors" }}
+        - filter/profiler-source
+        {{- end }}
         - resource_detection
         - {{ $podAssociation }}
         {{- if .NamespacesWithLogCollection }}

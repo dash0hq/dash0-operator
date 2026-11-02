@@ -27,7 +27,8 @@ func NewManager(resourceManager *prresources.ResourceManager) *Manager {
 
 // Reconcile applies the current configuration or removes disabled profiling resources.
 func (m *Manager) Reconcile(ctx context.Context) (ctrl.Result, error) {
-	configuration, err := resources.FindOperatorConfigurationResource(ctx, m.ResourceManager.Client, logd.FromContext(ctx))
+	logger := logd.FromContext(ctx)
+	configuration, err := resources.FindOperatorConfigurationResource(ctx, m.ResourceManager.Client, logger)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -43,9 +44,23 @@ func (m *Manager) Reconcile(ctx context.Context) (ctrl.Result, error) {
 		changes, err = m.ResourceManager.DeleteResources(ctx, false)
 	}
 	if err != nil {
+		logger.Error(err, "Failed to reconcile profiler and debuginfo proxy Kubernetes resources")
 		return ctrl.Result{}, err
 	}
+	if changes.Created && changes.Updated {
+		logger.Info("Profiler and debuginfo proxy Kubernetes resources have been created and updated")
+	} else if changes.Created {
+		logger.Info("Profiler and debuginfo proxy Kubernetes resources have been created")
+	} else if changes.Updated {
+		logger.Info("Profiler and debuginfo proxy Kubernetes resources have been updated")
+	} else if !changes.Deleted {
+		logger.Debug("Profiler and debuginfo proxy Kubernetes resources require no changes")
+	}
+	if changes.Deleted {
+		logger.Info("Profiler or debuginfo proxy Kubernetes resources have been deleted")
+	}
 	if changes.PendingDeletion {
+		logger.Debug("Waiting for debuginfo proxy pods to terminate before deleting proxy dependencies")
 		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
 	return ctrl.Result{}, nil
