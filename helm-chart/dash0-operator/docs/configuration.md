@@ -528,8 +528,9 @@ The Dash0 monitoring resource supports additional configuration settings:
       A list of OTTL conditions for filtering log records.
       All log records where at least one condition evaluates to true will be dropped.
       The conditions also apply to the Kubernetes events collected in the namespace.
-      To exclude Kubernetes events from a condition, add `attributes["k8s.event.name"] == nil` to it, for example
-      `severity_number < SEVERITY_NUMBER_WARN and attributes["k8s.event.name"] == nil`.
+      To exclude Kubernetes events from a condition `C`, change it to `(C) and attributes["k8s.event.name"] == nil`,
+      for example `(severity_number < SEVERITY_NUMBER_WARN) and attributes["k8s.event.name"] == nil`.
+      Keep the parentheses, since `and` binds tighter than `or`.
     * **`spec.filter.profiles.profile`**:
       A list of OTTL conditions for filtering profiles.
       All profiles where at least one condition evaluates to true will be dropped.
@@ -572,9 +573,14 @@ The Dash0 monitoring resource supports additional configuration settings:
     * **`spec.transform.log_statements`**:
       A list of OTTL statements (or a list of groups in the advanced config style) for transforming log telemetry.
       The statements also apply to the Kubernetes events collected in the namespace.
-      To exclude Kubernetes events from a statement, add `log.attributes["k8s.event.name"] == nil` to its `where`
-      clause or to the conditions of its group, for example
-      `truncate_all(log.attributes, 1024) where log.attributes["k8s.event.name"] == nil`.
+      To exclude Kubernetes events from a statement, add `where log.attributes["k8s.event.name"] == nil` to it, for
+      example `truncate_all(log.attributes, 1024) where log.attributes["k8s.event.name"] == nil`.
+      If the statement already has a `where` clause `W`, change it to
+      `where (W) and log.attributes["k8s.event.name"] == nil`; keep the parentheses, since `and` binds tighter than
+      `or`.
+      The conditions of a group are combined with OR, so in a group, change each condition `C` to
+      `(C) and log.attributes["k8s.event.name"] == nil`.
+      Add the check as a separate condition only if the group has no other conditions.
       In a group with an explicit `context: log`, use the path without prefix: `attributes["k8s.event.name"] == nil`.
     * **`spec.transform.profile_statements`**:
       A list of OTTL statements (or a list of groups in the advanced config style) for transforming profile telemetry.
