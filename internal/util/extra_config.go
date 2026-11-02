@@ -342,11 +342,16 @@ func defaultNodeAffinity() *corev1.NodeAffinity {
 }
 
 // ExtraConfigDefaultsFor returns the defaults that apply when a value is missing from the extra config map, and with
-// which the settings in spec.components are merged. They match the defaults of the Helm chart.
-func ExtraConfigDefaultsFor(isGkeAutopilot bool) ExtraConfig {
+// which the settings in spec.components are merged. They match the defaults of the Helm chart, except for the
+// DaemonSet SELinux options on OpenShift, which only the operator sets.
+func ExtraConfigDefaultsFor(isGkeAutopilot bool, isOpenShift bool) ExtraConfig {
 	defaults := ExtraConfigDefaults
 	if isGkeAutopilot {
 		defaults.InstrumentationInitContainerResources = gkeAutopilotInstrumentationInitContainerResources
+	}
+	if isOpenShift {
+		// OpenShift nodes enforce SELinux, and the default container type container_t cannot read /var/log/pods.
+		defaults.DaemonSetSELinuxOptions = &corev1.SELinuxOptions{Type: "spc_t"}
 	}
 	return defaults
 }
@@ -426,8 +431,9 @@ func readExtraConfigurationFromFile(
 }
 
 // applyDefaultsForMissingKeys sets the defaults for the values that the Helm chart renders whenever the respective
-// component is enabled, when their key is missing. A value that is present is kept as it is, including an explicit
-// null, except for replica counts, for which null also means the default.
+// component is enabled, and for the DaemonSet SELinux options, which it only renders when they are set, when their key
+// is missing. A value that is present is kept as it is, including an explicit null, except for replica counts, for
+// which null also means the default.
 func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig, presentKeys map[string]any) {
 	missing := func(key string) bool {
 		_, present := presentKeys[key]
@@ -444,6 +450,9 @@ func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig
 	}
 	if missing("daemonSetProbes") {
 		extraConfig.DaemonSetProbes = defaults.DaemonSetProbes.DeepCopy()
+	}
+	if missing("daemonSetSeLinuxOptions") {
+		extraConfig.DaemonSetSELinuxOptions = defaults.DaemonSetSELinuxOptions.DeepCopy()
 	}
 	if missing("deploymentNodeAffinity") {
 		extraConfig.DeploymentNodeAffinity = defaults.DeploymentNodeAffinity.DeepCopy()

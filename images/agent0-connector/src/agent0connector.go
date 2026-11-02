@@ -32,7 +32,7 @@ func main() {
 
 	// Initialize the OTel SDK before emitting the first log record, records emitted earlier never reach the OTLP
 	// exporter.
-	meter := common.InitOTelSdkFromEnvVars(ctx, selfmonitoring.MeterName, serviceName, containerName)
+	meter := common.InitOTelSdkFromEnvVars(ctx, selfmonitoring.MeterName, containerName)
 	// Deliberately shutting down with the base context: the context below is cancelled when the termination signal
 	// arrives, and a cancelled context would keep the OTel SDK from flushing the telemetry it still holds.
 	defer common.ShutDownOTelSdk(ctx)

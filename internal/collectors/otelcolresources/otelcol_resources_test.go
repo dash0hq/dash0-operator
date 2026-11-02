@@ -5,6 +5,7 @@ package otelcolresources
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"slices"
 	"strings"
@@ -835,6 +836,119 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			verifyRestartAnnotation()
 
 			Expect(createOrUpdate(extraConfig)).To(BeFalse())
+		})
+	})
+
+	Context("when mTLS is enabled for the target-allocator", func() {
+		const clientCertSecretName = "ta-mtls-client-cert-secret"
+		var mTlsExtraConfig util.ExtraConfig
+
+		BeforeEach(func() {
+			mTlsExtraConfig = util.ExtraConfigDefaults
+			mTlsExtraConfig.TargetAllocatorMtlsEnabled = true
+			mTlsExtraConfig.TargetAllocatorMtlsServerCertSecretName = "ta-mtls-server-cert-secret"
+			mTlsExtraConfig.TargetAllocatorMtlsClientCertSecretName = clientCertSecretName
+		})
+
+		AfterEach(func() {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: clientCertSecretName, Namespace: OperatorNamespace},
+			}))).To(Succeed())
+		})
+
+		createOrUpdate := func(extraConfig util.ExtraConfig) {
+			GinkgoHelper()
+			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx,
+				extraConfig,
+				DefaultOperatorConfigurationResourceWithUid(),
+				nil,
+				nil,
+				logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+		}
+
+		writeClientCertSecret := func(caCert string, clientCert string) {
+			GinkgoHelper()
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: clientCertSecretName, Namespace: OperatorNamespace},
+			}
+			_, err := controllerutil.CreateOrUpdate(ctx, k8sClient, secret, func() error {
+				secret.Data = map[string][]byte{
+					"ca.crt":  []byte(caCert),
+					"tls.crt": []byte(clientCert),
+					"tls.key": []byte(clientCert + "-key"),
+				}
+				return nil
+			})
+			Expect(err).ToNot(HaveOccurred())
+		}
+
+		sha := func(caCert string) string {
+			return fmt.Sprintf("%x", sha256.Sum256([]byte(caCert)))
+		}
+
+		daemonSetPodTemplateAnnotations := func() map[string]string {
+			GinkgoHelper()
+			return GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace).Spec.Template.Annotations
+		}
+
+		It("should restart the daemonset collector pods when the CA changes, but not when only the client certificate changes", func() {
+			writeClientCertSecret("ca-1", "client-cert-1")
+			createOrUpdate(mTlsExtraConfig)
+			// adds the self-reference UID env vars
+			createOrUpdate(mTlsExtraConfig)
+			Expect(daemonSetPodTemplateAnnotations()).To(HaveKeyWithValue(targetAllocatorMtlsCaShaAnnotation, sha("ca-1")))
+			generation := GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace).Generation
+
+			writeClientCertSecret("ca-1", "client-cert-2")
+			createOrUpdate(mTlsExtraConfig)
+			Expect(daemonSetPodTemplateAnnotations()).To(HaveKeyWithValue(targetAllocatorMtlsCaShaAnnotation, sha("ca-1")))
+			Expect(GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace).Generation).To(Equal(generation))
+
+			writeClientCertSecret("ca-2", "client-cert-3")
+			createOrUpdate(mTlsExtraConfig)
+			Expect(daemonSetPodTemplateAnnotations()).To(HaveKeyWithValue(targetAllocatorMtlsCaShaAnnotation, sha("ca-2")))
+			Expect(GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace).Generation).To(BeNumerically(">", generation))
+		})
+
+		It("should keep the current CA hash while the secret is missing", func() {
+			writeClientCertSecret("ca-1", "client-cert-1")
+			createOrUpdate(mTlsExtraConfig)
+			Expect(k8sClient.Delete(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: clientCertSecretName, Namespace: OperatorNamespace},
+			})).To(Succeed())
+
+			createOrUpdate(mTlsExtraConfig)
+			Expect(daemonSetPodTemplateAnnotations()).To(HaveKeyWithValue(targetAllocatorMtlsCaShaAnnotation, sha("ca-1")))
+		})
+
+		It("should keep the current CA hash if the secret has no CA certificate", func() {
+			writeClientCertSecret("ca-1", "client-cert-1")
+			createOrUpdate(mTlsExtraConfig)
+			writeClientCertSecret("", "client-cert-2")
+
+			createOrUpdate(mTlsExtraConfig)
+			Expect(daemonSetPodTemplateAnnotations()).To(HaveKeyWithValue(targetAllocatorMtlsCaShaAnnotation, sha("ca-1")))
+		})
+
+		It("should add the CA hash once the secret exists", func() {
+			createOrUpdate(mTlsExtraConfig)
+			Expect(daemonSetPodTemplateAnnotations()).ToNot(HaveKey(targetAllocatorMtlsCaShaAnnotation))
+
+			writeClientCertSecret("ca-1", "client-cert-1")
+			createOrUpdate(mTlsExtraConfig)
+			Expect(daemonSetPodTemplateAnnotations()).To(HaveKeyWithValue(targetAllocatorMtlsCaShaAnnotation, sha("ca-1")))
+		})
+
+		It("should remove the CA hash when mTLS is disabled", func() {
+			writeClientCertSecret("ca-1", "client-cert-1")
+			createOrUpdate(mTlsExtraConfig)
+			Expect(daemonSetPodTemplateAnnotations()).To(HaveKey(targetAllocatorMtlsCaShaAnnotation))
+
+			createOrUpdate(util.ExtraConfigDefaults)
+			Expect(daemonSetPodTemplateAnnotations()).ToNot(HaveKey(targetAllocatorMtlsCaShaAnnotation))
 		})
 	})
 

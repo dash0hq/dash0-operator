@@ -100,15 +100,14 @@ func PrefetchNodeUid(ctx context.Context) {
 func InitOTelSdkFromEnvVars(
 	ctx context.Context,
 	meterName string,
-	serviceName string,
 	containerName string,
 ) otelmetric.Meter {
 	PrefetchNodeUid(ctx)
 
-	// InitOTelSdkFromEnvVars is used in the configuration reloader and filelog offset sync container. The OTel SDK
-	// will either be started once at process startup or not. In contrast to InitOTelSdkWithConfig, it will not be
-	// restarted, and the configuration is not modified from different threads. Hence, no thread safety is needed here
-	// and oTelSdkMutex is not used.
+	// InitOTelSdkFromEnvVars is used in the configuration reloader, filelog offset sync and agent0-connector container.
+	// The OTel SDK will either be started once at process startup or not. In contrast to InitOTelSdkWithConfig, it will
+	// not be restarted, and the configuration is not modified from different threads. Hence, no thread safety is needed
+	// here and oTelSdkMutex is not used.
 
 	if OTelSDKIsConfigured() {
 
@@ -124,8 +123,8 @@ func InitOTelSdkFromEnvVars(
 
 		resourceAttributes := assembleResource(
 			ctx,
-			serviceName,
-			// serviceVersion will be read from env var
+			// serviceName and serviceVersion are read from OTEL_RESOURCE_ATTRIBUTES by the SDK
+			"",
 			"",
 			// pseudoClusterUid will be read from env var
 			"",
@@ -466,6 +465,9 @@ func createLogExporterFromConfig(ctx context.Context, oTelSdkConfig *OTelSdkConf
 	return logExporter
 }
 
+// assembleResource sets the service.* attributes only when they are passed explicitly. Containers using
+// InitOTelSdkFromEnvVars get them via OTEL_RESOURCE_ATTRIBUTES, which the SDK merges with lower precedence than this
+// resource, so setting them here would shadow those.
 func assembleResource(
 	ctx context.Context,
 	serviceName,
@@ -478,14 +480,15 @@ func assembleResource(
 ) *resource.Resource {
 	var attributes []attribute.KeyValue
 
-	attributes = append(attributes, semconv.ServiceNamespace(OperatorManagerServiceNamespace))
 	if serviceName != "" {
-		attributes = append(attributes, semconv.ServiceName(serviceName))
+		attributes = append(
+			attributes,
+			semconv.ServiceNamespace(OperatorManagerServiceNamespace),
+			semconv.ServiceName(serviceName),
+		)
 	}
 	if serviceVersion != "" {
 		attributes = append(attributes, semconv.ServiceVersion(serviceVersion))
-	} else if serviceVersionFromEnvVar := os.Getenv("SERVICE_VERSION"); serviceVersionFromEnvVar != "" {
-		attributes = append(attributes, semconv.ServiceVersion(serviceVersionFromEnvVar))
 	}
 
 	if pseudoClusterUid != "" {

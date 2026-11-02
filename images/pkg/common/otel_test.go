@@ -16,6 +16,7 @@ import (
 	lognoop "go.opentelemetry.io/otel/log/noop"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	collogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	colmetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
@@ -165,7 +166,6 @@ func TestAssembleResourceWithExplicitValues(t *testing.T) {
 }
 
 func TestAssembleResourceFallsBackToEnvVars(t *testing.T) {
-	t.Setenv("SERVICE_VERSION", "version-from-env")
 	t.Setenv("K8S_CLUSTER_UID", "cluster-uid-from-env")
 	t.Setenv("K8S_CLUSTER_NAME", "cluster-name-from-env")
 	t.Setenv("K8S_DEPLOYMENT_UID", "deployment-uid-from-env")
@@ -184,7 +184,6 @@ func TestAssembleResourceFallsBackToEnvVars(t *testing.T) {
 	)
 
 	expectedAttributes := map[string]string{
-		"service.version":     "version-from-env",
 		"k8s.cluster.uid":     "cluster-uid-from-env",
 		"k8s.cluster.name":    "cluster-name-from-env",
 		"k8s.deployment.uid":  "deployment-uid-from-env",
@@ -202,13 +201,12 @@ func TestAssembleResourceFallsBackToEnvVars(t *testing.T) {
 }
 
 func TestAssembleResourceExplicitValuesTakePrecedenceOverEnvVars(t *testing.T) {
-	t.Setenv("SERVICE_VERSION", "version-from-env")
 	t.Setenv("K8S_CLUSTER_NAME", "cluster-name-from-env")
 
 	resourceAttributes := assembleResource(
 		context.Background(),
 		"service-name",
-		"explicit-version",
+		"",
 		"",
 		"explicit-cluster-name",
 		"",
@@ -216,11 +214,49 @@ func TestAssembleResourceExplicitValuesTakePrecedenceOverEnvVars(t *testing.T) {
 		"",
 	)
 
-	if got := attributeValue(resourceAttributes.Attributes(), "service.version"); got != "explicit-version" {
-		t.Errorf("resource attribute \"service.version\" = %q, want %q", got, "explicit-version")
-	}
 	if got := attributeValue(resourceAttributes.Attributes(), "k8s.cluster.name"); got != "explicit-cluster-name" {
 		t.Errorf("resource attribute \"k8s.cluster.name\" = %q, want %q", got, "explicit-cluster-name")
+	}
+}
+
+func TestAssembleResourceWithoutServiceNameOmitsServiceAttributes(t *testing.T) {
+	resourceAttributes := assembleResource(context.Background(), "", "", "", "", "", "", "container-name")
+
+	for _, key := range []string{"service.namespace", "service.name", "service.version"} {
+		if got := attributeValue(resourceAttributes.Attributes(), key); got != "" {
+			t.Errorf("resource attribute %q = %q, want it to be absent", key, got)
+		}
+	}
+}
+
+func TestServiceAttributesFromOtelResourceAttributesReachTheSdkResource(t *testing.T) {
+	t.Setenv(
+		"OTEL_RESOURCE_ATTRIBUTES",
+		"service.namespace=namespace-from-env,service.name=name-from-env,service.version=version-from-env",
+	)
+
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithResource(assembleResource(context.Background(), "", "", "", "", "", "", "container-name")),
+		sdkmetric.WithReader(reader),
+	)
+	defer func() { _ = meterProvider.Shutdown(context.Background()) }()
+
+	var resourceMetrics metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &resourceMetrics); err != nil {
+		t.Fatalf("cannot collect metrics: %v", err)
+	}
+
+	expectedAttributes := map[string]string{
+		"service.namespace":  "namespace-from-env",
+		"service.name":       "name-from-env",
+		"service.version":    "version-from-env",
+		"k8s.container.name": "container-name",
+	}
+	for key, want := range expectedAttributes {
+		if got := attributeValue(resourceMetrics.Resource.Attributes(), key); got != want {
+			t.Errorf("resource attribute %q = %q, want %q", key, got, want)
+		}
 	}
 }
 
