@@ -1758,9 +1758,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Expect(slices.Index(commonProcessors, any("filter/profiler-source"))).To(
 						BeNumerically("<", slices.Index(commonProcessors, any("k8s_attributes"))))
 					processor := collectorConfig["processors"].(map[string]any)["filter/profiler-source"]
-					context := map[string]string{"traces": "span", "metrics": "metric", "logs": "log_record"}[signal]
-					Expect(ReadFromMap(processor.(map[string]any), []string{signal, context})).To(
-						ConsistOf(`resource.attributes["parca.agent"] == "true"`))
+					Expect(ReadFromMap(processor.(map[string]any), []string{signal, "resource"})).To(
+						ConsistOf(`attributes["parca.agent"] == "true"`))
 					if !entry.config.EbpfProfilerEnabled {
 						Expect(connectors).ToNot(HaveKey(sourceRouter))
 						Expect(pipelines).ToNot(HaveKey(signal + "/route-source"))

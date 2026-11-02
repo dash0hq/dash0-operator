@@ -597,14 +597,14 @@ processors:
   filter/profiler-source:
     error_mode: ignore
     traces:
-      span:
-        - 'resource.attributes["parca.agent"] == "true"'
+      resource:
+        - 'attributes["parca.agent"] == "true"'
     metrics:
-      metric:
-        - 'resource.attributes["parca.agent"] == "true"'
+      resource:
+        - 'attributes["parca.agent"] == "true"'
     logs:
-      log_record:
-        - 'resource.attributes["parca.agent"] == "true"'
+      resource:
+        - 'attributes["parca.agent"] == "true"'
   {{- if or .SendBatchSize .SendBatchMaxSize }}
   batch:
     {{- if .SendBatchSize }}
