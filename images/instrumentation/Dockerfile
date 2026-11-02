@@ -132,7 +132,7 @@ RUN . /tmp/dash0-ruby-distribution-version && \
   rm /tmp/dash0-ruby-distribution.tar.gz
 
 # install Ruby artifacts (glibc)
-FROM ruby:4.0.8-slim-trixie AS build-ruby-glibc
+FROM ruby:4.0.9-slim-trixie AS build-ruby-glibc
 # A C toolchain is only needed while installing the bundle, because a transitive dependency ships as source and compiles
 # a native extension. The bundle copied into the final image contains no source gems and needs no compiler.
 RUN apt-get update && \
