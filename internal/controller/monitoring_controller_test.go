@@ -82,6 +82,7 @@ var _ = Describe(
 
 				instrumenter := instrumentation.NewInstrumenter(
 					k8sClient,
+					k8sClient,
 					clientset,
 					recorder,
 					util.NewClusterInstrumentationConfig(

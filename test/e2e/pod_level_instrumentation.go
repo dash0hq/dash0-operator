@@ -135,12 +135,70 @@ func verifyThatPodsHaveNeitherBeenEvictedNorInstrumented(
 		runtime.runtimeTypeLabel,
 		workloadType.workloadTypeString))
 	Eventually(func(g Gomega) {
+		verifyExactlyTheseUninstrumentedPods(g, namespace, runtime, workloadType, podUids)
+	}, labelChangeTimeout, pollingInterval).Should(Succeed())
+}
+
+// verifyThatPodsAreNeitherEvictedNorInstrumented verifies for a while that exactly the given pods of the workload keep
+// running, and that they do not get instrumented.
+func verifyThatPodsAreNeitherEvictedNorInstrumented(
+	namespace string,
+	runtime runtimeType,
+	workloadType workloadType,
+	podUids []string,
+) {
+	By(fmt.Sprintf("%s %s: verifying that the pods are neither evicted nor instrumented",
+		runtime.runtimeTypeLabel,
+		workloadType.workloadTypeString))
+	Consistently(func(g Gomega) {
+		verifyExactlyTheseUninstrumentedPods(g, namespace, runtime, workloadType, podUids)
+	}, 15*time.Second, pollingInterval).Should(Succeed())
+}
+
+func verifyExactlyTheseUninstrumentedPods(
+	g Gomega,
+	namespace string,
+	runtime runtimeType,
+	workloadType workloadType,
+	podUids []string,
+) {
+	pods := readPodsOfWorkload(g, namespace, runtime, workloadType)
+	actualUids := make([]string, 0, len(pods))
+	for _, pod := range pods {
+		actualUids = append(actualUids, string(pod.UID))
+		g.Expect(pod.Labels).ToNot(HaveKey("dash0.com/instrumented"))
+	}
+	g.Expect(actualUids).To(ConsistOf(podUids))
+}
+
+// restartAndVerifyThatNewPodsAreNotInstrumented restarts the workload and verifies that the pods replacing the given
+// pods have not been instrumented by the webhook.
+func restartAndVerifyThatNewPodsAreNotInstrumented(
+	namespace string,
+	runtime runtimeType,
+	workloadType workloadType,
+	oldPodUids []string,
+) {
+	By(fmt.Sprintf("%s %s: restarting the workload", runtime.runtimeTypeLabel, workloadType.workloadTypeString))
+	Expect(runAndIgnoreOutput(exec.Command(
+		"kubectl",
+		"rollout",
+		"restart",
+		"--namespace",
+		namespace,
+		fmt.Sprintf("%s/%s", workloadType.workloadTypeString, workloadName(runtime, workloadType)),
+	))).To(Succeed())
+	waitForRollout(namespace, runtime, workloadType)
+
+	By(fmt.Sprintf("%s %s: verifying that the new pods have not been instrumented",
+		runtime.runtimeTypeLabel,
+		workloadType.workloadTypeString))
+	Eventually(func(g Gomega) {
 		pods := readPodsOfWorkload(g, namespace, runtime, workloadType)
-		actualUids := make([]string, 0, len(pods))
+		g.Expect(pods).ToNot(BeEmpty())
 		for _, pod := range pods {
-			actualUids = append(actualUids, string(pod.UID))
+			g.Expect(oldPodUids).ToNot(ContainElement(string(pod.UID)), "the old pod %s is still running", pod.Name)
 			g.Expect(pod.Labels).ToNot(HaveKey("dash0.com/instrumented"))
 		}
-		g.Expect(actualUids).To(ConsistOf(podUids))
-	}, labelChangeTimeout, pollingInterval).Should(Succeed())
+	}, podInstrumentationTimeout, pollingInterval).Should(Succeed())
 }

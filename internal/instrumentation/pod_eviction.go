@@ -14,6 +14,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/pager"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -65,6 +66,20 @@ func (i *Instrumenter) evictUninstrumentedPods(
 
 	namespaceInstrumentationConfig := dash0MonitoringResource.GetNamespaceInstrumentationConfig()
 	dryRunModifier := newWorkloadModifier(i.ClusterInstrumentationConfig, namespaceInstrumentationConfig, logd.Discard())
+	podOwnerResolver := workloads.NewPodOwnerResolver(i.Client, i.APIReader)
+	ownersByController := make(map[types.UID]workloads.PodOwners)
+	resolveOwners := func(pod *corev1.Pod) (workloads.PodOwners, error) {
+		controllerUid := metav1.GetControllerOfNoCopy(pod).UID
+		if owners, ok := ownersByController[controllerUid]; ok {
+			return owners, nil
+		}
+		owners, err := podOwnerResolver.Resolve(ctx, pod)
+		if err != nil {
+			return nil, err
+		}
+		ownersByController[controllerUid] = owners
+		return owners, nil
+	}
 	pgr := pager.New(pager.SimplePageFunc(
 		func(opts metav1.ListOptions) (runtime.Object, error) {
 			return i.Clientset.CoreV1().
@@ -77,7 +92,7 @@ func (i *Instrumenter) evictUninstrumentedPods(
 		func(resource runtime.Object) error {
 			pod := resource.(*corev1.Pod)
 			podLogger := logger.WithValues(workloadNamespaceLabel, pod.Namespace, "pod name", pod.Name)
-			if i.podNeedsEviction(pod, namespaceInstrumentationConfig, dryRunModifier, podLogger) &&
+			if i.podNeedsEviction(pod, namespaceInstrumentationConfig, dryRunModifier, resolveOwners, podLogger) &&
 				i.evictPod(ctx, pod, podLogger) {
 				i.pauseAfterEachWorkload()
 			}
@@ -119,6 +134,7 @@ func (i *Instrumenter) podNeedsEviction(
 	pod *corev1.Pod,
 	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	dryRunModifier *workloads.ResourceModifier,
+	resolveOwners func(*corev1.Pod) (workloads.PodOwners, error),
 	logger logd.Logger,
 ) bool {
 	owner := metav1.GetControllerOf(pod)
@@ -130,9 +146,6 @@ func (i *Instrumenter) podNeedsEviction(
 	if pod.DeletionTimestamp != nil || pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
 		return false
 	}
-	if util.HasOptedOutOfInstrumentation(&pod.ObjectMeta, namespaceInstrumentationConfig.InstrumentationLabelSelector) {
-		return false
-	}
 	if workloads.InstrumentationIsUpToDate(
 		&pod.ObjectMeta,
 		pod.Spec.Containers,
@@ -141,7 +154,24 @@ func (i *Instrumenter) podNeedsEviction(
 	) {
 		return false
 	}
-	if modificationResult := dryRunModifier.ModifyPod(pod.DeepCopy()); !modificationResult.HasBeenModified {
+	owners, err := resolveOwners(pod)
+	if err != nil {
+		logger.Info(
+			"Not evicting the pod, its owners could not be read to check whether they have opted out of "+
+				"instrumentation.",
+			"error",
+			err.Error(),
+		)
+		return false
+	}
+	if workloads.PodHasOptedOutOfInstrumentation(
+		pod,
+		owners,
+		namespaceInstrumentationConfig.InstrumentationLabelSelector,
+	) {
+		return false
+	}
+	if modificationResult := dryRunModifier.ModifyPod(pod.DeepCopy(), owners); !modificationResult.HasBeenModified {
 		if modificationResult.RenderReasonMessage != nil {
 			logger.Debug(
 				"not evicting the pod, its recreated replacement would not be modified either",

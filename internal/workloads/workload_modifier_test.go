@@ -432,7 +432,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 
 		It("should instrument a basic ownerless pod", func() {
 			workload := BasicPod(TestNamespaceName, PodNamePrefix)
-			modificationResult := workloadModifierInitCnt.ModifyPod(workload)
+			modificationResult := workloadModifierInitCnt.ModifyPod(workload, nil)
 
 			Expect(modificationResult.HasBeenModified).To(BeTrue())
 			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
@@ -444,7 +444,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				APIVersion: "core.strimzi.io/v1beta2",
 				Kind:       "StrimziPodSet",
 			}}
-			modificationResult := workloadModifierInitCnt.ModifyPod(workload)
+			modificationResult := workloadModifierInitCnt.ModifyPod(workload, nil)
 
 			Expect(modificationResult.HasBeenModified).To(BeTrue())
 			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
@@ -456,7 +456,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				APIVersion: owner.APIVersion,
 				Kind:       owner.Kind,
 			}}
-			modificationResult := workloadModifierInitCnt.ModifyPod(workload)
+			modificationResult := workloadModifierInitCnt.ModifyPod(workload, nil)
 
 			Expect(modificationResult.HasBeenModified).To(BeFalse())
 			Expect(modificationResult.RenderReasonMessage(testActor)).To(Equal(
@@ -488,7 +488,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				APIVersion: owner.APIVersion,
 				Kind:       owner.Kind,
 			}}
-			modificationResult := modifier.ModifyPod(workload)
+			modificationResult := modifier.ModifyPod(workload, nil)
 
 			Expect(modificationResult.HasBeenModified).To(BeTrue())
 			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
@@ -659,10 +659,10 @@ var _ = Describe("Dash0 Workload Modification", func() {
 
 		It("ownerless pod instrumentation needs to be idempotent", func() {
 			workload := BasicPod(TestNamespaceName, PodNamePrefix)
-			modificationResult := workloadModifierInitCnt.ModifyPod(workload)
+			modificationResult := workloadModifierInitCnt.ModifyPod(workload, nil)
 			Expect(modificationResult.HasBeenModified).To(BeTrue())
 			instrumentedOnce := workload.DeepCopy()
-			modificationResult = workloadModifierInitCnt.ModifyPod(workload)
+			modificationResult = workloadModifierInitCnt.ModifyPod(workload, nil)
 			Expect(modificationResult.HasBeenModified).To(BeFalse())
 			Expect(modificationResult.RenderReasonMessage(testActor)).To(Equal(
 				"Dash0 instrumentation was already present on this workload, no modification by the actor is necessary."))

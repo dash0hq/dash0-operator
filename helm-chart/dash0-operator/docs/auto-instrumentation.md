@@ -155,14 +155,24 @@ Evictions respect pod disruption budgets; a pod whose eviction is not allowed by
 is skipped and instrumented the next time it is recreated.
 With `instrumentWorkloads.mode=created-and-updated`, existing pods are not evicted.
 
+To opt out of instrumentation, add the label `dash0.com/enable: "false"` to the top level metadata of the workload
+resource, as with the default mode, or to its pod template.
+The [label selector](#using-a-custom-label-selector-to-control-auto-instrumentation) is evaluated against the labels of
+the pod combined with the labels of its owners, that is, the replica set and the deployment, the job and the cron job,
+the daemon set, or the stateful set.
+If a label is set on several of these levels with different values, the value from the level closest to the pod wins.
+The `app.kubernetes.io/*` labels and `resource.opentelemetry.io/*` annotations of the workload resource are taken into
+account in the same way as with the default mode, see
+[Specifying Additional Resource Attributes via Labels and Annotations](#specifying-additional-resource-attributes-via-labels-and-annotations).
+Owners of other types, for example an Argo Rollout, are not taken into account; for pods created by them, add the
+labels and annotations to the pod template.
+Kubernetes events about the instrumentation of an owned pod are recorded for its top-level owner, for example the
+deployment, since the pod does not have a name yet when it is instrumented.
+
 This feature is experimental and has the following limitations:
 * Evictions are not paced yet. Unless a pod disruption budget prevents it, all uninstrumented pods of a workload are
   evicted at the same time, and a workload with a single replica is unavailable until its replacement pod is ready.
   Consider defining pod disruption budgets for workloads that must stay available.
-* To opt out of instrumentation, the label `dash0.com/enable: "false"` (or a label that does not match a
-  [custom label selector](#using-a-custom-label-selector-to-control-auto-instrumentation)) needs to be present on the
-  pod itself, that is, in the pod template of the workload. A label on the workload resource's top level metadata is
-  ignored.
 * Removing the Dash0Monitoring resource or setting `instrumentWorkloads.mode=none` does not remove the instrumentation
   from pods that are already running. Their instrumentation is removed when they are recreated.
 * Workload resources that have been instrumented before the setting was enabled keep the instrumentation in their pod

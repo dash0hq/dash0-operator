@@ -33,6 +33,8 @@ import (
 
 type Instrumenter struct {
 	client.Client
+	// APIReader reads the owners of a pod that are not in the cache of Client yet.
+	APIReader                    client.Reader
 	Clientset                    *kubernetes.Clientset
 	Recorder                     events.EventRecorder
 	ClusterInstrumentationConfig *util.ClusterInstrumentationConfig
@@ -87,6 +89,7 @@ func (e ImmutableWorkloadError) Error() string {
 
 func NewInstrumenter(
 	client client.Client,
+	apiReader client.Reader,
 	clientset *kubernetes.Clientset,
 	recorder events.EventRecorder,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
@@ -96,6 +99,7 @@ func NewInstrumenter(
 	}
 	return &Instrumenter{
 		Client:                       client,
+		APIReader:                    apiReader,
 		Clientset:                    clientset,
 		Recorder:                     recorder,
 		ClusterInstrumentationConfig: clusterInstrumentationConfig,

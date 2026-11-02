@@ -42,6 +42,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 		recorder := manager.GetEventRecorder("dash0-monitoring-controller")
 		instrumenter := instrumentation.NewInstrumenter(
 			k8sClient,
+			k8sClient,
 			clientset,
 			recorder,
 			util.NewClusterInstrumentationConfig(

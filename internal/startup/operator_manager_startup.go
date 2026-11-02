@@ -72,6 +72,7 @@ import (
 	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
 	"github.com/dash0hq/dash0-operator/internal/webhookcerts"
 	"github.com/dash0hq/dash0-operator/internal/webhooks"
+	"github.com/dash0hq/dash0-operator/internal/workloads"
 )
 
 type environmentVariables struct {
@@ -2390,8 +2391,14 @@ func startDash0Controllers(
 		}
 		setupLog.Info("The auto-namespace-monitoring reconciler has been started.")
 
+		if clusterInstrumentationConfig.InstrumentPods {
+			if err := registerPodOwnerInformers(ctx, mgr); err != nil {
+				return err
+			}
+		}
 		instrumentationWebhookHandler := webhooks.NewInstrumentationWebhookHandler(
 			k8sClient,
+			mgr.GetAPIReader(),
 			mgr.GetEventRecorder("dash0-instrumentation-webhook"),
 			clusterInstrumentationConfig,
 		)
@@ -2571,6 +2578,22 @@ func startMinimumKubeletVersionDetection(
 	)
 }
 
+/*
+registerPodOwnerInformers registers metadata-only informers for the owner types of pods with the cache of the operator
+manager. The instrumentation webhook reads the owners of a pod for pod-level instrumentation. Without registering the
+informers upfront, the cache would only start them on the first admission request for a pod, which would then have to
+wait for them to sync. Metadata-only informers keep the memory footprint low, since only labels, annotations and owner
+references are needed.
+*/
+func registerPodOwnerInformers(ctx context.Context, mgr ctrl.Manager) error {
+	for _, ownerType := range workloads.PodOwnerMetadataTypes {
+		if _, err := mgr.GetCache().GetInformer(ctx, workloads.NewPartialObjectMetadata(ownerType)); err != nil {
+			return fmt.Errorf("unable to register the metadata informer for %s: %w", ownerType.Kind, err)
+		}
+	}
+	return nil
+}
+
 // setupInstrumenters registers the instrument-at-startup task and creates the instrumenter used by the controllers and
 // webhooks.
 func setupInstrumenters(
@@ -2583,6 +2606,7 @@ func setupInstrumenters(
 	startupInstrumenter := instrumentation.NewInstrumenter(
 		// The k8s client will be added later, in internal/startup/instrument_at_startup.go#Start.
 		nil,
+		mgr.GetAPIReader(),
 		clientset,
 		mgr.GetEventRecorder("dash0-startup-tasks"),
 		clusterInstrumentationConfig,
@@ -2597,6 +2621,7 @@ func setupInstrumenters(
 
 	instrumenter := instrumentation.NewInstrumenter(
 		k8sClient,
+		mgr.GetAPIReader(),
 		clientset,
 		mgr.GetEventRecorder("dash0-monitoring-controller"),
 		clusterInstrumentationConfig,

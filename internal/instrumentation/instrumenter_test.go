@@ -59,6 +59,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 
 		instrumenter = NewInstrumenter(
 			k8sClient,
+			k8sClient,
 			clientset,
 			recorder,
 			util.NewClusterInstrumentationConfig(
@@ -299,6 +300,37 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			BeforeEach(func() {
 				instrumenter.ClusterInstrumentationConfig.InstrumentPods = true
 			})
+
+			DescribeTable("should take the labels of the deployment into account", func(
+				deployment *appsv1.Deployment,
+				expectEviction bool,
+			) {
+				CreateWorkload(ctx, k8sClient, deployment)
+				name := UniqueName(PodNamePrefix)
+				replicaSet, pod := CreateReplicaSetAndPodControlledByDeployment(
+					ctx,
+					k8sClient,
+					deployment,
+					BasicPod(namespace, name),
+				)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, deployment, replicaSet)
+				if !expectEviction {
+					createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, pod)
+				}
+
+				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+				if expectEviction {
+					verifyPodHasBeenEvicted(ctx, name)
+				} else {
+					verifyPodHasNotBeenEvicted(ctx, name)
+				}
+			},
+				Entry("should evict a pod of a deployment that has not opted out",
+					BasicDeployment(namespace, UniqueName(DeploymentNamePrefix)), true),
+				Entry("should not evict a pod of a deployment that has opted out",
+					DeploymentWithOptOutLabel(namespace, UniqueName(DeploymentNamePrefix)), false),
+			)
 
 			It("should not evict a pod that is being deleted", func() {
 				name := UniqueName(PodNamePrefix)
@@ -1079,6 +1111,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 
 		It("enables debug environment variables", func() {
 			instrumenterWithDebug := NewInstrumenter(
+				k8sClient,
 				k8sClient,
 				clientset,
 				recorder,

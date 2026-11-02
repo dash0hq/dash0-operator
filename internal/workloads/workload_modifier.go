@@ -365,7 +365,10 @@ func (m *ResourceModifier) AddLabelsToImmutableJob(job *batchv1.Job) Modificatio
 	return NewHasBeenModifiedResult(len(job.Spec.Template.Spec.Containers), nil)
 }
 
-func (m *ResourceModifier) ModifyPod(pod *corev1.Pod) ModificationResult {
+// ModifyPod instruments the pod. The owners of the pod are only relevant for pod-level instrumentation, where the
+// app.kubernetes.io/* labels and resource.opentelemetry.io/* annotations of the top-level owner are taken into account
+// in the same way as when modifying the pod template of that owner. Pass nil for an ownerless pod.
+func (m *ResourceModifier) ModifyPod(pod *corev1.Pod, owners PodOwners) ModificationResult {
 	if !m.clusterInstrumentationConfig.InstrumentPods && m.hasMatchingOwnerReference(pod, []metav1.TypeMeta{
 		util.K8sTypeMetaDaemonSet,
 		util.K8sTypeMetaReplicaSet,
@@ -378,7 +381,7 @@ func (m *ResourceModifier) ModifyPod(pod *corev1.Pod) ModificationResult {
 	if isIneligibleForModificationResult := m.checkEligibleForModification(&pod.Spec); isIneligibleForModificationResult != nil {
 		return *isIneligibleForModificationResult
 	}
-	podSpecResult := m.modifyPodSpec(&pod.Spec, &pod.ObjectMeta, &pod.ObjectMeta)
+	podSpecResult := m.modifyPodSpec(&pod.Spec, owners.WorkloadMeta(pod), &pod.ObjectMeta)
 	if !podSpecResult.hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
