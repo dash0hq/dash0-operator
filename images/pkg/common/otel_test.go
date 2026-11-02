@@ -136,6 +136,7 @@ func TestAppendSignalSpecificPath(t *testing.T) {
 }
 
 func TestAssembleResourceWithExplicitValues(t *testing.T) {
+	kubernetesObjectCollectionEnabled := true
 	resourceAttributes := assembleResource(
 		context.Background(),
 		"service-name",
@@ -145,6 +146,7 @@ func TestAssembleResourceWithExplicitValues(t *testing.T) {
 		"deployment-uid",
 		"deployment-name",
 		"container-name",
+		&kubernetesObjectCollectionEnabled,
 	)
 
 	expectedAttributes := map[string]string{
@@ -156,11 +158,37 @@ func TestAssembleResourceWithExplicitValues(t *testing.T) {
 		"k8s.deployment.uid":  "deployment-uid",
 		"k8s.deployment.name": "deployment-name",
 		"k8s.container.name":  "container-name",
+		kubernetesObjectCollectionEnabledAttributeName: "true",
 	}
 	for key, want := range expectedAttributes {
 		if got := attributeValue(resourceAttributes.Attributes(), key); got != want {
 			t.Errorf("resource attribute %q = %q, want %q", key, got, want)
 		}
+	}
+}
+
+func TestAssembleResourceStampsDisabledKubernetesObjectCollection(t *testing.T) {
+	kubernetesObjectCollectionEnabled := false
+	resourceAttributes := assembleResource(
+		context.Background(),
+		"service-name",
+		"service-version",
+		"pseudo-cluster-uid",
+		"cluster-name",
+		"deployment-uid",
+		"deployment-name",
+		"container-name",
+		&kubernetesObjectCollectionEnabled,
+	)
+
+	got := attributeValue(resourceAttributes.Attributes(), kubernetesObjectCollectionEnabledAttributeName)
+	if got != "false" {
+		t.Errorf(
+			"resource attribute %q = %q, want %q",
+			kubernetesObjectCollectionEnabledAttributeName,
+			got,
+			"false",
+		)
 	}
 }
 
@@ -181,6 +209,7 @@ func TestAssembleResourceFallsBackToEnvVars(t *testing.T) {
 		"",
 		"",
 		"",
+		nil,
 	)
 
 	expectedAttributes := map[string]string{
@@ -199,6 +228,13 @@ func TestAssembleResourceFallsBackToEnvVars(t *testing.T) {
 	if got := attributeValue(resourceAttributes.Attributes(), "k8s.container.name"); got != "" {
 		t.Errorf("resource attribute \"k8s.container.name\" = %q, want it to be absent", got)
 	}
+	if got := attributeValue(resourceAttributes.Attributes(), kubernetesObjectCollectionEnabledAttributeName); got != "" {
+		t.Errorf(
+			"resource attribute %q = %q, want it to be absent",
+			kubernetesObjectCollectionEnabledAttributeName,
+			got,
+		)
+	}
 }
 
 func TestAssembleResourceExplicitValuesTakePrecedenceOverEnvVars(t *testing.T) {
@@ -214,6 +250,7 @@ func TestAssembleResourceExplicitValuesTakePrecedenceOverEnvVars(t *testing.T) {
 		"",
 		"",
 		"",
+		nil,
 	)
 
 	if got := attributeValue(resourceAttributes.Attributes(), "service.version"); got != "explicit-version" {

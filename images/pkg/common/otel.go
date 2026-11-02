@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -51,12 +52,23 @@ type OTelSdkConfig struct {
 	DeploymentName   string
 	ContainerName    string
 
+	// KubernetesObjectCollectionEnabled mirrors the cluster-wide spec.kubernetesObjectCollection.enabled flag of the
+	// operator configuration resource. It is stamped on the self-monitoring telemetry as the resource attribute
+	// dash0.operator.kubernetes_object_collection.enabled, so the Dash0 backend can detect whether the operator
+	// supports Kubernetes object collection and whether it is enabled.
+	KubernetesObjectCollectionEnabled bool
+
 	LogLevel string
 	Headers  map[string]string
 }
 
 const (
 	OperatorManagerServiceNamespace = "dash0-operator"
+
+	// kubernetesObjectCollectionEnabledAttributeName is the resource attribute carrying the operator's Kubernetes
+	// object collection state ("true"/"false"). It is always present on the operator manager's self-monitoring
+	// telemetry; its absence tells the Dash0 backend that the operator version predates the feature.
+	kubernetesObjectCollectionEnabledAttributeName = "dash0.operator.kubernetes_object_collection.enabled"
 
 	ProtocolGrpc         = "grpc"
 	ProtocolHttpProtobuf = "http/protobuf"
@@ -136,6 +148,9 @@ func InitOTelSdkFromEnvVars(
 			// deploymentName will be read from env var
 			"",
 			containerName,
+			// auxiliary containers do not know the operator configuration, so they do not stamp the Kubernetes object
+			// collection state
+			nil,
 		)
 
 		sdkMeterProvider := sdkmetric.NewMeterProvider(
@@ -286,6 +301,7 @@ func InitOTelSdkWithConfig(
 			oTelSdkConfig.DeploymentUid,
 			oTelSdkConfig.DeploymentName,
 			oTelSdkConfig.ContainerName,
+			&oTelSdkConfig.KubernetesObjectCollectionEnabled,
 		)
 
 		sdkMeterProvider := sdkmetric.NewMeterProvider(
@@ -475,6 +491,7 @@ func assembleResource(
 	deploymentUid string,
 	deploymentName string,
 	containerName string,
+	kubernetesObjectCollectionEnabled *bool,
 ) *resource.Resource {
 	var attributes []attribute.KeyValue
 
@@ -538,6 +555,12 @@ func assembleResource(
 	}
 	if containerName != "" {
 		attributes = append(attributes, semconv.K8SContainerName(containerName))
+	}
+	if kubernetesObjectCollectionEnabled != nil {
+		attributes = append(attributes, attribute.String(
+			kubernetesObjectCollectionEnabledAttributeName,
+			strconv.FormatBool(*kubernetesObjectCollectionEnabled),
+		))
 	}
 
 	resource, err := resource.New(

@@ -13,7 +13,7 @@ func TestAssembleResourceOmitsTheNodeUidWhenItCannotBeResolved(t *testing.T) {
 	t.Setenv("KUBERNETES_SERVICE_HOST", "")
 	t.Setenv("KUBERNETES_SERVICE_PORT", "")
 
-	resourceAttributes := assembleResource(context.Background(), "service-name", "", "", "", "", "", "")
+	resourceAttributes := assembleResource(context.Background(), "service-name", "", "", "", "", "", "", nil)
 
 	if got := attributeValue(resourceAttributes.Attributes(), "k8s.node.name"); got != "node-1" {
 		t.Errorf("resource attribute \"k8s.node.name\" = %q, want %q", got, "node-1")
