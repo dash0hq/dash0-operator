@@ -381,11 +381,16 @@ func defaultNodeAffinity() *corev1.NodeAffinity {
 }
 
 // ExtraConfigDefaultsFor returns the defaults that apply when a value is missing from the extra config map, and with
-// which the settings in spec.components are merged. Settings exposed through Helm match the defaults of the chart.
-func ExtraConfigDefaultsFor(isGkeAutopilot bool) ExtraConfig {
+// which the settings in spec.components are merged. Settings exposed through Helm match the defaults of the chart,
+// except for the DaemonSet SELinux options on OpenShift, which only the operator sets.
+func ExtraConfigDefaultsFor(isGkeAutopilot bool, isOpenShift bool) ExtraConfig {
 	defaults := ExtraConfigDefaults
 	if isGkeAutopilot {
 		defaults.InstrumentationInitContainerResources = gkeAutopilotInstrumentationInitContainerResources
+	}
+	if isOpenShift {
+		// OpenShift nodes enforce SELinux, and the default container type container_t cannot read /var/log/pods.
+		defaults.DaemonSetSELinuxOptions = &corev1.SELinuxOptions{Type: "spc_t"}
 	}
 	return defaults
 }
@@ -482,6 +487,9 @@ func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig
 	}
 	if missing("daemonSetProbes") {
 		extraConfig.DaemonSetProbes = defaults.DaemonSetProbes.DeepCopy()
+	}
+	if missing("daemonSetSeLinuxOptions") {
+		extraConfig.DaemonSetSELinuxOptions = defaults.DaemonSetSELinuxOptions.DeepCopy()
 	}
 	if missing("deploymentNodeAffinity") {
 		extraConfig.DeploymentNodeAffinity = defaults.DeploymentNodeAffinity.DeepCopy()

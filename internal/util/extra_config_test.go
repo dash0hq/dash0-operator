@@ -481,7 +481,7 @@ var _ = Describe("extra config map", func() {
 
 				It("should use the GKE Autopilot defaults for the init container if the key is missing", func() {
 					extraConfig, err :=
-						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(true), true, logger)
+						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(true, false), true, logger)
 					Expect(err).ToNot(HaveOccurred())
 					resources := extraConfig.InstrumentationInitContainerResources
 					Expect(resources.Limits.StorageEphemeral().String()).To(Equal("500Mi"))
@@ -489,6 +489,27 @@ var _ = Describe("extra config map", func() {
 					Expect(resources.Requests.Memory().String()).To(Equal("128Mi"))
 					Expect(resources.Requests.StorageEphemeral().String()).To(Equal("500Mi"))
 				})
+
+				It("should use the OpenShift default for the DaemonSet SELinux options if the key is missing", func() {
+					extraConfig, err :=
+						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(false, true), true, logger)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(extraConfig.DaemonSetSELinuxOptions).To(Equal(&corev1.SELinuxOptions{Type: "spc_t"}))
+				})
+
+				DescribeTable("should keep the DaemonSet SELinux options on OpenShift if the key is present",
+					func(content string, expected *corev1.SELinuxOptions) {
+						_, err := tmpFile.WriteString(content)
+						Expect(err).ToNot(HaveOccurred())
+						extraConfig, err :=
+							readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(false, true), true, logger)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(extraConfig.DaemonSetSELinuxOptions).To(Equal(expected))
+					},
+					Entry("explicit null", "daemonSetSeLinuxOptions: null\n", nil),
+					Entry("other type", "daemonSetSeLinuxOptions:\n  type: container_logreader_t\n",
+						&corev1.SELinuxOptions{Type: "container_logreader_t"}),
+				)
 
 				It("should keep values that are present, including explicit nulls and partial resources", func() {
 					_, err := tmpFile.WriteString(`
@@ -518,7 +539,7 @@ agent0ConnectorAllowedKubectlCommands:
 					Expect(err).ToNot(HaveOccurred())
 
 					extraConfig, err :=
-						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(true), true, logger)
+						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(true, false), true, logger)
 					Expect(err).ToNot(HaveOccurred())
 
 					Expect(extraConfig.InstrumentationInitContainerResources.Limits).To(BeNil())
