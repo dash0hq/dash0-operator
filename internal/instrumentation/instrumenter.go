@@ -38,6 +38,8 @@ type Instrumenter struct {
 	Clientset                    *kubernetes.Clientset
 	Recorder                     events.EventRecorder
 	ClusterInstrumentationConfig *util.ClusterInstrumentationConfig
+	// PodEvictionQueue evicts uninstrumented pods when pod-level instrumentation is enabled.
+	PodEvictionQueue *PodEvictionQueue
 }
 
 type ImmutableWorkloadError struct {
@@ -196,9 +198,9 @@ func (i *Instrumenter) InstrumentAtStartup(
 
 // CheckSettingsAndInstrumentExistingWorkloads is the main instrumentation function that is called in the controller's
 // reconcile loop. It checks the settings of the Dash0 monitoring resource and instruments existing workloads
-// accodingly. With pod-level instrumentation, it evicts uninstrumented pods instead of modifying workloads, so that
-// they are recreated and instrumented by the webhook. In that case, it must only be called after the monitoring
-// resource has been marked as available.
+// accodingly. With pod-level instrumentation, it enqueues the workloads of uninstrumented pods instead of modifying
+// workloads, so that their pods are evicted asynchronously, recreated and instrumented by the webhook. In that case, it
+// must only be called after the monitoring resource has been marked as available.
 func (i *Instrumenter) CheckSettingsAndInstrumentExistingWorkloads(
 	ctx context.Context,
 	dash0MonitoringResource *dash0v1beta1.Dash0Monitoring,
@@ -220,12 +222,19 @@ func (i *Instrumenter) CheckSettingsAndInstrumentExistingWorkloads(
 		return nil
 	}
 	if i.ClusterInstrumentationConfig.InstrumentPods {
+		if i.PodEvictionQueue == nil {
+			return fmt.Errorf("pod-level instrumentation is enabled, but no pod eviction queue has been set up")
+		}
 		logger.Info(
-			"Pod-level instrumentation is enabled, existing workloads will not be modified. Now evicting " +
-				"uninstrumented pods so that they are recreated with instrumentation.",
+			"Pod-level instrumentation is enabled, existing workloads will not be modified. Now looking for " +
+				"uninstrumented pods to evict, so that they are recreated with instrumentation.",
 		)
-		if err := i.evictUninstrumentedPods(ctx, dash0MonitoringResource, logger); err != nil {
-			logger.ErrorAsWarnTelemetryCollectionIssue(err, "Evicting uninstrumented pods failed.")
+		if err := i.PodEvictionQueue.EnqueueWorkloadsWithUninstrumentedPods(
+			ctx,
+			dash0MonitoringResource,
+			logger,
+		); err != nil {
+			logger.ErrorAsWarnTelemetryCollectionIssue(err, "Looking for uninstrumented pods to evict failed.")
 			return err
 		}
 		return nil

@@ -41,6 +41,7 @@ const (
 	ReasonPartiallyUnsuccessfulUninstrumentation Reason = "PartiallyUnsuccessfulUninstrumentation"
 	ReasonNoUninstrumentationNecessary           Reason = "AlreadyNotInstrumented"
 	ReasonFailedUninstrumentation                Reason = "FailedUninstrumentation"
+	ReasonPodEvictionStopped                     Reason = "PodEvictionStopped"
 )
 
 // Event reasons unrelated to workload instrumentation:

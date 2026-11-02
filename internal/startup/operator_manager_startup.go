@@ -2611,6 +2611,19 @@ func setupInstrumenters(
 		mgr.GetEventRecorder("dash0-startup-tasks"),
 		clusterInstrumentationConfig,
 	)
+	// Both instrumenters share one pod eviction queue, so that the pods of a workload are never evicted by two workers
+	// at the same time.
+	podEvictionQueue := instrumentation.NewPodEvictionQueue(
+		k8sClient,
+		mgr.GetAPIReader(),
+		clientset,
+		mgr.GetEventRecorder("dash0-monitoring-controller"),
+		clusterInstrumentationConfig,
+	)
+	if err := mgr.Add(podEvictionQueue); err != nil {
+		return nil, fmt.Errorf("unable to add the pod eviction queue: %w", err)
+	}
+	startupInstrumenter.PodEvictionQueue = podEvictionQueue
 	// For consistency, we update the extra config map in the startupInstrumenter handler as well if it changes. Since
 	// this instrumenter only runs once at startup, this has no effect whatsoever.
 	extraConfigMapWatcher.AddClient(startupInstrumenter)
@@ -2626,6 +2639,7 @@ func setupInstrumenters(
 		mgr.GetEventRecorder("dash0-monitoring-controller"),
 		clusterInstrumentationConfig,
 	)
+	instrumenter.PodEvictionQueue = podEvictionQueue
 	// For consistency, we update the extra config map in the instrumenter handler as well. However, even if
 	// instrumentation related settings have been changed (e.g. operator.initContainerResources), we will not
 	// re-instrument existing workloads to update the settings. It would make no sense, since the init container

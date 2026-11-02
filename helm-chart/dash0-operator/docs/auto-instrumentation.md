@@ -151,9 +151,26 @@ Only pods owned by a deployment (via its replica set), daemon set, stateful set 
 Ownerless pods, pods owned by jobs or cron jobs, and pods with any other kind of owner are not evicted, they are
 instrumented the next time they are created.
 Pods in the operator's own namespace are never evicted.
-Evictions respect pod disruption budgets; a pod whose eviction is not allowed by a pod disruption budget at that moment
-is skipped and instrumented the next time it is recreated.
 With `instrumentWorkloads.mode=created-and-updated`, existing pods are not evicted.
+
+Evictions are paced, so that a workload stays available while its pods are replaced:
+* The pods of a workload (for example, all pods of a deployment) are evicted one at a time.
+  Before evicting the next pod, the operator waits until no pod of the workload is terminating, the workload has as many
+  pods as it desires, and all of its pods that are not going to be evicted are ready, including the instrumented
+  replacement of the pod that has been evicted before.
+  Pods that are not ready are evicted first.
+* If a workload does not get to that state within 10 minutes, for example because the instrumented replacement does not
+  become ready, or if a replacement has not been instrumented, the operator stops evicting the pods of that workload and
+  records a Kubernetes event with reason `PodEvictionStopped` for it.
+  This way, a problem with the instrumentation cannot take down all replicas of a workload.
+  The remaining pods are instrumented the next time they are recreated.
+* Evictions respect pod disruption budgets. If a pod disruption budget does not allow an eviction, the operator retries
+  it with an exponential backoff of up to one minute. After 30 minutes, it gives up and records a `PodEvictionStopped`
+  event for the workload.
+* At most 10 workloads are processed at the same time across the cluster, the other workloads wait for their turn.
+* The delay `operator.instrumentation.delayAfterEachWorkloadMillis` is applied after each eviction.
+* Evictions stop when the Dash0Monitoring resource is removed or its `instrumentWorkloads.mode` is changed to a value
+  other than `all`, and when the operator shuts down. When the operator starts, it looks for uninstrumented pods again.
 
 To opt out of instrumentation, add the label `dash0.com/enable: "false"` to the top level metadata of the workload
 resource, as with the default mode, or to its pod template.
@@ -170,9 +187,8 @@ Kubernetes events about the instrumentation of an owned pod are recorded for its
 deployment, since the pod does not have a name yet when it is instrumented.
 
 This feature is experimental and has the following limitations:
-* Evictions are not paced yet. Unless a pod disruption budget prevents it, all uninstrumented pods of a workload are
-  evicted at the same time, and a workload with a single replica is unavailable until its replacement pod is ready.
-  Consider defining pod disruption budgets for workloads that must stay available.
+* A workload with a single replica is unavailable until its replacement pod is ready, unless a pod disruption budget
+  prevents the eviction.
 * Removing the Dash0Monitoring resource or setting `instrumentWorkloads.mode=none` does not remove the instrumentation
   from pods that are already running. Their instrumentation is removed when they are recreated.
 * Workload resources that have been instrumented before the setting was enabled keep the instrumentation in their pod

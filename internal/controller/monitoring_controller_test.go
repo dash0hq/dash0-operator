@@ -231,19 +231,50 @@ var _ = Describe(
 						It(
 							"should evict uninstrumented pods after marking the resource as available when pod-level "+
 								"instrumentation is enabled", func() {
-								monitoringReconciler.instrumenter.ClusterInstrumentationConfig.InstrumentPods = true
-								name := UniqueName(PodNamePrefix)
-								CreatePodControlledBy(ctx, k8sClient, TestNamespaceName, name, util.K8sTypeMetaReplicaSet)
+								instrumenter := monitoringReconciler.instrumenter
+								instrumenter.ClusterInstrumentationConfig.InstrumentPods = true
+								instrumenter.PodEvictionQueue = instrumentation.NewPodEvictionQueue(
+									k8sClient,
+									k8sClient,
+									clientset,
+									recorder,
+									instrumenter.ClusterInstrumentationConfig,
+								)
+								queueCtx, stopQueue := context.WithCancel(ctx)
+								queueStopped := make(chan struct{})
+								go func() {
+									defer close(queueStopped)
+									_ = instrumenter.PodEvictionQueue.Start(queueCtx)
+								}()
+								DeferCleanup(func() {
+									stopQueue()
+									Eventually(queueStopped).Should(BeClosed())
+								})
+								replicaSet := CreateBasicReplicaSet(
+									ctx,
+									k8sClient,
+									TestNamespaceName,
+									UniqueName(ReplicaSetNamePrefix),
+								)
+								createdObjectsMonitoringControllerTest =
+									append(createdObjectsMonitoringControllerTest, replicaSet)
+								pod := BasicPod(TestNamespaceName, UniqueName(PodNamePrefix))
+								AddLabel(&pod.ObjectMeta, "app", "test")
+								pod.OwnerReferences = []metav1.OwnerReference{
+									*metav1.NewControllerRef(replicaSet, appsv1.SchemeGroupVersion.WithKind("ReplicaSet")),
+								}
+								CreateWorkload(ctx, k8sClient, pod)
+								DeferCleanup(func() {
+									Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, pod))).To(Succeed())
+								})
 
 								triggerReconcileRequest(ctx, monitoringReconciler)
 
 								verifyMonitoringResourceIsAvailable(ctx)
-								err := k8sClient.Get(
-									ctx,
-									client.ObjectKey{Namespace: TestNamespaceName, Name: name},
-									&corev1.Pod{},
-								)
-								Expect(apierrors.IsNotFound(err)).To(BeTrue(), "expected the pod to be evicted, got %v", err)
+								Eventually(func(g Gomega) {
+									err := k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &corev1.Pod{})
+									g.Expect(apierrors.IsNotFound(err)).To(BeTrue(), "expected the pod to be evicted, got %v", err)
+								}).Should(Succeed())
 							},
 						)
 

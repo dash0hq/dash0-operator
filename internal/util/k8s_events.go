@@ -107,6 +107,19 @@ func QueueFailedInstrumentationEvent(eventRecorder events.EventRecorder, resourc
 	)
 }
 
+// QueuePodEvictionStoppedEvent records that the operator has stopped evicting the pods of a workload for pod-level
+// instrumentation.
+func QueuePodEvictionStoppedEvent(eventRecorder events.EventRecorder, resource runtime.Object, note string) {
+	eventRecorder.Eventf(
+		resource,
+		nil,
+		corev1.EventTypeWarning,
+		string(ReasonPodEvictionStopped),
+		string(ActionInstrumentation),
+		note,
+	)
+}
+
 func QueueSuccessfulUninstrumentationEvent(eventRecorder events.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor) {
 	eventRecorder.Eventf(
 		resource,

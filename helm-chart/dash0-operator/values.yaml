@@ -699,7 +699,7 @@ operator:
 
     # An optional delay to stagger access to the Kubernetes API server to instrument existing workloads at operator
     # startup or when enabling instrumentation for a new namespace via the Dash0Monitoring resource. This delay will be
-    # applied after each individual workload.
+    # applied after each individual workload. With instrumentPods=true, it is applied after each evicted pod.
     delayAfterEachWorkloadMillis: 0
 
     # An optional delay to stagger access to the Kubernetes API server to instrument (or update the instrumentation of)

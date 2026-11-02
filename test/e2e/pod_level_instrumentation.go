@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -29,6 +30,35 @@ func podLabelSelector(runtime runtimeType, workloadType workloadType) string {
 	default:
 		return fmt.Sprintf("app=%s-app", workloadName(runtime, workloadType))
 	}
+}
+
+// applyPodDisruptionBudget creates or updates a pod disruption budget for the pods of the given workload, with the
+// given maxUnavailable value, and deletes it when the test is cleaned up.
+func applyPodDisruptionBudget(namespace string, runtime runtimeType, workloadType workloadType, maxUnavailable int) {
+	name := fmt.Sprintf("%s-pdb", workloadName(runtime, workloadType))
+	matchLabels := strings.SplitN(podLabelSelector(runtime, workloadType), "=", 2)
+	pdbYaml := fmt.Sprintf(`apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  maxUnavailable: %d
+  selector:
+    matchLabels:
+      %s: %s
+`, name, namespace, maxUnavailable, matchLabels[0], matchLabels[1])
+	applyCmd := exec.Command("kubectl", "apply", "-f", "-")
+	applyCmd.Stdin = strings.NewReader(pdbYaml)
+	Expect(runAndIgnoreOutput(applyCmd)).To(Succeed())
+	DeferCleanup(func() {
+		_ = runAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"--namespace", namespace,
+			"delete", "poddisruptionbudget", name,
+			"--ignore-not-found",
+		))
+	})
 }
 
 // readPodsOfWorkload returns the pods of the given workload which are not being deleted.

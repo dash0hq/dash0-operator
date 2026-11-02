@@ -4064,6 +4064,47 @@ spec:
 				)
 			})
 
+			It("should retry evicting pods that a pod disruption budget does not allow to be evicted", func() {
+				timestampLowerBound := time.Now()
+				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+				By("installing the Node.js deployment")
+				Expect(installTestAppWorkload(
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					applicationUnderTestNamespace,
+					"",
+					nil,
+					nil,
+				)).To(Succeed())
+				podUids := readPodUids(applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDeployment)
+				By("creating a pod disruption budget that does not allow any eviction")
+				applyPodDisruptionBudget(applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDeployment, 0)
+
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+
+				verifyThatPodsAreNeitherEvictedNorInstrumented(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					podUids,
+				)
+				By("allowing one eviction at a time in the pod disruption budget")
+				applyPodDisruptionBudget(applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDeployment, 1)
+				verifyThatPodsHaveBeenInstrumentedByTheWebhook(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					testId,
+					images,
+					podUids,
+					timestampLowerBound,
+				)
+			})
+
 			It("should instrument new pods of all workload types without modifying the workloads", func() {
 				timestampLowerBound := time.Now()
 				deployDash0MonitoringResourceWithRetry(
