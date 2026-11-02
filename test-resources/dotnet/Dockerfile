@@ -13,6 +13,8 @@ COPY . .
 
 # adapt the target framework of the application to the .NET version of the build base image
 RUN case "${base_image_build}" in \
+    *:6.0*) target_framework=net6.0 ;; \
+    *:7.0*) target_framework=net7.0 ;; \
     *:8.0*) target_framework=net8.0 ;; \
     *:9.0*) target_framework=net9.0 ;; \
     *) target_framework= ;; \

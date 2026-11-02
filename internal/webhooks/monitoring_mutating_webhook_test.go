@@ -304,6 +304,33 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 				}),
 		)
 
+		DescribeTable("should normalize the resource spec in SCE-only mode", func(testConfig normalizeTelemetryRelatedSettingsTestConfig) {
+			handler := NewMonitoringMutatingWebhookHandler(k8sClient, OperatorNamespace, true)
+			spec := testConfig.spec
+			// no operator configuration resource exists yet
+			handler.setTelemetryCollectionRelatedDefaults(toAdmissionRequest(TestNamespaceName, spec), nil, &spec)
+			Expect(spec).To(Equal(testConfig.wanted))
+		},
+			Entry("given an empty spec, disable instrumentation and collection by default",
+				normalizeTelemetryRelatedSettingsTestConfig{
+					spec: dash0v1beta1.Dash0MonitoringSpec{},
+					wanted: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+							Mode: dash0common.InstrumentWorkloadsModeNone,
+						},
+						LogCollection: dash0common.LogCollection{
+							Enabled: new(false),
+						},
+						EventCollection: dash0common.EventCollection{
+							Enabled: new(false),
+						},
+						PrometheusScraping: dash0common.PrometheusScraping{
+							Enabled: new(false),
+						},
+					},
+				}),
+		)
+
 		DescribeTable("should normalize the transform spec", func(testCase normalizeTransformSpecTestCase) {
 			var unmarshalledYaml map[string]any
 			Expect(yaml.Unmarshal([]byte(testCase.monitoringResourceSpec), &unmarshalledYaml)).To(Succeed())

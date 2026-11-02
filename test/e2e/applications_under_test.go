@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -30,6 +31,14 @@ func determineTestAppImages() {
 			"TEST_APP_DOTNET",
 			repositoryPrefix,
 			"dash0-operator-dotnet-test-app",
+			imageTag,
+			pullPolicy,
+		)
+	testAppImages[runtimeTypeDotnet6] =
+		determineContainerImage(
+			"TEST_APP_DOTNET_6",
+			repositoryPrefix,
+			"dash0-operator-dotnet-6-test-app",
 			imageTag,
 			pullPolicy,
 		)
@@ -203,6 +212,40 @@ func installRubyDeployment(namespace string) error {
 	)
 }
 
+// sendMetricToSignalControlCollector sends a gauge with the given name via OTLP/HTTP directly to the Signal Control
+// collector service, from a short-lived pod that runs the Node.js test app image.
+func sendMetricToSignalControlCollector(namespace string, metricName string) error {
+	script := fmt.Sprintf(`
+const timeUnixNano = (BigInt(Date.now()) * 1000000n).toString();
+fetch('http://%s.%s.svc.cluster.local:4318/v1/metrics', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ resourceMetrics: [{
+    resource: { attributes: [{ key: 'service.name', value: { stringValue: 'sce-only-e2e-test' } }] },
+    scopeMetrics: [{ metrics: [{ name: '%s', gauge: { dataPoints: [{ asInt: '1', timeUnixNano }] } }] }],
+  }] }),
+}).then(response => {
+  if (!response.ok) { console.error('status ' + response.status); process.exit(1); }
+}).catch(error => { console.error(error); process.exit(1); });
+`, signalControlCollectorServiceName, operatorNamespace, metricName)
+	image := testAppImages[runtimeTypeNodeJs]
+	args := []string{
+		"run",
+		fmt.Sprintf("sce-only-otlp-sender-%d", time.Now().UnixNano()),
+		"--namespace", namespace,
+		"--image", renderFullyQualifiedImageName(image),
+		"--restart", "Never",
+		"--rm",
+		"--attach",
+		"--quiet",
+	}
+	if image.pullPolicy != "" {
+		args = append(args, "--image-pull-policy", image.pullPolicy)
+	}
+	args = append(args, "--command", "--", "node", "-e", script)
+	return runAndIgnoreOutput(exec.Command("kubectl", args...))
+}
+
 // installTestAppWorkload runs helm install for a single workload, that is, for one particular runtime (Node.js, JVM,
 // ...) and one particular workload type (i.e. Deployment, DaemonSet, ...).
 func installTestAppWorkload(
@@ -312,6 +355,10 @@ func uninstallDotnetRelease(namespace string) error {
 	return runTestAppHelmUninstall(namespace, helmReleaseName(runtimeTypeDotnet, namespace))
 }
 
+func uninstallDotnet6Release(namespace string) error {
+	return runTestAppHelmUninstall(namespace, helmReleaseName(runtimeTypeDotnet6, namespace))
+}
+
 func uninstallDotnet8Release(namespace string) error {
 	return runTestAppHelmUninstall(namespace, helmReleaseName(runtimeTypeDotnet8, namespace))
 }
@@ -370,6 +417,7 @@ func killBatchJobsAndPods(namespace string) {
 func removeAllTestApplications(namespace string) {
 	By("uninstalling the test applications")
 	Expect(uninstallDotnetRelease(namespace)).To(Succeed())
+	Expect(uninstallDotnet6Release(namespace)).To(Succeed())
 	Expect(uninstallDotnet8Release(namespace)).To(Succeed())
 	Expect(uninstallJvmRelease(namespace)).To(Succeed())
 	Expect(uninstallNodeJsRelease(namespace)).To(Succeed())

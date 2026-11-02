@@ -186,15 +186,19 @@ func shouldBeInstrumented(objectMeta *metav1.ObjectMeta, autoInstrumentationLabe
 	return labelSelector.Matches(labels.Set(objectMeta.Labels))
 }
 
-func CheckAndDeleteIgnoreOnceLabel(objectMeta *metav1.ObjectMeta) bool {
-	if objectMeta.Labels == nil {
+// HasWebhookIgnoreOnceLabel reports whether the label dash0.com/webhook-ignore-once=true is present.
+func HasWebhookIgnoreOnceLabel(objectMeta *metav1.ObjectMeta) bool {
+	return objectMeta.Labels[webhookIgnoreOnceLabelKey] == "true"
+}
+
+// RemoveWebhookIgnoreOnceLabel removes the label dash0.com/webhook-ignore-once=true from the given labels and reports
+// whether it was present.
+func RemoveWebhookIgnoreOnceLabel(labels map[string]string) bool {
+	if labels[webhookIgnoreOnceLabelKey] != "true" {
 		return false
 	}
-	if value, ok := objectMeta.Labels[webhookIgnoreOnceLabelKey]; ok {
-		delete(objectMeta.Labels, webhookIgnoreOnceLabelKey)
-		return value == "true"
-	}
-	return false
+	delete(labels, webhookIgnoreOnceLabelKey)
+	return true
 }
 
 // ImageRefToLabel takes an image ref as input and returns a string that conforms to the spec of k8s labels:

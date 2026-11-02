@@ -353,7 +353,7 @@ func (r *TimeSeriesAggregationReconciler) Reconcile(ctx context.Context, req rec
 	return reconcile.Result{}, nil
 }
 
-func (r *TimeSeriesAggregationReconciler) MapResourceToHttpRequests(
+func (r *TimeSeriesAggregationReconciler) MapResourceToApiCalls(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,
@@ -456,23 +456,6 @@ func (r *TimeSeriesAggregationReconciler) renderTimeSeriesAggregationUrl(
 		url.PathEscape(timeSeriesAggregationOrigin),
 		url.QueryEscape(dataset),
 	), timeSeriesAggregationOrigin
-}
-
-func (r *TimeSeriesAggregationReconciler) ExtractIdFromResponseBody(
-	responseBytes []byte,
-	logger logd.Logger,
-) (id string, err error) {
-	objectWithMetadata := Dash0ApiObjectWithMetadata{}
-	if err := json.Unmarshal(responseBytes, &objectWithMetadata); err != nil {
-		logger.Error(
-			err,
-			"cannot parse response, will not extract the synchronized object's ID",
-			"response",
-			string(responseBytes),
-		)
-		return "", err
-	}
-	return objectWithMetadata.Metadata.Labels.Id, nil
 }
 
 func (r *TimeSeriesAggregationReconciler) WriteSynchronizationResultToSynchronizedResource(

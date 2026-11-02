@@ -30,6 +30,13 @@ const (
 func main() {
 	ctx := context.Background()
 
+	// Initialize the OTel SDK before emitting the first log record, records emitted earlier never reach the OTLP
+	// exporter.
+	meter := common.InitOTelSdkFromEnvVars(ctx, selfmonitoring.MeterName, containerName)
+	// Deliberately shutting down with the base context: the context below is cancelled when the termination signal
+	// arrives, and a cancelled context would keep the OTel SDK from flushing the telemetry it still holds.
+	defer common.ShutDownOTelSdk(ctx)
+
 	stdOutSlogHandler := slog.NewJSONHandler(os.Stdout, nil)
 	var logger *slog.Logger
 	if common.OTelSDKIsConfigured() {
@@ -44,11 +51,9 @@ func main() {
 	}
 	logger.Info("dash0 agent0-connector starting up")
 
-	meter := common.InitOTelSdkFromEnvVars(ctx, selfmonitoring.MeterName, serviceName, containerName)
+	common.StartPprofServerIfConfigured(logger)
+
 	selfmonitoring.InitializeMetrics(meter, logger)
-	// Deliberately shutting down with the base context: the context below is cancelled when the termination signal
-	// arrives, and a cancelled context would keep the OTel SDK from flushing the telemetry it still holds.
-	defer common.ShutDownOTelSdk(ctx)
 
 	signalCtx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer stop()

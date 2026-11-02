@@ -56,7 +56,7 @@ var _ = Describe("The notification channel API client calls", func() {
 						"slackConfig": map[string]any{"webhookURL": "https://hooks.slack.com/x", "channel": "#alerts"},
 					},
 				}
-				result := notificationChannelReconciler.MapResourceToHttpRequests(
+				result := notificationChannelReconciler.MapResourceToApiCalls(
 					preconditionChecksResult,
 					apiConfig,
 					action,

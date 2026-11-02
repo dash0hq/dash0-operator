@@ -219,6 +219,9 @@ tests:
             serverCertSecretName: ta-mtls-server-cert
             clientCertSecretName: ta-mtls-client-cert
           allowInsecureAuthSecrets: true
+          allowSecretAccessInNamespaces:
+            - namespace-a
+            - namespace-b
           containerResources:
             limits:
               memory: 2Gi
@@ -592,6 +595,9 @@ tests:
             targetAllocatorMtlsServerCertSecretName: "ta-mtls-server-cert"
             targetAllocatorMtlsClientCertSecretName: "ta-mtls-client-cert"
             targetAllocatorAllowInsecureAuthSecrets: true
+            targetAllocatorAllowSecretAccessInNamespaces:
+              - namespace-a
+              - namespace-b
             targetAllocatorContainerResources:
               gomemlimit: 1500MiB
               limits:
@@ -675,6 +681,7 @@ tests:
                 cpu: 20m
                 memory: 64Mi
             agent0ConnectorMaxConcurrentCommands: 4
+            agent0ConnectorEnablePprof: false
             agent0ConnectorAllowedKubectlCommands:
               api-resources: true
               api-versions: true
@@ -822,6 +829,26 @@ tests:
           path: data['extra.yaml']
           pattern: daemonSetSeLinuxOptions
 
+  - it: should not render collector daemonSet seLinuxOptions by default on OpenShift
+    set:
+      operator:
+        openShift:
+          enabled: true
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: daemonSetSeLinuxOptions
+
+  - it: should render collector daemonSet seLinuxOptions as null when set to an empty map
+    set:
+      operator:
+        collectors:
+          daemonSetSeLinuxOptions: {}
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: "daemonSetSeLinuxOptions: null\n"
+
   - it: should reject unknown collector daemonSet seLinuxOptions settings
     set:
       operator:
@@ -840,6 +867,132 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: "Error: operator.collectors.daemonSetSeLinuxOptions must be a map with the settings user, role, type and level."
+
+  - it: should reject a collector daemonSet seLinuxOptions value that is false
+    set:
+      operator:
+        collectors:
+          daemonSetSeLinuxOptions: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.daemonSetSeLinuxOptions must be a map with the settings user, role, type and level."
+
+  - it: should reject signalControlCollectorReplicas 0 when Signal Control is enabled
+    set:
+      operator:
+        signalControl:
+          enabled: true
+        collectors:
+          signalControlCollectorReplicas: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.signalControlCollectorReplicas must be an integer of at least 1, but was 0."
+
+  - it: should reject a negative signalControlCollectorReplicas when Signal Control is enabled
+    set:
+      operator:
+        signalControl:
+          enabled: true
+        collectors:
+          signalControlCollectorReplicas: -1
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.signalControlCollectorReplicas must be an integer of at least 1, but was -1."
+
+  - it: should reject a non-integer signalControlCollectorReplicas when Signal Control is enabled
+    set:
+      operator:
+        signalControl:
+          enabled: true
+        collectors:
+          signalControlCollectorReplicas: 2.5
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.signalControlCollectorReplicas must be an integer of at least 1, but was 2.5."
+
+  - it: should reject Edge Proxy replicas 0
+    set:
+      operator:
+        signalControl:
+          enabled: true
+          edgeProxy:
+            replicas: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.signalControl.edgeProxy.replicas must be an integer of at least 1, but was 0."
+
+  - it: should reject negative Edge Proxy replicas
+    set:
+      operator:
+        signalControl:
+          enabled: true
+          edgeProxy:
+            replicas: -1
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.signalControl.edgeProxy.replicas must be an integer of at least 1, but was -1."
+
+  - it: should reject non-numeric Edge Proxy replicas
+    set:
+      operator:
+        signalControl:
+          enabled: true
+          edgeProxy:
+            replicas: abc
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.signalControl.edgeProxy.replicas must be an integer of at least 1, but was abc."
+
+  - it: should accept replica counts given as numeric strings
+    set:
+      operator:
+        signalControl:
+          enabled: true
+          edgeProxy:
+            replicas: "4"
+        collectors:
+          signalControlCollectorReplicas: "3"
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: "signalControlCollectorReplicas: 3\n"
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: "edgeProxyReplicas: 4\n"
+
+  - it: should omit replica counts that are null, so that the operator applies its defaults
+    set:
+      operator:
+        signalControl:
+          enabled: true
+          edgeProxy:
+            replicas: null
+        collectors:
+          signalControlCollectorReplicas: null
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: signalControlCollectorReplicas
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: edgeProxyReplicas
+
+  - it: should neither render nor validate the Signal Control replica counts when Signal Control is disabled
+    set:
+      operator:
+        signalControl:
+          enabled: false
+          edgeProxy:
+            replicas: 0
+        collectors:
+          signalControlCollectorReplicas: 0
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: signalControlCollectorReplicas
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: edgeProxyReplicas
 
   - it: should render collector labels and annotations when set
     set:
@@ -939,6 +1092,57 @@ tests:
       - notMatchRegex:
           path: data['extra.yaml']
           pattern: targetAllocatorPodAnnotations
+
+  - it: should render allowSecretAccessInNamespaces for the target-allocator when set
+    set:
+      operator:
+        targetAllocator:
+          allowSecretAccessInNamespaces:
+            - namespace-a
+            - namespace-b
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            targetAllocatorAllowSecretAccessInNamespaces:
+              - namespace-a
+              - namespace-b
+
+  - it: should reject an empty namespace in allowSecretAccessInNamespaces for the target-allocator
+    set:
+      operator:
+        targetAllocator:
+          allowSecretAccessInNamespaces:
+            - namespace-a
+            - ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.targetAllocator.allowSecretAccessInNamespaces must only contain valid namespace names."
+
+  - it: should reject an invalid namespace name in allowSecretAccessInNamespaces for the target-allocator
+    set:
+      operator:
+        targetAllocator:
+          allowSecretAccessInNamespaces:
+            - "namespace-a\nfoo: bar"
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.targetAllocator.allowSecretAccessInNamespaces must only contain valid namespace names."
+
+  - it: should reject a single string instead of a list for allowSecretAccessInNamespaces
+    set:
+      operator:
+        targetAllocator:
+          allowSecretAccessInNamespaces: namespace-a
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.targetAllocator.allowSecretAccessInNamespaces must be a list, e.g. --set operator.targetAllocator.allowSecretAccessInNamespaces={namespace-a,namespace-b}."
+
+  - it: should not render allowSecretAccessInNamespaces for the target-allocator by default
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: targetAllocatorAllowSecretAccessInNamespaces
 
   - it: should render agent0-connector labels and annotations when set
     set:
@@ -1050,6 +1254,37 @@ tests:
           path: data['extra.yaml']
           pattern: agent0ConnectorMaxConcurrentCommands
 
+  - it: should disable pprof for the agent0-connector by default
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: 'agent0ConnectorEnablePprof: false'
+
+  - it: should enable pprof for the agent0-connector when set
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          enablePprof: true
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: 'agent0ConnectorEnablePprof: true'
+
+  - it: should not render the agent0-connector pprof setting when the agent0-connector is disabled
+    set:
+      operator:
+        agent0Connector:
+          enablePprof: true
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0ConnectorEnablePprof
+
   - it: should not render custom agent0-connector cluster role rules by default
     asserts:
       - notMatchRegex:
@@ -1126,6 +1361,60 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: the verb "patch" is not allowed'
+
+  - it: should render the default agent0-connector cluster role rules plus the additional rules when additional rules are set
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            additionalRules:
+              - apiGroups: ["example.com"]
+                resources: ["widgets"]
+                verbs: ["get", "list"]
+    asserts:
+      # the first default rule
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            agent0ConnectorClusterRoleRules:
+              - apiGroups:
+                - ""
+                resources:
+                - componentstatuses
+      # the last default rule, followed by the additional rule
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: '    - /version/\n    verbs:\n    - get\n  - apiGroups:\n    - example.com\n    resources:\n    - widgets\n    verbs:\n    - get\n    - list\n'
+
+  - it: should not render agent0-connector cluster role rules when additional rules are set but the agent0-connector is disabled
+    set:
+      operator:
+        agent0Connector:
+          enabled: false
+          clusterRole:
+            additionalRules:
+              - apiGroups: ["example.com"]
+                resources: ["widgets"]
+                verbs: ["get", "list"]
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0ConnectorClusterRoleRules
+
+  - it: should reject additional agent0-connector cluster role rules with a write verb
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            additionalRules:
+              - apiGroups: [""]
+                resources: ["pods"]
+                verbs: ["get", "list", "patch"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.additionalRules\[0\]: the verb "patch" is not allowed'
 
   - it: should render the default allowed kubectl commands for the agent0-connector
     set:
@@ -1405,7 +1694,6 @@ tests:
                 initialDelaySeconds: 0
                 periodSeconds: 2
                 timeoutSeconds: 1
-            signalControlCollectorReplicas: 2
             signalControlCollectorContainerResources:
               gomemlimit: ""
               limits:

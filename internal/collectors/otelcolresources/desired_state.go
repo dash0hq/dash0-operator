@@ -54,6 +54,7 @@ type SignalControlConfig struct {
 	LogPatternRefreshInterval          string
 	LogParserCacheExpiration           string
 	LogGroupingCacheExpiration         string
+	CardholderDataRedactionEnabled     bool
 	OperationPreferSpanName            bool
 	OperationCardinalityRules          []SignalControlCardinalityRule
 	Endpoint                           string
@@ -155,10 +156,21 @@ type oTelColConfig struct {
 	DaemonSetCollectorMemoryLimit     resource.Quantity
 	DeploymentCollectorMemoryLimit    resource.Quantity
 	SignalControlCollectorMemoryLimit resource.Quantity
+	SignalControlSceOnlyMode          bool
+	// TargetAllocatorMtlsCaSha is a hash of the CA certificate in the target-allocator mTLS client cert secret, empty if
+	// mTLS is disabled. It is added to the daemonset collector's pod template, so that the collector pods are restarted
+	// when the CA changes; the collector reloads the client certificate and key at runtime, but not the CA.
+	TargetAllocatorMtlsCaSha string
 }
 
 func (c *oTelColConfig) usesOffsetStorageVolume() bool {
 	return c.OffsetStorageVolume != nil
+}
+
+// deploysProducerCollectors reports whether the collector daemonset and the cluster metrics collector deployment are
+// deployed, which is the case unless SCE-only mode is active.
+func (c *oTelColConfig) deploysProducerCollectors() bool {
+	return !c.SignalControlSceOnlyMode
 }
 
 // signalControlGatewayActive reports whether the dedicated Signal Control collector deployment (the "gateway") is
@@ -302,9 +314,13 @@ const (
 	gkeAutopilotAllowlistLabelDeploymentValue    = "dash0-opentelemetry-cluster-metrics-collector-v1.0.4"
 	gkeAutopilotAllowlistLabelSignalControlValue = "dash0-opentelemetry-signal-control-collector-v1.0.4"
 
-	targetAllocatorCertsVolumeName = "ta-mtls-certs"
-	targetAllocatorCertsVolumeDir  = "/etc/certs/ta-client"
+	targetAllocatorCertsVolumeName     = "ta-mtls-certs"
+	targetAllocatorCertsVolumeDir      = "/etc/certs/ta-client"
+	targetAllocatorMtlsCaShaAnnotation = "ta-mtls-ca-sha"
 )
+
+// TargetAllocatorMtlsCaCertKey is the key of the CA certificate in the target-allocator mTLS client cert secret.
+const TargetAllocatorMtlsCaCertKey = "ca.crt"
 
 var (
 	rbacApiVersion = fmt.Sprintf("%s/v1", rbacApiGroup)
@@ -414,14 +430,6 @@ var (
 	}
 
 	deploymentReplicas int32 = 1
-
-	// SignalControlCollectorDefaultReplicas is used when the extra config map specifies a replica count below 1. Two
-	// replicas halve the per-process concentration of the RED connector's cardinality tracking and of the sampling
-	// reservoir compared to a single pod, and let a rolling update proceed without emptying the pool. The topology
-	// spread constraints bias them onto separate zones and nodes, and the pod disruption budget keeps a voluntary
-	// disruption from taking down both; neither is a hard guarantee, see
-	// signalControlCollectorTopologySpreadConstraints.
-	SignalControlCollectorDefaultReplicas int32 = 2
 )
 
 func assembleDesiredStateForUpsert(
@@ -576,6 +584,12 @@ func assembleDesiredState(
 			return desiredState, err
 		}
 		desiredState = append(desiredState, addCommonMetadata(signalControlCollectorDeployment))
+	}
+
+	// In SCE-only mode, the producer collectors are not deployed. They are still included in the desired state for
+	// deletion, so that they are removed when SCE-only mode is enabled for an existing installation.
+	if !forDeletion && !config.deploysProducerCollectors() {
+		return desiredState, nil
 	}
 
 	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDaemonSet(config)))
@@ -948,7 +962,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      util.MergeMaps(templateLabels, extraConfig.CollectorDaemonSetPodLabels),
-					Annotations: util.MergeMaps(nil, extraConfig.CollectorDaemonSetPodAnnotations),
+					Annotations: util.MergeMaps(daemonSetPodTemplateAnnotations(config), extraConfig.CollectorDaemonSetPodAnnotations),
 				},
 				Spec: podSpec,
 			},
@@ -969,6 +983,13 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 	}
 
 	return collectorDaemonSet, nil
+}
+
+func daemonSetPodTemplateAnnotations(config *oTelColConfig) map[string]string {
+	if config.TargetAllocatorMtlsCaSha == "" {
+		return nil
+	}
+	return map[string]string{targetAllocatorMtlsCaShaAnnotation: config.TargetAllocatorMtlsCaSha}
 }
 
 func assembleFileLogOffsetSyncContainer(
@@ -2083,10 +2104,6 @@ func assembleSignalControlCollectorDeployment(
 	}
 
 	replicas := extraConfig.SignalControlCollectorReplicas
-	if replicas < 1 {
-		replicas = SignalControlCollectorDefaultReplicas
-	}
-
 	templateLabels :=
 		addGkeAutopilotAllowlistMatchLabel(config, signalControlMatchLabels, gkeAutopilotAllowlistLabelSignalControlValue)
 	collectorDeployment := &appsv1.Deployment{

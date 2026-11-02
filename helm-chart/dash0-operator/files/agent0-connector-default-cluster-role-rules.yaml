@@ -13,7 +13,8 @@
 # desired_state.go" in internal/agent0connector/a0cresources/desired_state_test.go parses this file and fails when the
 # two lists disagree, so a change here has to be made in the Go list as well.
 #
-# Users can replace these rules entirely via the Helm value operator.agent0Connector.clusterRole.rules.
+# Users can replace these rules entirely via the Helm value operator.agent0Connector.clusterRole.rules, or add rules to
+# them via operator.agent0Connector.clusterRole.additionalRules.
 
 # Read-only access to core API group resource types. Configmaps are absent as a defensive default value, since
 # configmaps can hold sensitive values in some setups. Users that want to allow access to configmaps can do so by
@@ -210,7 +211,8 @@
 # Access to the self subject review API, required by "kubectl auth can-i" and "kubectl auth can-i --list", which let
 # the agent0-connector report its own permissions. This is the only rule where "create" is allowed. Creating a
 # SelfSubjectAccessReview or a SelfSubjectRulesReview does not persist an object, the API server evaluates the request
-# and answers it, and both reviews always report on the caller's own service account.
+# and answers it, and both reviews always report on the caller's own service account. Creating a self subject review
+# object does not modify cluster state.
 - apiGroups:
   - authorization.k8s.io
   resources:

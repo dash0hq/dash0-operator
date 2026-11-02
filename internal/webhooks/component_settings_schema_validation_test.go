@@ -5,6 +5,7 @@ package webhooks
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -165,6 +166,11 @@ var _ = Describe("The schema validation of spec.components", func() {
 	withValuesThatRemoveADefault := func() *dash0v1alpha1.Dash0OperatorConfiguration {
 		return withComponents(&dash0v1alpha1.OperatorConfigurationComponents{
 			DaemonSetCollector: &dash0v1alpha1.DaemonSetCollectorSettings{
+				CollectorContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+					ContainerResources: dash0v1alpha1.ContainerResources{
+						Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("-1")},
+					},
+				},
 				WorkloadSettings: dash0v1alpha1.WorkloadSettings{
 					NodeAffinity: &corev1.NodeAffinity{
 						RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
@@ -181,6 +187,7 @@ var _ = Describe("The schema validation of spec.components", func() {
 		operatorConfigurationResource := withValuesThatRemoveADefault()
 		Expect(k8sClient.Create(ctx, operatorConfigurationResource, client.DryRunAll)).To(Succeed())
 		daemonSetCollector := operatorConfigurationResource.Spec.Components.DaemonSetCollector
+		Expect(daemonSetCollector.CollectorContainerResources.Limits.Memory().String()).To(Equal("-1"))
 		Expect(daemonSetCollector.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution).ToNot(BeNil())
 		Expect(daemonSetCollector.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms).To(
 			BeEmpty())
@@ -199,6 +206,11 @@ var _ = Describe("The schema validation of spec.components", func() {
 			client.DryRunAll,
 		)).To(Succeed())
 
+		memoryLimit, found, err := unstructured.NestedString(applied.Object,
+			"spec", "components", "daemonSetCollector", "collectorContainerResources", "limits", "memory")
+		Expect(err).ToNot(HaveOccurred())
+		Expect(found).To(BeTrue())
+		Expect(memoryLimit).To(Equal("-1"))
 		nodeSelectorTerms, found, err := unstructured.NestedSlice(applied.Object,
 			"spec", "components", "daemonSetCollector", "nodeAffinity", "requiredDuringSchedulingIgnoredDuringExecution",
 			"nodeSelectorTerms")

@@ -640,7 +640,7 @@ spec:
 						},
 					}
 					resourceToRequestsResult :=
-						samplingRuleReconciler.MapResourceToHttpRequests(
+						samplingRuleReconciler.MapResourceToApiCalls(
 							preconditionValidationResult,
 							apiConfig,
 							upsertAction,
@@ -690,7 +690,7 @@ spec:
 `), &samplingRule)).To(Succeed())
 						apiConfig := ApiConfig{Endpoint: ApiEndpointTest, Dataset: DatasetCustomTest, Token: AuthorizationTokenTest}
 						resourceToRequestsResult :=
-							samplingRuleReconciler.MapResourceToHttpRequests(
+							samplingRuleReconciler.MapResourceToApiCalls(
 								&preconditionValidationResult{
 									k8sName:      "dash0-sampling-rule",
 									k8sNamespace: TestNamespaceName,

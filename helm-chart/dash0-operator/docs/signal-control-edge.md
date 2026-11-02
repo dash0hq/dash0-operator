@@ -14,6 +14,8 @@ metering counters, which are classified internal: they are not billed at ingest 
 - the operation processor derives useful attributes and normalizes high-cardinality attributes
 - log enrichment applies centrally learned log patterns, setting the OTLP severity, a normalized message and the
 matched pattern on each log record (opt-in)
+- cardholder data redaction masks payment card numbers and removes card verification codes, track data and PIN blocks
+before telemetry leaves the cluster (opt-in)
 
 Tail-sampling decisions that require cross-collector coordination are made by the Dash0 Decision Maker (SaaS-side).
 Sampling rules, spam filters, and signal-to-metrics rules are configured as Kubernetes custom resources and synced to the
@@ -59,8 +61,9 @@ decisions are pending, raise the memory limit for clusters with high trace volum
 Once the helm install or upgrade has completed, the next step is to create a `Dash0SignalControl` resource.
 Note that this resource is a singleton: only one instance may exist per cluster.
 
-Since every component except log enrichment defaults to enabled, a minimal resource with an empty spec turns on the full
-SCE pipeline, including the Edge Proxy (recommended whenever you run more than one collector instance):
+Since every component except log enrichment and cardholder data redaction defaults to enabled, a minimal resource with
+an empty spec turns on the full SCE pipeline, including the Edge Proxy (recommended whenever you run more than one
+collector instance):
 
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
@@ -160,6 +163,39 @@ spec:
 The pattern refresh interval and the two cache expirations under `spec.logEnrichment` are optional; they are listed with
 all other fields and their defaults in the field reference linked in the [Quickstart](#quickstart).
 
+### Cardholder data redaction
+
+Cardholder data redaction removes payment card data from telemetry inside the cluster, so it never reaches Dash0
+unredacted. The `dash0redaction` processor scans log bodies, the attributes of log records, spans, span events, span
+links and metric data points, span names and span event names. Resource attributes are only checked by key, e.g.
+`card_number` or `cvv`. A primary account number is masked to its first six and last four digits
+(`411111******1111`); card verification codes, track data and PIN blocks are replaced with `<REDACTED>`. Matching values
+are redacted in place, signals are never dropped. Detection is pattern-based and cannot catch encoded, encrypted, or
+split card numbers, so not emitting cardholder data at the source remains the primary safeguard.
+
+The processor runs last in each of the SignalControl collector's traces, metrics and logs pipelines, after every other
+SCE processor that changes telemetry. RED metrics and signal-to-metrics are derived from the redacted telemetry.
+Telemetry that the per-node collector sends to a non-Dash0 exporter does not pass through the SignalControl collector
+and is not redacted.
+
+Telemetry redacted in the cluster is marked as such, and Dash0 does not redact it a second time. The processor reports
+the number of scanned and redacted items as `dash0.redaction.items_scanned` and `dash0.redaction.items_redacted`.
+
+Cardholder data redaction is off by default. To turn it on, set `spec.redaction.cardholderData.enabled: true` on the
+`Dash0SignalControl` resource:
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SignalControl
+metadata:
+  name: dash0-signal-control
+spec:
+  redaction:
+    cardholderData:
+      enabled: true
+  # ... other settings
+```
+
 ### Zone-aware routing
 
 The hop from the per-node collector to the SignalControl collector carries the cluster's entire Dash0-bound telemetry
@@ -201,3 +237,91 @@ across collector instances are instead delegated to the Dash0 Decision Maker on 
 enabled, collectors reach the Decision Maker through it rather than connecting individually. A trace whose spans are
 spread over several SignalControl collector replicas is still sampled correctly: the Decision Maker broadcasts each
 decision to every connected collector.
+
+## SCE-only mode
+
+In SCE-only mode, the operator deploys only the SignalControl collector and the Edge Proxy. It does not deploy the
+per-node collector daemonset, the cluster metrics collector deployment or the target allocator, and it does not
+instrument workloads. Applications send OTLP directly to the SignalControl collector service
+`<release-name>-signal-control-collector-service.<operator-namespace>.svc.cluster.local`, port 4317 (OTLP/gRPC) or 4318
+(OTLP/HTTP).
+
+Synchronizing Dash0 resources (dashboards, check rules, synthetic checks, views, sampling rules etc.) keeps working as
+usual, see [Managing Dash0 Resources](managing-dash0-resources.md).
+
+To enable SCE-only mode, install the operator with the following Helm values:
+
+```
+--set operator.signalControl.enabled=true
+--set operator.telemetryCollectionEnabled=false
+```
+
+The SignalControl collector is only deployed once an enabled `Dash0SignalControl` resource exists and the operator
+configuration has a default Dash0 export. Until then, telemetry sent to the service is lost. A
+`Dash0OperatorConfiguration` resource that is managed manually instead of via Helm has to set
+`spec.telemetryCollection.enabled=false`.
+
+### What is not available
+
+All processing that the per-node collector and the cluster metrics collector add is missing in SCE-only mode:
+
+- Kubernetes metadata enrichment (`k8s_attributes`), resource detection and the `k8s.cluster.name`/`k8s.cluster.uid`
+  resource attributes
+- custom filters and transforms configured in the `Dash0OperatorConfiguration` or `Dash0Monitoring` resources
+- non-Dash0 exports
+- profiles
+- log collection (including the logs of the operator's own pods), Kubernetes event collection, Prometheus scraping and
+  infrastructure metrics (kubelet stats, cluster metrics)
+- automatic namespace monitoring (`operator.autoMonitorNamespaces.enabled`)
+
+As with `operator.telemetryCollectionEnabled=false` without Signal Control, most settings of the
+`Dash0OperatorConfiguration` and `Dash0Monitoring` resources that enable these features are rejected. The others have
+no effect.
+
+The Edge Proxy sends its self-monitoring telemetry directly to the export of the operator configuration, unless that
+export is not a Dash0 export. On GKE Autopilot, the Edge Proxy does not send self-monitoring telemetry until its GKE
+Autopilot allowlist has been updated.
+
+### Namespaced exports
+
+If `Dash0Monitoring` resources define their own Dash0 exports, the SignalControl collector routes telemetry to the
+export of a namespace based on the `k8s.namespace.name` resource attribute. Since no collector adds this attribute in
+SCE-only mode, applications have to set it themselves, for example via the Kubernetes downward API:
+
+```yaml
+env:
+  - name: K8S_NAMESPACE_NAME
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.namespace
+  - name: OTEL_RESOURCE_ATTRIBUTES
+    value: k8s.namespace.name=$(K8S_NAMESPACE_NAME)
+```
+
+Telemetry without `k8s.namespace.name` is sent to the default export of the operator configuration.
+
+### Sizing and load balancing
+
+The SignalControl collector receives the telemetry of every application process directly, instead of from a few
+collector pods that batch it. It batches the received telemetry itself, using `operator.collectors.sendBatchSize` and
+`operator.collectors.sendBatchMaxSize`. Size `operator.collectors.signalControlCollectorReplicas` and
+`operator.collectors.signalControlCollectorContainerResources` for the cluster's full telemetry volume.
+
+The collector closes OTLP/gRPC connections after five minutes, so gRPC clients spread across new replicas after scaling
+up. OTLP/HTTP connections are not recycled and can stay unevenly distributed, so OTLP/gRPC is preferable.
+
+### Switching an existing installation
+
+Switching an existing installation to SCE-only mode via `helm upgrade` is not supported: previously instrumented
+workloads would keep sending telemetry to the removed per-node collector, and the target allocator resources would not
+be removed. Instead:
+
+1. If `operator.telemetryCollectionEnabled=false` has already been applied via `helm upgrade`, set it back to `true`
+   via `helm upgrade` and wait for the operator to be rolled out. The operator only removes the instrumentation on
+   uninstall when it is not running in SCE-only mode.
+2. Uninstall the operator, which removes the instrumentation from all workloads.
+3. Re-install it with `operator.telemetryCollectionEnabled=false`.
+
+In SCE-only mode, the operator stores `instrumentWorkloads.mode=none` and disabled log collection, event collection and
+Prometheus scraping as defaults in new `Dash0Monitoring` resources. These values are kept when switching back to the
+regular mode, so set them explicitly in these resources to instrument workloads and collect telemetry again.

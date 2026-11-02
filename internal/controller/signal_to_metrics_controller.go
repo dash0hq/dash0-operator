@@ -342,7 +342,7 @@ func (r *SignalToMetricsReconciler) Reconcile(ctx context.Context, req reconcile
 	return reconcile.Result{}, nil
 }
 
-func (r *SignalToMetricsReconciler) MapResourceToHttpRequests(
+func (r *SignalToMetricsReconciler) MapResourceToApiCalls(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,
@@ -450,23 +450,6 @@ func (r *SignalToMetricsReconciler) renderSignalToMetricsUrl(
 		url.PathEscape(signalToMetricsOrigin),
 		url.QueryEscape(dataset),
 	), signalToMetricsOrigin
-}
-
-func (r *SignalToMetricsReconciler) ExtractIdFromResponseBody(
-	responseBytes []byte,
-	logger logd.Logger,
-) (id string, err error) {
-	objectWithMetadata := Dash0ApiObjectWithMetadata{}
-	if err := json.Unmarshal(responseBytes, &objectWithMetadata); err != nil {
-		logger.Error(
-			err,
-			"cannot parse response, will not extract the synchronized object's ID",
-			"response",
-			string(responseBytes),
-		)
-		return "", err
-	}
-	return objectWithMetadata.Metadata.Labels.Id, nil
 }
 
 func (r *SignalToMetricsReconciler) WriteSynchronizationResultToSynchronizedResource(

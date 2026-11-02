@@ -28,6 +28,29 @@ func verifyExactlyOneWorkloadKubernetesEvent(
 		logBodyContains,
 		eventReason,
 		eventNameContains,
+		"",
+		"",
+	)
+}
+
+// verifyAtLeastOneKubernetesEventForInvolvedObject checks that at least one event has been collected for the given
+// involved object, which is identified by the given resource attribute (e.g. k8s.hpa.name) and its expected value.
+func verifyAtLeastOneKubernetesEventForInvolvedObject(
+	g Gomega,
+	timestampLowerBound time.Time,
+	eventReason string,
+	involvedObjectNameAttribute string,
+	involvedObjectName string,
+) {
+	askTelemetryMatcherForMatchingEvents(
+		g,
+		shared.ExpectAtLeastOne,
+		timestampLowerBound,
+		"",
+		eventReason,
+		"",
+		involvedObjectNameAttribute,
+		involvedObjectName,
 	)
 }
 
@@ -40,6 +63,8 @@ func askTelemetryMatcherForMatchingEvents(
 	logBodyContains string,
 	eventReason string,
 	eventNameContains string,
+	involvedObjectNameAttribute string,
+	involvedObjectName string,
 ) {
 	requestUrl := compileTelemetryMatcherUrlForEvents(
 		expectationMode,
@@ -47,6 +72,8 @@ func askTelemetryMatcherForMatchingEvents(
 		logBodyContains,
 		eventReason,
 		eventNameContains,
+		involvedObjectNameAttribute,
+		involvedObjectName,
 	)
 	executeTelemetryMatcherRequest(g, requestUrl)
 }
@@ -57,6 +84,8 @@ func compileTelemetryMatcherUrlForEvents(
 	logBodyContains string,
 	eventReason string,
 	eventNameContains string,
+	involvedObjectNameAttribute string,
+	involvedObjectName string,
 ) string {
 	baseUrl := fmt.Sprintf("%s/matching-events", telemetryMatcherBaseUrl)
 	params := url.Values{}
@@ -68,6 +97,10 @@ func compileTelemetryMatcherUrlForEvents(
 	params.Add(shared.QueryParamLogBodyContains, logBodyContains)
 	params.Add(shared.QueryParamEventReason, eventReason)
 	params.Add(shared.QueryParamEventNameContains, eventNameContains)
+	if involvedObjectNameAttribute != "" {
+		params.Add(shared.QueryParamEventInvolvedObjectNameAttribute, involvedObjectNameAttribute)
+		params.Add(shared.QueryParamEventInvolvedObjectName, involvedObjectName)
+	}
 	requestUrl := baseUrl + "?" + params.Encode()
 	return requestUrl
 }

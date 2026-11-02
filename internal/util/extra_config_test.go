@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -434,6 +435,7 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.TargetAllocatorMtlsServerCertSecretName).To(Equal(""))
 					Expect(extraConfig.TargetAllocatorMtlsClientCertSecretName).To(Equal(""))
 					Expect(extraConfig.TargetAllocatorAllowInsecureAuthSecrets).To(BeFalse())
+					Expect(extraConfig.TargetAllocatorAllowSecretAccessInNamespaces).To(BeEmpty())
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Cpu().String()).To(Equal("200m"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Requests.Cpu().String()).To(Equal("200m"))
@@ -456,6 +458,7 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.Agent0ConnectorContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.Agent0ConnectorContainerResources.Requests.Memory().String()).To(Equal("64Mi"))
 					Expect(extraConfig.Agent0ConnectorMaxConcurrentCommands).To(Equal(int32(2)))
+					Expect(extraConfig.Agent0ConnectorEnablePprof).To(BeFalse())
 					Expect(extraConfig.Agent0ConnectorAllowedKubectlCommands).To(
 						Equal(ExtraConfigDefaults.Agent0ConnectorAllowedKubectlCommands))
 					Expect(extraConfig.Agent0ConnectorNodeAffinity).To(Equal(defaultNodeAffinity()))
@@ -479,7 +482,7 @@ var _ = Describe("extra config map", func() {
 
 				It("should use the GKE Autopilot defaults for the init container if the key is missing", func() {
 					extraConfig, err :=
-						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(true), true, logger)
+						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(true, false), true, logger)
 					Expect(err).ToNot(HaveOccurred())
 					resources := extraConfig.InstrumentationInitContainerResources
 					Expect(resources.Limits.StorageEphemeral().String()).To(Equal("500Mi"))
@@ -487,6 +490,27 @@ var _ = Describe("extra config map", func() {
 					Expect(resources.Requests.Memory().String()).To(Equal("128Mi"))
 					Expect(resources.Requests.StorageEphemeral().String()).To(Equal("500Mi"))
 				})
+
+				It("should use the OpenShift default for the DaemonSet SELinux options if the key is missing", func() {
+					extraConfig, err :=
+						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(false, true), true, logger)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(extraConfig.DaemonSetSELinuxOptions).To(Equal(&corev1.SELinuxOptions{Type: "spc_t"}))
+				})
+
+				DescribeTable("should keep the DaemonSet SELinux options on OpenShift if the key is present",
+					func(content string, expected *corev1.SELinuxOptions) {
+						_, err := tmpFile.WriteString(content)
+						Expect(err).ToNot(HaveOccurred())
+						extraConfig, err :=
+							readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(false, true), true, logger)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(extraConfig.DaemonSetSELinuxOptions).To(Equal(expected))
+					},
+					Entry("explicit null", "daemonSetSeLinuxOptions: null\n", nil),
+					Entry("other type", "daemonSetSeLinuxOptions:\n  type: container_logreader_t\n",
+						&corev1.SELinuxOptions{Type: "container_logreader_t"}),
+				)
 
 				It("should keep values that are present, including explicit nulls and partial resources", func() {
 					_, err := tmpFile.WriteString(`
@@ -504,7 +528,7 @@ deploymentNodeAffinity:
         operator: In
         values:
         - collector
-signalControlCollectorReplicas: 0
+signalControlCollectorReplicas: 4
 targetAllocatorContainerResources:
   limits:
     memory: 600Mi
@@ -516,7 +540,7 @@ agent0ConnectorAllowedKubectlCommands:
 					Expect(err).ToNot(HaveOccurred())
 
 					extraConfig, err :=
-						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(true), true, logger)
+						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(true, false), true, logger)
 					Expect(err).ToNot(HaveOccurred())
 
 					Expect(extraConfig.InstrumentationInitContainerResources.Limits).To(BeNil())
@@ -527,7 +551,7 @@ agent0ConnectorAllowedKubectlCommands:
 					}))
 					Expect(extraConfig.DeploymentNodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution).To(BeNil())
 					Expect(extraConfig.DeploymentNodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution).To(HaveLen(1))
-					Expect(extraConfig.SignalControlCollectorReplicas).To(Equal(int32(0)))
+					Expect(extraConfig.SignalControlCollectorReplicas).To(Equal(int32(4)))
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits).To(HaveLen(1))
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Memory().String()).To(Equal("600Mi"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Requests).To(BeNil())
@@ -539,6 +563,36 @@ agent0ConnectorAllowedKubectlCommands:
 					Expect(extraConfig.DeploymentProbes).To(Equal(defaultCollectorProbes))
 					Expect(extraConfig.EdgeProxyNodeAffinity).To(Equal(defaultNodeAffinity()))
 				})
+
+				It("should use the default replica counts for explicit nulls", func() {
+					_, err := tmpFile.WriteString(`
+signalControlCollectorReplicas: null
+edgeProxyReplicas: null
+`)
+					Expect(err).ToNot(HaveOccurred())
+
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(extraConfig.SignalControlCollectorReplicas).To(Equal(int32(2)))
+					Expect(extraConfig.EdgeProxyReplicas).To(Equal(int32(2)))
+				})
+
+				DescribeTable("should reject replica counts below 1", func(content string, expectedError string) {
+					_, err := tmpFile.WriteString(content)
+					Expect(err).ToNot(HaveOccurred())
+
+					_, err = readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
+					Expect(err).To(MatchError(ContainSubstring(expectedError)))
+				},
+					Entry("signalControlCollectorReplicas: 0", "signalControlCollectorReplicas: 0",
+						"signalControlCollectorReplicas (operator.collectors.signalControlCollectorReplicas) must be at least 1, but was 0"),
+					Entry("signalControlCollectorReplicas: -1", "signalControlCollectorReplicas: -1",
+						"signalControlCollectorReplicas (operator.collectors.signalControlCollectorReplicas) must be at least 1, but was -1"),
+					Entry("edgeProxyReplicas: 0", "edgeProxyReplicas: 0",
+						"edgeProxyReplicas (operator.signalControl.edgeProxy.replicas) must be at least 1, but was 0"),
+					Entry("edgeProxyReplicas: -1", "edgeProxyReplicas: -1",
+						"edgeProxyReplicas (operator.signalControl.edgeProxy.replicas) must be at least 1, but was -1"),
+				)
 
 				It("should not share the defaults with the extra config that has been read", func() {
 					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
@@ -766,6 +820,9 @@ targetAllocatorMtlsEnabled: true
 targetAllocatorMtlsServerCertSecretName: "ta-mtls-server-cert"
 targetAllocatorMtlsClientCertSecretName: "ta-mtls-client-cert"
 targetAllocatorAllowInsecureAuthSecrets: true
+targetAllocatorAllowSecretAccessInNamespaces:
+  - namespace-a
+  - namespace-b
 targetAllocatorContainerResources:
   limits:
     cpu: 500m
@@ -952,6 +1009,7 @@ monitoringTemplate:
 					Expect(extraConfig.TargetAllocatorMtlsServerCertSecretName).To(Equal("ta-mtls-server-cert"))
 					Expect(extraConfig.TargetAllocatorMtlsClientCertSecretName).To(Equal("ta-mtls-client-cert"))
 					Expect(extraConfig.TargetAllocatorAllowInsecureAuthSecrets).To(BeTrue())
+					Expect(extraConfig.TargetAllocatorAllowSecretAccessInNamespaces).To(Equal([]string{"namespace-a", "namespace-b"}))
 
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Cpu().String()).To(Equal("500m"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Memory().String()).To(Equal("806Mi"))
@@ -1453,7 +1511,8 @@ collectorFilelogOffsetStorageVolume:
 			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), ExtraConfigDefaults, logger)).To(Succeed())
 
 			for _, c := range clients {
-				Expect(c.updatedConfig).To(BeNil())
+				_, updatedConfig := c.recordedUpdates()
+				Expect(updatedConfig).To(BeNil())
 			}
 
 			_, err := tmpFile.WriteString(`
@@ -1467,8 +1526,8 @@ collectorFilelogOffsetStorageVolume:
 
 			Eventually(func(g Gomega) {
 				for _, c := range clients {
-					g.Expect(c.updateExtraConfigCalls).To(Equal(1))
-					updatedConfig := c.updatedConfig
+					updateExtraConfigCalls, updatedConfig := c.recordedUpdates()
+					g.Expect(updateExtraConfigCalls).To(Equal(1))
 					g.Expect(updatedConfig).ToNot(BeNil())
 					g.Expect(updatedConfig.CollectorFilelogOffsetStorageVolume).ToNot(BeNil())
 					filelogOffsetStorageVolume := updatedConfig.CollectorFilelogOffsetStorageVolume
@@ -1517,8 +1576,8 @@ collectorFilelogOffsetStorageVolume:
 			Expect(err).ToNot(HaveOccurred())
 
 			Eventually(func(g Gomega) {
-				g.Expect(client.updateExtraConfigCalls).To(Equal(1))
-				updatedConfig := client.updatedConfig
+				updateExtraConfigCalls, updatedConfig := client.recordedUpdates()
+				g.Expect(updateExtraConfigCalls).To(Equal(1))
 				g.Expect(updatedConfig).ToNot(BeNil())
 				g.Expect(updatedConfig.CollectorFilelogOffsetStorageVolume).ToNot(BeNil())
 				filelogOffsetStorageVolume := updatedConfig.CollectorFilelogOffsetStorageVolume
@@ -1553,8 +1612,9 @@ invalid yaml
 			Expect(err).ToNot(HaveOccurred())
 
 			Consistently(func(g Gomega) {
-				g.Expect(client.updateExtraConfigCalls).To(Equal(0))
-				g.Expect(client.updatedConfig).To(BeNil())
+				updateExtraConfigCalls, updatedConfig := client.recordedUpdates()
+				g.Expect(updateExtraConfigCalls).To(Equal(0))
+				g.Expect(updatedConfig).To(BeNil())
 			}, 2*time.Second, 100*time.Millisecond).To(Succeed())
 		})
 
@@ -1567,21 +1627,31 @@ invalid yaml
 			Expect(os.Remove(tmpFile.Name())).To(Succeed())
 
 			Consistently(func(g Gomega) {
-				g.Expect(client.updateExtraConfigCalls).To(Equal(0))
-				g.Expect(client.updatedConfig).To(BeNil())
+				updateExtraConfigCalls, updatedConfig := client.recordedUpdates()
+				g.Expect(updateExtraConfigCalls).To(Equal(0))
+				g.Expect(updatedConfig).To(BeNil())
 			}, 2*time.Second, 100*time.Millisecond).To(Succeed())
 		})
 	})
 })
 
 type DummyExtraConfigClient struct {
+	mutex                  sync.Mutex
 	updateExtraConfigCalls int
 	updatedConfig          *ExtraConfig
 }
 
 func (c *DummyExtraConfigClient) UpdateExtraConfig(_ context.Context, updatedConfig ExtraConfig, _ logd.Logger) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	c.updateExtraConfigCalls += 1
 	c.updatedConfig = &updatedConfig
+}
+
+func (c *DummyExtraConfigClient) recordedUpdates() (int, *ExtraConfig) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return c.updateExtraConfigCalls, c.updatedConfig
 }
 
 var helmChartValuesFile = filepath.Join("..", "..", "helm-chart", "dash0-operator", "values.yaml")
@@ -1640,6 +1710,7 @@ var extraConfigKeysToHelmValues = map[string]string{
 	"targetAllocatorMtlsServerCertSecretName":                       "operator.targetAllocator.mTls.serverCertSecretName",
 	"targetAllocatorMtlsClientCertSecretName":                       "operator.targetAllocator.mTls.clientCertSecretName",
 	"targetAllocatorAllowInsecureAuthSecrets":                       "operator.targetAllocator.allowInsecureAuthSecrets",
+	"targetAllocatorAllowSecretAccessInNamespaces":                  "operator.targetAllocator.allowSecretAccessInNamespaces",
 	"targetAllocatorContainerResources":                             "operator.targetAllocator.containerResources",
 	"targetAllocatorLabels":                                         "operator.targetAllocator.labels",
 	"targetAllocatorAnnotations":                                    "operator.targetAllocator.annotations",
@@ -1658,6 +1729,7 @@ var extraConfigKeysToHelmValues = map[string]string{
 	"edgeProxyPodAnnotations":                                       "operator.signalControl.edgeProxy.podAnnotations",
 	"agent0ConnectorContainerResources":                             "operator.agent0Connector.containerResources",
 	"agent0ConnectorMaxConcurrentCommands":                          "operator.agent0Connector.maxConcurrentCommands",
+	"agent0ConnectorEnablePprof":                                    "operator.agent0Connector.enablePprof",
 	"agent0ConnectorAllowedKubectlCommands":                         "operator.agent0Connector.allowedKubectlCommands",
 	"agent0ConnectorClusterRoleRules":                               "operator.agent0Connector.clusterRole.rules",
 	"agent0ConnectorLabels":                                         "operator.agent0Connector.labels",

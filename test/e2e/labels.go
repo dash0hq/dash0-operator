@@ -45,6 +45,11 @@ func verifyLabels(
 	g.Expect(instrumentedBy).To(Equal(instrumentationBy))
 }
 
+func verifyNoWebhookIgnoreOnceLabel(g Gomega, namespace string, runtime runtimeType, workloadType workloadType) {
+	ignoreOnce := readLabel(g, namespace, runtime, workloadType, "dash0.com/webhook-ignore-once")
+	g.Expect(ignoreOnce).To(Equal(""), "expected the webhook to have removed dash0.com/webhook-ignore-once")
+}
+
 func verifyImageLabel(
 	g Gomega,
 	labelValue string,
@@ -95,6 +100,7 @@ func verifyNoDash0LabelsOrOnlyOptOut(
 	g.Expect(instrumentationImageVersion).To(Equal(""))
 	instrumentedBy := readLabel(g, namespace, runtime, workloadType, "dash0.com/instrumented-by")
 	g.Expect(instrumentedBy).To(Equal(""))
+	verifyNoWebhookIgnoreOnceLabel(g, namespace, runtime, workloadType)
 	dash0Enable := readLabel(g, namespace, runtime, workloadType, "dash0.com/enable")
 	if expectOptOutLabel {
 		g.Expect(dash0Enable).To(Equal("false"))

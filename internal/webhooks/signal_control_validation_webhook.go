@@ -12,12 +12,15 @@ import (
 	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/pointers"
@@ -36,7 +39,8 @@ type SignalControlValidationWebhookHandler struct {
 
 // NewSignalControlValidationWebhookHandler creates the validation webhook handler for Signal Control resources. The
 // extra configuration and its defaults are used to warn about settings in spec.components that override a value
-// provided via the Helm chart.
+// provided via the Helm chart, and to check the ephemeral-storage limit of the Signal Control collector against the
+// disk-backed trace reservoir.
 func NewSignalControlValidationWebhookHandler(
 	k8sClient client.Client,
 	extraConfig util.ExtraConfig,
@@ -163,18 +167,74 @@ func (h *SignalControlValidationWebhookHandler) Handle(ctx context.Context, requ
 		if errorResponse != nil {
 			return *errorResponse
 		}
-		if unchanged {
-			return admission.Allowed("")
+		var check util.ComponentSettingsCheck
+		if !unchanged {
+			check = util.CheckComponentSettings(
+				*h.extraConfig.Load(), h.extraConfigDefaults, nil, signalControlResource.Spec.Components)
 		}
-		return componentSettingsCheckResponse(
-			"Signal Control resource",
-			util.CheckComponentSettings(
-				*h.extraConfig.Load(), h.extraConfigDefaults, nil, signalControlResource.Spec.Components),
+		// Not only checked when spec.components changes, since a change of spec.sampling can make the limit too small.
+		reservoirSettingsUnchanged, errorResponse := componentSettingsAreUnchanged(
+			request,
+			&dash0v1alpha1.Dash0SignalControl{},
+			reservoirStorageSettingsOf,
+			reservoirStorageSettingsOf(signalControlResource),
 			logger,
 		)
+		if errorResponse != nil {
+			return *errorResponse
+		}
+		if !reservoirSettingsUnchanged {
+			if msg := h.validateReservoirEphemeralStorageLimit(signalControlResource); msg != "" {
+				check.Invalid = append(check.Invalid, msg)
+			}
+		}
+		return componentSettingsCheckResponse("Signal Control resource", check, logger)
 	}
 
 	return admission.Allowed("")
+}
+
+// reservoirStorageSettingsOf returns the part of the spec that validateReservoirEphemeralStorageLimit depends on.
+func reservoirStorageSettingsOf(signalControlResource *dash0v1alpha1.Dash0SignalControl) dash0v1alpha1.Dash0SignalControlSpec {
+	return dash0v1alpha1.Dash0SignalControlSpec{
+		Enabled:    signalControlResource.Spec.Enabled,
+		Sampling:   signalControlResource.Spec.Sampling,
+		Components: signalControlResource.Spec.Components,
+	}
+}
+
+// validateReservoirEphemeralStorageLimit rejects an ephemeral-storage limit of the Signal Control collector (from
+// spec.components or from the Helm chart) that is below the ephemeral-storage request the operator derives for the
+// disk-backed trace reservoir. Without an explicit request, the API server would reject the collector Deployment. With
+// one, the pod would be evicted once the reservoir fills up.
+func (h *SignalControlValidationWebhookHandler) validateReservoirEphemeralStorageLimit(
+	signalControlResource *dash0v1alpha1.Dash0SignalControl,
+) string {
+	request, usesDiskReservoir := otelcolresources.ReservoirEphemeralStorageRequest(signalControlResource)
+	if !usesDiskReservoir {
+		return ""
+	}
+	resources := util.EffectiveExtraConfig(*h.extraConfig.Load(), h.extraConfigDefaults, nil, signalControlResource).
+		SignalControlCollectorContainerResources.ToResourceRequirements()
+	limit, hasLimit := resources.Limits[corev1.ResourceEphemeralStorage]
+	if !hasLimit || limit.Cmp(request) >= 0 {
+		return ""
+	}
+	components := signalControlResource.Spec.Components
+	if components == nil || components.Collector == nil || components.Collector.CollectorContainerResources == nil {
+		return fmt.Sprintf("the ephemeral-storage limit %s of the Signal Control collector, set via the Helm value "+
+			"operator.collectors.signalControlCollectorContainerResources, must be at least %s, the ephemeral-storage "+
+			"request derived from spec.sampling.reservoir.maxDiskBytes, since the trace reservoir counts towards the "+
+			"limit; raise the limit via Helm or set spec.components.collector.collectorContainerResources",
+			limit.String(), request.String())
+	}
+	return field.Invalid(
+		field.NewPath("spec", "components", "collector", "collectorContainerResources", "limits").
+			Key(string(corev1.ResourceEphemeralStorage)),
+		limit.String(),
+		fmt.Sprintf("must be at least %s, the ephemeral-storage request derived from "+
+			"spec.sampling.reservoir.maxDiskBytes, since the trace reservoir counts towards the limit", request.String()),
+	).Error()
 }
 
 // validateOperationProcessorCardinalityRules rejects cardinality rules that the dash0operation processor would

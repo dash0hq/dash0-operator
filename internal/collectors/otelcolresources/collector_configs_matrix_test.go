@@ -175,6 +175,7 @@ func maximalSignalControlConfig() SignalControlConfig {
 		LogPatternRefreshInterval:          "2m",
 		LogParserCacheExpiration:           "5m",
 		LogGroupingCacheExpiration:         "5m",
+		CardholderDataRedactionEnabled:     true,
 		OperationCardinalityRules: []SignalControlCardinalityRule{
 			{
 				Id:              "rule-1",
@@ -659,6 +660,13 @@ func matrixSettings() []matrixSetting {
 			},
 		},
 		{
+			name: "signal-control-cardholder-data-redaction",
+			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				enableSignalControl(e)
+				e.config.SignalControl.CardholderDataRedactionEnabled = enabled
+			},
+		},
+		{
 			name: "signal-control-operation-prefer-span-name",
 			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
 				enableSignalControl(e)
@@ -704,6 +712,13 @@ func matrixSettings() []matrixSetting {
 				} else {
 					e.config.SignalControl.EdgeProxyName = ""
 				}
+			},
+		},
+		{
+			name: "signal-control-sce-only-mode",
+			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				enableSignalControl(e)
+				e.config.SignalControlSceOnlyMode = enabled
 			},
 		},
 		{
@@ -795,15 +810,44 @@ func (e *collectorConfigMatrixEntry) templateValues() *collectorConfigurationTem
 	)
 }
 
-// render renders all collector configurations for one matrix entry. The Signal Control collector configuration is
-// only rendered when that collector is actually deployed for this configuration.
+// render renders all collector configurations for one matrix entry. Each configuration is only rendered when its
+// collector is actually deployed for this configuration.
 func (e *collectorConfigMatrixEntry) render() ([]renderedCollectorConfig, error) {
 	config := e.config
 	// The matrix is validated as plain YAML, so compression must stay off no matter what the entry configures.
 	config.CompressConfigMap = false
 
+	var rendered []renderedCollectorConfig
+	if config.deploysProducerCollectors() {
+		producerConfigs, err := e.renderProducerCollectorConfigs(&config)
+		if err != nil {
+			return nil, err
+		}
+		rendered = append(rendered, producerConfigs...)
+	}
+
+	if config.signalControlGatewayActive() {
+		signalControlConfigMap, err := assembleSignalControlCollectorConfigMap(&config, e.monitoredNamespaces, false)
+		if err != nil {
+			return nil, fmt.Errorf("cannot render the Signal Control collector configuration for %s: %w", e.name, err)
+		}
+		rendered = append(rendered, renderedCollectorConfig{
+			name:                   e.name + "__signalcontrol",
+			content:                signalControlConfigMap.Data[collectorConfigurationYaml],
+			signalControlCollector: true,
+		})
+	}
+
+	return rendered, nil
+}
+
+// renderProducerCollectorConfigs renders the configurations of the collector daemonset and the cluster metrics
+// collector deployment, which are not deployed in SCE-only mode.
+func (e *collectorConfigMatrixEntry) renderProducerCollectorConfigs(
+	config *oTelColConfig,
+) ([]renderedCollectorConfig, error) {
 	daemonSetConfigMap, err := assembleDaemonSetCollectorConfigMap(
-		&config,
+		config,
 		e.monitoredNamespaces,
 		e.namespacesWithLogCollection,
 		e.namespacesWithPrometheusScraping,
@@ -843,7 +887,7 @@ func (e *collectorConfigMatrixEntry) render() ([]renderedCollectorConfig, error)
 	// never deploys.
 	if config.KubernetesInfrastructureMetricsCollectionEnabled || len(e.namespacesWithEventCollection) > 0 {
 		deploymentConfigMap, err := assembleDeploymentCollectorConfigMap(
-			&config,
+			config,
 			e.monitoredNamespaces,
 			e.namespacesWithEventCollection,
 			e.filters,
@@ -857,18 +901,6 @@ func (e *collectorConfigMatrixEntry) render() ([]renderedCollectorConfig, error)
 			name:         e.name + "__deployment",
 			content:      deploymentConfigMap.Data[collectorConfigurationYaml],
 			featureGates: deploymentFeatureGates,
-		})
-	}
-
-	if config.signalControlGatewayActive() {
-		signalControlConfigMap, err := assembleSignalControlCollectorConfigMap(&config, e.monitoredNamespaces, false)
-		if err != nil {
-			return nil, fmt.Errorf("cannot render the Signal Control collector configuration for %s: %w", e.name, err)
-		}
-		rendered = append(rendered, renderedCollectorConfig{
-			name:                   e.name + "__signalcontrol",
-			content:                signalControlConfigMap.Data[collectorConfigurationYaml],
-			signalControlCollector: true,
 		})
 	}
 

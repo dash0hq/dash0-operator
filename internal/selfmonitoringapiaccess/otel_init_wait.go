@@ -16,6 +16,7 @@ import (
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
 )
 
@@ -205,6 +206,7 @@ func convertExportConfigurationToOTelSDKConfig(
 	resolvedSecretHeaderValues := oTelSdkConfigInput.resolvedSecretHeaderValues
 
 	var endpointAndHeaders *EndpointAndHeaders
+	var insecure, insecureSkipVerify bool
 	if selfMonitoringExport.Dash0 != nil {
 		dash0Export := selfMonitoringExport.Dash0
 
@@ -237,10 +239,12 @@ func convertExportConfigurationToOTelSDKConfig(
 	} else if selfMonitoringExport.Grpc != nil {
 		headers := copyResolvedHeaders(selfMonitoringExport.Grpc.Headers, resolvedSecretHeaderValues)
 		endpointAndHeaders = &EndpointAndHeaders{
-			Endpoint: selfMonitoringExport.Grpc.Endpoint,
+			Endpoint: operatorManagerGrpcEndpoint(selfMonitoringExport.Grpc),
 			Protocol: common.ProtocolGrpc,
 			Headers:  headers,
 		}
+		insecure = pointers.ReadBoolPointerWithDefault(selfMonitoringExport.Grpc.Insecure, false)
+		insecureSkipVerify = pointers.ReadBoolPointerWithDefault(selfMonitoringExport.Grpc.InsecureSkipVerify, false)
 	} else if selfMonitoringExport.Http != nil {
 		headers := copyResolvedHeaders(selfMonitoringExport.Http.Headers, resolvedSecretHeaderValues)
 
@@ -255,6 +259,7 @@ func convertExportConfigurationToOTelSDKConfig(
 			Protocol: protocol,
 			Headers:  headers,
 		}
+		insecureSkipVerify = pointers.ReadBoolPointerWithDefault(selfMonitoringExport.Http.InsecureSkipVerify, false)
 	}
 
 	if endpointAndHeaders == nil {
@@ -262,15 +267,17 @@ func convertExportConfigurationToOTelSDKConfig(
 	}
 
 	oTelSdkConfig := &common.OTelSdkConfig{
-		Endpoint:         endpointAndHeaders.Endpoint,
-		Protocol:         endpointAndHeaders.Protocol,
-		ServiceName:      operatorManagerServiceName,
-		ServiceVersion:   oTelSdkConfigInput.operatorVersion,
-		PseudoClusterUid: string(oTelSdkConfigInput.pseudoClusterUid),
-		ClusterName:      oTelSdkConfigInput.clusterName,
-		DeploymentUid:    string(oTelSdkConfigInput.operatorManagerDeploymentUID),
-		DeploymentName:   oTelSdkConfigInput.operatorManagerDeploymentName,
-		ContainerName:    operatorManagerContainerName,
+		Endpoint:           endpointAndHeaders.Endpoint,
+		Protocol:           endpointAndHeaders.Protocol,
+		Insecure:           insecure,
+		InsecureSkipVerify: insecureSkipVerify,
+		ServiceName:        operatorManagerServiceName,
+		ServiceVersion:     oTelSdkConfigInput.operatorVersion,
+		PseudoClusterUid:   string(oTelSdkConfigInput.pseudoClusterUid),
+		ClusterName:        oTelSdkConfigInput.clusterName,
+		DeploymentUid:      string(oTelSdkConfigInput.operatorManagerDeploymentUID),
+		DeploymentName:     oTelSdkConfigInput.operatorManagerDeploymentName,
+		ContainerName:      operatorManagerContainerName,
 	}
 	if len(endpointAndHeaders.Headers) > 0 {
 		headers := make(map[string]string)

@@ -566,7 +566,7 @@ var _ = Describe(
 							},
 						}
 						resourceToRequestsResult :=
-							spamFilterReconciler.MapResourceToHttpRequests(preconditionValidationResult, apiConfig, upsertAction, logger)
+							spamFilterReconciler.MapResourceToApiCalls(preconditionValidationResult, apiConfig, upsertAction, logger)
 						Expect(resourceToRequestsResult.OriginsInResource).To(BeNil())
 						Expect(resourceToRequestsResult.ValidationIssues).To(BeNil())
 						Expect(resourceToRequestsResult.SynchronizationErrors).To(BeNil())
@@ -679,7 +679,7 @@ spec:
 `), &spamFilter)).To(Succeed())
 						apiConfig := ApiConfig{Endpoint: ApiEndpointTest, Dataset: DatasetCustomTest, Token: AuthorizationTokenTest}
 						resourceToRequestsResult :=
-							spamFilterReconciler.MapResourceToHttpRequests(
+							spamFilterReconciler.MapResourceToApiCalls(
 								&preconditionValidationResult{k8sName: "dash0-spam-filter", k8sNamespace: TestNamespaceName, resource: spamFilter},
 								apiConfig, upsertAction, logger)
 						Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())

@@ -303,7 +303,7 @@ var _ = Describe(
 							Dataset:  DatasetCustomTest,
 							Token:    AuthorizationTokenTest,
 						}
-						result := teamReconciler.MapResourceToHttpRequests(
+						result := teamReconciler.MapResourceToApiCalls(
 							&preconditionValidationResult{
 								k8sName:      teamName,
 								k8sNamespace: TestNamespaceName,
@@ -384,7 +384,7 @@ var _ = Describe(
 							Dataset:  DatasetCustomTest,
 							Token:    AuthorizationTokenTest,
 						}
-						result := teamReconciler.MapResourceToHttpRequests(
+						result := teamReconciler.MapResourceToApiCalls(
 							&preconditionValidationResult{
 								k8sName:      teamName,
 								k8sNamespace: TestNamespaceName,

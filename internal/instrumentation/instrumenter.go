@@ -622,6 +622,7 @@ func (i *Instrumenter) instrumentWorkload(
 		// trigger uninstrumentation) has not been added since it has been instrumented.
 		logger.Info("not updating the existing instrumentation for this workload, it has already been successfully " +
 			"instrumented by the same operator version")
+		i.removeLeftoverWebhookIgnoreOnceLabel(ctx, workload, logger)
 		return false
 	} else if util.HasOptedOutOfInstrumentationAndIsUninstrumented(
 		workload.getObjectMeta(),
@@ -631,6 +632,7 @@ func (i *Instrumenter) instrumentWorkload(
 			fmt.Sprintf(
 				"not instrumenting this workload as it does not match the instrumentation label selector \"%s\"",
 				namespaceInstrumentationConfig.InstrumentationLabelSelector))
+		i.removeLeftoverWebhookIgnoreOnceLabel(ctx, workload, logger)
 		return false
 	} else {
 		requiredAction = util.ModificationModeInstrumentation
@@ -677,6 +679,10 @@ func (i *Instrumenter) instrumentWorkload(
 		}
 	}, instrumentationRetryBackoff, &logger)
 
+	if retryErr == nil && !modificationResult.HasBeenModified {
+		i.removeLeftoverWebhookIgnoreOnceLabel(ctx, workload, logger)
+	}
+
 	switch requiredAction {
 	case util.ModificationModeInstrumentation:
 		return i.postProcessInstrumentation(workload.asRuntimeObject(), modificationResult, retryErr, logger)
@@ -684,6 +690,45 @@ func (i *Instrumenter) instrumentWorkload(
 		return i.postProcessUninstrumentation(workload.asRuntimeObject(), modificationResult, retryErr, logger)
 	}
 	return false
+}
+
+// removeLeftoverWebhookIgnoreOnceLabel removes an ignore-once label whose update never reached the webhook. This only
+// covers workloads that need no other update, when existing workloads are instrumented (at startup or on a monitoring
+// resource reconcile) in namespaces with instrumentWorkloads.mode=all.
+func (i *Instrumenter) removeLeftoverWebhookIgnoreOnceLabel(
+	ctx context.Context,
+	workload instrumentableWorkload,
+	logger logd.Logger,
+) {
+	workloadMeta := workload.getObjectMeta()
+	if !util.HasWebhookIgnoreOnceLabel(workloadMeta) {
+		return
+	}
+	labelRemoved := false
+	retryErr := retry.Retry("removing a leftover dash0.com/webhook-ignore-once label", func() error {
+		if err := i.Get(ctx, client.ObjectKey{
+			Namespace: workloadMeta.GetNamespace(),
+			Name:      workloadMeta.GetName(),
+		}, workload.asClientObject()); err != nil {
+			return fmt.Errorf(
+				"error when fetching %s %s/%s: %w",
+				workload.getKind(),
+				workloadMeta.GetNamespace(),
+				workloadMeta.GetName(),
+				err,
+			)
+		}
+		labelRemoved = util.RemoveWebhookIgnoreOnceLabel(workloadMeta.Labels)
+		if !labelRemoved {
+			return nil
+		}
+		return i.Update(ctx, workload.asClientObject(), &client.UpdateOptions{FieldManager: util.FieldManager})
+	}, instrumentationRetryBackoff, &logger)
+	if retryErr != nil {
+		logger.ErrorAsWarn(retryErr, "Failed to remove a leftover dash0.com/webhook-ignore-once label from the workload.")
+	} else if labelRemoved {
+		logger.Info("removed a leftover dash0.com/webhook-ignore-once label from the workload")
+	}
 }
 
 func (i *Instrumenter) postProcessInstrumentation(

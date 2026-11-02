@@ -71,6 +71,9 @@ AGENT0_CONNECTOR_IMAGE_TAG ?= $(IMAGE_TAG)
 AGENT0_CONNECTOR_IMAGE ?= $(AGENT0_CONNECTOR_IMAGE_REPOSITORY):$(AGENT0_CONNECTOR_IMAGE_TAG)
 AGENT0_CONNECTOR_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
 
+DEBUGINFO_PROXY_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)debuginfo-proxy
+DEBUGINFO_PROXY_IMAGE_TAG ?= $(IMAGE_TAG)
+
 # Variables for test application container images:
 
 TEST_IMAGE_REPOSITORY_PREFIX ?= $(IMAGE_REPOSITORY_PREFIX)
@@ -79,6 +82,9 @@ TEST_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
 
 TEST_APP_DOTNET_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-dotnet-test-app
 TEST_APP_DOTNET_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
+
+TEST_APP_DOTNET_6_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-dotnet-6-test-app
+TEST_APP_DOTNET_6_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
 
 TEST_APP_DOTNET_8_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-dotnet-8-test-app
 TEST_APP_DOTNET_8_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
@@ -182,23 +188,23 @@ go-fix: ## Run go fix against code.
 test: go-unit-tests helm-unit-tests ## Run all unit tests (Go, Helm chart unit tests).
 
 .PHONY: go-unit-tests
-go-unit-tests: common-package-unit-tests nodeuid-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests collector-telemetry-unit-tests ## Run the Go unit tests for all packages.
+go-unit-tests: common-package-unit-tests nodeuid-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests collector-telemetry-unit-tests debuginfo-proxy-unit-tests ## Run the Go unit tests for all packages.
 
 .PHONY: operator-manager-unit-tests
 operator-manager-unit-tests: manifests generate fmt vet envtest ## Run the Go unit tests for the operator code.
 ifdef GINKGO_FOCUS
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v -e /e2e) -ginkgo.focus="$(GINKGO_FOCUS)" -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v -e /e2e) -race -ginkgo.focus="$(GINKGO_FOCUS)" -coverprofile cover.out
 else
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v -e /e2e) -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v -e /e2e) -race -coverprofile cover.out
 endif
 
 .PHONY: common-package-unit-tests
 common-package-unit-tests: ## Run the Go unit tests for the common package (code shared between operator manager and other images, i.e. config-reloader, filelogoffsetsync).
-	go test github.com/dash0hq/dash0-operator/images/pkg/common
+	go test -race github.com/dash0hq/dash0-operator/images/pkg/common
 
 .PHONY: nodeuid-package-unit-tests
 nodeuid-package-unit-tests: ## Run the Go unit tests for the nodeuid package (shared between the operator manager, the other images, and the collector's internal-telemetry factory).
-	cd images/pkg/nodeuid && go test ./...
+	cd images/pkg/nodeuid && go test -race ./...
 
 .PHONY: agent0-connector-unit-tests
 agent0-connector-unit-tests: ## Run the Go unit tests for the agent0-connector image Go app.
@@ -206,7 +212,11 @@ agent0-connector-unit-tests: ## Run the Go unit tests for the agent0-connector i
 
 .PHONY: collector-telemetry-unit-tests
 collector-telemetry-unit-tests: ## Run the Go unit tests for the collector image's custom internal-telemetry factory.
-	cd images/collector/src/telemetry && go test ./...
+	cd images/collector/src/telemetry && go test -race ./...
+
+.PHONY: debuginfo-proxy-unit-tests
+debuginfo-proxy-unit-tests: ## Run the debuginfo upload proxy tests.
+	cd images/debuginfo-proxy/src && go test -race ./...
 
 .PHONY: helm-unit-tests
 helm-unit-tests: ## Run the Helm chart unit tests.
@@ -222,12 +232,14 @@ build-all-push-all-test-e2e: all-images push-all-images test-e2e ## Builds and p
 # would be used when simply running `ginkgo -v test/e2e`. An alternative would be to invoke ginkgo via go test, that
 # is, `go test ./test/e2e/ -v -ginkgo.v`, but that would require us to manage go test's timeout (via the -timeout
 # flag), and ginkgo's own timeout.
+# --fail-on-empty makes a GINKGO_FOCUS that matches no spec fail the run instead of passing silently, (?i) makes the
+# focus case-insensitive.
 .PHONY: test-e2e
 test-e2e: ## Run the end-to-end tests. When testing local code, container images should be built beforehand (or use target build-all-test-e2e).
 ifdef GINKGO_FOCUS
-	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v --timeout=90m -focus="$(GINKGO_FOCUS)" .
+	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v --timeout=90m --fail-on-empty -focus="(?i)$(GINKGO_FOCUS)" .
 else
-	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v --timeout=90m .
+	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v --timeout=90m --fail-on-empty .
 endif
 
 # Validates every collector configuration the operator can render against the collector binary, which rejects settings
@@ -385,6 +397,7 @@ GO_VERSION_CHECK_GOMOD_DOCKERFILE_PAIRS := \
   dockerfile:images/agent0-connector/src/go.mod:images/agent0-connector/Dockerfile \
   dockerfile:images/collector/src/telemetry/go.mod:images/collector/Dockerfile \
   dockerfile:images/configreloader/src/go.mod:images/configreloader/Dockerfile \
+  dockerfile:images/debuginfo-proxy/src/go.mod:images/debuginfo-proxy/Dockerfile \
   dockerfile:images/filelogoffsetsync/src/go.mod:images/filelogoffsetsync/Dockerfile \
   dockerfile:test/e2e/control-plane-mock/go.mod:test/e2e/control-plane-mock/Dockerfile \
   dockerfile:test/e2e/dash0-api-mock/go.mod:test/e2e/dash0-api-mock/Dockerfile \
@@ -418,7 +431,7 @@ perses-crd-version-check: ## Check whether all references to the PersesDashboard
 	./test-resources/bin/perses-crd-version-check.sh
 
 .PHONY: lint
-lint: go-version-check golangci-lint ginkgo-suite-check internal-config-map-lint helm-chart-lint shellcheck-lint jactionlint instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check ## Run all static code analysis checks (Go, Helm, shell scripts, GitHub Actions workflows, etc.).
+lint: go-version-check golangci-lint ginkgo-suite-check internal-config-map-lint helm-chart-lint shellcheck-lint jactionlint instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check olm-bundle-check olm-bundle-validate ## Run all static code analysis checks (Go, Helm, shell scripts, GitHub Actions workflows, OLM bundle, etc.).
 
 .PHONY: lint-fix
 lint-fix: golangci-lint-fix
@@ -442,6 +455,7 @@ all-auxiliary-images: \
 PHONY: test-app-images
 test-app-images: \
   test-app-image-dotnet \
+  test-app-image-dotnet-6 \
   test-app-image-dotnet-8 \
   test-app-image-jvm \
   test-app-image-nodejs \
@@ -451,6 +465,10 @@ test-app-images: \
 .PHONY: test-app-image-dotnet
 test-app-image-dotnet: ## Build the .NET test application.
 	@$(call build_container_image,$(TEST_APP_DOTNET_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_IMAGE_TAG),test-resources/dotnet)
+
+.PHONY: test-app-image-dotnet-6
+test-app-image-dotnet-6: ## Build the .NET test application with .NET 6.
+	@$(call build_container_image,$(TEST_APP_DOTNET_6_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_6_IMAGE_TAG),test-resources/dotnet,,--build-arg base_image_build=mcr.microsoft.com/dotnet/sdk:6.0-bookworm-slim --build-arg base_image_run=mcr.microsoft.com/dotnet/aspnet:6.0-bookworm-slim)
 
 .PHONY: test-app-image-dotnet-8
 test-app-image-dotnet-8: ## Build the .NET test application with .NET 8.
@@ -509,6 +527,7 @@ push-all-auxiliary-images: \
 PHONY: push-test-app-images
 push-test-app-images: \
   push-test-app-image-dotnet \
+  push-test-app-image-dotnet-6 \
   push-test-app-image-dotnet-8 \
   push-test-app-image-jvm \
   push-test-app-image-nodejs \
@@ -518,6 +537,10 @@ push-test-app-images: \
 .PHONY: push-test-app-image-dotnet
 push-test-app-image-dotnet: ## Push the .NET test app image.
 	@$(call push_container_image,$(TEST_APP_DOTNET_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_IMAGE_TAG))
+
+.PHONY: push-test-app-image-dotnet-6
+push-test-app-image-dotnet-6: ## Push the .NET 6 test app image.
+	@$(call push_container_image,$(TEST_APP_DOTNET_6_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_6_IMAGE_TAG))
 
 .PHONY: push-test-app-image-dotnet-8
 push-test-app-image-dotnet-8: ## Push the .NET 8 test app image.
@@ -630,7 +653,8 @@ images: \
   image-filelog-offset-sync \
   image-filelog-offset-volume-ownership \
   image-target-allocator \
-  image-agent0-connector ## Build all container images used by the operator. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
+  image-agent0-connector \
+  image-debuginfo-proxy ## Build all container images. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
 
 define build_container_image
 $(eval $@_IMAGE_REPOSITORY = $(1))
@@ -686,6 +710,10 @@ image-target-allocator: ## Build the OpenTelemetry target-allocator container im
 image-agent0-connector: ## Build the agent0-connector container image.
 	@$(call build_container_image,$(AGENT0_CONNECTOR_IMAGE_REPOSITORY),$(AGENT0_CONNECTOR_IMAGE_TAG),images,images/agent0-connector/Dockerfile)
 
+.PHONY: image-debuginfo-proxy
+image-debuginfo-proxy: ## Build the debuginfo upload proxy container image.
+	@$(call build_container_image,$(DEBUGINFO_PROXY_IMAGE_REPOSITORY),$(DEBUGINFO_PROXY_IMAGE_TAG),images,images/debuginfo-proxy/Dockerfile)
+
 .PHONY: push-images
 push-images: \
 	push-image-controller \
@@ -695,7 +723,8 @@ push-images: \
 	push-image-filelog-offset-sync \
 	push-image-filelog-offset-volume-ownership \
 	push-image-target-allocator \
-	push-image-agent0-connector ## Push all container images using the full image reference.
+	push-image-agent0-connector \
+	push-image-debuginfo-proxy ## Push all container images using the full image reference.
 
 define push_container_image
 $(eval $@_IMAGE_REPOSITORY = $(1))
@@ -738,42 +767,53 @@ push-image-target-allocator: ## Push the OpenTelemetry target-allocator containe
 push-image-agent0-connector: ## Push the agent0-connector container image.
 	@$(call push_container_image,$(AGENT0_CONNECTOR_IMAGE_REPOSITORY),$(AGENT0_CONNECTOR_IMAGE_TAG))
 
+.PHONY: push-image-debuginfo-proxy
+push-image-debuginfo-proxy: ## Push the debuginfo upload proxy container image.
+	@$(call push_container_image,$(DEBUGINFO_PROXY_IMAGE_REPOSITORY),$(DEBUGINFO_PROXY_IMAGE_TAG))
+
+# The settings for rendering the Helm chart with the images that this repository builds, used by deploy and olm-test-bundle.
+HELM_BUILT_IMAGE_SETTINGS = \
+	--set operator.image.repository=$(CONTROLLER_IMAGE_REPOSITORY) \
+	--set operator.image.tag=$(CONTROLLER_IMAGE_TAG) \
+	--set operator.image.pullPolicy=$(CONTROLLER_IMAGE_PULL_POLICY) \
+	--set operator.instrumentationImage.repository=$(INSTRUMENTATION_IMAGE_REPOSITORY) \
+	--set operator.instrumentationImage.tag=$(INSTRUMENTATION_IMAGE_TAG) \
+	--set operator.instrumentationImage.pullPolicy=$(INSTRUMENTATION_IMAGE_PULL_POLICY) \
+	--set operator.collectorImage.repository=$(COLLECTOR_IMAGE_REPOSITORY) \
+	--set operator.collectorImage.tag=$(COLLECTOR_IMAGE_TAG) \
+	--set operator.collectorImage.pullPolicy=$(COLLECTOR_IMAGE_PULL_POLICY) \
+	--set operator.configurationReloaderImage.repository=$(CONFIGURATION_RELOADER_IMAGE_REPOSITORY) \
+	--set operator.configurationReloaderImage.tag=$(CONFIGURATION_RELOADER_IMAGE_TAG) \
+	--set operator.configurationReloaderImage.pullPolicy=$(CONFIGURATION_RELOADER_IMAGE_PULL_POLICY) \
+	--set operator.filelogOffsetSyncImage.repository=$(FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY) \
+	--set operator.filelogOffsetSyncImage.tag=$(FILELOG_OFFSET_SYNC_IMAGE_TAG) \
+	--set operator.filelogOffsetSyncImage.pullPolicy=$(FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY) \
+	--set operator.filelogOffsetVolumeOwnershipImage.repository=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY) \
+	--set operator.filelogOffsetVolumeOwnershipImage.tag=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG) \
+	--set operator.filelogOffsetVolumeOwnershipImage.pullPolicy=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY) \
+	--set operator.targetAllocatorImage.repository=$(TARGET_ALLOCATOR_IMAGE_REPOSITORY) \
+	--set operator.targetAllocatorImage.tag=$(TARGET_ALLOCATOR_IMAGE_TAG) \
+	--set operator.targetAllocatorImage.pullPolicy=$(TARGET_ALLOCATOR_IMAGE_PULL_POLICY) \
+	--set operator.agent0ConnectorImage.repository=$(AGENT0_CONNECTOR_IMAGE_REPOSITORY) \
+	--set operator.agent0ConnectorImage.tag=$(AGENT0_CONNECTOR_IMAGE_TAG) \
+	--set operator.agent0ConnectorImage.pullPolicy=$(AGENT0_CONNECTOR_IMAGE_PULL_POLICY)
+
+HELM_IMAGE_SETTINGS = \
+	$(HELM_BUILT_IMAGE_SETTINGS) \
+	--set operator.signalControlCollectorImage.repository=$(SIGNAL_CONTROL_COLLECTOR_IMAGE_REPOSITORY) \
+	--set operator.signalControlCollectorImage.tag=$(SIGNAL_CONTROL_COLLECTOR_IMAGE_TAG) \
+	--set operator.signalControlCollectorImage.pullPolicy=$(SIGNAL_CONTROL_COLLECTOR_IMAGE_PULL_POLICY) \
+	--set operator.edgeProxyImage.repository=$(EDGE_PROXY_IMAGE_REPOSITORY) \
+	--set operator.edgeProxyImage.tag=$(EDGE_PROXY_IMAGE_TAG) \
+	--set operator.edgeProxyImage.pullPolicy=$(EDGE_PROXY_IMAGE_PULL_POLICY)
+
 .PHONY: deploy
 deploy: ## Deploy the controller via helm to the current kubectl context.
 	test-resources/bin/render-templates.sh
 	helm upgrade --install \
 		--namespace dash0-system \
 		--create-namespace \
-		--set operator.image.repository=$(CONTROLLER_IMAGE_REPOSITORY) \
-		--set operator.image.tag=$(CONTROLLER_IMAGE_TAG) \
-		--set operator.image.pullPolicy=$(CONTROLLER_IMAGE_PULL_POLICY) \
-		--set operator.instrumentationImage.repository=$(INSTRUMENTATION_IMAGE_REPOSITORY) \
-		--set operator.instrumentationImage.tag=$(INSTRUMENTATION_IMAGE_TAG) \
-		--set operator.instrumentationImage.pullPolicy=$(INSTRUMENTATION_IMAGE_PULL_POLICY) \
-		--set operator.collectorImage.repository=$(COLLECTOR_IMAGE_REPOSITORY) \
-		--set operator.collectorImage.tag=$(COLLECTOR_IMAGE_TAG) \
-		--set operator.collectorImage.pullPolicy=$(COLLECTOR_IMAGE_PULL_POLICY) \
-		--set operator.configurationReloaderImage.repository=$(CONFIGURATION_RELOADER_IMAGE_REPOSITORY) \
-		--set operator.configurationReloaderImage.tag=$(CONFIGURATION_RELOADER_IMAGE_TAG) \
-		--set operator.configurationReloaderImage.pullPolicy=$(CONFIGURATION_RELOADER_IMAGE_PULL_POLICY) \
-		--set operator.filelogOffsetSyncImage.repository=$(FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY) \
-		--set operator.filelogOffsetSyncImage.tag=$(FILELOG_OFFSET_SYNC_IMAGE_TAG) \
-		--set operator.filelogOffsetSyncImage.pullPolicy=$(FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY) \
-		--set operator.filelogOffsetVolumeOwnershipImage.repository=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY) \
-		--set operator.filelogOffsetVolumeOwnershipImage.tag=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG) \
-		--set operator.filelogOffsetVolumeOwnershipImage.pullPolicy=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY) \
-		--set operator.targetAllocatorImage.repository=$(TARGET_ALLOCATOR_IMAGE_REPOSITORY) \
-		--set operator.targetAllocatorImage.tag=$(TARGET_ALLOCATOR_IMAGE_TAG) \
-		--set operator.targetAllocatorImage.pullPolicy=$(TARGET_ALLOCATOR_IMAGE_PULL_POLICY) \
-		--set operator.signalControlCollectorImage.repository=$(SIGNAL_CONTROL_COLLECTOR_IMAGE_REPOSITORY) \
-		--set operator.signalControlCollectorImage.tag=$(SIGNAL_CONTROL_COLLECTOR_IMAGE_TAG) \
-		--set operator.signalControlCollectorImage.pullPolicy=$(SIGNAL_CONTROL_COLLECTOR_IMAGE_PULL_POLICY) \
-		--set operator.edgeProxyImage.repository=$(EDGE_PROXY_IMAGE_REPOSITORY) \
-		--set operator.edgeProxyImage.tag=$(EDGE_PROXY_IMAGE_TAG) \
-		--set operator.edgeProxyImage.pullPolicy=$(EDGE_PROXY_IMAGE_PULL_POLICY) \
-		--set operator.agent0ConnectorImage.repository=$(AGENT0_CONNECTOR_IMAGE_REPOSITORY) \
-		--set operator.agent0ConnectorImage.tag=$(AGENT0_CONNECTOR_IMAGE_TAG) \
-		--set operator.agent0ConnectorImage.pullPolicy=$(AGENT0_CONNECTOR_IMAGE_PULL_POLICY) \
+		$(HELM_IMAGE_SETTINGS) \
 		--set operator.developmentMode=true \
 		dash0-operator \
 		$(OPERATOR_HELM_CHART)
@@ -782,6 +822,77 @@ deploy: ## Deploy the controller via helm to the current kubectl context.
 undeploy: ## Undeploy the controller via helm from the current kubectl context.
 	helm uninstall --namespace dash0-system dash0-operator --timeout 30s
 	$(KUBECTL) delete ns dash0-system
+
+##@ OLM
+
+BUNDLE_VERSION ?= 0.0.1
+BUNDLE_CHANNELS ?= stable
+BUNDLE_DEFAULT_CHANNEL ?= stable
+BUNDLE_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)dash0-operator-bundle
+BUNDLE_IMAGE_TAG ?= v$(BUNDLE_VERSION)
+BUNDLE_DIR ?= bundle
+
+# The committed bundle ignores BUNDLE_VERSION, BUNDLE_CHANNELS, BUNDLE_DEFAULT_CHANNEL and the image settings of this
+# Makefile, so that these settings in the environment cannot change its content. It keeps the images of the chart, but
+# sets the tags that values.yaml pins to 0.0.0, the appVersion of the chart in the repository, so that updating the
+# pinned tags leaves bundle/ as is.
+OLM_COMMITTED_BUNDLE_VERSION = 0.0.1
+OLM_COMMITTED_BUNDLE_CHANNEL = stable
+OLM_COMMITTED_BUNDLE_HELM_SETTINGS = \
+	--set operator.signalControlCollectorImage.tag=0.0.0 \
+	--set operator.edgeProxyImage.tag=0.0.0 \
+	--set operator.syntheticsWorkerImage.tag=0.0.0
+
+# The Signal Control collector and Edge Proxy images are not built in this repository. A test bundle keeps the images of
+# the chart unless SIGNAL_CONTROL_COLLECTOR_IMAGE_* or EDGE_PROXY_IMAGE_* are set via the environment or command line.
+helm_set_if_overridden = $(if $(filter environment command,$(origin $(2))),--set $(1)=$($(2)))
+OLM_HELM_IMAGE_SETTINGS = \
+	$(HELM_BUILT_IMAGE_SETTINGS) \
+	$(call helm_set_if_overridden,operator.signalControlCollectorImage.repository,SIGNAL_CONTROL_COLLECTOR_IMAGE_REPOSITORY) \
+	$(call helm_set_if_overridden,operator.signalControlCollectorImage.tag,SIGNAL_CONTROL_COLLECTOR_IMAGE_TAG) \
+	$(call helm_set_if_overridden,operator.signalControlCollectorImage.pullPolicy,SIGNAL_CONTROL_COLLECTOR_IMAGE_PULL_POLICY) \
+	$(call helm_set_if_overridden,operator.edgeProxyImage.repository,EDGE_PROXY_IMAGE_REPOSITORY) \
+	$(call helm_set_if_overridden,operator.edgeProxyImage.tag,EDGE_PROXY_IMAGE_TAG) \
+	$(call helm_set_if_overridden,operator.edgeProxyImage.pullPolicy,EDGE_PROXY_IMAGE_PULL_POLICY)
+
+# $(1): bundle version, $(2): channels, $(3): default channel, $(4): additional arguments for helm template
+define generate_olm_bundle
+BUNDLE_VERSION=$(1) \
+BUNDLE_CHANNELS=$(2) \
+BUNDLE_DEFAULT_CHANNEL=$(3) \
+BUNDLE_DIR="$(BUNDLE_DIR)" \
+OPERATOR_SDK=$(OPERATOR_SDK) \
+olm/bin/generate-bundle.sh $(4)
+endef
+
+.PHONY: olm-bundle
+olm-bundle: operator-sdk ## Generate the committed OLM bundle from the Helm chart, into BUNDLE_DIR (default: bundle).
+	OLM_TEST_BUNDLE=false $(call generate_olm_bundle,$(OLM_COMMITTED_BUNDLE_VERSION),$(OLM_COMMITTED_BUNDLE_CHANNEL),$(OLM_COMMITTED_BUNDLE_CHANNEL),$(OLM_COMMITTED_BUNDLE_HELM_SETTINGS))
+
+.PHONY: olm-test-bundle
+olm-test-bundle: operator-sdk ## Generate an OLM bundle with the BUNDLE_* and image settings of this Makefile into BUNDLE_DIR, e.g. olm/build/test-bundle.
+	OLM_TEST_BUNDLE=true $(call generate_olm_bundle,$(BUNDLE_VERSION),$(BUNDLE_CHANNELS),$(BUNDLE_DEFAULT_CHANNEL),$(OLM_HELM_IMAGE_SETTINGS))
+
+.PHONY: olm-bundle-check
+olm-bundle-check: ## Check that the committed OLM bundle in bundle/ is up to date.
+	olm/bin/check-bundle.sh
+
+.PHONY: olm-bundle-validate
+olm-bundle-validate: operator-sdk ## Validate the OLM bundle in BUNDLE_DIR, including the optional operatorframework and community checks.
+	$(OPERATOR_SDK) bundle validate "$(BUNDLE_DIR)" --select-optional suite=operatorframework
+	$(OPERATOR_SDK) bundle validate "$(BUNDLE_DIR)" --select-optional name=community
+
+.PHONY: olm-scorecard
+olm-scorecard: operator-sdk ## Run the operator-sdk scorecard tests for the OLM bundle in BUNDLE_DIR in the current kubectl context.
+	$(OPERATOR_SDK) scorecard "$(BUNDLE_DIR)" --wait-time 5m
+
+.PHONY: olm-bundle-image
+olm-bundle-image: ## Build the image of the OLM bundle in BUNDLE_DIR locally, the image is not pushed.
+	@$(call build_container_image,$(BUNDLE_IMAGE_REPOSITORY),$(BUNDLE_IMAGE_TAG),$(BUNDLE_DIR),$(BUNDLE_DIR)/bundle.Dockerfile)
+
+.PHONY: push-olm-bundle-image
+push-olm-bundle-image: ## Push the OLM bundle image.
+	@$(call push_container_image,$(BUNDLE_IMAGE_REPOSITORY),$(BUNDLE_IMAGE_TAG))
 
 ##@ Build Dependencies
 
@@ -796,10 +907,13 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 HUSKY ?= $(LOCALBIN)/husky
+OPERATOR_SDK ?= $(LOCALBIN)/operator-sdk
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.7.1
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
+# Keep the scorecard-test image tags in config/scorecard/config.yaml in sync with this version.
+OPERATOR_SDK_VERSION ?= v1.42.3
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
@@ -820,6 +934,14 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
 $(ENVTEST): $(LOCALBIN)
 	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+
+.PHONY: operator-sdk
+operator-sdk: $(LOCALBIN) ## Download operator-sdk locally if necessary. If wrong version is installed, it will be overwritten.
+	@test -s $(OPERATOR_SDK) && $(OPERATOR_SDK) version | grep -q $(OPERATOR_SDK_VERSION) || { \
+		set -e; \
+		curl -sSfLo $(OPERATOR_SDK) https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$(shell go env GOOS)_$(shell go env GOARCH); \
+		chmod +x $(OPERATOR_SDK); \
+	}
 
 .PHONY: husky-install
 husky-install:

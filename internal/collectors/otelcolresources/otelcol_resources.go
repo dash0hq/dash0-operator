@@ -5,11 +5,13 @@ package otelcolresources
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/cisco-open/k8s-objectmatcher/patch"
@@ -17,6 +19,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -41,6 +44,13 @@ type OTelColResourceManager struct {
 	collectorConfig                  util.CollectorConfig
 	obsoleteResourcesHaveBeenDeleted atomic.Bool
 	kubeletStatsReceiverConfig       atomic.Pointer[util.KubeletStatsReceiverConfig]
+	leaderElectionAware              util.LeaderElectionAware
+
+	// reportMutex guards the reporter and reportsHaveBeenSkipped, and serializes the leader check of
+	// reportGoMemLimitInversions with ConsumeSkippedReports.
+	reportMutex                 sync.Mutex
+	reportsHaveBeenSkipped      bool
+	goMemLimitInversionReporter util.GoMemLimitInversionReporter
 }
 
 const (
@@ -66,13 +76,20 @@ func NewOTelColResourceManager(
 	scheme *runtime.Scheme,
 	operatorManagerDeployment *appsv1.Deployment,
 	collectorConfig util.CollectorConfig,
+	leaderElectionAware util.LeaderElectionAware,
 ) *OTelColResourceManager {
 	return &OTelColResourceManager{
 		Client:                    k8sClient,
 		scheme:                    scheme,
 		operatorManagerDeployment: operatorManagerDeployment,
 		collectorConfig:           collectorConfig,
+		leaderElectionAware:       leaderElectionAware,
 	}
+}
+
+// SignalControlSceOnlyMode reports whether SCE-only mode is active.
+func (m *OTelColResourceManager) SignalControlSceOnlyMode() bool {
+	return m.collectorConfig.SignalControlSceOnlyMode
 }
 
 func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
@@ -153,12 +170,16 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		}
 	}
 	clusterName = operatorConfigurationResource.Spec.ClusterName
-	kubeletStatsReceiverConfig :=
-		m.determineKubeletstatsReceiverEndpoint(
-			kubernetesInfrastructureMetricsCollectionEnabled,
-			probeKubeletStatsEndpoint,
-			logger,
-		)
+	kubeletStatsReceiverConfig := util.KubeletStatsReceiverConfig{Enabled: false}
+	// The kubeletstats receiver only runs in the collector daemonset, which SCE-only mode does not deploy.
+	if !m.collectorConfig.SignalControlSceOnlyMode {
+		kubeletStatsReceiverConfig =
+			m.determineKubeletstatsReceiverEndpoint(
+				kubernetesInfrastructureMetricsCollectionEnabled,
+				probeKubeletStatsEndpoint,
+				logger,
+			)
+	}
 
 	defaultExporters, err := getDefaultOtlpExporters(operatorConfigurationResource)
 	if err != nil {
@@ -222,6 +243,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		EnableProfExtension:       m.collectorConfig.EnableProfExtension,
 		ProfilingEnabled:          profilingEnabled,
 		CompressConfigMap:         m.collectorConfig.CompressConfigMap,
+		SignalControlSceOnlyMode:  m.collectorConfig.SignalControlSceOnlyMode,
 	}
 	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
 		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume
@@ -229,6 +251,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	config.DaemonSetCollectorMemoryLimit = *extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Memory()
 	config.DeploymentCollectorMemoryLimit = *extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory()
 	config.SignalControlCollectorMemoryLimit = *extraConfig.SignalControlCollectorContainerResources.Limits.Memory()
+	config.TargetAllocatorMtlsCaSha = m.targetAllocatorMtlsCaSha(ctx, extraConfig, logger)
 	if config.signalControlGatewayActive() {
 		logger.Debug(fmt.Sprintf("Deploying the Signal Control collector (image %s), since Signal Control is enabled "+
 			"via the Dash0SignalControl resource. The daemonset and the cluster-metrics collector export their "+
@@ -248,6 +271,12 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	if err != nil {
 		return false, false, err
 	}
+	m.reportGoMemLimitInversions(util.GoMemLimitInversionSources{
+		EffectiveConfig:                 extraConfig,
+		Deployed:                        deployedCollectors(desiredState, config.NamePrefix),
+		OperatorConfigurationComponents: util.OperatorConfigurationComponentsOf(operatorConfigurationResource),
+		SignalControlComponents:         util.SignalControlComponentsOf(signalControlResource),
+	}, logger)
 	resourcesHaveBeenCreated := false
 	resourcesHaveBeenUpdated := false
 	for _, wrapper := range desiredState {
@@ -279,6 +308,42 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	}
 
 	return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, nil
+}
+
+// targetAllocatorMtlsCaSha returns a hash of the CA certificate in the target-allocator mTLS client cert secret, or an
+// empty string if mTLS is disabled. If the CA certificate cannot be read, the hash on the existing daemonset collector's
+// pod template is kept: restarting the collector pods while the secret is missing would leave them unable to mount it.
+func (m *OTelColResourceManager) targetAllocatorMtlsCaSha(
+	ctx context.Context,
+	extraConfig util.ExtraConfig,
+	logger logd.Logger,
+) string {
+	if !extraConfig.TargetAllocatorMtlsEnabled {
+		return ""
+	}
+	secretName := extraConfig.TargetAllocatorMtlsClientCertSecretName
+	secret := &corev1.Secret{}
+	err := m.Get(ctx, client.ObjectKey{Namespace: m.collectorConfig.OperatorNamespace, Name: secretName}, secret)
+	if err == nil {
+		if caCert := secret.Data[TargetAllocatorMtlsCaCertKey]; len(caCert) > 0 {
+			return fmt.Sprintf("%x", sha256.Sum256(caCert))
+		}
+		err = fmt.Errorf("the secret has no %s entry", TargetAllocatorMtlsCaCertKey)
+	}
+	logger.ErrorAsWarnTelemetryCollectionIssue(
+		err,
+		fmt.Sprintf("Cannot read the CA certificate from the target-allocator mTLS client cert secret %s/%s. The "+
+			"daemonset collector needs this secret to fetch scrape targets from the target-allocator.",
+			m.collectorConfig.OperatorNamespace, secretName),
+	)
+	existingDaemonSet := &appsv1.DaemonSet{}
+	if err = m.Get(ctx, client.ObjectKey{
+		Namespace: m.collectorConfig.OperatorNamespace,
+		Name:      DaemonSetName(m.collectorConfig.OTelCollectorNamePrefix),
+	}, existingDaemonSet); err != nil {
+		return ""
+	}
+	return existingDaemonSet.Spec.Template.Annotations[targetAllocatorMtlsCaShaAnnotation]
 }
 
 func (m *OTelColResourceManager) createOrUpdateResource(
@@ -472,6 +537,8 @@ func (m *OTelColResourceManager) DeleteResources(
 			m.collectorConfig.OperatorNamespace,
 		),
 	)
+	// Log the GOMEMLIMIT inversions of the removed collectors again once they are redeployed.
+	m.resetReports()
 
 	config := &oTelColConfig{
 		OperatorNamespace: m.collectorConfig.OperatorNamespace,
@@ -690,6 +757,63 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 	return kubeletStatsReceiverConfig
 }
 
+// reportGoMemLimitInversions logs the GOMEMLIMIT inversions of the deployed collectors (see
+// util.GoMemLimitInversionReporter), but only on the replica that is the leader: other replicas also render the
+// collector resources after an extra config change. A skipped report is made up for once the replica has become
+// leader, see ConsumeSkippedReports.
+func (m *OTelColResourceManager) reportGoMemLimitInversions(
+	sources util.GoMemLimitInversionSources,
+	logger logd.Logger,
+) {
+	m.reportMutex.Lock()
+	defer m.reportMutex.Unlock()
+	if !m.leaderElectionAware.IsLeader() {
+		if util.HasCollectorGoMemLimitInversions(sources) {
+			m.reportsHaveBeenSkipped = true
+		}
+		return
+	}
+	m.goMemLimitInversionReporter.Report(sources, logger)
+}
+
+// deployedCollectors returns the main collectors that the desired state contains.
+func deployedCollectors(desiredState []clientObject, namePrefix string) util.DeployedCollectors {
+	var deployed util.DeployedCollectors
+	for _, wrapper := range desiredState {
+		switch object := wrapper.object.(type) {
+		case *appsv1.DaemonSet:
+			if object.Name == DaemonSetName(namePrefix) {
+				deployed.DaemonSetCollector = true
+			}
+		case *appsv1.Deployment:
+			switch object.Name {
+			case DeploymentName(namePrefix):
+				deployed.DeploymentCollector = true
+			case SignalControlCollectorDeploymentName(namePrefix):
+				deployed.SignalControlCollector = true
+			}
+		}
+	}
+	return deployed
+}
+
+// ConsumeSkippedReports reports whether warnings about GOMEMLIMIT inversions have been skipped since the last call,
+// because this replica was not the leader at that time.
+func (m *OTelColResourceManager) ConsumeSkippedReports() bool {
+	m.reportMutex.Lock()
+	defer m.reportMutex.Unlock()
+	reportsHaveBeenSkipped := m.reportsHaveBeenSkipped
+	m.reportsHaveBeenSkipped = false
+	return reportsHaveBeenSkipped
+}
+
+// resetReports makes the next report log all GOMEMLIMIT inversions again.
+func (m *OTelColResourceManager) resetReports() {
+	m.reportMutex.Lock()
+	defer m.reportMutex.Unlock()
+	m.goMemLimitInversionReporter.Reset()
+}
+
 // globalFilter returns the cluster-wide filters of the operator configuration resource, or nil if it has none.
 func globalFilter(operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration) *dash0common.Filter {
 	filter := operatorConfigurationResource.Spec.Filter
@@ -710,6 +834,29 @@ func globalNormalizedTransform(
 		return nil
 	}
 	return transform
+}
+
+// ReservoirEphemeralStorageRequest returns the ephemeral-storage request that the operator derives for the disk-backed
+// trace reservoir of the given resource; it is added to the Signal Control collector container unless the container has
+// an explicit ephemeral-storage request other than 0. Returns false if the resource does not use a disk-backed reservoir.
+func ReservoirEphemeralStorageRequest(signalControlResource *dash0v1alpha1.Dash0SignalControl) (resource.Quantity, bool) {
+	spec := signalControlResource.Spec
+	reservoir := spec.Sampling.Reservoir
+	if !pointers.ReadBoolPointerWithDefault(spec.Enabled, true) ||
+		!pointers.ReadBoolPointerWithDefault(spec.Sampling.Enabled, true) ||
+		reservoir == nil || reservoir.Type == nil || *reservoir.Type != dash0v1alpha1.ReservoirTypeDisk {
+		return resource.Quantity{}, false
+	}
+	return reservoirDerivedStorage(reservoirMaxDiskBytes(reservoir)), true
+}
+
+// reservoirMaxDiskBytes returns maxDiskBytes of the trace reservoir (reservoirDefaultMaxDiskBytes if unset), raised to
+// reservoirMaxDiskBytesFloor.
+func reservoirMaxDiskBytes(reservoir *dash0v1alpha1.ReservoirConfig) int64 {
+	if reservoir.MaxDiskBytes == nil {
+		return reservoirDefaultMaxDiskBytes
+	}
+	return max(reservoir.MaxDiskBytes.Value(), reservoirMaxDiskBytesFloor)
 }
 
 func signalControlConfigFromResource(
@@ -746,18 +893,12 @@ func signalControlConfigFromResource(
 		if r.Type != nil && *r.Type != "" {
 			samplingReservoirType = string(*r.Type)
 		}
-		if r.MaxDiskBytes != nil {
-			maxDiskBytes := r.MaxDiskBytes.Value()
-			if maxDiskBytes < reservoirMaxDiskBytesFloor {
-				if samplingEnabled {
-					logger.WarnTelemetryCollectionIssue(fmt.Sprintf("The configured trace reservoir maxDiskBytes "+
-						"(%d bytes) is below the minimum of %d bytes; the minimum is used instead.",
-						maxDiskBytes, reservoirMaxDiskBytesFloor))
-				}
-				maxDiskBytes = reservoirMaxDiskBytesFloor
-			}
-			samplingReservoirMaxDiskBytes = maxDiskBytes
+		if r.MaxDiskBytes != nil && r.MaxDiskBytes.Value() < reservoirMaxDiskBytesFloor && samplingEnabled {
+			logger.WarnTelemetryCollectionIssue(fmt.Sprintf("The configured trace reservoir maxDiskBytes "+
+				"(%d bytes) is below the minimum of %d bytes; the minimum is used instead.",
+				r.MaxDiskBytes.Value(), reservoirMaxDiskBytesFloor))
 		}
+		samplingReservoirMaxDiskBytes = reservoirMaxDiskBytes(r)
 		if r.MaxMemoryBytes != nil {
 			samplingReservoirMaxMemoryBytes = r.MaxMemoryBytes.Value()
 		}
@@ -779,6 +920,9 @@ func signalControlConfigFromResource(
 	logPatternRefreshInterval := durationStringOrEmpty(resource.Spec.LogEnrichment.PatternRefreshInterval)
 	logParserCacheExpiration := durationStringOrEmpty(resource.Spec.LogEnrichment.ParserCacheExpiration)
 	logGroupingCacheExpiration := durationStringOrEmpty(resource.Spec.LogEnrichment.GroupingCacheExpiration)
+
+	cardholderDataRedactionEnabled :=
+		pointers.ReadBoolPointerWithDefault(resource.Spec.Redaction.CardholderData.Enabled, false)
 
 	operationPreferSpanName := pointers.ReadBoolPointerWithDefault(resource.Spec.OperationProcessor.PreferSpanName, false)
 	var operationCardinalityRules []SignalControlCardinalityRule
@@ -853,6 +997,7 @@ func signalControlConfigFromResource(
 		LogPatternRefreshInterval:          logPatternRefreshInterval,
 		LogParserCacheExpiration:           logParserCacheExpiration,
 		LogGroupingCacheExpiration:         logGroupingCacheExpiration,
+		CardholderDataRedactionEnabled:     cardholderDataRedactionEnabled,
 		OperationPreferSpanName:            operationPreferSpanName,
 		OperationCardinalityRules:          operationCardinalityRules,
 		Endpoint:                           endpoint,

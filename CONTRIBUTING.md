@@ -166,8 +166,14 @@ Run `test-resources/bin/test-cleanup.sh` to remove the operator and the test app
 If you are using `test-resources/.env`, you can also add the environment variables (`IMAGE_REPOSITORY_PREFIX` etc.)
 there to always have them set automatically instead of providing them with every script invocation.
 
+For `test-resources/bin/test-olm-bundle.sh` with the local registry, also set `BUNDLE_REGISTRY_USE_HTTP=true`.
+The script installs the bundle with `operator-sdk run bundle`, which pulls the bundle image on your machine, not in the
+cluster, and uses HTTPS by default, but the local registry only serves plain HTTP.
+
 Moving beyond the quickstart instructions, here are more details on the test scripts and all available parameters:
 
+* `test-resources/bin/test-scenario-*.sh`: Not every single test scenario is listed here individually, consult the file
+  names and comments to see what is available.
 * `test-resources/bin/test-scenario-01-aum-operator-cr.sh`: Deploys an application under monitoring (this is
   abbreviated to "aum" in the name of the script) to the namespace `test-namespace`, then it deploys the operator to
   the namespace `operator-namespace`, and finally it deploys the Dash0 monitoring resource to `test-namespace`. This is a test
@@ -175,10 +181,25 @@ Moving beyond the quickstart instructions, here are more details on the test scr
 * `test-resources/bin/test-scenario-02-operator-cr-aum.sh`: Deploys the operator to `operator-namespace`, then the
   Dash0 monitoring resource to namespace `test-namespace`, and finally an application under monitoring to the namespace
   `test-namespace`. This is a test scenario for instrumenting _new_ workloads at deploy time via the admission webhook.
-* `test-resources/bin/test-scenario-12-component-settings.sh`: Deploys the operator with Signal Control, then sets the
-  component settings via `spec.components` of the operator configuration resource and of the Signal Control resource
-  (see `test-resources/component-settings`). Some of them are also set to different values via Helm, which the
-  operator reports with a warning ("overrides the custom Helm value").
+* `test-resources/bin/test-scenario-12-component-settings.sh`: Deploys the operator with Signal Control and the
+  agent0-connector, then sets the component settings via `spec.components` of the operator configuration resource and
+  of the Signal Control resource (see `test-resources/component-settings`). Some of them are also set to different
+  values via Helm, which the operator reports with a warning ("overrides the custom Helm value").
+* `test-resources/bin/test-scenario-13-signal-control-only.sh`: Deploys the operator with Signal Control in SCE-only
+  mode (`FEATURE_SIGNAL_CONTROL_ENABLED=true` and `TELEMETRY_COLLECTION_ENABLED=false`), so that only the Signal
+  Control collector and the Edge Proxy are deployed. By default, it deploys neither an application under monitoring
+  nor a monitoring resource.
+* `test-resources/bin/test-scenario-14-ta-allow-secret-access-in-namespaces.sh`: Deploys the operator with Prometheus
+  CRD support and `operator.targetAllocator.allowSecretAccessInNamespaces` set to the target namespace (or to
+  `TA_ALLOW_SECRET_ACCESS_IN_NAMESPACES`), plus ServiceMonitors and Dash0 monitoring resources in the target namespace
+  and in `test-namespace-2` and `test-namespace-3`. The cadvisor ScrapeConfig, which references a secret, is deployed
+  to the target namespace and to `test-namespace-2`. Expected outcome (with the default for
+  `TA_ALLOW_SECRET_ACCESS_IN_NAMESPACES`): the ServiceMonitors in all three namespaces and the cadvisor ScrapeConfig in
+  the target namespace are scraped, the target allocator rejects the cadvisor ScrapeConfig in `test-namespace-2`, the
+  operator manager logs a debug message for `test-namespace-2` and `test-namespace-3` (the script always enables
+  development mode), and neither the `dash0-operator-manager-collector` cluster role nor the cluster role that the
+  operator creates for the target allocator grant access to secrets. Secrets are only granted via the
+  `dash0-operator-target-allocator-secrets` role binding in the target namespace.
 * `test-resources/bin/test-cleanup.sh`: This script removes all resources created by the other scripts. **You should
   always run this script after running any of the scenario scripts, when you are done with your tests, otherwise the
   e2e tests will fail the next time you start them.** Note that all scenario scripts call the cleanup at the beginning,
@@ -191,6 +212,19 @@ Moving beyond the quickstart instructions, here are more details on the test scr
 * Additional parameterization can be achieved via environment variables. Here is a full list of all available variables.
     * `ADDITIONAL_NAMESPACES`: Create two more test namespaces (in addition to the usual one test namespace) and deploy
       workloads there as well.
+    * `AGENT0_CONNECTOR_ENABLED`: Set this to "true" to enable the agent0-connector. The agent0-connector connects to
+      `AGENT0_CONNECTOR_SERVER_ADDRESS` and authenticates with the token from the secret `dash0-authorization-secret`.
+      This defaults to "false", except in test scenario 12, and it is always enabled in scenario 13.
+    * `AGENT0_CONNECTOR_ENABLE_PPROF`: Set to "true" to enable pprof for the agent0-connector pod (only relevant with
+      `AGENT0_CONNECTOR_ENABLED=true`).
+      See [Create Heap Profiles](helm-chart/dash0-operator/docs/troubleshooting.md#create-heap-profiles) for
+      instructions on creating heap profiles.
+    * `AGENT0_CONNECTOR_INSECURE`: Set this to "true" to have the agent0-connector use a plaintext connection instead of
+      TLS, for example for an outbound connector running locally.
+      This defaults to "false".
+    * `AGENT0_CONNECTOR_SERVER_ADDRESS`: The server address of the agent0-connector, used with
+      `AGENT0_CONNECTOR_ENABLED=true`. It defaults to an unreachable address.
+      Use the Outbound Connector endpoint of your Dash0 organization, see https://app.dash0.com/goto/settings/endpoints?endpoint_type=outbound_connector.
     * `ALLOWED_KUBECTXS`: A comma separated lists of Kubernetes contexts that the script are allowed to use. The scripts
       will refuse to deploy to/delete from any context not on this list. This is a protection against accidentally
       deploying something to or deleting something from a production Kubernetes context.
@@ -331,12 +365,16 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `TA_ALLOW_INSECURE_AUTH_SECRETS`: Set this to "true" to have the target allocator serve the credentials for
       metrics endpoints which require authorization over plain HTTP, instead of over mTLS.
       This defaults to "false".
+    * `TA_ALLOW_SECRET_ACCESS_IN_NAMESPACES`: Set this to a comma-separated list of namespaces to only let the target
+      allocator read secrets in these namespaces (`operator.targetAllocator.allowSecretAccessInNamespaces`).
+      This is unset by default, except in test scenario 14, where it defaults to the target namespace.
     * `TA_MTLS_ENABLED`: Set this to "true" to enable mTLS for the communication between the target allocator and the
       collectors. Requires `USE_CERT_MANAGER=true`, since the certificates are provisioned via cert-manager.
       This defaults to "false", except in test scenario 06, where it defaults to "true".
     * `TELEMETRY_COLLECTION_ENABLED`: Set this to "false" to instruct the operator to not deploy OpenTelemetry
-      collectors and the target allocator.
-      This defaults to "true".
+      collectors and the target allocator. Together with `FEATURE_SIGNAL_CONTROL_ENABLED=true`, this installs the
+      operator in SCE-only mode.
+      This defaults to "true", except in test scenario 13, where it is always "false".
     * `USE_CERT_MANAGER`: Set this to "true" to have the operator use cert-manager to manage TLS certificates, instead
       of generating certificates on the fly during Helm install.
       If this is set to "true", the test scenario scripts will also make sure cert-manager is installed in the
@@ -596,3 +634,28 @@ serves these images is required.
 
 A test scenario is available in [test-resources/bin/test-scenario-10-signal-control.sh](test-resources/bin/test-scenario-10-signal-control.sh)
 and example sampling rules can be found in [test-resources/customresources/dash0samplingrule](test-resources/customresources/dash0samplingrule).
+SCE-only mode can be tested with
+[test-resources/bin/test-scenario-13-signal-control-only.sh](test-resources/bin/test-scenario-13-signal-control-only.sh).
+
+## OLM Bundle
+
+The OLM bundle in `bundle/` is generated from the Helm chart (including its CRD templates), the CSV base in
+`config/manifests`, the samples in `config/samples`, the scorecard configuration in `config/scorecard`, the generation
+code and `olm/values-olm.yaml` in `olm/`, the `PROJECT` file and the OLM settings in the `Makefile`
+(`OPERATOR_SDK_VERSION`, `OLM_COMMITTED_BUNDLE_*`).
+After changing any of them, run `make olm-bundle` and commit the changes in `bundle/`.
+`make lint` fails if `bundle/` is not up to date.
+
+The committed bundle references the image tag `0.0.0` and is not meant to be installed.
+To install the operator via OLM in a test cluster, use a test bundle with your own images:
+
+- [test-resources/bin/deploy-olm.sh](test-resources/bin/deploy-olm.sh) installs OLM into the cluster of the current
+  kube context.
+- [test-resources/bin/test-olm-bundle.sh](test-resources/bin/test-olm-bundle.sh) builds the images, generates a test
+  bundle into `olm/build/test-bundle` via `make olm-test-bundle`, installs it with `operator-sdk run bundle` and creates
+  a `Dash0OperatorConfiguration` and a `Dash0Monitoring` resource. The comment at the top of the script lists the
+  required environment variables. OLM pulls the operator images and the bundle image from the registry of
+  `IMAGE_REPOSITORY_PREFIX`, so they have to be pushed there, for example with `PUSH_BUILT_IMAGES=true`.
+  `test-resources/bin/test-olm-bundle.sh cleanup` removes the operator again,
+  [test-resources/bin/delete-olm.sh](test-resources/bin/delete-olm.sh) removes OLM.
+- `make olm-scorecard BUNDLE_DIR=olm/build/test-bundle` runs the operator-sdk scorecard tests against the test bundle.

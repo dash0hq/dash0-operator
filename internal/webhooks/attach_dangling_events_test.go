@@ -66,6 +66,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 				OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
 				TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 			},
+			NewLeaderElectionAwareMock(true),
 		)
 		collectorManager := collectors.NewCollectorManager(
 			k8sClient,

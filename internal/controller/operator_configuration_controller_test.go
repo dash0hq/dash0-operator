@@ -554,10 +554,10 @@ var _ = Describe(
 										} {
 											if config.expectedSdkIsActive {
 												g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
-												g.Expect(smc.InitializeSelfMonitoringMetricsCalls).To(Equal(1))
+												g.Expect(smc.InitializeSelfMonitoringMetricsCalls.Load()).To(Equal(int32(1)))
 											} else {
 												g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
-												g.Expect(smc.InitializeSelfMonitoringMetricsCalls).To(Equal(0))
+												g.Expect(smc.InitializeSelfMonitoringMetricsCalls.Load()).To(Equal(int32(0)))
 											}
 										}
 									}, 1*time.Second, pollingInterval,
@@ -619,7 +619,7 @@ var _ = Describe(
 									selfMonitoringEnabled: true,
 									expectedSdkIsActive:   true,
 									expectHasConfig:       true,
-									expectedEndpoint:      EndpointGrpcTest,
+									expectedEndpoint:      EndpointGrpcWithProtocolTest,
 									expectedProtocol:      common.ProtocolGrpc,
 									expectedHeaders: map[string]string{
 										"Key": "Value",
@@ -1402,6 +1402,7 @@ func createReconcilerWithManagers(
 			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
 			TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 		},
+		NewLeaderElectionAwareMock(true),
 	)
 	collectorManager := collectors.NewCollectorManager(
 		k8sClient,

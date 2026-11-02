@@ -531,6 +531,21 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 				}
 			})
 
+		It("does not set the pprof port environment variable by default", func() {
+			container := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}),
+			).Spec.Template.Spec.Containers[0]
+			Expect(FindEnvVarByName(container.Env, "DASH0_PPROF_PORT")).To(BeNil())
+		})
+
+		It("sets the pprof port environment variable when pprof is enabled", func() {
+			extraConfig := util.ExtraConfig{Agent0ConnectorEnablePprof: true}
+			container := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, extraConfig),
+			).Spec.Template.Spec.Containers[0]
+			Expect(container.Env).To(ContainElement(corev1.EnvVar{Name: "DASH0_PPROF_PORT", Value: "1777"}))
+		})
+
 		It("passes the default number of concurrent commands when the extra config has no value", func() {
 			container := getDeployment(
 				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}),

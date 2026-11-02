@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+receivers:
+  debuginfo:
+    grpc:
+      endpoint: 0.0.0.0:7070
+      tls:
+        cert_file: /tls/server.crt
+        key_file: /tls/server.key
+
+exporters:
+  debuginfo/primary:
+    endpoint: parca-primary:7070
+    headers:
+      authorization: Bearer ${env:PARCA_PRIMARY_TOKEN}
+  debuginfo/secondary:
+    endpoint: parca-secondary:7070
+    headers:
+      authorization: Bearer ${env:PARCA_SECONDARY_TOKEN}
+
+service:
+  pipelines:
+    debuginfo:
+      receivers: [debuginfo]
+      exporters: [debuginfo/primary, debuginfo/secondary]

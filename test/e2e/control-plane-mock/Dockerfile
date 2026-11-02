@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM --platform=${BUILDPLATFORM} golang:1.27.2-alpine3.24 AS builder
+FROM --platform=${BUILDPLATFORM} golang:1.27.3-alpine3.24 AS builder
 
 WORKDIR /usr/local/go/control_plane_mock
 
@@ -18,7 +18,6 @@ RUN CGO_ENABLED=0 \
     GOOS=${TARGETOS:-linux} \
     GOARCH=${TARGETARCH} \
     go build \
-    -ldflags '-extldflags "-static"' \
     -v \
     control-plane-mock
 

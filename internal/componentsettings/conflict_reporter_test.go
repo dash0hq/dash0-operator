@@ -9,7 +9,9 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr/funcr"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -55,11 +57,7 @@ var _ = Describe("The component settings conflict reporter", func() {
 			ObjectMeta: metav1.ObjectMeta{Name: "operator-configuration"},
 			Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 				Components: &dash0v1alpha1.OperatorConfigurationComponents{
-					Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{
-						WorkloadSettings: dash0v1alpha1.WorkloadSettings{
-							Labels: map[string]string{"team": "observability"},
-						},
-					},
+					Agent0Connector: &dash0v1alpha1.Agent0ConnectorSettings{MaxConcurrentCommands: new(int32(4))},
 				},
 			},
 		}
@@ -78,7 +76,7 @@ var _ = Describe("The component settings conflict reporter", func() {
 
 	conflictingExtraConfig := func() util.ExtraConfig {
 		extraConfig := util.ExtraConfigDefaults
-		extraConfig.Agent0ConnectorLabels = map[string]string{"team": "helm"}
+		extraConfig.Agent0ConnectorMaxConcurrentCommands = 3
 		extraConfig.EdgeProxyReplicas = 4
 		return extraConfig
 	}
@@ -137,8 +135,8 @@ var _ = Describe("The component settings conflict reporter", func() {
 		reporter.Report(ctx, logger)
 		Expect(countMessages(conflictMessage)).To(Equal(1))
 		Expect(logged[0]).To(ContainSubstring(
-			"Dash0OperatorConfiguration spec.components.agent0Connector.labels overrides the custom Helm value " +
-				"operator.agent0Connector.labels."))
+			"Dash0OperatorConfiguration spec.components.agent0Connector.maxConcurrentCommands overrides the custom Helm " +
+				"value operator.agent0Connector.maxConcurrentCommands."))
 
 		reporter.Report(ctx, logger)
 		Expect(logged).To(HaveLen(1))
@@ -172,11 +170,37 @@ var _ = Describe("The component settings conflict reporter", func() {
 		Expect(countMessages(conflictMessage)).To(Equal(1))
 
 		extraConfig := conflictingExtraConfig()
-		extraConfig.Agent0ConnectorLabels = map[string]string{"team": "other"}
+		extraConfig.Agent0ConnectorMaxConcurrentCommands = 5
 		reporter.UpdateExtraConfig(ctx, extraConfig, logger)
 		Expect(countMessages(conflictMessage)).To(Equal(2))
 		Expect(countMessages(noConflictMessage)).To(Equal(0))
-		Expect(logged[1]).To(ContainSubstring(`"helmSetting"="{\"team\":\"other\"}"`))
+		Expect(logged[1]).To(ContainSubstring(`"helmSetting"="5"`))
+	})
+
+	It("should name the deprecated Helm value of a conflict", func() {
+		operatorConfiguration := operatorConfigurationResource()
+		operatorConfiguration.Spec.Components = &dash0v1alpha1.OperatorConfigurationComponents{
+			DeploymentCollector: &dash0v1alpha1.DeploymentCollectorSettings{
+				CollectorContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{
+					ContainerResources: dash0v1alpha1.ContainerResources{
+						Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("500Mi")},
+					},
+					GoMemLimit: "300MiB",
+				},
+			},
+		}
+		extraConfig := util.ExtraConfigDefaults
+		extraConfig.CollectorDeploymentCollectorContainerResources.GoMemLimit = "200MiB"
+		reporter := newReporter(newClient(operatorConfiguration), extraConfig, true)
+		reporter.Report(ctx, logger)
+		Expect(logged).To(HaveLen(1))
+		Expect(logged[0]).To(ContainSubstring(
+			"overrides the custom Helm value operator.collectors.deploymentCollectorContainerResources (or " +
+				"operator.collectorDeploymentCollectorContainerResources)."))
+		Expect(logged[0]).To(ContainSubstring(
+			`"helmValue"="operator.collectors.deploymentCollectorContainerResources"`))
+		Expect(logged[0]).To(ContainSubstring(
+			`"deprecatedHelmValue"="operator.collectorDeploymentCollectorContainerResources"`))
 	})
 
 	It("should log the conflicts of the Signal Control resource", func() {

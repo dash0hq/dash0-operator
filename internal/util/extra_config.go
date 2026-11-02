@@ -99,17 +99,18 @@ type ExtraConfig struct {
 
 	SignalControlCollectorProbes CollectorProbes `json:"signalControlCollectorProbes"`
 
-	TargetAllocatorMtlsEnabled              bool                               `json:"targetAllocatorMtlsEnabled,omitempty"`
-	TargetAllocatorMtlsServerCertSecretName string                             `json:"targetAllocatorMtlsServerCertSecretName,omitempty"`
-	TargetAllocatorMtlsClientCertSecretName string                             `json:"targetAllocatorMtlsClientCertSecretName,omitempty"`
-	TargetAllocatorAllowInsecureAuthSecrets bool                               `json:"targetAllocatorAllowInsecureAuthSecrets,omitempty"`
-	TargetAllocatorContainerResources       ResourceRequirementsWithGoMemLimit `json:"targetAllocatorContainerResources"`
-	TargetAllocatorLabels                   map[string]string                  `json:"targetAllocatorLabels,omitempty"`
-	TargetAllocatorAnnotations              map[string]string                  `json:"targetAllocatorAnnotations,omitempty"`
-	TargetAllocatorPodLabels                map[string]string                  `json:"targetAllocatorPodLabels,omitempty"`
-	TargetAllocatorPodAnnotations           map[string]string                  `json:"targetAllocatorPodAnnotations,omitempty"`
-	TargetAllocatorTolerations              []corev1.Toleration                `json:"targetAllocatorTolerations,omitempty"`
-	TargetAllocatorNodeAffinity             *corev1.NodeAffinity               `json:"targetAllocatorNodeAffinity,omitempty"`
+	TargetAllocatorMtlsEnabled                   bool                               `json:"targetAllocatorMtlsEnabled,omitempty"`
+	TargetAllocatorMtlsServerCertSecretName      string                             `json:"targetAllocatorMtlsServerCertSecretName,omitempty"`
+	TargetAllocatorMtlsClientCertSecretName      string                             `json:"targetAllocatorMtlsClientCertSecretName,omitempty"`
+	TargetAllocatorAllowInsecureAuthSecrets      bool                               `json:"targetAllocatorAllowInsecureAuthSecrets,omitempty"`
+	TargetAllocatorAllowSecretAccessInNamespaces []string                           `json:"targetAllocatorAllowSecretAccessInNamespaces,omitempty"`
+	TargetAllocatorContainerResources            ResourceRequirementsWithGoMemLimit `json:"targetAllocatorContainerResources"`
+	TargetAllocatorLabels                        map[string]string                  `json:"targetAllocatorLabels,omitempty"`
+	TargetAllocatorAnnotations                   map[string]string                  `json:"targetAllocatorAnnotations,omitempty"`
+	TargetAllocatorPodLabels                     map[string]string                  `json:"targetAllocatorPodLabels,omitempty"`
+	TargetAllocatorPodAnnotations                map[string]string                  `json:"targetAllocatorPodAnnotations,omitempty"`
+	TargetAllocatorTolerations                   []corev1.Toleration                `json:"targetAllocatorTolerations,omitempty"`
+	TargetAllocatorNodeAffinity                  *corev1.NodeAffinity               `json:"targetAllocatorNodeAffinity,omitempty"`
 
 	EdgeProxyReplicas           int32                              `json:"edgeProxyReplicas,omitempty"`
 	EdgeProxyEnablePprof        bool                               `json:"edgeProxyEnablePprof,omitempty"`
@@ -123,6 +124,7 @@ type ExtraConfig struct {
 	EdgeProxyPodAnnotations map[string]string `json:"edgeProxyPodAnnotations,omitempty"`
 
 	Agent0ConnectorMaxConcurrentCommands  int32                              `json:"agent0ConnectorMaxConcurrentCommands,omitempty"`
+	Agent0ConnectorEnablePprof            bool                               `json:"agent0ConnectorEnablePprof,omitempty"`
 	Agent0ConnectorClusterRoleRules       []rbacv1.PolicyRule                `json:"agent0ConnectorClusterRoleRules,omitempty"`
 	Agent0ConnectorAllowedKubectlCommands map[string]bool                    `json:"agent0ConnectorAllowedKubectlCommands,omitempty"`
 	Agent0ConnectorContainerResources     ResourceRequirementsWithGoMemLimit `json:"agent0ConnectorContainerResources"`
@@ -340,11 +342,16 @@ func defaultNodeAffinity() *corev1.NodeAffinity {
 }
 
 // ExtraConfigDefaultsFor returns the defaults that apply when a value is missing from the extra config map, and with
-// which the settings in spec.components are merged. They match the defaults of the Helm chart.
-func ExtraConfigDefaultsFor(isGkeAutopilot bool) ExtraConfig {
+// which the settings in spec.components are merged. They match the defaults of the Helm chart, except for the
+// DaemonSet SELinux options on OpenShift, which only the operator sets.
+func ExtraConfigDefaultsFor(isGkeAutopilot bool, isOpenShift bool) ExtraConfig {
 	defaults := ExtraConfigDefaults
 	if isGkeAutopilot {
 		defaults.InstrumentationInitContainerResources = gkeAutopilotInstrumentationInitContainerResources
+	}
+	if isOpenShift {
+		// OpenShift nodes enforce SELinux, and the default container type container_t cannot read /var/log/pods.
+		defaults.DaemonSetSELinuxOptions = &corev1.SELinuxOptions{Type: "spc_t"}
 	}
 	return defaults
 }
@@ -383,6 +390,9 @@ func readExtraConfigurationFromFile(
 		return ExtraConfig{}, fmt.Errorf("cannot unmarshal the configuration file %w", err)
 	}
 	applyDefaultsForMissingKeys(extraConfig, &defaults, presentKeys)
+	if err = validateReplicaCounts(extraConfig); err != nil {
+		return ExtraConfig{}, err
+	}
 
 	applyDefaults(
 		&extraConfig.CollectorDaemonSetCollectorContainerResources,
@@ -421,12 +431,16 @@ func readExtraConfigurationFromFile(
 }
 
 // applyDefaultsForMissingKeys sets the defaults for the values that the Helm chart renders whenever the respective
-// component is enabled, when their key is missing. A value that is present is kept as it is, including an explicit
-// null.
+// component is enabled, and for the DaemonSet SELinux options, which it only renders when they are set, when their key
+// is missing. A value that is present is kept as it is, including an explicit null, except for replica counts, for
+// which null also means the default.
 func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig, presentKeys map[string]any) {
 	missing := func(key string) bool {
 		_, present := presentKeys[key]
 		return !present
+	}
+	missingOrNull := func(key string) bool {
+		return presentKeys[key] == nil
 	}
 	if missing("initContainerResources") {
 		extraConfig.InstrumentationInitContainerResources = defaults.InstrumentationInitContainerResources.DeepCopy()
@@ -437,13 +451,16 @@ func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig
 	if missing("daemonSetProbes") {
 		extraConfig.DaemonSetProbes = defaults.DaemonSetProbes.DeepCopy()
 	}
+	if missing("daemonSetSeLinuxOptions") {
+		extraConfig.DaemonSetSELinuxOptions = defaults.DaemonSetSELinuxOptions.DeepCopy()
+	}
 	if missing("deploymentNodeAffinity") {
 		extraConfig.DeploymentNodeAffinity = defaults.DeploymentNodeAffinity.DeepCopy()
 	}
 	if missing("deploymentProbes") {
 		extraConfig.DeploymentProbes = defaults.DeploymentProbes.DeepCopy()
 	}
-	if missing("signalControlCollectorReplicas") {
+	if missingOrNull("signalControlCollectorReplicas") {
 		extraConfig.SignalControlCollectorReplicas = defaults.SignalControlCollectorReplicas
 	}
 	if missing("signalControlCollectorNodeAffinity") {
@@ -458,7 +475,7 @@ func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig
 	if missing("targetAllocatorNodeAffinity") {
 		extraConfig.TargetAllocatorNodeAffinity = defaults.TargetAllocatorNodeAffinity.DeepCopy()
 	}
-	if missing("edgeProxyReplicas") {
+	if missingOrNull("edgeProxyReplicas") {
 		extraConfig.EdgeProxyReplicas = defaults.EdgeProxyReplicas
 	}
 	if missing("edgeProxyContainerResources") {
@@ -476,6 +493,25 @@ func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig
 	if missing("agent0ConnectorNodeAffinity") {
 		extraConfig.Agent0ConnectorNodeAffinity = defaults.Agent0ConnectorNodeAffinity.DeepCopy()
 	}
+}
+
+// validateReplicaCounts rejects replica counts below 1. The Helm chart already refuses to render them, so this only
+// catches an extra config map that has been edited by hand.
+func validateReplicaCounts(extraConfig *ExtraConfig) error {
+	if extraConfig.SignalControlCollectorReplicas < 1 {
+		return fmt.Errorf(
+			"signalControlCollectorReplicas (operator.collectors.signalControlCollectorReplicas) must be at least 1, "+
+				"but was %d",
+			extraConfig.SignalControlCollectorReplicas,
+		)
+	}
+	if extraConfig.EdgeProxyReplicas < 1 {
+		return fmt.Errorf(
+			"edgeProxyReplicas (operator.signalControl.edgeProxy.replicas) must be at least 1, but was %d",
+			extraConfig.EdgeProxyReplicas,
+		)
+	}
+	return nil
 }
 
 // applyDefaults sets default values for CPU, Memory, and Ephemeral Storage on requests and limits.

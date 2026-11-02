@@ -5,15 +5,29 @@ package util
 
 import (
 	"fmt"
+	"math"
+	"slices"
 	"strconv"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/utils/ptr"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
-const mibBytes = 1024 * 1024
+const (
+	mibBytes = 1024 * 1024
+
+	// goMemLimitOff is the GOMEMLIMIT value that disables the soft memory limit of the Go runtime.
+	goMemLimitOff = "off"
+
+	// The names of the main collectors in log messages.
+	daemonSetCollector     = "daemonset collector"
+	deploymentCollector    = "deployment collector"
+	signalControlCollector = "signal-control collector"
+)
 
 const (
 	// GoMemLimitDefaultPercent is the GOMEMLIMIT-to-memory-limit ratio for the plain Go containers.
@@ -88,9 +102,9 @@ func clampInt(v, lo, hi int) int {
 // offset sync) are excluded: they run no memory_limiter and their limits are below the derivation floors.
 func (ec *ExtraConfig) mainCollectorMemoryResources() map[string]*ResourceRequirementsWithGoMemLimit {
 	return map[string]*ResourceRequirementsWithGoMemLimit{
-		"daemonset collector":      &ec.CollectorDaemonSetCollectorContainerResources,
-		"deployment collector":     &ec.CollectorDeploymentCollectorContainerResources,
-		"signal-control collector": &ec.SignalControlCollectorContainerResources,
+		daemonSetCollector:     &ec.CollectorDaemonSetCollectorContainerResources,
+		deploymentCollector:    &ec.CollectorDeploymentCollectorContainerResources,
+		signalControlCollector: &ec.SignalControlCollectorContainerResources,
 	}
 }
 
@@ -140,6 +154,8 @@ type goMemLimitInversion struct {
 	Collector  string
 	GoMemLimit string
 	SoftMiB    int
+	// Setting is the Helm value or the custom resource field that sets the GOMEMLIMIT, see GoMemLimitInversionReporter.
+	Setting string
 }
 
 // collectorGoMemLimitInversions returns one entry per main collector whose explicitly configured GOMEMLIMIT is at or
@@ -170,17 +186,122 @@ func (ec ExtraConfig) collectorGoMemLimitInversions() []goMemLimitInversion {
 	return inversions
 }
 
-// WarnOnCollectorGoMemLimitInversion logs a warning for every main collector whose explicitly configured
-// GOMEMLIMIT is not below the derived memory_limiter soft limit (see collectorGoMemLimitInversions).
-func WarnOnCollectorGoMemLimitInversion(ec ExtraConfig, logger logd.Logger) {
-	for _, inversion := range ec.collectorGoMemLimitInversions() {
+// DeployedCollectors are the main collectors that are part of the desired state of the collector resources.
+type DeployedCollectors struct {
+	DaemonSetCollector     bool
+	DeploymentCollector    bool
+	SignalControlCollector bool
+}
+
+// GoMemLimitInversionSources are the inputs from which the GOMEMLIMIT inversions are determined, see
+// GoMemLimitInversionReporter.
+type GoMemLimitInversionSources struct {
+	EffectiveConfig                 ExtraConfig
+	Deployed                        DeployedCollectors
+	OperatorConfigurationComponents *dash0v1alpha1.OperatorConfigurationComponents
+	SignalControlComponents         *dash0v1alpha1.SignalControlComponents
+}
+
+// GoMemLimitInversionReporter logs the GOMEMLIMIT inversions (see collectorGoMemLimitInversions) of the deployed
+// collectors, naming the custom resource field if spec.components sets the resources of the collector, and the Helm
+// value otherwise. The zero value is ready to use. It is not safe for concurrent use.
+type GoMemLimitInversionReporter struct {
+	lastReported *string
+}
+
+// Report logs the GOMEMLIMIT inversions of the deployed collectors if they have changed since the last call.
+func (r *GoMemLimitInversionReporter) Report(sources GoMemLimitInversionSources, logger logd.Logger) {
+	inversions := deployedCollectorGoMemLimitInversions(sources)
+	fingerprint := fmt.Sprintf("%v", inversions)
+	previous := r.lastReported
+	r.lastReported = &fingerprint
+	if previous != nil && *previous == fingerprint {
+		return
+	}
+	for _, inversion := range inversions {
 		logger.Warn(
 			"the configured GOMEMLIMIT is not below the memory_limiter soft limit; the collector may refuse "+
 				"telemetry prematurely, set gomemlimit below the soft limit or leave it empty to auto-derive",
 			"collector", inversion.Collector,
 			"gomemlimit", inversion.GoMemLimit,
 			"memoryLimiterSoftLimitMiB", inversion.SoftMiB,
+			"setting", inversion.Setting,
 		)
+	}
+}
+
+// Reset forgets the last report, so that the next call to Report logs the inversions again.
+func (r *GoMemLimitInversionReporter) Reset() {
+	r.lastReported = nil
+}
+
+// HasCollectorGoMemLimitInversions reports whether a deployed collector has a GOMEMLIMIT inversion, see
+// GoMemLimitInversionReporter.
+func HasCollectorGoMemLimitInversions(sources GoMemLimitInversionSources) bool {
+	return len(deployedCollectorGoMemLimitInversions(sources)) > 0
+}
+
+// deployedCollectorGoMemLimitInversions returns the GOMEMLIMIT inversions of the deployed collectors in the effective
+// configuration, sorted by collector.
+func deployedCollectorGoMemLimitInversions(sources GoMemLimitInversionSources) []goMemLimitInversion {
+	collectors := goMemLimitCollectors(sources)
+	var inversions []goMemLimitInversion
+	for _, inversion := range sources.EffectiveConfig.collectorGoMemLimitInversions() {
+		collector := collectors[inversion.Collector]
+		if !collector.deployed {
+			continue
+		}
+		if collector.setViaComponents {
+			inversion.Setting = collector.resourceField
+		} else {
+			inversion.Setting = ComponentSettingConflict{
+				HelmValue:           collector.helmValue,
+				DeprecatedHelmValue: deprecatedHelmValues[collector.helmValue],
+			}.HelmValueNames()
+		}
+		inversions = append(inversions, inversion)
+	}
+	slices.SortFunc(inversions, func(a, b goMemLimitInversion) int {
+		return strings.Compare(a.Collector, b.Collector)
+	})
+	return inversions
+}
+
+type goMemLimitCollector struct {
+	deployed         bool
+	setViaComponents bool
+	helmValue        string
+	resourceField    string
+}
+
+// goMemLimitCollectors describes each main collector, keyed by the names used in mainCollectorMemoryResources.
+func goMemLimitCollectors(sources GoMemLimitInversionSources) map[string]goMemLimitCollector {
+	operatorConfiguration := ptr.Deref(sources.OperatorConfigurationComponents, dash0v1alpha1.OperatorConfigurationComponents{})
+	signalControl := ptr.Deref(sources.SignalControlComponents, dash0v1alpha1.SignalControlComponents{})
+	return map[string]goMemLimitCollector{
+		daemonSetCollector: {
+			deployed: sources.Deployed.DaemonSetCollector,
+			setViaComponents: operatorConfiguration.DaemonSetCollector != nil &&
+				operatorConfiguration.DaemonSetCollector.CollectorContainerResources != nil,
+			helmValue: "operator.collectors.daemonSetCollectorContainerResources",
+			resourceField: "Dash0OperatorConfiguration " +
+				"spec.components.daemonSetCollector.collectorContainerResources.gomemlimit",
+		},
+		deploymentCollector: {
+			deployed: sources.Deployed.DeploymentCollector,
+			setViaComponents: operatorConfiguration.DeploymentCollector != nil &&
+				operatorConfiguration.DeploymentCollector.CollectorContainerResources != nil,
+			helmValue: "operator.collectors.deploymentCollectorContainerResources",
+			resourceField: "Dash0OperatorConfiguration " +
+				"spec.components.deploymentCollector.collectorContainerResources.gomemlimit",
+		},
+		signalControlCollector: {
+			deployed: sources.Deployed.SignalControlCollector,
+			setViaComponents: signalControl.Collector != nil &&
+				signalControl.Collector.CollectorContainerResources != nil,
+			helmValue:     "operator.collectors.signalControlCollectorContainerResources",
+			resourceField: "Dash0SignalControl spec.components.collector.collectorContainerResources.gomemlimit",
+		},
 	}
 }
 
@@ -213,4 +334,34 @@ func parseGoMemLimitMiB(v string) (int, bool) {
 		return 0, false
 	}
 	return int(n / mibBytes), true
+}
+
+// parseGoMemLimitBytes parses a Go GOMEMLIMIT string into bytes, accepting the same values as the Go runtime (see
+// parseByteCount in runtime/string.go). It returns false for "off" and for every value the Go runtime rejects.
+func parseGoMemLimitBytes(v string) (int64, bool) {
+	units := []struct {
+		suffix string
+		bytes  int64
+	}{
+		{"TiB", 1 << 40},
+		{"GiB", 1 << 30},
+		{"MiB", 1 << 20},
+		{"KiB", 1 << 10},
+		{"B", 1},
+	}
+	number, unitBytes := v, int64(1)
+	for _, unit := range units {
+		if withoutSuffix, hasSuffix := strings.CutSuffix(v, unit.suffix); hasSuffix {
+			number, unitBytes = withoutSuffix, unit.bytes
+			break
+		}
+	}
+	if number == "" || number[len(number)-1] < '0' || number[len(number)-1] > '9' {
+		return 0, false
+	}
+	n, err := strconv.ParseInt(number, 10, 64)
+	if err != nil || n < 0 || n > math.MaxInt64/unitBytes {
+		return 0, false
+	}
+	return n * unitBytes, true
 }

@@ -415,7 +415,7 @@ var _ = Describe(
 				mapSignalToMetrics := func(resourceYaml string, action apiAction) *ResourceToRequestsResult {
 					resource := map[string]any{}
 					Expect(yaml.Unmarshal([]byte(resourceYaml), &resource)).To(Succeed())
-					return signalToMetricsReconciler.MapResourceToHttpRequests(
+					return signalToMetricsReconciler.MapResourceToApiCalls(
 						&preconditionValidationResult{
 							k8sName:      signalToMetricsName,
 							k8sNamespace: TestNamespaceName,

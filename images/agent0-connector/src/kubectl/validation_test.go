@@ -878,10 +878,13 @@ func TestValidateCommandRequest(t *testing.T) {
 	}
 }
 
+// viaAllowedKubectlCommands is the part of the rejection reasons that names the settings for the allowed commands.
+const viaAllowedKubectlCommands = `(via the Helm value operator.agent0Connector.allowedKubectlCommands, or ` +
+	`spec.components.agent0Connector.allowedKubectlCommands of the Dash0OperatorConfiguration resource)`
+
 // getEventsDisabled is the reason with which "kubectl get events" is rejected while "kubectl events" is disabled.
 const getEventsDisabled = `reading events via "kubectl get" is not allowed, because the kubectl command "events" has ` +
-	`been disabled in the configuration of the agent0-connector (via the Helm value ` +
-	`operator.agent0Connector.allowedKubectlCommands)`
+	`been disabled in the configuration of the agent0-connector ` + viaAllowedKubectlCommands
 
 // sortByTerminationMessage is the reason with which a --sort-by expression that addresses the termination messages of
 // containers is rejected while "kubectl logs" is disabled.
@@ -889,8 +892,9 @@ func sortByTerminationMessage(expression string) string {
 	return fmt.Sprintf(
 		"the --sort-by expression %q is not allowed, because it addresses the termination messages of containers, "+
 			"which can hold log output, and the kubectl command \"logs\" has been disabled in the configuration of "+
-			"the agent0-connector (via the Helm value operator.agent0Connector.allowedKubectlCommands)",
+			"the agent0-connector %s",
 		expression,
+		viaAllowedKubectlCommands,
 	)
 }
 
@@ -901,12 +905,11 @@ func TestValidationHonorsTheAllowedKubectlCommands(t *testing.T) {
 
 	withoutClusterInfo := mustParseAllowedKubectlCommands("api-resources,api-versions,auth,explain,get,logs,top,version")
 	clusterInfoDisabled := `the kubectl command "cluster-info" has been disabled in the configuration of the ` +
-		`agent0-connector (via the Helm value operator.agent0Connector.allowedKubectlCommands), the only allowed ` +
-		`kubectl commands are "api-resources", "api-versions", "auth", "explain", "get", "logs", "top" and "version"`
+		`agent0-connector ` + viaAllowedKubectlCommands + `, the only allowed kubectl commands are "api-resources", ` +
+		`"api-versions", "auth", "explain", "get", "logs", "top" and "version"`
 	eventsDisabled := `the kubectl command "events" has been disabled in the configuration of the ` +
-		`agent0-connector (via the Helm value operator.agent0Connector.allowedKubectlCommands), the only allowed ` +
-		`kubectl commands are "api-resources", "api-versions", "auth", "cluster-info", "explain", "get", "top" and ` +
-		`"version"`
+		`agent0-connector ` + viaAllowedKubectlCommands + `, the only allowed kubectl commands are "api-resources", ` +
+		`"api-versions", "auth", "cluster-info", "explain", "get", "top" and "version"`
 
 	tests := []struct {
 		name            string
@@ -916,21 +919,19 @@ func TestValidationHonorsTheAllowedKubectlCommands(t *testing.T) {
 	}{
 		{name: "logs is rejected by default", allowed: defaults, arguments: []string{"logs", "my-pod"},
 			rejectionReason: `the kubectl command "logs" has been disabled in the configuration of the ` +
-				`agent0-connector (via the Helm value operator.agent0Connector.allowedKubectlCommands), the only ` +
-				`allowed kubectl commands are "api-resources", "api-versions", "auth", "cluster-info", "explain", ` +
-				`"get", "top" and "version"`},
+				`agent0-connector ` + viaAllowedKubectlCommands + `, the only allowed kubectl commands are ` +
+				`"api-resources", "api-versions", "auth", "cluster-info", "explain", "get", "top" and "version"`},
 		{name: "events is rejected by default", allowed: defaults, arguments: []string{"events"},
 			rejectionReason: `the kubectl command "events" has been disabled in the configuration of the ` +
-				`agent0-connector (via the Helm value operator.agent0Connector.allowedKubectlCommands), the only ` +
-				`allowed kubectl commands are "api-resources", "api-versions", "auth", "cluster-info", "explain", ` +
-				`"get", "top" and "version"`},
+				`agent0-connector ` + viaAllowedKubectlCommands + `, the only allowed kubectl commands are ` +
+				`"api-resources", "api-versions", "auth", "cluster-info", "explain", "get", "top" and "version"`},
 		{name: "get is allowed by default", allowed: defaults, arguments: []string{"get", "pods"}},
 		{name: "logs is allowed when enabled", allowed: logsAndEvents, arguments: []string{"logs", "my-pod"}},
 		{name: "events is allowed when enabled", allowed: logsAndEvents, arguments: []string{"events"}},
 		{name: "get is rejected when disabled", allowed: logsAndEvents, arguments: []string{"get", "pods"},
 			rejectionReason: `the kubectl command "get" has been disabled in the configuration of the ` +
-				`agent0-connector (via the Helm value operator.agent0Connector.allowedKubectlCommands), the only ` +
-				`allowed kubectl commands are "events" and "logs"`},
+				`agent0-connector ` + viaAllowedKubectlCommands + `, the only allowed kubectl commands are "events" ` +
+				`and "logs"`},
 		{name: "a restricted configuration only advertises the allowed commands", allowed: onlyGet,
 			arguments: []string{"delete", "pod", "x"},
 			rejectionReason: `the kubectl command "delete" is not an allowed read-only command, the only allowed ` +

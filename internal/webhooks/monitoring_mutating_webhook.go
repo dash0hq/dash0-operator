@@ -24,17 +24,20 @@ import (
 )
 
 type MonitoringMutatingWebhookHandler struct {
-	Client            client.Client
-	operatorNamespace string
+	Client                   client.Client
+	operatorNamespace        string
+	signalControlSceOnlyMode bool
 }
 
 func NewMonitoringMutatingWebhookHandler(
 	k8sClient client.Client,
 	OperatorNamespace string,
+	signalControlSceOnlyMode bool,
 ) *MonitoringMutatingWebhookHandler {
 	return &MonitoringMutatingWebhookHandler{
-		Client:            k8sClient,
-		operatorNamespace: OperatorNamespace,
+		Client:                   k8sClient,
+		operatorNamespace:        OperatorNamespace,
+		signalControlSceOnlyMode: signalControlSceOnlyMode,
 	}
 }
 
@@ -158,6 +161,11 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 	telemetryCollectionEnabled := true
 	if operatorConfigurationSpec != nil {
 		telemetryCollectionEnabled = pointers.ReadBoolPointerWithDefault(operatorConfigurationSpec.TelemetryCollection.Enabled, true)
+	}
+	if h.signalControlSceOnlyMode {
+		// The operator configuration resource, which has telemetryCollection.enabled=false in SCE-only mode, might not
+		// exist yet.
+		telemetryCollectionEnabled = false
 	}
 
 	if monitoringSpec.InstrumentWorkloads.Mode == "" {

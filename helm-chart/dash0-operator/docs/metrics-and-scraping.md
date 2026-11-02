@@ -9,7 +9,9 @@ This document covers metrics collection, Prometheus endpoint scraping, profiling
 - [Scraping Prometheus Endpoints](#scraping-prometheus-endpoints)
 - [Support for Prometheus CRDs](#support-for-prometheus-crds)
   - [Authorization](#authorization)
+    - [Certificate Renewal](#certificate-renewal)
     - [Allowing Insecure Auth Secrets](#allowing-insecure-auth-secrets)
+  - [Restricting Access to Secrets](#restricting-access-to-secrets)
   - [Configuring Resource Requests/Limits for the Target-Allocator](#configuring-resource-requestslimits-for-the-target-allocator)
 
 ## Configure Metrics Collection
@@ -153,6 +155,40 @@ operator:
       clientCertSecretName: "ta-mtls-client-cert-secret"
 ```
 
+#### Certificate Renewal
+
+The Target Allocator reloads its certificate, key and CA certificate from the server certificate secret at runtime.
+The collectors reload the client certificate and key from the client certificate secret at runtime, at most five minutes after they have changed.
+They cannot reload the CA certificate at runtime; when the `ca.crt` entry of the client certificate secret changes, the operator restarts the collector pods.
+
+The Target Allocator verifies the client certificate only against the `ca.crt` entry of the server certificate secret, and the collectors verify the server certificate only against the `ca.crt` entry of the client certificate secret.
+If the CA is renewed with a new key, and the server and client certificates are not renewed at the same time, the two sides trust different CAs until both certificates have been renewed.
+In the meantime, the collectors cannot fetch their scrape targets from the Target Allocator.
+To prevent this, the certificates should be set up as follows:
+
+* The CA has a much longer duration than the server and client certificates, so that it is not renewed together with them.
+* The CA keeps its private key when it is renewed, so that certificates signed before and after the renewal are valid for both the old and the new CA certificate.
+  With cert-manager, set `privateKey.rotationPolicy: Never` on the CA certificate; since cert-manager v1.18, the default is to generate a new key on every renewal.
+* The server and client certificates are renewed before the old CA certificate in their secrets expires.
+  With cert-manager, which renews certificates after two thirds of their duration by default, keep the duration of the server and client certificates well below one third of the CA's duration.
+
+The [example template](https://github.com/dash0hq/dash0-operator/blob/main/test-resources/cert-manager/ta-issuers-and-cert.yaml.template) follows these rules.
+
+If the two sides trust different CAs, the collectors log `x509: certificate signed by unknown authority` errors, and the Target Allocator logs `tls: bad certificate` errors.
+Collector pods that start in this state fail their startup probe and are restarted repeatedly.
+To recover, renew the server or client certificate that has been signed with the old CA key, for example with `cmctl renew <certificate-name> -n <operator-namespace>`.
+
+If you have created your certificates with an earlier version of the example template, applying the updated template does not reissue them.
+The CA certificate keeps its 90 day duration and is still renewed together with the server and client certificates.
+To migrate:
+
+1. Apply the updated template, with `$OPERATOR_NAMESPACE` replaced by the operator namespace.
+2. Renew the CA certificate with `cmctl renew ta-mtls-ca -n <operator-namespace>`.
+   Since the CA now keeps its private key, the existing server and client certificates stay valid.
+3. Wait until `kubectl get certificate ta-mtls-ca -n <operator-namespace> -o jsonpath='{.status.notAfter}'` shows a date two years in the future.
+4. Renew the server and client certificates with `cmctl renew ta-server-cert ta-client-cert -n <operator-namespace>`.
+   This puts the renewed CA certificate into the `ca.crt` entries of their secrets.
+
 #### Allowing Insecure Auth Secrets
 
 If the transport security between the OpenTelemetry Target Allocator and the collectors is already guaranteed by other means, for example by a service mesh, you can skip the mTLS setup and let the Target Allocator serve the credentials over plain HTTP instead:
@@ -165,6 +201,37 @@ operator:
 
 Do not enable this setting unless transport-level security is guaranteed by other means, otherwise the credentials for the scraped endpoints are transferred unencrypted.
 See the [upstream documentation](https://github.com/open-telemetry/opentelemetry-operator/blob/main/docs/target-allocator/README.md#alternative-allow-insecure-auth-secrets) for details.
+
+### Restricting Access to Secrets
+
+To resolve credentials referenced by Prometheus CRDs, the Target Allocator needs read access to secrets.
+By default, the Target Allocator (and the operator manager, which grants this permission to the Target Allocator) can read secrets in all namespaces.
+You can restrict this access to a list of namespaces via the Helm chart:
+
+```yaml
+operator:
+  targetAllocator:
+    allowSecretAccessInNamespaces:
+      - namespace-a
+      - namespace-b
+```
+
+If this list is set, the Target Allocator can only read secrets in the listed namespaces, and the operator manager only in the Dash0 operator namespace.
+The list only restricts access to secrets.
+It does not change which namespaces are watched.
+The Target Allocator still watches Prometheus CRDs in all namespaces that have a Dash0 monitoring resource with [Prometheus scraping](configuration.md#monitoringresource.spec.prometheusScraping.enabled) enabled (which is the default), provided that [support for Prometheus CRDs](#support-for-prometheus-crds) is enabled.
+In a namespace that is not on the list, Prometheus CRDs without a secret reference are scraped as usual.
+Prometheus CRDs that reference a secret are rejected by the Target Allocator, and their targets are not scraped.
+This means that authentication via secrets (for example basic auth, a bearer token or OAuth2) and TLS settings from secrets (for example a CA certificate for verifying the target's certificate, or a client certificate) do not work in such a namespace.
+Listing a namespace does not enable scraping in it by itself.
+Scraping pods via the `prometheus.io/*` annotations (see [Scraping Prometheus Endpoints](#scraping-prometheus-endpoints)) is not affected by this list.
+
+All listed namespaces need to exist when the Helm chart is installed or upgraded, since a role binding is created in each of them.
+If a listed namespace is deleted and recreated later, its role binding is only restored by the next Helm upgrade.
+
+When the list is removed again via `helm upgrade`, the role bindings are deleted right away, while the operator grants cluster-wide access to secrets to the Target Allocator only once it has picked up the changed configuration.
+Credentials that the Target Allocator has not resolved before can fail to resolve during that time.
+They are resolved again within a few minutes.
 
 ### Configuring Resource Requests/Limits for the Target-Allocator
 

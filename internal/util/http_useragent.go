@@ -3,14 +3,9 @@
 
 package util
 
-import (
-	"net/http"
-	"strings"
-)
+import "strings"
 
 const (
-	userAgentHeaderName = "User-Agent"
-
 	userAgentProduct        = "Dash0Operator"
 	userAgentUnknownVersion = "unknown"
 )
@@ -26,38 +21,4 @@ func RenderUserAgent(version string) string {
 		version = userAgentUnknownVersion
 	}
 	return userAgentProduct + "/" + strings.ReplaceAll(version, ":", "-")
-}
-
-type userAgentRoundTripper struct {
-	base      http.RoundTripper
-	userAgent string
-}
-
-func (rt *userAgentRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.Header.Get(userAgentHeaderName) != "" {
-		return rt.base.RoundTrip(req)
-	}
-	clone := req.Clone(req.Context())
-	clone.Header.Set(userAgentHeaderName, rt.userAgent)
-	return rt.base.RoundTrip(clone)
-}
-
-// WithUserAgent returns a copy of the given http.Client whose transport adds
-// "User-Agent: Dash0Operator/<version>" to every outgoing request that does
-// not already carry a User-Agent header. Timeout, redirect policy and cookie
-// jar are preserved.
-func WithUserAgent(client *http.Client, version string) *http.Client {
-	base := client.Transport
-	if base == nil {
-		base = http.DefaultTransport
-	}
-	return &http.Client{
-		Transport: &userAgentRoundTripper{
-			base:      base,
-			userAgent: RenderUserAgent(version),
-		},
-		CheckRedirect: client.CheckRedirect,
-		Jar:           client.Jar,
-		Timeout:       client.Timeout,
-	}
 }

@@ -34,9 +34,9 @@ type ConflictReporter struct {
 	lastReported []util.ComponentSettingConflict
 }
 
-// NewConflictReporter creates a reporter. The defaults need to match the defaults of the Helm chart, see
-// util.ExtraConfigDefaultsFor. The Signal Control resource is only taken into account if signalControlEnabled is true,
-// since its custom resource definition is only installed in that case.
+// NewConflictReporter creates a reporter. The defaults need to be the ones of util.ExtraConfigDefaultsFor. The Signal
+// Control resource is only taken into account if signalControlEnabled is true, since its custom resource definition is
+// only installed in that case.
 func NewConflictReporter(
 	k8sClient client.Client,
 	extraConfig util.ExtraConfig,
@@ -114,20 +114,26 @@ func (r *ConflictReporter) Report(ctx context.Context, logger logd.Logger) {
 		if slices.Contains(r.lastReported, conflict) {
 			continue
 		}
-		logger.Warn(
-			fmt.Sprintf("%s %s overrides the custom Helm value %s.",
-				conflict.Resource, conflict.Path, conflict.HelmValue),
+		keysAndValues := []any{
 			"resource", conflict.Resource,
 			"path", conflict.Path,
 			"value", conflict.ResourceSetting,
 			"helmValue", conflict.HelmValue,
 			"helmSetting", conflict.HelmSetting,
+		}
+		if conflict.DeprecatedHelmValue != "" {
+			keysAndValues = append(keysAndValues, "deprecatedHelmValue", conflict.DeprecatedHelmValue)
+		}
+		logger.Warn(
+			fmt.Sprintf("%s %s overrides the custom Helm value %s.",
+				conflict.Resource, conflict.Path, conflict.HelmValueNames()),
+			keysAndValues...,
 		)
 	}
 	for _, conflict := range r.lastReported {
 		if !slices.ContainsFunc(conflicts, conflict.IsSameSetting) {
 			logger.Info(fmt.Sprintf("%s %s no longer overrides the custom Helm value %s.",
-				conflict.Resource, conflict.Path, conflict.HelmValue))
+				conflict.Resource, conflict.Path, conflict.HelmValueNames()))
 		}
 	}
 	r.lastReported = conflicts

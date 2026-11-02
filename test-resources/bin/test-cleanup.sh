@@ -147,12 +147,18 @@ kubectl delete --ignore-not-found=true -f test-resources/cert-manager/certificat
 
 # The following resources are deleted automatically with helm uninstall, unless for example when the operator manager
 # crashes and the helm pre-delete helm hook cannot run, then they might be left behind.
+kubectl delete clusterrole                  --ignore-not-found dash0-operator-agent0-connector-cr
 kubectl delete clusterrole                  --ignore-not-found dash0-operator-cluster-metrics-collector-cr
+kubectl delete clusterrole                  --ignore-not-found dash0-operator-manager-agent0-connector
+kubectl delete clusterrole                  --ignore-not-found dash0-operator-manager-agent0-connector-ro
 kubectl delete clusterrole                  --ignore-not-found dash0-operator-manager-role
 kubectl delete clusterrole                  --ignore-not-found dash0-operator-metrics-reader
 kubectl delete clusterrole                  --ignore-not-found dash0-operator-opentelemetry-collector-cr
 kubectl delete clusterrole                  --ignore-not-found dash0-operator-proxy-role
+kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-agent0-connector-crb
 kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-cluster-metrics-collector-crb
+kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-manager-agent0-connector
+kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-manager-agent0-connector-ro
 kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-manager-rolebinding
 kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-opentelemetry-collector-crb
 kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-proxy-rolebinding
@@ -174,3 +180,6 @@ kubectl delete clusterrole        --ignore-not-found prometheus-cadvisor prometh
 kubectl delete clusterrolebinding --ignore-not-found prometheus-cadvisor prometheus-cadvisor-autopilot
 kubectl delete -n "$target_namespace" serviceaccount --ignore-not-found prometheus-cadvisor prometheus-cadvisor-autopilot
 kubectl delete -n "$target_namespace" secret         --ignore-not-found prometheus-sa-token prometheus-sa-token-autopilot
+# test scenario 14 also deploys the ScrapeConfig to test-namespace-2
+kubectl delete -n test-namespace-2 serviceaccount --ignore-not-found prometheus-cadvisor prometheus-cadvisor-autopilot
+kubectl delete -n test-namespace-2 secret         --ignore-not-found prometheus-sa-token prometheus-sa-token-autopilot

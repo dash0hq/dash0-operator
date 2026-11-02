@@ -924,6 +924,40 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			Expect(sc.RunAsGroup).To(BeNil())
 		})
 
+		It("applies the init container resources from the operator configuration resource", func() {
+			extraConfig := util.ExtraConfigDefaults
+			extraConfig.InstrumentationInitContainerResources = util.ResourceRequirementsWithGoMemLimit{
+				Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("128Mi")},
+			}
+			config := util.NewClusterInstrumentationConfig(
+				TestImages,
+				PossibleCollectorUrlsTest,
+				OTelCollectorNodeLocalBaseUrlTest,
+				extraConfig,
+				dash0v1alpha1.InstrumentationDeliveryInitContainer,
+				nil,
+				false,
+				false,
+				false,
+			)
+			modifier := NewResourceModifier(config, DefaultNamespaceInstrumentationConfig, testActor, logger)
+
+			podSpec := &corev1.PodSpec{Containers: []corev1.Container{{Name: "test-container-0"}}}
+			modifier.modifyPodSpec(podSpec, &metav1.ObjectMeta{}, &metav1.ObjectMeta{})
+			Expect(podSpec.InitContainers).To(HaveLen(1))
+			Expect(podSpec.InitContainers[0].Resources.Limits.Memory().String()).To(Equal("128Mi"))
+
+			config.UpdateInstrumentationInitContainerResources(&corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("50m")},
+			})
+			podSpec = &corev1.PodSpec{Containers: []corev1.Container{{Name: "test-container-0"}}}
+			modifier.modifyPodSpec(podSpec, &metav1.ObjectMeta{}, &metav1.ObjectMeta{})
+			Expect(podSpec.InitContainers).To(HaveLen(1))
+			Expect(podSpec.InitContainers[0].Resources).To(Equal(corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("50m")},
+			}))
+		})
+
 		type detectNonLinuxPodTest struct {
 			podSpec         corev1.PodSpec
 			expectedMessage *string

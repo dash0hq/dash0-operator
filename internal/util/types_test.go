@@ -9,6 +9,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
@@ -129,6 +130,56 @@ var _ = Describe("the cluster instrumentation config", func() {
 				dash0v1alpha1.InstrumentationDeliveryImageVolume,
 				cluster.ResolvedInstrumentationDeliveryImageVolume),
 		)
+	})
+
+	Describe("the resources of the instrumentation init container", func() {
+
+		newConfig := func(extraConfigResources ResourceRequirementsWithGoMemLimit) *ClusterInstrumentationConfig {
+			extraConfig := ExtraConfigDefaults
+			extraConfig.InstrumentationInitContainerResources = extraConfigResources
+			return NewClusterInstrumentationConfig(
+				Images{}, PossibleCollectorUrls{}, "", extraConfig, dash0v1alpha1.InstrumentationDeliveryAuto,
+				nil, false, false, false,
+			)
+		}
+
+		extraConfigResources := ResourceRequirementsWithGoMemLimit{
+			Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("128Mi")},
+		}
+
+		It("should use the resources from the extra config map without a setting in the operator configuration", func() {
+			config := newConfig(extraConfigResources)
+			Expect(config.InstrumentationInitContainerResources()).To(Equal(corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("128Mi")},
+			}))
+		})
+
+		It("should use the resources from the operator configuration instead of the ones from the extra config map", func() {
+			config := newConfig(extraConfigResources)
+			override := &corev1.ResourceRequirements{
+				Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m")},
+				Requests: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("64Mi")},
+			}
+			config.UpdateInstrumentationInitContainerResources(override)
+			// Modifying the setting afterwards has no effect, the config holds a copy.
+			override.Limits[corev1.ResourceCPU] = resource.MustParse("2")
+
+			resources := config.InstrumentationInitContainerResources()
+			Expect(resources.Limits.Cpu().String()).To(Equal("100m"))
+			Expect(resources.Limits).ToNot(HaveKey(corev1.ResourceMemory))
+			Expect(resources.Requests.Memory().String()).To(Equal("64Mi"))
+			Expect(extraConfigResources.Limits).To(HaveLen(1))
+		})
+
+		It("should fall back to the resources from the extra config map when the setting is removed", func() {
+			config := newConfig(extraConfigResources)
+			config.UpdateInstrumentationInitContainerResources(&corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("256Mi")},
+			})
+			config.UpdateInstrumentationInitContainerResources(nil)
+			resources := config.InstrumentationInitContainerResources()
+			Expect(resources.Limits.Memory().String()).To(Equal("128Mi"))
+		})
 	})
 })
 

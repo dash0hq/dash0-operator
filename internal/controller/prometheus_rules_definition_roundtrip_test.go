@@ -80,7 +80,7 @@ var _ = Describe("Converting a PrometheusRule to the API client's check rule and
 		resource := map[string]any{}
 		Expect(yaml.Unmarshal([]byte(fullyPopulatedPrometheusRuleYaml), &resource)).To(Succeed())
 
-		result := prometheusRuleReconciler.MapResourceToHttpRequests(
+		result := prometheusRuleReconciler.MapResourceToApiCalls(
 			&preconditionValidationResult{k8sNamespace: "namespace", k8sName: "full-rules", resource: resource},
 			ApiConfig{Endpoint: ApiEndpointStandardizedTest, Dataset: "default", Token: AuthorizationTokenTest},
 			upsertAction,

@@ -49,8 +49,7 @@ Here is a list of configuration options for this resource:
   The URL of the Dash0 ingress endpoint to which telemetry data will be sent.
   This property is mandatory.
   Replace the value in the example above with the OTLP/gRPC endpoint of your Dash0 organization.
-  The correct OTLP/gRPC endpoint can be copied from https://app.dash0.com → organization settings → "Endpoints" →
-  "OTLP/gRPC".
+  The correct gRPC endpoint can be copied from https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc.
   Note that the correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
   Including a protocol prefix (e.g. `https://`) is optional.
 
@@ -60,8 +59,7 @@ Here is a list of configuration options for this resource:
 
     * <a href="#operatorconfigurationresource.spec.export.dash0.authorization.token"><span id="operatorconfigurationresource.spec.export.dash0.authorization.token">**`spec.export.dash0.authorization.token`**</span></a>:
       Replace the value in the example above with the Dash0 authorization token of your organization.
-      The authorization token for your Dash0 organization can be copied from https://app.dash0.com → organization
-      settings → "Auth Tokens".
+      The authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
       The prefix `Bearer ` must not be included in the value.
       Note that the value will be rendered verbatim into a Kubernetes ConfigMap object.
       Anyone with API access to the Kubernetes cluster will be able to read the value.
@@ -84,7 +82,7 @@ Here is a list of configuration options for this resource:
   views, notification channels, spam filters and signal-to-metrics rules via the operator.
   This property is optional.
   The value needs to be the API endpoint of your Dash0 organization.
-  The correct API endpoint can be copied from https://app.dash0.com → organization settings → "Endpoints" → "API".
+  The correct API endpoint can be copied from https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http.
   The correct endpoint value will always start with "https://api." and end in ".dash0.com".
   If this property is omitted, managing dashboards, check rules, synthetic checks, views, notification channels, spam
   filters and signal-to-metrics rules via the operator will not work.
@@ -131,6 +129,8 @@ Here is a list of configuration options for this resource:
   In contrast to the filters of a monitoring resource, which only apply to the telemetry collected in the namespace of
   that monitoring resource, these filters apply to all telemetry collected in the cluster.
   That includes telemetry which is not associated with a namespace, like node metrics or cluster-level metrics.
+  Log record filters also apply to Kubernetes events, see
+  [`spec.filter.logs.log_records`](#monitoringresource.spec.filter) for how to exclude them.
   This setting is optional, by default, no filters are applied.
   It is a validation error to set `telemetryCollection.enabled=false` and set filters at the same time.
 
@@ -152,6 +152,8 @@ Here is a list of configuration options for this resource:
   In contrast to the transformations of a monitoring resource, which only apply to the telemetry collected in the
   namespace of that monitoring resource, these transformations apply to all telemetry collected in the cluster.
   That includes telemetry which is not associated with a namespace, like node metrics or cluster-level metrics.
+  Log statements also apply to Kubernetes events, see
+  [`spec.transform.log_statements`](#monitoringresource.spec.transform) for how to exclude them.
   This setting is optional, by default, no transformations are applied.
   It is a validation error to set `telemetryCollection.enabled=false` and set transformations at the same time.
 
@@ -525,6 +527,10 @@ The Dash0 monitoring resource supports additional configuration settings:
     * **`spec.filter.logs.log_records`**:
       A list of OTTL conditions for filtering log records.
       All log records where at least one condition evaluates to true will be dropped.
+      The conditions also apply to the Kubernetes events collected in the namespace.
+      To exclude Kubernetes events from a condition `C`, change it to `(C) and attributes["k8s.event.name"] == nil`,
+      for example `(severity_number < SEVERITY_NUMBER_WARN) and attributes["k8s.event.name"] == nil`.
+      Keep the parentheses, since `and` binds tighter than `or`.
     * **`spec.filter.profiles.profile`**:
       A list of OTTL conditions for filtering profiles.
       All profiles where at least one condition evaluates to true will be dropped.
@@ -566,6 +572,16 @@ The Dash0 monitoring resource supports additional configuration settings:
       A list of OTTL statements (or a list of groups in the advanced config style) for transforming metric telemetry.
     * **`spec.transform.log_statements`**:
       A list of OTTL statements (or a list of groups in the advanced config style) for transforming log telemetry.
+      The statements also apply to the Kubernetes events collected in the namespace.
+      To exclude Kubernetes events from a statement, add `where log.attributes["k8s.event.name"] == nil` to it, for
+      example `truncate_all(log.attributes, 1024) where log.attributes["k8s.event.name"] == nil`.
+      If the statement already has a `where` clause `W`, change it to
+      `where (W) and log.attributes["k8s.event.name"] == nil`; keep the parentheses, since `and` binds tighter than
+      `or`.
+      The conditions of a group are combined with OR, so in a group, change each condition `C` to
+      `(C) and log.attributes["k8s.event.name"] == nil`.
+      Add the check as a separate condition only if the group has no other conditions.
+      In a group with an explicit `context: log`, use the path without prefix: `attributes["k8s.event.name"] == nil`.
     * **`spec.transform.profile_statements`**:
       A list of OTTL statements (or a list of groups in the advanced config style) for transforming profile telemetry.
   This setting is optional, by default, no transformations are applied.
@@ -1011,8 +1027,7 @@ create the secret in the namespace where the Dash0 operator is installed.
 This also applies when providing a per-namespace export and API-sync config via a monitoring resource, i.e. the operator
 will always try to look up the auth token secret in the operator namespace.
 If you followed the guide above, the name of that namespace is `dash0-system`.
-The authorization token for your Dash0 organization can be copied from https://app.dash0.com → organization settings →
-"Auth Tokens".
+The authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
 You can freely choose the name of the secret and the key of the token within the secret.
 
 Create the secret by using the following command:
@@ -1105,8 +1120,8 @@ See https://kubernetes.io/docs/concepts/configuration/secret/ for more informati
 
 Use the `spec.exports[].dash0.dataset` property to configure the dataset that should be used for the telemetry data.
 The value is the dataset's identifier, not its display name.
-For example, a dataset named `prod` can have the identifier `default`; in that case, use `dataset: default`.
-The identifier can be looked up in [Dash0](https://app.dash0.com) -> organization settings -> "Datasets".
+For example, a dataset named `Production` can have the identifier `prod`; in that case, use `dataset: prod`.
+The identifier can be looked up in https://app.dash0.com/settings/datasets.
 If the property is omitted, no dataset is sent along with the telemetry, and Dash0 selects the dataset based on the
 authorization token: a token that is limited to a single dataset writes to that dataset, any other token writes to its
 default ingestion dataset. If a dataset is set (including `default`), it is always sent, and the token needs to have
