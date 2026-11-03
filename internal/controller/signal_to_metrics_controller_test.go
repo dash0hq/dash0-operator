@@ -13,6 +13,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/yaml"
@@ -526,6 +527,153 @@ spec:
 						Expect(httpStatusCode).To(Equal(http.StatusBadRequest))
 						Expect(isRetryableSynchronizationError(synchronizationError, httpStatusCode)).To(BeFalse())
 					},
+				)
+			},
+		)
+
+		Describe(
+			"the CRD schema", func() {
+				AfterEach(
+					func() {
+						deleteSignalToMetricsResourceIfItExists(ctx, k8sClient, TestNamespaceName, signalToMetricsName)
+					},
+				)
+
+				DescribeTable(
+					"validates the output",
+					func(modifyOutput func(output *dash0v1alpha1.Dash0SignalToMetricsOutput), expectedError string) {
+						resource := createSignalToMetricsResource(TestNamespaceName, signalToMetricsName)
+						modifyOutput(&resource.Spec.Output)
+						err := k8sClient.Create(ctx, resource)
+						if expectedError == "" {
+							Expect(err).ToNot(HaveOccurred())
+						} else {
+							Expect(err).To(MatchError(ContainSubstring(expectedError)))
+						}
+					},
+					Entry(
+						"accepts an output without type",
+						func(*dash0v1alpha1.Dash0SignalToMetricsOutput) {},
+						"",
+					),
+					Entry(
+						"accepts a sum with monotonic",
+						func(output *dash0v1alpha1.Dash0SignalToMetricsOutput) {
+							output.Type = ptr.To(dash0v1alpha1.Dash0SignalToMetricsOutputTypeSum)
+							output.Value = ptr.To("attributes[\"http.response.body.size\"]")
+							output.Monotonic = ptr.To(true)
+						},
+						"",
+					),
+					Entry(
+						"accepts a gauge",
+						func(output *dash0v1alpha1.Dash0SignalToMetricsOutput) {
+							output.Type = ptr.To(dash0v1alpha1.Dash0SignalToMetricsOutputTypeGauge)
+							output.Value = ptr.To("attributes[\"queue.size\"]")
+						},
+						"",
+					),
+					Entry(
+						"accepts an exponential histogram with maxSize and count",
+						func(output *dash0v1alpha1.Dash0SignalToMetricsOutput) {
+							output.Type = ptr.To(dash0v1alpha1.Dash0SignalToMetricsOutputTypeExponentialHistogram)
+							output.Value = ptr.To("Seconds(end_time - start_time)")
+							output.MaxSize = ptr.To(int32(160))
+							output.Count = ptr.To("attributes[\"batch.size\"]")
+						},
+						"",
+					),
+					Entry(
+						"rejects an unknown type",
+						func(output *dash0v1alpha1.Dash0SignalToMetricsOutput) {
+							output.Type = ptr.To(dash0v1alpha1.Dash0SignalToMetricsOutputType("histogram"))
+							output.Value = ptr.To("1")
+						},
+						"spec.output.type: Unsupported value",
+					),
+					Entry(
+						"rejects a type without value",
+						func(output *dash0v1alpha1.Dash0SignalToMetricsOutput) {
+							output.Type = ptr.To(dash0v1alpha1.Dash0SignalToMetricsOutputTypeSum)
+						},
+						"value must be set when type is set, and must not be set otherwise",
+					),
+					Entry(
+						"rejects a value without type",
+						func(output *dash0v1alpha1.Dash0SignalToMetricsOutput) {
+							output.Value = ptr.To("1")
+						},
+						"value must be set when type is set, and must not be set otherwise",
+					),
+					Entry(
+						"rejects a blank value",
+						func(output *dash0v1alpha1.Dash0SignalToMetricsOutput) {
+							output.Type = ptr.To(dash0v1alpha1.Dash0SignalToMetricsOutputTypeSum)
+							output.Value = ptr.To("  ")
+						},
+						"spec.output.value: Invalid value",
+					),
+					Entry(
+						"rejects monotonic set to false on a gauge",
+						func(output *dash0v1alpha1.Dash0SignalToMetricsOutput) {
+							output.Type = ptr.To(dash0v1alpha1.Dash0SignalToMetricsOutputTypeGauge)
+							output.Value = ptr.To("1")
+							output.Monotonic = ptr.To(false)
+						},
+						"monotonic is only allowed when type is 'sum'",
+					),
+					Entry(
+						"rejects monotonic without type",
+						func(output *dash0v1alpha1.Dash0SignalToMetricsOutput) {
+							output.Monotonic = ptr.To(true)
+						},
+						"monotonic is only allowed when type is 'sum'",
+					),
+					Entry(
+						"rejects maxSize on a sum",
+						func(output *dash0v1alpha1.Dash0SignalToMetricsOutput) {
+							output.Type = ptr.To(dash0v1alpha1.Dash0SignalToMetricsOutputTypeSum)
+							output.Value = ptr.To("1")
+							output.MaxSize = ptr.To(int32(160))
+						},
+						"maxSize is only allowed when type is 'exponential-histogram'",
+					),
+					Entry(
+						"rejects maxSize 0",
+						func(output *dash0v1alpha1.Dash0SignalToMetricsOutput) {
+							output.Type = ptr.To(dash0v1alpha1.Dash0SignalToMetricsOutputTypeExponentialHistogram)
+							output.Value = ptr.To("1")
+							output.MaxSize = ptr.To(int32(0))
+						},
+						"spec.output.maxSize: Invalid value",
+					),
+					Entry(
+						"rejects maxSize 161",
+						func(output *dash0v1alpha1.Dash0SignalToMetricsOutput) {
+							output.Type = ptr.To(dash0v1alpha1.Dash0SignalToMetricsOutputTypeExponentialHistogram)
+							output.Value = ptr.To("1")
+							output.MaxSize = ptr.To(int32(161))
+						},
+						"spec.output.maxSize: Invalid value",
+					),
+					Entry(
+						"rejects count on a gauge",
+						func(output *dash0v1alpha1.Dash0SignalToMetricsOutput) {
+							output.Type = ptr.To(dash0v1alpha1.Dash0SignalToMetricsOutputTypeGauge)
+							output.Value = ptr.To("1")
+							output.Count = ptr.To("1")
+						},
+						"count is only allowed when type is 'exponential-histogram'",
+					),
+					Entry(
+						"rejects a blank count",
+						func(output *dash0v1alpha1.Dash0SignalToMetricsOutput) {
+							output.Type = ptr.To(dash0v1alpha1.Dash0SignalToMetricsOutputTypeExponentialHistogram)
+							output.Value = ptr.To("1")
+							output.Count = ptr.To("")
+						},
+						"spec.output.count: Invalid value",
+					),
 				)
 			},
 		)
