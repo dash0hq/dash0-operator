@@ -542,9 +542,9 @@ type NamespaceWatcher struct {
 	controllerStopFunction     *context.CancelFunc
 }
 
-// NewNamespaceWatcher creates a NamespaceWatcher. The apiReader must read directly from the API server (not from the
-// informer cache), so that a just-created pre-delete hook job is guaranteed to be visible. Pre-delete hook jobs created
-// before operatorCreatedAt are left over from a previous installation and are ignored. See isOperatorBeingUninstalled.
+// NewNamespaceWatcher creates a NamespaceWatcher. The apiReader must read from the API server, not from the informer
+// cache, so that a just-created pre-delete hook job and the deletion of the operator configuration resource are seen.
+// Hook jobs created before operatorCreatedAt are ignored. See isOperatorBeingUninstalled.
 func NewNamespaceWatcher(
 	k8sClient client.Client,
 	apiReader client.Reader,
@@ -778,6 +778,25 @@ func (w *NamespaceWatcher) createMonitoringResource(
 		return nil
 	}
 
+	autoNamespaceMonitoringIsEnabled, err := w.isAutoNamespaceMonitoringEnabledInApiServer(ctx)
+	if err != nil {
+		logger.Error(
+			err,
+			"cannot check whether auto-namespace monitoring is still enabled, not creating the auto-monitoring resource",
+			"namespace",
+			namespaceName,
+		)
+		return err
+	}
+	if !autoNamespaceMonitoringIsEnabled {
+		logger.Info(
+			"auto-namespace monitoring is no longer enabled, not creating the auto-monitoring resource",
+			"namespace",
+			namespaceName,
+		)
+		return nil
+	}
+
 	monitoring := &dash0v1beta1.Dash0Monitoring{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
@@ -794,6 +813,22 @@ func (w *NamespaceWatcher) createMonitoringResource(
 	}
 	logger.Info("created auto-monitoring resource", "namespace", namespaceName, "name", name)
 	return nil
+}
+
+// isAutoNamespaceMonitoringEnabledInApiServer checks via the API server whether auto-namespace monitoring is still
+// enabled. The informer cache can lag behind the deletion of the operator configuration resource, so a Dash0Monitoring
+// resource deleted right after it would otherwise be recreated.
+func (w *NamespaceWatcher) isAutoNamespaceMonitoringEnabledInApiServer(ctx context.Context) (bool, error) {
+	operatorConfigList := &dash0v1alpha1.Dash0OperatorConfigurationList{}
+	if err := w.apiReader.List(ctx, operatorConfigList); err != nil {
+		return false, err
+	}
+	for i := range operatorConfigList.Items {
+		if operatorConfigList.Items[i].IsAvailable() {
+			return operatorConfigList.Items[i].Spec.AutoMonitorNamespaces.IsEnabled(), nil
+		}
+	}
+	return false, nil
 }
 
 // isOperatorBeingUninstalled checks whether the Helm chart's pre-delete hook job exists in the operator namespace. The

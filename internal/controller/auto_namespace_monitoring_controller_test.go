@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -400,6 +401,54 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
 
 			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace1)
+		})
+
+		It("does not create an auto-monitoring resource if the operator configuration resource is gone in the API server", func() {
+			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
+			namespaceWatcher = NewNamespaceWatcher(
+				k8sClient,
+				fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).Build(),
+				OperatorNamespace,
+				time.Time{},
+			)
+
+			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+
+			Expect(listMonitoringResources(ctx, Default, testAutoNamespace1)).To(BeEmpty())
+		})
+
+		It("does not create an auto-monitoring resource if auto-namespace monitoring is disabled in the API server", func() {
+			operatorConfiguration := createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
+			disabledOperatorConfiguration := operatorConfiguration.DeepCopy()
+			disabledOperatorConfiguration.ResourceVersion = ""
+			disabledOperatorConfiguration.Spec.AutoMonitorNamespaces.Enabled = new(false)
+			namespaceWatcher = NewNamespaceWatcher(
+				k8sClient,
+				fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(disabledOperatorConfiguration).Build(),
+				OperatorNamespace,
+				time.Time{},
+			)
+
+			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+
+			Expect(listMonitoringResources(ctx, Default, testAutoNamespace1)).To(BeEmpty())
+		})
+
+		It("does not create an auto-monitoring resource if the operator configuration resource is not available in the API server", func() {
+			operatorConfiguration := createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
+			unavailableOperatorConfiguration := operatorConfiguration.DeepCopy()
+			unavailableOperatorConfiguration.ResourceVersion = ""
+			unavailableOperatorConfiguration.Status = dash0v1alpha1.Dash0OperatorConfigurationStatus{}
+			namespaceWatcher = NewNamespaceWatcher(
+				k8sClient,
+				fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(unavailableOperatorConfiguration).Build(),
+				OperatorNamespace,
+				time.Time{},
+			)
+
+			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+
+			Expect(listMonitoringResources(ctx, Default, testAutoNamespace1)).To(BeEmpty())
 		})
 
 		It("uses custom settings from the MonitoringTemplate when set", func() {
