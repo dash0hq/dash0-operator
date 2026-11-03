@@ -1006,6 +1006,11 @@ func compareAndUpdateSpec(
 		monitoringResourceSpec.EventCollection.Enabled = monitoringTemplateSpec.EventCollection.Enabled
 		specUpdated = true
 	}
+	if pointers.ReadBoolPointerWithDefault(monitoringResourceSpec.KubernetesObjectCollection.Enabled, false) !=
+		pointers.ReadBoolPointerWithDefault(monitoringTemplateSpec.KubernetesObjectCollection.Enabled, false) {
+		monitoringResourceSpec.KubernetesObjectCollection.Enabled = monitoringTemplateSpec.KubernetesObjectCollection.Enabled
+		specUpdated = true
+	}
 	if pointers.ReadBoolPointerWithDefault(monitoringResourceSpec.PrometheusScraping.Enabled, true) !=
 		pointers.ReadBoolPointerWithDefault(monitoringTemplateSpec.PrometheusScraping.Enabled, true) {
 		monitoringResourceSpec.PrometheusScraping.Enabled = monitoringTemplateSpec.PrometheusScraping.Enabled
