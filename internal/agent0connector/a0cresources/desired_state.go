@@ -64,7 +64,7 @@ const (
 	gkeAutopilotAllowlistValue    = "dash0-agent0-connector-v1.0.4"
 
 	defaultUser  int64 = 65532
-	defaultGroup int64 = 0
+	defaultGroup int64 = 65532
 )
 
 var (
@@ -728,7 +728,7 @@ func assembleDeployment(
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
 			RunAsUser:  util.RunAsID(c.IsOpenShift, defaultUser),
-			RunAsGroup: util.RunAsID(c.IsOpenShift, defaultGroup),
+			RunAsGroup: new(defaultGroup),
 		},
 	}
 

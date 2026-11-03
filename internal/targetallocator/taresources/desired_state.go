@@ -39,7 +39,7 @@ const (
 	gkeAutopilotAllowlistValue    = "dash0-target-allocator-v1.0.4"
 
 	defaultUser  int64 = 65532
-	defaultGroup int64 = 0
+	defaultGroup int64 = 65532
 )
 
 var (
@@ -403,7 +403,7 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 		VolumeMounts: volumeMounts,
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: new(false),
-			ReadOnlyRootFilesystem:   new(false),
+			ReadOnlyRootFilesystem:   new(true),
 			RunAsNonRoot:             new(true),
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},
@@ -489,7 +489,7 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
 			RunAsUser:  util.RunAsID(c.IsOpenShift, defaultUser),
-			RunAsGroup: util.RunAsID(c.IsOpenShift, defaultGroup),
+			RunAsGroup: new(defaultGroup),
 		},
 		Volumes: podVolumes,
 	}

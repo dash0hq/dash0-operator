@@ -163,6 +163,7 @@ deployment should match snapshot (default values):
                   drop:
                     - ALL
                 readOnlyRootFilesystem: true
+                runAsGroup: 65532
                 runAsNonRoot: true
                 seccompProfile:
                   type: RuntimeDefault
@@ -339,6 +340,7 @@ deployment should match snapshot when using cert-manager:
                   drop:
                     - ALL
                 readOnlyRootFilesystem: true
+                runAsGroup: 65532
                 runAsNonRoot: true
                 seccompProfile:
                   type: RuntimeDefault

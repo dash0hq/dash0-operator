@@ -136,6 +136,7 @@ type oTelColConfig struct {
 	Images                                           util.Images
 	IsIPv6Cluster                                    bool
 	IsGkeAutopilot                                   bool
+	IsOpenShift                                      bool
 	// ServiceTrafficDistribution is the value for spec.trafficDistribution on the operator's services, or nil when the
 	// Kubernetes version does not enable the field by default. See cluster.ResolveServiceTrafficDistribution.
 	ServiceTrafficDistribution     *string
@@ -254,8 +255,11 @@ const (
 
 	rbacApiGroup = "rbac.authorization.k8s.io"
 
-	defaultUser  int64 = 65532
+	defaultUser int64 = 65532
+	// The DaemonSet collector needs the root group to read the container log files, which container runtimes create
+	// with mode 0640, owned by root:root.
 	defaultGroup int64 = 0
+	nonRootGroup int64 = 65532
 
 	openTelemetryCollector                        = "opentelemetry-collector"
 	openTelemetryCollectorDaemonSetNameSuffix     = "opentelemetry-collector-agent"
@@ -1022,7 +1026,7 @@ func assembleFileLogOffsetSyncContainer(
 		Args: []string{"--mode=sync"},
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: new(false),
-			ReadOnlyRootFilesystem:   new(false),
+			ReadOnlyRootFilesystem:   new(true),
 			RunAsNonRoot:             new(true),
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},
@@ -1417,7 +1421,7 @@ func assembleDaemonSetCollectorContainer(
 		Args: collectorArgs,
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: new(false),
-			ReadOnlyRootFilesystem:   new(false),
+			ReadOnlyRootFilesystem:   new(true),
 			RunAsNonRoot:             new(true),
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},
@@ -1487,7 +1491,7 @@ func assembleConfigurationReloaderContainer(
 		Args: reloaderArgs,
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: new(false),
-			ReadOnlyRootFilesystem:   new(false),
+			ReadOnlyRootFilesystem:   new(true),
 			RunAsNonRoot:             new(true),
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},
@@ -1541,7 +1545,7 @@ func assembleFileLogOffsetSyncInitContainer(
 		Args: []string{"--mode=init"},
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: new(false),
-			ReadOnlyRootFilesystem:   new(false),
+			ReadOnlyRootFilesystem:   new(true),
 			RunAsNonRoot:             new(true),
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},
@@ -1607,7 +1611,7 @@ func assembleFileLogVolumeOwnershipInitContainer(
 			RunAsUser:                new(int64(0)),
 			RunAsNonRoot:             new(false),
 			AllowPrivilegeEscalation: new(false),
-			ReadOnlyRootFilesystem:   new(false),
+			ReadOnlyRootFilesystem:   new(true),
 			Privileged:               new(false),
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},
@@ -1791,7 +1795,10 @@ func assembleCollectorDeployment(
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
-			Sysctls: extraConfig.DeploymentSysctls,
+			// containerd rejects a pod-level runAsGroup without a pod-level runAsUser when it creates the pod sandbox.
+			RunAsUser:  util.RunAsID(config.IsOpenShift, defaultUser),
+			RunAsGroup: new(nonRootGroup),
+			Sysctls:    extraConfig.DeploymentSysctls,
 		},
 		// This setting is required to enable the configuration reloader process to send Unix signals to the
 		// collector process.
@@ -1977,7 +1984,7 @@ func assembleDeploymentCollectorContainer(
 		Args: collectorArgs,
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: new(false),
-			ReadOnlyRootFilesystem:   new(false),
+			ReadOnlyRootFilesystem:   new(true),
 			RunAsNonRoot:             new(true),
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},
@@ -2095,7 +2102,10 @@ func assembleSignalControlCollectorDeployment(
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
-			Sysctls: extraConfig.SignalControlCollectorSysctls,
+			// containerd rejects a pod-level runAsGroup without a pod-level runAsUser when it creates the pod sandbox.
+			RunAsUser:  util.RunAsID(config.IsOpenShift, defaultUser),
+			RunAsGroup: new(nonRootGroup),
+			Sysctls:    extraConfig.SignalControlCollectorSysctls,
 		},
 		// This setting is required to enable the configuration reloader process to send Unix signals to the
 		// collector process.
@@ -2290,7 +2300,7 @@ func assembleSignalControlCollectorContainer(
 		Args: collectorArgs,
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: new(false),
-			ReadOnlyRootFilesystem:   new(false),
+			ReadOnlyRootFilesystem:   new(true),
 			RunAsNonRoot:             new(true),
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},

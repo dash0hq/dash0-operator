@@ -6,6 +6,29 @@ tests:
     asserts:
       - matchSnapshot: {}
 
+  - it: should set a non-root runAsGroup on the container, not on the pod
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsGroup
+          value: 65532
+      - notExists:
+          path: spec.template.spec.securityContext.runAsGroup
+
+  - it: should set a non-root runAsGroup on the container when operator.openShift.enabled is true
+    set:
+      operator:
+        openShift:
+          enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsGroup
+          value: 65532
+      - notExists:
+          path: spec.template.spec.securityContext.runAsGroup
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+
   - it: should carry the component label the operator uses to detect that it is being uninstalled
     asserts:
       - equal:

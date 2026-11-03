@@ -631,11 +631,11 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 			Expect(sc).ToNot(BeNil())
 			Expect(*sc.RunAsNonRoot).To(BeTrue())
 			Expect(*sc.RunAsUser).To(Equal(int64(65532)))
-			Expect(*sc.RunAsGroup).To(Equal(int64(0)))
+			Expect(*sc.RunAsGroup).To(Equal(int64(65532)))
 			Expect(sc.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
 		})
 
-		It("omits the pod-level runAsUser/runAsGroup on OpenShift so the SCC can assign an in-range UID", func() {
+		It("omits the pod-level runAsUser on OpenShift so the SCC can assign an in-range UID, but pins runAsGroup", func() {
 			cfg := testConfig()
 			cfg.IsOpenShift = true
 			sc := getDeployment(
@@ -644,7 +644,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 			Expect(sc).ToNot(BeNil())
 			Expect(*sc.RunAsNonRoot).To(BeTrue())
 			Expect(sc.RunAsUser).To(BeNil())
-			Expect(sc.RunAsGroup).To(BeNil())
+			Expect(*sc.RunAsGroup).To(Equal(int64(65532)))
 		})
 
 		It("renders additional labels and annotations on the workload and the pods", func() {

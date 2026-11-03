@@ -121,8 +121,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      securityContext:
-        runAsNonRoot: true
+      {{ include "dash0-operator.restrictivePodSecurityContext" dict | nindent 6 }}
       serviceAccountName: {{ template "dash0-operator.postDeleteHookServiceAccountName" . }}
       automountServiceAccountToken: true
   backoffLimit: 2

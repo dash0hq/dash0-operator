@@ -55,7 +55,7 @@ const (
 	defaultReplicas int32 = 1
 
 	defaultUser  int64 = 65532
-	defaultGroup int64 = 0
+	defaultGroup int64 = 65532
 )
 
 // This type just exists to ensure all created objects go through addCommonMetadata.
@@ -210,7 +210,7 @@ func assembleDeployment(
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
 			RunAsUser:  util.RunAsID(c.IsOpenShift, defaultUser),
-			RunAsGroup: util.RunAsID(c.IsOpenShift, defaultGroup),
+			RunAsGroup: ptr.To(defaultGroup),
 		},
 		Tolerations: spec.Tolerations,
 	}

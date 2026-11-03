@@ -38,3 +38,8 @@ nodejs_values_with_pod_monitor="test-resources/node.js/express/test-values/with_
 # Operator Lifecycle Manager, used by deploy-olm.sh and delete-olm.sh
 olm_version=v0.46.0
 olm_release_url="https://github.com/operator-framework/operator-lifecycle-manager/releases/download/$olm_version"
+
+# Kyverno, used by deploy-kyverno.sh and delete-kyverno.sh; the kyverno and kyverno-policies charts share their version
+kyverno_chart_version=3.9.2
+kyverno_chart_repo="https://kyverno.github.io/kyverno/"
+kyverno_namespace=kyverno

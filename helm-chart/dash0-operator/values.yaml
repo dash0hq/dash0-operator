@@ -298,8 +298,9 @@ operator:
     # This will:
     # - create a SecurityContextConstraints object plus RBAC that lets the OpenTelemetry collector DaemonSet run with
     #   its required UID and host access
-    # - drop the hard-coded pod-level runAsUser/runAsGroup from the operator-managed workloads (agent0-connector,
-    #   target-allocator, Signal Control edge-proxy) and from the injected instrumentation init container, so the
+    # - drop the hard-coded pod-level runAsUser from the agent0-connector, the target-allocator, the synthetics-worker,
+    #   the cluster-metrics collector, the Signal Control collector, the Signal Control edge-proxy and the
+    #   debuginfo-proxy, and the runAsUser/runAsGroup from the injected instrumentation init container, so the
     #   namespace's SecurityContextConstraints can assign an in-range UID instead of a pinned one the default
     #   MustRunAsRange strategy would reject
     enabled: false

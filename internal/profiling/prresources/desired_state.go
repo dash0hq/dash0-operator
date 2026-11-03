@@ -176,7 +176,7 @@ func (c Config) proxy(configuration *dash0v1alpha1.Dash0OperatorConfiguration, c
 		}, Spec: corev1.PodSpec{
 			ServiceAccountName: c.name(proxyComponent), AutomountServiceAccountToken: ptr.To(false),
 			NodeSelector:    map[string]string{"kubernetes.io/os": "linux"},
-			SecurityContext: &corev1.PodSecurityContext{RunAsNonRoot: ptr.To(true), RunAsUser: util.RunAsID(c.IsOpenShift, 65532)},
+			SecurityContext: &corev1.PodSecurityContext{RunAsNonRoot: ptr.To(true), RunAsUser: util.RunAsID(c.IsOpenShift, 65532), RunAsGroup: ptr.To(int64(65532))},
 			Affinity:        &corev1.Affinity{NodeAffinity: settings.DebuginfoProxyNodeAffinity},
 			Tolerations:     settings.DebuginfoProxyTolerations, PriorityClassName: settings.DebuginfoProxyPriorityClassName,
 			Containers: []corev1.Container{{Name: proxyComponent, Image: c.ProxyImage, ImagePullPolicy: c.ProxyImagePullPolicy,

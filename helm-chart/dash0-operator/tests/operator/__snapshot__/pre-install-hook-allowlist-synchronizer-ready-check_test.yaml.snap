@@ -115,10 +115,13 @@ should install the GKE Autopilot AllowlistSynchronizer ready check if operator.g
                   drop:
                     - ALL
                 readOnlyRootFilesystem: true
+                runAsGroup: 65532
                 runAsNonRoot: true
                 seccompProfile:
                   type: RuntimeDefault
           restartPolicy: OnFailure
           securityContext:
             runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
           serviceAccountName: dash0-operator-pre-install

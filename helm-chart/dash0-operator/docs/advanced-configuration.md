@@ -90,13 +90,15 @@ Known examples for this are:
   AKS clusters with the Azure Policy add-on.
 * The
   [Kyverno admission controller](https://kyverno.io/docs/introduction/how-kyverno-works/#kubernetes-admission-controls).
-  When operating Kyverno in the same cluster as the Dash0 operator, it is highly recommended to either use a volume for
-  filelog offsets, or to [exclude](https://kyverno.io/docs/installation/customization/#resource-filters) ConfigMaps (or
-  all resource types) in the Dash0 operator's namespace from Kyverno's processing.
+  When operating Kyverno in the same cluster as the Dash0 operator, it is highly recommended to either
+  [exclude](https://kyverno.io/docs/installation/customization/#resource-filters) ConfigMaps (or all resource types) in
+  the Dash0 operator's namespace from Kyverno's processing, or to use a volume for filelog offsets.
   Leaving Kyverno processing in place and using the config map filelog offset storage can lead to severe performance
   issues, since the default config map for filelog offsets is updated very frequently.
   This can cause Kyverno to consume a lot of CPU and memory resources, potentially even leading to OOMKills of the
   Kyverno admission controller.
+  Note that a filelog offset volume adds an init container that runs as root, which restrictive Kyverno policies
+  reject, see [Kyverno Policies and the Collector DaemonSet](platform-specific.md#kyverno-policies-and-the-collector-daemonset).
 
 For more details on OPA, Kyverno, and other platform-specific considerations, see [Platform Specific](platform-specific.md).
 
