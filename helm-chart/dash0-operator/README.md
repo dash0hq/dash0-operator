@@ -86,7 +86,7 @@ This README provides a quick overview. Detailed documentation is organized by to
 * **[Configuration](docs/configuration.md)** - Backend connections, namespace monitoring, secrets, datasets, and operator configuration
 * **[Auto-Instrumentation](docs/auto-instrumentation.md)** - Workload instrumentation details, Python and Ruby support, disabling instrumentation, and custom label selectors
 * **[Metrics and Scraping](docs/metrics-and-scraping.md)** - Metrics collection, Prometheus endpoint scraping, and Prometheus CRD support
-* **[Profiling](docs/profiling.md)** - Profiling support and OpenTelemetry eBPF profiler setup
+* **[Profiling](docs/profiling.md)** - Profiling pipelines, operator-managed eBPF profiling, and external profiler setup
 
 ### Advanced Topics
 

@@ -124,6 +124,8 @@ deployment should match snapshot (default values):
                   value: dash0-operator-certificates
                 - name: DASH0_CA_BUNDLE_TARGETS
                   value: MutatingWebhookConfiguration/dash0-operator-injector,MutatingWebhookConfiguration/dash0-operator-operator-configuration-mutating,ValidatingWebhookConfiguration/dash0-operator-operator-configuration-validator,MutatingWebhookConfiguration/dash0-operator-monitoring-mutating,ValidatingWebhookConfiguration/dash0-operator-monitoring-validator,CustomResourceDefinition/dash0monitorings.operator.dash0.com
+                - name: DASH0_EBPF_PROFILER_ENABLED
+                  value: "false"
               image: ghcr.io/dash0hq/operator-controller:0.0.0
               livenessProbe:
                 httpGet:
@@ -294,6 +296,8 @@ deployment should match snapshot when using cert-manager:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.name
+                - name: DASH0_EBPF_PROFILER_ENABLED
+                  value: "false"
               image: ghcr.io/dash0hq/operator-controller:0.0.0
               livenessProbe:
                 httpGet:

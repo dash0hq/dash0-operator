@@ -151,6 +151,7 @@ type oTelColConfig struct {
 	DebugVerbosityDetailed    bool
 	EnableProfExtension       bool
 	ProfilingEnabled          bool
+	EbpfProfilerEnabled       bool
 	CompressConfigMap         bool
 	// DaemonSetCollectorMemoryLimit, DeploymentCollectorMemoryLimit and SignalControlCollectorMemoryLimit are the
 	// container memory limits of the three collectors, used to derive the memory_limiter thresholds. A zero value
