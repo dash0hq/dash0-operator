@@ -45,6 +45,7 @@ type OperatorConfigurationValues struct {
 	CollectNodeLabelsAndAnnotationsEnabled           bool
 	PrometheusCrdSupportEnabled                      bool
 	ProfilingEnabled                                 bool
+	EbpfProfilerEnabled                              bool
 	TelemetryCollectionEnabled                       bool
 	ClusterName                                      string
 	AutoMonitorNamespacesEnabled                     bool
@@ -485,6 +486,7 @@ func convertValuesToResource(
 		operatorConfigurationValues.CollectNodeLabelsAndAnnotationsEnabled = false
 		operatorConfigurationValues.PrometheusCrdSupportEnabled = false
 		operatorConfigurationValues.ProfilingEnabled = false
+		operatorConfigurationValues.EbpfProfilerEnabled = false
 		operatorConfigurationValues.AutoMonitorNamespacesEnabled = false
 	}
 
@@ -516,7 +518,7 @@ func convertValuesToResource(
 		Transform:          transform,
 		MonitoringTemplate: monitoringTemplate,
 		Profiling: &dash0v1alpha1.Profiling{
-			Enabled: new(operatorConfigurationValues.ProfilingEnabled),
+			Enabled: new(operatorConfigurationValues.ProfilingEnabled || operatorConfigurationValues.EbpfProfilerEnabled),
 		},
 		TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 			Enabled: new(operatorConfigurationValues.TelemetryCollectionEnabled),
@@ -525,6 +527,9 @@ func convertValuesToResource(
 			Enabled:       new(operatorConfigurationValues.AutoMonitorNamespacesEnabled),
 			LabelSelector: operatorConfigurationValues.AutoMonitorNamespacesLabelSelector,
 		},
+	}
+	if operatorConfigurationValues.EbpfProfilerEnabled {
+		spec.Profiling.EbpfProfiler = &dash0v1alpha1.EbpfProfiler{Enabled: new(true)}
 	}
 	if operatorConfigurationValues.InstrumentationDelivery != "" {
 		spec.InstrumentWorkloads = dash0v1alpha1.InstrumentWorkloads{

@@ -82,6 +82,7 @@ type CollectorConfig struct {
 	TargetAllocatorNamePrefix              string
 	Agent0ConnectorEnabledViaHelm          bool
 	SyntheticsWorkerEnabledViaHelm         bool
+	EbpfProfilerEnabledViaHelm             bool
 	SendBatchSize                          *uint32
 	SendBatchMaxSize                       *uint32
 	K8sAttributesDisableReplicasetInformer bool

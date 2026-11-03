@@ -219,6 +219,18 @@ Parameters: kind and name of the object, and the name of the webhook entry (omit
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.syntheticsWorkerImage "context" .) -}}
 {{- end }}
 
+{{/* The independently versioned profiler must not fall back to the operator version. */}}
+{{- define "dash0-operator.ebpfProfilerImage" -}}
+{{- if not (or .Values.operator.ebpfProfilerImage.tag .Values.operator.ebpfProfilerImage.digest) -}}
+{{- fail "Error: operator.ebpfProfilerImage.tag or digest must be non-empty when operator.ebpfProfilerEnabled=true." -}}
+{{- end -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.ebpfProfilerImage "context" .) -}}
+{{- end }}
+
+{{- define "dash0-operator.debuginfoProxyImage" -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.debuginfoProxyImage "context" .) -}}
+{{- end }}
+
 {{- define "dash0-operator.imageRef" -}}
 {{- if .image.digest -}}
 {{- printf "%s@%s" .image.repository .image.digest }}

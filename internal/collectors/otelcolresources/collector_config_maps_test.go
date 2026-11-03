@@ -1726,6 +1726,78 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(defaultExporters).To(ContainElement("otlp_grpc/dash0/default"))
 		})
 
+		It("should isolate all eBPF agent signals while preserving downstream processing across the configuration matrix", func() {
+			for _, entry := range collectorConfigMatrix() {
+				By(entry.name)
+				configMap, err := assembleDaemonSetCollectorConfigMap(&entry.config, entry.monitoredNamespaces,
+					entry.namespacesWithLogCollection, entry.namespacesWithPrometheusScraping, entry.filters, entry.transforms,
+					entry.targetAllocatorMtlsConfig, false)
+				Expect(err).ToNot(HaveOccurred())
+				collectorConfig := parseConfigMapContent(configMap)
+				receivers := collectorConfig["receivers"].(map[string]any)
+				connectors := collectorConfig["connectors"].(map[string]any)
+				pipelines := readPipelines(collectorConfig)
+				Expect(receivers).ToNot(HaveKey("otlp/ebpf-profiler"))
+				endpoint := "${env:K8S_POD_IP}:4317"
+				if entry.config.IsIPv6Cluster {
+					endpoint = "[${env:K8S_POD_IP}]:4317"
+				}
+				Expect(ReadFromMap(receivers, []string{"otlp", "protocols", "grpc", "endpoint"})).
+					To(Equal(endpoint))
+				if entry.config.ProfilingEnabled {
+					Expect(readPipelineReceivers(pipelines, "profiles")).To(ConsistOf("otlp"))
+				} else {
+					Expect(pipelines).ToNot(HaveKey("profiles"))
+				}
+				for _, signal := range []string{"traces", "metrics", "logs"} {
+					agentPipeline := signal + "/ebpf-profiler"
+					commonPipeline := signal + "/common-processors"
+					sourceRouter := "routing/" + signal + "-source"
+					commonProcessors := readPipelineProcessors(pipelines, commonPipeline)
+					Expect(slices.Index(commonProcessors, any("filter/profiler-source"))).To(BeNumerically(">=", 0))
+					Expect(slices.Index(commonProcessors, any("filter/profiler-source"))).To(
+						BeNumerically("<", slices.Index(commonProcessors, any("k8s_attributes"))))
+					processor := collectorConfig["processors"].(map[string]any)["filter/profiler-source"]
+					Expect(ReadFromMap(processor.(map[string]any), []string{signal, "resource"})).To(
+						ConsistOf(`attributes["parca.agent"] == "true"`))
+					if !entry.config.EbpfProfilerEnabled {
+						Expect(connectors).ToNot(HaveKey(sourceRouter))
+						Expect(pipelines).ToNot(HaveKey(signal + "/route-source"))
+						Expect(pipelines).ToNot(HaveKey(agentPipeline))
+						Expect(readPipelineReceivers(pipelines, commonPipeline)).To(ConsistOf("forward/" + signal + "-processors"))
+						continue
+					}
+					Expect(readPipelineReceivers(pipelines, signal+"/route-source")).To(ConsistOf("forward/" + signal + "-processors"))
+					Expect(readPipelineProcessors(pipelines, signal+"/route-source")).To(BeEmpty())
+					Expect(readPipelineExporters(pipelines, signal+"/route-source")).To(ConsistOf(sourceRouter))
+					Expect(connectors[sourceRouter]).To(Equal(map[string]any{
+						"default_pipelines": []any{commonPipeline},
+						"error_mode":        "ignore",
+						"table": []any{map[string]any{
+							"context": "resource", "condition": `attributes["parca.agent"] == "true"`,
+							"pipelines": []any{agentPipeline},
+						}},
+					}))
+					Expect(readPipelineReceivers(pipelines, agentPipeline)).To(ConsistOf(sourceRouter))
+					Expect(readPipelineReceivers(pipelines, commonPipeline)).To(ConsistOf(sourceRouter))
+					processors := readPipelineProcessors(pipelines, agentPipeline)
+					Expect(processors).To(ContainElement("k8s_attributes/profiles"))
+					Expect(processors).ToNot(ContainElement("k8s_attributes"))
+					Expect(processors).ToNot(ContainElement("filter/profiler-source"))
+					remaining := func(processors []any) []any {
+						return slices.DeleteFunc(slices.Clone(processors), func(processor any) bool {
+							return processor == "memory_limiter" || processor == "k8s_attributes" ||
+								processor == "k8s_attributes/profiles" || processor == "filter/profiler-source"
+						})
+					}
+					Expect(remaining(processors)).To(Equal(remaining(readPipelineProcessors(pipelines, commonPipeline))))
+					Expect(readPipelineExporters(pipelines, agentPipeline)).To(
+						Equal(readPipelineExporters(pipelines, commonPipeline)))
+					Expect(readPipelineProcessors(pipelines, commonPipeline)).To(ContainElement("k8s_attributes"))
+				}
+			}
+		})
+
 		It("should render k8s_attributes/profiles without connection pod association and with container.id [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
@@ -1781,7 +1853,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(basePodAssocSources).ToNot(ContainElement("container.id"))
 		})
 
-		It("should not render k8s_attributes/profiles when profiling is disabled [DaemonSet]", func() {
+		It("should omit resource-only agent association when profiling is disabled [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -1795,6 +1867,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			processors := collectorConfig["processors"].(map[string]any)
 			Expect(processors).ToNot(HaveKey("k8s_attributes/profiles"))
 			Expect(processors).To(HaveKey("k8s_attributes"))
+			Expect(readPipelines(collectorConfig)).ToNot(HaveKey("profiles"))
 		})
 
 		It("should export profiles via the default exporters even with namespaced exporters [DaemonSet]", func() {
@@ -5626,7 +5699,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 			LogsCommonProcessorsPipelineReceivers := readPipelineReceivers(pipelines, "logs/common-processors")
 			Expect(LogsCommonProcessorsPipelineReceivers).ToNot(BeNil())
-			Expect(LogsCommonProcessorsPipelineReceivers).To(ContainElement("forward/logs-processors"))
+			Expect(LogsCommonProcessorsPipelineReceivers).To(ConsistOf("forward/logs-processors"))
 			LogsCommonProcessorsPipelineProcessors := readPipelineProcessors(pipelines, "logs/common-processors")
 			Expect(LogsCommonProcessorsPipelineProcessors).ToNot(BeNil())
 			Expect(LogsCommonProcessorsPipelineProcessors).To(ContainElement("transform/logs/filelog_service_attributes"))

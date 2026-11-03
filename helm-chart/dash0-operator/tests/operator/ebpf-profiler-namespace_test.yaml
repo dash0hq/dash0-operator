@@ -1,0 +1,19 @@
+suite: test profiling leaves namespace ownership to the user
+templates:
+  - operator/*.yaml
+tests:
+  - it: should not create namespaces or set PSA labels with profiling enabled on OpenShift
+    set:
+      operator.ebpfProfilerEnabled: true
+      operator.ebpfProfilerImage.tag: test-agent
+      operator.openShift.enabled: true
+    asserts:
+      - isKind:
+          of: Namespace
+        not: true
+      - notExists:
+          path: metadata.labels["pod-security.kubernetes.io/enforce"]
+      - notExists:
+          path: metadata.labels["pod-security.kubernetes.io/audit"]
+      - notExists:
+          path: metadata.labels["pod-security.kubernetes.io/warn"]
