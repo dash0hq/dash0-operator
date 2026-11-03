@@ -131,25 +131,30 @@ type ThirdPartyResourceReconciler interface {
 	// resource. FetchExistingResourceOrigins is only used for resource types where MapsToMultipleApiObjects returns
 	// true. Controllers which manage objects with a one-to-one relation (like Perses dashboards) should return nil, nil.
 	// Implementations log errors themselves.
-	FetchExistingResourceOrigins(context.Context, *preconditionValidationResult, ApiConfig, logd.Logger) ([]string, error)
+	FetchExistingResourceOrigins(
+		context.Context,
+		*preconditionValidationResult,
+		ApiConfig,
+		logd.Logger,
+	) ([]ApiObjectOrigin, error)
 
 	// FetchExistingNamespaceOrigins retrieves the origins of all Dash0 API objects that have been synchronized from
 	// Kubernetes resources in the given namespace. The result may contain origins that do not belong to the namespace,
 	// IsOriginOfResource is used to filter them. This is used when synchronizing all resources in a namespace at once,
 	// to avoid sending DELETE requests for objects that do not exist. Implementations log errors themselves.
-	FetchExistingNamespaceOrigins(context.Context, string, ApiConfig, logd.Logger) ([]string, error)
+	FetchExistingNamespaceOrigins(context.Context, string, ApiConfig, logd.Logger) ([]ApiObjectOrigin, error)
 
 	// IsOriginOfResource reports whether the given origin belongs to a Dash0 API object that has been produced from
 	// the Kubernetes resource described by the precondition validation result.
 	IsOriginOfResource(string, *preconditionValidationResult, ApiConfig) bool
 
 	// CreateDeleteRequests produces DELETE requests for the resources that still exist in Dash0, but should
-	// not. It does so by comparing the list of IDs of objects that exist in the Dash0 backend with the list
-	// of IDs found in a given Kubernetes resource. This mechanism is only used for resource types where one Kubernetes
+	// not. It does so by comparing the origins (and types) of objects that exist in the Dash0 backend with the origins
+	// found in a given Kubernetes resource. This mechanism is only used for resource types where one Kubernetes
 	// resource (say, a PrometheusRule) is potentially associated with multiple Dash0 api objects (multiple checks).
 	// Controllers which manage objects with a one-to-one relation (like Perses dashboards, synthetic checks, view)
 	// should return nil.
-	CreateDeleteRequests(ApiConfig, []string, []string) []WrappedApiRequest
+	CreateDeleteRequests(ApiConfig, []ApiObjectOrigin, []ApiObjectOrigin) []WrappedApiRequest
 
 	// UpdateSynchronizationResultsInDash0MonitoringStatus Modifies the status of the provided Dash0Monitoring resource
 	// to reflect the results of the synchronization operation for one third-party Kubernetes resource.

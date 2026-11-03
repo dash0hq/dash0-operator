@@ -5787,6 +5787,150 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Entry("without Kubernetes infra metrics collection", false),
 			Entry("together with Kubernetes infra metrics collection", true),
 		)
+
+		type eventFilterTransformTestConfig struct {
+			filters                     []NamespacedFilter
+			transforms                  []NamespacedTransform
+			globalFilter                *dash0common.Filter
+			globalTransform             *dash0common.NormalizedTransformSpec
+			expectedFilterConditions    []any
+			expectedTransformConditions []any
+		}
+
+		DescribeTable("should apply custom log filters and transforms to Kubernetes events",
+			func(testConfig eventFilterTransformTestConfig) {
+				configMap, err := assembleDeploymentCollectorConfigMap(
+					&oTelColConfig{
+						OperatorNamespace:         OperatorNamespace,
+						NamePrefix:                namePrefix,
+						Exporters:                 cmTestSingleDefaultOtlpExporter(),
+						GlobalFilter:              testConfig.globalFilter,
+						GlobalNormalizedTransform: testConfig.globalTransform,
+					},
+					monitoredNamespaces,
+					monitoredNamespaces,
+					testConfig.filters,
+					testConfig.transforms,
+					false,
+				)
+				Expect(err).ToNot(HaveOccurred())
+				collectorConfig := parseConfigMapContent(configMap)
+
+				filterProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "filter/logs/custom_telemetry_filter"})
+				Expect(filterProcessorRaw).ToNot(BeNil())
+				Expect(ReadFromMap(filterProcessorRaw, []string{"logs", "log_record"})).
+					To(Equal(testConfig.expectedFilterConditions))
+
+				transformProcessorRaw :=
+					ReadFromMap(collectorConfig, []string{"processors", "transform/logs/custom_telemetry_transform"})
+				Expect(transformProcessorRaw).ToNot(BeNil())
+				groupsRaw := ReadFromMap(transformProcessorRaw, []string{"log_statements"})
+				Expect(groupsRaw).To(HaveLen(1))
+				group := groupsRaw.([]any)[0]
+				Expect(ReadFromMap(group, []string{"statements"})).To(Equal([]any{"log statement"}))
+				if testConfig.expectedTransformConditions == nil {
+					Expect(ReadFromMap(group, []string{"conditions"})).To(BeNil())
+				} else {
+					Expect(ReadFromMap(group, []string{"conditions"})).To(Equal(testConfig.expectedTransformConditions))
+				}
+
+				pipelines := readPipelines(collectorConfig)
+				Expect(readPipelineProcessors(pipelines, "logs/k8sevents")).To(Equal([]any{
+					"memory_limiter",
+					"resource_detection",
+					"transform/k8s_events",
+					"k8s_attributes",
+					"resource/cluster_uid",
+					"resource/dash0_operator_attributes",
+					"filter/logs/custom_telemetry_filter",
+					"batch",
+					"transform/logs/custom_telemetry_transform",
+					"transform/resources",
+				}))
+			},
+			Entry("namespaced filters and transforms", eventFilterTransformTestConfig{
+				filters: []NamespacedFilter{
+					{
+						Namespace: namespace1,
+						Filter: dash0common.Filter{
+							Logs: &dash0common.LogFilter{
+								LogRecordFilter: []string{"log record condition"},
+							},
+						},
+					},
+				},
+				transforms: []NamespacedTransform{
+					{
+						Namespace: namespace1,
+						Transform: dash0common.NormalizedTransformSpec{
+							Logs: []dash0common.NormalizedTransformGroup{
+								{Statements: []string{"log statement"}},
+							},
+						},
+					},
+				},
+				expectedFilterConditions: []any{
+					`resource.attributes["k8s.namespace.name"] == "namespace-1" and (log record condition)`,
+				},
+				expectedTransformConditions: []any{
+					`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+				},
+			}),
+			Entry("cluster-wide filters and transforms", eventFilterTransformTestConfig{
+				globalFilter: &dash0common.Filter{
+					Logs: &dash0common.LogFilter{
+						LogRecordFilter: []string{"global log record condition"},
+					},
+				},
+				globalTransform: &dash0common.NormalizedTransformSpec{
+					Logs: []dash0common.NormalizedTransformGroup{
+						{Statements: []string{"log statement"}},
+					},
+				},
+				expectedFilterConditions: []any{"global log record condition"},
+			}),
+		)
+
+		It("should not render custom log filters and transforms if no namespace has event collection enabled", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(
+				&oTelColConfig{
+					OperatorNamespace: OperatorNamespace,
+					NamePrefix:        namePrefix,
+					Exporters:         cmTestSingleDefaultOtlpExporter(),
+					KubernetesInfrastructureMetricsCollectionEnabled: true,
+				},
+				monitoredNamespaces,
+				nil,
+				[]NamespacedFilter{
+					{
+						Namespace: namespace1,
+						Filter: dash0common.Filter{
+							Logs: &dash0common.LogFilter{
+								LogRecordFilter: []string{"log record condition"},
+							},
+						},
+					},
+				},
+				[]NamespacedTransform{
+					{
+						Namespace: namespace1,
+						Transform: dash0common.NormalizedTransformSpec{
+							Logs: []dash0common.NormalizedTransformGroup{
+								{Statements: []string{"log statement"}},
+							},
+						},
+					},
+				},
+				false,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			Expect(ReadFromMap(collectorConfig, []string{"processors", "filter/logs/custom_telemetry_filter"})).To(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{"processors", "transform/logs/custom_telemetry_transform"})).
+				To(BeNil())
+			verifyProcessorDoesNotAppearInAnyPipeline(collectorConfig, "filter/logs/custom_telemetry_filter")
+			verifyProcessorDoesNotAppearInAnyPipeline(collectorConfig, "transform/logs/custom_telemetry_transform")
+		})
 	})
 
 	Describe("Signal Control log enrichment [SignalControl]", func() {
@@ -5928,6 +6072,147 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				}), branch)
 			}
 			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/log-enrichment-ns")
+		})
+	})
+
+	Describe("Signal Control cardholder data redaction [SignalControl]", func() {
+		redactionSC := func() SignalControlConfig {
+			return SignalControlConfig{
+				Enabled:                        true,
+				CardholderDataRedactionEnabled: true,
+				Endpoint:                       "decision-maker.example.com:443",
+				ApiEndpoint:                    "https://control-plane-api.dash0.com",
+				Dataset:                        "default",
+			}
+		}
+
+		allComponentsSC := func() SignalControlConfig {
+			sc := redactionSC()
+			sc.SamplingEnabled = true
+			sc.SpamFilterEnabled = true
+			sc.SignalToMetricsEnabled = true
+			sc.LogEnrichmentEnabled = true
+			return sc
+		}
+
+		assembleWith := func(sc SignalControlConfig, exporters otlpExporters) map[string]interface{} {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         exporters,
+				SignalControl:     sc,
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, false)
+			Expect(err).ToNot(HaveOccurred())
+			return parseConfigMapContent(configMap)
+		}
+
+		lastProcessor := func(pipelines map[string]any, pipelineName string) any {
+			processors := readPipelineProcessors(pipelines, pipelineName)
+			Expect(processors).ToNot(BeEmpty(), pipelineName)
+			return processors[len(processors)-1]
+		}
+
+		It("runs redaction last in every default Signal Control pipeline [SignalControl]", func() {
+			collectorConfig := assembleWith(allComponentsSC(), cmTestSingleDefaultOtlpExporter())
+			pipelines := readPipelines(collectorConfig)
+
+			Expect(readPipelineProcessors(pipelines, "traces/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0operation",
+				"dash0filter",
+				"dash0redaction",
+			}))
+			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0filter",
+				"dash0redaction",
+			}))
+			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0logparser",
+				"dash0loggrouping",
+				"dash0filter",
+				"dash0redaction",
+			}))
+
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors["dash0redaction"]).To(Equal(map[string]interface{}{
+				"metric_recorder": "dash0metricrecorder",
+			}))
+
+			assertCollectorConfigStructurallyValid(collectorConfig, "signal-control/redaction-default")
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/redaction-default")
+		})
+
+		It("runs redaction when all other Signal Control components are disabled [SignalControl]", func() {
+			collectorConfig := assembleWith(redactionSC(), cmTestSingleDefaultOtlpExporter())
+			pipelines := readPipelines(collectorConfig)
+
+			Expect(readPipelineProcessors(pipelines, "traces/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0operation",
+				"dash0redaction",
+			}))
+			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0redaction",
+			}))
+			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0redaction",
+			}))
+
+			assertCollectorConfigStructurallyValid(collectorConfig, "signal-control/redaction-only")
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/redaction-only")
+		})
+
+		It("wires a redaction instance per dataset branch into the namespaced pipelines [SignalControl]", func() {
+			collectorConfig := assembleWith(allComponentsSC(), cmTestNamespacedMultiDatasetExporters())
+			pipelines := readPipelines(collectorConfig)
+			processors := collectorConfig["processors"].(map[string]interface{})
+
+			for _, idx := range []string{"0", "1"} {
+				branch := namespace1 + "/" + idx
+				for _, signal := range []string{"traces", "metrics", "logs"} {
+					Expect(lastProcessor(pipelines, signal+"/sc/ns/"+branch)).
+						To(Equal("dash0redaction/ns/"+branch), signal+" "+branch)
+				}
+				Expect(processors["dash0redaction/ns/"+branch]).To(Equal(map[string]interface{}{
+					"metric_recorder": "dash0metricrecorder/ns/" + branch,
+				}), branch)
+			}
+			for _, signal := range []string{"traces", "metrics", "logs"} {
+				Expect(lastProcessor(pipelines, signal+"/sc/default")).To(Equal("dash0redaction"), signal)
+			}
+
+			assertCollectorConfigStructurallyValid(collectorConfig, "signal-control/redaction-ns")
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/redaction-ns")
+		})
+
+		It("declares no redaction processor when disabled [SignalControl]", func() {
+			sc := allComponentsSC()
+			sc.CardholderDataRedactionEnabled = false
+			collectorConfig := assembleWith(sc, cmTestNamespacedMultiDatasetExporters())
+
+			for name := range topLevelComponentKeys(collectorConfig, "processors") {
+				Expect(name).ToNot(HavePrefix("dash0redaction"))
+			}
+			pipelines := readPipelines(collectorConfig)
+			for pipelineName := range pipelines {
+				for _, processor := range readPipelineProcessors(pipelines, pipelineName) {
+					Expect(processor).ToNot(HavePrefix("dash0redaction"), pipelineName)
+				}
+			}
 		})
 	})
 
@@ -8210,6 +8495,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(tlsConfig["ca_file"]).To(Equal(fmt.Sprintf("%s/ca.crt", targetAllocatorCertsVolumeDir)))
 			Expect(tlsConfig["cert_file"]).To(Equal(fmt.Sprintf("%s/tls.crt", targetAllocatorCertsVolumeDir)))
 			Expect(tlsConfig["key_file"]).To(Equal(fmt.Sprintf("%s/tls.key", targetAllocatorCertsVolumeDir)))
+			Expect(tlsConfig["reload_interval"]).To(Equal("5m"))
 		})
 
 		It("should use the target-allocator HTTP endpoint if mTLS is disabled", func() {

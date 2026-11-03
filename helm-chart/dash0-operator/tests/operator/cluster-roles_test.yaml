@@ -122,6 +122,52 @@ tests:
               - dash0monitorings.operator.dash0.com
           any: true
 
+  - it: should grant permissions to patch the Perses dashboard CRD if the conversion webhook is auto-patched
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-manager-iac
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - apiextensions.k8s.io
+            resources:
+              - customresourcedefinitions
+            resourceNames:
+              - persesdashboards.perses.dev
+            verbs:
+              - patch
+              - update
+
+  - it: should not grant permissions to patch the Perses dashboard CRD if the conversion webhook is not auto-patched
+    set:
+      operator:
+        iac:
+          persesDashboard:
+            autoPatchConversionWebhook: false
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-manager-iac
+    asserts:
+      - notContains:
+          path: rules
+          content:
+            resourceNames:
+              - persesdashboards.perses.dev
+          any: true
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - apiextensions.k8s.io
+            resources:
+              - customresourcedefinitions
+            verbs:
+              - get
+              - list
+              - watch
+
   - it: should grant permissions for telemetry collection if telemetry collection is enabled
     asserts:
       - hasDocuments:

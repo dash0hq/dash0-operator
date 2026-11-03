@@ -49,12 +49,6 @@ var (
 	}
 )
 
-// EdgeProxyDefaultReplicas is used when the extra config map specifies a replica count below 1. The Helm chart ships a
-// higher default; this only backstops an invalid value. The topology spread constraints bias replicas onto separate
-// zones and nodes (see edgeProxyTopologySpreadConstraints), and the operator warns when there are fewer replicas than
-// availability zones.
-const EdgeProxyDefaultReplicas int32 = 1
-
 type clientObject struct {
 	object client.Object
 }
@@ -137,10 +131,6 @@ func assembleEdgeProxyDeployment(
 	logger logd.Logger,
 ) *appsv1.Deployment {
 	replicas := extraConfig.EdgeProxyReplicas
-	if replicas < 1 {
-		replicas = EdgeProxyDefaultReplicas
-	}
-
 	dmEndpoint, authorization, dataset, apiEndpoint := deriveUpstreamConfig(operatorConfig)
 	if signalControlResource.Spec.Sampling.DecisionMakerEndpoint != "" {
 		dmEndpoint = signalControlResource.Spec.Sampling.DecisionMakerEndpoint

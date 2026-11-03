@@ -19,7 +19,6 @@ import (
 
 	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -791,16 +790,13 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 
 			AfterEach(
 				func() {
-					VerifyNoUnmatchedGockRequests()
-
-					// Make sure the work queue is empty before tearing down the monitoring resource so an in-flight synchronization job
-					// from a previous test cannot write its (potentially stale) result to the next test's monitoring resource.
-					Eventually(func(g Gomega) {
-						g.Expect(testQueuePersesDashboards.Len()).To(Equal(0))
-					}, 3*time.Second, 20*time.Millisecond).Should(Succeed())
-
-					DeleteMonitoringResourceIfItExists(ctx, k8sClient)
 					persesDashboardCrdReconciler.RemoveNamespacedApiConfigs(ctx, TestNamespaceName, logger)
+					waitForThirdPartyResourceSynchronizationToFinish(
+						&persesDashboardReconciler.namespaceResyncsInFlight,
+						testQueuePersesDashboards,
+					)
+					VerifyNoUnmatchedGockRequests()
+					DeleteMonitoringResourceIfItExists(ctx, k8sClient)
 				},
 			)
 
@@ -1837,26 +1833,7 @@ func generateTestCaPem() []byte {
 
 func deletePersesDashboardCrdIfItExists(ctx context.Context) {
 	if persesDashboardCrd != nil {
-		err := k8sClient.Delete(
-			ctx, persesDashboardCrd, &client.DeleteOptions{
-				GracePeriodSeconds: new(int64),
-			},
-		)
-		if err != nil && apierrors.IsNotFound(err) {
-			return
-		} else if err != nil {
-			Expect(err).NotTo(HaveOccurred())
-		}
-
-		Eventually(
-			func(g Gomega) {
-				err := k8sClient.Get(ctx, PersesDashboardCrdQualifiedName, &apiextensionsv1.CustomResourceDefinition{})
-				g.Expect(err).To(HaveOccurred())
-				g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
-			},
-			30*time.Second, 100*time.Millisecond,
-		).Should(Succeed())
-
+		DeletePersesDashboardCrdIfItExists(ctx, k8sClient)
 		persesDashboardCrd = nil
 	}
 }

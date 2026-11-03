@@ -426,7 +426,7 @@ func Start() {
 		setupLog.Error(err, "invalid OTLP collector host port configuration")
 		os.Exit(1)
 	}
-	extraConfigDefaults = util.ExtraConfigDefaultsFor(cliArgs.isGkeAutopilot)
+	extraConfigDefaults = util.ExtraConfigDefaultsFor(cliArgs.isGkeAutopilot, cliArgs.isOpenShift)
 	if err = readExtraConfigMap(extraConfigDefaults); err != nil {
 		setupLog.Error(err, "cannot read extra config map file at startup")
 		os.Exit(1)

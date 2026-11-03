@@ -73,6 +73,10 @@ const (
 	otelExporterOtlpProtocolEnvVarName = "OTEL_EXPORTER_OTLP_PROTOCOL"
 	otelLogLevelEnvVarName             = "OTEL_LOG_LEVEL"
 
+	// collectorServiceName is the service.name of the OpenTelemetry collector's internal telemetry. The Go SDK sidecar
+	// containers in collector pods report with the same service.name.
+	collectorServiceName = "dash0-operator-collector"
+
 	// selfMonitoringHeaderSecretNameSuffix is the nameSuffix passed to exporters.HeaderSecretEnvVarName when deriving
 	// the names of the environment variables that back secret-sourced self-monitoring header values in the collector
 	// pods. It is distinct from the suffixes used for the data-pipeline exporters ("DEFAULT_N", "NS/..._N"), so the
@@ -485,7 +489,8 @@ func enableSelfMonitoringInPodSpec(
 // the service::telemetry section of the collector configuration; it only needs the environment variable holding the
 // auth token, which the rendered self-monitoring pipeline refers to via  ${env:SELF_MONITORING_AUTH_TOKEN}. All other
 // containers are assumed to use the OpenTelemetry Go SDK, which is configured exclusively via environment variables.
-// Pass an empty otelCollectorContainerName for pod specs without a collector container.
+// In a collector pod, they report with the collector's service.name, otherwise with their container name as
+// service.name. Pass an empty otelCollectorContainerName for pod specs without a collector container.
 func enableSelfMonitoringInContainers(
 	containers []corev1.Container,
 	selfMonitoringConfiguration SelfMonitoringConfiguration,
@@ -512,10 +517,15 @@ func enableSelfMonitoringInContainers(
 			containers[i] = container
 			continue
 		}
+		serviceName := container.Name
+		if otelCollectorContainerName != "" {
+			serviceName = collectorServiceName
+		}
 		enableSelfMonitoringInOTelSdkContainer(
 			&container,
 			selfMonitoringExport,
 			authTokenEnvVar,
+			serviceName,
 			operatorVersion,
 			developmentMode,
 		)
@@ -539,11 +549,13 @@ func enableSelfMonitoringInOpenTelemetryCollectorContainer(
 
 // enableSelfMonitoringInOTelSdkContainer is called for all containers that run a Go OTel SDK (the collector pods'
 // sidecar containers configuration-reloader and filelog-offset-sync, and the agent0-connector), to set the environment
-// variables the SDK requires.
+// variables the SDK requires. The service.* resource attributes are only provided via OTEL_RESOURCE_ATTRIBUTES, the
+// containers do not set them on their own.
 func enableSelfMonitoringInOTelSdkContainer(
 	container *corev1.Container,
 	selfMonitoringExport dash0common.Export,
 	authTokenEnvVar *corev1.EnvVar,
+	serviceName string,
 	operatorVersion string,
 	developmentMode bool,
 ) {
@@ -558,7 +570,7 @@ func enableSelfMonitoringInOTelSdkContainer(
 		container, util.OtelResourceAttributesEnvVarName,
 		fmt.Sprintf(
 			"service.namespace=dash0-operator,service.name=%s,service.version=%s",
-			container.Name,
+			serviceName,
 			operatorVersion,
 		),
 	)

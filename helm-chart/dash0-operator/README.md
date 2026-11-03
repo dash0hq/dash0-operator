@@ -93,7 +93,7 @@ This README provides a quick overview. Detailed documentation is organized by to
 * **[Managing Dash0 Resources](docs/managing-dash0-resources.md)** - Managing dashboards, check rules, synthetic checks, views, notification channels, spam filters, signal-to-metrics, and teams via infrastructure-as-code
 * **[Advanced Configuration](docs/advanced-configuration.md)** - webhook certificates, cert-manager, node affinity, tolerations, sysctls, SELinux options, and filelog offset volumes
 * **[Platform Specific](docs/platform-specific.md)** - Notes for AWS EKS, GKE Autopilot, OpenShift, SELinux-enforcing clusters, Azure AKS, Docker Desktop, Minikube, Apple Silicon, and compatibility with OPA and Kyverno
-* **[SignalControl Edge](docs/signal-control-edge.md)** - How to configure Signal Control, which offers in-cluster tail-sampling, RED metrics, signal-to-metrics, and spam filters to reduce egress costs, as well as log enrichment.
+* **[SignalControl Edge](docs/signal-control-edge.md)** - How to configure Signal Control, which offers in-cluster tail-sampling, RED metrics, signal-to-metrics, and spam filters to reduce egress costs, as well as log enrichment and cardholder data redaction.
 * **[Synthetics Worker](docs/synthetics-worker.md)** - How to run Dash0 synthetic checks against private locations from inside your own cluster.
 * **[Agent0 Integration](docs/agent0-integration.md)** - Letting Agent0, Dash0's observability and SRE assistant, run read-only `kubectl` commands in your cluster, and the security mechanisms around it
 
