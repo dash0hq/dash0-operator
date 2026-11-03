@@ -5636,6 +5636,68 @@ spec:
 		})
 	})
 
+	Context("with an existing operator deployment and Kubernetes object collection enabled", func() {
+		BeforeAll(func() {
+			By("deploying the Dash0 operator with Kubernetes object collection enabled")
+			deployOperatorWithDefaultAutoOperationConfiguration(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				"",
+				&images,
+				false,
+				map[string]string{
+					"operator.kubernetesObjectCollection.enabled": "true",
+				},
+			)
+		})
+
+		AfterAll(func() {
+			undeployOperator(operatorNamespace)
+		})
+
+		AfterEach(func() {
+			undeployDash0MonitoringResource(applicationUnderTestNamespace)
+		})
+
+		It("collects Kubernetes object manifests with environment variable values masked", func() {
+			timestampLowerBound := time.Now()
+
+			// Kubernetes object collection requires both switches: the cluster-wide one on the operator configuration
+			// resource (enabled via the Helm value above) and the per-namespace opt-in on the monitoring resource.
+			deployDash0MonitoringResourceWithRetry(
+				applicationUnderTestNamespace,
+				dash0MonitoringValuesWithKubernetesObjectCollection,
+				operatorNamespace,
+			)
+
+			By(
+				fmt.Sprintf(
+					"waiting for a Kubernetes object record for the test deployment with masked env values to be "+
+						"collected after min timestamp %v",
+					timestampLowerBound,
+				))
+
+			// The k8s_objects receiver only starts watching after the operator has rendered the collector
+			// configuration and the collector has loaded it. We repeatedly install and uninstall a test workload to
+			// make sure an object change happens _after_ the watch has been established.
+			Eventually(func(g Gomega) {
+				g.Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+				g.Expect(uninstallNodeJsRelease(applicationUnderTestNamespace)).To(Succeed())
+				verifyAtLeastOneKubernetesObjectRecord(
+					g,
+					timestampLowerBound,
+					"deployments",
+					"dash0-operator-nodejs-20-express-test-deployment",
+					// The deployment sets the PORT env var; the collector's redaction processor must mask its
+					// value before the manifest leaves the cluster.
+					`"name":"PORT","value":"****"`,
+					`"value":"1207"`,
+				)
+			}, 3*time.Minute, 1*time.Second).Should(Succeed())
+		})
+	})
+
 	Context("with an existing operator deployment and profiling enabled", func() {
 		BeforeAll(func() {
 			if !includeProfilingTests {

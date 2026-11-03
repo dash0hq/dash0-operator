@@ -36,6 +36,12 @@ const (
 	QueryParamEventInvolvedObjectNameAttribute = "event-involved-object-name-attribute"
 	QueryParamEventInvolvedObjectName          = "event-involved-object-name"
 
+	// query parameters for matching Kubernetes object records
+
+	QueryParamObjectResourceName    = "object-resource-name"
+	QueryParamObjectNameContains    = "object-name-contains"
+	QueryParamLogBodyDoesNotContain = "log-body-does-not-contain"
+
 	// query parameters for matching metrics
 
 	QueryParamMetricsMatchMode            = "metrics-match-mode"
