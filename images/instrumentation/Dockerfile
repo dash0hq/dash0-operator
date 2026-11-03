@@ -41,8 +41,10 @@ RUN NPM_CONFIG_UPDATE_NOTIFIER=false \
   # The upstream OpenTelemetry JS packages ship esm/esnext builds alongside the CJS build used by require() (see the
   # "exports" map in each package's package.json). Node.js's CJS resolver only ever matches the "default"/"require"
   # condition, so these two build trees are unused dead weight in this image; every @opentelemetry/* package on the
-  # host is duplicated here for the "-1.x" compatibility line as well, further multiplying the waste.
-  && find node_modules/@opentelemetry -type d \( -name esm -o -name esnext \) -path '*/build/*' -exec rm -rf {} +
+  # host is duplicated here for the "-1.x" compatibility line as well, further multiplying the waste. The packages are
+  # either hoisted to node_modules/@opentelemetry or bundled in node_modules/@dash0/opentelemetry/node_modules, so the
+  # search starts at node_modules.
+  && find node_modules -type d \( -name esm -o -name esnext \) -path '*/@opentelemetry/*/build/*' -exec rm -rf {} +
 
 # download the Dash0 OpenTelemetry .NET distribution
 FROM alpine:3.24.3 AS build-dotnet
