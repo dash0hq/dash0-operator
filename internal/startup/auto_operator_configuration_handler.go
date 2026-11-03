@@ -38,6 +38,7 @@ type OperatorConfigurationValues struct {
 	KeepalivePermitWithoutStream                     bool
 	SelfMonitoringEnabled                            bool
 	KubernetesInfrastructureMetricsCollectionEnabled bool
+	KubernetesObjectCollectionEnabled                bool
 	InstrumentationDelivery                          dash0v1alpha1.InstrumentationDelivery
 	CollectPodLabelsAndAnnotationsEnabled            bool
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
@@ -478,6 +479,7 @@ func convertValuesToResource(
 		filter = nil
 		transform = nil
 		operatorConfigurationValues.KubernetesInfrastructureMetricsCollectionEnabled = false
+		operatorConfigurationValues.KubernetesObjectCollectionEnabled = false
 		operatorConfigurationValues.CollectPodLabelsAndAnnotationsEnabled = false
 		operatorConfigurationValues.CollectNamespaceLabelsAndAnnotationsEnabled = false
 		operatorConfigurationValues.CollectNodeLabelsAndAnnotationsEnabled = false
@@ -493,6 +495,9 @@ func convertValuesToResource(
 		Exports: exports,
 		KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
 			Enabled: new(operatorConfigurationValues.KubernetesInfrastructureMetricsCollectionEnabled),
+		},
+		KubernetesObjectCollection: dash0v1alpha1.KubernetesObjectCollection{
+			Enabled: new(operatorConfigurationValues.KubernetesObjectCollectionEnabled),
 		},
 		CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 			Enabled: new(operatorConfigurationValues.CollectPodLabelsAndAnnotationsEnabled),

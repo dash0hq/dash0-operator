@@ -141,6 +141,7 @@ spec:
 {{- end }}{{/*closes the first "if .Values.operator.dash0Export.enabled" */}}
         - --operator-configuration-self-monitoring-enabled={{ .Values.operator.selfMonitoringEnabled }}
         - --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled={{ .Values.operator.kubernetesInfrastructureMetricsCollectionEnabled }}
+        - --operator-configuration-kubernetes-object-collection-enabled={{ .Values.operator.kubernetesObjectCollection.enabled }}
         - --operator-configuration-collect-pod-labels-and-annotations-enabled={{ .Values.operator.collectPodLabelsAndAnnotationsEnabled }}
         - --operator-configuration-collect-namespace-labels-and-annotations-enabled={{ .Values.operator.collectNamespaceLabelsAndAnnotationsEnabled }}
         - --operator-configuration-collect-node-labels-and-annotations-enabled={{ .Values.operator.collectNodeLabelsAndAnnotationsEnabled }}
