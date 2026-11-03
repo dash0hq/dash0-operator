@@ -68,6 +68,20 @@ type EventCollection struct {
 	Enabled *bool `json:"enabled,omitempty"`
 }
 
+type KubernetesObjectCollection struct {
+	// Opt-in for Kubernetes object collection for the target namespace. If set to `true`, the operator will collect the
+	// manifests of pods, deployments, replica sets, stateful sets and daemon sets in the target namespace and send them
+	// to Dash0 as log records. Values of environment variables as well as the
+	// `kubectl.kubernetes.io/last-applied-configuration` annotation are removed from the manifests before they leave
+	// the cluster.
+	//
+	// This setting is optional, it defaults to `false`, that is, if this setting is omitted, the operator will not
+	// collect Kubernetes object manifests in the target namespace.
+	//
+	// +kubebuilder:validation:Optional
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
 type PrometheusScraping struct {
 	// If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
 	// of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry
