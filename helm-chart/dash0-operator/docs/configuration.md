@@ -99,6 +99,27 @@ Here is a list of configuration options for this resource:
   It is a validation error to set `telemetryCollection.enabled=false` and
   `kubernetesInfrastructureMetricsCollection.enabled=true` at the same time.
 
+* <a href="#operatorconfigurationresource.spec.kubernetesObjectCollection.enabled"><span id="operatorconfigurationresource.spec.kubernetesObjectCollection.enabled">**`spec.kubernetesObjectCollection.enabled`**</span></a>:
+  The cluster-wide switch for collecting the manifests of Kubernetes objects. If enabled, the operator will collect
+  the manifests of pods, deployments, replica sets, stateful sets and daemon sets as log records in every namespace
+  whose Dash0Monitoring resource has `kubernetesObjectCollection.enabled=true` (see
+  [below](#monitoringresource.spec.kubernetesObjectCollection.enabled)), as well as the manifests of nodes and
+  persistent volumes.
+  Values of environment variables and the annotations in which well-known deploy tools (kubectl, kapp, Rancher) store
+  a serialized copy of the whole manifest are removed from the manifests before they leave the cluster. Annotations of
+  other tools that embed manifest copies are not recognized and leave the cluster unredacted.
+  Manifests from the operator's own namespace are never collected.
+  This setting is optional, it defaults to `false`.
+  It is a validation error to set `telemetryCollection.enabled=false` and `kubernetesObjectCollection.enabled=true` at
+  the same time.
+
+* <a href="#operatorconfigurationresource.spec.kubernetesObjectCollection.collectClusterScopedObjects"><span id="operatorconfigurationresource.spec.kubernetesObjectCollection.collectClusterScopedObjects">**`spec.kubernetesObjectCollection.collectClusterScopedObjects`**</span></a>:
+  An opt-out for collecting the manifests of cluster-scoped objects (nodes and persistent volumes). It does not enable
+  Kubernetes object collection on its own: cluster-scoped objects are only collected when
+  `kubernetesObjectCollection.enabled` is `true` and at least one namespace has opted into Kubernetes object collection
+  via its Dash0Monitoring resource.
+  This setting is optional, it defaults to `true`.
+
 * <a href="#operatorconfigurationresource.spec.collectPodLabelsAndAnnotations.enabled"><span id="operatorconfigurationresource.spec.collectPodLabelsAndAnnotations.enabled">**`spec.collectPodLabelsAndAnnotations.enabled`**</span></a>:
   If enabled, the operator will collect all Kubernetes pod labels and annotations and convert them to resource
   attributes for all spans, log records and metrics.
@@ -475,6 +496,15 @@ The Dash0 monitoring resource supports additional configuration settings:
   `telemetryCollection.enabled=false`, then log collection is off by default.
   It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
   `logCollection.enabled=true` in any monitoring resource at the same time.
+
+* <a href="#monitoringresource.spec.kubernetesObjectCollection.enabled"><span id="monitoringresource.spec.kubernetesObjectCollection.enabled">**`spec.kubernetesObjectCollection.enabled`**</span></a>:
+  A namespace-wide opt-in for collecting the manifests of Kubernetes objects.
+  If enabled, the operator will collect the manifests of pods, deployments, replica sets, stateful sets and daemon sets
+  in the target namespace and send them to Dash0 as log records.
+  Manifests are only collected when the operator configuration resource also has `kubernetesObjectCollection.enabled=true`
+  (see [above](#operatorconfigurationresource.spec.kubernetesObjectCollection.enabled)); that setting also describes
+  which parts of the manifests are redacted before they leave the cluster.
+  This setting is optional, it defaults to `false`.
 
 * <a href="#monitoringresource.spec.prometheusScraping.enabled"><span id="monitoringresource.spec.prometheusScraping.enabled">**`spec.prometheusScraping.enabled`**</span></a>:
   A namespace-wide opt-out for Prometheus scraping for the target namespace.

@@ -559,6 +559,7 @@ var _ = Describe(
 						SelfMonitoringEnabled: true,
 						KubernetesInfrastructureMetricsCollectionEnabled: true,
 						KubernetesObjectCollectionEnabled:                true,
+						CollectClusterScopedObjects:                      true,
 						CollectPodLabelsAndAnnotationsEnabled:            true,
 						CollectNamespaceLabelsAndAnnotationsEnabled:      true,
 						CollectNodeLabelsAndAnnotationsEnabled:           true,
@@ -590,6 +591,10 @@ var _ = Describe(
 						g.Expect(*spec.KubernetesInfrastructureMetricsCollection.Enabled).To(BeFalse())
 						g.Expect(spec.KubernetesObjectCollection.Enabled).ToNot(BeNil())
 						g.Expect(*spec.KubernetesObjectCollection.Enabled).To(BeFalse())
+						// collectClusterScopedObjects is an opt-out that is inert while enabled=false, so it is not
+						// forced off together with the telemetry-dependent settings.
+						g.Expect(spec.KubernetesObjectCollection.CollectClusterScopedObjects).ToNot(BeNil())
+						g.Expect(*spec.KubernetesObjectCollection.CollectClusterScopedObjects).To(BeTrue())
 						g.Expect(spec.CollectPodLabelsAndAnnotations.Enabled).ToNot(BeNil())
 						g.Expect(*spec.CollectPodLabelsAndAnnotations.Enabled).To(BeFalse())
 						g.Expect(spec.CollectNamespaceLabelsAndAnnotations.Enabled).ToNot(BeNil())
