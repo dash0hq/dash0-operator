@@ -194,6 +194,8 @@ func (r *Routes) matchingEventsRouteHandler(c *gin.Context) {
 	resourceMatchFn := workloadKubernetesEventResourceMatcher(
 		commonParams.clusterName,
 		commonParams.namespace,
+		c.Query(shared.QueryParamEventInvolvedObjectNameAttribute),
+		c.Query(shared.QueryParamEventInvolvedObjectName),
 	)
 	logBodyContainsStr := c.Query(shared.QueryParamLogBodyContains)
 	eventReason := c.Query(shared.QueryParamEventReason)

@@ -1219,7 +1219,8 @@ spec:
                         description: |-
                           Pod-level SELinux options (spec.securityContext.seLinuxOptions, Helm value
                           operator.collectors.daemonSetSeLinuxOptions). They replace the SELinux options provided via the Helm chart as a
-                          whole, an empty object removes them. By default, the pods have no SELinux options.
+                          whole, an empty object removes them. By default, the pods have no SELinux options, except on OpenShift, where they
+                          have the type spc_t.
                         properties:
                           level:
                             description: Level is SELinux level label that applies
@@ -4365,9 +4366,11 @@ spec:
                           type: object
                         replicas:
                           default: 1
-                          description: Replicas is the number of pods this instance
-                            runs. This setting is optional, it defaults to 1.
+                          description: |-
+                            Replicas is the number of pods this instance runs. It must not be negative. This setting is optional, it defaults
+                            to 1.
                           format: int32
+                          minimum: 0
                           type: integer
                         resources:
                           description: Resources describes the compute resource requirements

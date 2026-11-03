@@ -3,7 +3,7 @@
 
 # download the opentelemetry-injector binary for the target architecture and verify it against the SHA-256 pinned in
 # opentelemetry-injector/version (KEY=value lines sourced by this stage, written by opentelemetry-injector/update.sh)
-FROM alpine:3.24.2 AS download-injector-binary
+FROM alpine:3.24.3 AS download-injector-binary
 
 RUN apk add --no-cache wget
 
@@ -45,7 +45,7 @@ RUN NPM_CONFIG_UPDATE_NOTIFIER=false \
   && find node_modules/@opentelemetry -type d \( -name esm -o -name esnext \) -path '*/build/*' -exec rm -rf {} +
 
 # download the Dash0 OpenTelemetry .NET distribution
-FROM alpine:3.24.2 AS build-dotnet
+FROM alpine:3.24.3 AS build-dotnet
 RUN apk add --no-cache \
 		curl \
 		tar
@@ -58,7 +58,7 @@ RUN ./download-instrumentation.sh
 # github.com/dash0hq/opentelemetry-python-distribution plus the SHA-256 of the source tarball GitHub serves for that
 # tag, as KEY=value lines sourced by this stage; python/update.sh writes both and rewrites the whole file, so it must
 # not contain comments.
-FROM alpine:3.24.2 AS download-dash0-python-distribution
+FROM alpine:3.24.3 AS download-dash0-python-distribution
 RUN apk add --no-cache curl tar
 COPY python/dash0-python-distribution-version /tmp/dash0-python-distribution-version
 RUN . /tmp/dash0-python-distribution-version && \
@@ -74,28 +74,31 @@ RUN . /tmp/dash0-python-distribution-version && \
   rm /tmp/dash0-python-distribution.tar.gz
 
 # install Python artifacts (glibc)
-FROM python:3.14.8-trixie AS build-python-glibc
+FROM python:3.14.10-trixie AS build-python-glibc
 RUN mkdir -p /dash0-instrumentation/python
 WORKDIR /dash0-instrumentation/python
 COPY python/extract-flattened-requirements.sh .
 COPY --from=download-dash0-python-distribution /dash0-python-distribution /tmp/dash0-python-distribution
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
-# Install the Dash0 Python distribution's workspace packages from local paths, since they are not yet published to
-# PyPI. Listing them in the same pip invocation lets pip resolve the inter-dependencies against the local sources.
-# The dash0-opentelemetry package pins the full instrumentation set as regular dependencies, so we do not need
-# to install any additional packages on top.
+# Install the Dash0 Python distribution's workspace packages from local paths, since a release tag can exist before its
+# packages are published to PyPI. Listing them in the same pip invocation lets pip resolve the inter-dependencies
+# against the local sources; a workspace package that dash0-opentelemetry depends on but that is missing from this list
+# is resolved from PyPI instead. The dash0-opentelemetry package pins the full instrumentation set as regular
+# dependencies, so we do not need to install any additional packages on top. Keep this list in sync with the musl stage
+# below and with python/extract-flattened-requirements.sh.
 RUN pip install --quiet --root-user-action ignore --target . \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-pyproto \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-common \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-grpc \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-http \
+  /tmp/dash0-python-distribution/packages/dash0-opentelemetry-configuration \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry && \
   ./extract-flattened-requirements.sh && \
   rm extract-flattened-requirements.sh && \
   cp dash0/opentelemetry/injector/sitecustomize.py sitecustomize.py
 
 # install Python artifacts (musl)
-FROM python:3.14.8-alpine3.24 AS build-python-musl
+FROM python:3.14.10-alpine3.24 AS build-python-musl
 RUN mkdir -p /dash0-instrumentation/python
 WORKDIR /dash0-instrumentation/python
 COPY python/extract-flattened-requirements.sh .
@@ -106,6 +109,7 @@ RUN pip install --quiet --root-user-action ignore --target . \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-common \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-grpc \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-http \
+  /tmp/dash0-python-distribution/packages/dash0-opentelemetry-configuration \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry && \
   ./extract-flattened-requirements.sh && \
   rm extract-flattened-requirements.sh && \
@@ -116,7 +120,7 @@ RUN pip install --quiet --root-user-action ignore --target . \
 # github.com/dash0hq/opentelemetry-ruby-distribution plus the SHA-256 of the source tarball GitHub serves for that
 # tag, as KEY=value lines sourced by this stage; ruby/update.sh writes both and rewrites the whole file, so it must not
 # contain comments.
-FROM alpine:3.24.2 AS download-dash0-ruby-distribution
+FROM alpine:3.24.3 AS download-dash0-ruby-distribution
 RUN apk add --no-cache curl tar
 COPY ruby/dash0-ruby-distribution-version /tmp/dash0-ruby-distribution-version
 RUN . /tmp/dash0-ruby-distribution-version && \
@@ -132,7 +136,7 @@ RUN . /tmp/dash0-ruby-distribution-version && \
   rm /tmp/dash0-ruby-distribution.tar.gz
 
 # install Ruby artifacts (glibc)
-FROM ruby:4.0.7-slim-trixie AS build-ruby-glibc
+FROM ruby:4.0.9-slim-trixie AS build-ruby-glibc
 # A C toolchain is only needed while installing the bundle, because a transitive dependency ships as source and compiles
 # a native extension. The bundle copied into the final image contains no source gems and needs no compiler.
 RUN apt-get update && \
@@ -143,14 +147,14 @@ COPY ruby/install-bundle.sh /tmp/install-bundle.sh
 RUN /tmp/install-bundle.sh /tmp/dash0-ruby-distribution /dash0-instrumentation/ruby
 
 # install Ruby artifacts (musl)
-FROM ruby:4.0.7-alpine3.24 AS build-ruby-musl
+FROM ruby:4.0.9-alpine3.24 AS build-ruby-musl
 RUN apk add --no-cache build-base
 COPY --from=download-dash0-ruby-distribution /dash0-ruby-distribution /tmp/dash0-ruby-distribution
 COPY ruby/install-bundle.sh /tmp/install-bundle.sh
 RUN /tmp/install-bundle.sh /tmp/dash0-ruby-distribution /dash0-instrumentation/ruby
 
 # build the final instrumentation image
-FROM alpine:3.24.2
+FROM alpine:3.24.3
 COPY copy-instrumentation.sh /
 
 # copy artifacts (distros, injector binary) from the build stages to the final image

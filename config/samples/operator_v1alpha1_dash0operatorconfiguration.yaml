@@ -1,0 +1,17 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0OperatorConfiguration
+metadata:
+  name: dash0-operator-configuration
+spec:
+  exports:
+    - dash0:
+        # Replace this value with the actual OTLP/gRPC endpoint of your Dash0 organization.
+        endpoint: ingress...
+        authorization:
+          # A secret in the operator's namespace that holds the Dash0 authorization token.
+          secretRef:
+            name: dash0-authorization-secret
+            key: token
+        # Replace this value with the actual API endpoint of your Dash0 organization.
+        apiEndpoint: https://api.....dash0.com
+  clusterName: my-kubernetes-cluster
