@@ -6,6 +6,7 @@ package predelete
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	appv1 "k8s.io/api/apps/v1"
@@ -79,20 +80,20 @@ var _ = Describe("Uninstalling the Dash0 operator (pre-delete hook)", Ordered, f
 
 	It("should time out if the deletion of all Dash0 monitoring resources does not happen in a timely manner", func() {
 		startTime := time.Now()
-		var elapsedTimeNanoseconds int64
+		var elapsedTimeNanoseconds atomic.Int64
 
 		go func() {
 			defer GinkgoRecover()
 			Expect(preDeleteHandler.DeleteAllMonitoringResources()).To(Succeed())
-			elapsedTimeNanoseconds = time.Since(startTime).Nanoseconds()
+			elapsedTimeNanoseconds.Store(time.Since(startTime).Nanoseconds())
 		}()
 
 		// Deliberately not triggering a reconcile loop -> the finalizer action of the Dash0 monitoring resources will
 		// not trigger, and the Dash0 monitoring resources won't be deleted. Ultimately, the timeout will kick in.
 
 		Eventually(func(g Gomega) {
-			g.Expect(elapsedTimeNanoseconds).ToNot(BeZero())
-			g.Expect(elapsedTimeNanoseconds).To(BeNumerically("~", preDeleteHandlerTimeoutForTests, time.Second))
+			g.Expect(elapsedTimeNanoseconds.Load()).ToNot(BeZero())
+			g.Expect(elapsedTimeNanoseconds.Load()).To(BeNumerically("~", preDeleteHandlerTimeoutForTests, time.Second))
 		}, testTimeout, pollingInterval).Should(Succeed())
 	})
 

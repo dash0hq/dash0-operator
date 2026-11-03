@@ -21,6 +21,11 @@ source "$scripts_lib/util"
 
 load_env_file
 
+if [[ -z "${LOCAL_REGISTRY_VOLUME_PATH:-}" ]]; then
+  echo "error: LOCAL_REGISTRY_VOLUME_PATH is not set, please set it in test-resources/.env or via other means"
+  exit 1
+fi
+
 create_cluster_and_registry() {
   local kind_cluster="${DASH0_KIND_CLUSTER:-$default_kind_cluster}"
   local kind_config="${DASH0_KIND_CONFIG:-$default_kind_config}"

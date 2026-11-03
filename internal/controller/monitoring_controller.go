@@ -257,7 +257,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 	}
 
-	r.scheduleAttachDanglingEvents(ctx, monitoringResource, logger)
+	r.scheduleAttachDanglingEvents(ctx, monitoringResource.Namespace, logger)
 
 	if err = r.updateStatusAfterReconcile(ctx, monitoringResource, statusUpdate, logger); err != nil {
 		// The error has already been logged in updateStatusAfterReconcile
@@ -519,7 +519,7 @@ func (r *MonitoringReconciler) runCleanupActions(
 
 func (r *MonitoringReconciler) scheduleAttachDanglingEvents(
 	ctx context.Context,
-	monitoringResource *dash0v1beta1.Dash0Monitoring,
+	namespace string,
 	logger logd.Logger,
 ) {
 	// execute the event attaching in a separate go routine to not block the main reconcile loop
@@ -529,7 +529,7 @@ func (r *MonitoringReconciler) scheduleAttachDanglingEvents(
 			// the webhook queues the events
 			time.Sleep(r.danglingEventsTimeouts.InitialTimeout)
 		}
-		r.attachDanglingEvents(ctx, monitoringResource, logger)
+		r.attachDanglingEvents(ctx, namespace, logger)
 	}()
 }
 
@@ -545,10 +545,9 @@ func (r *MonitoringReconciler) scheduleAttachDanglingEvents(
 // API.
 func (r *MonitoringReconciler) attachDanglingEvents(
 	ctx context.Context,
-	monitoringResource *dash0v1beta1.Dash0Monitoring,
+	namespace string,
 	logger logd.Logger,
 ) {
-	namespace := monitoringResource.Namespace
 	legacyEventApi := r.clientset.CoreV1().Events(namespace)
 	backoff := r.danglingEventsTimeouts.Backoff
 	for _, eventType := range util.AllInstrumentationEvents {

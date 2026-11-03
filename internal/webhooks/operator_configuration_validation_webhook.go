@@ -45,6 +45,20 @@ const ErrorMessageSyntheticsWorkerEnabledWithoutInstances = "The synthetics-work
 	"spec.syntheticsWorker.instances is empty. Configure at least one instance (locationId and authorization), or " +
 	"disable the synthetics-worker."
 
+const ErrorMessageEbpfProfilerDisabledViaHelm = "The eBPF profiler has been disabled via the Helm chart " +
+	"(operator.ebpfProfilerEnabled: false). Set operator.ebpfProfilerEnabled: true via Helm before enabling " +
+	"spec.profiling.ebpfProfiler.enabled."
+
+const ErrorMessageEbpfProfilerRequiresProfiling = "The eBPF profiler requires spec.profiling.enabled=true. " +
+	"Enable profiling or set spec.profiling.ebpfProfiler.enabled=false."
+
+const ErrorMessageEbpfProfilerRequiresTelemetry = "The eBPF profiler requires telemetry collection to be enabled " +
+	"both via Helm and spec.telemetryCollection.enabled. Enable telemetry collection or set " +
+	"spec.profiling.ebpfProfiler.enabled=false."
+
+const ErrorMessageEbpfProfilerTooManyDash0Exports = "Debug information uploads support at most 64 Dash0 exports. " +
+	"Remove Dash0 exports or set spec.profiling.ebpfProfiler.debuginfo.uploadEnabled=false."
+
 const ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid = "The provided Dash0 operator configuration resource has Prometheus CRD support " +
 	"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
 	"Please either set telemetryCollection.enabled=true or " +
@@ -71,6 +85,7 @@ const ErrorMessageOperatorConfigurationDash0ExportRequiredBySignalControl = "The
 
 type OperatorConfigurationValidationWebhookHandler struct {
 	Client                            client.Client
+	EbpfProfilerEnabledViaHelm        bool
 	telemetryCollectionEnabledViaHelm bool
 	agent0ConnectorEnabledViaHelm     bool
 	syntheticsWorkerEnabledViaHelm    bool
@@ -139,9 +154,8 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 
 	spec := operatorConfigurationResource.Spec
 
-	if !h.telemetryCollectionEnabledViaHelm && spec.TelemetryCollection.Enabled != nil && *spec.TelemetryCollection.Enabled {
-		logger.Warn(ErrorMessageTelemetryCollectionDisabledViaHelm)
-		return admission.Denied(ErrorMessageTelemetryCollectionDisabledViaHelm)
+	if response, denied := h.validateTelemetryCollectionEnabledConsistency(spec, request, logger); denied {
+		return response
 	}
 
 	if response, denied := h.validateAgent0ConnectorEnabledConsistency(spec, request, logger); denied {
@@ -153,6 +167,10 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	}
 
 	if response, denied := h.validateSyntheticsWorkerHasInstances(spec, request, logger); denied {
+		return response
+	}
+
+	if response, denied := h.validateEbpfProfiler(spec, request, logger); denied {
 		return response
 	}
 
@@ -302,6 +320,81 @@ func isFeatureNewlyEnabled(
 		return false, &errResponse
 	}
 	return !wasEnabled(oldResource), nil
+}
+
+// validateTelemetryCollectionEnabledConsistency rejects enabling telemetry collection via the operator configuration
+// resource when it has been disabled via the Helm chart. It returns denied=true together with the denial response when
+// that is the case.
+func (h *OperatorConfigurationValidationWebhookHandler) validateTelemetryCollectionEnabledConsistency(
+	spec dash0v1alpha1.Dash0OperatorConfigurationSpec,
+	request admission.Request,
+	logger logd.Logger,
+) (admission.Response, bool) {
+	if h.telemetryCollectionEnabledViaHelm || !pointers.ReadBoolPointerWithDefault(spec.TelemetryCollection.Enabled, false) {
+		return admission.Response{}, false
+	}
+	newlyEnabled, errorResponse := isFeatureNewlyEnabled(request, logger, "telemetry collection",
+		func(r *dash0v1alpha1.Dash0OperatorConfiguration) bool {
+			return pointers.ReadBoolPointerWithDefault(r.Spec.TelemetryCollection.Enabled, true)
+		})
+	if errorResponse != nil {
+		return *errorResponse, true
+	}
+	if !newlyEnabled {
+		return admission.Response{}, false
+	}
+	logger.Warn(ErrorMessageTelemetryCollectionDisabledViaHelm)
+	return admission.Denied(ErrorMessageTelemetryCollectionDisabledViaHelm), true
+}
+
+func (h *OperatorConfigurationValidationWebhookHandler) validateEbpfProfiler(
+	spec dash0v1alpha1.Dash0OperatorConfigurationSpec,
+	request admission.Request,
+	logger logd.Logger,
+) (admission.Response, bool) {
+	if spec.Profiling == nil || spec.Profiling.EbpfProfiler == nil ||
+		!pointers.ReadBoolPointerWithDefault(spec.Profiling.EbpfProfiler.Enabled, false) {
+		return admission.Response{}, false
+	}
+	if !h.EbpfProfilerEnabledViaHelm {
+		newlyEnabled, errorResponse := isFeatureNewlyEnabled(request, logger, "eBPF profiler",
+			func(r *dash0v1alpha1.Dash0OperatorConfiguration) bool {
+				return r.Spec.Profiling != nil && r.Spec.Profiling.EbpfProfiler != nil &&
+					pointers.ReadBoolPointerWithDefault(r.Spec.Profiling.EbpfProfiler.Enabled, false)
+			})
+		if errorResponse != nil {
+			return *errorResponse, true
+		}
+		if newlyEnabled {
+			logger.Warn(ErrorMessageEbpfProfilerDisabledViaHelm)
+			return admission.Denied(ErrorMessageEbpfProfilerDisabledViaHelm), true
+		}
+		return admission.Response{}, false
+	}
+	if !pointers.ReadBoolPointerWithDefault(spec.Profiling.Enabled, false) {
+		logger.Warn(ErrorMessageEbpfProfilerRequiresProfiling)
+		return admission.Denied(ErrorMessageEbpfProfilerRequiresProfiling), true
+	}
+	if !h.telemetryCollectionEnabledViaHelm ||
+		!pointers.ReadBoolPointerWithDefault(spec.TelemetryCollection.Enabled, true) {
+		logger.Warn(ErrorMessageEbpfProfilerRequiresTelemetry)
+		return admission.Denied(ErrorMessageEbpfProfilerRequiresTelemetry), true
+	}
+	debuginfo := spec.Profiling.EbpfProfiler.Debuginfo
+	if debuginfo != nil && !pointers.ReadBoolPointerWithDefault(debuginfo.UploadEnabled, true) {
+		return admission.Response{}, false
+	}
+	dash0Exports := 0
+	for _, export := range spec.Exports {
+		if export.Dash0 != nil {
+			dash0Exports++
+		}
+	}
+	if dash0Exports > 64 {
+		logger.Warn(ErrorMessageEbpfProfilerTooManyDash0Exports)
+		return admission.Denied(ErrorMessageEbpfProfilerTooManyDash0Exports), true
+	}
+	return admission.Response{}, false
 }
 
 // validateAgent0ConnectorEnabledConsistency rejects enabling the agent0-connector via the operator configuration

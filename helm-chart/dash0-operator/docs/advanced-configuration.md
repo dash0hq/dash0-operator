@@ -563,8 +563,10 @@ Changing Helm settings while the operator is already running requires a `helm up
 
 Pod-level [SELinux options](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/) for the
 collector DaemonSet pods can be set via `operator.collectors.daemonSetSeLinuxOptions`. The value is used as is for the
-pod's `spec.securityContext.seLinuxOptions`. It is unset by default. Changing it changes the collector pod spec, which
-triggers a rollout of the collector DaemonSet pods.
+pod's `spec.securityContext.seLinuxOptions`. It is unset by default. On OpenShift (`operator.openShift.enabled=true`),
+the operator uses the type `spc_t` unless this value is set, see [Notes on OpenShift](platform-specific.md#notes-on-openshift).
+Setting it to `{}` removes the SELinux options. Changing it changes the collector pod spec, which triggers a rollout of
+the collector DaemonSet pods.
 
 ```yaml
 operator:

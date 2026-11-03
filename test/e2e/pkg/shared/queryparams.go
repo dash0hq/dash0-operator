@@ -31,8 +31,10 @@ const (
 
 	// query parameters for matching Kubernetes events
 
-	QueryParamEventReason       = "event-reason"
-	QueryParamEventNameContains = "event-name-contains"
+	QueryParamEventReason                      = "event-reason"
+	QueryParamEventNameContains                = "event-name-contains"
+	QueryParamEventInvolvedObjectNameAttribute = "event-involved-object-name-attribute"
+	QueryParamEventInvolvedObjectName          = "event-involved-object-name"
 
 	// query parameters for matching metrics
 

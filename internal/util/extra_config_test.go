@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -481,7 +482,7 @@ var _ = Describe("extra config map", func() {
 
 				It("should use the GKE Autopilot defaults for the init container if the key is missing", func() {
 					extraConfig, err :=
-						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(true), true, logger)
+						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(true, false), true, logger)
 					Expect(err).ToNot(HaveOccurred())
 					resources := extraConfig.InstrumentationInitContainerResources
 					Expect(resources.Limits.StorageEphemeral().String()).To(Equal("500Mi"))
@@ -489,6 +490,27 @@ var _ = Describe("extra config map", func() {
 					Expect(resources.Requests.Memory().String()).To(Equal("128Mi"))
 					Expect(resources.Requests.StorageEphemeral().String()).To(Equal("500Mi"))
 				})
+
+				It("should use the OpenShift default for the DaemonSet SELinux options if the key is missing", func() {
+					extraConfig, err :=
+						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(false, true), true, logger)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(extraConfig.DaemonSetSELinuxOptions).To(Equal(&corev1.SELinuxOptions{Type: "spc_t"}))
+				})
+
+				DescribeTable("should keep the DaemonSet SELinux options on OpenShift if the key is present",
+					func(content string, expected *corev1.SELinuxOptions) {
+						_, err := tmpFile.WriteString(content)
+						Expect(err).ToNot(HaveOccurred())
+						extraConfig, err :=
+							readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(false, true), true, logger)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(extraConfig.DaemonSetSELinuxOptions).To(Equal(expected))
+					},
+					Entry("explicit null", "daemonSetSeLinuxOptions: null\n", nil),
+					Entry("other type", "daemonSetSeLinuxOptions:\n  type: container_logreader_t\n",
+						&corev1.SELinuxOptions{Type: "container_logreader_t"}),
+				)
 
 				It("should keep values that are present, including explicit nulls and partial resources", func() {
 					_, err := tmpFile.WriteString(`
@@ -506,7 +528,7 @@ deploymentNodeAffinity:
         operator: In
         values:
         - collector
-signalControlCollectorReplicas: 0
+signalControlCollectorReplicas: 4
 targetAllocatorContainerResources:
   limits:
     memory: 600Mi
@@ -518,7 +540,7 @@ agent0ConnectorAllowedKubectlCommands:
 					Expect(err).ToNot(HaveOccurred())
 
 					extraConfig, err :=
-						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(true), true, logger)
+						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(true, false), true, logger)
 					Expect(err).ToNot(HaveOccurred())
 
 					Expect(extraConfig.InstrumentationInitContainerResources.Limits).To(BeNil())
@@ -529,7 +551,7 @@ agent0ConnectorAllowedKubectlCommands:
 					}))
 					Expect(extraConfig.DeploymentNodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution).To(BeNil())
 					Expect(extraConfig.DeploymentNodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution).To(HaveLen(1))
-					Expect(extraConfig.SignalControlCollectorReplicas).To(Equal(int32(0)))
+					Expect(extraConfig.SignalControlCollectorReplicas).To(Equal(int32(4)))
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits).To(HaveLen(1))
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Memory().String()).To(Equal("600Mi"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Requests).To(BeNil())
@@ -541,6 +563,36 @@ agent0ConnectorAllowedKubectlCommands:
 					Expect(extraConfig.DeploymentProbes).To(Equal(defaultCollectorProbes))
 					Expect(extraConfig.EdgeProxyNodeAffinity).To(Equal(defaultNodeAffinity()))
 				})
+
+				It("should use the default replica counts for explicit nulls", func() {
+					_, err := tmpFile.WriteString(`
+signalControlCollectorReplicas: null
+edgeProxyReplicas: null
+`)
+					Expect(err).ToNot(HaveOccurred())
+
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(extraConfig.SignalControlCollectorReplicas).To(Equal(int32(2)))
+					Expect(extraConfig.EdgeProxyReplicas).To(Equal(int32(2)))
+				})
+
+				DescribeTable("should reject replica counts below 1", func(content string, expectedError string) {
+					_, err := tmpFile.WriteString(content)
+					Expect(err).ToNot(HaveOccurred())
+
+					_, err = readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
+					Expect(err).To(MatchError(ContainSubstring(expectedError)))
+				},
+					Entry("signalControlCollectorReplicas: 0", "signalControlCollectorReplicas: 0",
+						"signalControlCollectorReplicas (operator.collectors.signalControlCollectorReplicas) must be at least 1, but was 0"),
+					Entry("signalControlCollectorReplicas: -1", "signalControlCollectorReplicas: -1",
+						"signalControlCollectorReplicas (operator.collectors.signalControlCollectorReplicas) must be at least 1, but was -1"),
+					Entry("edgeProxyReplicas: 0", "edgeProxyReplicas: 0",
+						"edgeProxyReplicas (operator.signalControl.edgeProxy.replicas) must be at least 1, but was 0"),
+					Entry("edgeProxyReplicas: -1", "edgeProxyReplicas: -1",
+						"edgeProxyReplicas (operator.signalControl.edgeProxy.replicas) must be at least 1, but was -1"),
+				)
 
 				It("should not share the defaults with the extra config that has been read", func() {
 					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
@@ -557,16 +609,23 @@ agent0ConnectorAllowedKubectlCommands:
 				})
 
 				It("drift protection: the defaults are in sync with the defaults of the Helm chart", func() {
-					Expect(marshalToJson(ExtraConfigDefaults)).To(
-						MatchJSON(marshalToJson(readDefaultsOfHelmChart())),
+					defaults := map[string]any{}
+					Expect(json.Unmarshal([]byte(marshalToJson(ExtraConfigDefaults)), &defaults)).To(Succeed())
+					chartDefaults := map[string]any{}
+					Expect(json.Unmarshal([]byte(marshalToJson(readDefaultsOfHelmChart())), &chartDefaults)).To(Succeed())
+					Expect(defaults).To(
+						Equal(chartDefaults),
 						"the defaults of ExtraConfigDefaults and %s have diverged",
 						helmChartValuesFile,
 					)
 				})
 
-				It("drift protection: every field of ExtraConfig is compared with the defaults of the Helm chart", func() {
+				It("drift protection: every extra config file field is compared with the defaults of the Helm chart", func() {
 					for field := range reflect.TypeFor[ExtraConfig]().Fields() {
 						key, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+						if key == "-" {
+							continue
+						}
 						Expect(extraConfigKeysToHelmValues).To(
 							HaveKey(key),
 							"the key %s is missing from extraConfigKeysToHelmValues",
@@ -1459,7 +1518,8 @@ collectorFilelogOffsetStorageVolume:
 			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), ExtraConfigDefaults, logger)).To(Succeed())
 
 			for _, c := range clients {
-				Expect(c.updatedConfig).To(BeNil())
+				_, updatedConfig := c.recordedUpdates()
+				Expect(updatedConfig).To(BeNil())
 			}
 
 			_, err := tmpFile.WriteString(`
@@ -1473,8 +1533,8 @@ collectorFilelogOffsetStorageVolume:
 
 			Eventually(func(g Gomega) {
 				for _, c := range clients {
-					g.Expect(c.updateExtraConfigCalls).To(Equal(1))
-					updatedConfig := c.updatedConfig
+					updateExtraConfigCalls, updatedConfig := c.recordedUpdates()
+					g.Expect(updateExtraConfigCalls).To(Equal(1))
 					g.Expect(updatedConfig).ToNot(BeNil())
 					g.Expect(updatedConfig.CollectorFilelogOffsetStorageVolume).ToNot(BeNil())
 					filelogOffsetStorageVolume := updatedConfig.CollectorFilelogOffsetStorageVolume
@@ -1523,8 +1583,8 @@ collectorFilelogOffsetStorageVolume:
 			Expect(err).ToNot(HaveOccurred())
 
 			Eventually(func(g Gomega) {
-				g.Expect(client.updateExtraConfigCalls).To(Equal(1))
-				updatedConfig := client.updatedConfig
+				updateExtraConfigCalls, updatedConfig := client.recordedUpdates()
+				g.Expect(updateExtraConfigCalls).To(Equal(1))
 				g.Expect(updatedConfig).ToNot(BeNil())
 				g.Expect(updatedConfig.CollectorFilelogOffsetStorageVolume).ToNot(BeNil())
 				filelogOffsetStorageVolume := updatedConfig.CollectorFilelogOffsetStorageVolume
@@ -1559,8 +1619,9 @@ invalid yaml
 			Expect(err).ToNot(HaveOccurred())
 
 			Consistently(func(g Gomega) {
-				g.Expect(client.updateExtraConfigCalls).To(Equal(0))
-				g.Expect(client.updatedConfig).To(BeNil())
+				updateExtraConfigCalls, updatedConfig := client.recordedUpdates()
+				g.Expect(updateExtraConfigCalls).To(Equal(0))
+				g.Expect(updatedConfig).To(BeNil())
 			}, 2*time.Second, 100*time.Millisecond).To(Succeed())
 		})
 
@@ -1573,21 +1634,31 @@ invalid yaml
 			Expect(os.Remove(tmpFile.Name())).To(Succeed())
 
 			Consistently(func(g Gomega) {
-				g.Expect(client.updateExtraConfigCalls).To(Equal(0))
-				g.Expect(client.updatedConfig).To(BeNil())
+				updateExtraConfigCalls, updatedConfig := client.recordedUpdates()
+				g.Expect(updateExtraConfigCalls).To(Equal(0))
+				g.Expect(updatedConfig).To(BeNil())
 			}, 2*time.Second, 100*time.Millisecond).To(Succeed())
 		})
 	})
 })
 
 type DummyExtraConfigClient struct {
+	mutex                  sync.Mutex
 	updateExtraConfigCalls int
 	updatedConfig          *ExtraConfig
 }
 
 func (c *DummyExtraConfigClient) UpdateExtraConfig(_ context.Context, updatedConfig ExtraConfig, _ logd.Logger) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	c.updateExtraConfigCalls += 1
 	c.updatedConfig = &updatedConfig
+}
+
+func (c *DummyExtraConfigClient) recordedUpdates() (int, *ExtraConfig) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return c.updateExtraConfigCalls, c.updatedConfig
 }
 
 var helmChartValuesFile = filepath.Join("..", "..", "helm-chart", "dash0-operator", "values.yaml")

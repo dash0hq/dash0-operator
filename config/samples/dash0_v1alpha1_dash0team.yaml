@@ -1,0 +1,13 @@
+apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: backend-team
+spec:
+  display:
+    name: Backend Team
+    description: Owns the backend services.
+    color:
+      from: "#6366F1"
+      to: "#8B5CF6"
+  members:
+    - alice@example.com

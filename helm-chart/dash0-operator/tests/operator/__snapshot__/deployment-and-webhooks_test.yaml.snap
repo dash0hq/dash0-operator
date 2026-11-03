@@ -124,6 +124,8 @@ deployment should match snapshot (default values):
                   value: dash0-operator-certificates
                 - name: DASH0_CA_BUNDLE_TARGETS
                   value: MutatingWebhookConfiguration/dash0-operator-injector,MutatingWebhookConfiguration/dash0-operator-operator-configuration-mutating,ValidatingWebhookConfiguration/dash0-operator-operator-configuration-validator,MutatingWebhookConfiguration/dash0-operator-monitoring-mutating,ValidatingWebhookConfiguration/dash0-operator-monitoring-validator,CustomResourceDefinition/dash0monitorings.operator.dash0.com
+                - name: DASH0_EBPF_PROFILER_ENABLED
+                  value: "false"
               image: ghcr.io/dash0hq/operator-controller:0.0.0
               livenessProbe:
                 httpGet:
@@ -294,6 +296,8 @@ deployment should match snapshot when using cert-manager:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.name
+                - name: DASH0_EBPF_PROFILER_ENABLED
+                  value: "false"
               image: ghcr.io/dash0hq/operator-controller:0.0.0
               livenessProbe:
                 httpGet:
@@ -1312,24 +1316,7 @@ monitoring resource CRD should match snapshot:
               properties:
                 conditions:
                   items:
-                    description: |-
-                      Condition contains details for one aspect of the current state of this API Resource.
-                      ---
-                      This struct is intended for direct use as an array at the field path .status.conditions.  For example,
-
-
-                      	type FooStatus struct{
-                      	    // Represents the observations of a foo's current state.
-                      	    // Known .status.conditions.type are: "Available", "Progressing", and "Degraded"
-                      	    // +patchMergeKey=type
-                      	    // +patchStrategy=merge
-                      	    // +listType=map
-                      	    // +listMapKey=type
-                      	    Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
-
-
-                      	    // other fields
-                      	}
+                    description: Condition contains details for one aspect of the current state of this API Resource.
                     properties:
                       lastTransitionTime:
                         description: |-
@@ -2560,24 +2547,7 @@ monitoring resource CRD should match snapshot:
               properties:
                 conditions:
                   items:
-                    description: |-
-                      Condition contains details for one aspect of the current state of this API Resource.
-                      ---
-                      This struct is intended for direct use as an array at the field path .status.conditions.  For example,
-
-
-                      	type FooStatus struct{
-                      	    // Represents the observations of a foo's current state.
-                      	    // Known .status.conditions.type are: "Available", "Progressing", and "Degraded"
-                      	    // +patchMergeKey=type
-                      	    // +patchStrategy=merge
-                      	    // +listType=map
-                      	    // +listMapKey=type
-                      	    Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
-
-
-                      	    // other fields
-                      	}
+                    description: Condition contains details for one aspect of the current state of this API Resource.
                     properties:
                       lastTransitionTime:
                         description: |-

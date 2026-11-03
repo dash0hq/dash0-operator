@@ -150,6 +150,8 @@ Here is a list of configuration options for this resource:
   In contrast to the filters of a monitoring resource, which only apply to the telemetry collected in the namespace of
   that monitoring resource, these filters apply to all telemetry collected in the cluster.
   That includes telemetry which is not associated with a namespace, like node metrics or cluster-level metrics.
+  Log record filters also apply to Kubernetes events, see
+  [`spec.filter.logs.log_records`](#monitoringresource.spec.filter) for how to exclude them.
   This setting is optional, by default, no filters are applied.
   It is a validation error to set `telemetryCollection.enabled=false` and set filters at the same time.
 
@@ -171,6 +173,8 @@ Here is a list of configuration options for this resource:
   In contrast to the transformations of a monitoring resource, which only apply to the telemetry collected in the
   namespace of that monitoring resource, these transformations apply to all telemetry collected in the cluster.
   That includes telemetry which is not associated with a namespace, like node metrics or cluster-level metrics.
+  Log statements also apply to Kubernetes events, see
+  [`spec.transform.log_statements`](#monitoringresource.spec.transform) for how to exclude them.
   This setting is optional, by default, no transformations are applied.
   It is a validation error to set `telemetryCollection.enabled=false` and set transformations at the same time.
 
@@ -553,6 +557,10 @@ The Dash0 monitoring resource supports additional configuration settings:
     * **`spec.filter.logs.log_records`**:
       A list of OTTL conditions for filtering log records.
       All log records where at least one condition evaluates to true will be dropped.
+      The conditions also apply to the Kubernetes events collected in the namespace.
+      To exclude Kubernetes events from a condition `C`, change it to `(C) and attributes["k8s.event.name"] == nil`,
+      for example `(severity_number < SEVERITY_NUMBER_WARN) and attributes["k8s.event.name"] == nil`.
+      Keep the parentheses, since `and` binds tighter than `or`.
     * **`spec.filter.profiles.profile`**:
       A list of OTTL conditions for filtering profiles.
       All profiles where at least one condition evaluates to true will be dropped.
@@ -594,6 +602,16 @@ The Dash0 monitoring resource supports additional configuration settings:
       A list of OTTL statements (or a list of groups in the advanced config style) for transforming metric telemetry.
     * **`spec.transform.log_statements`**:
       A list of OTTL statements (or a list of groups in the advanced config style) for transforming log telemetry.
+      The statements also apply to the Kubernetes events collected in the namespace.
+      To exclude Kubernetes events from a statement, add `where log.attributes["k8s.event.name"] == nil` to it, for
+      example `truncate_all(log.attributes, 1024) where log.attributes["k8s.event.name"] == nil`.
+      If the statement already has a `where` clause `W`, change it to
+      `where (W) and log.attributes["k8s.event.name"] == nil`; keep the parentheses, since `and` binds tighter than
+      `or`.
+      The conditions of a group are combined with OR, so in a group, change each condition `C` to
+      `(C) and log.attributes["k8s.event.name"] == nil`.
+      Add the check as a separate condition only if the group has no other conditions.
+      In a group with an explicit `context: log`, use the path without prefix: `attributes["k8s.event.name"] == nil`.
     * **`spec.transform.profile_statements`**:
       A list of OTTL statements (or a list of groups in the advanced config style) for transforming profile telemetry.
   This setting is optional, by default, no transformations are applied.

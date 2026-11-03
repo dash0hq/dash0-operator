@@ -104,8 +104,6 @@ type collectorConfigurationTemplateValues struct {
 	TargetAllocatorServiceName                       string
 	TargetAllocatorMtlsEnabled                       bool
 	TargetAllocatorMtlsClientCertsDir                string
-	Agent0ConnectorEnabled                           bool
-	Agent0ConnectorDeploymentName                    string
 	KubeletStatsReceiverConfig                       util.KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
 	IsGkeAutopilot                                   bool
@@ -129,6 +127,8 @@ type collectorConfigurationTemplateValues struct {
 	DebugVerbosityDetailed                           bool
 	EnableProfExtension                              bool
 	ProfilingEnabled                                 bool
+	EbpfProfilerEnabled                              bool
+	PodAssociationPipelines                          map[string]string
 	SignalControl                                    SignalControlConfig
 	SignalControlGatewayActive                       bool
 	SignalControlCollectorServiceName                string
@@ -408,6 +408,12 @@ func newCollectorConfigurationTemplateValues(
 		memoryLimiterLimitMiB = settings.LimitMiB
 		memoryLimiterSpikeMiB = settings.SpikeMiB
 	}
+	podAssociationPipelines := map[string]string{
+		"common-processors": "k8s_attributes",
+	}
+	if config.EbpfProfilerEnabled {
+		podAssociationPipelines["ebpf-profiler"] = "k8s_attributes/profiles"
+	}
 
 	return &collectorConfigurationTemplateValues{
 		OperatorNamespace:           config.OperatorNamespace,
@@ -429,8 +435,6 @@ func newCollectorConfigurationTemplateValues(
 		TargetAllocatorServiceName:                       targetAllocatorServiceName,
 		TargetAllocatorMtlsEnabled:                       targetAllocatorMtlsConfig.Enabled,
 		TargetAllocatorMtlsClientCertsDir:                targetAllocatorCertsVolumeDir,
-		Agent0ConnectorEnabled:                           config.Agent0ConnectorEnabled,
-		Agent0ConnectorDeploymentName:                    config.Agent0ConnectorDeploymentName,
 		KubeletStatsReceiverConfig:                       config.KubeletStatsReceiverConfig,
 		UseHostMetricsReceiver:                           config.UseHostMetricsReceiver,
 		IsGkeAutopilot:                                   config.IsGkeAutopilot,
@@ -454,6 +458,8 @@ func newCollectorConfigurationTemplateValues(
 		DebugVerbosityDetailed:                           config.DebugVerbosityDetailed,
 		EnableProfExtension:                              config.EnableProfExtension,
 		ProfilingEnabled:                                 config.ProfilingEnabled,
+		EbpfProfilerEnabled:                              config.EbpfProfilerEnabled,
+		PodAssociationPipelines:                          podAssociationPipelines,
 		SignalControl:                                    config.SignalControl,
 		SignalControlGatewayActive:                       config.signalControlGatewayActive(),
 		SignalControlCollectorServiceName:                SignalControlCollectorServiceName(config.NamePrefix),

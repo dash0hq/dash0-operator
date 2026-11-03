@@ -30,6 +30,7 @@ updates:
     directories:
       - "/"
       - "/images/configreloader/src"
+      - "/images/debuginfo-proxy/src"
       - "/images/filelogoffsetsync/src"
       - "/images/pkg/common"
       - "test/e2e"
@@ -129,6 +130,7 @@ updates:
       - "/images/agent0-connector"
       - "/images/collector"
       - "/images/configreloader"
+      - "/images/debuginfo-proxy"
       - "/images/filelogoffsetsync"
       - "/images/filelogoffsetvolumeownership"
       - "/images/volumeownership"
@@ -154,8 +156,9 @@ updates:
       # which breaks `make go-version-check`.
       - dependency-name: "golang"
       # The kubectl image in images/agent0-connector/Dockerfile is updated together with the kubectl Go modules by
-      # .github/workflows/update-agent0-connector-kubectl.yaml, see above.
-      - dependency-name: "registry.k8s.io/kubectl"
+      # .github/workflows/update-agent0-connector-kubectl.yaml, see above. Dependabot names Docker images without
+      # their registry, so the name is "kubectl", not "registry.k8s.io/kubectl".
+      - dependency-name: "kubectl"
       # enable the following `ignore` to prevent upgrades to python pre-releases
       - dependency-name: "python"
         update-types: ["version-update:semver-minor"]

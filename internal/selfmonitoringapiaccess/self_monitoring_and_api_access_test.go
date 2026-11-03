@@ -1313,6 +1313,54 @@ var _ = Describe(
 					verifyNoSdkEnvVars(containers[0], "GRPC")
 					verifySecretBackedHeaderWiring(containers[1], "GRPC")
 				})
+
+				It("should set the collector's service.name for the Go SDK containers in a collector pod", func() {
+					containers := collectorContainers()
+					err := enableSelfMonitoringInContainers(
+						containers,
+						SelfMonitoringConfiguration{
+							SelfMonitoringEnabled: true,
+							Export: dash0common.Export{
+								Grpc: &dash0common.GrpcConfiguration{Endpoint: EndpointGrpcTest},
+							},
+						},
+						"1.2.3",
+						false,
+						"opentelemetry-collector",
+					)
+					Expect(err).NotTo(HaveOccurred())
+					verifyNoSdkEnvVars(containers[0], "GRPC")
+					resourceAttributesEnvVarIdx :=
+						slices.IndexFunc(containers[1].Env, matchEnvVar(util.OtelResourceAttributesEnvVarName))
+					Expect(resourceAttributesEnvVarIdx).To(BeNumerically(">=", 0))
+					Expect(containers[1].Env[resourceAttributesEnvVarIdx].Value).To(Equal(
+						"service.namespace=dash0-operator,service.name=dash0-operator-collector,service.version=1.2.3",
+					))
+				})
+
+				It("should use the container name as service.name for Go SDK containers outside of a collector pod",
+					func() {
+						containers := []corev1.Container{{Name: "agent0-connector"}}
+						err := enableSelfMonitoringInContainers(
+							containers,
+							SelfMonitoringConfiguration{
+								SelfMonitoringEnabled: true,
+								Export: dash0common.Export{
+									Grpc: &dash0common.GrpcConfiguration{Endpoint: EndpointGrpcTest},
+								},
+							},
+							"1.2.3",
+							false,
+							"",
+						)
+						Expect(err).NotTo(HaveOccurred())
+						resourceAttributesEnvVarIdx :=
+							slices.IndexFunc(containers[0].Env, matchEnvVar(util.OtelResourceAttributesEnvVarName))
+						Expect(resourceAttributesEnvVarIdx).To(BeNumerically(">=", 0))
+						Expect(containers[0].Env[resourceAttributesEnvVarIdx].Value).To(Equal(
+							"service.namespace=dash0-operator,service.name=agent0-connector,service.version=1.2.3",
+						))
+					})
 			},
 		)
 

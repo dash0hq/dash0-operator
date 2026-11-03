@@ -1,5 +1,8 @@
 {{- $selfManagedCertificates := not .Values.operator.certManager.useCertManager }}
 {{- $chartName := include "dash0-operator.chartName" . }}
+{{- if and .Values.operator.ebpfProfilerEnabled (not .Values.operator.telemetryCollectionEnabled) }}
+{{- fail "Error: operator.ebpfProfilerEnabled requires operator.telemetryCollectionEnabled=true." }}
+{{- end }}
 
 {{- if $selfManagedCertificates }}
 {{/*
@@ -71,7 +74,10 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
+  {{- include "dash0-operator.validateReplicas" (dict "name" "operator.replicaCount" "value" .Values.operator.replicaCount) }}
+  {{- if not (kindIs "invalid" .Values.operator.replicaCount) }}
   replicas: {{ .Values.operator.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: dash0-operator
@@ -144,7 +150,10 @@ spec:
         - --operator-configuration-collect-namespace-labels-and-annotations-enabled={{ .Values.operator.collectNamespaceLabelsAndAnnotationsEnabled }}
         - --operator-configuration-collect-node-labels-and-annotations-enabled={{ .Values.operator.collectNodeLabelsAndAnnotationsEnabled }}
         - --operator-configuration-prometheus-crd-support-enabled={{ .Values.operator.prometheusCrdSupportEnabled }}
-        - --operator-configuration-profiling-enabled={{ .Values.operator.profilingEnabled }}
+        - --operator-configuration-profiling-enabled={{ or .Values.operator.profilingEnabled .Values.operator.ebpfProfilerEnabled }}
+{{- if .Values.operator.ebpfProfilerEnabled }}
+        - --operator-configuration-ebpf-profiler-enabled=true
+{{- end }}
 {{- if .Values.operator.clusterName }}
         - --operator-configuration-cluster-name={{ .Values.operator.clusterName }}
 {{- end }}{{/*closes "if .Values.operator.clusterName" */}}
@@ -447,6 +456,22 @@ spec:
           value: {{ include "dash0-operator.legacyCertificatesSecretName" . }}
         - name: DASH0_CA_BUNDLE_TARGETS
           value: {{ include "dash0-operator.caBundleTargets" . | quote }}
+        {{- end }}
+        - name: DASH0_EBPF_PROFILER_ENABLED
+          value: {{ .Values.operator.ebpfProfilerEnabled | toString | quote }}
+        {{- if .Values.operator.ebpfProfilerEnabled }}
+        - name: DASH0_EBPF_PROFILER_IMAGE
+          value: {{ include "dash0-operator.ebpfProfilerImage" . | quote }}
+        {{- if .Values.operator.ebpfProfilerImage.pullPolicy }}
+        - name: DASH0_EBPF_PROFILER_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.ebpfProfilerImage.pullPolicy | quote }}
+        {{- end }}
+        - name: DASH0_DEBUGINFO_PROXY_IMAGE
+          value: {{ include "dash0-operator.debuginfoProxyImage" . | quote }}
+        {{- if .Values.operator.debuginfoProxyImage.pullPolicy }}
+        - name: DASH0_DEBUGINFO_PROXY_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.debuginfoProxyImage.pullPolicy | quote }}
+        {{- end }}
         {{- end }}
         ports:
         - containerPort: 9443
@@ -1969,16 +1994,8 @@ spec:
             properties:
               conditions:
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -3276,16 +3293,8 @@ spec:
             properties:
               conditions:
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-

@@ -60,6 +60,8 @@ clusters:
   autopilot due to the lack of the `nodes/proxy` permission
 - the [synthetics-worker](synthetics-worker.md) is not yet supported, since its container image has not been added to
   the GKE Autopilot workload allowlist
+- the [operator-managed eBPF profiler](profiling.md#operator-managed-ebpf-profiler) is not yet supported. It requires a
+  new workload allowlist submitted to Google, reviewed, and published. This review usually takes a few weeks.
 
 GKE Autopilot [adjusts](https://cloud.google.com/kubernetes-engine/docs/concepts/autopilot-resource-requests) the
 resource requests and limits of all workloads, including the OpenTelemetry collectors and the other workloads managed by
@@ -134,10 +136,14 @@ set to `true`, the Dash0 operator Helm chart and operator:
 
 - create a custom `SecurityContextConstraints` resource plus the RBAC that binds it to the OpenTelemetry collector
   DaemonSet's service account, so the DaemonSet may use the host access it requires (host log directories via `hostPath`
-  and the OTLP host ports), and
+  and the OTLP host ports),
 - drop the hard-coded pod-level `runAsUser`/`runAsGroup` from the operator-managed workloads (the agent0-connector, the
   target-allocator, and the Signal Control edge-proxy) and from the injected instrumentation init container, so that the
-  namespace's SCC assigns an in-range UID instead of a pinned one that `restricted-v2` would reject.
+  namespace's SCC assigns an in-range UID instead of a pinned one that `restricted-v2` would reject, and
+- set the SELinux type `spc_t` on the collector DaemonSet pods. OpenShift nodes enforce SELinux, and the default
+  container type `container_t` is not allowed to read the pod log files in `/var/log/pods`. A value set via
+  `operator.collectors.daemonSetSeLinuxOptions` replaces this default, `{}` removes it (see
+  [Configuring SELinux Options for the Collector DaemonSet](advanced-configuration.md#configuring-selinux-options-for-the-collector-daemonset)).
 
 ## Notes on SELinux-Enforcing Clusters
 

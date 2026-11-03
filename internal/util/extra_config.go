@@ -135,6 +135,25 @@ type ExtraConfig struct {
 	Agent0ConnectorTolerations            []corev1.Toleration                `json:"agent0ConnectorTolerations,omitempty"`
 	Agent0ConnectorNodeAffinity           *corev1.NodeAffinity               `json:"agent0ConnectorNodeAffinity,omitempty"`
 
+	// Profiling component settings come from spec.components, not the extra config file.
+	EbpfProfilerContainerResources ResourceRequirementsWithGoMemLimit `json:"-"`
+	EbpfProfilerLabels             map[string]string                  `json:"-"`
+	EbpfProfilerAnnotations        map[string]string                  `json:"-"`
+	EbpfProfilerPodLabels          map[string]string                  `json:"-"`
+	EbpfProfilerPodAnnotations     map[string]string                  `json:"-"`
+	EbpfProfilerTolerations        []corev1.Toleration                `json:"-"`
+	EbpfProfilerNodeAffinity       *corev1.NodeAffinity               `json:"-"`
+	EbpfProfilerPriorityClassName  string                             `json:"-"`
+
+	DebuginfoProxyContainerResources ResourceRequirementsWithGoMemLimit `json:"-"`
+	DebuginfoProxyLabels             map[string]string                  `json:"-"`
+	DebuginfoProxyAnnotations        map[string]string                  `json:"-"`
+	DebuginfoProxyPodLabels          map[string]string                  `json:"-"`
+	DebuginfoProxyPodAnnotations     map[string]string                  `json:"-"`
+	DebuginfoProxyTolerations        []corev1.Toleration                `json:"-"`
+	DebuginfoProxyNodeAffinity       *corev1.NodeAffinity               `json:"-"`
+	DebuginfoProxyPriorityClassName  string                             `json:"-"`
+
 	// Actually we would like to use the types *dash0v1alpha1.MonitoringTemplate, *dash0common.Filter and
 	// *dash0common.Transform here, but that leads to circular package dependencies. We should revisit how to untangle
 	// this.
@@ -233,6 +252,26 @@ var (
 				corev1.ResourceMemory: resource.MustParse("64Mi"),
 			},
 		},
+		EbpfProfilerContainerResources: ResourceRequirementsWithGoMemLimit{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("512Mi"),
+			},
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("100m"),
+				corev1.ResourceMemory: resource.MustParse("128Mi"),
+			},
+		},
+		EbpfProfilerNodeAffinity: defaultNodeAffinity(),
+		DebuginfoProxyContainerResources: ResourceRequirementsWithGoMemLimit{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("128Mi"),
+			},
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("10m"),
+				corev1.ResourceMemory: resource.MustParse("32Mi"),
+			},
+		},
+		DebuginfoProxyNodeAffinity: defaultNodeAffinity(),
 
 		// The following defaults are only applied when the respective key is missing from the extra config map (see
 		// readExtraConfigurationFromFile), since the Helm chart renders them whenever the respective component is
@@ -342,11 +381,16 @@ func defaultNodeAffinity() *corev1.NodeAffinity {
 }
 
 // ExtraConfigDefaultsFor returns the defaults that apply when a value is missing from the extra config map, and with
-// which the settings in spec.components are merged. They match the defaults of the Helm chart.
-func ExtraConfigDefaultsFor(isGkeAutopilot bool) ExtraConfig {
+// which the settings in spec.components are merged. Settings exposed through Helm match the defaults of the chart,
+// except for the DaemonSet SELinux options on OpenShift, which only the operator sets.
+func ExtraConfigDefaultsFor(isGkeAutopilot bool, isOpenShift bool) ExtraConfig {
 	defaults := ExtraConfigDefaults
 	if isGkeAutopilot {
 		defaults.InstrumentationInitContainerResources = gkeAutopilotInstrumentationInitContainerResources
+	}
+	if isOpenShift {
+		// OpenShift nodes enforce SELinux, and the default container type container_t cannot read /var/log/pods.
+		defaults.DaemonSetSELinuxOptions = &corev1.SELinuxOptions{Type: "spc_t"}
 	}
 	return defaults
 }
@@ -385,6 +429,9 @@ func readExtraConfigurationFromFile(
 		return ExtraConfig{}, fmt.Errorf("cannot unmarshal the configuration file %w", err)
 	}
 	applyDefaultsForMissingKeys(extraConfig, &defaults, presentKeys)
+	if err = validateReplicaCounts(extraConfig); err != nil {
+		return ExtraConfig{}, err
+	}
 
 	applyDefaults(
 		&extraConfig.CollectorDaemonSetCollectorContainerResources,
@@ -422,13 +469,15 @@ func readExtraConfigurationFromFile(
 	return *extraConfig, nil
 }
 
-// applyDefaultsForMissingKeys sets the defaults for the values that the Helm chart renders whenever the respective
-// component is enabled, when their key is missing. A value that is present is kept as it is, including an explicit
-// null.
+// applyDefaultsForMissingKeys sets defaults when a key is missing. A value that is present is kept as it is, including
+// an explicit null, except for replica counts, for which null also means the default.
 func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig, presentKeys map[string]any) {
 	missing := func(key string) bool {
 		_, present := presentKeys[key]
 		return !present
+	}
+	missingOrNull := func(key string) bool {
+		return presentKeys[key] == nil
 	}
 	if missing("initContainerResources") {
 		extraConfig.InstrumentationInitContainerResources = defaults.InstrumentationInitContainerResources.DeepCopy()
@@ -439,13 +488,16 @@ func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig
 	if missing("daemonSetProbes") {
 		extraConfig.DaemonSetProbes = defaults.DaemonSetProbes.DeepCopy()
 	}
+	if missing("daemonSetSeLinuxOptions") {
+		extraConfig.DaemonSetSELinuxOptions = defaults.DaemonSetSELinuxOptions.DeepCopy()
+	}
 	if missing("deploymentNodeAffinity") {
 		extraConfig.DeploymentNodeAffinity = defaults.DeploymentNodeAffinity.DeepCopy()
 	}
 	if missing("deploymentProbes") {
 		extraConfig.DeploymentProbes = defaults.DeploymentProbes.DeepCopy()
 	}
-	if missing("signalControlCollectorReplicas") {
+	if missingOrNull("signalControlCollectorReplicas") {
 		extraConfig.SignalControlCollectorReplicas = defaults.SignalControlCollectorReplicas
 	}
 	if missing("signalControlCollectorNodeAffinity") {
@@ -460,7 +512,7 @@ func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig
 	if missing("targetAllocatorNodeAffinity") {
 		extraConfig.TargetAllocatorNodeAffinity = defaults.TargetAllocatorNodeAffinity.DeepCopy()
 	}
-	if missing("edgeProxyReplicas") {
+	if missingOrNull("edgeProxyReplicas") {
 		extraConfig.EdgeProxyReplicas = defaults.EdgeProxyReplicas
 	}
 	if missing("edgeProxyContainerResources") {
@@ -478,6 +530,24 @@ func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig
 	if missing("agent0ConnectorNodeAffinity") {
 		extraConfig.Agent0ConnectorNodeAffinity = defaults.Agent0ConnectorNodeAffinity.DeepCopy()
 	}
+}
+
+// validateReplicaCounts rejects replica counts below 1 in the extra config map.
+func validateReplicaCounts(extraConfig *ExtraConfig) error {
+	if extraConfig.SignalControlCollectorReplicas < 1 {
+		return fmt.Errorf(
+			"signalControlCollectorReplicas (operator.collectors.signalControlCollectorReplicas) must be at least 1, "+
+				"but was %d",
+			extraConfig.SignalControlCollectorReplicas,
+		)
+	}
+	if extraConfig.EdgeProxyReplicas < 1 {
+		return fmt.Errorf(
+			"edgeProxyReplicas (operator.signalControl.edgeProxy.replicas) must be at least 1, but was %d",
+			extraConfig.EdgeProxyReplicas,
+		)
+	}
+	return nil
 }
 
 // applyDefaults sets default values for CPU, Memory, and Ephemeral Storage on requests and limits.

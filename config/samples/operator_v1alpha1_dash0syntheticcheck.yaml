@@ -1,0 +1,51 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SyntheticCheck
+metadata:
+  name: example-com
+spec:
+  enabled: true
+  display:
+    name: example.com
+  notifications:
+    channels: []
+  plugin:
+    kind: http
+    spec:
+      assertions:
+        criticalAssertions:
+          - kind: status_code
+            spec:
+              value: "200"
+              operator: is
+          - kind: timing
+            spec:
+              type: response
+              operator: lte
+              value: 5000ms
+        degradedAssertions:
+          - kind: timing
+            spec:
+              type: response
+              operator: lte
+              value: 2000ms
+      request:
+        headers: []
+        method: get
+        queryParameters: []
+        redirects: follow
+        tls:
+          allowInsecure: false
+        tracing:
+          addTracingHeaders: false
+        url: https://www.example.com
+  retries:
+    kind: fixed
+    spec:
+      attempts: 3
+      delay: 1s
+  schedule:
+    interval: 1m
+    locations:
+      - de-frankfurt
+      - us-oregon
+    strategy: all_locations
