@@ -16,12 +16,15 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	kubeversion "k8s.io/apimachinery/pkg/version"
 	"sigs.k8s.io/yaml"
 
+	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/startup"
 )
 
@@ -47,6 +50,12 @@ const (
 	webhookServiceNameEnvVarName     = "DASH0_WEBHOOK_SERVICE_NAME"
 	agent0ConnectorEnabledEnvVarName = "DASH0_AGENT0_CONNECTOR_ENABLED"
 	relatedImageEnvVarPrefix         = "RELATED_IMAGE_"
+
+	daemonSetServiceAccountFlag = "dash0-otel-collector-daemonset-service-account-name"
+	// daemonSetSccClusterRoleName only exists in the bundle input, operator-sdk turns the role into clusterPermissions.
+	daemonSetSccClusterRoleName = otelcolresources.OlmDaemonSetServiceAccountName + "-scc"
+	// privilegedScc is the built-in SecurityContextConstraints of OpenShift that the collector daemonset runs with.
+	privilegedScc = "privileged"
 )
 
 var (
@@ -106,6 +115,7 @@ func transform(in io.Reader, out io.Writer, log io.Writer, version string) error
 	var csvs []*unstructured.Unstructured
 	deployments := 0
 	managerImage := ""
+	namespace := ""
 	for _, doc := range docs {
 		if _, isHook := doc.GetAnnotations()[helmHookAnnotation]; isHook {
 			fmt.Fprintf(log, "dropped the Helm hook %s %s\n", doc.GetKind(), doc.GetName())
@@ -131,6 +141,7 @@ func transform(in io.Reader, out io.Writer, log io.Writer, version string) error
 			if managerImage, err = transformDeployment(doc, version, log); err != nil {
 				return fmt.Errorf("the Deployment %s: %w", doc.GetName(), err)
 			}
+			namespace = doc.GetNamespace()
 		}
 		if doc.GetKind() == kindClusterServiceVersion {
 			csvs = append(csvs, doc)
@@ -146,7 +157,56 @@ func transform(in io.Reader, out io.Writer, log io.Writer, version string) error
 	for _, csv := range csvs {
 		setContainerImage(csv, managerImage, log)
 	}
-	return writeDocuments(out, kept)
+	daemonSetServiceAccountDocs, err := daemonSetServiceAccountDocuments(namespace)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(log, "added the service account %s for the collector daemonset with the use of the %s "+
+		"SecurityContextConstraints\n", otelcolresources.OlmDaemonSetServiceAccountName, privilegedScc)
+	return writeDocuments(out, append(kept, daemonSetServiceAccountDocs...))
+}
+
+// daemonSetServiceAccountDocuments returns the service account of the collector daemonset and its binding to the use of
+// the privileged SecurityContextConstraints. generate-bundle.sh passes the service account to operator-sdk via
+// --extra-service-accounts, so it ends up in clusterPermissions. On clusters without OpenShift, the rule has no effect.
+func daemonSetServiceAccountDocuments(namespace string) ([]*unstructured.Unstructured, error) {
+	serviceAccount := &corev1.ServiceAccount{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "ServiceAccount"},
+		ObjectMeta: metav1.ObjectMeta{Name: otelcolresources.OlmDaemonSetServiceAccountName, Namespace: namespace},
+	}
+	clusterRole := &rbacv1.ClusterRole{
+		TypeMeta:   metav1.TypeMeta{APIVersion: rbacv1.SchemeGroupVersion.String(), Kind: "ClusterRole"},
+		ObjectMeta: metav1.ObjectMeta{Name: daemonSetSccClusterRoleName},
+		Rules: []rbacv1.PolicyRule{{
+			APIGroups:     []string{"security.openshift.io"},
+			Resources:     []string{"securitycontextconstraints"},
+			ResourceNames: []string{privilegedScc},
+			Verbs:         []string{"use"},
+		}},
+	}
+	clusterRoleBinding := &rbacv1.ClusterRoleBinding{
+		TypeMeta:   metav1.TypeMeta{APIVersion: rbacv1.SchemeGroupVersion.String(), Kind: "ClusterRoleBinding"},
+		ObjectMeta: metav1.ObjectMeta{Name: daemonSetSccClusterRoleName},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: rbacv1.GroupName,
+			Kind:     "ClusterRole",
+			Name:     daemonSetSccClusterRoleName,
+		},
+		Subjects: []rbacv1.Subject{{
+			Kind:      rbacv1.ServiceAccountKind,
+			Name:      otelcolresources.OlmDaemonSetServiceAccountName,
+			Namespace: namespace,
+		}},
+	}
+	docs := make([]*unstructured.Unstructured, 0, 3)
+	for _, object := range []runtime.Object{serviceAccount, clusterRole, clusterRoleBinding} {
+		content, err := runtime.DefaultUnstructuredConverter.ToUnstructured(object)
+		if err != nil {
+			return nil, fmt.Errorf("cannot convert the %s: %w", object.GetObjectKind().GroupVersionKind().Kind, err)
+		}
+		docs = append(docs, &unstructured.Unstructured{Object: content})
+	}
+	return docs, nil
 }
 
 // setContainerImage sets the containerImage annotation of the CSV base to the image of the manager container, since the
@@ -329,6 +389,9 @@ func transformDeployment(doc *unstructured.Unstructured, version string, log io.
 	if err := removeWebhookCertificateVolume(podSpec, container, log); err != nil {
 		return "", err
 	}
+	if err := addDaemonSetServiceAccountEnvVar(container, log); err != nil {
+		return "", err
+	}
 	if err := addRelatedImageEnvVars(container, log); err != nil {
 		return "", err
 	}
@@ -439,6 +502,22 @@ func removeWebhookCertificateVolume(podSpec *corev1.PodSpec, container *corev1.C
 	})
 	fmt.Fprintf(log, "removed the volume %s, OLM mounts the webhook certificate at %s\n",
 		strings.Join(removed, ", "), webhookServingCertsPath)
+	return nil
+}
+
+// addDaemonSetServiceAccountEnvVar makes the operator run the collector daemonset with the service account that OLM
+// creates from the CSV, see daemonSetServiceAccountDocuments.
+func addDaemonSetServiceAccountEnvVar(container *corev1.Container, log io.Writer) error {
+	if startup.NewOperatorManagerFlagSet().Lookup(daemonSetServiceAccountFlag) == nil {
+		return fmt.Errorf("--%s is not a command-line flag of the operator manager", daemonSetServiceAccountFlag)
+	}
+	name := startup.EnvVarNameForFlag(daemonSetServiceAccountFlag)
+	if findEnvVar(container.Env, name) != nil {
+		return fmt.Errorf("the environment variable %s is already set", name)
+	}
+	container.Env = append(container.Env,
+		corev1.EnvVar{Name: name, Value: otelcolresources.OlmDaemonSetServiceAccountName})
+	fmt.Fprintf(log, "set %s to %s\n", name, otelcolresources.OlmDaemonSetServiceAccountName)
 	return nil
 }
 

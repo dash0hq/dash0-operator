@@ -275,7 +275,10 @@ spec:
     Some operator settings are read from `DASH0_*` environment variables, which can be set in `spec.config.env` of the
     Subscription. For example, `DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION=true` turns on Python instrumentation.
 
-    This bundle does not support OpenShift or GKE Autopilot.
+    On OpenShift, the collector DaemonSet runs with the built-in `privileged` SecurityContextConstraints, which the
+    bundle grants to its service account `dash0-operator-olm-collector`.
+
+    This bundle does not support GKE Autopilot.
   displayName: Dash0 Operator
   install:
     spec:

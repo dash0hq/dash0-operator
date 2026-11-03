@@ -234,15 +234,16 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		//   not supported in Docker, at least not in Docker Desktop. See
 		//   https://github.com/prometheus/node_exporter/issues/2002#issuecomment-801763211 and similar.
 		//   For this reason, we do not allow enabling the hostmetrics receiver when the node runtime is Docker.
-		UseHostMetricsReceiver: kubernetesInfrastructureMetricsCollectionEnabled && !m.collectorConfig.IsDocker,
-		DisableHostPorts:       m.collectorConfig.DisableHostPorts,
-		OtlpGrpcHostPort:       ResolveOtlpGrpcHostPort(m.collectorConfig.OtlpGrpcHostPort),
-		OtlpHttpHostPort:       ResolveOtlpHttpHostPort(m.collectorConfig.OtlpHttpHostPort),
-		ClusterName:            clusterName,
-		PseudoClusterUid:       m.collectorConfig.PseudoClusterUid,
-		Images:                 m.collectorConfig.Images,
-		IsIPv6Cluster:          m.collectorConfig.IsIPv6Cluster,
-		IsGkeAutopilot:         m.collectorConfig.IsGkeAutopilot,
+		UseHostMetricsReceiver:      kubernetesInfrastructureMetricsCollectionEnabled && !m.collectorConfig.IsDocker,
+		DisableHostPorts:            m.collectorConfig.DisableHostPorts,
+		OtlpGrpcHostPort:            ResolveOtlpGrpcHostPort(m.collectorConfig.OtlpGrpcHostPort),
+		OtlpHttpHostPort:            ResolveOtlpHttpHostPort(m.collectorConfig.OtlpHttpHostPort),
+		DaemonSetServiceAccountName: m.collectorConfig.DaemonSetServiceAccountName,
+		ClusterName:                 clusterName,
+		PseudoClusterUid:            m.collectorConfig.PseudoClusterUid,
+		Images:                      m.collectorConfig.Images,
+		IsIPv6Cluster:               m.collectorConfig.IsIPv6Cluster,
+		IsGkeAutopilot:              m.collectorConfig.IsGkeAutopilot,
 		ServiceTrafficDistribution: cluster.ResolveServiceTrafficDistribution(
 			m.collectorConfig.KubernetesApiServerVersion,
 			logger,

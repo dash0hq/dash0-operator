@@ -17,6 +17,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
@@ -490,6 +491,81 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Expect(otlpPort.HostPort).To(Equal(int32(0)))
 			Expect(otlpHttpPort.ContainerPort).To(Equal(int32(4318)))
 			Expect(otlpHttpPort.HostPort).To(Equal(int32(0)))
+		})
+	})
+
+	Describe("the service account of the DaemonSet collector", func() {
+		configWithServiceAccount := func(serviceAccountName string) *oTelColConfig {
+			return &oTelColConfig{
+				OperatorNamespace:           OperatorNamespace,
+				NamePrefix:                  namePrefix,
+				Exporters:                   defaultDash0ExportersWithToken(),
+				Images:                      TestImages,
+				DaemonSetServiceAccountName: serviceAccountName,
+			}
+		}
+
+		expectDaemonSetServiceAccount := func(desiredState []clientObject, serviceAccountName string) {
+			Expect(getDaemonSet(desiredState).Spec.Template.Spec.ServiceAccountName).To(Equal(serviceAccountName))
+			roleBinding := findObjectByName(desiredState, ExpectedDaemonSetRoleBindingName).(*rbacv1.RoleBinding)
+			Expect(roleBinding.Subjects).To(ConsistOf(rbacv1.Subject{
+				Kind: "ServiceAccount", Name: serviceAccountName, Namespace: OperatorNamespace,
+			}))
+			clusterRoleBinding :=
+				findObjectByName(desiredState, ExpectedDaemonSetClusterRoleBinding).(*rbacv1.ClusterRoleBinding)
+			Expect(clusterRoleBinding.Subjects).To(ConsistOf(rbacv1.Subject{
+				Kind: "ServiceAccount", Name: serviceAccountName, Namespace: OperatorNamespace,
+			}))
+		}
+
+		It("should be the operator-managed service account by default", func() {
+			desiredState, err := assembleDesiredStateForUpsert(configWithServiceAccount(""), nil, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(findObjectByName(desiredState, ExpectedDaemonSetServiceAccountName)).ToNot(BeNil())
+			expectDaemonSetServiceAccount(desiredState, ExpectedDaemonSetServiceAccountName)
+		})
+
+		It("should be the external service account if one is configured", func() {
+			desiredState, err := assembleDesiredStateForUpsert(
+				configWithServiceAccount(OlmDaemonSetServiceAccountName), nil, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(findObjectByName(desiredState, ExpectedDaemonSetServiceAccountName)).To(BeNil())
+			Expect(findObjectByName(desiredState, OlmDaemonSetServiceAccountName)).To(BeNil())
+			expectDaemonSetServiceAccount(desiredState, OlmDaemonSetServiceAccountName)
+		})
+
+		It("should manage the service account if the configured name is the one of the operator-managed account", func() {
+			desiredState, err := assembleDesiredStateForUpsert(
+				configWithServiceAccount(ExpectedDaemonSetServiceAccountName), nil, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(findObjectByName(desiredState, ExpectedDaemonSetServiceAccountName)).ToNot(BeNil())
+			expectDaemonSetServiceAccount(desiredState, ExpectedDaemonSetServiceAccountName)
+		})
+
+		It("should keep the operator-managed but not the external service account in the desired state for deletion",
+			func() {
+				desiredState, err := assembleDesiredStateForDelete(
+					configWithServiceAccount(OlmDaemonSetServiceAccountName), util.ExtraConfigDefaults)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(findObjectByName(desiredState, ExpectedDaemonSetServiceAccountName)).ToNot(BeNil())
+				Expect(findObjectByName(desiredState, OlmDaemonSetServiceAccountName)).To(BeNil())
+			})
+
+		// Pruning and the removal of obsolete resources match by name only.
+		It("should not share its name with a resource the operator deletes in an OLM installation", func() {
+			// the OLM bundle sets OTEL_COLLECTOR_NAME_PREFIX to dash0-operator
+			config := configWithServiceAccount(OlmDaemonSetServiceAccountName)
+			config.NamePrefix = "dash0-operator"
+			desiredState, err := assembleDesiredStateForDelete(config, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(findObjectByName(desiredState, OlmDaemonSetServiceAccountName)).To(BeNil())
+			for _, object := range compileObsoleteResources(OperatorNamespace, config.NamePrefix) {
+				Expect(object.GetName()).ToNot(Equal(OlmDaemonSetServiceAccountName))
+			}
 		})
 	})
 

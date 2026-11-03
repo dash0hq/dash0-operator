@@ -9,6 +9,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -223,10 +224,44 @@ var _ = Describe("the OLM manifest transformer", func() {
 		out, log := transformSuccessfully(helmHookManifest, "# Source: empty.yaml\n", webhookManifest, deploymentManifest)
 
 		docs := parseOutput(out)
-		Expect(docs).To(HaveLen(2))
+		Expect(docs).To(HaveLen(5))
 		Expect(docs[0].GetKind()).To(Equal("MutatingWebhookConfiguration"))
 		Expect(docs[1].GetKind()).To(Equal("Deployment"))
 		Expect(log).To(ContainSubstring("dropped the Helm hook Job dash0-operator-pre-delete"))
+	})
+
+	It("adds the service account of the collector daemonset with the use of the privileged SCC", func() {
+		out, log := transformSuccessfully(deploymentManifest)
+
+		docs := parseOutput(out)
+		Expect(docs).To(HaveLen(4))
+		serviceAccount := &corev1.ServiceAccount{}
+		Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(docs[1].Object, serviceAccount)).To(Succeed())
+		Expect(serviceAccount.Kind).To(Equal("ServiceAccount"))
+		Expect(serviceAccount.Name).To(Equal("dash0-operator-olm-collector"))
+		Expect(serviceAccount.Namespace).To(Equal("default"))
+
+		clusterRole := &rbacv1.ClusterRole{}
+		Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(docs[2].Object, clusterRole)).To(Succeed())
+		Expect(clusterRole.Kind).To(Equal("ClusterRole"))
+		Expect(clusterRole.Rules).To(Equal([]rbacv1.PolicyRule{{
+			APIGroups:     []string{"security.openshift.io"},
+			Resources:     []string{"securitycontextconstraints"},
+			ResourceNames: []string{"privileged"},
+			Verbs:         []string{"use"},
+		}}))
+
+		clusterRoleBinding := &rbacv1.ClusterRoleBinding{}
+		Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(docs[3].Object, clusterRoleBinding)).To(Succeed())
+		Expect(clusterRoleBinding.Kind).To(Equal("ClusterRoleBinding"))
+		Expect(clusterRoleBinding.RoleRef).To(Equal(rbacv1.RoleRef{
+			APIGroup: "rbac.authorization.k8s.io", Kind: "ClusterRole", Name: clusterRole.Name,
+		}))
+		Expect(clusterRoleBinding.Subjects).To(Equal([]rbacv1.Subject{{
+			Kind: "ServiceAccount", Name: "dash0-operator-olm-collector", Namespace: "default",
+		}}))
+		Expect(log).To(ContainSubstring("added the service account dash0-operator-olm-collector for the collector " +
+			"daemonset with the use of the privileged SecurityContextConstraints"))
 	})
 
 	It("warns about webhook namespace selectors, which OLM does not apply", func() {
@@ -511,6 +546,23 @@ data:
 				"the environment variable DASH0_COLLECTOR_IMAGE has no literal value")))
 		})
 
+		It("sets the service account of the collector daemonset", func() {
+			container, _ := transformManagerContainer(deploymentManifest)
+
+			Expect(container.Env).To(ContainElement(corev1.EnvVar{
+				Name: "DASH0_OTEL_COLLECTOR_DAEMONSET_SERVICE_ACCOUNT_NAME", Value: "dash0-operator-olm-collector",
+			}))
+		})
+
+		It("fails if the service account of the collector daemonset is already set", func() {
+			err := runTransform(deploymentWith(
+				"        - name: DASH0_OPERATOR_IMAGE\n",
+				"        - name: DASH0_OTEL_COLLECTOR_DAEMONSET_SERVICE_ACCOUNT_NAME\n          value: other\n"+
+					"        - name: DASH0_OPERATOR_IMAGE\n"))
+			Expect(err).To(MatchError(ContainSubstring(
+				"the environment variable DASH0_OTEL_COLLECTOR_DAEMONSET_SERVICE_ACCOUNT_NAME is already set")))
+		})
+
 		It("adds a related image variable for every image variable", func() {
 			container, _ := transformManagerContainer(deploymentManifest)
 
@@ -557,7 +609,7 @@ func mustTransform(manifests ...string) string {
 func transformManagerContainer(deployment string) (corev1.Container, string) {
 	out, log := transformSuccessfully(deployment)
 	docs := parseOutput(out)
-	Expect(docs).To(HaveLen(1))
+	Expect(docs[0].GetKind()).To(Equal("Deployment"))
 	containers := toDeployment(docs[0]).Spec.Template.Spec.Containers
 	Expect(containers).To(HaveLen(1))
 	return containers[0], log

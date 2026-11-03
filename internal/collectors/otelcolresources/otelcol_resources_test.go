@@ -636,6 +636,66 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 		)
 	})
 
+	Context("when the collector daemonset uses an external service account", func() {
+		var managerWithExternalServiceAccount *OTelColResourceManager
+
+		BeforeEach(func() {
+			managerWithExternalServiceAccount = NewOTelColResourceManager(
+				k8sClient,
+				k8sClient.Scheme(),
+				OperatorManagerDeployment,
+				util.CollectorConfig{
+					Images:                         TestImages,
+					OperatorNamespace:              OperatorNamespace,
+					OTelCollectorNamePrefix:        OTelCollectorNamePrefixTest,
+					KubeletStatsAutoDetectEndpoint: true,
+					DevelopmentMode:                true,
+					DaemonSetServiceAccountName:    OlmDaemonSetServiceAccountName,
+				},
+				NewLeaderElectionAwareMock(true),
+			)
+			Expect(k8sClient.Create(ctx, &corev1.ServiceAccount{
+				ObjectMeta: metav1.ObjectMeta{Name: OlmDaemonSetServiceAccountName, Namespace: OperatorNamespace},
+			})).To(Succeed())
+		})
+
+		AfterEach(func() {
+			Expect(k8sClient.Delete(ctx, &corev1.ServiceAccount{
+				ObjectMeta: metav1.ObjectMeta{Name: OlmDaemonSetServiceAccountName, Namespace: OperatorNamespace},
+			})).To(Succeed())
+		})
+
+		It("should use it for the daemonset, remove the operator-managed one, and never delete the external one", func() {
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
+			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx, util.ExtraConfigDefaults, operatorConfiguration, nil, nil, logger)
+			Expect(err).ToNot(HaveOccurred())
+			VerifyResourceExists(
+				ctx, k8sClient, OperatorNamespace, ExpectedDaemonSetServiceAccountName, &corev1.ServiceAccount{})
+
+			_, _, err = managerWithExternalServiceAccount.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx, util.ExtraConfigDefaults, operatorConfiguration, nil, nil, logger)
+			Expect(err).ToNot(HaveOccurred())
+
+			VerifyResourceDoesNotExist(
+				ctx, k8sClient, OperatorNamespace, ExpectedDaemonSetServiceAccountName, &corev1.ServiceAccount{})
+			VerifyResourceExists(
+				ctx, k8sClient, OperatorNamespace, OlmDaemonSetServiceAccountName, &corev1.ServiceAccount{})
+			daemonSet := VerifyResourceExists(
+				ctx, k8sClient, OperatorNamespace, ExpectedDaemonSetName, &appsv1.DaemonSet{}).(*appsv1.DaemonSet)
+			Expect(daemonSet.Spec.Template.Spec.ServiceAccountName).To(Equal(OlmDaemonSetServiceAccountName))
+			clusterRoleBinding := VerifyResourceExists(
+				ctx, k8sClient, "", ExpectedDaemonSetClusterRoleBinding, &rbacv1.ClusterRoleBinding{},
+			).(*rbacv1.ClusterRoleBinding)
+			Expect(clusterRoleBinding.Subjects[0].Name).To(Equal(OlmDaemonSetServiceAccountName))
+
+			_, err = managerWithExternalServiceAccount.DeleteResources(ctx, util.ExtraConfigDefaults, logger)
+			Expect(err).ToNot(HaveOccurred())
+			VerifyResourceExists(
+				ctx, k8sClient, OperatorNamespace, OlmDaemonSetServiceAccountName, &corev1.ServiceAccount{})
+		})
+	})
+
 	DescribeTable("should exclude the synthetics-worker deployments from the namespace filter if the synthetics-worker is enabled",
 		func(enabledViaHelm bool, enabledInResource *bool, expectExclusion bool) {
 			manager := NewOTelColResourceManager(

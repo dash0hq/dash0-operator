@@ -358,7 +358,7 @@ metadata:
     capabilities: Seamless Upgrades
     categories: Monitoring,Logging & Tracing
     containerImage: ghcr.io/dash0hq/operator-controller:0.0.0
-    createdAt: "2026-11-03T16:36:37Z"
+    createdAt: "2026-11-03T18:09:07Z"
     description: Collect traces, metrics and logs from your Kubernetes workloads and
       infrastructure with OpenTelemetry and send them to Dash0.
     operators.operatorframework.io/builder: operator-sdk-v1.42.3
@@ -639,7 +639,10 @@ spec:
     Some operator settings are read from `DASH0_*` environment variables, which can be set in `spec.config.env` of the
     Subscription. For example, `DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION=true` turns on Python instrumentation.
 
-    This bundle does not support OpenShift or GKE Autopilot.
+    On OpenShift, the collector DaemonSet runs with the built-in `privileged` SecurityContextConstraints, which the
+    bundle grants to its service account `dash0-operator-olm-collector`.
+
+    This bundle does not support GKE Autopilot.
   displayName: Dash0 Operator
   install:
     spec:
@@ -1455,6 +1458,16 @@ spec:
           - update
           - watch
         serviceAccountName: dash0-operator-controller
+      - rules:
+        - apiGroups:
+          - security.openshift.io
+          resourceNames:
+          - privileged
+          resources:
+          - securitycontextconstraints
+          verbs:
+          - use
+        serviceAccountName: dash0-operator-olm-collector
       deployments:
       - label:
           app.kubernetes.io/component: controller
@@ -1589,6 +1602,8 @@ spec:
                   value: "40318"
                 - name: DASH0_LOG_LEVEL
                   value: info
+                - name: DASH0_OTEL_COLLECTOR_DAEMONSET_SERVICE_ACCOUNT_NAME
+                  value: dash0-operator-olm-collector
                 - name: RELATED_IMAGE_OPERATOR
                   value: ghcr.io/dash0hq/operator-controller:0.0.0
                 - name: RELATED_IMAGE_INSTRUMENTATION
