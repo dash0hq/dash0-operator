@@ -219,11 +219,35 @@ Parameters: kind and name of the object, and the name of the webhook entry (omit
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.syntheticsWorkerImage "context" .) -}}
 {{- end }}
 
+{{/* The independently versioned profiler must not fall back to the operator version. */}}
+{{- define "dash0-operator.ebpfProfilerImage" -}}
+{{- if not (or .Values.operator.ebpfProfilerImage.tag .Values.operator.ebpfProfilerImage.digest) -}}
+{{- fail "Error: operator.ebpfProfilerImage.tag or digest must be non-empty when operator.ebpfProfilerEnabled=true." -}}
+{{- end -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.ebpfProfilerImage "context" .) -}}
+{{- end }}
+
+{{- define "dash0-operator.debuginfoProxyImage" -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.debuginfoProxyImage "context" .) -}}
+{{- end }}
+
 {{- define "dash0-operator.imageRef" -}}
 {{- if .image.digest -}}
 {{- printf "%s@%s" .image.repository .image.digest }}
 {{- else -}}
 {{- printf "%s:%s" .image.repository (default .context.Chart.AppVersion .image.tag) }}
+{{- end }}
+{{- end }}
+
+{{/*
+Fails rendering the chart (install or upgrade) if a replica count (.value) is set but is not an integer of at least 1.
+Null is allowed, the default for the respective setting applies then.
+*/}}
+{{- define "dash0-operator.validateReplicas" -}}
+{{- if not (kindIs "invalid" .value) }}
+{{- if not (regexMatch "^[1-9][0-9]*$" (toString .value)) }}
+{{- fail (printf "Error: %s must be an integer of at least 1, but was %v." .name .value) }}
+{{- end }}
 {{- end }}
 {{- end }}
 

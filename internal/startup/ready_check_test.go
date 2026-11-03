@@ -5,6 +5,7 @@ package startup
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -108,7 +109,7 @@ var _ = Describe("operator manager pod ready check", Ordered, func() {
 	Describe("waitForWebhookServiceEndpointToBecomeReady", func() {
 		It("should stop polling and give up at some point if the endpoint does not exist", func() {
 			startTime := time.Now()
-			var elapsedTimeNanoseconds int64
+			var elapsedTimeNanoseconds atomic.Int64
 
 			go func() {
 				defer GinkgoRecover()
@@ -117,12 +118,12 @@ var _ = Describe("operator manager pod ready check", Ordered, func() {
 				Expect(err).To(MatchError(
 					"waiting for the webhook service endpoint has timed out (no more retries left): the webhook service endpoint is not ready yet",
 				))
-				elapsedTimeNanoseconds = time.Since(startTime).Nanoseconds()
+				elapsedTimeNanoseconds.Store(time.Since(startTime).Nanoseconds())
 			}()
 
 			Eventually(func(g Gomega) {
-				g.Expect(elapsedTimeNanoseconds).ToNot(BeZero())
-				g.Expect(elapsedTimeNanoseconds).To(
+				g.Expect(elapsedTimeNanoseconds.Load()).ToNot(BeZero())
+				g.Expect(elapsedTimeNanoseconds.Load()).To(
 					BeNumerically(
 						"<=",
 						100_000_000,
@@ -140,7 +141,7 @@ var _ = Describe("operator manager pod ready check", Ordered, func() {
 			createdObjects = append(createdObjects, &endpointSlice)
 
 			startTime := time.Now()
-			var elapsedTimeNanoseconds int64
+			var elapsedTimeNanoseconds atomic.Int64
 
 			go func() {
 				defer GinkgoRecover()
@@ -149,12 +150,12 @@ var _ = Describe("operator manager pod ready check", Ordered, func() {
 				Expect(err).To(MatchError(
 					"waiting for the webhook service endpoint has timed out (no more retries left): the webhook service endpoint is not ready yet",
 				))
-				elapsedTimeNanoseconds = time.Since(startTime).Nanoseconds()
+				elapsedTimeNanoseconds.Store(time.Since(startTime).Nanoseconds())
 			}()
 
 			Eventually(func(g Gomega) {
-				g.Expect(elapsedTimeNanoseconds).ToNot(BeZero())
-				g.Expect(elapsedTimeNanoseconds).To(
+				g.Expect(elapsedTimeNanoseconds.Load()).ToNot(BeZero())
+				g.Expect(elapsedTimeNanoseconds.Load()).To(
 					BeNumerically(
 						"<=",
 						100_000_000,

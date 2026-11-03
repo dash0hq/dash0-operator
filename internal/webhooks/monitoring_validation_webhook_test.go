@@ -615,7 +615,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				},
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
-					"unable to parse OTTL condition \"invalid_syntax(...\": condition has invalid syntax at 1:15 near `(...`: (expected <opcomparison> Value)",
+					"unable to parse OTTL condition \"invalid_syntax(...\": 1:15: condition has invalid syntax near `(...`: (expected <opcomparison> Value)",
 				},
 			}),
 			Entry("should reject monitoring resource with invalid syntax in span event filter", ottlValidationTestConfig{
@@ -628,7 +628,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				},
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
-					"unable to parse OTTL condition \"invalid_syntax(...\": condition has invalid syntax at 1:15 near `(...`: (expected <opcomparison> Value)",
+					"unable to parse OTTL condition \"invalid_syntax(...\": 1:15: condition has invalid syntax near `(...`: (expected <opcomparison> Value)",
 				},
 			}),
 			Entry("should reject monitoring resource with invalid syntax in metric filter", ottlValidationTestConfig{
@@ -642,8 +642,10 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				},
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
-					`unable to parse OTTL condition "IsMatch(name, \"^kafka\\.consumer\\.(?!records_consumed_total).*\")": condition has invalid syntax: 1:15: invalid quoted string "\"^kafka\\.consumer\\.(?!records_consumed_total).*\"": invalid syntax`,
-					`unable to parse OTTL condition "IsMatch(name, \"^kafka\\.producer\\.(?!record_error_rate).*\")": condition has invalid syntax: 1:15: invalid quoted string "\"^kafka\\.producer\\.(?!record_error_rate).*\"": invalid syntax`,
+					`unable to parse OTTL condition "IsMatch(name, \"^kafka\\.consumer\\.(?!records_consumed_total).*\")": 1:15: condition failed to parse near ` +
+						"`" + `"^kafka\.c` + "`" + `: invalid quoted string "\"^kafka\\.consumer\\.(?!records_consumed_total).*\"": invalid syntax`,
+					`unable to parse OTTL condition "IsMatch(name, \"^kafka\\.producer\\.(?!record_error_rate).*\")": 1:15: condition failed to parse near ` +
+						"`" + `"^kafka\.p` + "`" + `: invalid quoted string "\"^kafka\\.producer\\.(?!record_error_rate).*\"": invalid syntax`,
 				},
 			}),
 			Entry("should reject monitoring resource with invalid syntax in metric datapoint filter", ottlValidationTestConfig{
@@ -656,7 +658,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				},
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
-					"unable to parse OTTL condition \"invalid_syntax(...\": condition has invalid syntax at 1:15 near `(...`: (expected <opcomparison> Value)",
+					"unable to parse OTTL condition \"invalid_syntax(...\": 1:15: condition has invalid syntax near `(...`: (expected <opcomparison> Value)",
 				},
 			}),
 			Entry("should reject monitoring resource with invalid syntax in log record filter", ottlValidationTestConfig{
@@ -669,7 +671,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				},
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
-					"unable to parse OTTL condition \"invalid_syntax(...\": condition has invalid syntax at 1:15 near `(...`: (expected <opcomparison> Value)",
+					"unable to parse OTTL condition \"invalid_syntax(...\": 1:15: condition has invalid syntax near `(...`: (expected <opcomparison> Value)",
 				},
 			}),
 			Entry("should reject monitoring resource with invalid syntax in profile filter", ottlValidationTestConfig{
@@ -682,7 +684,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				},
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
-					"unable to parse OTTL condition \"invalid_syntax(...\": condition has invalid syntax at 1:15 near `(...`: (expected <opcomparison> Value)",
+					"unable to parse OTTL condition \"invalid_syntax(...\": 1:15: condition has invalid syntax near `(...`: (expected <opcomparison> Value)",
 				},
 			}),
 			Entry("should allow monitoring resource with valid filter", ottlValidationTestConfig{
@@ -728,7 +730,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				},
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
-					"statement has invalid syntax at 1:16 near `...`: (expected \")\" Key*)",
+					"1:16: statement has invalid syntax near `...`: (expected \")\" Key*)",
 				},
 			}),
 			Entry("should reject monitoring resource with invalid traces transform", ottlValidationTestConfig{
@@ -739,7 +741,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				},
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
-					"statement has invalid syntax at 1:16 near `...`: (expected \")\" Key*)",
+					"1:16: statement has invalid syntax near `...`: (expected \")\" Key*)",
 				},
 			}),
 			Entry("should reject monitoring resource with invalid metrics transform", ottlValidationTestConfig{
@@ -750,7 +752,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				},
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
-					"statement has invalid syntax at 1:16 near `...`: (expected \")\" Key*)",
+					"1:16: statement has invalid syntax near `...`: (expected \")\" Key*)",
 				},
 			}),
 			Entry("should reject monitoring resource with invalid logs transform", ottlValidationTestConfig{
@@ -761,7 +763,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				},
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
-					"statement has invalid syntax at 1:16 near `...`: (expected \")\" Key*)",
+					"1:16: statement has invalid syntax near `...`: (expected \")\" Key*)",
 				},
 			}),
 			Entry("should allow monitoring resource with valid transform", ottlValidationTestConfig{
@@ -780,6 +782,13 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 					},
 					Profiles: []json.RawMessage{
 						[]byte(`"truncate_all(profile.attributes, 1024)"`),
+					},
+				},
+			}),
+			Entry("should allow monitoring resource with a converter name as a function argument in a transform without context", ottlValidationTestConfig{
+				transform: &dash0common.Transform{
+					Logs: []json.RawMessage{
+						[]byte(`"replace_pattern(log.attributes[\"user.email\"], \"^(.*)$\", \"$$1\", SHA256)"`),
 					},
 				},
 			}),
@@ -806,7 +815,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 					},
 				},
 				expectErrorSubstrings: []string{
-					"condition has invalid syntax at 1:15 near `(...`: (expected <opcomparison> Value)",
+					"1:15: condition has invalid syntax near `(...`: (expected <opcomparison> Value)",
 				},
 			}),
 			Entry("should reject monitoring resource with an undefined transform function", ottlValidationTestConfig{

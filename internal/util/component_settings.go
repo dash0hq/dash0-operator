@@ -41,6 +41,8 @@ const (
 	componentDeploymentCollector          = "deploymentCollector"
 	componentTargetAllocator              = "targetAllocator"
 	componentAgent0Connector              = "agent0Connector"
+	componentEbpfProfiler                 = "ebpfProfiler"
+	componentDebuginfoProxy               = "debuginfoProxy"
 	componentSignalControlCollector       = "collector"
 	componentEdgeProxy                    = "edgeProxy"
 )
@@ -376,7 +378,7 @@ func (m *componentSettingsApplier) applyOperatorConfigurationComponents(
 				value = seLinuxOptions.DeepCopy()
 			}
 			replaceValue(m, p+".seLinuxOptions", "operator.collectors.daemonSetSeLinuxOptions",
-				&effective.DaemonSetSELinuxOptions, nil, value)
+				&effective.DaemonSetSELinuxOptions, defaults.DaemonSetSELinuxOptions, value)
 		}
 		if volume := daemonSet.FilelogOffsetStorageVolume; volume != nil {
 			var volumeSource corev1.VolumeSource
@@ -500,6 +502,40 @@ func (m *componentSettingsApplier) applyOperatorConfigurationComponents(
 			tolerations:    &effective.Agent0ConnectorTolerations,
 			nodeAffinity:   &effective.Agent0ConnectorNodeAffinity,
 		}, defaults.Agent0ConnectorNodeAffinity, agent0Connector.WorkloadSettings)
+	}
+
+	if profiler := components.EbpfProfiler; profiler != nil {
+		p := path + "." + componentEbpfProfiler
+		m.applyContainerResources(p+".containerResources", "", &effective.EbpfProfilerContainerResources,
+			defaults.EbpfProfilerContainerResources, profiler.ContainerResources)
+		m.applyWorkload(p, workloadHelmValues{}, workloadFields{
+			labels:         &effective.EbpfProfilerLabels,
+			annotations:    &effective.EbpfProfilerAnnotations,
+			podLabels:      &effective.EbpfProfilerPodLabels,
+			podAnnotations: &effective.EbpfProfilerPodAnnotations,
+			tolerations:    &effective.EbpfProfilerTolerations,
+			nodeAffinity:   &effective.EbpfProfilerNodeAffinity,
+		}, defaults.EbpfProfilerNodeAffinity, profiler.WorkloadSettings)
+		if profiler.PriorityClassName != "" {
+			effective.EbpfProfilerPriorityClassName = profiler.PriorityClassName
+		}
+	}
+
+	if proxy := components.DebuginfoProxy; proxy != nil {
+		p := path + "." + componentDebuginfoProxy
+		m.applyContainerResources(p+".containerResources", "", &effective.DebuginfoProxyContainerResources,
+			defaults.DebuginfoProxyContainerResources, proxy.ContainerResources)
+		m.applyWorkload(p, workloadHelmValues{}, workloadFields{
+			labels:         &effective.DebuginfoProxyLabels,
+			annotations:    &effective.DebuginfoProxyAnnotations,
+			podLabels:      &effective.DebuginfoProxyPodLabels,
+			podAnnotations: &effective.DebuginfoProxyPodAnnotations,
+			tolerations:    &effective.DebuginfoProxyTolerations,
+			nodeAffinity:   &effective.DebuginfoProxyNodeAffinity,
+		}, defaults.DebuginfoProxyNodeAffinity, proxy.WorkloadSettings)
+		if proxy.PriorityClassName != "" {
+			effective.DebuginfoProxyPriorityClassName = proxy.PriorityClassName
+		}
 	}
 }
 
@@ -796,7 +832,7 @@ func replaceValue[T any](
 }
 
 func (m *componentSettingsApplier) conflict(path string, helmValue string, helmSetting any, resourceSetting any) {
-	if !m.report {
+	if !m.report || helmValue == "" {
 		return
 	}
 	m.conflicts = append(m.conflicts, ComponentSettingConflict{

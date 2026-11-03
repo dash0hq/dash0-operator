@@ -131,6 +131,7 @@ func maximalMatrixBaseline() collectorConfigMatrixEntry {
 			SignalControlCollectorMemoryLimit: resource.MustParse("500Mi"),
 			EnableProfExtension:               true,
 			ProfilingEnabled:                  true,
+			EbpfProfilerEnabled:               true,
 		},
 		monitoredNamespaces:                      monitoredNamespaces,
 		namespacesWithLogCollection:              monitoredNamespaces,
@@ -178,6 +179,7 @@ func maximalSignalControlConfig() SignalControlConfig {
 		LogPatternRefreshInterval:          "2m",
 		LogParserCacheExpiration:           "5m",
 		LogGroupingCacheExpiration:         "5m",
+		CardholderDataRedactionEnabled:     true,
 		OperationCardinalityRules: []SignalControlCardinalityRule{
 			{
 				Id:              "rule-1",
@@ -440,6 +442,14 @@ func matrixSettings() []matrixSetting {
 			name: "profiling",
 			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
 				e.config.ProfilingEnabled = enabled
+				e.config.EbpfProfilerEnabled = enabled
+			},
+		},
+		{
+			name: "ebpf-profiler",
+			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				e.config.ProfilingEnabled = true
+				e.config.EbpfProfilerEnabled = enabled
 			},
 		},
 		{
@@ -675,6 +685,13 @@ func matrixSettings() []matrixSetting {
 					e.config.SignalControl.LogParserCacheExpiration = ""
 					e.config.SignalControl.LogGroupingCacheExpiration = ""
 				}
+			},
+		},
+		{
+			name: "signal-control-cardholder-data-redaction",
+			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				enableSignalControl(e)
+				e.config.SignalControl.CardholderDataRedactionEnabled = enabled
 			},
 		},
 		{

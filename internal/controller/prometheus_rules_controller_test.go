@@ -16,7 +16,6 @@ import (
 
 	prometheusv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -421,17 +420,13 @@ var _ = Describe(
 
 				AfterEach(
 					func() {
-						VerifyNoUnmatchedGockRequests()
-
-						// Make sure the work queue is empty before tearing down the monitoring resource so an in-flight synchronization job
-						// from a previous test cannot write its (potentially stale) result to the next test's monitoring resource.
-						Eventually(func(g Gomega) {
-							g.Expect(testQueuePrometheusRules.Len()).To(Equal(0))
-						}, 3*time.Second, 20*time.Millisecond).Should(Succeed())
-
-						DeleteMonitoringResourceIfItExists(ctx, k8sClient)
 						prometheusRuleCrdReconciler.RemoveNamespacedApiConfigs(ctx, TestNamespaceName, logger)
-
+						waitForThirdPartyResourceSynchronizationToFinish(
+							&prometheusRuleReconciler.namespaceResyncsInFlight,
+							testQueuePrometheusRules,
+						)
+						VerifyNoUnmatchedGockRequests()
+						DeleteMonitoringResourceIfItExists(ctx, k8sClient)
 					},
 				)
 
@@ -1292,40 +1287,30 @@ var _ = Describe(
 								clusterId, resourceName, recordingRuleApiBasePath, defaultRecordingRuleRequests(),
 							)
 						}
-						// The origin of an orphaned rule does not tell whether it is a check rule or a recording rule, so the
-						// DELETE request is sent to both APIs; the API that does not have the rule responds with 404.
+						// Each orphaned rule is only deleted via the API it exists in.
 						for _, orphan := range []struct {
-							origin                     string
-							checkRuleApiHttpStatus     int
-							recordingRuleApiHttpStatus int
+							apiBasePath string
+							origin      string
 						}{
 							{
+								apiBasePath: checkRuleApiBasePath,
 								origin: ruleOriginForResource(
 									clusterId, DatasetCustomTest, "test-rule-2", orphanedCheckRuleOfTestRule2,
 								),
-								checkRuleApiHttpStatus:     http.StatusOK,
-								recordingRuleApiHttpStatus: http.StatusNotFound,
 							},
 							{
+								apiBasePath: recordingRuleApiBasePath,
 								origin: ruleOriginForResource(
 									clusterId, DatasetCustomTest, "test-rule-1", orphanedRecordingRuleOfTestRule1,
 								),
-								checkRuleApiHttpStatus:     http.StatusNotFound,
-								recordingRuleApiHttpStatus: http.StatusOK,
 							},
 						} {
 							gock.New(ApiEndpointTest).
-								Delete(checkRuleApiBasePath+orphan.origin).
+								Delete(orphan.apiBasePath+orphan.origin).
 								MatchHeader("Authorization", AuthorizationHeaderTest).
 								MatchParam("dataset", DatasetCustomTest).
 								Times(1).
-								Reply(orphan.checkRuleApiHttpStatus)
-							gock.New(ApiEndpointTest).
-								Delete(recordingRuleApiBasePath+orphan.origin).
-								MatchHeader("Authorization", AuthorizationHeaderTest).
-								MatchParam("dataset", DatasetCustomTest).
-								Times(1).
-								Reply(orphan.recordingRuleApiHttpStatus)
+								Reply(http.StatusOK)
 						}
 						defer gock.Off()
 
@@ -1588,9 +1573,6 @@ var _ = Describe(
 							},
 						}
 						expectCheckRuleDeleteRequests(clusterId, orphanedRules)
-						// The dual-delete sends DELETEs to both APIs; the recording-rules API returns 404 for
-						// alerting rule orphans, which is handled gracefully.
-						expectRecordingRuleDeleteRequestsWithHttpStatus(clusterId, orphanedRules, http.StatusNotFound)
 						defer gock.Off()
 
 						spec := createDefaultSpec()
@@ -1609,17 +1591,16 @@ var _ = Describe(
 							k8sClient,
 							dash0common.PrometheusRuleSynchronizationResult{
 								SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusSuccessful,
-								// 4 upserts (3 alerting + 1 recording) + 2 deletes (orphan sent to both APIs)
+								// 4 upserts (3 alerting + 1 recording) + 1 delete
 								AlertingRulesTotal:  3,
 								RecordingRulesTotal: 1,
 								InvalidRulesTotal:   0,
 								InvalidRules:        nil,
 								SynchronizationResults: []dash0common.PrometheusRuleSynchronizationResultPerEndpointAndDataset{
 									{
-										Dash0ApiEndpoint: ApiEndpointStandardizedTest,
-										Dash0Dataset:     DatasetCustomTest,
-										// Both deletes have the same ItemName so the map deduplicates them.
-										SynchronizedRulesTotal: 6,
+										Dash0ApiEndpoint:       ApiEndpointStandardizedTest,
+										Dash0Dataset:           DatasetCustomTest,
+										SynchronizedRulesTotal: 5,
 										SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
 											"dash0/group-1 - rule-1-1": {
 												Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-1", "rule-1-1"),
@@ -1677,7 +1658,6 @@ var _ = Describe(
 							},
 						}
 						expectCheckRuleDeleteRequests(clusterId, orphanedRules)
-						expectRecordingRuleDeleteRequestsWithHttpStatus(clusterId, orphanedRules, http.StatusNotFound)
 						defer gock.Off()
 
 						spec := createDefaultSpec()
@@ -1704,7 +1684,7 @@ var _ = Describe(
 									{
 										Dash0ApiEndpoint:       ApiEndpointStandardizedTest,
 										Dash0Dataset:           DatasetCustomTest,
-										SynchronizedRulesTotal: 7,
+										SynchronizedRulesTotal: 5,
 										SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
 											"dash0/group-1 - rule-1-1": {
 												Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-1", "rule-1-1"),
@@ -1770,9 +1750,6 @@ var _ = Describe(
 							},
 						}
 						expectCheckRuleDeleteRequests(clusterId, orphanedRules)
-						// The dual-delete sends DELETEs to both APIs; the recording-rules API returns 404 for
-						// alerting rule orphans, which is handled gracefully.
-						expectRecordingRuleDeleteRequestsWithHttpStatus(clusterId, orphanedRules, http.StatusNotFound)
 						defer gock.Off()
 
 						spec := createDefaultSpec()
@@ -1799,7 +1776,7 @@ var _ = Describe(
 									{
 										Dash0ApiEndpoint:       ApiEndpointStandardizedTest,
 										Dash0Dataset:           DatasetCustomTest,
-										SynchronizedRulesTotal: 9,
+										SynchronizedRulesTotal: 7,
 										SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
 											"dash0/group-1 - rule-1-1": {
 												Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-1", "rule-1-1"),
@@ -1831,6 +1808,102 @@ var _ = Describe(
 						)
 						Expect(gock.IsDone()).To(BeTrue())
 					},
+				)
+
+				DescribeTable(
+					"only deletes the stale rule when a check rule and a recording rule have the same origin",
+					func(alertingRuleGroupFirst bool) {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						// The groups "a_b" and "a" with the rules "c" and "b_c" render the same origin. The rule in the
+						// first group gets that origin, the rule in the second group gets it with the counter appended.
+						// Dash0 still has the rule from the second group under the origin without the counter, from the
+						// time before the first group was added to the resource.
+						firstGroup := prometheusv1.RuleGroup{
+							Name:  "a_b",
+							Rules: []prometheusv1.Rule{{Alert: "c", Expr: intstr.FromString("vector(1)")}},
+						}
+						secondGroup := prometheusv1.RuleGroup{
+							Name:  "a",
+							Rules: []prometheusv1.Rule{{Record: "b_c", Expr: intstr.FromString("vector(1)")}},
+						}
+						firstApiBasePath, secondApiBasePath := checkRuleApiBasePath, recordingRuleApiBasePath
+						firstItemName, secondItemName := "a_b - c", "a - b_c"
+						if !alertingRuleGroupFirst {
+							firstGroup, secondGroup = secondGroup, firstGroup
+							firstApiBasePath, secondApiBasePath = secondApiBasePath, firstApiBasePath
+							firstItemName, secondItemName = secondItemName, firstItemName
+						}
+						resourceName := defaultRuleObjectMeta.Name
+						sameOrigin := checkRuleRequestExpectation{group: "a_b", alert: "c"}
+						sameOriginWithCounter := checkRuleRequestExpectation{group: "a_b", alert: "c_1"}
+						origin := ruleOriginForResource(clusterId, DatasetCustomTest, resourceName, sameOrigin)
+						existingOrigins := map[string][]string{
+							firstApiBasePath:  {origin},
+							secondApiBasePath: {origin, origin + "_1"},
+						}
+						expectFetchExistingRuleOriginsGetRequests(
+							ApiEndpointTest,
+							AuthorizationHeaderTest,
+							DatasetCustomTest,
+							fmt.Sprintf("dash0-operator_%s_%s_%s_%s_", clusterId, DatasetCustomTest, TestNamespaceName, resourceName),
+							existingOrigins[checkRuleApiBasePath],
+							existingOrigins[recordingRuleApiBasePath],
+						)
+						expectRulePutRequestsForResource(
+							clusterId, resourceName, firstApiBasePath, []checkRuleRequestExpectation{sameOrigin},
+						)
+						expectRulePutRequestsForResource(
+							clusterId, resourceName, secondApiBasePath, []checkRuleRequestExpectation{sameOriginWithCounter},
+						)
+						gock.New(ApiEndpointTest).
+							Delete("^"+regexp.QuoteMeta(secondApiBasePath+origin)+"$").
+							MatchHeader("Authorization", AuthorizationHeaderTest).
+							MatchParam("dataset", DatasetCustomTest).
+							Times(1).
+							Reply(http.StatusOK)
+						defer gock.Off()
+
+						ruleResource := createPrometheusRuleResource(
+							prometheusv1.PrometheusRuleSpec{Groups: []prometheusv1.RuleGroup{firstGroup, secondGroup}},
+						)
+						prometheusRuleReconciler.Update(
+							ctx,
+							event.TypedUpdateEvent[*unstructured.Unstructured]{
+								ObjectNew: &ruleResource,
+							},
+							&controllertest.TypedQueue[reconcile.Request]{},
+						)
+
+						verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+							ctx,
+							k8sClient,
+							dash0common.PrometheusRuleSynchronizationResult{
+								SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusSuccessful,
+								AlertingRulesTotal:    1,
+								RecordingRulesTotal:   1,
+								InvalidRulesTotal:     0,
+								InvalidRules:          nil,
+								SynchronizationResults: []dash0common.PrometheusRuleSynchronizationResultPerEndpointAndDataset{
+									{
+										Dash0ApiEndpoint:       ApiEndpointStandardizedTest,
+										Dash0Dataset:           DatasetCustomTest,
+										SynchronizedRulesTotal: 3,
+										SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
+											firstItemName:         {Dash0Origin: origin},
+											secondItemName:        {Dash0Origin: origin + "_1"},
+											origin + " (deleted)": {Dash0Origin: origin},
+										},
+										SynchronizationErrorsTotal: 0,
+										SynchronizationErrors:      nil,
+									},
+								},
+							},
+						)
+						Expect(gock.IsDone()).To(BeTrue())
+					},
+					Entry("stale recording rule", true),
+					Entry("stale check rule", false),
 				)
 
 				It(
@@ -2629,19 +2702,25 @@ spec:
 						// verify uniqueness of origins
 						origins := make(map[string]bool, len(resourceToRequestsResult.OriginsInResource))
 						for _, origin := range resourceToRequestsResult.OriginsInResource {
-							if origins[origin] {
-								Fail("Duplicate origin string: " + origin)
+							if origins[origin.Origin] {
+								Fail("Duplicate origin string: " + origin.Origin)
 							}
-							origins[origin] = true
+							origins[origin.Origin] = true
+						}
+						checkRule := func(origin string) ApiObjectOrigin {
+							return ApiObjectOrigin{ObjectType: checkRuleObjectType, Origin: origin}
 						}
 						Expect(resourceToRequestsResult.OriginsInResource).To(
 							ContainElements(
-								"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1",
-								"dash0-operator___test-namespace_prometheus-rule_group-1_alert-2",
-								"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_1",
-								"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_2",
-								"dash0-operator___test-namespace_prometheus-rule_group-1_alert-2_1",
-								"dash0-operator___test-namespace_prometheus-rule_group-2_alert-1",
+								checkRule("dash0-operator___test-namespace_prometheus-rule_group-1_alert-1"),
+								checkRule("dash0-operator___test-namespace_prometheus-rule_group-1_alert-2"),
+								checkRule("dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_1"),
+								checkRule("dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_2"),
+								ApiObjectOrigin{
+									ObjectType: recordingRuleObjectType,
+									Origin:     "dash0-operator___test-namespace_prometheus-rule_group-1_alert-2_1",
+								},
+								checkRule("dash0-operator___test-namespace_prometheus-rule_group-2_alert-1"),
 							),
 						)
 
@@ -2734,10 +2813,13 @@ spec:
 						Expect(resourceToRequestsResult.ValidationIssues).To(BeEmpty())
 						Expect(resourceToRequestsResult.SynchronizationErrors).To(BeEmpty())
 						Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(len(expectedRules)))
-						expectedOrigins := make([]string, 0, len(expectedRules))
+						expectedOrigins := make([]ApiObjectOrigin, 0, len(expectedRules))
 						for i, expectedRule := range expectedRules {
 							origin := "dash0-operator___test-namespace_prometheus-rule_" + expectedRule.origin
-							expectedOrigins = append(expectedOrigins, origin)
+							expectedOrigins = append(
+								expectedOrigins,
+								ApiObjectOrigin{ObjectType: checkRuleObjectType, Origin: origin},
+							)
 							Expect(resourceToRequestsResult.ApiRequests[i].Origin).To(Equal(origin))
 							verifyRuleApiClientCall(
 								resourceToRequestsResult.ApiRequests[i],
@@ -3643,26 +3725,7 @@ func ensurePrometheusRuleCrdExists(ctx context.Context) {
 
 func deletePrometheusRuleCrdIfItExists(ctx context.Context) {
 	if prometheusRuleCrd != nil {
-		err := k8sClient.Delete(
-			ctx, prometheusRuleCrd, &client.DeleteOptions{
-				GracePeriodSeconds: new(int64),
-			},
-		)
-		if err != nil && apierrors.IsNotFound(err) {
-			return
-		} else if err != nil {
-			Expect(err).NotTo(HaveOccurred())
-		}
-
-		Eventually(
-			func(g Gomega) {
-				err := k8sClient.Get(ctx, PrometheusRuleCrdQualifiedName, &apiextensionsv1.CustomResourceDefinition{})
-				g.Expect(err).To(HaveOccurred())
-				g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
-			},
-			3*time.Second, 20*time.Millisecond,
-		).Should(Succeed())
-
+		DeletePrometheusRuleCrdIfItExists(ctx, k8sClient)
 		prometheusRuleCrd = nil
 	}
 }

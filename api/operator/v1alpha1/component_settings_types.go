@@ -34,6 +34,46 @@ type OperatorConfigurationComponents struct {
 	//
 	// +kubebuilder:validation:Optional
 	Agent0Connector *Agent0ConnectorSettings `json:"agent0Connector,omitempty"`
+
+	// Settings for the eBPF profiler DaemonSet.
+	//
+	// +kubebuilder:validation:Optional
+	EbpfProfiler *EbpfProfilerSettings `json:"ebpfProfiler,omitempty"`
+
+	// Settings for the debug information upload proxy DaemonSet.
+	//
+	// +kubebuilder:validation:Optional
+	DebuginfoProxy *DebuginfoProxySettings `json:"debuginfoProxy,omitempty"`
+}
+
+// EbpfProfilerSettings are the settings for the eBPF profiler DaemonSet.
+type EbpfProfilerSettings struct {
+	WorkloadSettings `json:",inline"`
+
+	// The resource requests, limits and GOMEMLIMIT of the profiler container.
+	//
+	// +kubebuilder:validation:Optional
+	ContainerResources *ContainerResourcesWithGoMemLimit `json:"containerResources,omitempty"`
+
+	// The priority class name for the pods. When omitted, no priority class is set.
+	//
+	// +kubebuilder:validation:Optional
+	PriorityClassName string `json:"priorityClassName,omitempty"`
+}
+
+// DebuginfoProxySettings are the settings for the debug information upload proxy DaemonSet.
+type DebuginfoProxySettings struct {
+	WorkloadSettings `json:",inline"`
+
+	// The resource requests, limits and GOMEMLIMIT of the proxy container.
+	//
+	// +kubebuilder:validation:Optional
+	ContainerResources *ContainerResourcesWithGoMemLimit `json:"containerResources,omitempty"`
+
+	// The priority class name for the pods. When omitted, no priority class is set.
+	//
+	// +kubebuilder:validation:Optional
+	PriorityClassName string `json:"priorityClassName,omitempty"`
 }
 
 // SignalControlComponents contains the optional settings for the managed Signal Control workloads.
@@ -240,7 +280,8 @@ type DaemonSetCollectorSettings struct {
 
 	// Pod-level SELinux options (spec.securityContext.seLinuxOptions, Helm value
 	// operator.collectors.daemonSetSeLinuxOptions). They replace the SELinux options provided via the Helm chart as a
-	// whole, an empty object removes them. By default, the pods have no SELinux options.
+	// whole, an empty object removes them. By default, the pods have no SELinux options, except on OpenShift, where they
+	// have the type spc_t.
 	//
 	// +kubebuilder:validation:Optional
 	SELinuxOptions *corev1.SELinuxOptions `json:"seLinuxOptions,omitempty"`

@@ -5,6 +5,7 @@ package otelcolresources
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"slices"
 	"strings"
@@ -271,6 +272,47 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(resourcesHaveBeenCreated).To(BeTrue())
 			Expect(resourcesHaveBeenUpdated).To(BeFalse())
 			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
+		})
+
+		It("should enable profiler source routing only with profiling and the profiler enabled without adding ports", func() {
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
+			operatorConfiguration.Spec.Profiling = &dash0v1alpha1.Profiling{
+				Enabled: ptr.To(true), EbpfProfiler: &dash0v1alpha1.EbpfProfiler{},
+			}
+			for _, tc := range []struct{ helm, profiling, resource bool }{
+				{false, false, false}, {true, true, false}, {true, true, true}, {false, true, true},
+				{true, true, true}, {true, false, true}, {true, true, true}, {true, true, false},
+			} {
+				oTelColResourceManager.collectorConfig.EbpfProfilerEnabledViaHelm = tc.helm
+				operatorConfiguration.Spec.Profiling.Enabled = ptr.To(tc.profiling)
+				operatorConfiguration.Spec.Profiling.EbpfProfiler.Enabled = ptr.To(tc.resource)
+				_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+					ctx, util.ExtraConfigDefaults, operatorConfiguration, nil, nil, logger)
+				Expect(err).ToNot(HaveOccurred())
+				service := &corev1.Service{}
+				Expect(k8sClient.Get(ctx, client.ObjectKey{
+					Namespace: OperatorNamespace, Name: ExpectedDaemonSetServiceName,
+				}, service)).To(Succeed())
+				Expect(*service.Spec.InternalTrafficPolicy).To(Equal(corev1.ServiceInternalTrafficPolicyLocal))
+				daemonSet := &appsv1.DaemonSet{}
+				Expect(k8sClient.Get(ctx, client.ObjectKey{
+					Namespace: OperatorNamespace, Name: ExpectedDaemonSetName,
+				}, daemonSet)).To(Succeed())
+				ports := daemonSet.Spec.Template.Spec.Containers[0].Ports
+				Expect(service.Spec.Ports).To(HaveLen(2))
+				Expect(ports).To(HaveLen(2))
+				collectorConfig := parseConfigMapContent(GetOTelColDaemonSetConfigMap(ctx, k8sClient, OperatorNamespace))
+				connectors := collectorConfig["connectors"].(map[string]any)
+				for _, signal := range []string{"traces", "metrics", "logs"} {
+					if tc.helm && tc.profiling && tc.resource {
+						Expect(connectors).To(HaveKey("routing/" + signal + "-source"))
+					} else {
+						Expect(connectors).ToNot(HaveKey("routing/" + signal + "-source"))
+					}
+					Expect(readPipelineProcessors(readPipelines(collectorConfig), signal+"/common-processors")).To(
+						ContainElement("filter/profiler-source"))
+				}
+			}
 		})
 
 		It("should make the operator configuration resource the owner of cluster-scoped resources", func() {
@@ -549,8 +591,8 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			)
 		})
 
-		DescribeTable("should collect and forward the agent0-connector's pod logs unless the resource opts out",
-			func(enabledInResource *bool, expectPodLogsToBeCollected bool) {
+		DescribeTable("should exclude the agent0-connector from the namespace filter unless the resource opts out, and never collect its pod logs",
+			func(enabledInResource *bool, expectExclusion bool) {
 				operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 				operatorConfiguration.Spec.Agent0Connector.Enabled = enabledInResource
 				_, _, err := managerWithAgent0Connector.CreateOrUpdateOpenTelemetryCollectorResources(
@@ -570,21 +612,23 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					ExpectedDaemonSetCollectorConfigMapName,
 					&corev1.ConfigMap{},
 				).(*corev1.ConfigMap)
-				podLogsPath := fmt.Sprintf(
-					"- /var/log/pods/%s_%s*/*/*.log",
+				deploymentName := a0cresources.DeploymentName(OTelCollectorNamePrefixTest)
+				exclusion := fmt.Sprintf(
+					"(resource.attributes[\"k8s.deployment.name\"] != \"%s\" or resource.attributes[\"k8s.namespace.name\"] != \"%s\")",
+					deploymentName,
 					OperatorNamespace,
-					a0cresources.DeploymentName(OTelCollectorNamePrefixTest),
 				)
-				// The receiver alone collects nothing: the pipeline that forwards its records has to be rendered as
-				// well, otherwise the collected pod logs never leave the collector.
-				selfMonitoringLogsPipeline := "logs/selfmonitoring-filelog-to-forwarder:"
-				if expectPodLogsToBeCollected {
-					Expect(configMap.Data["config.yaml"]).To(ContainSubstring(podLogsPath))
-					Expect(configMap.Data["config.yaml"]).To(ContainSubstring(selfMonitoringLogsPipeline))
+				if expectExclusion {
+					Expect(configMap.Data["config.yaml"]).To(ContainSubstring(exclusion))
 				} else {
-					Expect(configMap.Data["config.yaml"]).ToNot(ContainSubstring(podLogsPath))
-					Expect(configMap.Data["config.yaml"]).ToNot(ContainSubstring(selfMonitoringLogsPipeline))
+					Expect(configMap.Data["config.yaml"]).ToNot(ContainSubstring(exclusion))
 				}
+
+				// The agent0-connector exports its logs via OTLP, collecting its pod logs would duplicate every line.
+				podLogsPath := fmt.Sprintf("/var/log/pods/%s_%s*/*/*.log", OperatorNamespace, deploymentName)
+				Expect(configMap.Data["config.yaml"]).ToNot(ContainSubstring(podLogsPath))
+				Expect(configMap.Data["config.yaml"]).ToNot(ContainSubstring("file_log/selfmonitoring:"))
+				Expect(configMap.Data["config.yaml"]).ToNot(ContainSubstring("logs/selfmonitoring-filelog-to-forwarder:"))
 			},
 			Entry("with no explicit setting in the resource, following the Helm value", nil, true),
 			Entry("when explicitly enabled in the resource", new(true), true),
@@ -833,6 +877,119 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			verifyRestartAnnotation()
 
 			Expect(createOrUpdate(extraConfig)).To(BeFalse())
+		})
+	})
+
+	Context("when mTLS is enabled for the target-allocator", func() {
+		const clientCertSecretName = "ta-mtls-client-cert-secret"
+		var mTlsExtraConfig util.ExtraConfig
+
+		BeforeEach(func() {
+			mTlsExtraConfig = util.ExtraConfigDefaults
+			mTlsExtraConfig.TargetAllocatorMtlsEnabled = true
+			mTlsExtraConfig.TargetAllocatorMtlsServerCertSecretName = "ta-mtls-server-cert-secret"
+			mTlsExtraConfig.TargetAllocatorMtlsClientCertSecretName = clientCertSecretName
+		})
+
+		AfterEach(func() {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: clientCertSecretName, Namespace: OperatorNamespace},
+			}))).To(Succeed())
+		})
+
+		createOrUpdate := func(extraConfig util.ExtraConfig) {
+			GinkgoHelper()
+			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx,
+				extraConfig,
+				DefaultOperatorConfigurationResourceWithUid(),
+				nil,
+				nil,
+				logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+		}
+
+		writeClientCertSecret := func(caCert string, clientCert string) {
+			GinkgoHelper()
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: clientCertSecretName, Namespace: OperatorNamespace},
+			}
+			_, err := controllerutil.CreateOrUpdate(ctx, k8sClient, secret, func() error {
+				secret.Data = map[string][]byte{
+					"ca.crt":  []byte(caCert),
+					"tls.crt": []byte(clientCert),
+					"tls.key": []byte(clientCert + "-key"),
+				}
+				return nil
+			})
+			Expect(err).ToNot(HaveOccurred())
+		}
+
+		sha := func(caCert string) string {
+			return fmt.Sprintf("%x", sha256.Sum256([]byte(caCert)))
+		}
+
+		daemonSetPodTemplateAnnotations := func() map[string]string {
+			GinkgoHelper()
+			return GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace).Spec.Template.Annotations
+		}
+
+		It("should restart the daemonset collector pods when the CA changes, but not when only the client certificate changes", func() {
+			writeClientCertSecret("ca-1", "client-cert-1")
+			createOrUpdate(mTlsExtraConfig)
+			// adds the self-reference UID env vars
+			createOrUpdate(mTlsExtraConfig)
+			Expect(daemonSetPodTemplateAnnotations()).To(HaveKeyWithValue(targetAllocatorMtlsCaShaAnnotation, sha("ca-1")))
+			generation := GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace).Generation
+
+			writeClientCertSecret("ca-1", "client-cert-2")
+			createOrUpdate(mTlsExtraConfig)
+			Expect(daemonSetPodTemplateAnnotations()).To(HaveKeyWithValue(targetAllocatorMtlsCaShaAnnotation, sha("ca-1")))
+			Expect(GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace).Generation).To(Equal(generation))
+
+			writeClientCertSecret("ca-2", "client-cert-3")
+			createOrUpdate(mTlsExtraConfig)
+			Expect(daemonSetPodTemplateAnnotations()).To(HaveKeyWithValue(targetAllocatorMtlsCaShaAnnotation, sha("ca-2")))
+			Expect(GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace).Generation).To(BeNumerically(">", generation))
+		})
+
+		It("should keep the current CA hash while the secret is missing", func() {
+			writeClientCertSecret("ca-1", "client-cert-1")
+			createOrUpdate(mTlsExtraConfig)
+			Expect(k8sClient.Delete(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: clientCertSecretName, Namespace: OperatorNamespace},
+			})).To(Succeed())
+
+			createOrUpdate(mTlsExtraConfig)
+			Expect(daemonSetPodTemplateAnnotations()).To(HaveKeyWithValue(targetAllocatorMtlsCaShaAnnotation, sha("ca-1")))
+		})
+
+		It("should keep the current CA hash if the secret has no CA certificate", func() {
+			writeClientCertSecret("ca-1", "client-cert-1")
+			createOrUpdate(mTlsExtraConfig)
+			writeClientCertSecret("", "client-cert-2")
+
+			createOrUpdate(mTlsExtraConfig)
+			Expect(daemonSetPodTemplateAnnotations()).To(HaveKeyWithValue(targetAllocatorMtlsCaShaAnnotation, sha("ca-1")))
+		})
+
+		It("should add the CA hash once the secret exists", func() {
+			createOrUpdate(mTlsExtraConfig)
+			Expect(daemonSetPodTemplateAnnotations()).ToNot(HaveKey(targetAllocatorMtlsCaShaAnnotation))
+
+			writeClientCertSecret("ca-1", "client-cert-1")
+			createOrUpdate(mTlsExtraConfig)
+			Expect(daemonSetPodTemplateAnnotations()).To(HaveKeyWithValue(targetAllocatorMtlsCaShaAnnotation, sha("ca-1")))
+		})
+
+		It("should remove the CA hash when mTLS is disabled", func() {
+			writeClientCertSecret("ca-1", "client-cert-1")
+			createOrUpdate(mTlsExtraConfig)
+			Expect(daemonSetPodTemplateAnnotations()).To(HaveKey(targetAllocatorMtlsCaShaAnnotation))
+
+			createOrUpdate(util.ExtraConfigDefaults)
+			Expect(daemonSetPodTemplateAnnotations()).ToNot(HaveKey(targetAllocatorMtlsCaShaAnnotation))
 		})
 	})
 
@@ -1708,6 +1865,37 @@ var _ = Describe("signalControlConfigFromResource", func() {
 		Expect(config.LogParserCacheExpiration).To(BeEmpty())
 		Expect(config.LogGroupingCacheExpiration).To(BeEmpty())
 	})
+
+	It("should have cardholder data redaction disabled by default", func() {
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+			},
+		}
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.CardholderDataRedactionEnabled).To(BeFalse())
+	})
+
+	DescribeTable("should map the cardholder data redaction setting",
+		func(enabled bool) {
+			resource := &dash0v1alpha1.Dash0SignalControl{
+				Spec: dash0v1alpha1.Dash0SignalControlSpec{
+					Enabled:   boolPtr(true),
+					EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+					Redaction: dash0v1alpha1.RedactionConfig{
+						CardholderData: dash0v1alpha1.CardholderDataRedactionConfig{
+							Enabled: boolPtr(enabled),
+						},
+					},
+				},
+			}
+			config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+			Expect(config.CardholderDataRedactionEnabled).To(Equal(enabled))
+		},
+		Entry("enabled", true),
+		Entry("disabled", false),
+	)
 
 	It("should default sampling tunables to empty fallback ratio and debug off", func() {
 		resource := &dash0v1alpha1.Dash0SignalControl{

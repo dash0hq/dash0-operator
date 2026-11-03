@@ -195,6 +195,8 @@ func (r *Routes) matchingEventsRouteHandler(c *gin.Context) {
 	resourceMatchFn := clusterAndNamespaceResourceMatcher(
 		commonParams.clusterName,
 		commonParams.namespace,
+		c.Query(shared.QueryParamEventInvolvedObjectNameAttribute),
+		c.Query(shared.QueryParamEventInvolvedObjectName),
 	)
 	logBodyContainsStr := c.Query(shared.QueryParamLogBodyContains)
 	eventReason := c.Query(shared.QueryParamEventReason)
@@ -234,6 +236,8 @@ func (r *Routes) matchingObjectsRouteHandler(c *gin.Context) {
 	resourceMatchFn := clusterAndNamespaceResourceMatcher(
 		commonParams.clusterName,
 		commonParams.namespace,
+		"",
+		"",
 	)
 	objectResourceName := c.Query(shared.QueryParamObjectResourceName)
 	objectNameContains := c.Query(shared.QueryParamObjectNameContains)

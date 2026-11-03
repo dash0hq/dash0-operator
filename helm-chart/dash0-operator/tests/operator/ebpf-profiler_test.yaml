@@ -1,0 +1,185 @@
+suite: test eBPF profiler opt-in and images
+templates:
+  - operator/deployment-and-webhooks.yaml
+tests:
+  - it: should explicitly disable the profiler by default without configuring an agent image
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_EBPF_PROFILER_ENABLED
+            value: "false"
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_EBPF_PROFILER_IMAGE
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-ebpf-profiler-enabled=true
+
+  - it: should reject enabling the profiler without telemetry collection
+    set:
+      operator.ebpfProfilerEnabled: true
+      operator.telemetryCollectionEnabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.ebpfProfilerEnabled requires operator.telemetryCollectionEnabled=true."
+
+  - it: should default to agent v0.51.2 independently of appVersion
+    chart:
+      appVersion: 99.100.101
+    set:
+      operator.ebpfProfilerEnabled: true
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_EBPF_PROFILER_IMAGE
+            value: ghcr.io/parca-dev/parca-agent:v0.51.2
+
+  - it: should reject an empty agent tag and digest instead of falling back to appVersion
+    chart:
+      appVersion: 99.100.101
+    set:
+      operator.ebpfProfilerEnabled: true
+      operator.ebpfProfilerImage.tag: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.ebpfProfilerImage.tag or digest must be non-empty when operator.ebpfProfilerEnabled=true."
+
+  - it: should enable both profiling flags for a Helm-managed operator configuration
+    chart:
+      appVersion: 99.100.101
+    set:
+      operator.ebpfProfilerEnabled: true
+      operator.exports:
+        - grpc:
+            endpoint: collector.example.com:4317
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-profiling-enabled=true
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-ebpf-profiler-enabled=true
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_EBPF_PROFILER_ENABLED
+            value: "true"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_EBPF_PROFILER_IMAGE
+            value: ghcr.io/parca-dev/parca-agent:v0.51.2
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_DEBUGINFO_PROXY_IMAGE
+            value: ghcr.io/dash0hq/debuginfo-proxy:99.100.101
+
+  - it: should preserve manual operator configuration ownership
+    set:
+      operator.ebpfProfilerEnabled: true
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-managed-via-helm=true
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-ebpf-profiler-enabled=true
+
+  - it: should honor custom repositories tags and pull policies
+    set:
+      operator.ebpfProfilerEnabled: true
+      operator.ebpfProfilerImage:
+        repository: registry.example.com/agent
+        tag: test-agent
+        pullPolicy: Always
+      operator.debuginfoProxyImage:
+        repository: registry.example.com/proxy
+        tag: test-proxy
+        pullPolicy: Never
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_EBPF_PROFILER_IMAGE
+            value: registry.example.com/agent:test-agent
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_EBPF_PROFILER_IMAGE_PULL_POLICY
+            value: Always
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_DEBUGINFO_PROXY_IMAGE
+            value: registry.example.com/proxy:test-proxy
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_DEBUGINFO_PROXY_IMAGE_PULL_POLICY
+            value: Never
+
+  - it: should accept an agent digest without a tag and prefer the proxy digest over its tag
+    set:
+      operator.ebpfProfilerEnabled: true
+      operator.ebpfProfilerImage.tag: ""
+      operator.ebpfProfilerImage.digest: sha256:agent-test-digest
+      operator.debuginfoProxyImage.tag: ignored
+      operator.debuginfoProxyImage.digest: sha256:proxy-test-digest
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_EBPF_PROFILER_IMAGE
+            value: ghcr.io/parca-dev/parca-agent@sha256:agent-test-digest
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_DEBUGINFO_PROXY_IMAGE
+            value: ghcr.io/dash0hq/debuginfo-proxy@sha256:proxy-test-digest
+
+  - it: should prefer the agent digest over its default tag and enable profiling for a Dash0 export
+    set:
+      operator.ebpfProfilerEnabled: true
+      operator.ebpfProfilerImage.digest: sha256:agent-test-digest
+      operator.dash0Export:
+        enabled: true
+        endpoint: https://ingress.example.com:4317
+        token: test-token
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_EBPF_PROFILER_IMAGE
+            value: ghcr.io/parca-dev/parca-agent@sha256:agent-test-digest
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-profiling-enabled=true
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-ebpf-profiler-enabled=true

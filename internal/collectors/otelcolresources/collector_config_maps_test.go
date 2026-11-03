@@ -1727,6 +1727,78 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(defaultExporters).To(ContainElement("otlp_grpc/dash0/default"))
 		})
 
+		It("should isolate all eBPF agent signals while preserving downstream processing across the configuration matrix", func() {
+			for _, entry := range collectorConfigMatrix() {
+				By(entry.name)
+				configMap, err := assembleDaemonSetCollectorConfigMap(&entry.config, entry.monitoredNamespaces,
+					entry.namespacesWithLogCollection, entry.namespacesWithPrometheusScraping, entry.filters, entry.transforms,
+					entry.targetAllocatorMtlsConfig, false)
+				Expect(err).ToNot(HaveOccurred())
+				collectorConfig := parseConfigMapContent(configMap)
+				receivers := collectorConfig["receivers"].(map[string]any)
+				connectors := collectorConfig["connectors"].(map[string]any)
+				pipelines := readPipelines(collectorConfig)
+				Expect(receivers).ToNot(HaveKey("otlp/ebpf-profiler"))
+				endpoint := "${env:K8S_POD_IP}:4317"
+				if entry.config.IsIPv6Cluster {
+					endpoint = "[${env:K8S_POD_IP}]:4317"
+				}
+				Expect(ReadFromMap(receivers, []string{"otlp", "protocols", "grpc", "endpoint"})).
+					To(Equal(endpoint))
+				if entry.config.ProfilingEnabled {
+					Expect(readPipelineReceivers(pipelines, "profiles")).To(ConsistOf("otlp"))
+				} else {
+					Expect(pipelines).ToNot(HaveKey("profiles"))
+				}
+				for _, signal := range []string{"traces", "metrics", "logs"} {
+					agentPipeline := signal + "/ebpf-profiler"
+					commonPipeline := signal + "/common-processors"
+					sourceRouter := "routing/" + signal + "-source"
+					commonProcessors := readPipelineProcessors(pipelines, commonPipeline)
+					Expect(slices.Index(commonProcessors, any("filter/profiler-source"))).To(BeNumerically(">=", 0))
+					Expect(slices.Index(commonProcessors, any("filter/profiler-source"))).To(
+						BeNumerically("<", slices.Index(commonProcessors, any("k8s_attributes"))))
+					processor := collectorConfig["processors"].(map[string]any)["filter/profiler-source"]
+					Expect(ReadFromMap(processor.(map[string]any), []string{signal, "resource"})).To(
+						ConsistOf(`attributes["parca.agent"] == "true"`))
+					if !entry.config.EbpfProfilerEnabled {
+						Expect(connectors).ToNot(HaveKey(sourceRouter))
+						Expect(pipelines).ToNot(HaveKey(signal + "/route-source"))
+						Expect(pipelines).ToNot(HaveKey(agentPipeline))
+						Expect(readPipelineReceivers(pipelines, commonPipeline)).To(ConsistOf("forward/" + signal + "-processors"))
+						continue
+					}
+					Expect(readPipelineReceivers(pipelines, signal+"/route-source")).To(ConsistOf("forward/" + signal + "-processors"))
+					Expect(readPipelineProcessors(pipelines, signal+"/route-source")).To(BeEmpty())
+					Expect(readPipelineExporters(pipelines, signal+"/route-source")).To(ConsistOf(sourceRouter))
+					Expect(connectors[sourceRouter]).To(Equal(map[string]any{
+						"default_pipelines": []any{commonPipeline},
+						"error_mode":        "ignore",
+						"table": []any{map[string]any{
+							"context": "resource", "condition": `attributes["parca.agent"] == "true"`,
+							"pipelines": []any{agentPipeline},
+						}},
+					}))
+					Expect(readPipelineReceivers(pipelines, agentPipeline)).To(ConsistOf(sourceRouter))
+					Expect(readPipelineReceivers(pipelines, commonPipeline)).To(ConsistOf(sourceRouter))
+					processors := readPipelineProcessors(pipelines, agentPipeline)
+					Expect(processors).To(ContainElement("k8s_attributes/profiles"))
+					Expect(processors).ToNot(ContainElement("k8s_attributes"))
+					Expect(processors).ToNot(ContainElement("filter/profiler-source"))
+					remaining := func(processors []any) []any {
+						return slices.DeleteFunc(slices.Clone(processors), func(processor any) bool {
+							return processor == "memory_limiter" || processor == "k8s_attributes" ||
+								processor == "k8s_attributes/profiles" || processor == "filter/profiler-source"
+						})
+					}
+					Expect(remaining(processors)).To(Equal(remaining(readPipelineProcessors(pipelines, commonPipeline))))
+					Expect(readPipelineExporters(pipelines, agentPipeline)).To(
+						Equal(readPipelineExporters(pipelines, commonPipeline)))
+					Expect(readPipelineProcessors(pipelines, commonPipeline)).To(ContainElement("k8s_attributes"))
+				}
+			}
+		})
+
 		It("should render k8s_attributes/profiles without connection pod association and with container.id [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
@@ -1782,7 +1854,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(basePodAssocSources).ToNot(ContainElement("container.id"))
 		})
 
-		It("should not render k8s_attributes/profiles when profiling is disabled [DaemonSet]", func() {
+		It("should omit resource-only agent association when profiling is disabled [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -1796,6 +1868,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			processors := collectorConfig["processors"].(map[string]any)
 			Expect(processors).ToNot(HaveKey("k8s_attributes/profiles"))
 			Expect(processors).To(HaveKey("k8s_attributes"))
+			Expect(readPipelines(collectorConfig)).ToNot(HaveKey("profiles"))
 		})
 
 		It("should export profiles via the default exporters even with namespaced exporters [DaemonSet]", func() {
@@ -5627,7 +5700,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 			LogsCommonProcessorsPipelineReceivers := readPipelineReceivers(pipelines, "logs/common-processors")
 			Expect(LogsCommonProcessorsPipelineReceivers).ToNot(BeNil())
-			Expect(LogsCommonProcessorsPipelineReceivers).To(ContainElement("forward/logs-processors"))
+			Expect(LogsCommonProcessorsPipelineReceivers).To(ConsistOf("forward/logs-processors"))
 			LogsCommonProcessorsPipelineProcessors := readPipelineProcessors(pipelines, "logs/common-processors")
 			Expect(LogsCommonProcessorsPipelineProcessors).ToNot(BeNil())
 			Expect(LogsCommonProcessorsPipelineProcessors).To(ContainElement("transform/logs/filelog_service_attributes"))
@@ -5793,6 +5866,319 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Entry("without Kubernetes infra metrics collection", false),
 			Entry("together with Kubernetes infra metrics collection", true),
 		)
+
+		type eventFilterTransformTestConfig struct {
+			filters                     []NamespacedFilter
+			transforms                  []NamespacedTransform
+			globalFilter                *dash0common.Filter
+			globalTransform             *dash0common.NormalizedTransformSpec
+			expectedFilterConditions    []any
+			expectedTransformConditions []any
+		}
+
+		DescribeTable("should apply custom log filters and transforms to Kubernetes events",
+			func(testConfig eventFilterTransformTestConfig) {
+				configMap, err := assembleDeploymentCollectorConfigMap(
+					&oTelColConfig{
+						OperatorNamespace:         OperatorNamespace,
+						NamePrefix:                namePrefix,
+						Exporters:                 cmTestSingleDefaultOtlpExporter(),
+						GlobalFilter:              testConfig.globalFilter,
+						GlobalNormalizedTransform: testConfig.globalTransform,
+					},
+					monitoredNamespaces,
+					monitoredNamespaces,
+					nil,
+					testConfig.filters,
+					testConfig.transforms,
+					false,
+				)
+				Expect(err).ToNot(HaveOccurred())
+				collectorConfig := parseConfigMapContent(configMap)
+
+				filterProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "filter/logs/custom_telemetry_filter"})
+				Expect(filterProcessorRaw).ToNot(BeNil())
+				Expect(ReadFromMap(filterProcessorRaw, []string{"logs", "log_record"})).
+					To(Equal(testConfig.expectedFilterConditions))
+
+				transformProcessorRaw :=
+					ReadFromMap(collectorConfig, []string{"processors", "transform/logs/custom_telemetry_transform"})
+				Expect(transformProcessorRaw).ToNot(BeNil())
+				groupsRaw := ReadFromMap(transformProcessorRaw, []string{"log_statements"})
+				Expect(groupsRaw).To(HaveLen(1))
+				group := groupsRaw.([]any)[0]
+				Expect(ReadFromMap(group, []string{"statements"})).To(Equal([]any{"log statement"}))
+				if testConfig.expectedTransformConditions == nil {
+					Expect(ReadFromMap(group, []string{"conditions"})).To(BeNil())
+				} else {
+					Expect(ReadFromMap(group, []string{"conditions"})).To(Equal(testConfig.expectedTransformConditions))
+				}
+
+				pipelines := readPipelines(collectorConfig)
+				Expect(readPipelineProcessors(pipelines, "logs/k8sevents")).To(Equal([]any{
+					"memory_limiter",
+					"resource_detection",
+					"transform/k8s_events",
+					"k8s_attributes",
+					"resource/cluster_uid",
+					"resource/dash0_operator_attributes",
+					"filter/logs/custom_telemetry_filter",
+					"batch",
+					"transform/logs/custom_telemetry_transform",
+					"transform/resources",
+				}))
+			},
+			Entry("namespaced filters and transforms", eventFilterTransformTestConfig{
+				filters: []NamespacedFilter{
+					{
+						Namespace: namespace1,
+						Filter: dash0common.Filter{
+							Logs: &dash0common.LogFilter{
+								LogRecordFilter: []string{"log record condition"},
+							},
+						},
+					},
+				},
+				transforms: []NamespacedTransform{
+					{
+						Namespace: namespace1,
+						Transform: dash0common.NormalizedTransformSpec{
+							Logs: []dash0common.NormalizedTransformGroup{
+								{Statements: []string{"log statement"}},
+							},
+						},
+					},
+				},
+				expectedFilterConditions: []any{
+					`resource.attributes["k8s.namespace.name"] == "namespace-1" and (log record condition)`,
+				},
+				expectedTransformConditions: []any{
+					`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+				},
+			}),
+			Entry("cluster-wide filters and transforms", eventFilterTransformTestConfig{
+				globalFilter: &dash0common.Filter{
+					Logs: &dash0common.LogFilter{
+						LogRecordFilter: []string{"global log record condition"},
+					},
+				},
+				globalTransform: &dash0common.NormalizedTransformSpec{
+					Logs: []dash0common.NormalizedTransformGroup{
+						{Statements: []string{"log statement"}},
+					},
+				},
+				expectedFilterConditions: []any{"global log record condition"},
+			}),
+		)
+
+		It("should not render custom log filters and transforms if no namespace has event collection enabled", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(
+				&oTelColConfig{
+					OperatorNamespace: OperatorNamespace,
+					NamePrefix:        namePrefix,
+					Exporters:         cmTestSingleDefaultOtlpExporter(),
+					KubernetesInfrastructureMetricsCollectionEnabled: true,
+				},
+				monitoredNamespaces,
+				nil,
+				nil,
+				[]NamespacedFilter{
+					{
+						Namespace: namespace1,
+						Filter: dash0common.Filter{
+							Logs: &dash0common.LogFilter{
+								LogRecordFilter: []string{"log record condition"},
+							},
+						},
+					},
+				},
+				[]NamespacedTransform{
+					{
+						Namespace: namespace1,
+						Transform: dash0common.NormalizedTransformSpec{
+							Logs: []dash0common.NormalizedTransformGroup{
+								{Statements: []string{"log statement"}},
+							},
+						},
+					},
+				},
+				false,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			Expect(ReadFromMap(collectorConfig, []string{"processors", "filter/logs/custom_telemetry_filter"})).To(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{"processors", "transform/logs/custom_telemetry_transform"})).
+				To(BeNil())
+			verifyProcessorDoesNotAppearInAnyPipeline(collectorConfig, "filter/logs/custom_telemetry_filter")
+			verifyProcessorDoesNotAppearInAnyPipeline(collectorConfig, "transform/logs/custom_telemetry_transform")
+		})
+	})
+
+	Describe("Kubernetes object collection", func() {
+		It("should not render the k8s_objects receivers if no namespace has Kubernetes object collection enabled", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(
+				&oTelColConfig{
+					OperatorNamespace: OperatorNamespace,
+					NamePrefix:        namePrefix,
+					Exporters:         cmTestSingleDefaultOtlpExporter(),
+				},
+				[]string{"namespace-1"},
+				[]string{"namespace-1"},
+				nil,
+				nil,
+				nil,
+				false,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			Expect(ReadFromMap(collectorConfig, []string{"receivers", "k8s_objects/default"})).To(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{"receivers", "k8s_objects/highcardinality"})).To(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{"processors", "transform/k8s_objects"})).To(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{"processors", "redaction/k8s_objects"})).To(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{"processors", "log_dedup/k8s_objects"})).To(BeNil())
+			pipelines := readPipelines(collectorConfig)
+			Expect(readPipelineReceivers(pipelines, "logs/k8sevents")).To(ConsistOf("k8s_events"))
+		})
+
+		DescribeTable("should render both k8s_objects receiver instances for all namespaces with Kubernetes object collection enabled",
+			func(eventCollectionEnabled bool) {
+				var namespacesWithEventCollection []string
+				if eventCollectionEnabled {
+					namespacesWithEventCollection = []string{"namespace-1"}
+				}
+				configMap, err := assembleDeploymentCollectorConfigMap(
+					&oTelColConfig{
+						OperatorNamespace:           OperatorNamespace,
+						NamePrefix:                  namePrefix,
+						Exporters:                   cmTestSingleDefaultOtlpExporter(),
+						CollectClusterScopedObjects: true,
+					},
+					[]string{"namespace-1", "namespace-2", "namespace-3"},
+					namespacesWithEventCollection,
+					[]string{"namespace-1", "namespace-2"},
+					nil,
+					nil,
+					false,
+				)
+				Expect(err).ToNot(HaveOccurred())
+				collectorConfig := parseConfigMapContent(configMap)
+
+				defaultInstanceRaw := ReadFromMap(collectorConfig, []string{"receivers", "k8s_objects/default"})
+				Expect(defaultInstanceRaw).ToNot(BeNil())
+				defaultInstance := defaultInstanceRaw.(map[string]any)
+				Expect(defaultInstance["include_initial_state"]).To(BeTrue())
+				Expect(k8sObjectsReceiverObjectNames(defaultInstance)).To(Equal(
+					[]any{"deployments", "statefulsets", "daemonsets", "nodes", "persistentvolumes"}))
+				for _, object := range defaultInstance["objects"].([]any) {
+					objectMap := object.(map[string]any)
+					Expect(objectMap["mode"]).To(Equal("watch"))
+					switch objectMap["name"] {
+					case "nodes", "persistentvolumes":
+						Expect(objectMap).ToNot(HaveKey("namespaces"))
+					default:
+						Expect(objectMap["namespaces"]).To(Equal([]any{"namespace-1", "namespace-2"}))
+					}
+				}
+
+				highCardinalityInstanceRaw :=
+					ReadFromMap(collectorConfig, []string{"receivers", "k8s_objects/highcardinality"})
+				Expect(highCardinalityInstanceRaw).ToNot(BeNil())
+				highCardinalityInstance := highCardinalityInstanceRaw.(map[string]any)
+				Expect(highCardinalityInstance["include_initial_state"]).To(BeFalse())
+				Expect(k8sObjectsReceiverObjectNames(highCardinalityInstance)).To(Equal([]any{"pods", "replicasets"}))
+				for _, object := range highCardinalityInstance["objects"].([]any) {
+					objectMap := object.(map[string]any)
+					Expect(objectMap["mode"]).To(Equal("watch"))
+					Expect(objectMap["namespaces"]).To(Equal([]any{"namespace-1", "namespace-2"}))
+				}
+
+				Expect(ReadFromMap(collectorConfig, []string{"processors", "resource_detection"})).ToNot(BeNil())
+
+				transformRaw := ReadFromMap(collectorConfig, []string{"processors", "transform/k8s_objects"})
+				Expect(transformRaw).ToNot(BeNil())
+				transformStatementGroup :=
+					transformRaw.(map[string]any)["log_statements"].([]any)[0].(map[string]any)
+				Expect(transformStatementGroup["conditions"]).To(
+					Equal([]any{`IsMap(log.body) and log.body["object"] != nil`}))
+
+				redactionRaw := ReadFromMap(collectorConfig, []string{"processors", "redaction/k8s_objects"})
+				Expect(redactionRaw).ToNot(BeNil())
+				redaction := redactionRaw.(map[string]any)
+				Expect(redaction["allow_all_keys"]).To(BeTrue())
+				Expect(redaction["blocked_key_patterns"]).To(Equal([]any{"^value$"}))
+
+				logDedupRaw := ReadFromMap(collectorConfig, []string{"processors", "log_dedup/k8s_objects"})
+				Expect(logDedupRaw).ToNot(BeNil())
+				logDedup := logDedupRaw.(map[string]any)
+				Expect(logDedup["interval"]).To(Equal("30s"))
+				Expect(logDedup["conditions"]).To(Equal([]any{`IsMap(log.body) and log.body["type"] == "MODIFIED"`}))
+				Expect(logDedup["include_fields"]).To(Equal([]any{
+					"body.type",
+					"body.object.metadata.uid",
+					"body.object.metadata.labels",
+					"body.object.metadata.annotations",
+					"body.object.spec",
+					"body.object.status.phase",
+					"body.object.status.conditions",
+					"body.object.status.containerStatuses",
+				}))
+
+				pipelines := readPipelines(collectorConfig)
+				pipelineReceivers := readPipelineReceivers(pipelines, "logs/k8sevents")
+				Expect(pipelineReceivers).To(ContainElements("k8s_objects/default", "k8s_objects/highcardinality"))
+				pipelineProcessors := readPipelineProcessors(pipelines, "logs/k8sevents")
+
+				transformIndex := indexOfPipelineEntry(pipelineProcessors, "transform/k8s_objects")
+				redactionIndex := indexOfPipelineEntry(pipelineProcessors, "redaction/k8s_objects")
+				logDedupIndex := indexOfPipelineEntry(pipelineProcessors, "log_dedup/k8s_objects")
+				k8sAttributesIndex := indexOfPipelineEntry(pipelineProcessors, "k8s_attributes")
+				Expect(transformIndex).To(BeNumerically(">=", 0))
+				Expect(redactionIndex).To(BeNumerically(">", transformIndex))
+				Expect(logDedupIndex).To(BeNumerically(">", redactionIndex))
+				Expect(k8sAttributesIndex).To(BeNumerically(">", logDedupIndex))
+				if eventCollectionEnabled {
+					Expect(pipelineReceivers).To(ContainElement("k8s_events"))
+					Expect(pipelineProcessors).To(ContainElement("transform/k8s_events"))
+				} else {
+					Expect(pipelineReceivers).ToNot(ContainElement("k8s_events"))
+					Expect(pipelineProcessors).ToNot(ContainElement("transform/k8s_events"))
+					Expect(ReadFromMap(collectorConfig, []string{"processors", "transform/k8s_events"})).To(BeNil())
+				}
+			},
+			Entry("without event collection", false),
+			Entry("together with event collection", true),
+		)
+
+		It("should omit nodes and persistent volumes when collecting cluster-scoped objects is disabled", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(
+				&oTelColConfig{
+					OperatorNamespace:           OperatorNamespace,
+					NamePrefix:                  namePrefix,
+					Exporters:                   cmTestSingleDefaultOtlpExporter(),
+					CollectClusterScopedObjects: false,
+				},
+				[]string{"namespace-1"},
+				nil,
+				[]string{"namespace-1"},
+				nil,
+				nil,
+				false,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			defaultInstanceRaw := ReadFromMap(collectorConfig, []string{"receivers", "k8s_objects/default"})
+			Expect(defaultInstanceRaw).ToNot(BeNil())
+			defaultInstance := defaultInstanceRaw.(map[string]any)
+			Expect(k8sObjectsReceiverObjectNames(defaultInstance)).To(
+				Equal([]any{"deployments", "statefulsets", "daemonsets"}))
+
+			highCardinalityInstanceRaw :=
+				ReadFromMap(collectorConfig, []string{"receivers", "k8s_objects/highcardinality"})
+			Expect(highCardinalityInstanceRaw).ToNot(BeNil())
+			Expect(k8sObjectsReceiverObjectNames(highCardinalityInstanceRaw.(map[string]any))).To(
+				Equal([]any{"pods", "replicasets"}))
+		})
 	})
 
 	Describe("Kubernetes object collection", func() {
@@ -6101,6 +6487,147 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				}), branch)
 			}
 			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/log-enrichment-ns")
+		})
+	})
+
+	Describe("Signal Control cardholder data redaction [SignalControl]", func() {
+		redactionSC := func() SignalControlConfig {
+			return SignalControlConfig{
+				Enabled:                        true,
+				CardholderDataRedactionEnabled: true,
+				Endpoint:                       "decision-maker.example.com:443",
+				ApiEndpoint:                    "https://control-plane-api.dash0.com",
+				Dataset:                        "default",
+			}
+		}
+
+		allComponentsSC := func() SignalControlConfig {
+			sc := redactionSC()
+			sc.SamplingEnabled = true
+			sc.SpamFilterEnabled = true
+			sc.SignalToMetricsEnabled = true
+			sc.LogEnrichmentEnabled = true
+			return sc
+		}
+
+		assembleWith := func(sc SignalControlConfig, exporters otlpExporters) map[string]interface{} {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         exporters,
+				SignalControl:     sc,
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, false)
+			Expect(err).ToNot(HaveOccurred())
+			return parseConfigMapContent(configMap)
+		}
+
+		lastProcessor := func(pipelines map[string]any, pipelineName string) any {
+			processors := readPipelineProcessors(pipelines, pipelineName)
+			Expect(processors).ToNot(BeEmpty(), pipelineName)
+			return processors[len(processors)-1]
+		}
+
+		It("runs redaction last in every default Signal Control pipeline [SignalControl]", func() {
+			collectorConfig := assembleWith(allComponentsSC(), cmTestSingleDefaultOtlpExporter())
+			pipelines := readPipelines(collectorConfig)
+
+			Expect(readPipelineProcessors(pipelines, "traces/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0operation",
+				"dash0filter",
+				"dash0redaction",
+			}))
+			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0filter",
+				"dash0redaction",
+			}))
+			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0logparser",
+				"dash0loggrouping",
+				"dash0filter",
+				"dash0redaction",
+			}))
+
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors["dash0redaction"]).To(Equal(map[string]interface{}{
+				"metric_recorder": "dash0metricrecorder",
+			}))
+
+			assertCollectorConfigStructurallyValid(collectorConfig, "signal-control/redaction-default")
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/redaction-default")
+		})
+
+		It("runs redaction when all other Signal Control components are disabled [SignalControl]", func() {
+			collectorConfig := assembleWith(redactionSC(), cmTestSingleDefaultOtlpExporter())
+			pipelines := readPipelines(collectorConfig)
+
+			Expect(readPipelineProcessors(pipelines, "traces/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0operation",
+				"dash0redaction",
+			}))
+			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0redaction",
+			}))
+			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0redaction",
+			}))
+
+			assertCollectorConfigStructurallyValid(collectorConfig, "signal-control/redaction-only")
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/redaction-only")
+		})
+
+		It("wires a redaction instance per dataset branch into the namespaced pipelines [SignalControl]", func() {
+			collectorConfig := assembleWith(allComponentsSC(), cmTestNamespacedMultiDatasetExporters())
+			pipelines := readPipelines(collectorConfig)
+			processors := collectorConfig["processors"].(map[string]interface{})
+
+			for _, idx := range []string{"0", "1"} {
+				branch := namespace1 + "/" + idx
+				for _, signal := range []string{"traces", "metrics", "logs"} {
+					Expect(lastProcessor(pipelines, signal+"/sc/ns/"+branch)).
+						To(Equal("dash0redaction/ns/"+branch), signal+" "+branch)
+				}
+				Expect(processors["dash0redaction/ns/"+branch]).To(Equal(map[string]interface{}{
+					"metric_recorder": "dash0metricrecorder/ns/" + branch,
+				}), branch)
+			}
+			for _, signal := range []string{"traces", "metrics", "logs"} {
+				Expect(lastProcessor(pipelines, signal+"/sc/default")).To(Equal("dash0redaction"), signal)
+			}
+
+			assertCollectorConfigStructurallyValid(collectorConfig, "signal-control/redaction-ns")
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/redaction-ns")
+		})
+
+		It("declares no redaction processor when disabled [SignalControl]", func() {
+			sc := allComponentsSC()
+			sc.CardholderDataRedactionEnabled = false
+			collectorConfig := assembleWith(sc, cmTestNamespacedMultiDatasetExporters())
+
+			for name := range topLevelComponentKeys(collectorConfig, "processors") {
+				Expect(name).ToNot(HavePrefix("dash0redaction"))
+			}
+			pipelines := readPipelines(collectorConfig)
+			for pipelineName := range pipelines {
+				for _, processor := range readPipelineProcessors(pipelines, pipelineName) {
+					Expect(processor).ToNot(HavePrefix("dash0redaction"), pipelineName)
+				}
+			}
 		})
 	})
 
@@ -8383,6 +8910,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(tlsConfig["ca_file"]).To(Equal(fmt.Sprintf("%s/ca.crt", targetAllocatorCertsVolumeDir)))
 			Expect(tlsConfig["cert_file"]).To(Equal(fmt.Sprintf("%s/tls.crt", targetAllocatorCertsVolumeDir)))
 			Expect(tlsConfig["key_file"]).To(Equal(fmt.Sprintf("%s/tls.key", targetAllocatorCertsVolumeDir)))
+			Expect(tlsConfig["reload_interval"]).To(Equal("5m"))
 		})
 
 		It("should use the target-allocator HTTP endpoint if mTLS is disabled", func() {

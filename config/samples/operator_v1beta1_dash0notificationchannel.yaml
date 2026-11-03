@@ -1,0 +1,13 @@
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: slack-alerts
+spec:
+  display:
+    name: Slack Alerts
+  type: slack
+  slackConfig:
+    # Replace this value with the URL of your Slack incoming webhook.
+    webhookURL: https://hooks.slack.com/services/...
+    channel: "#alerts"
+  frequency: 10m

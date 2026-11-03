@@ -1,3 +1,3 @@
 module dash0.com/app
 
-go 1.27.2
+go 1.27.3

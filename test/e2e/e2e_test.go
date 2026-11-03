@@ -607,6 +607,54 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 						)
 					}, 2*time.Minute, 1*time.Second).Should(Succeed())
 				})
+
+				It("collects Kubernetes events for involved objects that are not workloads", func() {
+					timestampLowerBound := time.Now()
+					hpaName := "dash0-operator-e2e-test-hpa"
+
+					By("deploying a horizontal pod autoscaler with a scale target that does not exist")
+					// The horizontal pod autoscaler controller emits a FailedGetScale warning event on every sync, since
+					// the scale target does not exist.
+					hpaYaml := fmt.Sprintf(`apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: %s-does-not-exist
+  minReplicas: 1
+  maxReplicas: 2
+`,
+						hpaName,
+						applicationUnderTestNamespace,
+						hpaName,
+					)
+					applyCmd := exec.Command("kubectl", "apply", "-f", "-")
+					applyCmd.Stdin = strings.NewReader(hpaYaml)
+					Expect(runAndIgnoreOutput(applyCmd)).To(Succeed())
+					DeferCleanup(func() {
+						_ = runAndIgnoreOutput(exec.Command(
+							"kubectl",
+							"-n", applicationUnderTestNamespace,
+							"delete", "horizontalpodautoscaler", hpaName,
+							"--ignore-not-found",
+						))
+					})
+
+					By("waiting for a Kubernetes event for the horizontal pod autoscaler")
+					Eventually(func(g Gomega) {
+						verifyAtLeastOneKubernetesEventForInvolvedObject(
+							g,
+							timestampLowerBound,
+							"FailedGetScale",
+							"k8s.hpa.name",
+							hpaName,
+						)
+					}, 2*time.Minute, 1*time.Second).Should(Succeed())
+				})
 			})
 
 			Context("synchronizing Dash0 API resources", func() {

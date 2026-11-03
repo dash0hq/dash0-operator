@@ -79,7 +79,7 @@ type ResourceToRequestsResult struct {
 	ApiRequests []WrappedApiRequest
 	// only set for resource types with a one-to-many relationship between Kubernetes resources and Dash0 entities,
 	// contains a list of all Dash0 origins produced by this Kubernetes resource for this ApiConfig
-	OriginsInResource []string
+	OriginsInResource []ApiObjectOrigin
 	// synchronization errors that occurred during the conversion - if there is a synchronization error for a resource,
 	// ApiRequests must not contain a request for the associated resource
 	SynchronizationErrors map[string]string
@@ -97,7 +97,7 @@ type ResourceToRequestsResult struct {
 func NewResourceToRequestsResult(
 	apiConfig ApiConfig,
 	apiRequests []WrappedApiRequest,
-	origins []string,
+	origins []ApiObjectOrigin,
 	validationIssues map[string][]string,
 	synchronizationErrors map[string]string,
 ) *ResourceToRequestsResult {
@@ -238,6 +238,17 @@ type WrappedApiRequest struct {
 	ApiClientCall *ApiClientCall
 	ItemName      string
 	Origin        string
+	// ObjectType is the type of the Dash0 API object the request is sent for, see ApiObjectOrigin.
+	ObjectType string
+}
+
+// ApiObjectOrigin identifies a Dash0 API object by its origin and its type. The type is only set for Kubernetes
+// resource types that are synchronized to more than one Dash0 API (a PrometheusRule produces check rules and recording
+// rules), since objects of different types can have the same origin. It is empty for resource types that are
+// synchronized to a single Dash0 API.
+type ApiObjectOrigin struct {
+	ObjectType string
+	Origin     string
 }
 
 // ApiClientCall is a deferred call to the Dash0 API via the Dash0 API client. Method and Url describe the HTTP request
@@ -255,6 +266,10 @@ func (r *WrappedApiRequest) method() string {
 
 func (r *WrappedApiRequest) url() string {
 	return r.ApiClientCall.Url
+}
+
+func (r *WrappedApiRequest) apiObjectOrigin() ApiObjectOrigin {
+	return ApiObjectOrigin{ObjectType: r.ObjectType, Origin: r.Origin}
 }
 
 type Dash0ApiObjectLabels struct {
@@ -1010,7 +1025,7 @@ func fetchExistingOriginsForResource(
 	action apiAction,
 	originsInNamespace *existingOriginsInNamespace,
 	logger logd.Logger,
-) ([]string, bool, error) {
+) ([]ApiObjectOrigin, bool, error) {
 	thirdPartyResourceReconciler, ok := apiSyncReconciler.(ThirdPartyResourceReconciler)
 	if !ok {
 		// this resource reconciler synchronizes a resource type owned by the Dash0 operator, fetching existing origins
@@ -1048,14 +1063,14 @@ func filterOriginsOfResourceInNamespace(
 	apiConfig ApiConfig,
 	originsInNamespace *existingOriginsInNamespace,
 	logger logd.Logger,
-) ([]string, bool, error) {
+) ([]ApiObjectOrigin, bool, error) {
 	allOriginsInNamespace, err := originsInNamespace.get(ctx, thirdPartyResourceReconciler, apiConfig, logger)
 	if err != nil {
 		return nil, false, err
 	}
-	var originsOfResource []string
+	var originsOfResource []ApiObjectOrigin
 	for _, origin := range allOriginsInNamespace {
-		if thirdPartyResourceReconciler.IsOriginOfResource(origin, preconditionChecksResult, apiConfig) {
+		if thirdPartyResourceReconciler.IsOriginOfResource(origin.Origin, preconditionChecksResult, apiConfig) {
 			originsOfResource = append(originsOfResource, origin)
 		}
 	}
@@ -1069,7 +1084,7 @@ func fetchOriginsOfResource(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	logger logd.Logger,
-) ([]string, bool, error) {
+) ([]ApiObjectOrigin, bool, error) {
 	origins, err :=
 		thirdPartyResourceReconciler.FetchExistingResourceOrigins(ctx, preconditionChecksResult, apiConfig, logger)
 	if err != nil {
@@ -1091,7 +1106,7 @@ type existingOriginsInNamespace struct {
 }
 
 type existingOriginsFetchResult struct {
-	origins []string
+	origins []ApiObjectOrigin
 	err     error
 }
 
@@ -1113,7 +1128,7 @@ func (o *existingOriginsInNamespace) get(
 	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
 	apiConfig ApiConfig,
 	logger logd.Logger,
-) ([]string, error) {
+) ([]ApiObjectOrigin, error) {
 	o.lock.Lock()
 	defer o.lock.Unlock()
 	if fetchResult, ok := o.originsPerApiConfig[apiConfig]; ok {
@@ -1129,7 +1144,7 @@ func (o *existingOriginsInNamespace) get(
 func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 	apiSyncReconciler ApiSyncReconciler,
 	apiConfig ApiConfig,
-	existingOriginsFromApi []string,
+	existingOriginsFromApi []ApiObjectOrigin,
 	resourceToRequestsResult *ResourceToRequestsResult,
 ) {
 	thirdPartyResourceReconciler, ok := apiSyncReconciler.(ThirdPartyResourceReconciler)
@@ -1148,17 +1163,18 @@ func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 	resourceToRequestsResult.ApiRequests = slices.Concat(resourceToRequestsResult.ApiRequests, deleteApiCalls)
 }
 
-// removeDeleteRequestsForObjectsThatDoNotExist drops all DELETE requests for objects whose origin is not in the list of
-// existing origins, so that deleting a resource that has never been synchronized does not produce any requests.
+// removeDeleteRequestsForObjectsThatDoNotExist drops all DELETE requests for objects whose origin and type are not in
+// the list of existing origins, so that deleting a resource that has never been synchronized does not produce any
+// requests.
 func removeDeleteRequestsForObjectsThatDoNotExist(
-	existingOriginsFromApi []string,
+	existingOriginsFromApi []ApiObjectOrigin,
 	resourceToRequestsResult *ResourceToRequestsResult,
 ) {
 	resourceToRequestsResult.ApiRequests = slices.DeleteFunc(
 		resourceToRequestsResult.ApiRequests,
 		func(apiRequest WrappedApiRequest) bool {
 			return apiRequest.method() == http.MethodDelete &&
-				!slices.Contains(existingOriginsFromApi, apiRequest.Origin)
+				!slices.Contains(existingOriginsFromApi, apiRequest.apiObjectOrigin())
 		},
 	)
 }
