@@ -112,6 +112,8 @@ Here is a list of configuration options for this resource:
   This setting is optional, it defaults to `false`.
   It is a validation error to set `telemetryCollection.enabled=false` and `kubernetesObjectCollection.enabled=true` at
   the same time.
+  See [Kubernetes Object Collection](#kubernetes-object-collection) for the supported cluster size and for sizing the
+  collector beyond it.
 
 * <a href="#operatorconfigurationresource.spec.kubernetesObjectCollection.collectClusterScopedObjects"><span id="operatorconfigurationresource.spec.kubernetesObjectCollection.collectClusterScopedObjects">**`spec.kubernetesObjectCollection.collectClusterScopedObjects`**</span></a>:
   An opt-out for collecting the manifests of cluster-scoped objects (nodes and persistent volumes). It does not enable
@@ -509,6 +511,8 @@ The Dash0 monitoring resource supports additional configuration settings:
   (see [above](#operatorconfigurationresource.spec.kubernetesObjectCollection.enabled)); that setting also describes
   which parts of the manifests are redacted before they leave the cluster.
   This setting is optional, it defaults to `false`.
+  See [Kubernetes Object Collection](#kubernetes-object-collection) for the supported cluster size and for sizing the
+  collector beyond it.
 
 * <a href="#monitoringresource.spec.prometheusScraping.enabled"><span id="monitoringresource.spec.prometheusScraping.enabled">**`spec.prometheusScraping.enabled`**</span></a>:
   A namespace-wide opt-out for Prometheus scraping for the target namespace.
@@ -704,6 +708,37 @@ spec:
 
   synchronizePrometheusRules: false
 ```
+
+### Kubernetes Object Collection
+
+Collecting the manifests of Kubernetes objects is off by default and needs two opt-ins:
+`kubernetesObjectCollection.enabled` in the
+[operator configuration resource](#operatorconfigurationresource.spec.kubernetesObjectCollection.enabled), and
+`kubernetesObjectCollection.enabled` in the
+[Dash0 monitoring resource](#monitoringresource.spec.kubernetesObjectCollection.enabled) of every namespace whose
+objects should be collected.
+
+#### Limitations
+
+The cluster-metrics-collector holds the manifests of the watched objects in memory. The resulting limit on cluster size
+is the collector's rather than this feature's: with Kubernetes infrastructure metrics collection enabled, which is the
+default, its `k8s_cluster` receiver already watches every pod and replica set in the cluster.
+
+Pods and replica sets are collected without an initial snapshot, because a snapshot of those two kinds does not fit the
+default memory limit on larger clusters. A pod or replica set that existed before collection was enabled therefore only
+shows up once it changes. Deployments, stateful sets, daemon sets, nodes and persistent volumes are collected in full
+when the collector starts.
+
+#### Recommendations
+
+* Start below roughly 10,000 objects across the monitored namespaces, and scale up gradually while watching the memory
+  usage of the cluster-metrics-collector pod. Replica sets usually dominate that count: Kubernetes keeps ten old
+  replica sets per deployment by default (`revisionHistoryLimit`), so about 500 deployments at typical pod counts
+  already reach 10,000 objects.
+* If the collector runs out of memory, raise the requests and limits of
+  `operator.collectors.deploymentCollectorContainerResources`. About 256 MiB per additional 10,000 objects is a
+  reasonable starting point. See
+  [Tuning Resource Requests and Limits](advanced-configuration.md#tuning-resource-requests-and-limits).
 
 ### Namespace-specific Exports and API-sync Overrides
 
