@@ -597,53 +597,6 @@ processors:
       - body.object.status.containerStatuses
   {{- end }}
 
-  {{- if $hasKubernetesObjectCollectionEnabledForAtLeastOneNamespace }}
-  transform/k8s_objects:
-    error_mode: ignore
-    log_statements:
-      # Kubernetes event records share this pipeline and have string bodies; without the IsMap gate every event would
-      # raise "log bodies of type Str cannot be indexed".
-      - context: log
-        conditions:
-          - IsMap(log.body) and log.body["object"] != nil
-        statements:
-          - delete_key(log.body["object"]["metadata"], "managedFields")
-          # Several deploy tools store a serialized copy of the whole previous manifest in an annotation, env values
-          # included; the redaction processor walks maps and slices but not strings inside them, so the keys of the
-          # well-known tools (kubectl, kapp, Rancher, banzaicloud operators) are deleted. Annotations of tools not on
-          # this list leave the cluster unredacted, see docs/configuration.md.
-          - delete_matching_keys(log.body["object"]["metadata"]["annotations"], "^(kubectl\\.kubernetes\\.io/last-applied-configuration|kapp\\.k14s\\.io/original|objectset\\.rio\\.cattle\\.io/applied|banzaicloud\\.com/last-applied)$") where log.body["object"]["metadata"]["annotations"] != nil
-          - delete_key(log.body["object"]["status"], "images") where log.body["object"]["status"]["images"] != nil
-
-  # Masks literal environment variable values (spec.containers[*].env[*].value) at any depth of the manifest. OTTL
-  # cannot iterate arrays, the redaction processor walks maps and slices recursively. References
-  # (valueFrom.secretKeyRef) are not masked, they hold no literal credential.
-  redaction/k8s_objects:
-    allow_all_keys: true
-    blocked_key_patterns:
-    - ^value$
-
-  # Samples MODIFIED manifest records at one per interval per object; the emitted record is the first of the window.
-  # The include_fields key deliberately leaves out the status fields that metrics already report (replica counts), and
-  # keeps the ones they cannot reconstruct (phase, conditions, container statuses).
-  log_dedup/k8s_objects:
-    interval: 30s
-    # The conditions guard is required: without it, log_dedup adds log_count and first/last_observed_timestamp
-    # attributes to every record on the shared pipeline, Kubernetes events included. Restricting to MODIFIED also keeps
-    # the initial-state burst out of the processor's unbounded buffer; ADDED and DELETED never dedup anyway.
-    conditions:
-      - IsMap(log.body) and log.body["type"] == "MODIFIED"
-    include_fields:
-      - body.type
-      - body.object.metadata.uid
-      - body.object.metadata.labels
-      - body.object.metadata.annotations
-      - body.object.spec
-      - body.object.status.phase
-      - body.object.status.conditions
-      - body.object.status.containerStatuses
-  {{- end }}
-
   {{- if .ClusterName }}
   resource/clustername:
     attributes:
