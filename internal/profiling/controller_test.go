@@ -58,6 +58,22 @@ func TestProfilerRoutesSamplesAndDebuginfoSeparately(t *testing.T) {
 	require.Equal(t, "ghcr.io/parca-dev/parca-agent:v0.51.2", container.Image)
 	require.True(t, *container.SecurityContext.Privileged)
 	require.Zero(t, *container.SecurityContext.RunAsUser)
+	podUIDIndex := slices.IndexFunc(container.Env, func(env corev1.EnvVar) bool { return env.Name == "K8S_POD_UID" })
+	resourceAttributesIndex := slices.IndexFunc(container.Env, func(env corev1.EnvVar) bool {
+		return env.Name == "OTEL_RESOURCE_ATTRIBUTES"
+	})
+	require.NotEqual(t, -1, podUIDIndex)
+	require.Greater(t, resourceAttributesIndex, podUIDIndex, "Kubernetes expands only previously defined env variables")
+	require.Equal(t, corev1.EnvVar{Name: "K8S_POD_UID", ValueFrom: &corev1.EnvVarSource{
+		FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.uid"},
+	}}, container.Env[podUIDIndex])
+	require.Equal(t, corev1.EnvVar{Name: "OTEL_RESOURCE_ATTRIBUTES", Value: "k8s.pod.uid=$(K8S_POD_UID)"},
+		container.Env[resourceAttributesIndex])
+	for _, arg := range container.Args {
+		if strings.HasPrefix(arg, "--metadata-external-labels=") {
+			require.Equal(t, "--metadata-external-labels=parca.agent=true", arg)
+		}
+	}
 	for _, flag := range []string{
 		"--remote-store-address=test-opentelemetry-collector-service.operator.svc:4317",
 		"--metadata-external-labels=parca.agent=true",

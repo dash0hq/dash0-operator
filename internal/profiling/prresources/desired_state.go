@@ -103,9 +103,16 @@ func (c Config) profiler(configuration *dash0v1alpha1.Dash0OperatorConfiguration
 	} else {
 		args = append(args, "--debuginfo-upload-disable")
 	}
-	env := []corev1.EnvVar{{Name: "NODE_NAME", ValueFrom: &corev1.EnvVarSource{
-		FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"},
-	}}, {Name: "GOMEMLIMIT", Value: settings.EbpfProfilerContainerResources.EffectiveGoMemLimitPercent(util.GoMemLimitDefaultPercent)}}
+	env := []corev1.EnvVar{
+		{Name: "NODE_NAME", ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"},
+		}},
+		{Name: "K8S_POD_UID", ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.uid"},
+		}},
+		{Name: "OTEL_RESOURCE_ATTRIBUTES", Value: "k8s.pod.uid=$(K8S_POD_UID)"},
+		{Name: "GOMEMLIMIT", Value: settings.EbpfProfilerContainerResources.EffectiveGoMemLimitPercent(util.GoMemLimitDefaultPercent)},
+	}
 	container := corev1.Container{
 		Name: profilerComponent, Image: c.ProfilerImage, ImagePullPolicy: c.ProfilerImagePullPolicy, Args: args, Env: env,
 		Resources:       settings.EbpfProfilerContainerResources.ToResourceRequirements(),
