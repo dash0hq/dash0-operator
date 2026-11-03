@@ -60,6 +60,8 @@ clusters:
   autopilot due to the lack of the `nodes/proxy` permission
 - the [synthetics-worker](synthetics-worker.md) is not yet supported, since its container image has not been added to
   the GKE Autopilot workload allowlist
+- the [operator-managed eBPF profiler](profiling.md#operator-managed-ebpf-profiler) is not yet supported. It requires a
+  new workload allowlist submitted to Google, reviewed, and published. This review usually takes a few weeks.
 
 GKE Autopilot [adjusts](https://cloud.google.com/kubernetes-engine/docs/concepts/autopilot-resource-requests) the
 resource requests and limits of all workloads, including the OpenTelemetry collectors and the other workloads managed by

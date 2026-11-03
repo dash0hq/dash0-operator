@@ -13,7 +13,7 @@ It lets Agent0 run **read-only** `kubectl` commands in your cluster, on demand, 
 the same commands you would run yourself, executed from inside the cluster and returned to Agent0 as if it had a
 terminal attached to it.
 
-> **Note:** The Agent0 integration is currently experimental. It is disabled by default.
+> **Note:** The Agent0 integration is currently in beta. It is disabled by default.
 
 ## Table of Contents
 

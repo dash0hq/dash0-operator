@@ -147,6 +147,16 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			operatorConfigurationResource.Spec.CollectNodeLabelsAndAnnotations.Enabled,
 			false,
 		)
+	kubernetesObjectCollectionEnabled :=
+		pointers.ReadBoolPointerWithDefault(
+			operatorConfigurationResource.Spec.KubernetesObjectCollection.Enabled,
+			false,
+		)
+	collectClusterScopedObjects :=
+		pointers.ReadBoolPointerWithDefault(
+			operatorConfigurationResource.Spec.KubernetesObjectCollection.CollectClusterScopedObjects,
+			true,
+		)
 	prometheusCrdSupportEnabled =
 		pointers.ReadBoolPointerWithDefault(
 			operatorConfigurationResource.Spec.PrometheusCrdSupport.Enabled,
@@ -204,6 +214,8 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		CollectPodLabelsAndAnnotationsEnabled:            collectPodLabelsAndAnnotationsEnabled,
 		CollectNamespaceLabelsAndAnnotationsEnabled:      collectNamespaceLabelsAndAnnotationsEnabled,
 		CollectNodeLabelsAndAnnotationsEnabled:           collectNodeLabelsAndAnnotationsEnabled,
+		KubernetesObjectCollectionEnabled:                kubernetesObjectCollectionEnabled,
+		CollectClusterScopedObjects:                      collectClusterScopedObjects,
 		K8sAttributesDisableReplicasetInformer:           m.collectorConfig.K8sAttributesDisableReplicasetInformer,
 		K8sAttributesWaitForMetadata:                     m.collectorConfig.K8sAttributesWaitForMetadata,
 		K8sAttributesWaitForMetadataTimeout:              m.collectorConfig.K8sAttributesWaitForMetadataTimeout,
@@ -242,8 +254,11 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		DebugVerbosityDetailed:    m.collectorConfig.DebugVerbosityDetailed,
 		EnableProfExtension:       m.collectorConfig.EnableProfExtension,
 		ProfilingEnabled:          profilingEnabled,
-		CompressConfigMap:         m.collectorConfig.CompressConfigMap,
-		SignalControlSceOnlyMode:  m.collectorConfig.SignalControlSceOnlyMode,
+		EbpfProfilerEnabled: m.collectorConfig.EbpfProfilerEnabledViaHelm && profilingEnabled &&
+			operatorConfigurationResource.Spec.Profiling.EbpfProfiler != nil &&
+			pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.Profiling.EbpfProfiler.Enabled, false),
+		CompressConfigMap:        m.collectorConfig.CompressConfigMap,
+		SignalControlSceOnlyMode: m.collectorConfig.SignalControlSceOnlyMode,
 	}
 	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
 		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume

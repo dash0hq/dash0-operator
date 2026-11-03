@@ -112,6 +112,8 @@ type collectorConfigurationTemplateValues struct {
 	OperatorVersion                                  string
 	NamespacesWithLogCollection                      []string
 	NamespacesWithEventCollection                    []string
+	NamespacesWithKubernetesObjectCollection         []string
+	CollectClusterScopedObjects                      bool
 	NamespaceOttlFilter                              string
 	NamespacesWithPrometheusScraping                 []string
 	CustomFilters                                    customFilters
@@ -125,6 +127,8 @@ type collectorConfigurationTemplateValues struct {
 	DebugVerbosityDetailed                           bool
 	EnableProfExtension                              bool
 	ProfilingEnabled                                 bool
+	EbpfProfilerEnabled                              bool
+	PodAssociationPipelines                          map[string]string
 	SignalControl                                    SignalControlConfig
 	SignalControlGatewayActive                       bool
 	SignalControlCollectorServiceName                string
@@ -228,6 +232,7 @@ func assembleDaemonSetCollectorConfigMap(
 		monitoredNamespaces,
 		namespacesWithLogCollection,
 		nil, // namespacesWithEventCollection is not used when rendering the daemonset config map
+		nil, // namespacesWithKubernetesObjectCollection is not used when rendering the daemonset config map
 		namespacesWithPrometheusScraping,
 		filters,
 		transforms,
@@ -243,6 +248,7 @@ func assembleDeploymentCollectorConfigMap(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
 	namespacesWithEventCollection []string,
+	namespacesWithKubernetesObjectCollection []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
 	forDeletion bool,
@@ -252,6 +258,7 @@ func assembleDeploymentCollectorConfigMap(
 		monitoredNamespaces,
 		nil, // namespacesWithLogCollection is not used when rendering the deployment config map
 		namespacesWithEventCollection,
+		namespacesWithKubernetesObjectCollection,
 		nil, // namespacesWithPrometheusScraping is not used when rendering the deployment config map
 		filters,
 		transforms,
@@ -277,6 +284,7 @@ func assembleSignalControlCollectorConfigMap(
 		monitoredNamespaces,
 		nil, // namespacesWithLogCollection is not used when rendering the Signal Control collector config map
 		nil, // namespacesWithEventCollection is not used when rendering the Signal Control collector config map
+		nil, // namespacesWithKubernetesObjectCollection is not used when rendering the Signal Control collector config map
 		nil, // namespacesWithPrometheusScraping is not used when rendering the Signal Control collector config map
 		nil, // custom filters are applied upstream, in the daemonset and deployment collectors
 		nil, // custom transforms are applied upstream, in the daemonset and deployment collectors
@@ -293,6 +301,7 @@ func assembleCollectorConfigMap(
 	monitoredNamespaces []string,
 	namespacesWithLogCollection []string,
 	namespacesWithEventCollection []string,
+	namespacesWithKubernetesObjectCollection []string,
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
@@ -326,6 +335,7 @@ func assembleCollectorConfigMap(
 			monitoredNamespaces,
 			namespacesWithLogCollection,
 			namespacesWithEventCollection,
+			namespacesWithKubernetesObjectCollection,
 			namespacesWithPrometheusScraping,
 			filters,
 			transforms,
@@ -364,6 +374,7 @@ func newCollectorConfigurationTemplateValues(
 	monitoredNamespaces []string,
 	namespacesWithLogCollection []string,
 	namespacesWithEventCollection []string,
+	namespacesWithKubernetesObjectCollection []string,
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
@@ -397,6 +408,12 @@ func newCollectorConfigurationTemplateValues(
 		memoryLimiterLimitMiB = settings.LimitMiB
 		memoryLimiterSpikeMiB = settings.SpikeMiB
 	}
+	podAssociationPipelines := map[string]string{
+		"common-processors": "k8s_attributes",
+	}
+	if config.EbpfProfilerEnabled {
+		podAssociationPipelines["ebpf-profiler"] = "k8s_attributes/profiles"
+	}
 
 	return &collectorConfigurationTemplateValues{
 		OperatorNamespace:           config.OperatorNamespace,
@@ -426,6 +443,8 @@ func newCollectorConfigurationTemplateValues(
 		OperatorVersion:                                  config.Images.GetOperatorVersion(),
 		NamespacesWithLogCollection:                      namespacesWithLogCollection,
 		NamespacesWithEventCollection:                    namespacesWithEventCollection,
+		NamespacesWithKubernetesObjectCollection:         namespacesWithKubernetesObjectCollection,
+		CollectClusterScopedObjects:                      config.CollectClusterScopedObjects,
 		NamespaceOttlFilter:                              namespaceOttlFilter,
 		NamespacesWithPrometheusScraping:                 namespacesWithPrometheusScraping,
 		CustomFilters:                                    customTelemetryFilters,
@@ -439,6 +458,8 @@ func newCollectorConfigurationTemplateValues(
 		DebugVerbosityDetailed:                           config.DebugVerbosityDetailed,
 		EnableProfExtension:                              config.EnableProfExtension,
 		ProfilingEnabled:                                 config.ProfilingEnabled,
+		EbpfProfilerEnabled:                              config.EbpfProfilerEnabled,
+		PodAssociationPipelines:                          podAssociationPipelines,
 		SignalControl:                                    config.SignalControl,
 		SignalControlGatewayActive:                       config.signalControlGatewayActive(),
 		SignalControlCollectorServiceName:                SignalControlCollectorServiceName(config.NamePrefix),

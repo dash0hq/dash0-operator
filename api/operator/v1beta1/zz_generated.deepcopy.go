@@ -105,6 +105,7 @@ func (in *Dash0MonitoringSpec) DeepCopyInto(out *Dash0MonitoringSpec) {
 	in.InstrumentWorkloads.DeepCopyInto(&out.InstrumentWorkloads)
 	in.LogCollection.DeepCopyInto(&out.LogCollection)
 	in.EventCollection.DeepCopyInto(&out.EventCollection)
+	in.KubernetesObjectCollection.DeepCopyInto(&out.KubernetesObjectCollection)
 	in.PrometheusScraping.DeepCopyInto(&out.PrometheusScraping)
 	if in.Filter != nil {
 		in, out := &in.Filter, &out.Filter

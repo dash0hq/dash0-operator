@@ -38,12 +38,15 @@ type OperatorConfigurationValues struct {
 	KeepalivePermitWithoutStream                     bool
 	SelfMonitoringEnabled                            bool
 	KubernetesInfrastructureMetricsCollectionEnabled bool
+	KubernetesObjectCollectionEnabled                bool
+	CollectClusterScopedObjects                      bool
 	InstrumentationDelivery                          dash0v1alpha1.InstrumentationDelivery
 	CollectPodLabelsAndAnnotationsEnabled            bool
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
 	CollectNodeLabelsAndAnnotationsEnabled           bool
 	PrometheusCrdSupportEnabled                      bool
 	ProfilingEnabled                                 bool
+	EbpfProfilerEnabled                              bool
 	TelemetryCollectionEnabled                       bool
 	ClusterName                                      string
 	AutoMonitorNamespacesEnabled                     bool
@@ -478,11 +481,13 @@ func convertValuesToResource(
 		filter = nil
 		transform = nil
 		operatorConfigurationValues.KubernetesInfrastructureMetricsCollectionEnabled = false
+		operatorConfigurationValues.KubernetesObjectCollectionEnabled = false
 		operatorConfigurationValues.CollectPodLabelsAndAnnotationsEnabled = false
 		operatorConfigurationValues.CollectNamespaceLabelsAndAnnotationsEnabled = false
 		operatorConfigurationValues.CollectNodeLabelsAndAnnotationsEnabled = false
 		operatorConfigurationValues.PrometheusCrdSupportEnabled = false
 		operatorConfigurationValues.ProfilingEnabled = false
+		operatorConfigurationValues.EbpfProfilerEnabled = false
 		operatorConfigurationValues.AutoMonitorNamespacesEnabled = false
 	}
 
@@ -493,6 +498,10 @@ func convertValuesToResource(
 		Exports: exports,
 		KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
 			Enabled: new(operatorConfigurationValues.KubernetesInfrastructureMetricsCollectionEnabled),
+		},
+		KubernetesObjectCollection: dash0v1alpha1.KubernetesObjectCollection{
+			Enabled:                     new(operatorConfigurationValues.KubernetesObjectCollectionEnabled),
+			CollectClusterScopedObjects: new(operatorConfigurationValues.CollectClusterScopedObjects),
 		},
 		CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 			Enabled: new(operatorConfigurationValues.CollectPodLabelsAndAnnotationsEnabled),
@@ -511,7 +520,7 @@ func convertValuesToResource(
 		Transform:          transform,
 		MonitoringTemplate: monitoringTemplate,
 		Profiling: &dash0v1alpha1.Profiling{
-			Enabled: new(operatorConfigurationValues.ProfilingEnabled),
+			Enabled: new(operatorConfigurationValues.ProfilingEnabled || operatorConfigurationValues.EbpfProfilerEnabled),
 		},
 		TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 			Enabled: new(operatorConfigurationValues.TelemetryCollectionEnabled),
@@ -520,6 +529,9 @@ func convertValuesToResource(
 			Enabled:       new(operatorConfigurationValues.AutoMonitorNamespacesEnabled),
 			LabelSelector: operatorConfigurationValues.AutoMonitorNamespacesLabelSelector,
 		},
+	}
+	if operatorConfigurationValues.EbpfProfilerEnabled {
+		spec.Profiling.EbpfProfiler = &dash0v1alpha1.EbpfProfiler{Enabled: new(true)}
 	}
 	if operatorConfigurationValues.InstrumentationDelivery != "" {
 		spec.InstrumentWorkloads = dash0v1alpha1.InstrumentWorkloads{

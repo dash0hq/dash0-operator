@@ -72,6 +72,32 @@ var _ = Describe(
 			},
 		)
 
+		DescribeTable("should apply the Helm eBPF profiler opt-in", func(telemetryEnabled, profilerEnabled bool) {
+			handler := NewAutoOperatorConfigurationResourceHandler(k8sClient, readyCheckExecuter,
+				OperatorConfigurationValues{
+					Endpoint: EndpointDash0Test, Token: AuthorizationTokenTest,
+					TelemetryCollectionEnabled: telemetryEnabled, EbpfProfilerEnabled: profilerEnabled,
+				}, util.ExtraConfig{})
+			handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+			_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				var configuration v1alpha1.Dash0OperatorConfiguration
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName}, &configuration)).To(Succeed())
+				g.Expect(configuration.Spec.Profiling.Enabled).To(HaveValue(Equal(telemetryEnabled && profilerEnabled)))
+				if telemetryEnabled && profilerEnabled {
+					g.Expect(configuration.Spec.Profiling.EbpfProfiler).NotTo(BeNil())
+					g.Expect(configuration.Spec.Profiling.EbpfProfiler.Enabled).To(HaveValue(BeTrue()))
+				} else {
+					g.Expect(configuration.Spec.Profiling.EbpfProfiler).To(BeNil())
+				}
+			}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
+		},
+			Entry("implicitly enables profile collection", true, true),
+			Entry("remains opt-in", true, false),
+			Entry("does not enable sampling without telemetry collection", false, true),
+		)
+
 		It(
 			"should fail validation if neither an endpoint nor exports have been provided", func() {
 				handler := NewAutoOperatorConfigurationResourceHandler(
@@ -558,6 +584,8 @@ var _ = Describe(
 						Token:                 AuthorizationTokenTest,
 						SelfMonitoringEnabled: true,
 						KubernetesInfrastructureMetricsCollectionEnabled: true,
+						KubernetesObjectCollectionEnabled:                true,
+						CollectClusterScopedObjects:                      true,
 						CollectPodLabelsAndAnnotationsEnabled:            true,
 						CollectNamespaceLabelsAndAnnotationsEnabled:      true,
 						CollectNodeLabelsAndAnnotationsEnabled:           true,
@@ -587,6 +615,12 @@ var _ = Describe(
 						g.Expect(*spec.SelfMonitoring.Enabled).To(BeTrue())
 						g.Expect(spec.KubernetesInfrastructureMetricsCollection.Enabled).ToNot(BeNil())
 						g.Expect(*spec.KubernetesInfrastructureMetricsCollection.Enabled).To(BeFalse())
+						g.Expect(spec.KubernetesObjectCollection.Enabled).ToNot(BeNil())
+						g.Expect(*spec.KubernetesObjectCollection.Enabled).To(BeFalse())
+						// collectClusterScopedObjects is an opt-out that is inert while enabled=false, so it is not
+						// forced off together with the telemetry-dependent settings.
+						g.Expect(spec.KubernetesObjectCollection.CollectClusterScopedObjects).ToNot(BeNil())
+						g.Expect(*spec.KubernetesObjectCollection.CollectClusterScopedObjects).To(BeTrue())
 						g.Expect(spec.CollectPodLabelsAndAnnotations.Enabled).ToNot(BeNil())
 						g.Expect(*spec.CollectPodLabelsAndAnnotations.Enabled).To(BeFalse())
 						g.Expect(spec.CollectNamespaceLabelsAndAnnotations.Enabled).ToNot(BeNil())

@@ -57,6 +57,8 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/postdelete"
 	"github.com/dash0hq/dash0-operator/internal/postinstall"
 	"github.com/dash0hq/dash0-operator/internal/predelete"
+	"github.com/dash0hq/dash0-operator/internal/profiling"
+	"github.com/dash0hq/dash0-operator/internal/profiling/prresources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol/scresources"
@@ -116,6 +118,11 @@ type environmentVariables struct {
 	syntheticsWorkerServerAddress               string
 	syntheticsWorkerInsecure                    bool
 	syntheticsWorkerPriorityClassName           string
+	ebpfProfilerEnabled                         bool
+	ebpfProfilerImage                           string
+	ebpfProfilerImagePullPolicy                 corev1.PullPolicy
+	debuginfoProxyImage                         string
+	debuginfoProxyImagePullPolicy               corev1.PullPolicy
 	nodeIp                                      string
 	nodeName                                    string
 	podIp                                       string
@@ -155,11 +162,14 @@ type commandLineArguments struct {
 	operatorConfigurationKeepalivePermitWithoutStream                     bool
 	operatorConfigurationSelfMonitoringEnabled                            bool
 	operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled bool
+	operatorConfigurationKubernetesObjectCollectionEnabled                bool
+	operatorConfigurationCollectClusterScopedObjects                      bool
 	operatorConfigurationCollectPodLabelsAndAnnotationsEnabled            bool
 	operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled      bool
 	operatorConfigurationCollectNodeLabelsAndAnnotationsEnabled           bool
 	operatorConfigurationPrometheusCrdSupportEnabled                      bool
 	operatorConfigurationProfilingEnabled                                 bool
+	operatorConfigurationEbpfProfilerEnabled                              bool
 	operatorConfigurationClusterName                                      string
 	operatorConfigurationAutoMonitorNamespacesEnabled                     bool
 	operatorConfigurationAutoMonitorNamespacesLabelSelector               string
@@ -244,6 +254,11 @@ const (
 	syntheticsWorkerServerAddressEnvVarName               = "DASH0_SYNTHETICS_WORKER_SERVER_ADDRESS"
 	syntheticsWorkerInsecureEnvVarName                    = "DASH0_SYNTHETICS_WORKER_INSECURE"
 	syntheticsWorkerPriorityClassNameEnvVarName           = "DASH0_SYNTHETICS_WORKER_PRIORITY_CLASS_NAME"
+	ebpfProfilerEnabledEnvVarName                         = "DASH0_EBPF_PROFILER_ENABLED"
+	ebpfProfilerImageEnvVarName                           = "DASH0_EBPF_PROFILER_IMAGE"
+	ebpfProfilerImagePullPolicyEnvVarName                 = "DASH0_EBPF_PROFILER_IMAGE_PULL_POLICY"
+	debuginfoProxyImageEnvVarName                         = "DASH0_DEBUGINFO_PROXY_IMAGE"
+	debuginfoProxyImagePullPolicyEnvVarName               = "DASH0_DEBUGINFO_PROXY_IMAGE_PULL_POLICY"
 	k8sNodeIpEnvVarName                                   = "K8S_NODE_IP"
 	k8sNodeNameEnvVarName                                 = "K8S_NODE_NAME"
 	k8sPodIpEnvVarName                                    = "K8S_POD_IP"
@@ -474,12 +489,15 @@ func Start() {
 			SelfMonitoringEnabled: cliArgs.operatorConfigurationSelfMonitoringEnabled,
 			//nolint:lll
 			KubernetesInfrastructureMetricsCollectionEnabled: cliArgs.operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled,
+			KubernetesObjectCollectionEnabled:                cliArgs.operatorConfigurationKubernetesObjectCollectionEnabled,
+			CollectClusterScopedObjects:                      cliArgs.operatorConfigurationCollectClusterScopedObjects,
 			InstrumentationDelivery:                          cliArgs.operatorConfigurationInstrumentationDelivery,
 			CollectPodLabelsAndAnnotationsEnabled:            cliArgs.operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
 			CollectNamespaceLabelsAndAnnotationsEnabled:      cliArgs.operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled,
 			CollectNodeLabelsAndAnnotationsEnabled:           cliArgs.operatorConfigurationCollectNodeLabelsAndAnnotationsEnabled,
 			PrometheusCrdSupportEnabled:                      cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
 			ProfilingEnabled:                                 cliArgs.operatorConfigurationProfilingEnabled,
+			EbpfProfilerEnabled:                              cliArgs.operatorConfigurationEbpfProfilerEnabled,
 			TelemetryCollectionEnabled:                       cliArgs.telemetryCollectionEnabled,
 			ClusterName:                                      cliArgs.operatorConfigurationClusterName,
 			AutoMonitorNamespacesEnabled:                     cliArgs.operatorConfigurationAutoMonitorNamespacesEnabled,
@@ -641,6 +659,20 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
 	fs.BoolVar(
+		&cliArgs.operatorConfigurationKubernetesObjectCollectionEnabled,
+		"operator-configuration-kubernetes-object-collection-enabled",
+		false,
+		"The value for kubernetesObjectCollection.enabled on the operator configuration resource; "+
+			"will be ignored if operator-configuration-endpoint is not set.",
+	)
+	fs.BoolVar(
+		&cliArgs.operatorConfigurationCollectClusterScopedObjects,
+		"operator-configuration-kubernetes-object-collection-collect-cluster-scoped-objects",
+		true,
+		"The value for kubernetesObjectCollection.collectClusterScopedObjects on the operator configuration "+
+			"resource; will be ignored if operator-configuration-endpoint is not set.",
+	)
+	fs.BoolVar(
 		&cliArgs.operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
 		"operator-configuration-collect-pod-labels-and-annotations-enabled",
 		true,
@@ -674,6 +706,12 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 		false,
 		"The value for profiling.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
+	)
+	fs.BoolVar(
+		&cliArgs.operatorConfigurationEbpfProfilerEnabled,
+		"operator-configuration-ebpf-profiler-enabled",
+		false,
+		"The value for profiling.ebpfProfiler.enabled on the operator configuration resource.",
 	)
 	fs.BoolVar(
 		&cliArgs.telemetryCollectionEnabled,
@@ -1012,6 +1050,12 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	syntheticsWorkerInsecure := readBooleanEnvVar(syntheticsWorkerInsecureEnvVarName)
 	syntheticsWorkerPriorityClassName, _ := os.LookupEnv(syntheticsWorkerPriorityClassNameEnvVarName)
 
+	ebpfProfilerEnabled := readOptionalBoolFromEnvironmentVariable(ebpfProfilerEnabledEnvVarName, false)
+	ebpfProfilerImage, _ := os.LookupEnv(ebpfProfilerImageEnvVarName)
+	ebpfProfilerImagePullPolicy := readOptionalPullPolicyFromEnvironmentVariable(ebpfProfilerImagePullPolicyEnvVarName)
+	debuginfoProxyImage, _ := os.LookupEnv(debuginfoProxyImageEnvVarName)
+	debuginfoProxyImagePullPolicy := readOptionalPullPolicyFromEnvironmentVariable(debuginfoProxyImagePullPolicyEnvVarName)
+
 	nodeIp, isSet := os.LookupEnv(k8sNodeIpEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, k8sNodeIpEnvVarName)
@@ -1112,6 +1156,11 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		syntheticsWorkerServerAddress:               syntheticsWorkerServerAddress,
 		syntheticsWorkerInsecure:                    syntheticsWorkerInsecure,
 		syntheticsWorkerPriorityClassName:           syntheticsWorkerPriorityClassName,
+		ebpfProfilerEnabled:                         ebpfProfilerEnabled,
+		ebpfProfilerImage:                           ebpfProfilerImage,
+		ebpfProfilerImagePullPolicy:                 ebpfProfilerImagePullPolicy,
+		debuginfoProxyImage:                         debuginfoProxyImage,
+		debuginfoProxyImagePullPolicy:               debuginfoProxyImagePullPolicy,
 		nodeIp:                                      nodeIp,
 		nodeName:                                    nodeName,
 		podIp:                                       podIp,
@@ -1648,6 +1697,10 @@ func startOperatorManager(
 		cliArgs.operatorConfigurationSelfMonitoringEnabled,
 		"operator configuration kubernetes infrastructure metrics collection enabled",
 		cliArgs.operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled,
+		"operator configuration kubernetes object collection enabled",
+		cliArgs.operatorConfigurationKubernetesObjectCollectionEnabled,
+		"operator configuration kubernetes object collection collect cluster-scoped objects",
+		cliArgs.operatorConfigurationCollectClusterScopedObjects,
 		"operator configuration collect pod labels and annotations enabled",
 		cliArgs.operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
 		"operator configuration collect namespace labels and annotations enabled",
@@ -1906,6 +1959,7 @@ func startDash0Controllers(
 			TargetAllocatorNamePrefix:              envVars.targetAllocatorNamePrefix,
 			Agent0ConnectorEnabledViaHelm:          envVars.agent0ConnectorEnabled,
 			SyntheticsWorkerEnabledViaHelm:         envVars.syntheticsWorkerEnabled,
+			EbpfProfilerEnabledViaHelm:             envVars.ebpfProfilerEnabled,
 			SendBatchSize:                          envVars.sendBatchSize,
 			SendBatchMaxSize:                       envVars.sendBatchMaxSize,
 			K8sAttributesDisableReplicasetInformer: envVars.k8sAttributesDisableReplicasetInformer,
@@ -2001,6 +2055,22 @@ func startDash0Controllers(
 	)
 	if err != nil {
 		return err
+	}
+
+	profilerResourceManager := prresources.NewResourceManager(
+		k8sClient, mgr.GetScheme(), operatorDeploymentSelfReference,
+		prresources.Config{
+			Namespace: envVars.operatorNamespace, NamePrefix: envVars.oTelCollectorNamePrefix,
+			Enabled: envVars.ebpfProfilerEnabled, TelemetryCollectionEnabled: cliArgs.telemetryCollectionEnabled,
+			ProfilerImage: envVars.ebpfProfilerImage, ProfilerImagePullPolicy: envVars.ebpfProfilerImagePullPolicy,
+			ProxyImage: envVars.debuginfoProxyImage, ProxyImagePullPolicy: envVars.debuginfoProxyImagePullPolicy,
+			IsOpenShift: cliArgs.isOpenShift,
+		},
+	)
+	profilerManager := profiling.NewManager(profilerResourceManager)
+	profilerReconciler := profiling.NewReconciler(k8sClient, profilerManager)
+	if err := profilerReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to set up the eBPF profiler reconciler: %w", err)
 	}
 
 	var scManager *signalcontrol.SignalControlManager
@@ -2335,6 +2405,7 @@ func startDash0Controllers(
 		cliArgs.signalControlSceOnlyMode,
 		envVars.agent0ConnectorEnabled,
 		envVars.syntheticsWorkerEnabled,
+		envVars.ebpfProfilerEnabled,
 	); err != nil {
 		return err
 	}
@@ -2912,6 +2983,7 @@ func setupResourceWebhooks(
 	signalControlSceOnlyMode bool,
 	agent0ConnectorEnabled bool,
 	syntheticsWorkerEnabled bool,
+	ebpfProfilerEnabled bool,
 ) error {
 	if err := webhooks.NewOperatorConfigurationMutatingWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration mutating webhook: %w", err)
@@ -2924,6 +2996,7 @@ func setupResourceWebhooks(
 		extraConfig,
 		extraConfigDefaults,
 	)
+	operatorConfigurationValidationWebhookHandler.EbpfProfilerEnabledViaHelm = ebpfProfilerEnabled
 	if err := operatorConfigurationValidationWebhookHandler.SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration validation webhook: %w", err)
 	}

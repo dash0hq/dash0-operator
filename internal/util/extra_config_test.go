@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -608,16 +609,23 @@ edgeProxyReplicas: null
 				})
 
 				It("drift protection: the defaults are in sync with the defaults of the Helm chart", func() {
-					Expect(marshalToJson(ExtraConfigDefaults)).To(
-						MatchJSON(marshalToJson(readDefaultsOfHelmChart())),
+					defaults := map[string]any{}
+					Expect(json.Unmarshal([]byte(marshalToJson(ExtraConfigDefaults)), &defaults)).To(Succeed())
+					chartDefaults := map[string]any{}
+					Expect(json.Unmarshal([]byte(marshalToJson(readDefaultsOfHelmChart())), &chartDefaults)).To(Succeed())
+					Expect(defaults).To(
+						Equal(chartDefaults),
 						"the defaults of ExtraConfigDefaults and %s have diverged",
 						helmChartValuesFile,
 					)
 				})
 
-				It("drift protection: every field of ExtraConfig is compared with the defaults of the Helm chart", func() {
+				It("drift protection: every extra config file field is compared with the defaults of the Helm chart", func() {
 					for field := range reflect.TypeFor[ExtraConfig]().Fields() {
 						key, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+						if key == "-" {
+							continue
+						}
 						Expect(extraConfigKeysToHelmValues).To(
 							HaveKey(key),
 							"the key %s is missing from extraConfigKeysToHelmValues",
@@ -1510,7 +1518,8 @@ collectorFilelogOffsetStorageVolume:
 			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), ExtraConfigDefaults, logger)).To(Succeed())
 
 			for _, c := range clients {
-				Expect(c.updatedConfig).To(BeNil())
+				_, updatedConfig := c.recordedUpdates()
+				Expect(updatedConfig).To(BeNil())
 			}
 
 			_, err := tmpFile.WriteString(`
@@ -1524,8 +1533,8 @@ collectorFilelogOffsetStorageVolume:
 
 			Eventually(func(g Gomega) {
 				for _, c := range clients {
-					g.Expect(c.updateExtraConfigCalls).To(Equal(1))
-					updatedConfig := c.updatedConfig
+					updateExtraConfigCalls, updatedConfig := c.recordedUpdates()
+					g.Expect(updateExtraConfigCalls).To(Equal(1))
 					g.Expect(updatedConfig).ToNot(BeNil())
 					g.Expect(updatedConfig.CollectorFilelogOffsetStorageVolume).ToNot(BeNil())
 					filelogOffsetStorageVolume := updatedConfig.CollectorFilelogOffsetStorageVolume
@@ -1574,8 +1583,8 @@ collectorFilelogOffsetStorageVolume:
 			Expect(err).ToNot(HaveOccurred())
 
 			Eventually(func(g Gomega) {
-				g.Expect(client.updateExtraConfigCalls).To(Equal(1))
-				updatedConfig := client.updatedConfig
+				updateExtraConfigCalls, updatedConfig := client.recordedUpdates()
+				g.Expect(updateExtraConfigCalls).To(Equal(1))
 				g.Expect(updatedConfig).ToNot(BeNil())
 				g.Expect(updatedConfig.CollectorFilelogOffsetStorageVolume).ToNot(BeNil())
 				filelogOffsetStorageVolume := updatedConfig.CollectorFilelogOffsetStorageVolume
@@ -1610,8 +1619,9 @@ invalid yaml
 			Expect(err).ToNot(HaveOccurred())
 
 			Consistently(func(g Gomega) {
-				g.Expect(client.updateExtraConfigCalls).To(Equal(0))
-				g.Expect(client.updatedConfig).To(BeNil())
+				updateExtraConfigCalls, updatedConfig := client.recordedUpdates()
+				g.Expect(updateExtraConfigCalls).To(Equal(0))
+				g.Expect(updatedConfig).To(BeNil())
 			}, 2*time.Second, 100*time.Millisecond).To(Succeed())
 		})
 
@@ -1624,21 +1634,31 @@ invalid yaml
 			Expect(os.Remove(tmpFile.Name())).To(Succeed())
 
 			Consistently(func(g Gomega) {
-				g.Expect(client.updateExtraConfigCalls).To(Equal(0))
-				g.Expect(client.updatedConfig).To(BeNil())
+				updateExtraConfigCalls, updatedConfig := client.recordedUpdates()
+				g.Expect(updateExtraConfigCalls).To(Equal(0))
+				g.Expect(updatedConfig).To(BeNil())
 			}, 2*time.Second, 100*time.Millisecond).To(Succeed())
 		})
 	})
 })
 
 type DummyExtraConfigClient struct {
+	mutex                  sync.Mutex
 	updateExtraConfigCalls int
 	updatedConfig          *ExtraConfig
 }
 
 func (c *DummyExtraConfigClient) UpdateExtraConfig(_ context.Context, updatedConfig ExtraConfig, _ logd.Logger) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	c.updateExtraConfigCalls += 1
 	c.updatedConfig = &updatedConfig
+}
+
+func (c *DummyExtraConfigClient) recordedUpdates() (int, *ExtraConfig) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return c.updateExtraConfigCalls, c.updatedConfig
 }
 
 var helmChartValuesFile = filepath.Join("..", "..", "helm-chart", "dash0-operator", "values.yaml")

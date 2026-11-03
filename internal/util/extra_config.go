@@ -135,6 +135,25 @@ type ExtraConfig struct {
 	Agent0ConnectorTolerations            []corev1.Toleration                `json:"agent0ConnectorTolerations,omitempty"`
 	Agent0ConnectorNodeAffinity           *corev1.NodeAffinity               `json:"agent0ConnectorNodeAffinity,omitempty"`
 
+	// Profiling component settings come from spec.components, not the extra config file.
+	EbpfProfilerContainerResources ResourceRequirementsWithGoMemLimit `json:"-"`
+	EbpfProfilerLabels             map[string]string                  `json:"-"`
+	EbpfProfilerAnnotations        map[string]string                  `json:"-"`
+	EbpfProfilerPodLabels          map[string]string                  `json:"-"`
+	EbpfProfilerPodAnnotations     map[string]string                  `json:"-"`
+	EbpfProfilerTolerations        []corev1.Toleration                `json:"-"`
+	EbpfProfilerNodeAffinity       *corev1.NodeAffinity               `json:"-"`
+	EbpfProfilerPriorityClassName  string                             `json:"-"`
+
+	DebuginfoProxyContainerResources ResourceRequirementsWithGoMemLimit `json:"-"`
+	DebuginfoProxyLabels             map[string]string                  `json:"-"`
+	DebuginfoProxyAnnotations        map[string]string                  `json:"-"`
+	DebuginfoProxyPodLabels          map[string]string                  `json:"-"`
+	DebuginfoProxyPodAnnotations     map[string]string                  `json:"-"`
+	DebuginfoProxyTolerations        []corev1.Toleration                `json:"-"`
+	DebuginfoProxyNodeAffinity       *corev1.NodeAffinity               `json:"-"`
+	DebuginfoProxyPriorityClassName  string                             `json:"-"`
+
 	// Actually we would like to use the types *dash0v1alpha1.MonitoringTemplate, *dash0common.Filter and
 	// *dash0common.Transform here, but that leads to circular package dependencies. We should revisit how to untangle
 	// this.
@@ -233,6 +252,26 @@ var (
 				corev1.ResourceMemory: resource.MustParse("64Mi"),
 			},
 		},
+		EbpfProfilerContainerResources: ResourceRequirementsWithGoMemLimit{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("512Mi"),
+			},
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("100m"),
+				corev1.ResourceMemory: resource.MustParse("128Mi"),
+			},
+		},
+		EbpfProfilerNodeAffinity: defaultNodeAffinity(),
+		DebuginfoProxyContainerResources: ResourceRequirementsWithGoMemLimit{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("128Mi"),
+			},
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("10m"),
+				corev1.ResourceMemory: resource.MustParse("32Mi"),
+			},
+		},
+		DebuginfoProxyNodeAffinity: defaultNodeAffinity(),
 
 		// The following defaults are only applied when the respective key is missing from the extra config map (see
 		// readExtraConfigurationFromFile), since the Helm chart renders them whenever the respective component is
@@ -342,8 +381,8 @@ func defaultNodeAffinity() *corev1.NodeAffinity {
 }
 
 // ExtraConfigDefaultsFor returns the defaults that apply when a value is missing from the extra config map, and with
-// which the settings in spec.components are merged. They match the defaults of the Helm chart, except for the
-// DaemonSet SELinux options on OpenShift, which only the operator sets.
+// which the settings in spec.components are merged. Settings exposed through Helm match the defaults of the chart,
+// except for the DaemonSet SELinux options on OpenShift, which only the operator sets.
 func ExtraConfigDefaultsFor(isGkeAutopilot bool, isOpenShift bool) ExtraConfig {
 	defaults := ExtraConfigDefaults
 	if isGkeAutopilot {
@@ -430,10 +469,8 @@ func readExtraConfigurationFromFile(
 	return *extraConfig, nil
 }
 
-// applyDefaultsForMissingKeys sets the defaults for the values that the Helm chart renders whenever the respective
-// component is enabled, and for the DaemonSet SELinux options, which it only renders when they are set, when their key
-// is missing. A value that is present is kept as it is, including an explicit null, except for replica counts, for
-// which null also means the default.
+// applyDefaultsForMissingKeys sets defaults when a key is missing. A value that is present is kept as it is, including
+// an explicit null, except for replica counts, for which null also means the default.
 func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig, presentKeys map[string]any) {
 	missing := func(key string) bool {
 		_, present := presentKeys[key]
@@ -495,8 +532,7 @@ func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig
 	}
 }
 
-// validateReplicaCounts rejects replica counts below 1. The Helm chart already refuses to render them, so this only
-// catches an extra config map that has been edited by hand.
+// validateReplicaCounts rejects replica counts below 1 in the extra config map.
 func validateReplicaCounts(extraConfig *ExtraConfig) error {
 	if extraConfig.SignalControlCollectorReplicas < 1 {
 		return fmt.Errorf(
