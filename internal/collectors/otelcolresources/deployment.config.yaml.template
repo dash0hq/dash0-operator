@@ -888,11 +888,11 @@ service:
         {{- end }}
         - resource/cluster_uid
         - resource/dash0_operator_attributes
-        {{- if .CustomFilters.HasLogFilters }}
+        {{- if and $hasEventCollectionEnabledForAtLeastOneNamespace .CustomFilters.HasLogFilters }}
         - filter/logs/custom_telemetry_filter
         {{- end }}
         - batch
-        {{- if .CustomTransforms.HasLogTransforms }}
+        {{- if and $hasEventCollectionEnabledForAtLeastOneNamespace .CustomTransforms.HasLogTransforms }}
         - transform/logs/custom_telemetry_transform
         {{- end }}
         - transform/resources
