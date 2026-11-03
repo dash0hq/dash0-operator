@@ -80,15 +80,18 @@ WORKDIR /dash0-instrumentation/python
 COPY python/extract-flattened-requirements.sh .
 COPY --from=download-dash0-python-distribution /dash0-python-distribution /tmp/dash0-python-distribution
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
-# Install the Dash0 Python distribution's workspace packages from local paths, since they are not yet published to
-# PyPI. Listing them in the same pip invocation lets pip resolve the inter-dependencies against the local sources.
-# The dash0-opentelemetry package pins the full instrumentation set as regular dependencies, so we do not need
-# to install any additional packages on top.
+# Install the Dash0 Python distribution's workspace packages from local paths, since a release tag can exist before its
+# packages are published to PyPI. Listing them in the same pip invocation lets pip resolve the inter-dependencies
+# against the local sources; a workspace package that dash0-opentelemetry depends on but that is missing from this list
+# is resolved from PyPI instead. The dash0-opentelemetry package pins the full instrumentation set as regular
+# dependencies, so we do not need to install any additional packages on top. Keep this list in sync with the musl stage
+# below and with python/extract-flattened-requirements.sh.
 RUN pip install --quiet --root-user-action ignore --target . \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-pyproto \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-common \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-grpc \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-http \
+  /tmp/dash0-python-distribution/packages/dash0-opentelemetry-configuration \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry && \
   ./extract-flattened-requirements.sh && \
   rm extract-flattened-requirements.sh && \
@@ -106,6 +109,7 @@ RUN pip install --quiet --root-user-action ignore --target . \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-common \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-grpc \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-http \
+  /tmp/dash0-python-distribution/packages/dash0-opentelemetry-configuration \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry && \
   ./extract-flattened-requirements.sh && \
   rm extract-flattened-requirements.sh && \
@@ -132,7 +136,7 @@ RUN . /tmp/dash0-ruby-distribution-version && \
   rm /tmp/dash0-ruby-distribution.tar.gz
 
 # install Ruby artifacts (glibc)
-FROM ruby:4.0.8-slim-trixie AS build-ruby-glibc
+FROM ruby:4.0.9-slim-trixie AS build-ruby-glibc
 # A C toolchain is only needed while installing the bundle, because a transitive dependency ships as source and compiles
 # a native extension. The bundle copied into the final image contains no source gems and needs no compiler.
 RUN apt-get update && \

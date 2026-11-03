@@ -19,8 +19,8 @@ python -m venv "$venv_dir"
 
 # The Dash0 Python distribution's workspace packages are copied into /tmp/dash0-python-distribution by the Dockerfile
 # stage that runs this script. The dash0-opentelemetry package pins the full instrumentation set as regular
-# dependencies, so installing it (together with the pure-Python OTLP exporter packages it depends on) gives us the
-# complete injected tree.
+# dependencies, so installing it (together with the other workspace packages it depends on) gives us the complete
+# injected tree. The list of workspace packages must match the one in the Dockerfile.
 dash0_distribution_dir="/tmp/dash0-python-distribution"
 if [ ! -d "$dash0_distribution_dir" ]; then
   echo "$dash0_distribution_dir does not exist; this script must run inside the instrumentation image build" >&2
@@ -32,6 +32,7 @@ pip install --quiet --root-user-action ignore \
   "$dash0_distribution_dir/packages/dash0-opentelemetry-exporter-otlp-pyproto-common" \
   "$dash0_distribution_dir/packages/dash0-opentelemetry-exporter-otlp-pyproto-grpc" \
   "$dash0_distribution_dir/packages/dash0-opentelemetry-exporter-otlp-pyproto-http" \
+  "$dash0_distribution_dir/packages/dash0-opentelemetry-configuration" \
   "$dash0_distribution_dir/packages/dash0-opentelemetry"
 
 # Pin pipdeptree to the last version that ships prebuilt wheels; 4.0.0+ is sdist-only and requires a Rust toolchain

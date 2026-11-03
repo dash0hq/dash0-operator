@@ -9,6 +9,7 @@ This document covers metrics collection, Prometheus endpoint scraping, profiling
 - [Scraping Prometheus Endpoints](#scraping-prometheus-endpoints)
 - [Support for Prometheus CRDs](#support-for-prometheus-crds)
   - [Authorization](#authorization)
+    - [Certificate Renewal](#certificate-renewal)
     - [Allowing Insecure Auth Secrets](#allowing-insecure-auth-secrets)
   - [Restricting Access to Secrets](#restricting-access-to-secrets)
   - [Configuring Resource Requests/Limits for the Target-Allocator](#configuring-resource-requestslimits-for-the-target-allocator)
@@ -154,8 +155,39 @@ operator:
       clientCertSecretName: "ta-mtls-client-cert-secret"
 ```
 
+#### Certificate Renewal
+
+The Target Allocator reloads its certificate, key and CA certificate from the server certificate secret at runtime.
 The collectors reload the client certificate and key from the client certificate secret at runtime, at most five minutes after they have changed.
 They cannot reload the CA certificate at runtime; when the `ca.crt` entry of the client certificate secret changes, the operator restarts the collector pods.
+
+The Target Allocator verifies the client certificate only against the `ca.crt` entry of the server certificate secret, and the collectors verify the server certificate only against the `ca.crt` entry of the client certificate secret.
+If the CA is renewed with a new key, and the server and client certificates are not renewed at the same time, the two sides trust different CAs until both certificates have been renewed.
+In the meantime, the collectors cannot fetch their scrape targets from the Target Allocator.
+To prevent this, the certificates should be set up as follows:
+
+* The CA has a much longer duration than the server and client certificates, so that it is not renewed together with them.
+* The CA keeps its private key when it is renewed, so that certificates signed before and after the renewal are valid for both the old and the new CA certificate.
+  With cert-manager, set `privateKey.rotationPolicy: Never` on the CA certificate; since cert-manager v1.18, the default is to generate a new key on every renewal.
+* The server and client certificates are renewed before the old CA certificate in their secrets expires.
+  With cert-manager, which renews certificates after two thirds of their duration by default, keep the duration of the server and client certificates well below one third of the CA's duration.
+
+The [example template](https://github.com/dash0hq/dash0-operator/blob/main/test-resources/cert-manager/ta-issuers-and-cert.yaml.template) follows these rules.
+
+If the two sides trust different CAs, the collectors log `x509: certificate signed by unknown authority` errors, and the Target Allocator logs `tls: bad certificate` errors.
+Collector pods that start in this state fail their startup probe and are restarted repeatedly.
+To recover, renew the server or client certificate that has been signed with the old CA key, for example with `cmctl renew <certificate-name> -n <operator-namespace>`.
+
+If you have created your certificates with an earlier version of the example template, applying the updated template does not reissue them.
+The CA certificate keeps its 90 day duration and is still renewed together with the server and client certificates.
+To migrate:
+
+1. Apply the updated template, with `$OPERATOR_NAMESPACE` replaced by the operator namespace.
+2. Renew the CA certificate with `cmctl renew ta-mtls-ca -n <operator-namespace>`.
+   Since the CA now keeps its private key, the existing server and client certificates stay valid.
+3. Wait until `kubectl get certificate ta-mtls-ca -n <operator-namespace> -o jsonpath='{.status.notAfter}'` shows a date two years in the future.
+4. Renew the server and client certificates with `cmctl renew ta-server-cert ta-client-cert -n <operator-namespace>`.
+   This puts the renewed CA certificate into the `ca.crt` entries of their secrets.
 
 #### Allowing Insecure Auth Secrets
 

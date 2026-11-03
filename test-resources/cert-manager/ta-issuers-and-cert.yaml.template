@@ -14,6 +14,12 @@ metadata:
 spec:
   isCA: true
   commonName: dash0-operator-opentelemetry-target-allocator
+  # Much longer than the duration of the server and client certificates, so the CA never renews together with them.
+  duration: 17520h # 2 years
+  # Keep the key when the CA renews, so certificates signed before and after the renewal are valid for both CA
+  # certificates.
+  privateKey:
+    rotationPolicy: Never
   secretName: ta-mtls-ca-secret
   issuerRef:
     name: ta-selfsigned-issuer
@@ -38,6 +44,11 @@ spec:
     - dash0-operator-opentelemetry-target-allocator-service
     - dash0-operator-opentelemetry-target-allocator-service.$OPERATOR_NAMESPACE.svc
     - dash0-operator-opentelemetry-target-allocator-service.$OPERATOR_NAMESPACE.svc.cluster.local
+  # Well below one third of the CA duration, so this certificate is renewed before the old CA certificate in its secret
+  # expires.
+  duration: 2160h # 90 days
+  privateKey:
+    rotationPolicy: Always
   secretName: ta-server-cert-secret
   issuerRef:
     name: ta-mtls-ca-issuer
@@ -50,6 +61,11 @@ metadata:
   name: ta-client-cert
 spec:
   commonName: ta-client
+  # Well below one third of the CA duration, so this certificate is renewed before the old CA certificate in its secret
+  # expires.
+  duration: 2160h # 90 days
+  privateKey:
+    rotationPolicy: Always
   secretName: ta-client-cert-secret
   issuerRef:
     name: ta-mtls-ca-issuer

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -481,7 +482,7 @@ var _ = Describe("extra config map", func() {
 
 				It("should use the GKE Autopilot defaults for the init container if the key is missing", func() {
 					extraConfig, err :=
-						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(true), true, logger)
+						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(true, false), true, logger)
 					Expect(err).ToNot(HaveOccurred())
 					resources := extraConfig.InstrumentationInitContainerResources
 					Expect(resources.Limits.StorageEphemeral().String()).To(Equal("500Mi"))
@@ -489,6 +490,27 @@ var _ = Describe("extra config map", func() {
 					Expect(resources.Requests.Memory().String()).To(Equal("128Mi"))
 					Expect(resources.Requests.StorageEphemeral().String()).To(Equal("500Mi"))
 				})
+
+				It("should use the OpenShift default for the DaemonSet SELinux options if the key is missing", func() {
+					extraConfig, err :=
+						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(false, true), true, logger)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(extraConfig.DaemonSetSELinuxOptions).To(Equal(&corev1.SELinuxOptions{Type: "spc_t"}))
+				})
+
+				DescribeTable("should keep the DaemonSet SELinux options on OpenShift if the key is present",
+					func(content string, expected *corev1.SELinuxOptions) {
+						_, err := tmpFile.WriteString(content)
+						Expect(err).ToNot(HaveOccurred())
+						extraConfig, err :=
+							readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(false, true), true, logger)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(extraConfig.DaemonSetSELinuxOptions).To(Equal(expected))
+					},
+					Entry("explicit null", "daemonSetSeLinuxOptions: null\n", nil),
+					Entry("other type", "daemonSetSeLinuxOptions:\n  type: container_logreader_t\n",
+						&corev1.SELinuxOptions{Type: "container_logreader_t"}),
+				)
 
 				It("should keep values that are present, including explicit nulls and partial resources", func() {
 					_, err := tmpFile.WriteString(`
@@ -518,7 +540,7 @@ agent0ConnectorAllowedKubectlCommands:
 					Expect(err).ToNot(HaveOccurred())
 
 					extraConfig, err :=
-						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(true), true, logger)
+						readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaultsFor(true, false), true, logger)
 					Expect(err).ToNot(HaveOccurred())
 
 					Expect(extraConfig.InstrumentationInitContainerResources.Limits).To(BeNil())
@@ -1489,7 +1511,8 @@ collectorFilelogOffsetStorageVolume:
 			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), ExtraConfigDefaults, logger)).To(Succeed())
 
 			for _, c := range clients {
-				Expect(c.updatedConfig).To(BeNil())
+				_, updatedConfig := c.recordedUpdates()
+				Expect(updatedConfig).To(BeNil())
 			}
 
 			_, err := tmpFile.WriteString(`
@@ -1503,8 +1526,8 @@ collectorFilelogOffsetStorageVolume:
 
 			Eventually(func(g Gomega) {
 				for _, c := range clients {
-					g.Expect(c.updateExtraConfigCalls).To(Equal(1))
-					updatedConfig := c.updatedConfig
+					updateExtraConfigCalls, updatedConfig := c.recordedUpdates()
+					g.Expect(updateExtraConfigCalls).To(Equal(1))
 					g.Expect(updatedConfig).ToNot(BeNil())
 					g.Expect(updatedConfig.CollectorFilelogOffsetStorageVolume).ToNot(BeNil())
 					filelogOffsetStorageVolume := updatedConfig.CollectorFilelogOffsetStorageVolume
@@ -1553,8 +1576,8 @@ collectorFilelogOffsetStorageVolume:
 			Expect(err).ToNot(HaveOccurred())
 
 			Eventually(func(g Gomega) {
-				g.Expect(client.updateExtraConfigCalls).To(Equal(1))
-				updatedConfig := client.updatedConfig
+				updateExtraConfigCalls, updatedConfig := client.recordedUpdates()
+				g.Expect(updateExtraConfigCalls).To(Equal(1))
 				g.Expect(updatedConfig).ToNot(BeNil())
 				g.Expect(updatedConfig.CollectorFilelogOffsetStorageVolume).ToNot(BeNil())
 				filelogOffsetStorageVolume := updatedConfig.CollectorFilelogOffsetStorageVolume
@@ -1589,8 +1612,9 @@ invalid yaml
 			Expect(err).ToNot(HaveOccurred())
 
 			Consistently(func(g Gomega) {
-				g.Expect(client.updateExtraConfigCalls).To(Equal(0))
-				g.Expect(client.updatedConfig).To(BeNil())
+				updateExtraConfigCalls, updatedConfig := client.recordedUpdates()
+				g.Expect(updateExtraConfigCalls).To(Equal(0))
+				g.Expect(updatedConfig).To(BeNil())
 			}, 2*time.Second, 100*time.Millisecond).To(Succeed())
 		})
 
@@ -1603,21 +1627,31 @@ invalid yaml
 			Expect(os.Remove(tmpFile.Name())).To(Succeed())
 
 			Consistently(func(g Gomega) {
-				g.Expect(client.updateExtraConfigCalls).To(Equal(0))
-				g.Expect(client.updatedConfig).To(BeNil())
+				updateExtraConfigCalls, updatedConfig := client.recordedUpdates()
+				g.Expect(updateExtraConfigCalls).To(Equal(0))
+				g.Expect(updatedConfig).To(BeNil())
 			}, 2*time.Second, 100*time.Millisecond).To(Succeed())
 		})
 	})
 })
 
 type DummyExtraConfigClient struct {
+	mutex                  sync.Mutex
 	updateExtraConfigCalls int
 	updatedConfig          *ExtraConfig
 }
 
 func (c *DummyExtraConfigClient) UpdateExtraConfig(_ context.Context, updatedConfig ExtraConfig, _ logd.Logger) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	c.updateExtraConfigCalls += 1
 	c.updatedConfig = &updatedConfig
+}
+
+func (c *DummyExtraConfigClient) recordedUpdates() (int, *ExtraConfig) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return c.updateExtraConfigCalls, c.updatedConfig
 }
 
 var helmChartValuesFile = filepath.Join("..", "..", "helm-chart", "dash0-operator", "values.yaml")
