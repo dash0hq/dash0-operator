@@ -514,6 +514,35 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					},
 				},
 			}),
+			Entry("with Kubernetes object collection annotation", convertToTestCase{
+				srcObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation": "test-value",
+						annotationNameSpecKubernetesObjectCollectionEnabled: "true",
+					},
+				},
+				srcSpec:               Dash0MonitoringSpec{},
+				srcStatus:             Dash0MonitoringStatus{},
+				expectedDstObjectMeta: testObjectMeta(),
+				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
+					},
+					KubernetesObjectCollection: dash0common.KubernetesObjectCollection{
+						Enabled: new(true),
+					},
+				},
+				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
+					},
+				},
+			}),
 			Entry("with event collection annotation with value false", convertToTestCase{
 				srcObjectMeta: metav1.ObjectMeta{
 					Namespace: TestNamespaceName,
@@ -1014,6 +1043,28 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					Annotations: map[string]string{
 						"test-annotation":                        "test-value",
 						annotationNameSpecEventCollectionEnabled: "true",
+					},
+				},
+				expectedDstSpec:   Dash0MonitoringSpec{},
+				expectedDstStatus: Dash0MonitoringStatus{},
+			}),
+			Entry("with Kubernetes object collection enabled", convertFromTestCase{
+				srcObjectMeta: testObjectMeta(),
+				srcSpec: dash0v1beta1.Dash0MonitoringSpec{
+					KubernetesObjectCollection: dash0common.KubernetesObjectCollection{
+						Enabled: new(true),
+					},
+				},
+				srcStatus: dash0v1beta1.Dash0MonitoringStatus{},
+				expectedDstObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation": "test-value",
+						annotationNameSpecKubernetesObjectCollectionEnabled: "true",
 					},
 				},
 				expectedDstSpec:   Dash0MonitoringSpec{},

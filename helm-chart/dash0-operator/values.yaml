@@ -1496,10 +1496,10 @@ operator:
       # Additional annotations for the pods of the Edge Proxy deployment managed by the operator.
       podAnnotations: {}
 
-  # Settings related to the Agent0 connector (experimental).
+  # Settings related to the Agent0 connector.
   agent0Connector:
 
-    # The agent0-connector feature is currently experimental.
+    # The agent0-connector feature is currently in beta.
     #
     # All other settings in operator.agent0Connector will be ignored if operator.agent0Connector.enabled is false.
     #

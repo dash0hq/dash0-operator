@@ -41,8 +41,10 @@ RUN NPM_CONFIG_UPDATE_NOTIFIER=false \
   # The upstream OpenTelemetry JS packages ship esm/esnext builds alongside the CJS build used by require() (see the
   # "exports" map in each package's package.json). Node.js's CJS resolver only ever matches the "default"/"require"
   # condition, so these two build trees are unused dead weight in this image; every @opentelemetry/* package on the
-  # host is duplicated here for the "-1.x" compatibility line as well, further multiplying the waste.
-  && find node_modules/@opentelemetry -type d \( -name esm -o -name esnext \) -path '*/build/*' -exec rm -rf {} +
+  # host is duplicated here for the "-1.x" compatibility line as well, further multiplying the waste. The packages are
+  # either hoisted to node_modules/@opentelemetry or bundled in node_modules/@dash0/opentelemetry/node_modules, so the
+  # search starts at node_modules.
+  && find node_modules -type d \( -name esm -o -name esnext \) -path '*/@opentelemetry/*/build/*' -exec rm -rf {} +
 
 # download the Dash0 OpenTelemetry .NET distribution
 FROM alpine:3.24.3 AS build-dotnet
@@ -74,28 +76,31 @@ RUN . /tmp/dash0-python-distribution-version && \
   rm /tmp/dash0-python-distribution.tar.gz
 
 # install Python artifacts (glibc)
-FROM python:3.14.9-trixie AS build-python-glibc
+FROM python:3.14.10-trixie AS build-python-glibc
 RUN mkdir -p /dash0-instrumentation/python
 WORKDIR /dash0-instrumentation/python
 COPY python/extract-flattened-requirements.sh .
 COPY --from=download-dash0-python-distribution /dash0-python-distribution /tmp/dash0-python-distribution
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
-# Install the Dash0 Python distribution's workspace packages from local paths, since they are not yet published to
-# PyPI. Listing them in the same pip invocation lets pip resolve the inter-dependencies against the local sources.
-# The dash0-opentelemetry package pins the full instrumentation set as regular dependencies, so we do not need
-# to install any additional packages on top.
+# Install the Dash0 Python distribution's workspace packages from local paths, since a release tag can exist before its
+# packages are published to PyPI. Listing them in the same pip invocation lets pip resolve the inter-dependencies
+# against the local sources; a workspace package that dash0-opentelemetry depends on but that is missing from this list
+# is resolved from PyPI instead. The dash0-opentelemetry package pins the full instrumentation set as regular
+# dependencies, so we do not need to install any additional packages on top. Keep this list in sync with the musl stage
+# below and with python/extract-flattened-requirements.sh.
 RUN pip install --quiet --root-user-action ignore --target . \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-pyproto \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-common \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-grpc \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-http \
+  /tmp/dash0-python-distribution/packages/dash0-opentelemetry-configuration \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry && \
   ./extract-flattened-requirements.sh && \
   rm extract-flattened-requirements.sh && \
   cp dash0/opentelemetry/injector/sitecustomize.py sitecustomize.py
 
 # install Python artifacts (musl)
-FROM python:3.14.9-alpine3.24 AS build-python-musl
+FROM python:3.14.10-alpine3.24 AS build-python-musl
 RUN mkdir -p /dash0-instrumentation/python
 WORKDIR /dash0-instrumentation/python
 COPY python/extract-flattened-requirements.sh .
@@ -106,6 +111,7 @@ RUN pip install --quiet --root-user-action ignore --target . \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-common \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-grpc \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-http \
+  /tmp/dash0-python-distribution/packages/dash0-opentelemetry-configuration \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry && \
   ./extract-flattened-requirements.sh && \
   rm extract-flattened-requirements.sh && \

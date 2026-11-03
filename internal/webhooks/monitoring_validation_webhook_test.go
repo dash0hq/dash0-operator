@@ -318,6 +318,18 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 					"telemetryCollection.enabled=true in the operator configuration resource or set " +
 					"logCollection.enabled=false in the monitoring resource (or leave it unspecified).",
 			}),
+			Entry("kubernetesObjectCollection.enabled=true", validationTestConfig{
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					KubernetesObjectCollection: dash0common.KubernetesObjectCollection{
+						Enabled: new(true),
+					},
+				},
+				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
+					"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
+					"kubernetesObjectCollection.enabled=true. This is an invalid combination. Please either set " +
+					"telemetryCollection.enabled=true in the operator configuration resource or set " +
+					"kubernetesObjectCollection.enabled=false in the monitoring resource (or leave it unspecified).",
+			}),
 			Entry("prometheusScraping.enabled=true", validationTestConfig{
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					PrometheusScraping: dash0common.PrometheusScraping{
