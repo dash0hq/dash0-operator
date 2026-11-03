@@ -37,9 +37,7 @@ type OTelSdkConfigInput struct {
 	operatorManagerDeploymentUID  types.UID
 	operatorManagerDeploymentName string
 	operatorVersion               string
-	// kubernetesObjectCollectionEnabled mirrors the cluster-wide kubernetesObjectCollection.enabled flag.
-	kubernetesObjectCollectionEnabled bool
-	developmentMode                   bool
+	developmentMode               bool
 }
 
 type OTelSdkStarter struct {
@@ -101,23 +99,21 @@ func (s *OTelSdkStarter) SetOTelSdkParameters(
 	operatorManagerDeploymentUID types.UID,
 	operatorManagerDeploymentName string,
 	operatorVersion string,
-	kubernetesObjectCollectionEnabled bool,
 	developmentMode bool,
 	logger logd.Logger,
 ) {
 	s.oTelSdkConfigInput.Store(
 		&OTelSdkConfigInput{
-			export:                            export,
-			token:                             token,
-			resolvedSecretHeaderValues:        resolvedSecretHeaderValues,
-			clusterName:                       clusterName,
-			pseudoClusterUid:                  pseudoClusterUid,
-			operatorNamespace:                 operatorNamespace,
-			operatorManagerDeploymentUID:      operatorManagerDeploymentUID,
-			operatorManagerDeploymentName:     operatorManagerDeploymentName,
-			operatorVersion:                   operatorVersion,
-			kubernetesObjectCollectionEnabled: kubernetesObjectCollectionEnabled,
-			developmentMode:                   developmentMode,
+			export:                        export,
+			token:                         token,
+			resolvedSecretHeaderValues:    resolvedSecretHeaderValues,
+			clusterName:                   clusterName,
+			pseudoClusterUid:              pseudoClusterUid,
+			operatorNamespace:             operatorNamespace,
+			operatorManagerDeploymentUID:  operatorManagerDeploymentUID,
+			operatorManagerDeploymentName: operatorManagerDeploymentName,
+			operatorVersion:               operatorVersion,
+			developmentMode:               developmentMode,
 		},
 	)
 	s.onParametersHaveChanged(ctx, logger)
@@ -271,18 +267,17 @@ func convertExportConfigurationToOTelSDKConfig(
 	}
 
 	oTelSdkConfig := &common.OTelSdkConfig{
-		Endpoint:                          endpointAndHeaders.Endpoint,
-		Protocol:                          endpointAndHeaders.Protocol,
-		Insecure:                          insecure,
-		InsecureSkipVerify:                insecureSkipVerify,
-		ServiceName:                       operatorManagerServiceName,
-		ServiceVersion:                    oTelSdkConfigInput.operatorVersion,
-		PseudoClusterUid:                  string(oTelSdkConfigInput.pseudoClusterUid),
-		ClusterName:                       oTelSdkConfigInput.clusterName,
-		DeploymentUid:                     string(oTelSdkConfigInput.operatorManagerDeploymentUID),
-		DeploymentName:                    oTelSdkConfigInput.operatorManagerDeploymentName,
-		ContainerName:                     operatorManagerContainerName,
-		KubernetesObjectCollectionEnabled: oTelSdkConfigInput.kubernetesObjectCollectionEnabled,
+		Endpoint:           endpointAndHeaders.Endpoint,
+		Protocol:           endpointAndHeaders.Protocol,
+		Insecure:           insecure,
+		InsecureSkipVerify: insecureSkipVerify,
+		ServiceName:        operatorManagerServiceName,
+		ServiceVersion:     oTelSdkConfigInput.operatorVersion,
+		PseudoClusterUid:   string(oTelSdkConfigInput.pseudoClusterUid),
+		ClusterName:        oTelSdkConfigInput.clusterName,
+		DeploymentUid:      string(oTelSdkConfigInput.operatorManagerDeploymentUID),
+		DeploymentName:     oTelSdkConfigInput.operatorManagerDeploymentName,
+		ContainerName:      operatorManagerContainerName,
 	}
 	if len(endpointAndHeaders.Headers) > 0 {
 		headers := make(map[string]string)

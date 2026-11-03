@@ -67,7 +67,6 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
-	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
 	"github.com/dash0hq/dash0-operator/internal/webhookcerts"
 	"github.com/dash0hq/dash0-operator/internal/webhooks"
@@ -2796,10 +2795,6 @@ func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 		operatorDeploymentSelfReference.UID,
 		operatorDeploymentSelfReference.Name,
 		operatorVersion,
-		pointers.ReadBoolPointerWithDefault(
-			operatorConfigurationResource.Spec.KubernetesObjectCollection.Enabled,
-			false,
-		),
 		developmentMode,
 		setupLog,
 	)

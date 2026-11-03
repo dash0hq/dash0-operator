@@ -27,7 +27,6 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
-	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
 
 type OperatorConfigurationReconciler struct {
@@ -237,7 +236,6 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		ctx,
 		selfMonitoringConfiguration,
 		operatorConfigurationResource.Spec.ClusterName,
-		pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.KubernetesObjectCollection.Enabled, false),
 		logger,
 	)
 
@@ -290,7 +288,6 @@ func (r *OperatorConfigurationReconciler) applyOperatorManagerSelfMonitoringSett
 	ctx context.Context,
 	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringConfiguration,
 	clusterName string,
-	kubernetesObjectCollectionEnabled bool,
 	logger logd.Logger,
 ) {
 	if selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled {
@@ -305,7 +302,6 @@ func (r *OperatorConfigurationReconciler) applyOperatorManagerSelfMonitoringSett
 			r.operatorDeploymentUID,
 			r.operatorDeploymentName,
 			r.images.GetOperatorVersion(),
-			kubernetesObjectCollectionEnabled,
 			r.developmentMode,
 			logger,
 		)
