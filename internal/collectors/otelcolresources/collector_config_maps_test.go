@@ -6100,6 +6100,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					transformRaw.(map[string]any)["log_statements"].([]any)[0].(map[string]any)
 				Expect(transformStatementGroup["conditions"]).To(
 					Equal([]any{`IsMap(log.body) and log.body["object"] != nil`}))
+				Expect(transformStatementGroup["statements"]).To(ContainElement(
+					`set(log.attributes["k8s.object.resource_version"], ` +
+						`log.body["object"]["metadata"]["resourceVersion"]) ` +
+						`where log.body["object"]["metadata"]["resourceVersion"] != nil`,
+				))
 
 				redactionRaw := ReadFromMap(collectorConfig, []string{"processors", "redaction/k8s_objects"})
 				Expect(redactionRaw).ToNot(BeNil())

@@ -560,6 +560,9 @@ processors:
         conditions:
           - IsMap(log.body) and log.body["object"] != nil
         statements:
+          # Promote the resource version to a log attribute so that queries selecting the current record can order by
+          # a cheap attribute lookup instead of extracting it from the manifest body.
+          - set(log.attributes["k8s.object.resource_version"], log.body["object"]["metadata"]["resourceVersion"]) where log.body["object"]["metadata"]["resourceVersion"] != nil
           - delete_key(log.body["object"]["metadata"], "managedFields")
           # Several deploy tools store a serialized copy of the whole previous manifest in an annotation, env values
           # included; the redaction processor walks maps and slices but not strings inside them, so the keys of the
