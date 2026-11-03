@@ -37,8 +37,7 @@ type OTelSdkConfigInput struct {
 	operatorManagerDeploymentUID  types.UID
 	operatorManagerDeploymentName string
 	operatorVersion               string
-	// kubernetesObjectCollectionEnabled mirrors the cluster-wide spec.kubernetesObjectCollection.enabled flag of the
-	// operator configuration resource
+	// kubernetesObjectCollectionEnabled mirrors the cluster-wide kubernetesObjectCollection.enabled flag.
 	kubernetesObjectCollectionEnabled bool
 	developmentMode                   bool
 }

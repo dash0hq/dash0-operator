@@ -109,6 +109,51 @@ var _ = Describe(
 						config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
 						Expect(config).NotTo(BeNil())
 						Expect(config.KubernetesObjectCollectionEnabled).To(BeTrue())
+						// pins the argument order of the two adjacent bool parameters: a swap would set the log level
+						// to "debug" via developmentMode
+						Expect(config.LogLevel).To(BeEmpty())
+					},
+				)
+
+				It(
+					"should restart the SDK with the new state when Kubernetes object collection is toggled", func() {
+						oTelSdkStarter.SetOTelSdkParameters(
+							ctx,
+							*Dash0ExportWithEndpointAndToken(),
+							&AuthorizationTokenTest,
+							nil,
+							ClusterUidTest,
+							ClusterNameTest,
+							OperatorNamespace,
+							OperatorManagerDeploymentUID,
+							OperatorManagerDeploymentName,
+							OperatorVersionTest,
+							false,
+							false,
+							logger,
+						)
+						config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
+						Expect(config).NotTo(BeNil())
+						Expect(config.KubernetesObjectCollectionEnabled).To(BeFalse())
+
+						oTelSdkStarter.SetOTelSdkParameters(
+							ctx,
+							*Dash0ExportWithEndpointAndToken(),
+							&AuthorizationTokenTest,
+							nil,
+							ClusterUidTest,
+							ClusterNameTest,
+							OperatorNamespace,
+							OperatorManagerDeploymentUID,
+							OperatorManagerDeploymentName,
+							OperatorVersionTest,
+							true,
+							false,
+							logger,
+						)
+						config = readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
+						Expect(config).NotTo(BeNil())
+						Expect(config.KubernetesObjectCollectionEnabled).To(BeTrue())
 					},
 				)
 

@@ -52,10 +52,8 @@ type OTelSdkConfig struct {
 	DeploymentName   string
 	ContainerName    string
 
-	// KubernetesObjectCollectionEnabled mirrors the cluster-wide spec.kubernetesObjectCollection.enabled flag of the
-	// operator configuration resource. It is stamped on the self-monitoring telemetry as the resource attribute
-	// dash0.operator.kubernetes_object_collection.enabled, so the Dash0 backend can detect whether the operator
-	// supports Kubernetes object collection and whether it is enabled.
+	// KubernetesObjectCollectionEnabled is stamped on the self-monitoring telemetry, see
+	// kubernetesObjectCollectionEnabledAttributeName.
 	KubernetesObjectCollectionEnabled bool
 
 	LogLevel string
