@@ -4,6 +4,7 @@
 package collectors
 
 import (
+	"bytes"
 	"context"
 	"slices"
 
@@ -99,7 +100,43 @@ func (r *CollectorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			r.withNamePredicate([]string{
 				otelcolresources.SignalControlCollectorPodDisruptionBudgetName(r.oTelCollectorNamePrefix),
 			}, true)).
+		Watches(
+			&corev1.Secret{},
+			&handler.EnqueueRequestForObject{},
+			builder.WithPredicates(r.targetAllocatorMtlsClientCertSecretPredicate())).
 		Complete(r)
+}
+
+// targetAllocatorMtlsClientCertSecretPredicate matches events for the target-allocator mTLS client cert secret. Updates
+// only match if they change the CA certificate, since the collector reloads the client certificate and key by itself.
+// The secret name is looked up for every event, since it can be changed via the operator configuration resource at
+// runtime.
+func (r *CollectorReconciler) targetAllocatorMtlsClientCertSecretPredicate() predicate.Funcs {
+	isClientCertSecret := func(object client.Object) bool {
+		secretName := r.collectorManager.TargetAllocatorMtlsClientCertSecretName()
+		return secretName != "" && resourceMatches(object, r.operatorNamespace, []string{secretName})
+	}
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return isClientCertSecret(e.Object)
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return isClientCertSecret(e.ObjectNew) && !bytes.Equal(caCertOf(e.ObjectOld), caCertOf(e.ObjectNew))
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return isClientCertSecret(e.Object)
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return isClientCertSecret(e.Object)
+		},
+	}
+}
+
+func caCertOf(object client.Object) []byte {
+	if secret, ok := object.(*corev1.Secret); ok {
+		return secret.Data[otelcolresources.TargetAllocatorMtlsCaCertKey]
+	}
+	return nil
 }
 
 var generationOrLabelChangePredicate = predicate.Or(predicate.GenerationChangedPredicate{}, predicate.LabelChangedPredicate{})

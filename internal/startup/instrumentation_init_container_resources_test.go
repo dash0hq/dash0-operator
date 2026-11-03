@@ -69,7 +69,7 @@ var _ = Describe("Watching the init container resources of the operator configur
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		Expect(watchInstrumentationInitContainerResources(ctx, mgr, config, util.ExtraConfigDefaultsFor(true))).
+		Expect(watchInstrumentationInitContainerResources(ctx, mgr, config, util.ExtraConfigDefaultsFor(true, false))).
 			To(Succeed())
 		// The value is available before the manager and its cache have been started.
 		Expect(memoryLimit(config)).To(Equal("256Mi"))

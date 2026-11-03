@@ -253,7 +253,7 @@ operator:
   # resource will be created by the Helm chart then.
   clusterName: ""
 
-  # The number of replicas for the operator manager deployment.
+  # The number of replicas for the operator manager deployment. Must be at least 1.
   replicaCount: 1
 
   # Settings for GKE clusters:
@@ -396,7 +396,8 @@ operator:
       # If you manage the PersesDashboard CRD via GitOps (Argo CD, Flux, etc.) and do not want the Dash0 operator to
       # patch it, set this to false. With auto-patch disabled, you are responsible for ensuring that some conversion
       # webhook for the PersesDashboard CRD is configured; or to only deploy v1alpha2 resources. Otherwise, v1alpha1 dashboard
-      # resources will lose fields when stored.
+      # resources will lose fields when stored. With auto-patch disabled, the operator is also not granted the
+      # permission to patch the CRD.
       autoPatchConversionWebhook: true
 
   # settings for the service account to be used
@@ -569,7 +570,7 @@ operator:
     repository: "ghcr.io/dash0hq/signal-control-collector"
     # The Signal Control collector is versioned independently of the operator, so this tag is pinned to that component
     # version; it does not track the chart appVersion.
-    tag: "1.5.2"
+    tag: "1.6.0"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -580,7 +581,7 @@ operator:
     repository: "ghcr.io/dash0hq/edge-proxy"
     # The Edge Proxy is versioned independently of the operator, so this tag is pinned to that component version; it
     # does not track the chart appVersion.
-    tag: "1.5.2"
+    tag: "1.6.0"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -884,7 +885,8 @@ operator:
     #     value: "3"
 
     # The pod-level SELinux options for the collector DaemonSet pods, used as is for
-    # spec.securityContext.seLinuxOptions. Unset by default.
+    # spec.securityContext.seLinuxOptions. Unset by default. With operator.openShift.enabled=true, the operator uses the
+    # type spc_t unless this value is set; set it to {} to use no SELinux options at all.
     # Example:
     # daemonSetSeLinuxOptions:
     #   type: <selinux-type>
@@ -1044,7 +1046,8 @@ operator:
     # The number of replicas of the Signal Control collector Deployment managed by the operator. This collector only
     # exists when Signal Control is enabled (see operator.signalControl.enabled); it receives the Dash0-bound telemetry
     # of the other two collectors, applies Signal Control and exports to Dash0. More replicas spread the tail-sampling
-    # reservoir and the RED-metrics cardinality tracking over more processes; fewer replicas use less memory.
+    # reservoir and the RED-metrics cardinality tracking over more processes; fewer replicas use less memory. Must be
+    # at least 1.
     signalControlCollectorReplicas: 2
 
     # Resource settings for the collector container of the Signal Control collector pod managed by the operator. This
@@ -1425,7 +1428,7 @@ operator:
       # connections across the available pods. Defaults to 2, the availability floor: with the pod disruption budget a
       # single pod restart, rollout or node drain always leaves one pod serving the fleet. Set this to at least the
       # number of availability zones so that every zone has a local Edge Proxy pod and the decision stream does not
-      # cross zones.
+      # cross zones. Must be at least 1.
       replicas: 2
 
       # If set to true, pprof will be enabled for the Edge Proxy pods. Each container serves pprof on the loopback
@@ -1488,10 +1491,10 @@ operator:
       # Additional annotations for the pods of the Edge Proxy deployment managed by the operator.
       podAnnotations: {}
 
-  # Settings related to the Agent0 connector (experimental).
+  # Settings related to the Agent0 connector.
   agent0Connector:
 
-    # The agent0-connector feature is currently experimental.
+    # The agent0-connector feature is currently in beta.
     #
     # All other settings in operator.agent0Connector will be ignored if operator.agent0Connector.enabled is false.
     #

@@ -139,9 +139,8 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 
 	spec := operatorConfigurationResource.Spec
 
-	if !h.telemetryCollectionEnabledViaHelm && spec.TelemetryCollection.Enabled != nil && *spec.TelemetryCollection.Enabled {
-		logger.Warn(ErrorMessageTelemetryCollectionDisabledViaHelm)
-		return admission.Denied(ErrorMessageTelemetryCollectionDisabledViaHelm)
+	if response, denied := h.validateTelemetryCollectionEnabledConsistency(spec, request, logger); denied {
+		return response
 	}
 
 	if response, denied := h.validateAgent0ConnectorEnabledConsistency(spec, request, logger); denied {
@@ -302,6 +301,31 @@ func isFeatureNewlyEnabled(
 		return false, &errResponse
 	}
 	return !wasEnabled(oldResource), nil
+}
+
+// validateTelemetryCollectionEnabledConsistency rejects enabling telemetry collection via the operator configuration
+// resource when it has been disabled via the Helm chart. It returns denied=true together with the denial response when
+// that is the case.
+func (h *OperatorConfigurationValidationWebhookHandler) validateTelemetryCollectionEnabledConsistency(
+	spec dash0v1alpha1.Dash0OperatorConfigurationSpec,
+	request admission.Request,
+	logger logd.Logger,
+) (admission.Response, bool) {
+	if h.telemetryCollectionEnabledViaHelm || !pointers.ReadBoolPointerWithDefault(spec.TelemetryCollection.Enabled, false) {
+		return admission.Response{}, false
+	}
+	newlyEnabled, errorResponse := isFeatureNewlyEnabled(request, logger, "telemetry collection",
+		func(r *dash0v1alpha1.Dash0OperatorConfiguration) bool {
+			return pointers.ReadBoolPointerWithDefault(r.Spec.TelemetryCollection.Enabled, true)
+		})
+	if errorResponse != nil {
+		return *errorResponse, true
+	}
+	if !newlyEnabled {
+		return admission.Response{}, false
+	}
+	logger.Warn(ErrorMessageTelemetryCollectionDisabledViaHelm)
+	return admission.Denied(ErrorMessageTelemetryCollectionDisabledViaHelm), true
 }
 
 // validateAgent0ConnectorEnabledConsistency rejects enabling the agent0-connector via the operator configuration

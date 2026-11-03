@@ -5,6 +5,7 @@ package selfmonitoringapiaccess
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
@@ -22,7 +23,7 @@ import (
 )
 
 type DummyClient struct {
-	hasBeenCalled int
+	hasBeenCalled atomic.Int32
 }
 
 const (
@@ -30,7 +31,7 @@ const (
 )
 
 func (c *DummyClient) InitializeSelfMonitoringMetrics(_ otelmetric.Meter, _ string, _ logd.Logger) {
-	c.hasBeenCalled++
+	c.hasBeenCalled.Add(1)
 }
 
 var _ = Describe(
@@ -564,8 +565,8 @@ var _ = Describe(
 						Eventually(
 							func(g Gomega) {
 								g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
-								g.Expect(dummyClient1.hasBeenCalled).To(Equal(1))
-								g.Expect(dummyClient2.hasBeenCalled).To(Equal(1))
+								g.Expect(dummyClient1.hasBeenCalled.Load()).To(Equal(int32(1)))
+								g.Expect(dummyClient2.hasBeenCalled.Load()).To(Equal(int32(1)))
 							},
 						).Should(Succeed())
 					},

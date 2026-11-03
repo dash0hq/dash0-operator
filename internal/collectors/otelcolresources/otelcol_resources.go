@@ -5,6 +5,7 @@ package otelcolresources
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -262,6 +263,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	config.DaemonSetCollectorMemoryLimit = *extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Memory()
 	config.DeploymentCollectorMemoryLimit = *extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory()
 	config.SignalControlCollectorMemoryLimit = *extraConfig.SignalControlCollectorContainerResources.Limits.Memory()
+	config.TargetAllocatorMtlsCaSha = m.targetAllocatorMtlsCaSha(ctx, extraConfig, logger)
 	if config.signalControlGatewayActive() {
 		logger.Debug(fmt.Sprintf("Deploying the Signal Control collector (image %s), since Signal Control is enabled "+
 			"via the Dash0SignalControl resource. The daemonset and the cluster-metrics collector export their "+
@@ -318,6 +320,42 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	}
 
 	return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, nil
+}
+
+// targetAllocatorMtlsCaSha returns a hash of the CA certificate in the target-allocator mTLS client cert secret, or an
+// empty string if mTLS is disabled. If the CA certificate cannot be read, the hash on the existing daemonset collector's
+// pod template is kept: restarting the collector pods while the secret is missing would leave them unable to mount it.
+func (m *OTelColResourceManager) targetAllocatorMtlsCaSha(
+	ctx context.Context,
+	extraConfig util.ExtraConfig,
+	logger logd.Logger,
+) string {
+	if !extraConfig.TargetAllocatorMtlsEnabled {
+		return ""
+	}
+	secretName := extraConfig.TargetAllocatorMtlsClientCertSecretName
+	secret := &corev1.Secret{}
+	err := m.Get(ctx, client.ObjectKey{Namespace: m.collectorConfig.OperatorNamespace, Name: secretName}, secret)
+	if err == nil {
+		if caCert := secret.Data[TargetAllocatorMtlsCaCertKey]; len(caCert) > 0 {
+			return fmt.Sprintf("%x", sha256.Sum256(caCert))
+		}
+		err = fmt.Errorf("the secret has no %s entry", TargetAllocatorMtlsCaCertKey)
+	}
+	logger.ErrorAsWarnTelemetryCollectionIssue(
+		err,
+		fmt.Sprintf("Cannot read the CA certificate from the target-allocator mTLS client cert secret %s/%s. The "+
+			"daemonset collector needs this secret to fetch scrape targets from the target-allocator.",
+			m.collectorConfig.OperatorNamespace, secretName),
+	)
+	existingDaemonSet := &appsv1.DaemonSet{}
+	if err = m.Get(ctx, client.ObjectKey{
+		Namespace: m.collectorConfig.OperatorNamespace,
+		Name:      DaemonSetName(m.collectorConfig.OTelCollectorNamePrefix),
+	}, existingDaemonSet); err != nil {
+		return ""
+	}
+	return existingDaemonSet.Spec.Template.Annotations[targetAllocatorMtlsCaShaAnnotation]
 }
 
 func (m *OTelColResourceManager) createOrUpdateResource(
@@ -895,6 +933,9 @@ func signalControlConfigFromResource(
 	logParserCacheExpiration := durationStringOrEmpty(resource.Spec.LogEnrichment.ParserCacheExpiration)
 	logGroupingCacheExpiration := durationStringOrEmpty(resource.Spec.LogEnrichment.GroupingCacheExpiration)
 
+	cardholderDataRedactionEnabled :=
+		pointers.ReadBoolPointerWithDefault(resource.Spec.Redaction.CardholderData.Enabled, false)
+
 	operationPreferSpanName := pointers.ReadBoolPointerWithDefault(resource.Spec.OperationProcessor.PreferSpanName, false)
 	var operationCardinalityRules []SignalControlCardinalityRule
 	for _, rule := range resource.Spec.OperationProcessor.CardinalityRules {
@@ -968,6 +1009,7 @@ func signalControlConfigFromResource(
 		LogPatternRefreshInterval:          logPatternRefreshInterval,
 		LogParserCacheExpiration:           logParserCacheExpiration,
 		LogGroupingCacheExpiration:         logGroupingCacheExpiration,
+		CardholderDataRedactionEnabled:     cardholderDataRedactionEnabled,
 		OperationPreferSpanName:            operationPreferSpanName,
 		OperationCardinalityRules:          operationCardinalityRules,
 		Endpoint:                           endpoint,

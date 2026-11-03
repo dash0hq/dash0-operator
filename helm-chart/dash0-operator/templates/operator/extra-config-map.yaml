@@ -84,17 +84,23 @@ data:
     daemonSetSysctls:
       {{- toYaml .Values.operator.collectors.daemonSetSysctls | nindent 6 }}
 {{- end }}
-{{- if .Values.operator.collectors.daemonSetSeLinuxOptions }}
-{{- if not (kindIs "map" .Values.operator.collectors.daemonSetSeLinuxOptions) }}
+{{- $daemonSetSeLinuxOptions := .Values.operator.collectors.daemonSetSeLinuxOptions }}
+{{- if not (or (kindIs "invalid" $daemonSetSeLinuxOptions) (kindIs "map" $daemonSetSeLinuxOptions)) }}
 {{- fail "Error: operator.collectors.daemonSetSeLinuxOptions must be a map with the settings user, role, type and level." }}
 {{- end }}
-{{- range $key, $value := .Values.operator.collectors.daemonSetSeLinuxOptions }}
+{{- if kindIs "map" $daemonSetSeLinuxOptions }}
+{{- range $key, $value := $daemonSetSeLinuxOptions }}
 {{- if not (has $key (list "user" "role" "type" "level")) }}
 {{- fail (printf "Error: operator.collectors.daemonSetSeLinuxOptions.%s is not a valid setting. Valid settings are user, role, type and level." $key) }}
 {{- end }}
 {{- end }}
+{{- if $daemonSetSeLinuxOptions }}
     daemonSetSeLinuxOptions:
-      {{- toYaml .Values.operator.collectors.daemonSetSeLinuxOptions | nindent 6 }}
+      {{- toYaml $daemonSetSeLinuxOptions | nindent 6 }}
+{{- else }}
+{{- /* An empty map removes the default SELinux options, which the operator applies on OpenShift. */}}
+    daemonSetSeLinuxOptions: null
+{{- end }}
 {{- end }}
     collectorDeploymentCollectorContainerResources:
       {{- toYaml (
@@ -137,7 +143,12 @@ data:
     deploymentSysctls:
       {{- toYaml .Values.operator.collectors.deploymentSysctls | nindent 6 }}
 {{- end }}
+{{- if .Values.operator.signalControl.enabled }}
+{{- include "dash0-operator.validateReplicas" (dict "name" "operator.collectors.signalControlCollectorReplicas" "value" .Values.operator.collectors.signalControlCollectorReplicas) }}
+{{- if not (kindIs "invalid" .Values.operator.collectors.signalControlCollectorReplicas) }}
     signalControlCollectorReplicas: {{ .Values.operator.collectors.signalControlCollectorReplicas }}
+{{- end }}
+{{- end }}
     signalControlCollectorContainerResources:
       {{- toYaml .Values.operator.collectors.signalControlCollectorContainerResources | nindent 6 }}
     signalControlCollectorConfigurationReloaderContainerResources:
@@ -213,7 +224,10 @@ data:
     targetAllocatorNodeAffinity:
       {{- toYaml .Values.operator.targetAllocator.nodeAffinity | nindent 6 }}
 {{- if .Values.operator.signalControl.enabled }}
+{{- include "dash0-operator.validateReplicas" (dict "name" "operator.signalControl.edgeProxy.replicas" "value" .Values.operator.signalControl.edgeProxy.replicas) }}
+{{- if not (kindIs "invalid" .Values.operator.signalControl.edgeProxy.replicas) }}
     edgeProxyReplicas: {{ .Values.operator.signalControl.edgeProxy.replicas }}
+{{- end }}
     edgeProxyEnablePprof: {{ .Values.operator.signalControl.edgeProxy.enablePprof }}
     edgeProxyContainerResources:
       {{- toYaml .Values.operator.signalControl.edgeProxy.containerResources | nindent 6 }}

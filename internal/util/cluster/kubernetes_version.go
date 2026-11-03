@@ -193,6 +193,7 @@ func (d *MinimumKubeletVersionDetector) StartDetection(
 	onDetected func(),
 	logger logd.Logger,
 ) {
+	backoff := minimumKubeletVersionDetectionBackoff
 	go func() {
 		defer d.settledOnce.Do(func() { close(d.settled) })
 		if err := retry.Retry(
@@ -209,7 +210,7 @@ func (d *MinimumKubeletVersionDetector) StartDetection(
 				d.minimumKubeletVersion.Store(&minimumKubeletVersion)
 				return nil
 			},
-			minimumKubeletVersionDetectionBackoff,
+			backoff,
 			&logger,
 		); err != nil {
 			if ctx.Err() == nil {
