@@ -3402,6 +3402,13 @@ custom resource definition for operator configuration should match snapshot:
                         the operator will not collect Kubernetes object manifests. It is a validation error to set
                         `telemetryCollection.enabled=false` and `kubernetesObjectCollection.enabled=true` at the same time.
                       properties:
+                        collectClusterScopedObjects:
+                          description: |-
+                            Opt-out for collecting the manifests of cluster-scoped objects (nodes and persistent volumes). This setting is
+                            optional, it defaults to `true`. It does not enable Kubernetes object collection on its own: cluster-scoped
+                            objects are only collected when `kubernetesObjectCollection.enabled` is `true` and at least one namespace has
+                            opted into Kubernetes object collection via its Dash0Monitoring resource.
+                          type: boolean
                         enabled:
                           description: |-
                             Opt-in for collecting the manifests of Kubernetes objects. If set to `true`, the operator will collect the
@@ -4312,9 +4319,9 @@ custom resource definition for operator configuration should match snapshot:
                                   description: |-
                                     Opt-in for Kubernetes object collection for the target namespace. If set to `true`, the operator will collect the
                                     manifests of pods, deployments, replica sets, stateful sets and daemon sets in the target namespace and send them
-                                    to Dash0 as log records. Values of environment variables as well as the
-                                    `kubectl.kubernetes.io/last-applied-configuration` annotation are removed from the manifests before they leave
-                                    the cluster.
+                                    to Dash0 as log records. Values of environment variables as well as the annotations in which well-known deploy
+                                    tools (kubectl, kapp, Rancher) store a serialized copy of the whole manifest are removed from the manifests
+                                    before they leave the cluster.
 
                                     This setting is optional, it defaults to `false`, that is, if this setting is omitted, the operator will not
                                     collect Kubernetes object manifests in the target namespace.
@@ -6026,9 +6033,9 @@ custom resource definition for operator configuration should match snapshot:
                                   description: |-
                                     Opt-in for Kubernetes object collection for the target namespace. If set to `true`, the operator will collect the
                                     manifests of pods, deployments, replica sets, stateful sets and daemon sets in the target namespace and send them
-                                    to Dash0 as log records. Values of environment variables as well as the
-                                    `kubectl.kubernetes.io/last-applied-configuration` annotation are removed from the manifests before they leave
-                                    the cluster.
+                                    to Dash0 as log records. Values of environment variables as well as the annotations in which well-known deploy
+                                    tools (kubectl, kapp, Rancher) store a serialized copy of the whole manifest are removed from the manifests
+                                    before they leave the cluster.
 
                                     This setting is optional, it defaults to `false`, that is, if this setting is omitted, the operator will not
                                     collect Kubernetes object manifests in the target namespace.
