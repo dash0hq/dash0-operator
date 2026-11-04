@@ -244,6 +244,7 @@ func reservedEnvVarNames() map[string]bool {
 		k8sNodeIpEnvVarName,
 		k8sNodeNameEnvVarName,
 		k8sPodIpEnvVarName,
+		podOpenShiftSccEnvVarName,
 		developmentModeEnvVarName,
 		instrumentationDebugEnvVarName,
 		enablePythonAutoInstrumentationEnvVarName,

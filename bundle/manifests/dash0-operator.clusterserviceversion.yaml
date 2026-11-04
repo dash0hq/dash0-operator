@@ -1570,6 +1570,10 @@ spec:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.name
+                - name: K8S_POD_OPENSHIFT_SCC
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.annotations['openshift.io/scc']
                 - name: DASH0_EBPF_PROFILER_ENABLED
                   value: "false"
                 - name: DASH0_TELEMETRY_COLLECTION_ENABLED
@@ -1579,8 +1583,6 @@ spec:
                 - name: DASH0_FORCE_USE_OTEL_COLLECTOR_SERVICE_URL
                   value: "false"
                 - name: DASH0_GKE_AUTOPILOT
-                  value: "false"
-                - name: DASH0_OPENSHIFT
                   value: "false"
                 - name: DASH0_DISABLE_OTEL_COLLECTOR_HOST_PORTS
                   value: "false"
