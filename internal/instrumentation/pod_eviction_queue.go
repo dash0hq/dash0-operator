@@ -39,6 +39,7 @@ var (
 	podEvictionWorkers            = 10
 	podEvictionPollInterval       = 5 * time.Second
 	podEvictionSettleTimeout      = 10 * time.Minute
+	podEvictionMinReadyDuration   = 30 * time.Second
 	podEvictionBlockedBaseDelay   = 5 * time.Second
 	podEvictionBlockedMaxDelay    = time.Minute
 	podEvictionBlockedGiveUpAfter = 30 * time.Minute
@@ -74,8 +75,11 @@ type workloadInspection struct {
 	outcome inspectionOutcome
 	// notSettledReason describes why the next pod cannot be evicted yet, if the outcome is workloadNotSettled.
 	notSettledReason string
-	owner            client.Object
-	podUids          sets.Set[types.UID]
+	// afterLastEviction is true if the outcome is workloadNotSettled and no pod needs to be evicted anymore, that is,
+	// the workload has not settled after its last pod has been evicted.
+	afterLastEviction bool
+	owner             client.Object
+	podUids           sets.Set[types.UID]
 	// nextPod is the pod to evict next if the outcome is workloadSettled, or nil if no pod needs to be evicted anymore.
 	nextPod *corev1.Pod
 }
@@ -92,14 +96,20 @@ workload has settled:
   - no pod of the workload is terminating,
   - the workload has at least as many active pods as it desires, so a replacement that is created only after the
     evicted pod is gone (daemon sets and stateful sets) exists, and
-  - all pods of the workload that are not going to be evicted are ready, in particular the instrumented replacement of
-    the previously evicted pod.
+  - all pods of the workload that are not going to be evicted have been ready for at least the minReadySeconds of the
+    workload, or podEvictionMinReadyDuration if that is longer, in particular the instrumented replacement of the
+    previously evicted pod. Like Kubernetes does for available pods, the time since when a pod has been ready is taken
+    from its ready condition, so a replacement that crashes shortly after becoming ready does not pass this check.
 
 This check does not depend on what has happened before, so it also holds when the workload is enqueued again while its
-pods are being evicted, or after the operator manager has restarted. If the workload does not settle within
-podEvictionSettleTimeout, or if a replacement has not been instrumented, the worker stops evicting the pods of that
-workload and records an event for it, so that instrumentation that breaks the workload cannot take down all of its
-replicas. Pods that are not evicted are instrumented the next time they are recreated.
+pods are being evicted, or after the operator manager has restarted. After the last pod of the workload has been
+evicted, the worker waits for the workload to settle in the same way before it moves on to the next workload.
+
+If the workload does not settle within podEvictionSettleTimeout, or if a pod that has been created after the previous
+eviction has not been instrumented, has restarted, or has a terminated container or a failed init container, the worker
+stops evicting the pods of that workload and records an event for it, so that instrumentation that breaks the workload
+cannot take down all of its replicas. Pods that are not evicted are instrumented the next time they are recreated.
+Restarts of pods that have already existed before the previous eviction do not stop the evictions.
 
 If a pod disruption budget does not allow an eviction, the workload is requeued with an exponential backoff, which
 frees the worker for other workloads. After podEvictionBlockedGiveUpAfter, the worker gives up and records an event.
@@ -249,6 +259,13 @@ func (q *PodEvictionQueue) waitUntilNextPodCanBeEvicted(
 			podEvictionSettleTimeout,
 			inspection.notSettledReason,
 		)
+		if inspection.afterLastEviction {
+			reason = fmt.Sprintf(
+				"the workload has not become ready within %s after evicting its last pod (%s)",
+				podEvictionSettleTimeout,
+				inspection.notSettledReason,
+			)
+		}
 		if owner != nil {
 			q.stopEvictingWorkload(owner, reason, logger)
 		} else {
@@ -307,6 +324,20 @@ func (q *PodEvictionQueue) inspectWorkload(
 			continue
 		}
 		activePods = append(activePods, pod)
+		if isReplacement(pod, podsBeforeEviction) {
+			if failure := replacementFailure(pod); failure != "" {
+				q.stopEvictingWorkload(
+					owner,
+					fmt.Sprintf(
+						"the pod %s, which has been created after the previous eviction, %s",
+						pod.Name,
+						failure,
+					),
+					logger,
+				)
+				return &workloadInspection{outcome: stopEvictingWorkload}
+			}
+		}
 		podLogger := logger.WithValues("pod name", pod.Name)
 		if _, needsEviction := q.podNeedsEviction(
 			pod,
@@ -315,12 +346,13 @@ func (q *PodEvictionQueue) inspectWorkload(
 			resolveOwners,
 			podLogger,
 		); needsEviction {
-			if podsBeforeEviction != nil && !podsBeforeEviction.Has(pod.UID) {
+			if isReplacement(pod, podsBeforeEviction) {
 				q.stopEvictingWorkload(
 					owner,
 					fmt.Sprintf(
-						"the pod %s, which has been created after the previous eviction, has not been instrumented",
+						"the pod %s, which has been created after the previous eviction, %s",
 						pod.Name,
+						q.uninstrumentedReplacementDescription(pod),
 					),
 					logger,
 				)
@@ -330,19 +362,23 @@ func (q *PodEvictionQueue) inspectWorkload(
 		}
 	}
 
-	if len(podsToEvict) == 0 {
+	if len(podsToEvict) == 0 && podsBeforeEviction == nil {
 		return &workloadInspection{outcome: workloadSettled, owner: owner, podUids: podUids}
 	}
-	if terminatingPod != nil {
-		return notSettled(owner, fmt.Sprintf("the pod %s is terminating", terminatingPod.Name))
+	if reason := notSettledReason(
+		owner,
+		desiredPods,
+		activePods,
+		podsToEvict,
+		terminatingPod,
+		podsBeforeEviction,
+	); reason != "" {
+		inspection := notSettled(owner, reason)
+		inspection.afterLastEviction = len(podsToEvict) == 0
+		return inspection
 	}
-	if len(activePods) < int(desiredPods) {
-		return notSettled(owner, fmt.Sprintf("%d of %d pods exist", len(activePods), desiredPods))
-	}
-	for _, pod := range activePods {
-		if !slices.Contains(podsToEvict, pod) && !isPodReady(pod) {
-			return notSettled(owner, fmt.Sprintf("the pod %s is not ready", pod.Name))
-		}
+	if len(podsToEvict) == 0 {
+		return &workloadInspection{outcome: workloadSettled, owner: owner, podUids: podUids}
 	}
 	slices.SortFunc(podsToEvict, func(a, b *corev1.Pod) int {
 		if aReady, bReady := isPodReady(a), isPodReady(b); aReady != bReady {
@@ -358,6 +394,57 @@ func (q *PodEvictionQueue) inspectWorkload(
 
 func notSettled(owner client.Object, reason string) *workloadInspection {
 	return &workloadInspection{outcome: workloadNotSettled, owner: owner, notSettledReason: reason}
+}
+
+// notSettledReason returns why the workload has not settled yet, or an empty string if it has settled.
+func notSettledReason(
+	workload client.Object,
+	desiredPods int32,
+	activePods []*corev1.Pod,
+	podsToEvict []*corev1.Pod,
+	terminatingPod *corev1.Pod,
+	podsBeforeEviction sets.Set[types.UID],
+) string {
+	if terminatingPod != nil {
+		return fmt.Sprintf("the pod %s is terminating", terminatingPod.Name)
+	}
+	if len(activePods) < int(desiredPods) {
+		return fmt.Sprintf("%d of %d pods exist", len(activePods), desiredPods)
+	}
+	minReadyDuration := minReadyDurationOf(workload)
+	now := time.Now()
+	for _, pod := range activePods {
+		if slices.Contains(podsToEvict, pod) || podIsStablyReady(pod, minReadyDuration, now) {
+			continue
+		}
+		description := "the pod " + pod.Name
+		if isReplacement(pod, podsBeforeEviction) {
+			description = "the replacement " + pod.Name
+		}
+		if !isPodReady(pod) {
+			return description + " is not ready"
+		}
+		return fmt.Sprintf("%s has not been ready for %s yet", description, minReadyDuration)
+	}
+	return ""
+}
+
+// isReplacement returns true if the pod has been created after the previous eviction.
+func isReplacement(pod *corev1.Pod, podsBeforeEviction sets.Set[types.UID]) bool {
+	return podsBeforeEviction != nil && !podsBeforeEviction.Has(pod.UID)
+}
+
+// uninstrumentedReplacementDescription describes the instrumentation state of a pod that has been created after the
+// previous eviction, but still needs to be evicted.
+func (q *PodEvictionQueue) uninstrumentedReplacementDescription(pod *corev1.Pod) string {
+	switch {
+	case !util.HasBeenInstrumentedSuccessfully(&pod.ObjectMeta):
+		return "has not been instrumented"
+	case !util.HasBeenInstrumentedSuccessfullyByThisVersion(&pod.ObjectMeta, q.clusterInstrumentationConfig.Images):
+		return "has been instrumented by another version of the operator"
+	default:
+		return "has been instrumented with outdated settings"
+	}
 }
 
 // readMonitoringResourceInNamespace returns the Dash0 monitoring resource in the namespace, or nil if there is none.
@@ -422,6 +509,23 @@ func replicasOrDefault(replicas *int32) int32 {
 		return 1
 	}
 	return *replicas
+}
+
+// minReadyDurationOf returns how long the pods of the workload need to have been ready before the next pod is evicted,
+// that is, the minReadySeconds of the workload, but at least podEvictionMinReadyDuration.
+func minReadyDurationOf(workload client.Object) time.Duration {
+	var minReadySeconds int32
+	switch w := workload.(type) {
+	case *appsv1.DaemonSet:
+		minReadySeconds = w.Spec.MinReadySeconds
+	case *appsv1.Deployment:
+		minReadySeconds = w.Spec.MinReadySeconds
+	case *appsv1.ReplicaSet:
+		minReadySeconds = w.Spec.MinReadySeconds
+	case *appsv1.StatefulSet:
+		minReadySeconds = w.Spec.MinReadySeconds
+	}
+	return max(podEvictionMinReadyDuration, time.Duration(minReadySeconds)*time.Second)
 }
 
 // listPodsOfWorkload lists the pods matching the selector of the workload whose top-level owner is the workload.

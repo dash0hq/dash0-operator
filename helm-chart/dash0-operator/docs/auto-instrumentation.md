@@ -156,12 +156,17 @@ With `instrumentWorkloads.mode=created-and-updated`, existing pods are not evict
 Evictions are paced, so that a workload stays available while its pods are replaced:
 * The pods of a workload (for example, all pods of a deployment) are evicted one at a time.
   Before evicting the next pod, the operator waits until no pod of the workload is terminating, the workload has as many
-  pods as it desires, and all of its pods that are not going to be evicted are ready, including the instrumented
-  replacement of the pod that has been evicted before.
+  pods as it desires, and all of its pods that are not going to be evicted have been ready for at least 30 seconds, or
+  for the workload's `minReadySeconds` if that is longer. This includes the instrumented replacement of the pod that has
+  been evicted before, so replacing the pods of a workload takes at least 30 seconds per pod.
   Pods that are not ready are evicted first.
+  After evicting the last pod of a workload, the operator waits for the workload to get to that state as well.
 * If a workload does not get to that state within 10 minutes, for example because the instrumented replacement does not
-  become ready, or if a replacement has not been instrumented, the operator stops evicting the pods of that workload and
-  records a Kubernetes event with reason `PodEvictionStopped` for it.
+  become ready, the operator stops evicting the pods of that workload and records a Kubernetes event with reason
+  `PodEvictionStopped` for it.
+  It stops right away if a pod that has been created after the previous eviction has not been instrumented, has
+  restarted, has a terminated container, or has a failed init container. Restarts of pods that have existed before are
+  not taken into account.
   This way, a problem with the instrumentation cannot take down all replicas of a workload.
   The remaining pods are instrumented the next time they are recreated.
 * Evictions respect pod disruption budgets. If a pod disruption budget does not allow an eviction, the operator retries

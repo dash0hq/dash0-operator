@@ -4,6 +4,7 @@
 package instrumentation
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -286,4 +287,58 @@ func isPodReady(pod *corev1.Pod) bool {
 		}
 	}
 	return false
+}
+
+// podIsStablyReady returns true if the pod has been ready for at least the given duration. Like Kubernetes does for
+// available pods, it takes the time since when the pod has been ready from the last transition time of its ready
+// condition, so the result does not depend on earlier observations of the pod.
+func podIsStablyReady(pod *corev1.Pod, duration time.Duration, now time.Time) bool {
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == corev1.PodReady {
+			if condition.Status != corev1.ConditionTrue {
+				return false
+			}
+			return duration <= 0 ||
+				(!condition.LastTransitionTime.IsZero() && condition.LastTransitionTime.Add(duration).Before(now))
+		}
+	}
+	return false
+}
+
+/*
+replacementFailure describes how the pod has failed, if one of its containers has restarted or terminated, or one of its
+init containers has restarted or exited with an error. Otherwise, it returns an empty string. Init containers that have
+completed successfully are expected. The function is meant for pods that have been created after the previous eviction.
+Since a restart count never decreases, there is no point in waiting for such a pod to recover.
+*/
+func replacementFailure(pod *corev1.Pod) string {
+	for _, status := range pod.Status.InitContainerStatuses {
+		if status.RestartCount > 0 {
+			return fmt.Sprintf("has restarted %s (init container %s)", formatTimes(status.RestartCount), status.Name)
+		}
+		for _, terminated := range []*corev1.ContainerStateTerminated{
+			status.State.Terminated,
+			status.LastTerminationState.Terminated,
+		} {
+			if terminated != nil && terminated.ExitCode != 0 {
+				return fmt.Sprintf("has a failed init container (%s, exit code %d)", status.Name, terminated.ExitCode)
+			}
+		}
+	}
+	for _, status := range pod.Status.ContainerStatuses {
+		if status.RestartCount > 0 {
+			return fmt.Sprintf("has restarted %s (container %s)", formatTimes(status.RestartCount), status.Name)
+		}
+		if terminated := cmp.Or(status.State.Terminated, status.LastTerminationState.Terminated); terminated != nil {
+			return fmt.Sprintf("has a terminated container (%s, exit code %d)", status.Name, terminated.ExitCode)
+		}
+	}
+	return ""
+}
+
+func formatTimes(count int32) string {
+	if count == 1 {
+		return "once"
+	}
+	return fmt.Sprintf("%d times", count)
 }

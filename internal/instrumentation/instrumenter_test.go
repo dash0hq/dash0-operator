@@ -503,6 +503,208 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				verifyPodHasNotBeenEvicted(ctx, replacement.Name)
 			})
 
+			It("should stop evicting and record an event if a replacement has been instrumented by another version",
+				func() {
+					workload := createPodEvictionTestWorkload(ctx, util.K8sTypeMetaReplicaSet, 2)
+					createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload.objects()...)
+					namePrefix := UniqueName(PodNamePrefix)
+					firstPod := createPodOf(ctx, workload, basicPod(namePrefix+"-0"), true)
+					secondPod := createPodOf(ctx, workload, basicPod(namePrefix+"-1"), true)
+
+					checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+					verifyPodHasBeenEvicted(ctx, firstPod.Name)
+					replacement := createPodOf(ctx, workload, outdatedInstrumentedPod(newPodName(firstPod.Name)), true)
+					verifyPodEvictionStoppedEvent(
+						ctx,
+						workload.topLevel.GetName(),
+						fmt.Sprintf("the pod %s, which has been created after the previous eviction, has been "+
+							"instrumented by another version of the operator", replacement.Name),
+					)
+					verifyPodHasNotBeenEvicted(ctx, secondPod.Name)
+				})
+
+			DescribeTable("should not evict the next pod before the replacement has been ready for long enough",
+				func(ownerType metav1.TypeMeta, minReadySeconds int32, minReadyDuration time.Duration) {
+					podEvictionMinReadyDuration = minReadyDuration
+					workload := createPodEvictionTestWorkload(ctx, ownerType, 2)
+					createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload.objects()...)
+					setMinReadySeconds(ctx, workload, minReadySeconds)
+					namePrefix := UniqueName(PodNamePrefix)
+					firstPod := createPodOf(ctx, workload, basicPod(namePrefix+"-0"), true)
+					secondPod := createPodOf(ctx, workload, basicPod(namePrefix+"-1"), true)
+
+					checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+					verifyPodHasBeenEvicted(ctx, firstPod.Name)
+					replacementName := newPodName(firstPod.Name)
+					replacement := createPodOf(ctx, workload, InstrumentedPod(namespace, replacementName), true)
+					verifyPodHasNotBeenEvicted(ctx, secondPod.Name)
+
+					By("evicting the second pod once the replacement has been ready for long enough")
+					markPodAsReadySince(ctx, replacement, time.Now().Add(-2*time.Hour), nil)
+					verifyPodHasBeenEvicted(ctx, secondPod.Name)
+				},
+				Entry("at least the minimum duration", util.K8sTypeMetaReplicaSet, int32(0), time.Hour),
+				Entry("minReadySeconds of a replica set", util.K8sTypeMetaReplicaSet, int32(300), time.Duration(0)),
+				Entry("minReadySeconds of a deployment", util.K8sTypeMetaDeployment, int32(300), time.Duration(0)),
+				Entry("minReadySeconds of a daemon set", util.K8sTypeMetaDaemonSet, int32(300), time.Duration(0)),
+				Entry("minReadySeconds of a stateful set", util.K8sTypeMetaStatefulSet, int32(300), time.Duration(0)),
+			)
+
+			DescribeTable("should stop evicting and record an event if a replacement has failed",
+				func(modifyStatus func(*corev1.PodStatus), failure string) {
+					workload := createPodEvictionTestWorkload(ctx, util.K8sTypeMetaReplicaSet, 2)
+					createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload.objects()...)
+					namePrefix := UniqueName(PodNamePrefix)
+					firstPod := createPodOf(ctx, workload, basicPod(namePrefix+"-0"), true)
+					secondPod := createPodOf(ctx, workload, basicPod(namePrefix+"-1"), true)
+
+					checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+					verifyPodHasBeenEvicted(ctx, firstPod.Name)
+					replacementName := newPodName(firstPod.Name)
+					replacement := createPodOf(ctx, workload, InstrumentedPod(namespace, replacementName), false)
+					markPodAsReadySince(ctx, replacement, time.Now(), modifyStatus)
+					verifyPodEvictionStoppedEvent(
+						ctx,
+						workload.topLevel.GetName(),
+						fmt.Sprintf("the pod %s, which has been created after the previous eviction, %s",
+							replacement.Name, failure),
+					)
+					verifyPodHasNotBeenEvicted(ctx, secondPod.Name)
+				},
+				Entry("when a container has restarted", func(status *corev1.PodStatus) {
+					status.ContainerStatuses = []corev1.ContainerStatus{{
+						Name:         "test-container-0",
+						RestartCount: 2,
+						State:        corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+					}}
+				}, "has restarted 2 times (container test-container-0)"),
+				Entry("when a container has terminated", func(status *corev1.PodStatus) {
+					status.ContainerStatuses = []corev1.ContainerStatus{{
+						Name:  "test-container-0",
+						State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 1}},
+					}}
+				}, "has a terminated container (test-container-0, exit code 1)"),
+				Entry("when an init container has restarted", func(status *corev1.PodStatus) {
+					status.InitContainerStatuses = []corev1.ContainerStatus{{
+						Name:         "dash0-instrumentation",
+						RestartCount: 1,
+						State:        corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 0}},
+					}}
+				}, "has restarted once (init container dash0-instrumentation)"),
+				Entry("when an init container has failed", func(status *corev1.PodStatus) {
+					status.InitContainerStatuses = []corev1.ContainerStatus{{
+						Name:  "dash0-instrumentation",
+						State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 1}},
+					}}
+				}, "has a failed init container (dash0-instrumentation, exit code 1)"),
+			)
+
+			It("should not stop evicting because of completed init containers or restarts of older pods",
+				func() {
+					workload := createPodEvictionTestWorkload(ctx, util.K8sTypeMetaReplicaSet, 3)
+					createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload.objects()...)
+					namePrefix := UniqueName(PodNamePrefix)
+					restartedPod := createPodOf(ctx, workload, InstrumentedPod(namespace, namePrefix+"-0"), false)
+					markPodAsReadySince(ctx, restartedPod, time.Now(), func(status *corev1.PodStatus) {
+						status.ContainerStatuses = []corev1.ContainerStatus{{
+							Name:         "test-container-0",
+							RestartCount: 3,
+							State:        corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+							LastTerminationState: corev1.ContainerState{
+								Terminated: &corev1.ContainerStateTerminated{ExitCode: 1},
+							},
+						}}
+					})
+					firstPod := createPodOf(ctx, workload, basicPod(namePrefix+"-1"), true)
+					secondPod := createPodOf(ctx, workload, basicPod(namePrefix+"-2"), true)
+
+					checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+					verifyPodHasBeenEvicted(ctx, firstPod.Name)
+					replacementName := newPodName(firstPod.Name)
+					replacement := createPodOf(ctx, workload, InstrumentedPod(namespace, replacementName), false)
+					markPodAsReadySince(ctx, replacement, time.Now(), func(status *corev1.PodStatus) {
+						status.InitContainerStatuses = []corev1.ContainerStatus{{
+							Name: "dash0-instrumentation",
+							State: corev1.ContainerState{
+								Terminated: &corev1.ContainerStateTerminated{Reason: "Completed"},
+							},
+						}}
+					})
+					verifyPodHasBeenEvicted(ctx, secondPod.Name)
+					VerifyNoEvents(ctx, clientset, namespace)
+				})
+
+			DescribeTable("should wait for the replacement of the last evicted pod and record an event if it does not "+
+				"become ready in time",
+				func(createReplacement bool, reason func(replacementName string) string) {
+					podEvictionSettleTimeout = 2 * time.Second
+					workload := createPodEvictionTestWorkload(ctx, util.K8sTypeMetaReplicaSet, 1)
+					createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload.objects()...)
+					pod := createPodOf(ctx, workload, basicPod(UniqueName(PodNamePrefix)), true)
+
+					checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+					verifyPodHasBeenEvicted(ctx, pod.Name)
+					verifyNoEventsFor(ctx, podEvictionConsistentlyDuration)
+					replacementName := newPodName(pod.Name)
+					if createReplacement {
+						createPodOf(ctx, workload, InstrumentedPod(namespace, replacementName), false)
+					}
+					verifyPodEvictionStoppedEvent(
+						ctx,
+						workload.topLevel.GetName(),
+						fmt.Sprintf(
+							"the workload has not become ready within %s after evicting its last pod (%s)",
+							podEvictionSettleTimeout,
+							reason(replacementName),
+						),
+					)
+				},
+				Entry("when the replacement is not ready", true, func(replacementName string) string {
+					return fmt.Sprintf("the replacement %s is not ready", replacementName)
+				}),
+				Entry("when the replacement does not exist", false, func(string) string {
+					return "0 of 1 pods exist"
+				}),
+			)
+
+			It("should stop evicting and record an event if the replacement of the last evicted pod has not been "+
+				"instrumented", func() {
+				workload := createPodEvictionTestWorkload(ctx, util.K8sTypeMetaReplicaSet, 1)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload.objects()...)
+				pod := createPodOf(ctx, workload, basicPod(UniqueName(PodNamePrefix)), true)
+
+				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+				verifyPodHasBeenEvicted(ctx, pod.Name)
+				verifyNoEventsFor(ctx, podEvictionConsistentlyDuration)
+				replacement := createPodOf(ctx, workload, basicPod(newPodName(pod.Name)), true)
+				verifyPodEvictionStoppedEvent(
+					ctx,
+					workload.topLevel.GetName(),
+					fmt.Sprintf("the pod %s, which has been created after the previous eviction, has not been "+
+						"instrumented", replacement.Name),
+				)
+				verifyPodHasNotBeenEvicted(ctx, replacement.Name)
+			})
+
+			It("should stop waiting without an event once the replacement of the last evicted pod is ready", func() {
+				podEvictionSettleTimeout = time.Second
+				workload := createPodEvictionTestWorkload(ctx, util.K8sTypeMetaReplicaSet, 1)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload.objects()...)
+				pod := createPodOf(ctx, workload, basicPod(UniqueName(PodNamePrefix)), true)
+
+				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+				verifyPodHasBeenEvicted(ctx, pod.Name)
+				createPodOf(ctx, workload, InstrumentedPod(namespace, newPodName(pod.Name)), true)
+				verifyNoEventsFor(ctx, 2*podEvictionSettleTimeout)
+			})
+
 			DescribeTable("should stop evicting when the monitoring resource no longer instruments existing workloads",
 				func(change func()) {
 					workload := createPodEvictionTestWorkload(ctx, util.K8sTypeMetaReplicaSet, 2)
@@ -1483,6 +1685,7 @@ func (w podEvictionTestWorkload) objects() []client.Object {
 func startPodEvictionQueue(ctx context.Context, instrumenter *Instrumenter) {
 	podEvictionPollInterval = podEvictionTestPollInterval
 	podEvictionSettleTimeout = podEvictionEventuallyTimeout
+	podEvictionMinReadyDuration = 0
 	podEvictionBlockedBaseDelay = podEvictionTestPollInterval
 	podEvictionBlockedMaxDelay = 100 * time.Millisecond
 	podEvictionBlockedGiveUpAfter = time.Minute
@@ -1578,9 +1781,38 @@ func deletePodOnCleanup(ctx context.Context, pod *corev1.Pod) {
 }
 
 func markPodAsReady(ctx context.Context, pod *corev1.Pod) {
+	markPodAsReadySince(ctx, pod, time.Now(), nil)
+}
+
+// markPodAsReadySince marks the pod as ready since the given time. The optional modifyStatus function can change the
+// status further in the same update, so that the queue never sees the pod in an intermediate state.
+func markPodAsReadySince(ctx context.Context, pod *corev1.Pod, since time.Time, modifyStatus func(*corev1.PodStatus)) {
 	pod.Status.Phase = corev1.PodRunning
-	pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
+	pod.Status.Conditions = []corev1.PodCondition{{
+		Type:               corev1.PodReady,
+		Status:             corev1.ConditionTrue,
+		LastTransitionTime: metav1.NewTime(since),
+	}}
+	if modifyStatus != nil {
+		modifyStatus(&pod.Status)
+	}
 	Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+}
+
+func setMinReadySeconds(ctx context.Context, workload podEvictionTestWorkload, minReadySeconds int32) {
+	switch w := workload.topLevel.(type) {
+	case *appsv1.DaemonSet:
+		w.Spec.MinReadySeconds = minReadySeconds
+	case *appsv1.Deployment:
+		w.Spec.MinReadySeconds = minReadySeconds
+	case *appsv1.ReplicaSet:
+		w.Spec.MinReadySeconds = minReadySeconds
+	case *appsv1.StatefulSet:
+		w.Spec.MinReadySeconds = minReadySeconds
+	default:
+		Fail(fmt.Sprintf("unsupported workload type %T", workload.topLevel))
+	}
+	Expect(k8sClient.Update(ctx, workload.topLevel)).To(Succeed())
 }
 
 func createPodDisruptionBudgetForAllTestPods(ctx context.Context) *policyv1.PodDisruptionBudget {
@@ -1627,6 +1859,14 @@ func verifyPodHasNotBeenEvicted(ctx context.Context, name string) {
 		g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, pod)).To(Succeed())
 		g.Expect(pod.DeletionTimestamp).To(BeNil())
 	}, podEvictionConsistentlyDuration, podEvictionTestPollInterval).Should(Succeed())
+}
+
+func verifyNoEventsFor(ctx context.Context, duration time.Duration) {
+	Consistently(func(g Gomega) {
+		events, err := clientset.EventsV1().Events(namespace).List(ctx, metav1.ListOptions{})
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(events.Items).To(BeEmpty())
+	}, duration, podEvictionTestPollInterval).Should(Succeed())
 }
 
 func verifyPodEvictionStoppedEvent(ctx context.Context, workloadName string, noteSubstring string) {

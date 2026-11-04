@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	podInstrumentationTimeout = 2 * time.Minute
+	podInstrumentationTimeout = 4 * time.Minute
 )
 
 // podLabelSelector returns a label selector matching the pods of one workload of the Node.js test application.
