@@ -94,6 +94,12 @@ const (
 	// stream drops, the backoff is reset to initialReconnectDelay so a single blip does not inherit a long delay that
 	// accumulated during an earlier outage.
 	healthyStreamThreshold = 1 * time.Minute
+
+	// defaultHeartbeatInterval is how often a heartbeat is sent on the command request stream. The stream carries no
+	// data while no commands arrive, and proxies between the agent0-connector and the backend can reset a stream that
+	// has been idle for too long, e.g. the Dash0 ingress gateway after 5 minutes. HTTP/2 keepalive pings do not count as
+	// stream activity. The interval leaves room for a few missed heartbeats.
+	defaultHeartbeatInterval = 30 * time.Second
 )
 
 // exit flushes the self-monitoring telemetry and terminates the process with the given exit code; os.Exit skips
@@ -119,6 +125,7 @@ type Subscriber struct {
 	maxConcurrentCommands  int
 	allowedKubectlCommands kubectl.AllowedKubectlCommands
 	execute                commandExecutor
+	heartbeatInterval      time.Duration
 }
 
 // NewSubscriber creates a Subscriber, resolving its configuration from the environment. It exits the process if a
@@ -133,6 +140,7 @@ func NewSubscriber(logger *slog.Logger) *Subscriber {
 		maxConcurrentCommands:  resolveMaxConcurrentCommands(logger),
 		allowedKubectlCommands: resolveAllowedKubectlCommands(logger),
 		execute:                kubectl.ExecuteCommandRequest,
+		heartbeatInterval:      defaultHeartbeatInterval,
 	}
 }
 
@@ -434,7 +442,8 @@ type commandExecutor func(
 // listenToCommandRequests reads CommandRequests from the stream until it is closed or fails. Every request is handed to
 // a pool of maxConcurrentCommands workers which execute it and hand the CommandResponse to a single sender, so that one
 // slow command does not hold up the delivery of the requests behind it. Responses are not necessarily sent in the order
-// the requests arrived (the backend correlates them by request ID anyway).
+// the requests arrived (the backend correlates them by request ID anyway). While the stream is open, the sender also
+// sends a heartbeat every heartbeatInterval.
 //
 // It returns nil when the backend closed the stream cleanly (io.EOF) and a wrapped error on any receive or send
 // failure.
@@ -463,11 +472,34 @@ func (s *Subscriber) listenToCommandRequests(
 		}()
 	}
 
+	// Heartbeats go through the sender as well, since a gRPC stream does not support concurrent Send calls.
+	heartbeat := time.NewTicker(s.heartbeatInterval)
+	defer heartbeat.Stop()
+
 	var sendErr error
 	senderDone := make(chan struct{})
 	go func() {
 		defer close(senderDone)
-		for resp := range responses {
+		for {
+			var resp *pb.CommandResponse
+			select {
+			case <-heartbeat.C:
+				if sendErr != nil {
+					continue
+				}
+				if err := stream.Send(&pb.CommandResponse{Heartbeat: true}); err != nil {
+					sendErr = fmt.Errorf("stream send failed: %w", err)
+					cancelWorkers()
+					logger.Warn("failed to send a heartbeat", "error", err)
+				}
+				continue
+			case r, ok := <-responses:
+				if !ok {
+					return
+				}
+				resp = r
+			}
+
 			if sendErr != nil {
 				// The stream is broken. Keep draining so that no worker blocks on handing over its response, but do not
 				// attempt to send any more.
@@ -499,6 +531,10 @@ func (s *Subscriber) listenToCommandRequests(
 	}()
 
 	recvErr := receiveCommandRequests(workerCtx, logger, stream, requests)
+
+	// The stream is either broken or has been closed by the backend, a heartbeat cannot keep it alive any more. A failing
+	// heartbeat would abort the commands that may still finish after a clean close.
+	heartbeat.Stop()
 
 	if recvErr != nil {
 		// The stream is gone, so the responses of the commands that are still running cannot be delivered. Aborting them

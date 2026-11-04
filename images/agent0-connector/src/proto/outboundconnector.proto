@@ -57,4 +57,11 @@ message CommandResponse {
 
   // Whether the command execution timed out.
   bool timeout = 5;
+
+  // Marks this message as a heartbeat instead of an actual command response; all other fields are unset.
+  // The client sends heartbeats at a fixed interval, so that en-route proxies configured with an idle
+  // connection timeout do not reset a stream that carries no commands for a while.
+  // HTTP/2 keepalive pings do not prevent that, since they work on the connection level, not on the
+  // stream level. The server ignores heartbeats.
+  bool heartbeat = 6;
 }

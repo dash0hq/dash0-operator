@@ -116,7 +116,13 @@ type CommandResponse struct {
 	// The captured stderr stream.
 	Stderr string `protobuf:"bytes,4,opt,name=stderr,proto3" json:"stderr,omitempty"`
 	// Whether the command execution timed out.
-	Timeout       bool `protobuf:"varint,5,opt,name=timeout,proto3" json:"timeout,omitempty"`
+	Timeout bool `protobuf:"varint,5,opt,name=timeout,proto3" json:"timeout,omitempty"`
+	// Marks this message as a heartbeat instead of an actual command response; all other fields are unset.
+	// The client sends heartbeats at a fixed interval, so that en-route proxies configured with an idle
+	// connection timeout do not reset a stream that carries no commands for a while.
+	// HTTP/2 keepalive pings do not prevent that, since they work on the connection level, not on the
+	// stream level. The server ignores heartbeats.
+	Heartbeat     bool `protobuf:"varint,6,opt,name=heartbeat,proto3" json:"heartbeat,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -186,6 +192,13 @@ func (x *CommandResponse) GetTimeout() bool {
 	return false
 }
 
+func (x *CommandResponse) GetHeartbeat() bool {
+	if x != nil {
+		return x.Heartbeat
+	}
+	return false
+}
+
 var File_proto_outboundconnector_proto protoreflect.FileDescriptor
 
 const file_proto_outboundconnector_proto_rawDesc = "" +
@@ -196,14 +209,15 @@ const file_proto_outboundconnector_proto_rawDesc = "" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x18\n" +
 	"\acommand\x18\x02 \x01(\tR\acommand\x12\x1c\n" +
 	"\targuments\x18\x03 \x03(\tR\targuments\x12 \n" +
-	"\vtraceparent\x18\x04 \x01(\tR\vtraceparent\"\x97\x01\n" +
+	"\vtraceparent\x18\x04 \x01(\tR\vtraceparent\"\xb5\x01\n" +
 	"\x0fCommandResponse\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1b\n" +
 	"\texit_code\x18\x02 \x01(\x05R\bexitCode\x12\x16\n" +
 	"\x06stdout\x18\x03 \x01(\tR\x06stdout\x12\x16\n" +
 	"\x06stderr\x18\x04 \x01(\tR\x06stderr\x12\x18\n" +
-	"\atimeout\x18\x05 \x01(\bR\atimeout2\x83\x01\n" +
+	"\atimeout\x18\x05 \x01(\bR\atimeout\x12\x1c\n" +
+	"\theartbeat\x18\x06 \x01(\bR\theartbeat2\x83\x01\n" +
 	"\x18OutboundConnectorService\x12g\n" +
 	"\x1aSubscribeToCommandRequests\x12\".outboundconnector.CommandResponse\x1a!.outboundconnector.CommandRequest(\x010\x01BAZ?github.com/dash0hq/dash0-operator/images/agent0-connector/protob\x06proto3"
 
