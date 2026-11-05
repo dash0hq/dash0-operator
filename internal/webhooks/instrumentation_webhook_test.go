@@ -1191,7 +1191,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
 			workload = GetPod(ctx, k8sClient, TestNamespaceName, name)
 			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
-			event := VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, "owner", testActor)
+			event := VerifySuccessfulPodInstrumentationEvent(ctx, clientset, TestNamespaceName, "owner", testActor)
 			Expect(event.Regarding.Kind).To(Equal(owner.Kind))
 			Expect(string(event.Regarding.UID)).To(Equal("1234"))
 		}, Entry("owned by a daemon set", util.K8sTypeMetaDaemonSet),
@@ -1258,7 +1258,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 				createdObjectsInstrumentationWebhookTest,
 			)
 			VerifyUnmodifiedPod(pod)
-			event := VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, deployment.Name, testActor)
+			event := VerifySuccessfulPodUninstrumentationEvent(ctx, clientset, TestNamespaceName, deployment.Name, testActor)
 			Expect(event.Regarding.Kind).To(Equal("Deployment"))
 		})
 
@@ -1276,7 +1276,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			serviceName := FindEnvVarByName(pod.Spec.Containers[0].Env, "OTEL_INJECTOR_SERVICE_NAME")
 			Expect(serviceName).ToNot(BeNil())
 			Expect(serviceName.Value).To(Equal("deployment-service"))
-			event := VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, deployment.Name, testActor)
+			event := VerifySuccessfulPodInstrumentationEvent(ctx, clientset, TestNamespaceName, deployment.Name, testActor)
 			Expect(event.Regarding.Kind).To(Equal("Deployment"))
 			Expect(event.Regarding.UID).To(Equal(deployment.UID))
 		})

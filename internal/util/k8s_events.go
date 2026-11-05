@@ -19,9 +19,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// EventSubject names what an instrumentation event is about, relative to the object that the event is recorded for.
+type EventSubject string
+
+const (
+	// EventSubjectWorkload is the subject of events about the object they are recorded for.
+	EventSubjectWorkload EventSubject = "this workload"
+	// EventSubjectPodOfWorkload is the subject of events about a pod that are recorded for the workload owning the pod,
+	// since a pod created by a workload has no name yet when the webhook instruments it.
+	EventSubjectPodOfWorkload EventSubject = "a pod of this workload"
+)
+
 func HandlePotentiallySuccessfulInstrumentationEvent(
 	eventRecorder events.EventRecorder,
 	resource runtime.Object,
+	subject EventSubject,
 	eventSource WorkloadModifierActor,
 	containersTotal int,
 	instrumentationIssuesPerContainer map[string][]string,
@@ -30,7 +42,7 @@ func HandlePotentiallySuccessfulInstrumentationEvent(
 	if len(instrumentationIssuesPerContainer) == 0 {
 		// All containers have been instrumented, no container had instrumentation issues.
 		logger.Info(fmt.Sprintf("The %s has added Dash0 instrumentation to the workload.", eventSource))
-		queueSuccessfulInstrumentationEvent(eventRecorder, resource, eventSource)
+		queueSuccessfulInstrumentationEvent(eventRecorder, resource, subject, eventSource)
 		return
 	}
 
@@ -41,6 +53,7 @@ func HandlePotentiallySuccessfulInstrumentationEvent(
 	queuePartiallyUnsuccessfulInstrumentationEvent(
 		eventRecorder,
 		resource,
+		subject,
 		eventSource,
 		containersTotal,
 		instrumentationIssuesPerContainer,
@@ -50,6 +63,7 @@ func HandlePotentiallySuccessfulInstrumentationEvent(
 func queueSuccessfulInstrumentationEvent(
 	eventRecorder events.EventRecorder,
 	resource runtime.Object,
+	subject EventSubject,
 	eventSource WorkloadModifierActor,
 ) {
 	eventRecorder.Eventf(
@@ -58,13 +72,14 @@ func queueSuccessfulInstrumentationEvent(
 		corev1.EventTypeNormal,
 		string(ReasonSuccessfulInstrumentation),
 		string(ActionInstrumentation),
-		fmt.Sprintf("Dash0 instrumentation of this workload by the %s has been successful.", eventSource),
+		fmt.Sprintf("Dash0 instrumentation of %s by the %s has been successful.", subject, eventSource),
 	)
 }
 
 func queuePartiallyUnsuccessfulInstrumentationEvent(
 	eventRecorder events.EventRecorder,
 	resource runtime.Object,
+	subject EventSubject,
 	eventSource WorkloadModifierActor,
 	containersTotal int,
 	instrumentationIssuesPerContainer map[string][]string,
@@ -76,7 +91,8 @@ func queuePartiallyUnsuccessfulInstrumentationEvent(
 		string(ReasonPartiallyUnsuccessfulInstrumentation),
 		string(ActionInstrumentation),
 		fmt.Sprintf(
-			"Dash0 instrumentation of this workload by the %s has been partially unsuccessful, %d out of %d containers have instrumentation issues. %s",
+			"Dash0 instrumentation of %s by the %s has been partially unsuccessful, %d out of %d containers have instrumentation issues. %s",
+			subject,
 			eventSource,
 			len(instrumentationIssuesPerContainer),
 			containersTotal,
@@ -96,47 +112,83 @@ func QueueNoInstrumentationNecessaryEvent(eventRecorder events.EventRecorder, re
 	)
 }
 
-func QueueFailedInstrumentationEvent(eventRecorder events.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor, err error) {
+func QueueFailedInstrumentationEvent(
+	eventRecorder events.EventRecorder,
+	resource runtime.Object,
+	subject EventSubject,
+	eventSource WorkloadModifierActor,
+	err error,
+) {
 	eventRecorder.Eventf(
 		resource,
 		nil,
 		corev1.EventTypeWarning,
 		string(ReasonFailedInstrumentation),
 		string(ActionInstrumentation),
-		fmt.Sprintf("Dash0 instrumentation of this workload by the %s has not been successful. Error message: %s", eventSource, err.Error()),
+		fmt.Sprintf(
+			"Dash0 instrumentation of %s by the %s has not been successful. Error message: %s",
+			subject,
+			eventSource,
+			err.Error(),
+		),
 	)
 }
 
-func QueueSuccessfulUninstrumentationEvent(eventRecorder events.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor) {
+func QueueSuccessfulUninstrumentationEvent(
+	eventRecorder events.EventRecorder,
+	resource runtime.Object,
+	subject EventSubject,
+	eventSource WorkloadModifierActor,
+) {
 	eventRecorder.Eventf(
 		resource,
 		nil,
 		corev1.EventTypeNormal,
 		string(ReasonSuccessfulUninstrumentation),
 		string(ActionUninstrumentation),
-		fmt.Sprintf("The %s successfully removed the Dash0 instrumentation from this workload.", eventSource),
+		fmt.Sprintf("The %s successfully removed the Dash0 instrumentation from %s.", eventSource, subject),
 	)
 }
 
-func QueueNoUninstrumentationNecessaryEvent(eventRecorder events.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor) {
+func QueueNoUninstrumentationNecessaryEvent(
+	eventRecorder events.EventRecorder,
+	resource runtime.Object,
+	subject EventSubject,
+	eventSource WorkloadModifierActor,
+) {
 	eventRecorder.Eventf(
 		resource,
 		nil,
 		corev1.EventTypeNormal,
 		string(ReasonNoUninstrumentationNecessary),
 		string(ActionUninstrumentation),
-		fmt.Sprintf("Dash0 instrumentation was not present on this workload, no modification by the %s has been necessary.", eventSource),
+		fmt.Sprintf(
+			"Dash0 instrumentation was not present on %s, no modification by the %s has been necessary.",
+			subject,
+			eventSource,
+		),
 	)
 }
 
-func QueueFailedUninstrumentationEvent(eventRecorder events.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor, err error) {
+func QueueFailedUninstrumentationEvent(
+	eventRecorder events.EventRecorder,
+	resource runtime.Object,
+	subject EventSubject,
+	eventSource WorkloadModifierActor,
+	err error,
+) {
 	eventRecorder.Eventf(
 		resource,
 		nil,
 		corev1.EventTypeWarning,
 		string(ReasonFailedUninstrumentation),
 		string(ActionUninstrumentation),
-		fmt.Sprintf("The %s's attempt to remove the Dash0 instrumentation from this workload has not been successful. Error message: %s", eventSource, err.Error()),
+		fmt.Sprintf(
+			"The %s's attempt to remove the Dash0 instrumentation from %s has not been successful. Error message: %s",
+			eventSource,
+			subject,
+			err.Error(),
+		),
 	)
 }
 
