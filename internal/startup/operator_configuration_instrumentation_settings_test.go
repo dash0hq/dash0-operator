@@ -14,6 +14,7 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -21,7 +22,7 @@ import (
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
-var _ = Describe("Watching the init container resources of the operator configuration resource", func() {
+var _ = Describe("Watching the instrumentation settings of the operator configuration resource", func() {
 	ctx := context.Background()
 
 	withInitContainerMemoryLimit := func(memoryLimit string) dash0v1alpha1.Dash0OperatorConfigurationSpec {
@@ -69,7 +70,7 @@ var _ = Describe("Watching the init container resources of the operator configur
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		Expect(watchInstrumentationInitContainerResources(ctx, mgr, config, util.ExtraConfigDefaultsFor(true, false))).
+		Expect(watchOperatorConfigurationInstrumentationSettings(ctx, mgr, config, util.ExtraConfigDefaultsFor(true, false))).
 			To(Succeed())
 		// The value is available before the manager and its cache have been started.
 		Expect(memoryLimit(config)).To(Equal("256Mi"))
@@ -94,6 +95,45 @@ var _ = Describe("Watching the init container resources of the operator configur
 		DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 		Eventually(func(g Gomega) {
 			g.Expect(memoryLimit(config)).To(Equal("128Mi"))
+		}).Should(Succeed())
+	})
+
+	It("should apply the instrumentation delivery of the resource once the informer has delivered it", func() {
+		spec := OperatorConfigurationResourceDefaultSpec
+		spec.InstrumentWorkloads.InstrumentationDelivery = dash0v1alpha1.InstrumentationDeliveryImageVolume
+		CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, spec)
+		config := util.NewClusterInstrumentationConfig(
+			util.Images{}, util.PossibleCollectorUrls{}, "", util.ExtraConfigDefaults,
+			dash0v1alpha1.InstrumentationDeliveryInitContainer, nil, false, false, false,
+		)
+		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+			Scheme:  scheme.Scheme,
+			Metrics: metricsserver.Options{BindAddress: "0"},
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(watchOperatorConfigurationInstrumentationSettings(ctx, mgr, config, util.ExtraConfigDefaults)).
+			To(Succeed())
+		// Before the manager has started, the Kubernetes versions are not known yet, the flag value applies.
+		Expect(config.ResolveInstrumentationDelivery()).To(Equal(cluster.ResolvedInstrumentationDeliveryInitContainer))
+
+		managerCtx, cancelManager := context.WithCancel(ctx)
+		DeferCleanup(cancelManager)
+		go func() {
+			defer GinkgoRecover()
+			Expect(mgr.Start(managerCtx)).To(Succeed())
+		}()
+
+		Eventually(func(g Gomega) {
+			g.Expect(config.ResolveInstrumentationDelivery()).To(Equal(cluster.ResolvedInstrumentationDeliveryImageVolume))
+		}).Should(Succeed())
+
+		operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+		operatorConfigurationResource.Spec.InstrumentWorkloads.InstrumentationDelivery =
+			dash0v1alpha1.InstrumentationDeliveryInitContainer
+		Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
+		Eventually(func(g Gomega) {
+			g.Expect(config.ResolveInstrumentationDelivery()).To(Equal(cluster.ResolvedInstrumentationDeliveryInitContainer))
 		}).Should(Succeed())
 	})
 })

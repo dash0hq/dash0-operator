@@ -1,0 +1,57 @@
+suite: test pod disruption budget
+templates:
+  - operator/pod-disruption-budget.yaml
+tests:
+  - it: should not render a pod disruption budget for a single replica
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should not render a pod disruption budget if operator.replicaCount is null
+    set:
+      operator:
+        replicaCount: null
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: pod disruption budget should match snapshot for multiple replicas
+    set:
+      operator:
+        replicaCount: 2
+    asserts:
+      - hasDocuments:
+          count: 1
+      - matchSnapshot: {}
+
+  - it: should select the operator manager pods and allow one unavailable replica
+    set:
+      operator:
+        replicaCount: 3
+    asserts:
+      - equal:
+          path: spec.maxUnavailable
+          value: 1
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app.kubernetes.io/name: dash0-operator
+            app.kubernetes.io/component: controller
+
+  - it: should render a pod disruption budget for a numeric string replica count
+    set:
+      operator:
+        replicaCount: "2"
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: should not render a pod disruption budget if it is disabled
+    set:
+      operator:
+        replicaCount: 2
+        podDisruptionBudget:
+          enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

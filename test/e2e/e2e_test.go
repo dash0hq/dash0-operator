@@ -4168,6 +4168,128 @@ spec:
 			})
 		})
 
+		Describe("with instrumentWorkloads.mode=pods and two operator manager replicas", func() {
+			dash0MonitoringValuesPodsMode := dash0MonitoringValues{
+				InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModePods,
+			}
+
+			BeforeAll(func() {
+				By("deploying the Dash0 operator with two replicas")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					true,
+					map[string]string{
+						"operator.replicaCount": "2",
+					},
+				)
+				waitForOperatorManagerRollout()
+			})
+
+			AfterEach(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+			})
+
+			AfterAll(func() {
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should serve the webhook on every replica and run the controllers only on the leader", func() {
+				verifyOperatorManagerPodDisruptionBudget()
+				var leader string
+				var replicas []string
+				Eventually(func(g Gomega) {
+					leader = readOperatorManagerLeader(g)
+					replicas = readOperatorManagerPods(g)
+					g.Expect(replicas).To(HaveLen(2))
+					g.Expect(replicas).To(ContainElement(leader))
+				}, operatorManagerRolloutTimeout, pollingInterval).Should(Succeed())
+				nonLeader := replicas[0]
+				if nonLeader == leader {
+					nonLeader = replicas[1]
+				}
+				verifyThatLogsShowLeaderElection(leader)
+				verifyThatLogsShowNoLeaderElection(nonLeader)
+
+				detachOperatorManagerPod(leader)
+				waitForOperatorManagerRollout()
+
+				timestampLowerBound := time.Now()
+				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesPodsMode,
+					operatorNamespace,
+				)
+				By("installing the Node.js deployment, its pods can only be instrumented by a replica that is not the leader")
+				Expect(installTestAppWorkload(
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					applicationUnderTestNamespace,
+					testId,
+					nil,
+					nil,
+				)).To(Succeed())
+				verifyThatPodsHaveBeenInstrumentedByTheWebhook(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					testId,
+					images,
+					nil,
+					timestampLowerBound,
+				)
+
+				By("verifying that the detached pod is still the leader")
+				Expect(readOperatorManagerLeader(Default)).To(Equal(leader))
+				verifyThatLogsShowNoLeaderElection(nonLeader)
+			})
+
+			It("should not instrument pods that have been created while the webhook was not available until they are "+
+				"restarted", func() {
+				timestampLowerBound := time.Now()
+				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesPodsMode,
+					operatorNamespace,
+				)
+				restoreWebhook := makeInstrumentationWebhookUnavailable()
+				By("installing the Node.js deployment while the webhook is not available")
+				Expect(installTestAppWorkload(
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					applicationUnderTestNamespace,
+					testId,
+					nil,
+					nil,
+				)).To(Succeed())
+				podUids := readPodUids(applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDeployment)
+
+				restoreWebhook()
+				verifyThatPodsHaveNeitherBeenRestartedNorInstrumented(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					podUids,
+				)
+
+				restartWorkload(applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDeployment)
+				verifyThatPodsHaveBeenInstrumentedByTheWebhook(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					testId,
+					images,
+					podUids,
+					timestampLowerBound,
+				)
+			})
+		})
+
 		Context("with instrumentation delivery", func() {
 			Context("image volume", func() {
 				BeforeAll(func() {

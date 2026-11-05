@@ -1951,7 +1951,7 @@ func startDash0Controllers(
 		envVars.enableRubyAutoInstrumentation,
 	)
 	clusterInstrumentationConfig.IsOpenShift = cliArgs.isOpenShift
-	if err = watchInstrumentationInitContainerResources(
+	if err = watchOperatorConfigurationInstrumentationSettings(
 		ctx, mgr, clusterInstrumentationConfig, extraConfigDefaults,
 	); err != nil {
 		return err
@@ -2354,7 +2354,6 @@ func startDash0Controllers(
 		agent0ConnectorManager,
 		syntheticsWorkerManager,
 		scManager,
-		clusterInstrumentationConfig,
 		clusterUid,
 		operatorDeploymentSelfReference.Namespace,
 		operatorDeploymentSelfReference.UID,
