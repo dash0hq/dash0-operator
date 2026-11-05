@@ -104,6 +104,47 @@ var _ = Describe("The Perses dashboard conversion webhook", func() {
 		Expect(spec["duration"]).To(Equal("30m"))
 	})
 
+	It("keeps panel annotations unchanged when converting v1alpha1 to v1alpha2 and back", func() {
+		annotations := []any{
+			map[string]any{
+				"display": map[string]any{"name": "Error logs", "color": "#ff0000"},
+				"plugin": map[string]any{
+					"kind": "LogsAnnotation",
+					"spec": map[string]any{"unknownField": map[string]any{"nested": []any{"a", "b"}}},
+				},
+			},
+		}
+		input := map[string]any{
+			"apiVersion": "perses.dev/v1alpha1",
+			"kind":       "PersesDashboard",
+			"spec": map[string]any{
+				"panels": map[string]any{
+					"errors": map[string]any{
+						"kind": "Panel",
+						"spec": map[string]any{"annotations": annotations},
+					},
+				},
+			},
+		}
+
+		toV1Alpha2 := postPersesDashboardCrdConversionReview(apiextensionsv1.ConversionRequest{
+			UID:               "test-uid-panel-annotations-1",
+			DesiredAPIVersion: "perses.dev/v1alpha2",
+			Objects:           []runtime.RawExtension{toRawObject(input)},
+		})
+		Expect(toV1Alpha2.Response.Result.Status).To(Equal(metav1.StatusSuccess))
+		v1alpha2 := parseConverted(toV1Alpha2.Response.ConvertedObjects[0])
+		Expect(v1alpha2["spec"]).To(Equal(map[string]any{"config": input["spec"]}))
+
+		backToV1Alpha1 := postPersesDashboardCrdConversionReview(apiextensionsv1.ConversionRequest{
+			UID:               "test-uid-panel-annotations-2",
+			DesiredAPIVersion: "perses.dev/v1alpha1",
+			Objects:           []runtime.RawExtension{toRawObject(v1alpha2)},
+		})
+		Expect(backToV1Alpha1.Response.Result.Status).To(Equal(metav1.StatusSuccess))
+		Expect(parseConverted(backToV1Alpha1.Response.ConvertedObjects[0])).To(Equal(input))
+	})
+
 	It("passes through objects whose apiVersion already matches the desired version", func() {
 		input := map[string]any{
 			"apiVersion": "perses.dev/v1alpha2",
