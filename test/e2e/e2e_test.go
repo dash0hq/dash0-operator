@@ -4015,6 +4015,33 @@ spec:
 				)
 			})
 
+			It("should not instrument the pods of a deployment that has opted out on its own metadata", func() {
+				By("installing the Node.js deployment with dash0.com/enable=false on the deployment, not on the pod template")
+				Expect(installTestAppWorkload(
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					applicationUnderTestNamespace,
+					"",
+					map[string]string{"dash0.com/enable": "false"},
+					nil,
+				)).To(Succeed())
+				podUids := readPodUids(applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDeployment)
+
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesPodsMode,
+					operatorNamespace,
+				)
+
+				restartWorkload(applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDeployment)
+				verifyThatNewPodsAreNotInstrumented(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					podUids,
+				)
+			})
+
 			It("should instrument new pods of all workload types without modifying the workloads", func() {
 				timestampLowerBound := time.Now()
 				deployDash0MonitoringResourceWithRetry(

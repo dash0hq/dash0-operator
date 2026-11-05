@@ -171,13 +171,23 @@ A pod that is created while the webhook is not reachable, for example while the 
 without instrumentation and is instrumented the next time it is recreated.
 Running the operator with two replicas (`operator.replicaCount=2`) is recommended for namespaces with `mode: pods`.
 
-The label selector (`spec.instrumentWorkloads.labelSelector`, by default `dash0.com/enable!=false`) is evaluated against
-the labels of the pod, that is, against the labels in the pod template of the workload, not against the labels in the
-top level metadata of the workload resource.
-To opt a workload out of instrumentation in a namespace with `mode: pods`, put the label `dash0.com/enable: "false"` into
-its pod template.
-Keep this in mind when switching a namespace from `all` or `created-and-updated` to `pods`: Workloads that opt out via
-a label on the workload resource only would be instrumented after switching.
+The [label selector](#using-a-custom-label-selector-to-control-auto-instrumentation)
+(`spec.instrumentWorkloads.labelSelector`, by default `dash0.com/enable!=false`) is evaluated when the pod is created,
+against the labels of the pod combined with the labels of its owners, that is, the replica set and the deployment, the
+job and the cron job, the daemon set, or the stateful set.
+If a label is set on several of these levels with different values, the value from the level closest to the pod wins.
+For example, `dash0.com/enable: "false"` on the top level metadata of a deployment opts its pods out, unless the pod
+template of the deployment sets `dash0.com/enable: "true"`.
+Owners of other types, for example an Argo Rollout, are not taken into account; for pods created by them, put the label
+into the pod template.
+Since changing the labels in the top level metadata of a workload does not recreate its pods, opting a workload in or
+out that way only applies to pods created afterwards.
+
+The `app.kubernetes.io/*` labels and `resource.opentelemetry.io/*` annotations of the top-level owner are taken into
+account in the same way as with the other modes, see
+[Specifying Additional Resource Attributes via Labels and Annotations](#specifying-additional-resource-attributes-via-labels-and-annotations).
+Kubernetes events about the instrumentation of an owned pod are recorded for its top-level owner, for example the
+deployment, since the pod does not have a name yet when it is instrumented.
 
 Workloads that have been instrumented before the namespace was switched to `mode: pods` keep the instrumentation in
 their pod template.
