@@ -770,7 +770,7 @@ func (i *Instrumenter) postProcessInstrumentation(
 		} else {
 			logger.ErrorAsWarnTelemetryCollectionIssue(retryErr, "Dash0 instrumentation by controller has not been successful.")
 		}
-		util.QueueFailedInstrumentationEvent(i.Recorder, resource, actor, retryErr)
+		util.QueueFailedInstrumentationEvent(i.Recorder, resource, util.EventSubjectWorkload, actor, retryErr)
 		return false
 	} else if !modificationResult.HasBeenModified {
 		if !modificationResult.LogAtDebugOnly {
@@ -784,6 +784,7 @@ func (i *Instrumenter) postProcessInstrumentation(
 		util.HandlePotentiallySuccessfulInstrumentationEvent(
 			i.Recorder,
 			resource,
+			util.EventSubjectWorkload,
 			actor,
 			modificationResult.ContainersTotal,
 			modificationResult.InstrumentationIssuesPerContainer,
@@ -1247,17 +1248,17 @@ func (i *Instrumenter) postProcessUninstrumentation(
 				"Dash0's removal of instrumentation by controller has not been successful.",
 			)
 		}
-		util.QueueFailedUninstrumentationEvent(i.Recorder, resource, actor, retryErr)
+		util.QueueFailedUninstrumentationEvent(i.Recorder, resource, util.EventSubjectWorkload, actor, retryErr)
 		return false
 	} else if !modificationResult.HasBeenModified {
 		if !modificationResult.LogAtDebugOnly {
 			logger.Info(modificationResult.RenderReasonMessage(actor))
 		}
-		util.QueueNoUninstrumentationNecessaryEvent(i.Recorder, resource, actor)
+		util.QueueNoUninstrumentationNecessaryEvent(i.Recorder, resource, util.EventSubjectWorkload, actor)
 		return false
 	} else {
 		logger.Info("The controller has removed the Dash0 instrumentation from the workload.")
-		util.QueueSuccessfulUninstrumentationEvent(i.Recorder, resource, actor)
+		util.QueueSuccessfulUninstrumentationEvent(i.Recorder, resource, util.EventSubjectWorkload, actor)
 		return true
 	}
 }
