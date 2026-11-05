@@ -810,6 +810,31 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			VerifyUnmodifiedReplicaSet(workload)
 		})
 
+		It("should remove Dash0 from an instrumented pod", func() {
+			workload := InstrumentedPod(TestNamespaceName, PodNamePrefix)
+			modificationResult := workloadModifierInitCnt.RevertPod(workload)
+
+			Expect(modificationResult.HasBeenModified).To(BeTrue())
+			VerifyUnmodifiedPod(workload)
+		})
+
+		It("should only remove the labels from a pod for which an instrumentation attempt has failed", func() {
+			workload := BasicPod(TestNamespaceName, PodNamePrefix)
+			AddLabel(&workload.ObjectMeta, util.InstrumentedLabelKey, "false")
+			modificationResult := workloadModifierInitCnt.RevertPod(workload)
+
+			Expect(modificationResult.HasBeenModified).To(BeTrue())
+			VerifyUnmodifiedPod(workload)
+		})
+
+		It("should not modify a pod that is not instrumented", func() {
+			workload := BasicPod(TestNamespaceName, PodNamePrefix)
+			modificationResult := workloadModifierInitCnt.RevertPod(workload)
+
+			Expect(modificationResult.HasBeenModified).To(BeFalse())
+			VerifyUnmodifiedPod(workload)
+		})
+
 		It("should remove Dash0 from a replica set owned by an unrecognized type", func() {
 			workload := InstrumentedReplicaSet(TestNamespaceName, ReplicaSetNamePrefix)
 			workload.ObjectMeta.OwnerReferences = []metav1.OwnerReference{{

@@ -150,6 +150,10 @@ This will also automatically disable Dash0 monitoring for all namespaces by dele
 all namespaces.
 All workload modifications applied by the Dash0 operator will be reverted.
 This will restart the pods of all workloads that were previously instrumented by the Dash0 operator.
+In namespaces with
+[`instrumentWorkloads.mode: pods`](auto-instrumentation.md#instrumenting-pods-instead-of-workloads), the
+operator does not modify workloads, and pods that have been instrumented when they were created keep their
+instrumentation until they are recreated.
 
 Optionally, after `helm uninstall` has finished, remove the namespace that has been created for the operator:
 
