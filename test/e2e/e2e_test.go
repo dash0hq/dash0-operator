@@ -4015,13 +4015,15 @@ spec:
 				)
 			})
 
-			It("should not instrument the pods of a deployment that has opted out on its own metadata", func() {
+			It("should not instrument the pods of a deployment that has opted out on its own metadata, unless its pod "+
+				"template opts in", func() {
+				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
 				By("installing the Node.js deployment with dash0.com/enable=false on the deployment, not on the pod template")
 				Expect(installTestAppWorkload(
 					runtimeTypeNodeJs,
 					workloadTypeDeployment,
 					applicationUnderTestNamespace,
-					"",
+					testId,
 					map[string]string{"dash0.com/enable": "false"},
 					nil,
 				)).To(Succeed())
@@ -4039,6 +4041,19 @@ spec:
 					runtimeTypeNodeJs,
 					workloadTypeDeployment,
 					podUids,
+				)
+
+				podUids = readPodUids(applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDeployment)
+				timestampLowerBound := time.Now()
+				optInOnPodTemplate(applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDeployment)
+				verifyThatPodsOfOptedOutWorkloadHaveBeenInstrumentedByTheWebhook(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					testId,
+					images,
+					podUids,
+					timestampLowerBound,
 				)
 			})
 
@@ -4131,6 +4146,88 @@ spec:
 						podUids,
 					)
 				})
+
+			It("should neither restart nor uninstrument pods instrumented by the webhook after switching from mode pods "+
+				"to mode none, and revert workloads with instrumentation in their pod template", func() {
+				deployment := runtimeWorkloadTestConfig{
+					namespace:    applicationUnderTestNamespace,
+					workloadType: workloadTypeDeployment,
+					runtime:      runtimeTypeNodeJs,
+				}
+				daemonSet := runtimeWorkloadTestConfig{
+					namespace:    applicationUnderTestNamespace,
+					workloadType: workloadTypeDaemonSet,
+					runtime:      runtimeTypeNodeJs,
+				}
+				workloadTestConfigs := []runtimeWorkloadTestConfig{deployment, daemonSet}
+				testIds := make(testIdMap)
+				for _, c := range workloadTestConfigs {
+					testIds[c.GetMapKey()] = generateNewTestId(c.runtime, c.workloadType)
+				}
+				deployWorkloadsInParallel(workloadTestConfigs, testIds)
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+				runInParallel(workloadTestConfigs, func(c runtimeWorkloadTestConfig) {
+					verifyThatWorkloadHasBeenInstrumented(
+						c.namespace,
+						c.runtime,
+						c.workloadType,
+						testIds[c.GetMapKey()],
+						images,
+						"controller",
+					)
+					waitForRollout(c.namespace, c.runtime, c.workloadType)
+				})
+
+				By("switching to mode pods and restarting the daemon set, which removes the instrumentation from its pod " +
+					"template and lets the webhook instrument its pods")
+				updateInstrumentWorkloadsModeOfDash0MonitoringResource(
+					applicationUnderTestNamespace,
+					dash0common.InstrumentWorkloadsModePods,
+				)
+				daemonSetPodUids := readPodUids(daemonSet.namespace, daemonSet.runtime, daemonSet.workloadType)
+				timestampLowerBound := time.Now()
+				restartWorkload(daemonSet.namespace, daemonSet.runtime, daemonSet.workloadType)
+				verifyThatPodsHaveBeenInstrumentedByTheWebhook(
+					daemonSet.namespace,
+					daemonSet.runtime,
+					daemonSet.workloadType,
+					testIds[daemonSet.GetMapKey()],
+					images,
+					daemonSetPodUids,
+					timestampLowerBound,
+				)
+				daemonSetPodUids = readPodUids(daemonSet.namespace, daemonSet.runtime, daemonSet.workloadType)
+				deploymentPodUids := readPodUids(deployment.namespace, deployment.runtime, deployment.workloadType)
+
+				updateInstrumentWorkloadsModeOfDash0MonitoringResource(
+					applicationUnderTestNamespace,
+					dash0common.InstrumentWorkloadsModeNone,
+				)
+				verifyThatInstrumentationHasBeenReverted(
+					deployment.namespace,
+					deployment.runtime,
+					deployment.workloadType,
+					testIds[deployment.GetMapKey()],
+					"controller",
+				)
+				verifyThatNewPodsAreNotInstrumented(
+					deployment.namespace,
+					deployment.runtime,
+					deployment.workloadType,
+					deploymentPodUids,
+				)
+				verifyThatPodsHaveNeitherBeenRestartedNorUninstrumented(
+					daemonSet.namespace,
+					daemonSet.runtime,
+					daemonSet.workloadType,
+					daemonSetPodUids,
+					images,
+				)
+			})
 
 			It("should instrument new pods of all workload types without modifying the workloads", func() {
 				timestampLowerBound := time.Now()
