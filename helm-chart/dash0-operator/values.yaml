@@ -160,6 +160,13 @@ operator:
     # resource will be created by the Helm chart then.
     # This setting has no effect if operator.telemetryCollectionEnabled is set to false, Kubernetes object collection
     # will be disabled implicitly.
+    #
+    # The cluster-metrics-collector keeps the watched manifests in memory. Start below roughly 10,000 objects across
+    # the monitored namespaces and scale up gradually, watching the collector's memory usage; replica sets usually
+    # dominate that count, since Kubernetes keeps ten old ones per deployment by default. Beyond that, raise
+    # operator.collectors.deploymentCollectorContainerResources by about 256 MiB per additional 10,000 objects.
+    # Pods and replica sets are collected without an initial snapshot, so objects that existed before collection was
+    # enabled only show up once they change.
     enabled: false
 
     # An opt-out for collecting the manifests of cluster-scoped objects (nodes and persistent volumes). If set to
