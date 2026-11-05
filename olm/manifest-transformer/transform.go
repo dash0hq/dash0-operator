@@ -25,6 +25,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/profiling/prresources"
 	"github.com/dash0hq/dash0-operator/internal/startup"
 )
 
@@ -49,14 +50,24 @@ const (
 	// The env var names mirror the constants in internal/startup/operator_manager_startup.go.
 	webhookServiceNameEnvVarName     = "DASH0_WEBHOOK_SERVICE_NAME"
 	agent0ConnectorEnabledEnvVarName = "DASH0_AGENT0_CONNECTOR_ENABLED"
+	ebpfProfilerEnabledEnvVarName    = "DASH0_EBPF_PROFILER_ENABLED"
 	relatedImageEnvVarPrefix         = "RELATED_IMAGE_"
 
-	daemonSetServiceAccountFlag = "dash0-otel-collector-daemonset-service-account-name"
-	// daemonSetSccClusterRoleName only exists in the bundle input, operator-sdk turns the role into clusterPermissions.
-	daemonSetSccClusterRoleName = otelcolresources.OlmDaemonSetServiceAccountName + "-scc"
-	// privilegedScc is the built-in SecurityContextConstraints of OpenShift that the collector daemonset runs with.
+	// sccClusterRoleNameSuffix is appended to the name of an external service account to name its ClusterRole, which only
+	// exists in the bundle input; operator-sdk turns the role into clusterPermissions.
+	sccClusterRoleNameSuffix = "-scc"
+	// privilegedScc is the built-in SecurityContextConstraints of OpenShift that the privileged workloads run with.
 	privilegedScc = "privileged"
 )
+
+// externalServiceAccount is a service account that the bundle declares for a privileged workload the operator manages.
+// OLM creates it from the CSV, and the operator uses it instead of a service account it manages itself.
+type externalServiceAccount struct {
+	name string
+	// flag is the command-line flag of the operator manager that sets the service account of the workload.
+	flag     string
+	workload string
+}
 
 var (
 	// supportedKinds lists the kinds the chart renders for the bundle, plus the CSV base; anything else (for example the
@@ -98,6 +109,25 @@ var (
 		"DASH0_AGENT0_CONNECTOR_SECRET_REF_NAME",
 		"DASH0_AGENT0_CONNECTOR_SECRET_REF_KEY",
 		"DASH0_AGENT0_CONNECTOR_INSECURE",
+	}
+
+	// ebpfProfilerImageEnvVarNames are the images of the eBPF profiler, which the chart only renders with
+	// operator.ebpfProfilerEnabled=true.
+	ebpfProfilerImageEnvVarNames = []string{"DASH0_EBPF_PROFILER_IMAGE", "DASH0_DEBUGINFO_PROXY_IMAGE"}
+
+	// externalServiceAccounts get the use of the privileged SCC on OpenShift; generate-bundle.sh passes their names to
+	// operator-sdk via --extra-service-accounts. On clusters without OpenShift, the rule has no effect.
+	externalServiceAccounts = []externalServiceAccount{
+		{
+			name:     otelcolresources.OlmDaemonSetServiceAccountName,
+			flag:     "dash0-otel-collector-daemonset-service-account-name",
+			workload: "collector daemonset",
+		},
+		{
+			name:     prresources.OlmEbpfProfilerServiceAccountName,
+			flag:     "dash0-ebpf-profiler-service-account-name",
+			workload: "eBPF profiler",
+		},
 	}
 
 	imageEnvVarNamePattern = regexp.MustCompile(`^DASH0_([A-Z0-9_]+)_IMAGE$`)
@@ -157,26 +187,33 @@ func transform(in io.Reader, out io.Writer, log io.Writer, version string) error
 	for _, csv := range csvs {
 		setContainerImage(csv, managerImage, log)
 	}
-	daemonSetServiceAccountDocs, err := daemonSetServiceAccountDocuments(namespace)
-	if err != nil {
-		return err
+	for _, account := range externalServiceAccounts {
+		docs, err := externalServiceAccountDocuments(account, namespace)
+		if err != nil {
+			return err
+		}
+		kept = append(kept, docs...)
+		fmt.Fprintf(log, "added the service account %s for the %s with the use of the %s SecurityContextConstraints\n",
+			account.name, account.workload, privilegedScc)
 	}
-	fmt.Fprintf(log, "added the service account %s for the collector daemonset with the use of the %s "+
-		"SecurityContextConstraints\n", otelcolresources.OlmDaemonSetServiceAccountName, privilegedScc)
-	return writeDocuments(out, append(kept, daemonSetServiceAccountDocs...))
+	return writeDocuments(out, kept)
 }
 
-// daemonSetServiceAccountDocuments returns the service account of the collector daemonset and its binding to the use of
-// the privileged SecurityContextConstraints. generate-bundle.sh passes the service account to operator-sdk via
-// --extra-service-accounts, so it ends up in clusterPermissions. On clusters without OpenShift, the rule has no effect.
-func daemonSetServiceAccountDocuments(namespace string) ([]*unstructured.Unstructured, error) {
+// externalServiceAccountDocuments returns the service account and its binding to the use of the privileged
+// SecurityContextConstraints. generate-bundle.sh passes the service account to operator-sdk via
+// --extra-service-accounts, so it ends up in clusterPermissions.
+func externalServiceAccountDocuments(
+	account externalServiceAccount,
+	namespace string,
+) ([]*unstructured.Unstructured, error) {
+	clusterRoleName := account.name + sccClusterRoleNameSuffix
 	serviceAccount := &corev1.ServiceAccount{
 		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "ServiceAccount"},
-		ObjectMeta: metav1.ObjectMeta{Name: otelcolresources.OlmDaemonSetServiceAccountName, Namespace: namespace},
+		ObjectMeta: metav1.ObjectMeta{Name: account.name, Namespace: namespace},
 	}
 	clusterRole := &rbacv1.ClusterRole{
 		TypeMeta:   metav1.TypeMeta{APIVersion: rbacv1.SchemeGroupVersion.String(), Kind: "ClusterRole"},
-		ObjectMeta: metav1.ObjectMeta{Name: daemonSetSccClusterRoleName},
+		ObjectMeta: metav1.ObjectMeta{Name: clusterRoleName},
 		Rules: []rbacv1.PolicyRule{{
 			APIGroups:     []string{"security.openshift.io"},
 			Resources:     []string{"securitycontextconstraints"},
@@ -186,15 +223,15 @@ func daemonSetServiceAccountDocuments(namespace string) ([]*unstructured.Unstruc
 	}
 	clusterRoleBinding := &rbacv1.ClusterRoleBinding{
 		TypeMeta:   metav1.TypeMeta{APIVersion: rbacv1.SchemeGroupVersion.String(), Kind: "ClusterRoleBinding"},
-		ObjectMeta: metav1.ObjectMeta{Name: daemonSetSccClusterRoleName},
+		ObjectMeta: metav1.ObjectMeta{Name: clusterRoleName},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: rbacv1.GroupName,
 			Kind:     "ClusterRole",
-			Name:     daemonSetSccClusterRoleName,
+			Name:     clusterRoleName,
 		},
 		Subjects: []rbacv1.Subject{{
 			Kind:      rbacv1.ServiceAccountKind,
-			Name:      otelcolresources.OlmDaemonSetServiceAccountName,
+			Name:      account.name,
 			Namespace: namespace,
 		}},
 	}
@@ -386,11 +423,16 @@ func transformDeployment(doc *unstructured.Unstructured, version string, log io.
 	if err := disableAgent0Connector(container, log); err != nil {
 		return "", err
 	}
+	if err := disableEbpfProfiler(container, log); err != nil {
+		return "", err
+	}
 	if err := removeWebhookCertificateVolume(podSpec, container, log); err != nil {
 		return "", err
 	}
-	if err := addDaemonSetServiceAccountEnvVar(container, log); err != nil {
-		return "", err
+	for _, account := range externalServiceAccounts {
+		if err := addExternalServiceAccountEnvVar(container, account, log); err != nil {
+			return "", err
+		}
 	}
 	if err := addRelatedImageEnvVars(container, log); err != nil {
 		return "", err
@@ -476,6 +518,22 @@ func disableAgent0Connector(container *corev1.Container, log io.Writer) error {
 	return nil
 }
 
+// disableEbpfProfiler turns off the eBPF profiler, which is rendered with enabled=true so that the bundle carries the
+// images of the profiler and the debuginfo proxy. It is switched on via the Subscription.
+func disableEbpfProfiler(container *corev1.Container, log io.Writer) error {
+	for _, name := range ebpfProfilerImageEnvVarNames {
+		if findEnvVar(container.Env, name) == nil {
+			return fmt.Errorf(
+				"the environment variable %s is missing, render the chart with operator.ebpfProfilerEnabled=true", name)
+		}
+	}
+	if err := setEnvVar(container, ebpfProfilerEnabledEnvVarName, "false"); err != nil {
+		return err
+	}
+	fmt.Fprintf(log, "set %s to false and kept the images of the eBPF profiler\n", ebpfProfilerEnabledEnvVarName)
+	return nil
+}
+
 // removeWebhookCertificateVolume removes the volume the chart mounts at the path where OLM mounts the webhook serving
 // certificate.
 func removeWebhookCertificateVolume(podSpec *corev1.PodSpec, container *corev1.Container, log io.Writer) error {
@@ -505,19 +563,18 @@ func removeWebhookCertificateVolume(podSpec *corev1.PodSpec, container *corev1.C
 	return nil
 }
 
-// addDaemonSetServiceAccountEnvVar makes the operator run the collector daemonset with the service account that OLM
-// creates from the CSV, see daemonSetServiceAccountDocuments.
-func addDaemonSetServiceAccountEnvVar(container *corev1.Container, log io.Writer) error {
-	if startup.NewOperatorManagerFlagSet().Lookup(daemonSetServiceAccountFlag) == nil {
-		return fmt.Errorf("--%s is not a command-line flag of the operator manager", daemonSetServiceAccountFlag)
+// addExternalServiceAccountEnvVar makes the operator run the workload with the service account that OLM creates from
+// the CSV, see externalServiceAccountDocuments.
+func addExternalServiceAccountEnvVar(container *corev1.Container, account externalServiceAccount, log io.Writer) error {
+	if startup.NewOperatorManagerFlagSet().Lookup(account.flag) == nil {
+		return fmt.Errorf("--%s is not a command-line flag of the operator manager", account.flag)
 	}
-	name := startup.EnvVarNameForFlag(daemonSetServiceAccountFlag)
+	name := startup.EnvVarNameForFlag(account.flag)
 	if findEnvVar(container.Env, name) != nil {
 		return fmt.Errorf("the environment variable %s is already set", name)
 	}
-	container.Env = append(container.Env,
-		corev1.EnvVar{Name: name, Value: otelcolresources.OlmDaemonSetServiceAccountName})
-	fmt.Fprintf(log, "set %s to %s\n", name, otelcolresources.OlmDaemonSetServiceAccountName)
+	container.Env = append(container.Env, corev1.EnvVar{Name: name, Value: account.name})
+	fmt.Fprintf(log, "set %s to %s\n", name, account.name)
 	return nil
 }
 

@@ -476,6 +476,53 @@ func TestDebuginfoProxyOmitsRunAsUserButPinsRunAsGroupOnOpenShift(t *testing.T) 
 	require.EqualValues(t, 65532, *proxy.Spec.Template.Spec.SecurityContext.RunAsGroup)
 }
 
+func TestProfilerUsesExternalServiceAccountWithoutManagingIt(t *testing.T) {
+	r, configuration := fixture(t)
+	ctx := context.Background()
+	external := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
+		Name: prresources.OlmEbpfProfilerServiceAccountName, Namespace: "operator",
+	}}
+	require.NoError(t, r.Create(ctx, external))
+	r.Manager.ResourceManager.Config.ServiceAccountName = prresources.OlmEbpfProfilerServiceAccountName
+	reconcile(t, r, configuration)
+	ds := &appsv1.DaemonSet{}
+	require.NoError(t, r.Get(ctx, key("ebpf-profiler"), ds))
+	require.Equal(t, prresources.OlmEbpfProfilerServiceAccountName, ds.Spec.Template.Spec.ServiceAccountName)
+	require.True(t, apierrors.IsNotFound(r.Get(ctx, key("ebpf-profiler"), &corev1.ServiceAccount{})))
+
+	configuration.Spec.Profiling.EbpfProfiler.Enabled = ptr.To(false)
+	reconcile(t, r, configuration)
+	require.True(t, apierrors.IsNotFound(r.Get(ctx, key("ebpf-profiler"), &appsv1.DaemonSet{})))
+	require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(external), &corev1.ServiceAccount{}))
+}
+
+func TestProfilerManagesTheServiceAccountIfItsOwnNameIsConfigured(t *testing.T) {
+	r, configuration := fixture(t)
+	r.Manager.ResourceManager.Config.ServiceAccountName = "test-ebpf-profiler"
+	reconcile(t, r, configuration)
+	ds := &appsv1.DaemonSet{}
+	require.NoError(t, r.Get(context.Background(), key("ebpf-profiler"), ds))
+	require.Equal(t, "test-ebpf-profiler", ds.Spec.Template.Spec.ServiceAccountName)
+	require.NoError(t, r.Get(context.Background(), key("ebpf-profiler"), &corev1.ServiceAccount{}))
+}
+
+// DeleteResources matches by name, so the OLM service account must not share the name of a managed resource.
+func TestProfilerNeverDeletesTheOlmServiceAccount(t *testing.T) {
+	r, _ := fixture(t)
+	ctx := context.Background()
+	// the OLM bundle sets OTEL_COLLECTOR_NAME_PREFIX to dash0-operator
+	r.Manager.ResourceManager.Config.NamePrefix = "dash0-operator"
+	r.Manager.ResourceManager.Config.ServiceAccountName = prresources.OlmEbpfProfilerServiceAccountName
+	external := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
+		Name: prresources.OlmEbpfProfilerServiceAccountName, Namespace: "operator",
+		Labels: map[string]string{"app.kubernetes.io/instance": "dash0-operator", "app.kubernetes.io/component": "ebpf-profiler"},
+	}}
+	require.NoError(t, r.Create(ctx, external))
+	_, err := r.Manager.ResourceManager.DeleteResources(ctx, false)
+	require.NoError(t, err)
+	require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(external), &corev1.ServiceAccount{}))
+}
+
 func fixture(t *testing.T) (*profiling.Reconciler, *dash0v1alpha1.Dash0OperatorConfiguration) {
 	t.Helper()
 	return fixtureWithOpenShift(t, false)

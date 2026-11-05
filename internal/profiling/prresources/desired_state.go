@@ -29,6 +29,10 @@ const (
 	proxyComponent    = "debuginfo-proxy"
 	componentLabel    = "app.kubernetes.io/component"
 	instanceLabel     = "app.kubernetes.io/instance"
+
+	// OlmEbpfProfilerServiceAccountName is the external service account of the profiler in the OLM bundle. OLM creates it
+	// from the CSV and grants it the use of the privileged SecurityContextConstraints on OpenShift.
+	OlmEbpfProfilerServiceAccountName = "dash0-operator-olm-ebpf-profiler"
 )
 
 // Config contains installation-level settings for the managed profiler and proxy.
@@ -41,10 +45,27 @@ type Config struct {
 	ProfilerImagePullPolicy    corev1.PullPolicy
 	ProxyImage                 string
 	ProxyImagePullPolicy       corev1.PullPolicy
-	IsOpenShift                bool
+	// ServiceAccountName is the name of an external service account for the profiler, which the operator neither creates
+	// nor deletes. When empty, the profiler uses the service account the operator manages.
+	ServiceAccountName string
+	IsOpenShift        bool
 }
 
 func (c Config) name(component string) string { return c.NamePrefix + "-" + component }
+
+// usesExternalProfilerServiceAccount treats the name of the operator-managed service account as not external, since
+// DeleteResources deletes the service account with that name.
+func (c Config) usesExternalProfilerServiceAccount() bool {
+	return c.ServiceAccountName != "" && c.ServiceAccountName != c.name(profilerComponent)
+}
+
+// profilerServiceAccountName returns the name of the service account the profiler runs with.
+func (c Config) profilerServiceAccountName() string {
+	if c.usesExternalProfilerServiceAccount() {
+		return c.ServiceAccountName
+	}
+	return c.name(profilerComponent)
+}
 
 func (c Config) labels(component string) map[string]string {
 	return map[string]string{
@@ -121,7 +142,7 @@ func (c Config) profiler(configuration *dash0v1alpha1.Dash0OperatorConfiguration
 			{Name: "sys", MountPath: "/sys", ReadOnly: true}, {Name: "tmp", MountPath: "/tmp"}},
 	}
 	pod := corev1.PodSpec{
-		ServiceAccountName: c.name(profilerComponent), AutomountServiceAccountToken: ptr.To(false), HostPID: true,
+		ServiceAccountName: c.profilerServiceAccountName(), AutomountServiceAccountToken: ptr.To(false), HostPID: true,
 		Containers:   []corev1.Container{container},
 		NodeSelector: map[string]string{"kubernetes.io/os": "linux"},
 		Affinity:     &corev1.Affinity{NodeAffinity: settings.EbpfProfilerNodeAffinity},
@@ -142,6 +163,9 @@ func (c Config) profiler(configuration *dash0v1alpha1.Dash0OperatorConfiguration
 			Annotations: settings.EbpfProfilerPodAnnotations,
 		}, Spec: pod},
 	}}
+	if c.usesExternalProfilerServiceAccount() {
+		return []client.Object{ds}
+	}
 	return []client.Object{&corev1.ServiceAccount{ObjectMeta: c.metadata(profilerComponent), AutomountServiceAccountToken: ptr.To(false)}, ds}
 }
 
