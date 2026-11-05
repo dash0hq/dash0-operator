@@ -8,11 +8,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -245,15 +247,13 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 	gvkLabel := fmt.Sprintf("%s/%s.%s", group, version, kind)
 
 	if instrumentWorkloadsMode == dash0common.InstrumentWorkloadsModePods && kind != util.K8sTypeMetaPod.Kind {
-		return admission.Allowed(
-			fmt.Sprintf(
-				"The instrumentation mode in namespace %s is %s, the %s %s will not be modified, its pods will be "+
-					"instrumented when they are created.",
-				targetNamespace,
-				dash0common.InstrumentWorkloadsModePods,
-				actionPartial,
-				gvkLabel,
-			),
+		return h.handleWorkloadWithPodLevelInstrumentation(
+			request,
+			targetNamespace,
+			gvkLabel,
+			actionPartial,
+			dash0MonitoringResource.GetNamespaceInstrumentationConfig(),
+			logger,
 		)
 	}
 
@@ -478,6 +478,11 @@ func (h *InstrumentationWebhookHandler) handlePod(
 				optOutAdmissionAllowedMessage, namespaceInstrumentationConfig.InstrumentationLabelSelector),
 			logger,
 		)
+	} else if hasOptedOut && namespaceInstrumentationConfig.InstrumentPods && request.Operation == admissionv1.Create {
+		// The pod has inherited the instrumentation from the pod template of a workload that has been instrumented
+		// before the namespace was switched to instrumentWorkloads.mode=pods.
+		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertPod(pod)
+		return h.postProcessUninstrumentation(request, pod, eventTarget, modificationResult, logger)
 	} else if hasOptedOut {
 		// This should not happen, since it can only happen for an admission request with operation=UPDATE, and we are
 		// not listening to updates for pods. We cannot uninstrument ownerless pods if the user adds an opt-out label
@@ -494,6 +499,136 @@ func (h *InstrumentationWebhookHandler) handlePod(
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyPod(pod, owners)
 		return h.postProcessInstrumentation(request, pod, eventTarget, modificationResult, logger)
 	}
+}
+
+// podLevelWorkloadType describes how a type of workload is handled in namespaces with instrumentWorkloads.mode=pods.
+type podLevelWorkloadType struct {
+	newObject   func() client.Object
+	podTemplate func(client.Object) *corev1.PodTemplateSpec
+	// replacesPodsOnTemplateChange is false for workloads whose pods are not replaced when the pod template changes.
+	replacesPodsOnTemplateChange func(client.Object) bool
+	revert                       func(*workloads.ResourceModifier, client.Object) workloads.ModificationResult
+}
+
+var podLevelWorkloadTypes = map[string]podLevelWorkloadType{
+	util.K8sTypeMetaCronJob.Kind: {
+		newObject: func() client.Object { return &batchv1.CronJob{} },
+		podTemplate: func(o client.Object) *corev1.PodTemplateSpec {
+			return &o.(*batchv1.CronJob).Spec.JobTemplate.Spec.Template
+		},
+		replacesPodsOnTemplateChange: func(client.Object) bool { return false },
+		revert: func(m *workloads.ResourceModifier, o client.Object) workloads.ModificationResult {
+			return m.RevertCronJob(o.(*batchv1.CronJob))
+		},
+	},
+	util.K8sTypeMetaDaemonSet.Kind: {
+		newObject:   func() client.Object { return &appsv1.DaemonSet{} },
+		podTemplate: func(o client.Object) *corev1.PodTemplateSpec { return &o.(*appsv1.DaemonSet).Spec.Template },
+		replacesPodsOnTemplateChange: func(o client.Object) bool {
+			return o.(*appsv1.DaemonSet).Spec.UpdateStrategy.Type != appsv1.OnDeleteDaemonSetStrategyType
+		},
+		revert: func(m *workloads.ResourceModifier, o client.Object) workloads.ModificationResult {
+			return m.RevertDaemonSet(o.(*appsv1.DaemonSet))
+		},
+	},
+	util.K8sTypeMetaDeployment.Kind: {
+		newObject:                    func() client.Object { return &appsv1.Deployment{} },
+		podTemplate:                  func(o client.Object) *corev1.PodTemplateSpec { return &o.(*appsv1.Deployment).Spec.Template },
+		replacesPodsOnTemplateChange: func(client.Object) bool { return true },
+		revert: func(m *workloads.ResourceModifier, o client.Object) workloads.ModificationResult {
+			return m.RevertDeployment(o.(*appsv1.Deployment))
+		},
+	},
+	util.K8sTypeMetaReplicaSet.Kind: {
+		newObject:                    func() client.Object { return &appsv1.ReplicaSet{} },
+		podTemplate:                  func(o client.Object) *corev1.PodTemplateSpec { return &o.(*appsv1.ReplicaSet).Spec.Template },
+		replacesPodsOnTemplateChange: func(client.Object) bool { return false },
+		revert: func(m *workloads.ResourceModifier, o client.Object) workloads.ModificationResult {
+			return m.RevertReplicaSet(o.(*appsv1.ReplicaSet))
+		},
+	},
+	util.K8sTypeMetaStatefulSet.Kind: {
+		newObject:   func() client.Object { return &appsv1.StatefulSet{} },
+		podTemplate: func(o client.Object) *corev1.PodTemplateSpec { return &o.(*appsv1.StatefulSet).Spec.Template },
+		replacesPodsOnTemplateChange: func(o client.Object) bool {
+			return o.(*appsv1.StatefulSet).Spec.UpdateStrategy.Type != appsv1.OnDeleteStatefulSetStrategyType
+		},
+		revert: func(m *workloads.ResourceModifier, o client.Object) workloads.ModificationResult {
+			return m.RevertStatefulSet(o.(*appsv1.StatefulSet))
+		},
+	},
+}
+
+/*
+handleWorkloadWithPodLevelInstrumentation handles admission requests for higher-order workloads in namespaces with
+instrumentWorkloads.mode=pods. Their pods are instrumented when they are created, so the workloads are not
+instrumented.
+
+A workload that has been instrumented before the namespace was switched to instrumentWorkloads.mode=pods still has the
+instrumentation in its pod template. Neither kubectl apply (client-side or server-side) nor helm upgrade remove fields
+they have not set themselves, so it would stay there indefinitely. It is removed as soon as that does not restart any
+pods that would not be restarted anyway: when the workload is created, when the request changes the pod template
+anyway, and for workloads that do not replace their pods when the pod template changes, like cron jobs and replica sets.
+Jobs are immutable, and replica sets controlled by a deployment are left to the deployment.
+*/
+func (h *InstrumentationWebhookHandler) handleWorkloadWithPodLevelInstrumentation(
+	request admission.Request,
+	targetNamespace string,
+	gvkLabel string,
+	actionPartial string,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
+	logger logd.Logger,
+) admission.Response {
+	unmodified := admission.Allowed(
+		fmt.Sprintf(
+			"The instrumentation mode in namespace %s is %s, the %s %s will not be modified, its pods will be "+
+				"instrumented when they are created.",
+			targetNamespace,
+			dash0common.InstrumentWorkloadsModePods,
+			actionPartial,
+			gvkLabel,
+		),
+	)
+	workloadType, isSupported := podLevelWorkloadTypes[request.Kind.Kind]
+	if !isSupported {
+		return unmodified
+	}
+	workload := workloadType.newObject()
+	if _, _, err := decoder.Decode(request.Object.Raw, nil, workload); err != nil {
+		return logErrorAndReturnAllowed(fmt.Errorf("cannot parse resource into a %s: %w", gvkLabel, err), logger)
+	}
+	if _, hasInstrumentationLabel := workload.GetLabels()[util.InstrumentedLabelKey]; !hasInstrumentationLabel {
+		return unmodified
+	}
+	if request.Kind.Kind == util.K8sTypeMetaReplicaSet.Kind &&
+		slices.ContainsFunc(workload.GetOwnerReferences(), func(ownerReference metav1.OwnerReference) bool {
+			return ownerReference.APIVersion == util.K8sTypeMetaDeployment.APIVersion &&
+				ownerReference.Kind == util.K8sTypeMetaDeployment.Kind
+		}) {
+		return unmodified
+	}
+	if request.Operation == admissionv1.Update && workloadType.replacesPodsOnTemplateChange(workload) {
+		oldWorkload := workloadType.newObject()
+		if _, _, err := decoder.Decode(request.OldObject.Raw, nil, oldWorkload); err != nil {
+			return logErrorAndReturnAllowed(fmt.Errorf("cannot parse the previous %s: %w", gvkLabel, err), logger)
+		}
+		if equality.Semantic.DeepEqual(workloadType.podTemplate(oldWorkload), workloadType.podTemplate(workload)) {
+			return admission.Allowed(
+				fmt.Sprintf(
+					"The instrumentation mode in namespace %s is %s, the %s %s will not be modified. Its pod "+
+						"template still has the instrumentation from before the namespace was switched to %s, which "+
+						"will be removed the next time the pod template is changed.",
+					targetNamespace,
+					dash0common.InstrumentWorkloadsModePods,
+					actionPartial,
+					gvkLabel,
+					dash0common.InstrumentWorkloadsModePods,
+				),
+			)
+		}
+	}
+	modificationResult := workloadType.revert(h.newWorkloadModifier(namespaceInstrumentationConfig, logger), workload)
+	return h.postProcessUninstrumentation(request, workload, workload, modificationResult, logger)
 }
 
 /*

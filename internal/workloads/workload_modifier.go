@@ -1554,6 +1554,22 @@ func (m *ResourceModifier) RemoveLabelsFromImmutableJob(job *batchv1.Job) Modifi
 	return NewHasBeenModifiedResult(len(job.Spec.Template.Spec.Containers), nil)
 }
 
+// RevertPod removes the instrumentation from a pod that is about to be created, for example the instrumentation that a
+// pod has inherited from the pod template of a workload that has been instrumented before the namespace was switched
+// to instrumentWorkloads.mode=pods.
+func (m *ResourceModifier) RevertPod(pod *corev1.Pod) ModificationResult {
+	if util.InstrumentationAttemptHasFailed(&pod.ObjectMeta) {
+		util.RemoveInstrumentationLabelsAndAnnotations(&pod.ObjectMeta)
+		return NewHasBeenModifiedResult(len(pod.Spec.Containers), nil)
+	}
+	podSpecResult := m.revertPodSpec(&pod.Spec, &pod.ObjectMeta)
+	if !podSpecResult.hasBeenModified {
+		return NewNotModifiedNoChangesResult()
+	}
+	util.RemoveInstrumentationLabelsAndAnnotations(&pod.ObjectMeta)
+	return NewHasBeenModifiedResult(len(pod.Spec.Containers), podSpecResult.instrumentationIssuesPerContainer)
+}
+
 func (m *ResourceModifier) RevertReplicaSet(replicaSet *appsv1.ReplicaSet) ModificationResult {
 	if m.hasMatchingOwnerReference(replicaSet, []metav1.TypeMeta{util.K8sTypeMetaDeployment}) {
 		return NewNotModifiedOwnedByHigherOrderWorkloadResult()
