@@ -16,6 +16,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -223,6 +224,27 @@ var _ = Describe(
 									AuthorizationDefaultEnvVar,
 									AuthorizationTokenTest,
 								)
+							},
+						)
+
+						It(
+							"should neither modify workloads nor restart pods when instrumentWorkloads.mode=pods", func() {
+								UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModePods)
+								deploymentName := UniqueName(DeploymentNamePrefix)
+								deployment := CreateBasicDeployment(ctx, k8sClient, TestNamespaceName, deploymentName)
+								podName := UniqueName(PodNamePrefix)
+								pod := CreatePodControlledBy(ctx, k8sClient, TestNamespaceName, podName, util.K8sTypeMetaReplicaSet)
+								createdObjectsMonitoringControllerTest =
+									append(createdObjectsMonitoringControllerTest, deployment, pod)
+
+								triggerReconcileRequest(ctx, monitoringReconciler)
+
+								verifyMonitoringResourceIsAvailable(ctx)
+								VerifyUnmodifiedDeployment(GetDeployment(ctx, k8sClient, TestNamespaceName, deploymentName))
+								Expect(
+									k8sClient.Get(ctx, client.ObjectKey{Namespace: TestNamespaceName, Name: podName}, &corev1.Pod{}),
+								).To(Succeed())
+								VerifyNoEvents(ctx, clientset, TestNamespaceName)
 							},
 						)
 
@@ -780,6 +802,58 @@ var _ = Describe(
 
 				Describe(
 					"instrumentWorkloads mode changes on an existing Dash0 monitoring resource", Ordered, func() {
+						It(
+							"should keep the instrumentation of an existing workload when switching from "+
+								"instrumentWorkloads.mode=all to instrumentWorkloads.mode=pods", func() {
+								EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(
+									ctx,
+									k8sClient,
+									dash0common.InstrumentWorkloadsModeAll,
+								)
+								name := UniqueName(DeploymentNamePrefix)
+								deployment := CreateBasicDeployment(ctx, k8sClient, TestNamespaceName, name)
+								createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, deployment)
+								triggerReconcileRequest(ctx, monitoringReconciler)
+								verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, TestNamespaceName, name)
+								DeleteAllEvents(ctx, clientset, TestNamespaceName)
+
+								UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModePods)
+								triggerReconcileRequest(ctx, monitoringReconciler)
+
+								VerifyNoEvents(ctx, clientset, TestNamespaceName)
+								VerifyModifiedDeployment(
+									GetDeployment(ctx, k8sClient, TestNamespaceName, name),
+									BasicInstrumentedPodSpecExpectations(),
+									IgnoreManagedFields,
+								)
+							},
+						)
+
+						It(
+							"should remove instrumentation left over from instrumentWorkloads.mode=all from an existing "+
+								"workload when switching from instrumentWorkloads.mode=pods to instrumentWorkloads.mode=none",
+							func() {
+								EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(
+									ctx,
+									k8sClient,
+									dash0common.InstrumentWorkloadsModeAll,
+								)
+								name := UniqueName(DeploymentNamePrefix)
+								deployment := CreateBasicDeployment(ctx, k8sClient, TestNamespaceName, name)
+								createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, deployment)
+								triggerReconcileRequest(ctx, monitoringReconciler)
+								UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModePods)
+								triggerReconcileRequest(ctx, monitoringReconciler)
+								DeleteAllEvents(ctx, clientset, TestNamespaceName)
+
+								UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeNone)
+								triggerReconcileRequest(ctx, monitoringReconciler)
+
+								VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, "controller")
+								VerifyUnmodifiedDeployment(GetDeployment(ctx, k8sClient, TestNamespaceName, name))
+							},
+						)
+
 						DescribeTable(
 							"when switching from instrumentWorkloads.mode=none to instrumentWorkloads.mode=created-and-updated",
 							func(config WorkloadTestConfig) {

@@ -3959,6 +3959,98 @@ spec:
 			})
 		})
 
+		Describe("with instrumentWorkloads.mode=pods", func() {
+			dash0MonitoringValuesPodsMode := dash0MonitoringValues{
+				InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModePods,
+			}
+
+			BeforeAll(func() {
+				By("deploying the Dash0 operator")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					true,
+					nil,
+				)
+			})
+
+			AfterEach(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+			})
+
+			AfterAll(func() {
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should not restart existing pods, and instrument them when they are recreated", func() {
+				timestampLowerBound := time.Now()
+				c := runtimeWorkloadTestConfig{
+					namespace:    applicationUnderTestNamespace,
+					workloadType: workloadTypeDeployment,
+					runtime:      runtimeTypeNodeJs,
+				}
+				testIds := testIdMap{c.GetMapKey(): generateNewTestId(c.runtime, c.workloadType)}
+				deployWorkloadsInParallel([]runtimeWorkloadTestConfig{c}, testIds)
+				podUids := readPodUids(c.namespace, c.runtime, c.workloadType)
+
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesPodsMode,
+					operatorNamespace,
+				)
+				verifyThatPodsHaveNeitherBeenRestartedNorInstrumented(c.namespace, c.runtime, c.workloadType, podUids)
+
+				restartWorkload(c.namespace, c.runtime, c.workloadType)
+				verifyThatPodsHaveBeenInstrumentedByTheWebhook(
+					c.namespace,
+					c.runtime,
+					c.workloadType,
+					testIds[c.GetMapKey()],
+					images,
+					podUids,
+					timestampLowerBound,
+				)
+			})
+
+			It("should instrument new pods of all workload types without modifying the workloads", func() {
+				timestampLowerBound := time.Now()
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesPodsMode,
+					operatorNamespace,
+				)
+				workloadTestConfigs := []runtimeWorkloadTestConfig{
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeCronjob, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeDaemonSet, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeDeployment, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeJob, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypePod, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeReplicaSet, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeStatefulSet, runtime: runtimeTypeNodeJs},
+				}
+				testIds := make(testIdMap)
+				for _, c := range workloadTestConfigs {
+					testIds[c.GetMapKey()] = generateNewTestId(c.runtime, c.workloadType)
+				}
+				deployWorkloadsInParallel(workloadTestConfigs, testIds)
+
+				runInParallel(workloadTestConfigs, func(c runtimeWorkloadTestConfig) {
+					verifyThatPodsHaveBeenInstrumentedByTheWebhook(
+						c.namespace,
+						c.runtime,
+						c.workloadType,
+						testIds[c.GetMapKey()],
+						images,
+						nil,
+						timestampLowerBound,
+					)
+				})
+			})
+		})
+
 		Context("with instrumentation delivery", func() {
 			Context("image volume", func() {
 				BeforeAll(func() {

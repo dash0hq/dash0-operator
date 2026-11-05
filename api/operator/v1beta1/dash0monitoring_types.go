@@ -168,10 +168,9 @@ type Dash0MonitoringSpec struct {
 
 type InstrumentWorkloads struct {
 	// Controls the automatic workload instrumentation triggers for the target namespace, that is, which events will
-	// trigger the auto-instrumentation of a workload. There are three possible
-	// settings:
-	// `all`, `created-and-updated` and `none`. By default, the setting `all` is assumed, unless there is an operator
-	// configuration resource with `telemetryCollection.enabled=false`, then the setting `none` is assumed.
+	// trigger the auto-instrumentation of a workload. There are four possible settings:
+	// `all`, `created-and-updated`, `pods` and `none`. By default, the setting `all` is assumed, unless there is an
+	// operator configuration resource with `telemetryCollection.enabled=false`, then the setting `none` is assumed.
 	//
 	// If set to `all`, the operator will:
 	// * automatically instrument existing workloads in the target namespace (i.e. workloads already running in the
@@ -191,6 +190,16 @@ type InstrumentWorkloads struct {
 	// This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
 	// resource or restarting the Dash0 operator.
 	//
+	// If set to `pods`, the operator will not modify workloads like deployments, daemon sets, stateful sets, replica
+	// sets, jobs and cron jobs at all. Instead, it instruments each pod when it is created, regardless of which kind
+	// of workload owns it. The operator never restarts pods in this mode: Pods that already exist keep their state
+	// until they are recreated, for example by the next rollout. That applies to instrumenting them, to updating their
+	// instrumentation when the Dash0 operator is updated, and to removing their instrumentation when the mode is
+	// changed to `none` or the Dash0 monitoring resource is removed. The label selector
+	// (spec.instrumentWorkloads.labelSelector) is evaluated against the labels of the pod.
+	// This setting is useful if you want to avoid that the operator modifies workloads that are managed by GitOps or
+	// infrastructure-as-code tools, which would otherwise report the modifications as drift.
+	//
 	// You can opt out of automatically instrumenting workloads entirely by setting this option to `none`. With
 	// `mode: none`, workloads in the target namespace will never be instrumented to send telemetry to Dash0.
 	//
@@ -200,8 +209,7 @@ type InstrumentWorkloads struct {
 	// then the default setting is `none` instead of `all`, and no workloads will be instrumented by the Dash0 operator.
 	//
 	// It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
-	// `mode: all` or `mode: created-and-updated` in any monitoring resource at the
-	// same time.
+	// `mode: all`, `mode: created-and-updated` or `mode: pods` in any monitoring resource at the same time.
 	//
 	// More fine-grained per-workload control over instrumentation is available by setting the label
 	// dash0.com/enable=false on individual workloads, or by using a custom label selector via
@@ -306,6 +314,9 @@ type NamespaceInstrumentationConfig struct {
 	// during uninstrumentation / re-instrumentation to decide whether to remove a previously set OTEL_LOGS_EXPORTER
 	// env var.
 	PreviousLogCollectionEnabled bool
+	// InstrumentPods is true if spec.instrumentWorkloads.mode is `pods`. Pods are then instrumented by the webhook when
+	// they are created, and workloads are not modified.
+	InstrumentPods bool
 }
 
 // Dash0MonitoringStatus defines the observed state of the Dash0Monitoring monitoring resource.
@@ -508,6 +519,7 @@ func (d *Dash0Monitoring) GetNamespaceInstrumentationConfig() NamespaceInstrumen
 		PreviousCaptureSqlQueryParameters: d.Status.PreviousInstrumentWorkloads.CaptureSqlQueryParameters,
 		LogCollectionEnabled:              pointers.ReadBoolPointerWithDefault(d.Spec.LogCollection.Enabled, true),
 		PreviousLogCollectionEnabled:      pointers.ReadBoolPointerWithDefault(d.Status.PreviousLogCollection.Enabled, true),
+		InstrumentPods:                    d.ReadInstrumentWorkloadsMode() == dash0common.InstrumentWorkloadsModePods,
 	}
 }
 
