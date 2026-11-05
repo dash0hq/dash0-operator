@@ -1,4 +1,4 @@
-# Agent0 Integration
+# Agent0 Kubernetes Integration
 
 [Agent0](https://www.dash0.com/agent0) is Dash0's observability and SRE assistant. It investigates incidents, analyzes
 telemetry across signals, and answers questions about your systems.
@@ -8,12 +8,12 @@ When a pod is restarting, a workload is not receiving traffic, or a rollout is s
 cluster: resource limits, readiness probes, node conditions, service selectors, and so on.
 Without access to that state, Agent0 can describe the symptom, but it might not be able to find the root cause.
 
-The Dash0 operator's Agent0 integration closes that gap.
+The Agent0 Kubernetes integration closes that gap.
 It lets Agent0 run **read-only** `kubectl` commands in your cluster, on demand, while an investigation is running —
 the same commands you would run yourself, executed from inside the cluster and returned to Agent0 as if it had a
 terminal attached to it.
 
-> **Note:** The Agent0 integration is currently in beta. It is disabled by default.
+> **Note:** The Agent0 Kubernetes integration is currently in beta. It is disabled by default.
 
 ## Table of Contents
 
@@ -52,7 +52,8 @@ Nothing is executed proactively or on a schedule: the connector is idle until Ag
   `NotReady`, as metrics and as Kubernetes events.
   What no telemetry signal carries is the manifest behind it: the memory limit that is too low, the readiness probe
   with a one-second timeout, the image tag that changed, the node selector that nothing matches.
-  That is what turns a symptom into a root cause, and being able to read it is what the Agent0 integration adds.
+  That is what turns a symptom into a root cause, and being able to read it is what the Agent0 Kubernetes integration
+  adds.
 * **Resource types that emit no telemetry at all.**
   Services and their selectors, endpoint slices, ingresses, network policies, persistent volume claims and storage
   classes, resource quotas and limit ranges, horizontal pod autoscalers, pod disruption budgets, RBAC objects,
@@ -316,7 +317,7 @@ operator:
 
 If both `token` and `secretRef` are provided, `token` has priority and `secretRef` is ignored.
 
-### Using the Operator Only for the Agent0 Integration
+### Using the Operator Only for the Agent0 Kubernetes Integration
 
 You can also deploy the operator only to manage the agent0-connector, without collecting telemetry or using any of its
 other capabilities.

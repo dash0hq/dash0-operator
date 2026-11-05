@@ -141,7 +141,7 @@ files:
 
   - source: docs/agent0-integration.md
     target: dash0-operator/agent0-integration.md
-    title: Agent0 Integration
+    title: Agent0 Kubernetes Integration
     description: Let Agent0, Dash0's observability and SRE assistant, run read-only kubectl commands in your cluster, and learn about the security mechanisms around it.
 
   - source: docs/advanced-configuration.md
