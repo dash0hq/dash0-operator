@@ -27,3 +27,7 @@ spec:
   prometheusScraping:
     enabled: {{ .PrometheusScrapingEnabled }}
 {{- end }}
+{{- if .KubernetesObjectCollectionEnabled }}
+  kubernetesObjectCollection:
+    enabled: {{ .KubernetesObjectCollectionEnabled }}
+{{- end }}

@@ -886,7 +886,10 @@ olm-bundle-validate: operator-sdk ## Validate the OLM bundle in BUNDLE_DIR, incl
 olm-scorecard: operator-sdk ## Run the operator-sdk scorecard tests for the OLM bundle in BUNDLE_DIR in the current kubectl context.
 	$(OPERATOR_SDK) scorecard "$(BUNDLE_DIR)" --wait-time 5m
 
+# Without the default provenance attestation, the bundle image is a single manifest instead of an image index, which
+# operator-sdk run bundle accepts on every host.
 .PHONY: olm-bundle-image
+olm-bundle-image: export BUILDX_NO_DEFAULT_ATTESTATIONS = 1
 olm-bundle-image: ## Build the image of the OLM bundle in BUNDLE_DIR locally, the image is not pushed.
 	@$(call build_container_image,$(BUNDLE_IMAGE_REPOSITORY),$(BUNDLE_IMAGE_TAG),$(BUNDLE_DIR),$(BUNDLE_DIR)/bundle.Dockerfile)
 

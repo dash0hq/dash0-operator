@@ -112,14 +112,18 @@ type CollectorConfig struct {
 	// receivers, set from the Helm values operator.collectors.otlpGrpcHostPort / otlpHttpHostPort via the CLI flags
 	// --dash0-otel-collector-otlp-grpc-host-port / --dash0-otel-collector-otlp-http-host-port. They only take effect
 	// when DisableHostPorts is false.
-	OtlpGrpcHostPort       int32
-	OtlpHttpHostPort       int32
-	IsGkeAutopilot         bool
-	IsOpenShift            bool
-	DevelopmentMode        bool
-	DebugVerbosityDetailed bool
-	EnableProfExtension    bool
-	CompressConfigMap      bool
+	OtlpGrpcHostPort int32
+	OtlpHttpHostPort int32
+	// DaemonSetServiceAccountName is the name of a service account that the collector DaemonSet uses instead of the one
+	// the operator manages, set via --dash0-otel-collector-daemonset-service-account-name. The operator neither creates
+	// nor deletes that service account. Empty unless set, i.e. for Helm installs.
+	DaemonSetServiceAccountName string
+	IsGkeAutopilot              bool
+	IsOpenShift                 bool
+	DevelopmentMode             bool
+	DebugVerbosityDetailed      bool
+	EnableProfExtension         bool
+	CompressConfigMap           bool
 	// SignalControlSceOnlyMode is true if Signal Control is enabled and telemetry collection is disabled via Helm. If
 	// true, neither the collector DaemonSet nor the cluster metrics collector Deployment is deployed.
 	SignalControlSceOnlyMode bool

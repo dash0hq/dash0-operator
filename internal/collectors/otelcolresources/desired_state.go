@@ -131,12 +131,15 @@ type oTelColConfig struct {
 	DisableHostPorts                                 bool
 	OtlpGrpcHostPort                                 int32
 	OtlpHttpHostPort                                 int32
-	PseudoClusterUid                                 types.UID
-	ClusterName                                      string
-	Images                                           util.Images
-	IsIPv6Cluster                                    bool
-	IsGkeAutopilot                                   bool
-	IsOpenShift                                      bool
+	// DaemonSetServiceAccountName is the name of an external service account for the collector daemonset, which the
+	// operator neither creates nor deletes. When empty, the daemonset uses the service account the operator manages.
+	DaemonSetServiceAccountName string
+	PseudoClusterUid            types.UID
+	ClusterName                 string
+	Images                      util.Images
+	IsIPv6Cluster               bool
+	IsGkeAutopilot              bool
+	IsOpenShift                 bool
 	// ServiceTrafficDistribution is the value for spec.trafficDistribution on the operator's services, or nil when the
 	// Kubernetes version does not enable the field by default. See cluster.ResolveServiceTrafficDistribution.
 	ServiceTrafficDistribution     *string
@@ -169,6 +172,22 @@ type oTelColConfig struct {
 
 func (c *oTelColConfig) usesOffsetStorageVolume() bool {
 	return c.OffsetStorageVolume != nil
+}
+
+// usesExternalDaemonSetServiceAccount treats the name of the operator-managed service account as not external, since
+// pruning would otherwise delete the service account the daemonset runs with.
+func (c *oTelColConfig) usesExternalDaemonSetServiceAccount() bool {
+	return c.DaemonSetServiceAccountName != "" &&
+		c.DaemonSetServiceAccountName != daemonsetServiceAccountName(c.NamePrefix)
+}
+
+// collectorDaemonSetServiceAccountName returns the name of the service account the collector daemonset runs with, and
+// which the role bindings for the daemonset refer to.
+func (c *oTelColConfig) collectorDaemonSetServiceAccountName() string {
+	if c.usesExternalDaemonSetServiceAccount() {
+		return c.DaemonSetServiceAccountName
+	}
+	return daemonsetServiceAccountName(c.NamePrefix)
 }
 
 // deploysProducerCollectors reports whether the collector daemonset and the cluster metrics collector deployment are
@@ -247,6 +266,10 @@ const (
 	// due to port conflicts.
 	DefaultOtlpGrpcHostPort = 40317
 	DefaultOtlpHttpHostPort = 40318
+
+	// OlmDaemonSetServiceAccountName is the external service account of the collector daemonset in the OLM bundle. OLM
+	// creates it from the CSV and grants it the use of the privileged SecurityContextConstraints on OpenShift.
+	OlmDaemonSetServiceAccountName = "dash0-operator-olm-collector"
 
 	otlpGrpcPort = 4317
 	otlpHttpPort = 4318
@@ -613,7 +636,11 @@ func assembleDesiredState(
 		return desiredState, nil
 	}
 
-	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDaemonSet(config)))
+	// The operator-managed service account stays in the desired state for deletion, so that it is removed when the
+	// daemonset switches to an external service account.
+	if forDeletion || !config.usesExternalDaemonSetServiceAccount() {
+		desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDaemonSet(config)))
+	}
 	daemonSetCollectorConfigMap, err := assembleDaemonSetCollectorConfigMap(
 		config,
 		monitoredNamespaces,
@@ -738,7 +765,7 @@ func assembleRoleBinding(config *oTelColConfig) *rbacv1.RoleBinding {
 		},
 		Subjects: []rbacv1.Subject{{
 			Kind:      "ServiceAccount",
-			Name:      daemonsetServiceAccountName(config.NamePrefix),
+			Name:      config.collectorDaemonSetServiceAccountName(),
 			Namespace: config.OperatorNamespace,
 		}},
 	}
@@ -831,7 +858,7 @@ func assembleClusterRoleBindingForDaemonSet(config *oTelColConfig) *rbacv1.Clust
 		},
 		Subjects: []rbacv1.Subject{{
 			Kind:      "ServiceAccount",
-			Name:      daemonsetServiceAccountName(config.NamePrefix),
+			Name:      config.collectorDaemonSetServiceAccountName(),
 			Namespace: config.OperatorNamespace,
 		}},
 	}
@@ -902,7 +929,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 
 	podSpec := corev1.PodSpec{
 		Tolerations:        extraConfig.DaemonSetTolerations,
-		ServiceAccountName: daemonsetServiceAccountName(config.NamePrefix),
+		ServiceAccountName: config.collectorDaemonSetServiceAccountName(),
 		SecurityContext: &corev1.PodSecurityContext{
 			RunAsNonRoot: new(true),
 			SeccompProfile: &corev1.SeccompProfile{
