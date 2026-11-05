@@ -119,6 +119,7 @@ type CollectorConfig struct {
 	// nor deletes that service account. Empty unless set, i.e. for Helm installs.
 	DaemonSetServiceAccountName string
 	IsGkeAutopilot              bool
+	IsOpenShift                 bool
 	DevelopmentMode             bool
 	DebugVerbosityDetailed      bool
 	EnableProfExtension         bool
@@ -245,9 +246,10 @@ func getImageVersion(image string) string {
 	return ""
 }
 
-// RunAsID returns a pointer to id for use as a pod security context runAsUser or runAsGroup, or nil when the operator
-// runs on OpenShift. Returning nil lets the namespace's SecurityContextConstraints assign an in-range UID/GID, instead
-// of pinning a UID that the default MustRunAsRange strategy would reject as out of range.
+// RunAsID returns a pointer to id for use as a pod security context runAsUser, or nil when the operator runs on
+// OpenShift. Returning nil lets the namespace's SecurityContextConstraints assign an in-range UID, instead of pinning a
+// UID that the default MustRunAsRange strategy would reject as out of range. SecurityContextConstraints do not
+// constrain runAsGroup, so the group is pinned on OpenShift as well.
 func RunAsID(isOpenShift bool, id int64) *int64 {
 	if isOpenShift {
 		return nil

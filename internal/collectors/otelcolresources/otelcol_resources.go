@@ -244,6 +244,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		Images:                      m.collectorConfig.Images,
 		IsIPv6Cluster:               m.collectorConfig.IsIPv6Cluster,
 		IsGkeAutopilot:              m.collectorConfig.IsGkeAutopilot,
+		IsOpenShift:                 m.collectorConfig.IsOpenShift,
 		ServiceTrafficDistribution: cluster.ResolveServiceTrafficDistribution(
 			m.collectorConfig.KubernetesApiServerVersion,
 			logger,
@@ -578,6 +579,7 @@ func (m *OTelColResourceManager) DeleteResources(
 		Images:                                           dummyImagesForDeletion,
 		IsIPv6Cluster:                                    m.collectorConfig.IsIPv6Cluster,
 		IsGkeAutopilot:                                   m.collectorConfig.IsGkeAutopilot,
+		IsOpenShift:                                      m.collectorConfig.IsOpenShift,
 		DevelopmentMode:                                  m.collectorConfig.DevelopmentMode,
 		DebugVerbosityDetailed:                           m.collectorConfig.DebugVerbosityDetailed,
 		EnableProfExtension:                              m.collectorConfig.EnableProfExtension,

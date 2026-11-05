@@ -2108,6 +2108,63 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(getDaemonSet(desiredState).Spec.Template.Spec.SecurityContext.SELinuxOptions).To(BeNil())
 	})
 
+	DescribeTable("should run the collectors with read-only root file systems and non-root groups",
+		func(isOpenShift bool, offsetStorageVolume *corev1.Volume) {
+			desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         defaultDash0ExportersWithToken(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				UseHostMetricsReceiver:                           true,
+				Images:                                           TestImages,
+				OffsetStorageVolume:                              offsetStorageVolume,
+				IsOpenShift:                                      isOpenShift,
+				SignalControl: SignalControlConfig{
+					Enabled:     true,
+					Endpoint:    "decision-maker.example.com:443",
+					ApiEndpoint: "https://control-plane-api.dash0.com",
+					Dataset:     "default",
+				},
+			}, nil, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+
+			daemonSetPodSpec := getDaemonSet(desiredState).Spec.Template.Spec
+			// The DaemonSet collector reads the container log files via the root group.
+			Expect(*daemonSetPodSpec.SecurityContext.RunAsGroup).To(Equal(int64(0)))
+
+			deploymentPodSpec := getDeployment(desiredState).Spec.Template.Spec
+			signalControlCollector := getSignalControlCollector(desiredState)
+			Expect(signalControlCollector).ToNot(BeNil())
+			signalControlPodSpec := signalControlCollector.Spec.Template.Spec
+			for _, podSpec := range []corev1.PodSpec{deploymentPodSpec, signalControlPodSpec} {
+				Expect(*podSpec.SecurityContext.RunAsGroup).To(Equal(int64(65532)))
+				// containerd rejects a pod-level runAsGroup without a pod-level runAsUser; on OpenShift, the SCC assigns
+				// the UID.
+				if isOpenShift {
+					Expect(podSpec.SecurityContext.RunAsUser).To(BeNil())
+				} else {
+					Expect(*podSpec.SecurityContext.RunAsUser).To(Equal(int64(65532)))
+				}
+			}
+
+			for _, podSpec := range []corev1.PodSpec{daemonSetPodSpec, deploymentPodSpec, signalControlPodSpec} {
+				for _, container := range slices.Concat(podSpec.InitContainers, podSpec.Containers) {
+					Expect(*container.SecurityContext.ReadOnlyRootFilesystem).To(BeTrue(), container.Name)
+				}
+			}
+		},
+		Entry("with the default filelog offset storage", false, nil),
+		Entry("with a filelog offset volume", false, &corev1.Volume{
+			Name: "filelogreceiver-offsets",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: "offset-storage-claim",
+				},
+			},
+		}),
+		Entry("on OpenShift", true, nil),
+	)
+
 	It("should render additional collector labels and annotations", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,

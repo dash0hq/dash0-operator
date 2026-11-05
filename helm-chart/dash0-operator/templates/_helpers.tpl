@@ -413,6 +413,11 @@ securityContext:
 {{- if .userId }}
   runAsUser: {{ .userId }}
 {{- end }}
+  {{- /*
+  Set on the container: containerd rejects a pod-level runAsGroup without a pod-level runAsUser when it creates the pod
+  sandbox, and the chart leaves the UID to the image USER, or to the SecurityContextConstraints on OpenShift.
+  */}}
+  runAsGroup: 65532
   capabilities:
     drop:
     - ALL

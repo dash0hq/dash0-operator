@@ -520,7 +520,7 @@ var _ = Describe("Edge Proxy deployment labels and annotations", func() {
 })
 
 var _ = Describe("Edge Proxy pod security context", func() {
-	It("pins the pod-level runAsUser when not on OpenShift", func() {
+	It("pins the pod-level runAsUser and runAsGroup when not on OpenShift", func() {
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, nil,
 			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testSelfMonitoring, util.ExtraConfig{}, false, false, logd.Discard(),
@@ -529,9 +529,10 @@ var _ = Describe("Edge Proxy pod security context", func() {
 		Expect(sc).ToNot(BeNil())
 		Expect(*sc.RunAsNonRoot).To(BeTrue())
 		Expect(*sc.RunAsUser).To(Equal(int64(10001)))
+		Expect(*sc.RunAsGroup).To(Equal(int64(10001)))
 	})
 
-	It("omits the pod-level runAsUser on OpenShift so the SCC can assign an in-range UID", func() {
+	It("omits the pod-level runAsUser on OpenShift so the SCC can assign an in-range UID, but pins runAsGroup", func() {
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, nil,
 			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testSelfMonitoring, util.ExtraConfig{}, false, true, logd.Discard(),
@@ -540,6 +541,7 @@ var _ = Describe("Edge Proxy pod security context", func() {
 		Expect(sc).ToNot(BeNil())
 		Expect(*sc.RunAsNonRoot).To(BeTrue())
 		Expect(sc.RunAsUser).To(BeNil())
+		Expect(*sc.RunAsGroup).To(Equal(int64(10001)))
 	})
 })
 

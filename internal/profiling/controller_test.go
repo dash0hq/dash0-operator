@@ -99,6 +99,7 @@ func TestProfilerRoutesSamplesAndDebuginfoSeparately(t *testing.T) {
 	require.EqualValues(t, 1, proxy.Spec.UpdateStrategy.RollingUpdate.MaxUnavailable.IntValue())
 	require.False(t, ptr.Deref(proxy.Spec.Template.Spec.Containers[0].SecurityContext.Privileged, false))
 	require.True(t, *proxy.Spec.Template.Spec.Containers[0].SecurityContext.ReadOnlyRootFilesystem)
+	require.EqualValues(t, 65532, *proxy.Spec.Template.Spec.SecurityContext.RunAsGroup)
 	require.NotNil(t, proxy.Spec.Template.Spec.Containers[0].ReadinessProbe.GRPC)
 	require.Len(t, proxy.OwnerReferences, 1)
 	require.Equal(t, types.UID("operator-deployment"), proxy.OwnerReferences[0].UID)
@@ -466,7 +467,21 @@ func TestProfilerReconcilesWithNamespacedOperandPermissions(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond)
 }
 
+func TestDebuginfoProxyOmitsRunAsUserButPinsRunAsGroupOnOpenShift(t *testing.T) {
+	r, configuration := fixtureWithOpenShift(t, true)
+	reconcile(t, r, configuration)
+	proxy := &appsv1.DaemonSet{}
+	require.NoError(t, r.Get(context.Background(), key("debuginfo-proxy"), proxy))
+	require.Nil(t, proxy.Spec.Template.Spec.SecurityContext.RunAsUser)
+	require.EqualValues(t, 65532, *proxy.Spec.Template.Spec.SecurityContext.RunAsGroup)
+}
+
 func fixture(t *testing.T) (*profiling.Reconciler, *dash0v1alpha1.Dash0OperatorConfiguration) {
+	t.Helper()
+	return fixtureWithOpenShift(t, false)
+}
+
+func fixtureWithOpenShift(t *testing.T, isOpenShift bool) (*profiling.Reconciler, *dash0v1alpha1.Dash0OperatorConfiguration) {
 	t.Helper()
 	scheme := runtime.NewScheme()
 	require.NoError(t, corev1.AddToScheme(scheme))
@@ -486,7 +501,7 @@ func fixture(t *testing.T) (*profiling.Reconciler, *dash0v1alpha1.Dash0OperatorC
 	resourceManager := prresources.NewResourceManager(c, scheme, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
 		Name: "operator", Namespace: "operator", UID: "operator-deployment",
 	}}, prresources.Config{Namespace: "operator", NamePrefix: "test", Enabled: true, TelemetryCollectionEnabled: true,
-		ProfilerImage: "ghcr.io/parca-dev/parca-agent:v0.51.2", ProxyImage: "debuginfo-proxy:test",
+		ProfilerImage: "ghcr.io/parca-dev/parca-agent:v0.51.2", ProxyImage: "debuginfo-proxy:test", IsOpenShift: isOpenShift,
 	})
 	r := profiling.NewReconciler(c, profiling.NewManager(resourceManager))
 	require.NoError(t, c.Get(context.Background(), client.ObjectKeyFromObject(configuration), configuration))

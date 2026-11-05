@@ -12,6 +12,7 @@ This document provides platform-specific guidance, compatibility notes, and work
 - [Azure AKS](#notes-on-azure-aks)
 - [Open Policy Agent (OPA Gatekeeper)](#notes-on-the-open-policy-agent)
 - [Kyverno Admission Controller](#notes-on-kyverno-admission-controller)
+  - [Kyverno Policies and the Collector DaemonSet](#kyverno-policies-and-the-collector-daemonset)
 - [GitOps Deployments](#notes-on-gitops)
 - [ArgoCD](#notes-on-argocd)
 - [Local Development Environments](#local-development-environments)
@@ -137,9 +138,11 @@ set to `true`, the Dash0 operator Helm chart and operator:
 - create a custom `SecurityContextConstraints` resource plus the RBAC that binds it to the OpenTelemetry collector
   DaemonSet's service account, so the DaemonSet may use the host access it requires (host log directories via `hostPath`
   and the OTLP host ports),
-- drop the hard-coded pod-level `runAsUser`/`runAsGroup` from the operator-managed workloads (the agent0-connector, the
-  target-allocator, and the Signal Control edge-proxy) and from the injected instrumentation init container, so that the
-  namespace's SCC assigns an in-range UID instead of a pinned one that `restricted-v2` would reject, and
+- drop the hard-coded pod-level `runAsUser` from the agent0-connector, the target-allocator, the synthetics-worker, the
+  cluster-metrics collector, the Signal Control collector, the Signal Control edge-proxy and the debuginfo-proxy, and
+  the `runAsUser`/`runAsGroup` from the injected instrumentation init container, so that the namespace's SCC assigns
+  an in-range UID instead of a pinned one that `restricted-v2` would reject (SCCs do not constrain `runAsGroup`, so
+  these workloads keep their pinned non-root group), and
 - set the SELinux type `spc_t` on the collector DaemonSet pods. OpenShift nodes enforce SELinux, and the default
   container type `container_t` is not allowed to read the pod log files in `/var/log/pods`. A value set via
   `operator.collectors.daemonSetSeLinuxOptions` replaces this default, `{}` removes it (see
@@ -166,10 +169,88 @@ Using the default config map filelog offset storage in clusters with this compon
 
 In clusters that have the [Kyverno admission controller](https://kyverno.io/docs/introduction/how-kyverno-works/#kubernetes-admission-controls) deployed, it is highly recommended to either:
 
-1. [Use a volume for filelog offsets](advanced-configuration.md#providing-a-filelog-offset-volume) instead of the default filelog offset config map, or
-2. [Exclude](https://kyverno.io/docs/installation/customization/#resource-filters) ConfigMaps (or all resource types) in the Dash0 operator's namespace from Kyverno's processing.
+1. [Exclude](https://kyverno.io/docs/installation/customization/#resource-filters) ConfigMaps (or all resource types) in the Dash0 operator's namespace from Kyverno's processing, or
+2. [Use a volume for filelog offsets](advanced-configuration.md#providing-a-filelog-offset-volume) instead of the default filelog offset config map.
+   The volume adds an init container to the collector DaemonSet that runs as root with the `CHOWN` capability, to
+   hand the volume over to the collector's user, and a `hostPath` or `persistentVolumeClaim` volume. Kyverno policies
+   that restrict users, capabilities or volume types reject that, unless the DaemonSet is exempted from them (see
+   [below](#kyverno-policies-and-the-collector-daemonset)).
 
 Leaving Kyverno processing in place and using the config map filelog offset storage can lead to severe performance issues, since the default config map for filelog offsets is updated very frequently. This can cause Kyverno to consume a lot of CPU and memory resources, potentially even leading to OOMKills of the Kyverno admission controller.
+
+### Kyverno Policies and the Collector DaemonSet
+
+The workloads of the Dash0 operator run as a non-root user and group, with a read-only root file system, without
+privilege escalation, with all capabilities dropped and with the `RuntimeDefault` seccomp profile.
+The exceptions are the optional eBPF profiler DaemonSet, which runs privileged, and the OpenTelemetry collector
+DaemonSet, which needs access to the nodes for collecting logs and host metrics.
+Policies like `disallow-host-path`, `restrict-volume-types` and `require-non-root-groups` reject the collector DaemonSet.
+
+The DaemonSet mounts the following `hostPath` volumes, all of them read-only:
+
+| Host path                    | Mounted at                   | Purpose                                                                                                                                                         |
+|------------------------------|------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `/var/log/pods`              | `/var/log/pods`              | Reading the pod logs. Always mounted.                                                                                                                           |
+| `/var/lib/docker/containers` | `/var/lib/docker/containers` | Reading the pod logs on nodes with the Docker container runtime, where the files in `/var/log/pods` are symbolic links to this directory. Not mounted on GKE Autopilot. |
+| `/`                          | `/hostfs`                    | Collecting host metrics. Only mounted when `operator.kubernetesInfrastructureMetricsCollectionEnabled` is `true` (the default), and not in clusters with the Docker container runtime. |
+
+The DaemonSet pods run with the user ID 65532 and the group ID 0 (`runAsGroup: 0`).
+Container runtimes create the pod log files with the mode `0640`, owned by `root:root`, so the collector can only read
+them via the root group.
+Adding the group 0 via `supplementalGroups` instead violates the same policies.
+
+The DaemonSet also uses host ports for the OTLP receivers, which the `disallow-host-ports` policy rejects, unless
+`operator.collectors.disableHostPorts` is set to `true`.
+
+To deploy the DaemonSet in a cluster that enforces these policies, create a Kyverno `PolicyException` for it.
+Kyverno only applies policy exceptions if the feature is enabled, for example via the Kyverno Helm chart values
+`features.policyExceptions.enabled=true` and `features.policyExceptions.namespace` set to the namespace of the
+exception (or `*`).
+The following example assumes that the Dash0 operator has been installed with the Helm release name `dash0-operator`
+into the namespace `dash0-operator`. The name of the DaemonSet is
+`<release name>-opentelemetry-collector-agent-daemonset`.
+The policy and rule names in the example are those of the
+[upstream Kyverno policies](https://github.com/kyverno/policies), they need to match the names of the policies that are
+enforced in the cluster.
+Kyverno [automatically generates](https://kyverno.io/docs/policy-types/cluster-policy/autogen/) rules for workload
+resources like DaemonSets, with the prefix `autogen-`; the exception needs to list both rules, and match both the
+DaemonSet and its pods.
+
+```yaml
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: dash0-collector-agent
+  namespace: dash0-operator
+spec:
+  exceptions:
+    - policyName: disallow-host-path
+      ruleNames: [host-path, autogen-host-path]
+    - policyName: restrict-volume-types
+      ruleNames: [restricted-volumes, autogen-restricted-volumes]
+    - policyName: require-non-root-groups
+      ruleNames: [check-runasgroup, autogen-check-runasgroup]
+  match:
+    any:
+      - resources:
+          kinds: [DaemonSet]
+          namespaces: [dash0-operator]
+          names: [dash0-operator-opentelemetry-collector-agent-daemonset]
+      - resources:
+          kinds: [Pod]
+          namespaces: [dash0-operator]
+          names: [dash0-operator-opentelemetry-collector-agent-daemonset-*]
+```
+
+Add the `disallow-host-ports` policy (rules `host-ports-none` and `autogen-host-ports-none`) to the exception if the
+cluster enforces it and the host ports are not disabled.
+On OpenShift, the DaemonSet pods run with the SELinux type `spc_t` (see [OpenShift](#notes-on-openshift)), which the
+`disallow-selinux` policy rejects; add it to the exception as well (rules `selinux-type` and `autogen-selinux-type`).
+With a [filelog offset volume](advanced-configuration.md#providing-a-filelog-offset-volume), the init container that
+runs as root with the `CHOWN` capability additionally requires the policies `require-run-as-nonroot` (rules
+`run-as-non-root` and `autogen-run-as-non-root`), `require-run-as-non-root-user` (rules `run-as-non-root-user` and
+`autogen-run-as-non-root-user`) and `disallow-capabilities-strict` (rules `adding-capabilities-strict` and
+`autogen-adding-capabilities-strict`) in the exception.
 
 ## Notes on GitOps
 

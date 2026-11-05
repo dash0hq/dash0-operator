@@ -34,6 +34,9 @@ const (
 
 	// edgeProxyUserID is the numeric UID baked into the Edge Proxy image via `adduser -u 10001` in its Dockerfile.
 	edgeProxyUserID int64 = 10001
+	// edgeProxyGroupID is the non-root GID the Edge Proxy runs with. Policies like Kyverno's require-non-root-groups
+	// reject pods without an explicit non-root runAsGroup.
+	edgeProxyGroupID int64 = 10001
 
 	defaultDataset = "default"
 
@@ -343,6 +346,7 @@ func assembleEdgeProxyDeployment(
 		SecurityContext: &corev1.PodSecurityContext{
 			RunAsNonRoot: new(true),
 			RunAsUser:    util.RunAsID(isOpenShift, edgeProxyUserID),
+			RunAsGroup:   new(edgeProxyGroupID),
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},

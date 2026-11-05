@@ -128,6 +128,12 @@ helm uninstall --namespace "$operator_namespace" ebpf-profiler --ignore-not-foun
 
 helm uninstall --namespace "$operator_namespace" dash0-operator --timeout 30s || true
 
+# Kyverno (see deploy-kyverno.sh) is removed only after the operator has been uninstalled, so that Kyverno also
+# validates the pre-delete hook.
+if kubectl get namespace "$kyverno_namespace" > /dev/null 2>&1; then
+  test-resources/bin/delete-kyverno.sh || true
+fi
+
 kubectl delete secret \
   --namespace "$operator_namespace" \
   dash0-authorization-secret \

@@ -210,10 +210,23 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 
 		sc := getDeployment(desiredState).Spec.Template.Spec.SecurityContext
 		Expect(*sc.RunAsUser).To(Equal(int64(65532)))
-		Expect(*sc.RunAsGroup).To(Equal(int64(0)))
+		Expect(*sc.RunAsGroup).To(Equal(int64(65532)))
 	})
 
-	It("omits the pod-level runAsUser/runAsGroup on OpenShift so the SCC can assign an in-range UID", func() {
+	It("runs the target-allocator with a read-only root file system", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        TargetAllocatorPrefixTest,
+			Images:            TestImages,
+		}, nil, util.ExtraConfig{})
+		Expect(err).ToNot(HaveOccurred())
+
+		containers := getDeployment(desiredState).Spec.Template.Spec.Containers
+		Expect(containers).To(HaveLen(1))
+		Expect(*containers[0].SecurityContext.ReadOnlyRootFilesystem).To(BeTrue())
+	})
+
+	It("omits the pod-level runAsUser on OpenShift so the SCC can assign an in-range UID, but pins runAsGroup", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        TargetAllocatorPrefixTest,
@@ -226,7 +239,7 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 		Expect(sc).ToNot(BeNil())
 		Expect(*sc.RunAsNonRoot).To(BeTrue())
 		Expect(sc.RunAsUser).To(BeNil())
-		Expect(sc.RunAsGroup).To(BeNil())
+		Expect(*sc.RunAsGroup).To(Equal(int64(65532)))
 	})
 
 	When("mTLS is enabled", Ordered, func() {

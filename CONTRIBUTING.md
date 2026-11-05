@@ -185,7 +185,7 @@ Moving beyond the quickstart instructions, here are more details on the test scr
   agent0-connector, then sets the component settings via `spec.components` of the operator configuration resource and
   of the Signal Control resource (see `test-resources/component-settings`). Some of them are also set to different
   values via Helm, which the operator reports with a warning ("overrides the custom Helm value").
-* `test-resources/bin/test-scenario-13-signal-control-only.sh`: Deploys the operator with Signal Control in SCE-only
+* `test-resources/bin/test-scenario-15-signal-control-only.sh`: Deploys the operator with Signal Control in SCE-only
   mode (`FEATURE_SIGNAL_CONTROL_ENABLED=true` and `TELEMETRY_COLLECTION_ENABLED=false`), so that only the Signal
   Control collector and the Edge Proxy are deployed. By default, it deploys neither an application under monitoring
   nor a monitoring resource.
@@ -200,6 +200,9 @@ Moving beyond the quickstart instructions, here are more details on the test scr
   development mode), and neither the `dash0-operator-manager-collector` cluster role nor the cluster role that the
   operator creates for the target allocator grant access to secrets. Secrets are only granted via the
   `dash0-operator-target-allocator-secrets` role binding in the target namespace.
+* `test-resources/bin/test-scenario-16-kyverno.sh`: Installs Kyverno with restrictive policies in Enforce mode and
+  deploys the operator with the target-allocator, the agent0-connector and Signal Control enabled. The script fails
+  unless Kyverno admits all of the operator's workloads (see [Testing with Kyverno](#testing-with-kyverno)).
 * `test-resources/bin/test-cleanup.sh`: This script removes all resources created by the other scripts. **You should
   always run this script after running any of the scenario scripts, when you are done with your tests, otherwise the
   e2e tests will fail the next time you start them.** Note that all scenario scripts call the cleanup at the beginning,
@@ -635,7 +638,7 @@ serves these images is required.
 A test scenario is available in [test-resources/bin/test-scenario-10-signal-control.sh](test-resources/bin/test-scenario-10-signal-control.sh)
 and example sampling rules can be found in [test-resources/customresources/dash0samplingrule](test-resources/customresources/dash0samplingrule).
 SCE-only mode can be tested with
-[test-resources/bin/test-scenario-13-signal-control-only.sh](test-resources/bin/test-scenario-13-signal-control-only.sh).
+[test-resources/bin/test-scenario-15-signal-control-only.sh](test-resources/bin/test-scenario-15-signal-control-only.sh).
 
 ## OLM Bundle
 
@@ -659,3 +662,27 @@ To install the operator via OLM in a test cluster, use a test bundle with your o
   `test-resources/bin/test-olm-bundle.sh cleanup` removes the operator again,
   [test-resources/bin/delete-olm.sh](test-resources/bin/delete-olm.sh) removes OLM.
 - `make olm-scorecard BUNDLE_DIR=olm/build/test-bundle` runs the operator-sdk scorecard tests against the test bundle.
+
+## Testing with Kyverno
+
+[test-resources/bin/deploy-kyverno.sh](test-resources/bin/deploy-kyverno.sh) installs Kyverno and the upstream Kyverno
+policies (Pod Security Standards "restricted", `require-non-root-groups` and `require-ro-rootfs`) in Enforce mode into
+the cluster of the current kube context, for testing the operator's workloads against restrictive admission policies.
+Kyverno only validates resources in the operator namespace (or in the namespaces listed in
+`KYVERNO_ENFORCED_NAMESPACES`), so that other components in the test cluster are not affected.
+The script also creates the `PolicyException` for the collector DaemonSet that is described in
+[platform-specific.md](helm-chart/dash0-operator/docs/platform-specific.md#kyverno-policies-and-the-collector-daemonset),
+unless `DEPLOY_KYVERNO_POLICY_EXCEPTION=false` is set.
+The exception lives in the Kyverno namespace, since the test scenario scripts delete the operator namespace.
+[test-resources/bin/test-scenario-16-kyverno.sh](test-resources/bin/test-scenario-16-kyverno.sh) runs
+`deploy-kyverno.sh`, then deploys the operator with the target-allocator, the agent0-connector and Signal Control
+enabled, and fails unless all of the operator's workloads are admitted and become ready.
+Kyverno rejects workloads like Deployments and DaemonSets when they are created or updated, which shows up as an error
+in the Helm output or in the operator manager's log, and it rejects pods, which shows up as events with the reason
+`FailedCreate` (`kubectl get events --namespace operator-namespace --field-selector reason=FailedCreate`).
+[test-resources/bin/delete-kyverno.sh](test-resources/bin/delete-kyverno.sh) removes Kyverno again.
+`test-resources/bin/test-cleanup.sh` also removes Kyverno if it is installed, after uninstalling the operator, so that
+Kyverno validates the operator's pre-delete hook as well. A rejected hook shows up as an error of `helm uninstall` in
+the output of the cleanup script. All test scenario scripts except
+`test-scenario-03-rebuild-update-operator-no-cleanup.sh` start with the cleanup and therefore remove Kyverno;
+`test-olm-bundle.sh` and `test-env-var-fallback.sh` do not remove it.

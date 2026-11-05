@@ -543,6 +543,43 @@ tests:
               fieldRef:
                 fieldPath: metadata.annotations['openshift.io/scc']
 
+  # containerd rejects a pod-level runAsGroup without a pod-level runAsUser, which the chart cannot set (OpenShift
+  # assigns the UID), so the group is set on the container.
+  - it: should set a non-root runAsGroup on the manager container but neither runAsGroup nor runAsUser on the pod
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsGroup
+          value: 65532
+      - notExists:
+          path: spec.template.spec.securityContext.runAsGroup
+      - notExists:
+          path: spec.template.spec.securityContext.runAsUser
+      - notExists:
+          path: spec.template.spec.containers[0].securityContext.runAsUser
+
+  - it: should set a non-root runAsGroup on the manager container when operator.openShift.enabled is true
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        openShift:
+          enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsGroup
+          value: 65532
+      - notExists:
+          path: spec.template.spec.securityContext.runAsGroup
+      - notExists:
+          path: spec.template.spec.containers[0].securityContext.runAsUser
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+
   - it: should accept sendBatchMaxSize equal to sendBatchSize
     documentSelector:
       path: metadata.name

@@ -1989,6 +1989,7 @@ func startDash0Controllers(
 			OtlpHttpHostPort:                       int32(cliArgs.otlpHttpHostPort),
 			DaemonSetServiceAccountName:            cliArgs.otelCollectorDaemonSetServiceAccountName,
 			IsGkeAutopilot:                         cliArgs.isGkeAutopilot,
+			IsOpenShift:                            cliArgs.isOpenShift,
 			DevelopmentMode:                        developmentMode,
 			DebugVerbosityDetailed:                 envVars.debugVerbosityDetailed,
 			EnableProfExtension:                    envVars.enablePprofExtension,
