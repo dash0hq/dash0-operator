@@ -8,15 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
-	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -55,8 +52,6 @@ const (
 	sameVersionNoModificationMessage = "not updating the existing instrumentation for this workload, it has already " +
 		"been successfully instrumented by the same operator version"
 	actor = util.ActorWebhook
-
-	cronJobReadTimeout = 2 * time.Second
 )
 
 var (
@@ -399,7 +394,7 @@ func (h *InstrumentationWebhookHandler) handleJob(
 		// if h.preProcess returns failed=true, it will already have logged the error
 		return responseIfFailed
 	}
-	controllingCronJob, err := h.readControllingCronJob(ctx, request.Namespace, job)
+	controllingCronJob, err := workloads.ReadControllingCronJob(ctx, h.APIReader, request.Namespace, job)
 	if err != nil {
 		wrappedErr := fmt.Errorf(
 			"not instrumenting the job, since the cron job controlling it could not be read to check whether it has "+
@@ -409,7 +404,7 @@ func (h *InstrumentationWebhookHandler) handleJob(
 		util.QueueFailedInstrumentationEvent(h.Recorder, job, actor, wrappedErr)
 		return logErrorAndReturnAllowed(wrappedErr, logger)
 	}
-	hasOptedOut := jobHasOptedOutOfInstrumentation(
+	hasOptedOut := workloads.JobHasOptedOutOfInstrumentation(
 		job,
 		controllingCronJob,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
@@ -632,53 +627,6 @@ func (h *InstrumentationWebhookHandler) newWorkloadModifier(
 		actor,
 		logger,
 	)
-}
-
-/*
-readControllingCronJob reads the metadata of the cron job that controls the job. It returns nil if the job is not
-controlled by a cron job, or if that cron job does not exist anymore. An error is returned if the cron job could not be
-read for any other reason, including the read taking longer than cronJobReadTimeout, since the webhook needs to answer
-well within its timeout.
-*/
-func (h *InstrumentationWebhookHandler) readControllingCronJob(
-	ctx context.Context,
-	namespace string,
-	job *batchv1.Job,
-) (*metav1.PartialObjectMetadata, error) {
-	ownerReference := metav1.GetControllerOfNoCopy(job)
-	if ownerReference == nil ||
-		ownerReference.APIVersion != util.K8sTypeMetaCronJob.APIVersion ||
-		ownerReference.Kind != util.K8sTypeMetaCronJob.Kind {
-		return nil, nil
-	}
-	ctx, cancel := context.WithTimeout(ctx, cronJobReadTimeout)
-	defer cancel()
-	cronJob := &metav1.PartialObjectMetadata{TypeMeta: util.K8sTypeMetaCronJob}
-	err := h.APIReader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ownerReference.Name}, cronJob)
-	if apierrors.IsNotFound(err) || (err == nil && cronJob.UID != ownerReference.UID) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("cannot read the cron job %s/%s controlling the job: %w", namespace, ownerReference.Name, err)
-	}
-	return cronJob, nil
-}
-
-// jobHasOptedOutOfInstrumentation evaluates the instrumentation label selector against the labels of the job merged
-// with the labels of the cron job controlling it, if any. The cron job controller only copies the labels of the job
-// template to a job, merging in the labels of the cron job makes an opt-out in its top-level metadata apply to its jobs
-// as well. If a label is set on both with different values, the value from the job wins.
-func jobHasOptedOutOfInstrumentation(
-	job *batchv1.Job,
-	controllingCronJob *metav1.PartialObjectMetadata,
-	instrumentationLabelSelector string,
-) bool {
-	mergedLabels := make(map[string]string)
-	if controllingCronJob != nil {
-		maps.Copy(mergedLabels, controllingCronJob.Labels)
-	}
-	maps.Copy(mergedLabels, job.Labels)
-	return util.HasOptedOutOfInstrumentation(&metav1.ObjectMeta{Labels: mergedLabels}, instrumentationLabelSelector)
 }
 
 func (r *routing) routeFor(group, kind, version string) resourceHandler {

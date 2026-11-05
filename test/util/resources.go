@@ -378,6 +378,21 @@ func CreateJobWithOptOutLabel(
 	return CreateWorkload(ctx, k8sClient, JobWithOptOutLabel(namespace, name)).(*batchv1.Job)
 }
 
+// CreateJobControlledByCronJob creates the job with a controller reference to the cron job, as the cron job controller
+// does, and returns the job as stored.
+func CreateJobControlledByCronJob(
+	ctx context.Context,
+	k8sClient client.Client,
+	cronJob *batchv1.CronJob,
+	job *batchv1.Job,
+) *batchv1.Job {
+	job.OwnerReferences = []metav1.OwnerReference{
+		*metav1.NewControllerRef(cronJob, batchv1.SchemeGroupVersion.WithKind("CronJob")),
+	}
+	CreateWorkload(ctx, k8sClient, job)
+	return GetJob(ctx, k8sClient, job.Namespace, job.Name)
+}
+
 func BasicPod(namespace string, name string) *corev1.Pod {
 	workload := &corev1.Pod{}
 	workload.Namespace = namespace
