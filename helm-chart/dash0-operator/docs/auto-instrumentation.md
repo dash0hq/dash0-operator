@@ -156,6 +156,8 @@ spec:
 ```
 
 With `mode: pods`, the operator never restarts pods, neither to instrument them nor to remove their instrumentation.
+The only exception are workloads that still have instrumentation in their pod template from before the namespace was
+switched to `mode: pods`, see the switching between modes below.
 Pods that already exist keep their current state until they are recreated, for example by the next rollout, a scaling
 event, or a node drain:
 * Pods that were running before the namespace was switched to `mode: pods` are instrumented when they are recreated.
@@ -163,8 +165,8 @@ event, or a node drain:
   recreated.
 * Changes to the settings in `spec.instrumentWorkloads` (for example the label selector or trace context propagators)
   apply to pods created after the change.
-* When the namespace is switched to `mode: none`, or the Dash0 monitoring resource is removed, pods keep their
-  instrumentation until they are recreated.
+* When the namespace is switched to `mode: none`, or the Dash0 monitoring resource is removed, pods that have been
+  instrumented when they were created keep their instrumentation until they are recreated.
 
 Pods are instrumented by the operator's admission webhook.
 A pod that is created while the webhook is not reachable, for example while the operator is being updated, starts
