@@ -8,6 +8,7 @@ This guide covers automatic workload instrumentation, including Python and Ruby 
 - [Using Image Volumes for Auto-Instrumentation Files](#using-image-volumes-for-auto-instrumentation-files)
 - [Python Auto-Instrumentation](#python-auto-instrumentation)
 - [Ruby Auto-Instrumentation](#ruby-auto-instrumentation)
+- [Instrumenting Pods Instead of Workloads](#instrumenting-pods-instead-of-workloads)
 - [Disabling Auto-Instrumentation for Specific Workloads](#disabling-auto-instrumentation-for-specific-workloads)
 - [Using a Custom Label Selector to Control Auto-Instrumentation](#using-a-custom-label-selector-to-control-auto-instrumentation)
 - [Specifying Additional Resource Attributes via Labels and Annotations](#specifying-additional-resource-attributes-via-labels-and-annotations)
@@ -127,6 +128,59 @@ If the Dash0 Ruby distribution cannot be loaded at all, it deactivates itself sa
 Instrumentation for a library is installed when the application loads that library, so no particular load order is required: Rails applications, applications using Bundler, and plain Ruby scripts without a `Gemfile` are all instrumented.
 
 Because the Dash0 Ruby distribution is loaded before the application's own libraries, its bundled `google-protobuf` takes precedence over the version the application declares. This only matters for applications that use protobuf themselves and depend on behavior that changed between the bundled version and their own. Set `DISALLOWED_LIB_PATH=google-protobuf` on the container to make the distribution defer to the application's copy instead; if that copy is outside the range the OTLP exporter supports, the distribution deactivates itself safely rather than break the application.
+
+## Instrumenting Pods Instead of Workloads
+
+By default, the operator instruments workloads by modifying the pod template of the workload resource, that is, the
+deployment, daemon set, stateful set, replica set, job or cron job.
+Setting `spec.instrumentWorkloads.mode: pods` in the Dash0 monitoring resource of a namespace switches that namespace to
+pod-level instrumentation: The operator leaves the workload resources unmodified and instead instruments each pod when it
+is created.
+Since the workload resources are never modified, tools that manage them (for example Terraform, Argo CD or Flux) do not
+detect any drift caused by the operator, and pods created by any kind of owner, for example by
+[Argo Rollouts](https://argoproj.github.io/rollouts/), are instrumented as well.
+The modifications to the pod spec are the same as with the other modes, see
+[How Automatic Workload Instrumentation Works](#how-automatic-workload-instrumentation-works); the labels and
+annotations are added to the pod instead of the workload resource.
+The mode is set per namespace, so namespaces with `mode: pods` and namespaces with `mode: all` or
+`mode: created-and-updated` can exist side by side in the same cluster, and namespaces can be switched one at a time.
+
+```yaml
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0Monitoring
+metadata:
+  name: dash0-monitoring-resource
+spec:
+  instrumentWorkloads:
+    mode: pods
+```
+
+With `mode: pods`, the operator never restarts pods, neither to instrument them nor to remove their instrumentation.
+Pods that already exist keep their current state until they are recreated, for example by the next rollout, a scaling
+event, or a node drain:
+* Pods that were running before the namespace was switched to `mode: pods` are instrumented when they are recreated.
+* When the operator is updated, pods keep the instrumentation of the previous operator version until they are
+  recreated.
+* Changes to the settings in `spec.instrumentWorkloads` (for example the label selector or trace context propagators)
+  apply to pods created after the change.
+* When the namespace is switched to `mode: none`, or the Dash0 monitoring resource is removed, pods keep their
+  instrumentation until they are recreated.
+
+Pods are instrumented by the operator's admission webhook.
+A pod that is created while the webhook is not reachable, for example while the operator is being updated, starts
+without instrumentation and is instrumented the next time it is recreated.
+Running the operator with two replicas (`operator.replicaCount=2`) is recommended for namespaces with `mode: pods`.
+
+The label selector (`spec.instrumentWorkloads.labelSelector`, by default `dash0.com/enable!=false`) is evaluated against
+the labels of the pod, that is, against the labels in the pod template of the workload, not against the labels in the
+top level metadata of the workload resource.
+To opt a workload out of instrumentation in a namespace with `mode: pods`, put the label `dash0.com/enable: "false"` into
+its pod template.
+Keep this in mind when switching a namespace from `all` or `created-and-updated` to `pods`: Workloads that opt out via
+a label on the workload resource only would be instrumented after switching.
+
+Workloads that have been instrumented before the namespace was switched to `mode: pods` keep the instrumentation in
+their pod template.
 
 ## Disabling Auto-Instrumentation for Specific Workloads
 

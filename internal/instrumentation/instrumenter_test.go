@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -146,6 +147,72 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			},
 		}),
 		)
+
+		DescribeTable("when instrumentWorkloads.mode=pods", func(config WorkloadTestConfig) {
+			name := UniqueName(config.WorkloadNamePrefix)
+			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
+			createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload.Get())
+
+			checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, withPodsMode(dash0MonitoringResource), logger)
+
+			VerifyNoEvents(ctx, clientset, namespace)
+			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
+		}, Entry("should not modify an existing cron job", WorkloadTestConfig{
+			WorkloadNamePrefix: CronJobNamePrefix,
+			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateBasicCronJob),
+			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedCronJob(workload.Get().(*batchv1.CronJob))
+			},
+		}), Entry("should not modify an existing daemon set", WorkloadTestConfig{
+			WorkloadNamePrefix: DaemonSetNamePrefix,
+			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateBasicDaemonSet),
+			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedDaemonSet(workload.Get().(*appsv1.DaemonSet))
+			},
+		}), Entry("should not modify an existing deployment", WorkloadTestConfig{
+			WorkloadNamePrefix: DeploymentNamePrefix,
+			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateBasicDeployment),
+			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedDeployment(workload.Get().(*appsv1.Deployment))
+			},
+		}), Entry("should not modify an existing job", WorkloadTestConfig{
+			WorkloadNamePrefix: JobNamePrefix,
+			CreateFn:           WrapJobFnAsTestableWorkload(CreateBasicJob),
+			GetFn:              WrapJobFnAsTestableWorkload(GetJob),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedJob(workload.Get().(*batchv1.Job))
+			},
+		}), Entry("should not modify an existing ownerless replicaset", WorkloadTestConfig{
+			WorkloadNamePrefix: ReplicaSetNamePrefix,
+			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateBasicReplicaSet),
+			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet))
+			},
+		}), Entry("should not modify an existing stateful set", WorkloadTestConfig{
+			WorkloadNamePrefix: StatefulSetNamePrefix,
+			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateBasicStatefulSet),
+			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedStatefulSet(workload.Get().(*appsv1.StatefulSet))
+			},
+		}),
+		)
+
+		It("should not restart existing pods when instrumentWorkloads.mode=pods", func() {
+			name := UniqueName(PodNamePrefix)
+			pod := CreatePodControlledBy(ctx, k8sClient, TestNamespaceName, name, util.K8sTypeMetaReplicaSet)
+			createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, pod)
+
+			checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, withPodsMode(dash0MonitoringResource), logger)
+
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &corev1.Pod{})).To(Succeed())
+			VerifyUnmodifiedPod(GetPod(ctx, k8sClient, TestNamespaceName, name))
+			VerifyNoEvents(ctx, clientset, namespace)
+		})
 
 		Describe("when instrumenting existing workloads (special cases)", func() {
 			It("should record a failure event when attempting to instrument an existing job and add labels", func() {
@@ -1014,6 +1081,12 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		})
 	})
 })
+
+func withPodsMode(monitoringResource *dash0v1beta1.Dash0Monitoring) *dash0v1beta1.Dash0Monitoring {
+	copied := monitoringResource.DeepCopy()
+	copied.Spec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModePods
+	return copied
+}
 
 func checkSettingsAndInstrumentExistingWorkloads(
 	ctx context.Context,

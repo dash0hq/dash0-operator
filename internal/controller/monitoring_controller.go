@@ -419,6 +419,18 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 				),
 			)
 			requiredAction = util.ModificationModeUninstrumentation
+		} else if previousInstrumentWorkloadsMode != dash0common.InstrumentWorkloadsModePods &&
+			previousInstrumentWorkloadsMode != "" &&
+			currentInstrumentWorkloadsMode == dash0common.InstrumentWorkloadsModePods {
+			logger.Info(
+				fmt.Sprintf(
+					"The instrumentWorkloads mode has changed from \"%s\" to \"%s\". Workloads in this namespace will "+
+						"not be modified anymore, pods will be instrumented when they are created. Existing pods will "+
+						"keep their current state until they are recreated.",
+					previousInstrumentWorkloadsMode,
+					currentInstrumentWorkloadsMode,
+				),
+			)
 		}
 
 		// If the mode switched to "none" and we need to uninstrument, changes in individual settings (like label
