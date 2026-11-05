@@ -5,7 +5,10 @@ package util
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	otelmetric "go.opentelemetry.io/otel/metric"
@@ -55,4 +58,13 @@ func (c *DummySelfMonitoringMetricsClient) Reset() {
 
 func (c *DummySelfMonitoringMetricsClient) ResetCallCounts() {
 	c.InitializeSelfMonitoringMetricsCalls.Store(0)
+}
+
+// FailingReader is a client.Reader for which every Get fails.
+type FailingReader struct {
+	client.Reader
+}
+
+func (FailingReader) Get(context.Context, client.ObjectKey, client.Object, ...client.GetOption) error {
+	return errors.New("simulated read error")
 }

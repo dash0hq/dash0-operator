@@ -134,6 +134,11 @@ In namespaces that are Dash0-monitoring enabled, all workloads are automatically
 
 You can disable these workload modifications for specific workloads by setting the label `dash0.com/enable: "false"` in the top level metadata section of the workload specification.
 
+For a cron job, this also applies to the jobs it creates, although Kubernetes does not copy the labels of the cron job
+to its jobs: the labels of a job are evaluated together with the labels in the top level metadata of the cron job that
+controls it. If a label is set with different values on the cron job and in its job template
+(`spec.jobTemplate.metadata.labels`), the value from the job template wins.
+
 > **Note:** The actual label selector for enabling or disabling workload modification can be customized in the Dash0 monitoring resource. The label `dash0.com/enable: "false"` can be used when no custom label selector has been configured in the Dash0 monitoring resource, see [Using a Custom Label Selector to Control Auto-Instrumentation](#using-a-custom-label-selector-to-control-auto-instrumentation).
 
 Here is an example for a deployment with this label:

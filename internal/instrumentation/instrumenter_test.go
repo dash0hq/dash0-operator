@@ -54,6 +54,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 
 		instrumenter = NewInstrumenter(
 			k8sClient,
+			k8sClient,
 			clientset,
 			recorder,
 			util.NewClusterInstrumentationConfig(
@@ -253,7 +254,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			},
 		}))
 
-		Describe("when existing jobs have the opt-out label", func() {
+		Describe("when existing jobs or the cron jobs controlling them have the opt-out label", func() {
 			It("should not touch an existing job with the opt-out label", func() {
 				name := UniqueName(JobNamePrefix)
 				By("Inititalize a job")
@@ -264,6 +265,59 @@ var _ = Describe("The instrumenter", Ordered, func() {
 
 				VerifyNoEvents(ctx, clientset, namespace)
 				VerifyJobWithOptOutLabel(GetJob(ctx, k8sClient, namespace, name))
+			})
+
+			It("should not touch an existing job whose cron job has the opt-out label", func() {
+				cronJob := CreateCronJobWithOptOutLabel(ctx, k8sClient, namespace, UniqueName(CronJobNamePrefix))
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, cronJob)
+				job := CreateJobControlledByCronJob(
+					ctx,
+					k8sClient,
+					cronJob,
+					BasicJob(namespace, UniqueName(JobNamePrefix)),
+				)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, job)
+
+				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+				VerifyNoEvents(ctx, clientset, namespace)
+				VerifyUnmodifiedJob(GetJob(ctx, k8sClient, namespace, job.Name))
+			})
+
+			It("should remove labels from a job with a previously failed instrumentation attempt whose cron job has the "+
+				"opt-out label", func() {
+				cronJob := CreateCronJobWithOptOutLabel(ctx, k8sClient, namespace, UniqueName(CronJobNamePrefix))
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, cronJob)
+				job := CreateJobControlledByCronJob(
+					ctx,
+					k8sClient,
+					cronJob,
+					JobForWhichAnInstrumentationAttemptHasFailed(namespace, UniqueName(JobNamePrefix)),
+				)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, job)
+
+				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+				VerifyUnmodifiedJob(GetJob(ctx, k8sClient, namespace, job.Name))
+				VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, job.Name, testActor)
+			})
+
+			It("should not touch an existing job if the cron job controlling it cannot be read", func() {
+				instrumenter.APIReader = FailingReader{}
+				cronJob := BasicCronJob(namespace, UniqueName(CronJobNamePrefix))
+				cronJob.UID = "9a5e2e4c-6d0b-4c1e-8f3a-2b7d4e6f8a04"
+				job := CreateJobControlledByCronJob(
+					ctx,
+					k8sClient,
+					cronJob,
+					BasicJob(namespace, UniqueName(JobNamePrefix)),
+				)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, job)
+
+				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, logger)
+
+				VerifyNoEvents(ctx, clientset, namespace)
+				VerifyUnmodifiedJob(GetJob(ctx, k8sClient, namespace, job.Name))
 			})
 		})
 
@@ -844,6 +898,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 
 		It("enables debug environment variables", func() {
 			instrumenterWithDebug := NewInstrumenter(
+				k8sClient,
 				k8sClient,
 				clientset,
 				recorder,

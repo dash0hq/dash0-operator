@@ -32,12 +32,14 @@ import (
 
 type InstrumentationWebhookHandler struct {
 	Client                       client.Client
+	APIReader                    client.Reader
 	Recorder                     events.EventRecorder
 	ClusterInstrumentationConfig *util.ClusterInstrumentationConfig
 }
 
 type resourceHandler func(
 	h *InstrumentationWebhookHandler,
+	ctx context.Context,
 	request admission.Request,
 	gvkLabel string,
 	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
@@ -88,6 +90,7 @@ var (
 
 	fallbackRoute resourceHandler = func(
 		h *InstrumentationWebhookHandler,
+		_ context.Context,
 		request admission.Request,
 		gvkLabel string,
 		namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
@@ -97,8 +100,12 @@ var (
 	}
 )
 
+// NewInstrumentationWebhookHandler creates the handler for the instrumentation webhook. The client is expected to be
+// the cached client of the operator manager, apiReader reads directly from the API server and is used to read the cron
+// job controlling a job, so that admitting a job does not start an informer for all cron jobs in the cluster.
 func NewInstrumentationWebhookHandler(
 	client client.Client,
+	apiReader client.Reader,
 	recorder events.EventRecorder,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
 ) *InstrumentationWebhookHandler {
@@ -107,6 +114,7 @@ func NewInstrumentationWebhookHandler(
 	}
 	return &InstrumentationWebhookHandler{
 		Client:                       client,
+		APIReader:                    apiReader,
 		Recorder:                     recorder,
 		ClusterInstrumentationConfig: clusterInstrumentationConfig,
 	}
@@ -235,6 +243,7 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 	logger.Debug("routing admission request to handler", "group", group, "kind", kind, "version", version)
 	return routes.routeFor(group, kind, version)(
 		h,
+		ctx,
 		request,
 		gvkLabel,
 		dash0MonitoringResource.GetNamespaceInstrumentationConfig(),
@@ -271,6 +280,7 @@ func consumeIgnoreOnceLabel(request admission.Request) (admission.Response, bool
 }
 
 func (h *InstrumentationWebhookHandler) handleCronJob(
+	_ context.Context,
 	request admission.Request,
 	gvkLabel string,
 	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
@@ -304,6 +314,7 @@ func (h *InstrumentationWebhookHandler) handleCronJob(
 }
 
 func (h *InstrumentationWebhookHandler) handleDaemonSet(
+	_ context.Context,
 	request admission.Request,
 	gvkLabel string,
 	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
@@ -337,6 +348,7 @@ func (h *InstrumentationWebhookHandler) handleDaemonSet(
 }
 
 func (h *InstrumentationWebhookHandler) handleDeployment(
+	_ context.Context,
 	request admission.Request,
 	gvkLabel string,
 	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
@@ -370,6 +382,7 @@ func (h *InstrumentationWebhookHandler) handleDeployment(
 }
 
 func (h *InstrumentationWebhookHandler) handleJob(
+	ctx context.Context,
 	request admission.Request,
 	gvkLabel string,
 	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
@@ -381,19 +394,28 @@ func (h *InstrumentationWebhookHandler) handleJob(
 		// if h.preProcess returns failed=true, it will already have logged the error
 		return responseIfFailed
 	}
-	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(
-		&job.ObjectMeta,
+	controllingCronJob, err := workloads.ReadControllingCronJob(ctx, h.APIReader, request.Namespace, job)
+	if err != nil {
+		wrappedErr := fmt.Errorf(
+			"not instrumenting the job, since the cron job controlling it could not be read to check whether it has "+
+				"opted out of instrumentation: %w",
+			err,
+		)
+		util.QueueFailedInstrumentationEvent(h.Recorder, job, actor, wrappedErr)
+		return logErrorAndReturnAllowed(wrappedErr, logger)
+	}
+	hasOptedOut := workloads.JobHasOptedOutOfInstrumentation(
+		job,
+		controllingCronJob,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
-	) {
+	)
+	if hasOptedOut && !util.HasBeenInstrumentedSuccessfully(&job.ObjectMeta) {
 		return logAndReturnAllowed(
 			fmt.Sprintf(
 				optOutAdmissionAllowedMessage, namespaceInstrumentationConfig.InstrumentationLabelSelector),
 			logger,
 		)
-	} else if util.WasInstrumentedButHasOptedOutNow(
-		&job.ObjectMeta,
-		namespaceInstrumentationConfig.InstrumentationLabelSelector,
-	) {
+	} else if hasOptedOut {
 		// This should not happen, since it can only happen for an admission request with operation=UPDATE, and we are
 		// not listening to updates for jobs. We cannot uninstrument jobs if the user adds an opt-out label after the
 		// job has been already instrumented, since jobs are immutable.
@@ -405,6 +427,7 @@ func (h *InstrumentationWebhookHandler) handleJob(
 }
 
 func (h *InstrumentationWebhookHandler) handlePod(
+	_ context.Context,
 	request admission.Request,
 	gvkLabel string,
 	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
@@ -441,6 +464,7 @@ func (h *InstrumentationWebhookHandler) handlePod(
 }
 
 func (h *InstrumentationWebhookHandler) handleReplicaSet(
+	_ context.Context,
 	request admission.Request,
 	gvkLabel string,
 	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
@@ -474,6 +498,7 @@ func (h *InstrumentationWebhookHandler) handleReplicaSet(
 }
 
 func (h *InstrumentationWebhookHandler) handleStatefulSet(
+	_ context.Context,
 	request admission.Request,
 	gvkLabel string,
 	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,

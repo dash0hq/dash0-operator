@@ -33,6 +33,7 @@ import (
 
 type Instrumenter struct {
 	client.Client
+	APIReader                    client.Reader
 	Clientset                    *kubernetes.Clientset
 	Recorder                     events.EventRecorder
 	ClusterInstrumentationConfig *util.ClusterInstrumentationConfig
@@ -85,8 +86,12 @@ func (e ImmutableWorkloadError) Error() string {
 	)
 }
 
+// NewInstrumenter creates the instrumenter for existing workloads. The client is expected to be the cached client of the
+// operator manager, apiReader reads directly from the API server and is used to read the cron job controlling a job, so
+// that handling existing jobs does not start an informer for all cron jobs in the cluster.
 func NewInstrumenter(
 	client client.Client,
+	apiReader client.Reader,
 	clientset *kubernetes.Clientset,
 	recorder events.EventRecorder,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
@@ -96,6 +101,7 @@ func NewInstrumenter(
 	}
 	return &Instrumenter{
 		Client:                       client,
+		APIReader:                    apiReader,
 		Clientset:                    clientset,
 		Recorder:                     recorder,
 		ClusterInstrumentationConfig: clusterInstrumentationConfig,
@@ -408,26 +414,39 @@ func (i *Instrumenter) handleJobOnInstrumentation(
 		return
 	}
 
+	controllingCronJob, err := workloads.ReadControllingCronJob(ctx, i.APIReader, job.GetNamespace(), job)
+	if err != nil {
+		logger.Error(
+			err,
+			"not handling this job, since the cron job controlling it could not be read to check whether it has "+
+				"opted out of instrumentation",
+		)
+		return
+	}
+	hasOptedOut := workloads.JobHasOptedOutOfInstrumentation(
+		job,
+		controllingCronJob,
+		namespaceInstrumentationConfig.InstrumentationLabelSelector,
+	)
+
 	objectMeta := &job.ObjectMeta
 	var requiredAction util.ModificationMode
 	modifyLabels := true
 	createImmutableWorkloadsError := true
-	if util.HasOptedOutOfInstrumentation(objectMeta, namespaceInstrumentationConfig.InstrumentationLabelSelector) &&
-		util.InstrumentationAttemptHasFailed(objectMeta) {
+	if hasOptedOut && util.InstrumentationAttemptHasFailed(objectMeta) {
 		// There has been an unsuccessful attempt to instrument this job before, but now the user has added the opt-out
 		// label, so we can remove the labels left over from that earlier attempt.
 		// "requiredAction = Instrumentation" in the context of immutable jobs means "remove Dash0 labels from the job",
 		// no other modification will take place.
 		requiredAction = util.ModificationModeUninstrumentation
 		createImmutableWorkloadsError = false
-	} else if util.HasOptedOutOfInstrumentation(objectMeta, namespaceInstrumentationConfig.InstrumentationLabelSelector) &&
-		util.HasBeenInstrumentedSuccessfully(objectMeta) {
+	} else if hasOptedOut && util.HasBeenInstrumentedSuccessfully(objectMeta) {
 		// This job has been instrumented successfully, presumably by the webhook. Since then, the opt-out label has
 		// been added. The correct action would be to uninstrument it, but since it is immutable, we cannot do that.
 		// We will not actually modify this job at all, but create a log message and a corresponding event.
 		modifyLabels = false
 		requiredAction = util.ModificationModeUninstrumentation
-	} else if util.HasOptedOutOfInstrumentation(objectMeta, namespaceInstrumentationConfig.InstrumentationLabelSelector) {
+	} else if hasOptedOut {
 		// has opt-out label and there has been no previous instrumentation attempt
 		logger.Info(
 			fmt.Sprintf(

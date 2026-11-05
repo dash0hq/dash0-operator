@@ -5,14 +5,19 @@ package webhooks
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"slices"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
@@ -172,6 +177,126 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 				workload = GetReplicaSet(ctx, k8sClient, TestNamespaceName, name)
 				VerifyUnmodifiedReplicaSet(workload)
 				VerifyInstrumentationViaHigherOrderWorkloadEvent(ctx, clientset, TestNamespaceName, name, testActor)
+			})
+		})
+
+		Describe("when new jobs are deployed that are controlled by a cron job", func() {
+			It("should not instrument a job if its cron job has opted out of instrumentation", func() {
+				cronJob := CreateCronJobWithOptOutLabel(ctx, k8sClient, TestNamespaceName, UniqueName(CronJobNamePrefix))
+				createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, cronJob)
+				job := CreateJobControlledByCronJob(
+					ctx,
+					k8sClient,
+					cronJob,
+					BasicJob(TestNamespaceName, UniqueName(JobNamePrefix)),
+				)
+				createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, job)
+				VerifyUnmodifiedJob(job)
+				VerifyNoEvents(ctx, clientset, TestNamespaceName)
+			})
+
+			It("should instrument a job if its uninstrumented cron job has not opted out of instrumentation", func() {
+				cronJob := BasicCronJob(TestNamespaceName, UniqueName(CronJobNamePrefix))
+				AddLabel(&cronJob.ObjectMeta, "dash0.com/webhook-ignore-once", "true")
+				CreateWorkload(ctx, k8sClient, cronJob)
+				createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, cronJob)
+				VerifyUnmodifiedCronJob(GetCronJob(ctx, k8sClient, TestNamespaceName, cronJob.Name))
+				job := CreateJobControlledByCronJob(
+					ctx,
+					k8sClient,
+					cronJob,
+					BasicJob(TestNamespaceName, UniqueName(JobNamePrefix)),
+				)
+				createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, job)
+				VerifyModifiedJob(job, BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
+				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, job.Name, testActor)
+			})
+
+			It("should instrument a job that has opted in, although its cron job has opted out of instrumentation", func() {
+				cronJob := CreateCronJobWithOptOutLabel(ctx, k8sClient, TestNamespaceName, UniqueName(CronJobNamePrefix))
+				createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, cronJob)
+				job := BasicJob(TestNamespaceName, UniqueName(JobNamePrefix))
+				AddLabel(&job.ObjectMeta, "dash0.com/enable", "true")
+				job = CreateJobControlledByCronJob(ctx, k8sClient, cronJob, job)
+				createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, job)
+				VerifyModifiedJob(job, BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
+				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, job.Name, testActor)
+			})
+
+			It("should instrument a job if the cron job from its controller reference does not exist anymore", func() {
+				cronJob := CronJobWithOptOutLabel(TestNamespaceName, UniqueName(CronJobNamePrefix))
+				cronJob.UID = "9a5e2e4c-6d0b-4c1e-8f3a-2b7d4e6f8a01"
+				job := CreateJobControlledByCronJob(
+					ctx,
+					k8sClient,
+					cronJob,
+					BasicJob(TestNamespaceName, UniqueName(JobNamePrefix)),
+				)
+				createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, job)
+				VerifyModifiedJob(job, BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
+				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, job.Name, testActor)
+			})
+
+			It("should instrument a job if the cron job with the name from its controller reference has a different UID",
+				func() {
+					cronJob := CreateCronJobWithOptOutLabel(ctx, k8sClient, TestNamespaceName, UniqueName(CronJobNamePrefix))
+					createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, cronJob)
+					previousCronJob := cronJob.DeepCopy()
+					previousCronJob.UID = "9a5e2e4c-6d0b-4c1e-8f3a-2b7d4e6f8a02"
+					job := CreateJobControlledByCronJob(
+						ctx,
+						k8sClient,
+						previousCronJob,
+						BasicJob(TestNamespaceName, UniqueName(JobNamePrefix)),
+					)
+					createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, job)
+					VerifyModifiedJob(job, BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
+					VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, job.Name, testActor)
+				})
+
+			It("should not instrument a job if the cron job controlling it cannot be read", func() {
+				handler := NewInstrumentationWebhookHandler(
+					k8sClient,
+					FailingReader{},
+					manager.GetEventRecorder("dash0-webhook"),
+					instrumentationWebhookClusterConfig,
+				)
+				cronJob := BasicCronJob(TestNamespaceName, "cron-job")
+				cronJob.UID = "9a5e2e4c-6d0b-4c1e-8f3a-2b7d4e6f8a03"
+				job := BasicJob(TestNamespaceName, UniqueName(JobNamePrefix))
+				job.TypeMeta = util.K8sTypeMetaJob
+				job.OwnerReferences = []metav1.OwnerReference{
+					*metav1.NewControllerRef(cronJob, batchv1.SchemeGroupVersion.WithKind("CronJob")),
+				}
+				rawJob, err := json.Marshal(job)
+				Expect(err).NotTo(HaveOccurred())
+
+				response := handler.Handle(ctx, admission.Request{
+					AdmissionRequest: admissionv1.AdmissionRequest{
+						Operation: admissionv1.Create,
+						Kind:      metav1.GroupVersionKind{Group: "batch", Version: "v1", Kind: "Job"},
+						Namespace: TestNamespaceName,
+						Name:      job.Name,
+						Object:    runtime.RawExtension{Raw: rawJob},
+					},
+				})
+
+				Expect(response.Allowed).To(BeTrue())
+				Expect(response.Patches).To(BeEmpty())
+				VerifyFailedInstrumentationEvent(
+					ctx,
+					clientset,
+					TestNamespaceName,
+					job.Name,
+					fmt.Sprintf(
+						"Dash0 instrumentation of this workload by the %s has not been successful. Error message: not "+
+							"instrumenting the job, since the cron job controlling it could not be read to check whether "+
+							"it has opted out of instrumentation: cannot read the cron job %s/cron-job controlling the "+
+							"job: simulated read error",
+						testActor,
+						TestNamespaceName,
+					),
+				)
 			})
 		})
 
@@ -858,6 +983,39 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			deployment = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
 			VerifyNoEvents(ctx, clientset, TestNamespaceName)
 			VerifyUnmodifiedDeployment(deployment)
+		})
+
+		It("when a new job is controlled by a cron job that matches the custom auto-instrumentation label selector",
+			func() {
+				cronJob := BasicCronJob(TestNamespaceName, UniqueName(CronJobNamePrefix))
+				cronJob.Labels = map[string]string{"dash0-auto-instrument": "yes"}
+				AddLabel(&cronJob.ObjectMeta, "dash0.com/webhook-ignore-once", "true")
+				CreateWorkload(ctx, k8sClient, cronJob)
+				createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, cronJob)
+				job := CreateJobControlledByCronJob(
+					ctx,
+					k8sClient,
+					cronJob,
+					BasicJob(TestNamespaceName, UniqueName(JobNamePrefix)),
+				)
+				createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, job)
+				VerifyModifiedJob(job, BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
+				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, job.Name, testActor)
+			})
+
+		It("when a new job is controlled by a cron job that does not match the custom auto-instrumentation label "+
+			"selector", func() {
+			cronJob := CreateBasicCronJob(ctx, k8sClient, TestNamespaceName, UniqueName(CronJobNamePrefix))
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, cronJob)
+			job := CreateJobControlledByCronJob(
+				ctx,
+				k8sClient,
+				cronJob,
+				BasicJob(TestNamespaceName, UniqueName(JobNamePrefix)),
+			)
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, job)
+			VerifyUnmodifiedJob(job)
+			VerifyNoEvents(ctx, clientset, TestNamespaceName)
 		})
 
 		It("when an instrumented workload no longer matches the custom auto-instrumentation label selector", func() {

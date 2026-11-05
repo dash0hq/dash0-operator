@@ -2396,6 +2396,7 @@ func startDash0Controllers(
 
 		instrumentationWebhookHandler := webhooks.NewInstrumentationWebhookHandler(
 			k8sClient,
+			mgr.GetAPIReader(),
 			mgr.GetEventRecorder("dash0-instrumentation-webhook"),
 			clusterInstrumentationConfig,
 		)
@@ -2586,6 +2587,7 @@ func setupInstrumenters(
 	startupInstrumenter := instrumentation.NewInstrumenter(
 		// The k8s client will be added later, in internal/startup/instrument_at_startup.go#Start.
 		nil,
+		mgr.GetAPIReader(),
 		clientset,
 		mgr.GetEventRecorder("dash0-startup-tasks"),
 		clusterInstrumentationConfig,
@@ -2600,6 +2602,7 @@ func setupInstrumenters(
 
 	instrumenter := instrumentation.NewInstrumenter(
 		k8sClient,
+		mgr.GetAPIReader(),
 		clientset,
 		mgr.GetEventRecorder("dash0-monitoring-controller"),
 		clusterInstrumentationConfig,
