@@ -159,3 +159,25 @@ func restartWorkload(namespace string, runtime runtimeType, workloadType workloa
 		namespace,
 	))).To(Succeed())
 }
+
+// verifyThatNewPodsAreNotInstrumented waits for the rollout of the workload and verifies that the pods replacing the
+// given pods have not been instrumented by the webhook.
+func verifyThatNewPodsAreNotInstrumented(
+	namespace string,
+	runtime runtimeType,
+	workloadType workloadType,
+	oldPodUids []string,
+) {
+	waitForRollout(namespace, runtime, workloadType)
+	By(fmt.Sprintf("%s %s: verifying that the new pods have not been instrumented",
+		runtime.runtimeTypeLabel,
+		workloadType.workloadTypeString))
+	Eventually(func(g Gomega) {
+		pods := readPodsOfWorkload(g, namespace, runtime, workloadType)
+		g.Expect(pods).ToNot(BeEmpty())
+		for _, pod := range pods {
+			g.Expect(oldPodUids).ToNot(ContainElement(string(pod.UID)), "the old pod %s is still running", pod.Name)
+			g.Expect(pod.Labels).ToNot(HaveKey("dash0.com/instrumented"))
+		}
+	}, podInstrumentationTimeout, pollingInterval).Should(Succeed())
+}

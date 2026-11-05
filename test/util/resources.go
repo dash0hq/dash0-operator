@@ -473,6 +473,26 @@ func CreatePodControlledBy(
 	return CreateWorkload(ctx, k8sClient, PodControlledBy(namespace, name, ownerType)).(*corev1.Pod)
 }
 
+// CreateReplicaSetAndPodControlledByDeployment creates a replica set controlled by the given deployment, which needs to
+// exist already, and creates the given pod as controlled by that replica set.
+func CreateReplicaSetAndPodControlledByDeployment(
+	ctx context.Context,
+	k8sClient client.Client,
+	deployment *appsv1.Deployment,
+	pod *corev1.Pod,
+) (*appsv1.ReplicaSet, *corev1.Pod) {
+	replicaSet := BasicReplicaSet(deployment.Namespace, UniqueName(ReplicaSetNamePrefix))
+	replicaSet.OwnerReferences = []metav1.OwnerReference{
+		*metav1.NewControllerRef(deployment, appsv1.SchemeGroupVersion.WithKind("Deployment")),
+	}
+	CreateWorkload(ctx, k8sClient, replicaSet)
+	pod.OwnerReferences = []metav1.OwnerReference{
+		*metav1.NewControllerRef(replicaSet, appsv1.SchemeGroupVersion.WithKind("ReplicaSet")),
+	}
+	CreateWorkload(ctx, k8sClient, pod)
+	return replicaSet, pod
+}
+
 func PodWithOptOutLabel(namespace string, name string) *corev1.Pod {
 	workload := BasicPod(namespace, name)
 	AddOptOutLabel(&workload.ObjectMeta)

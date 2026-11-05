@@ -259,6 +259,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 				handler := NewInstrumentationWebhookHandler(
 					k8sClient,
 					FailingReader{},
+					nil,
 					manager.GetEventRecorder("dash0-webhook"),
 					instrumentationWebhookClusterConfig,
 				)
@@ -1233,11 +1234,14 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 				Name:       "owner",
 				UID:        "1234",
 			}}
+			pod.OwnerReferences[0].Controller = new(true)
 			workload := CreateWorkload(ctx, k8sClient, pod).(*corev1.Pod)
 			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
 			workload = GetPod(ctx, k8sClient, TestNamespaceName, name)
 			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
-			VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
+			event := VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, "owner", testActor)
+			Expect(event.Regarding.Kind).To(Equal(owner.Kind))
+			Expect(string(event.Regarding.UID)).To(Equal("1234"))
 		}, Entry("owned by a daemon set", util.K8sTypeMetaDaemonSet),
 			Entry("owned by a job", util.K8sTypeMetaJob),
 			Entry("owned by a replica set", util.K8sTypeMetaReplicaSet),
@@ -1279,8 +1283,51 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, ownedPod)
 			VerifyUnmodifiedPod(GetPod(ctx, k8sClient, otherNamespace, ownedPodName))
 		})
+
+		It("should not instrument a new pod if its deployment has opted out of instrumentation", func() {
+			deployment := DeploymentWithOptOutLabel(TestNamespaceName, UniqueName(DeploymentNamePrefix))
+			var pod *corev1.Pod
+			pod, createdObjectsInstrumentationWebhookTest = createPodOfDeployment(
+				deployment,
+				createdObjectsInstrumentationWebhookTest,
+			)
+			VerifyUnmodifiedPod(pod)
+			VerifyNoEvents(ctx, clientset, TestNamespaceName)
+		})
+
+		It("should instrument a new pod with service attributes from its deployment, and record events for the "+
+			"deployment", func() {
+			deployment := BasicDeployment(TestNamespaceName, UniqueName(DeploymentNamePrefix))
+			AddLabel(&deployment.ObjectMeta, util.AppKubernetesIoNameLabel, "deployment-service")
+			var pod *corev1.Pod
+			pod, createdObjectsInstrumentationWebhookTest = createPodOfDeployment(
+				deployment,
+				createdObjectsInstrumentationWebhookTest,
+			)
+			Expect(pod.Labels).To(HaveKeyWithValue("dash0.com/instrumented", "true"))
+			serviceName := FindEnvVarByName(pod.Spec.Containers[0].Env, "OTEL_INJECTOR_SERVICE_NAME")
+			Expect(serviceName).ToNot(BeNil())
+			Expect(serviceName.Value).To(Equal("deployment-service"))
+			event := VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, deployment.Name, testActor)
+			Expect(event.Regarding.Kind).To(Equal("Deployment"))
+			Expect(event.Regarding.UID).To(Equal(deployment.UID))
+		})
 	})
 })
+
+// createPodOfDeployment creates the deployment, a replica set controlled by it, and a pod controlled by the replica
+// set, created via generateName like the replica set controller does, and returns the pod as stored.
+func createPodOfDeployment(
+	deployment *appsv1.Deployment,
+	createdObjects []client.Object,
+) (*corev1.Pod, []client.Object) {
+	CreateWorkload(ctx, k8sClient, deployment)
+	pod := BasicPod(TestNamespaceName, "")
+	pod.GenerateName = "pod-of-deployment-"
+	replicaSet, pod := CreateReplicaSetAndPodControlledByDeployment(ctx, k8sClient, deployment, pod)
+	createdObjects = append(createdObjects, deployment, replicaSet, pod)
+	return GetPod(ctx, k8sClient, TestNamespaceName, pod.Name), createdObjects
+}
 
 func verifyThatDeploymentIsInstrumented(createdObjects []client.Object) []client.Object {
 	name := UniqueName(DeploymentNamePrefix)

@@ -2407,6 +2407,7 @@ func startDash0Controllers(
 		instrumentationWebhookHandler := webhooks.NewInstrumentationWebhookHandler(
 			k8sClient,
 			mgr.GetAPIReader(),
+			mgr.GetCache(),
 			mgr.GetEventRecorder("dash0-instrumentation-webhook"),
 			clusterInstrumentationConfig,
 		)
