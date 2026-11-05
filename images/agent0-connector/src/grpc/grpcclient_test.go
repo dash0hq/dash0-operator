@@ -173,6 +173,15 @@ type fakeStream struct {
 	// It has to be buffered for as many responses as the test expects.
 	sentSignal chan *pb.CommandResponse
 
+	// sendDelay makes every Send take at least this long, which widens the window in which a concurrent Send call would
+	// be detected.
+	sendDelay time.Duration
+
+	// sending is set while a Send call is in progress, concurrentSend is set when Send has been called while another
+	// call was still in progress. A gRPC stream does not support that.
+	sending        atomic.Bool
+	concurrentSend atomic.Bool
+
 	// idx is only accessed by Recv, which listenToCommandRequests calls from a single goroutine.
 	idx int
 
@@ -196,6 +205,12 @@ func (f *fakeStream) Recv() (*pb.CommandRequest, error) {
 }
 
 func (f *fakeStream) Send(resp *pb.CommandResponse) error {
+	if !f.sending.CompareAndSwap(false, true) {
+		f.concurrentSend.Store(true)
+	}
+	defer f.sending.Store(false)
+	time.Sleep(f.sendDelay)
+
 	if f.sendErr != nil {
 		return f.sendErr
 	}
@@ -277,6 +292,26 @@ func startListeningWithContext(
 	maxConcurrentCommands int,
 	execute commandExecutor,
 ) <-chan error {
+	return startListeningWithHeartbeatInterval(
+		ctx,
+		logger,
+		stream,
+		maxConcurrentCommands,
+		execute,
+		defaultHeartbeatInterval,
+	)
+}
+
+// startListeningWithHeartbeatInterval is startListeningWithContext for the tests that need heartbeats to be sent
+// within the test's runtime.
+func startListeningWithHeartbeatInterval(
+	ctx context.Context,
+	logger *slog.Logger,
+	stream commandRequestStream,
+	maxConcurrentCommands int,
+	execute commandExecutor,
+	heartbeatInterval time.Duration,
+) <-chan error {
 	listenDone := make(chan error, 1)
 	go func() {
 		subscriber := &Subscriber{
@@ -284,6 +319,7 @@ func startListeningWithContext(
 			maxConcurrentCommands:  maxConcurrentCommands,
 			allowedKubectlCommands: allowOnlyGet(),
 			execute:                execute,
+			heartbeatInterval:      heartbeatInterval,
 		}
 		listenDone <- subscriber.listenToCommandRequests(ctx, logger, stream)
 	}()
@@ -469,6 +505,221 @@ func TestListenToCommandRequests(t *testing.T) {
 		}
 		if observed := peak.Load(); observed > maxConcurrentCommands {
 			t.Errorf("expected at most %d commands to run at the same time, got %d", maxConcurrentCommands, observed)
+		}
+	})
+}
+
+// heartbeatTestInterval is the heartbeat interval for the tests that need heartbeats to be sent.
+const heartbeatTestInterval = 5 * time.Millisecond
+
+// splitHeartbeats separates the heartbeats from the command responses among the given sent messages.
+func splitHeartbeats(sent []*pb.CommandResponse) (heartbeats int, responses []*pb.CommandResponse) {
+	for _, resp := range sent {
+		if resp.GetHeartbeat() {
+			heartbeats++
+		} else {
+			responses = append(responses, resp)
+		}
+	}
+	return heartbeats, responses
+}
+
+// awaitHeartbeats waits until at least the given number of heartbeats has been sent on the stream, and fails the test
+// if that does not happen in time.
+func awaitHeartbeats(t *testing.T, stream *fakeStream, count int) {
+	t.Helper()
+	deadline := time.Now().Add(testTimeout)
+	for time.Now().Before(deadline) {
+		if heartbeats, _ := splitHeartbeats(stream.sentResponses()); heartbeats >= count {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %d heartbeats to be sent", count)
+}
+
+func TestListenToCommandRequestsHeartbeats(t *testing.T) {
+	logger := discardLogger()
+
+	t.Run("sends heartbeats while the stream is idle", func(t *testing.T) {
+		recvGate := make(chan struct{})
+		stream := &fakeStream{recvGate: recvGate}
+
+		listenDone := startListeningWithHeartbeatInterval(
+			context.Background(),
+			logger,
+			stream,
+			defaultMaxConcurrentCommands,
+			kubectl.ExecuteCommandRequest,
+			heartbeatTestInterval,
+		)
+		awaitHeartbeats(t, stream, 3)
+
+		close(recvGate)
+		if err := awaitListenResult(t, listenDone); err != nil {
+			t.Fatalf("expected a nil error on clean stream close, got %v", err)
+		}
+		for _, sent := range stream.sentResponses() {
+			if !sent.GetHeartbeat() {
+				t.Errorf("expected only heartbeats to be sent, got %v", sent)
+			}
+			if sent.GetRequestId() != "" {
+				t.Errorf("expected heartbeats without a request ID, got %q", sent.GetRequestId())
+			}
+		}
+	})
+
+	t.Run("sends heartbeats and command responses without concurrent Send calls", func(t *testing.T) {
+		const numberOfRequests = 20
+		requests := make([]*pb.CommandRequest, 0, numberOfRequests)
+		for i := range numberOfRequests {
+			requests = append(requests, &pb.CommandRequest{RequestId: fmt.Sprintf("req-%02d", i), Command: "kubectl"})
+		}
+		recvGate := make(chan struct{})
+		stream := &fakeStream{
+			requests:  requests,
+			recvGate:  recvGate,
+			sendDelay: 2 * time.Millisecond,
+		}
+		execute := func(
+			_ context.Context,
+			_ *slog.Logger,
+			_ string,
+			_ kubectl.AllowedKubectlCommands,
+			req *pb.CommandRequest,
+		) *pb.CommandResponse {
+			time.Sleep(heartbeatTestInterval)
+			return &pb.CommandResponse{RequestId: req.GetRequestId()}
+		}
+
+		listenDone := startListeningWithHeartbeatInterval(
+			context.Background(),
+			logger,
+			stream,
+			4,
+			execute,
+			heartbeatTestInterval,
+		)
+		deadline := time.Now().Add(testTimeout)
+		for {
+			if _, responses := splitHeartbeats(stream.sentResponses()); len(responses) == numberOfRequests {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("timed out waiting for all requests to be answered")
+			}
+			time.Sleep(time.Millisecond)
+		}
+		awaitHeartbeats(t, stream, 1)
+
+		close(recvGate)
+		if err := awaitListenResult(t, listenDone); err != nil {
+			t.Fatalf("expected a nil error on clean stream close, got %v", err)
+		}
+		if stream.concurrentSend.Load() {
+			t.Error("expected Send to never be called concurrently")
+		}
+		_, responses := splitHeartbeats(stream.sentResponses())
+		if ids := requestIDs(responses); len(ids) != numberOfRequests {
+			t.Errorf("expected all %d requests to be answered, got %v", numberOfRequests, ids)
+		}
+	})
+
+	t.Run("stops sending heartbeats when the backend closes the stream", func(t *testing.T) {
+		recvGate := make(chan struct{})
+		commandStarted := make(chan struct{})
+		releaseCommand := make(chan struct{})
+		stream := &fakeStream{
+			requests: []*pb.CommandRequest{{RequestId: "req-1", Command: "kubectl"}},
+			recvGate: recvGate,
+		}
+		execute := func(
+			_ context.Context,
+			_ *slog.Logger,
+			_ string,
+			_ kubectl.AllowedKubectlCommands,
+			req *pb.CommandRequest,
+		) *pb.CommandResponse {
+			close(commandStarted)
+			<-releaseCommand
+			return &pb.CommandResponse{RequestId: req.GetRequestId()}
+		}
+
+		listenDone := startListeningWithHeartbeatInterval(
+			context.Background(),
+			logger,
+			stream,
+			defaultMaxConcurrentCommands,
+			execute,
+			heartbeatTestInterval,
+		)
+		<-commandStarted
+		awaitHeartbeats(t, stream, 1)
+
+		// A clean close lets the running command finish, but no heartbeat is sent after the receive loop has returned.
+		close(recvGate)
+		time.Sleep(10 * heartbeatTestInterval)
+		heartbeatsAfterClose, _ := splitHeartbeats(stream.sentResponses())
+		time.Sleep(10 * heartbeatTestInterval)
+		if heartbeats, _ := splitHeartbeats(stream.sentResponses()); heartbeats != heartbeatsAfterClose {
+			t.Errorf(
+				"expected no heartbeats after the stream was closed, got %d more",
+				heartbeats-heartbeatsAfterClose,
+			)
+		}
+
+		close(releaseCommand)
+		if err := awaitListenResult(t, listenDone); err != nil {
+			t.Fatalf("expected a nil error on clean stream close, got %v", err)
+		}
+		if _, responses := splitHeartbeats(stream.sentResponses()); len(responses) != 1 {
+			t.Errorf("expected the running command to be answered after the clean close, got %v", responses)
+		}
+	})
+
+	t.Run("aborts the running commands and returns a wrapped error when sending a heartbeat fails", func(t *testing.T) {
+		sendErr := errors.New("broken pipe")
+		recvGate := make(chan struct{})
+		commandCancelled := make(chan struct{})
+		stream := &fakeStream{
+			requests: []*pb.CommandRequest{{RequestId: "req-1", Command: "kubectl"}},
+			recvGate: recvGate,
+			sendErr:  sendErr,
+		}
+		execute := func(
+			ctx context.Context,
+			_ *slog.Logger,
+			_ string,
+			_ kubectl.AllowedKubectlCommands,
+			req *pb.CommandRequest,
+		) *pb.CommandResponse {
+			<-ctx.Done()
+			close(commandCancelled)
+			return &pb.CommandResponse{RequestId: req.GetRequestId()}
+		}
+
+		listenDone := startListeningWithHeartbeatInterval(
+			context.Background(),
+			logger,
+			stream,
+			defaultMaxConcurrentCommands,
+			execute,
+			heartbeatTestInterval,
+		)
+		select {
+		case <-commandCancelled:
+		case <-time.After(testTimeout):
+			t.Fatal("timed out waiting for the running command to be aborted after the heartbeat failure")
+		}
+
+		// With a real stream, Recv fails as well once the stream is broken.
+		close(recvGate)
+		err := awaitListenResult(t, listenDone)
+		if err == nil {
+			t.Fatal("expected an error on a heartbeat failure, got nil")
+		}
+		if !errors.Is(err, sendErr) {
+			t.Errorf("expected the send error to be wrapped, got %v", err)
 		}
 	})
 }

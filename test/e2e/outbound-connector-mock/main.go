@@ -218,6 +218,9 @@ func (s *outboundConnectorServer) SubscribeToCommandRequests(
 				errChan <- err
 				return
 			}
+			if resp.GetHeartbeat() {
+				continue
+			}
 			s.state.recordResponse(commandResponse{
 				RequestID: resp.GetRequestId(),
 				ExitCode:  resp.GetExitCode(),
