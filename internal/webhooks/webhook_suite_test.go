@@ -130,6 +130,8 @@ var _ = BeforeSuite(func() {
 
 	Expect(NewInstrumentationWebhookHandler(
 		k8sClient,
+		k8sClient,
+		nil,
 		manager.GetEventRecorder("dash0-webhook"),
 		util.NewClusterInstrumentationConfig(
 			TestImages,
