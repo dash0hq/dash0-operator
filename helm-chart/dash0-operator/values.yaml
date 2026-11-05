@@ -263,7 +263,7 @@ operator:
   #
   # Every replica serves the operator's admission webhooks, while only the replica that holds the leader election lease
   # runs the controllers. In namespaces with instrumentWorkloads.mode=pods, pods that are created while no replica serves
-  # the webhook are not instrumented until they are restarted, so running two replicas is recommended there. With more
+  # the webhook are not instrumented until they are recreated, so running two replicas is recommended there. With more
   # than one replica, the chart adds a pod disruption budget (see operator.podDisruptionBudget) and a topology spread
   # constraint that prefers spreading the replicas across nodes.
   replicaCount: 1

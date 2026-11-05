@@ -40,7 +40,7 @@ The Dash0 operator will instrument the following workload types:
 
 Note that Kubernetes jobs and Kubernetes pods are only instrumented at deploy time, existing jobs and pods cannot be instrumented since there is no way to restart them. For all other workload types, the operator can instrument existing workloads as well as new workloads at deploy time (depending on the setting of `spec.instrumentWorkloads.mode` in the Dash0 monitoring resource).
 
-The instrumentation process is performed by modifying the Pod spec template (for CronJobs, DaemonSets, Deployments, Jobs, ReplicaSets, and StatefulSets) or the Pod spec itself (for standalone Pods).
+The instrumentation process is performed by modifying the Pod spec template (for CronJobs, DaemonSets, Deployments, Jobs, ReplicaSets, and StatefulSets) or the Pod spec itself (for standalone Pods). In namespaces with `spec.instrumentWorkloads.mode: pods`, the operator leaves the Pod spec templates unmodified and modifies the Pod spec of each pod when it is created instead, see [Instrumenting Pods Instead of Workloads](#instrumenting-pods-instead-of-workloads).
 
 ## Using Image Volumes for Auto-Instrumentation Files
 
@@ -158,8 +158,8 @@ spec:
 With `mode: pods`, the operator never restarts pods, neither to instrument them nor to remove their instrumentation.
 The only exception are workloads that still have instrumentation in their pod template from before the namespace was
 switched to `mode: pods`, see the switching between modes below.
-Pods that already exist keep their current state until they are recreated, for example by the next rollout, a scaling
-event, or a node drain:
+Pods that already exist keep their current state until they are recreated, for example by the next rollout or a node
+drain:
 * Pods that were running before the namespace was switched to `mode: pods` are instrumented when they are recreated.
 * When the operator is updated, pods keep the instrumentation of the previous operator version until they are
   recreated.
@@ -167,6 +167,12 @@ event, or a node drain:
   apply to pods created after the change.
 * When the namespace is switched to `mode: none`, or the Dash0 monitoring resource is removed, pods that have been
   instrumented when they were created keep their instrumentation until they are recreated.
+
+Since only new pods are affected, the pods of one workload can be in different states for a while.
+For example, when a deployment that has been running since before the namespace was switched to `mode: pods` is scaled
+up, the new pods are instrumented, while the existing pods are not.
+The same happens when the opt-out label of a workload or the label selector changes.
+The next rollout of the workload, for example via `kubectl rollout restart`, brings all of its pods into the same state.
 
 Pods are instrumented by the operator's admission webhook.
 A pod that is created while the webhook is not reachable, for example while the operator is being updated, starts
@@ -189,6 +195,15 @@ Owners of other types, for example an Argo Rollout, are not taken into account; 
 into the pod template.
 Since changing the labels in the top level metadata of a workload does not recreate its pods, opting a workload in or
 out that way only applies to pods created afterwards.
+
+This differs from the other modes, which evaluate the label selector only against the labels in the top level metadata
+of the workload and ignore the labels in its pod template.
+Check the labels in the pod templates before switching a namespace from `all` or `created-and-updated` to `pods`, since
+the same labels can lead to a different result:
+* A deployment that has `dash0.com/enable: "false"` only in its pod template is instrumented with `mode: all`, but not
+  with `mode: pods`.
+* A deployment that has `dash0.com/enable: "false"` in its top level metadata and `dash0.com/enable: "true"` in its pod
+  template is not instrumented with `mode: all`, but it is instrumented with `mode: pods`.
 
 The `app.kubernetes.io/*` labels and `resource.opentelemetry.io/*` annotations of the top-level owner are taken into
 account in the same way as with the other modes, see
@@ -221,6 +236,8 @@ Switching a namespace between `mode: pods` and the other modes behaves as follow
 In namespaces that are Dash0-monitoring enabled, all workloads are automatically instrumented for tracing and to improve OpenTelemetry resource attributes. This process will modify the Pod spec, e.g. by adding environment variables, Kubernetes labels and an init container. The modifications are described in detail in the section [How Automatic Workload Instrumentation Works](#how-automatic-workload-instrumentation-works).
 
 You can disable these workload modifications for specific workloads by setting the label `dash0.com/enable: "false"` in the top level metadata section of the workload specification.
+
+> **Note:** In namespaces with `spec.instrumentWorkloads.mode: pods`, the label is also taken into account when it is set in the pod template or on the pod itself, and it only applies to pods that are created after the label has been set. Pods that already exist keep their instrumentation until they are recreated. See [Instrumenting Pods Instead of Workloads](#instrumenting-pods-instead-of-workloads) for details, including the differences to the other modes that matter when switching a namespace to `mode: pods`.
 
 > **Note:** The actual label selector for enabling or disabling workload modification can be customized in the Dash0 monitoring resource. The label `dash0.com/enable: "false"` can be used when no custom label selector has been configured in the Dash0 monitoring resource, see [Using a Custom Label Selector to Control Auto-Instrumentation](#using-a-custom-label-selector-to-control-auto-instrumentation).
 
@@ -307,6 +324,7 @@ By providing a custom Kubernetes [label selector](https://kubernetes.io/docs/con
 - Workloads which match this label selector will be instrumented, subject to the value of `spec.instrumentWorkloads.mode`.
 - Workloads which do not match this label selector will never be instrumented, regardless of the value of `spec.instrumentWorkloads.mode`.
 - The setting `spec.instrumentWorkloads.labelSelector` setting is ignored if `spec.instrumentWorkloads.mode=none`.
+- With `spec.instrumentWorkloads.mode=pods`, the label selector is evaluated when a pod is created, against the labels of the pod combined with the labels of its owners, see [Instrumenting Pods Instead of Workloads](#instrumenting-pods-instead-of-workloads). With the other modes, it is evaluated against the labels in the top level metadata of the workload.
 
 If not set explicitly, this label selector assumes the value `"dash0.com/enable!=false"` by default. That is, when no explicit label selector is provided via `spec.instrumentWorkloads.labelSelector`, workloads which:
 
