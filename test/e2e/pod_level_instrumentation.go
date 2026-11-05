@@ -82,6 +82,52 @@ func verifyThatPodsHaveBeenInstrumentedByTheWebhook(
 	uninstrumentedPodUids []string,
 	timestampLowerBound time.Time,
 ) {
+	verifyPodInstrumentationByTheWebhook(
+		namespace,
+		runtime,
+		workloadType,
+		testId,
+		images,
+		uninstrumentedPodUids,
+		timestampLowerBound,
+		false,
+	)
+}
+
+// verifyThatPodsOfOptedOutWorkloadHaveBeenInstrumentedByTheWebhook verifies the same as
+// verifyThatPodsHaveBeenInstrumentedByTheWebhook, for a workload that keeps the label dash0.com/enable=false in its own
+// metadata.
+func verifyThatPodsOfOptedOutWorkloadHaveBeenInstrumentedByTheWebhook(
+	namespace string,
+	runtime runtimeType,
+	workloadType workloadType,
+	testId string,
+	images Images,
+	uninstrumentedPodUids []string,
+	timestampLowerBound time.Time,
+) {
+	verifyPodInstrumentationByTheWebhook(
+		namespace,
+		runtime,
+		workloadType,
+		testId,
+		images,
+		uninstrumentedPodUids,
+		timestampLowerBound,
+		true,
+	)
+}
+
+func verifyPodInstrumentationByTheWebhook(
+	namespace string,
+	runtime runtimeType,
+	workloadType workloadType,
+	testId string,
+	images Images,
+	uninstrumentedPodUids []string,
+	timestampLowerBound time.Time,
+	expectOptOutLabelOnWorkload bool,
+) {
 	By(fmt.Sprintf("%s %s: waiting for the pods to get instrumented by the webhook",
 		runtime.runtimeTypeLabel,
 		workloadType.workloadTypeString))
@@ -94,7 +140,7 @@ func verifyThatPodsHaveBeenInstrumentedByTheWebhook(
 			verifyPodLabels(g, pod, images)
 		}
 		if workloadType != workloadTypePod {
-			verifyNoDash0Labels(g, namespace, runtime, workloadType)
+			verifyNoDash0LabelsOrOnlyOptOut(g, namespace, runtime, workloadType, expectOptOutLabelOnWorkload)
 		}
 	}, podInstrumentationTimeout, pollingInterval).Should(Succeed())
 
@@ -144,6 +190,49 @@ func verifyThatPodsHaveNeitherBeenRestartedNorInstrumented(
 		}
 		g.Expect(actualUids).To(ConsistOf(podUids))
 	}, podsUnchangedDuration, pollingInterval).Should(Succeed())
+}
+
+// verifyThatPodsHaveNeitherBeenRestartedNorUninstrumented verifies that exactly the given pods of the workload keep
+// running for a while, and that they keep the instrumentation they have received from the webhook.
+func verifyThatPodsHaveNeitherBeenRestartedNorUninstrumented(
+	namespace string,
+	runtime runtimeType,
+	workloadType workloadType,
+	podUids []string,
+	images Images,
+) {
+	By(fmt.Sprintf("%s %s: verifying that the pods have neither been restarted nor uninstrumented",
+		runtime.runtimeTypeLabel,
+		workloadType.workloadTypeString))
+	Consistently(func(g Gomega) {
+		pods := readPodsOfWorkload(g, namespace, runtime, workloadType)
+		actualUids := make([]string, 0, len(pods))
+		for _, pod := range pods {
+			actualUids = append(actualUids, string(pod.UID))
+			verifyPodLabels(g, pod, images)
+		}
+		g.Expect(actualUids).To(ConsistOf(podUids))
+	}, podsUnchangedDuration, pollingInterval).Should(Succeed())
+}
+
+// optInOnPodTemplate adds the label dash0.com/enable=true to the pod template of the workload, which triggers a
+// rollout.
+func optInOnPodTemplate(namespace string, runtime runtimeType, workloadType workloadType) {
+	By(fmt.Sprintf("%s %s: adding dash0.com/enable=true to the pod template",
+		runtime.runtimeTypeLabel,
+		workloadType.workloadTypeString))
+	Expect(runAndIgnoreOutput(exec.Command(
+		"kubectl",
+		"patch",
+		workloadType.workloadTypeString,
+		workloadName(runtime, workloadType),
+		"--namespace",
+		namespace,
+		"--type",
+		"merge",
+		"-p",
+		`{"spec":{"template":{"metadata":{"labels":{"dash0.com/enable":"true"}}}}}`,
+	))).To(Succeed())
 }
 
 // restartWorkload triggers a rollout of the workload, so that its pods are recreated.
