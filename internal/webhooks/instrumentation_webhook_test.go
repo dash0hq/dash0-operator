@@ -11,6 +11,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -979,6 +980,146 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 
 		It("should instrument workloads", func() {
 			createdObjectsInstrumentationWebhookTest = verifyThatDeploymentIsInstrumented(createdObjectsInstrumentationWebhookTest)
+		})
+	})
+
+	Describe("when instrumentWorkloads.mode=pods", Ordered, func() {
+		BeforeAll(func() {
+			spec := MonitoringResourceDefaultSpec
+			spec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModePods
+			EnsureMonitoringResourceWithSpecExistsAndIsAvailable(ctx, k8sClient, spec)
+		})
+
+		AfterAll(func() {
+			DeleteMonitoringResource(ctx, k8sClient)
+		})
+
+		DescribeTable("should not modify new higher-order workloads", func(config WorkloadTestConfig) {
+			name := UniqueName(config.WorkloadNamePrefix)
+			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload.Get())
+			workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
+			config.VerifyFn(workload)
+			VerifyNoEvents(ctx, clientset, TestNamespaceName)
+		}, Entry("should not modify a new cron job", WorkloadTestConfig{
+			WorkloadNamePrefix: CronJobNamePrefix,
+			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateBasicCronJob),
+			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedCronJob(workload.Get().(*batchv1.CronJob))
+			},
+		}), Entry("should not modify a new daemon set", WorkloadTestConfig{
+			WorkloadNamePrefix: DaemonSetNamePrefix,
+			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateBasicDaemonSet),
+			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedDaemonSet(workload.Get().(*appsv1.DaemonSet))
+			},
+		}), Entry("should not modify a new deployment", WorkloadTestConfig{
+			WorkloadNamePrefix: DeploymentNamePrefix,
+			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateBasicDeployment),
+			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedDeployment(workload.Get().(*appsv1.Deployment))
+			},
+		}), Entry("should not modify a new job", WorkloadTestConfig{
+			WorkloadNamePrefix: JobNamePrefix,
+			CreateFn:           WrapJobFnAsTestableWorkload(CreateBasicJob),
+			GetFn:              WrapJobFnAsTestableWorkload(GetJob),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedJob(workload.Get().(*batchv1.Job))
+			},
+		}), Entry("should not modify a new replica set", WorkloadTestConfig{
+			WorkloadNamePrefix: ReplicaSetNamePrefix,
+			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateBasicReplicaSet),
+			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet))
+			},
+		}), Entry("should not modify a new stateful set", WorkloadTestConfig{
+			WorkloadNamePrefix: StatefulSetNamePrefix,
+			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateBasicStatefulSet),
+			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedStatefulSet(workload.Get().(*appsv1.StatefulSet))
+			},
+		}))
+
+		It("should not modify an updated deployment", func() {
+			name := UniqueName(DeploymentNamePrefix)
+			workload := CreateBasicDeployment(ctx, k8sClient, TestNamespaceName, name)
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
+			workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+			AddLabel(&workload.ObjectMeta, "test-label", "test-value")
+			Expect(k8sClient.Update(ctx, workload)).To(Succeed())
+			workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+			VerifyUnmodifiedDeployment(workload)
+			VerifyNoEvents(ctx, clientset, TestNamespaceName)
+		})
+
+		It("should instrument a new ownerless pod", func() {
+			name := UniqueName(PodNamePrefix)
+			workload := CreateBasicPod(ctx, k8sClient, TestNamespaceName, name)
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
+			workload = GetPod(ctx, k8sClient, TestNamespaceName, name)
+			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
+			VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
+		})
+
+		DescribeTable("should instrument a new pod owned by a higher-order workload", func(owner metav1.TypeMeta) {
+			name := UniqueName(PodNamePrefix)
+			pod := BasicPod(TestNamespaceName, name)
+			pod.OwnerReferences = []metav1.OwnerReference{{
+				APIVersion: owner.APIVersion,
+				Kind:       owner.Kind,
+				Name:       "owner",
+				UID:        "1234",
+			}}
+			workload := CreateWorkload(ctx, k8sClient, pod).(*corev1.Pod)
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
+			workload = GetPod(ctx, k8sClient, TestNamespaceName, name)
+			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
+			VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
+		}, Entry("owned by a daemon set", util.K8sTypeMetaDaemonSet),
+			Entry("owned by a job", util.K8sTypeMetaJob),
+			Entry("owned by a replica set", util.K8sTypeMetaReplicaSet),
+			Entry("owned by a stateful set", util.K8sTypeMetaStatefulSet),
+		)
+
+		It("should not instrument a new pod that has opted out of instrumentation", func() {
+			name := UniqueName(PodNamePrefix)
+			workload := CreatePodWithOptOutLabel(ctx, k8sClient, TestNamespaceName, name)
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
+			workload = GetPod(ctx, k8sClient, TestNamespaceName, name)
+			VerifyPodWithOptOutLabel(workload)
+			VerifyNoEvents(ctx, clientset, TestNamespaceName)
+		})
+
+		It("should still instrument workloads in a namespace with instrumentWorkloads.mode=all", func() {
+			otherNamespace := "pods-mode-side-by-side"
+			EnsureNamespaceExists(ctx, k8sClient, otherNamespace)
+			otherMonitoringResource := types.NamespacedName{Namespace: otherNamespace, Name: MonitoringResourceName}
+			EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(
+				ctx,
+				k8sClient,
+				MonitoringResourceDefaultSpec,
+				otherMonitoringResource,
+			)
+			defer DeleteMonitoringResourceByName(ctx, k8sClient, otherMonitoringResource, true)
+
+			name := UniqueName(DeploymentNamePrefix)
+			workload := CreateBasicDeployment(ctx, k8sClient, otherNamespace, name)
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
+			VerifyModifiedDeployment(
+				GetDeployment(ctx, k8sClient, otherNamespace, name),
+				BasicInstrumentedPodSpecExpectations(),
+				VerifyNoManagedFields,
+			)
+
+			ownedPodName := UniqueName(PodNamePrefix)
+			ownedPod := CreatePodOwnedByReplicaSet(ctx, k8sClient, otherNamespace, ownedPodName)
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, ownedPod)
+			VerifyUnmodifiedPod(GetPod(ctx, k8sClient, otherNamespace, ownedPodName))
 		})
 	})
 })

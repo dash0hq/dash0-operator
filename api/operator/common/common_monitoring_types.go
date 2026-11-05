@@ -19,7 +19,7 @@ const (
 // may be specified. If none of the following policies is specified, the default one is All. See
 // Dash0MonitoringSpec.InstrumentWorkloads.Mode for more details.
 //
-// +kubebuilder:validation:Enum=all;created-and-updated;none
+// +kubebuilder:validation:Enum=all;created-and-updated;pods;none
 type InstrumentWorkloadsMode string
 
 const (
@@ -30,6 +30,11 @@ const (
 	// will be instrumented.
 	InstrumentWorkloadsModeCreatedAndUpdated InstrumentWorkloadsMode = "created-and-updated"
 
+	// InstrumentWorkloadsModePods instruments pods when they are created, instead of modifying the pod templates of
+	// workloads. Existing pods are neither instrumented nor uninstrumented, they keep their state until they are
+	// recreated.
+	InstrumentWorkloadsModePods InstrumentWorkloadsMode = "pods"
+
 	// InstrumentWorkloadsModeNone will disable instrumentation of workloads entirely for a namespace.
 	InstrumentWorkloadsModeNone InstrumentWorkloadsMode = "none"
 )
@@ -37,6 +42,7 @@ const (
 var AllInstrumentWorkloadsModes = []InstrumentWorkloadsMode{
 	InstrumentWorkloadsModeAll,
 	InstrumentWorkloadsModeCreatedAndUpdated,
+	InstrumentWorkloadsModePods,
 	InstrumentWorkloadsModeNone,
 }
 

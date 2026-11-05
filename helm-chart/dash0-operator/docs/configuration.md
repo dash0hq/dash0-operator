@@ -391,7 +391,7 @@ The Dash0 monitoring resource supports additional configuration settings:
 
 * <a href="#monitoringresource.spec.instrumentWorkloads.mode"><span id="monitoringresource.spec.instrumentWorkloads.mode"><span id="monitoringresource.spec.instrumentWorkloads">**`spec.instrumentWorkloads.mode`**</span></span></a>:
   A namespace-wide configuration for the workload instrumentation strategy for the target namespace.
-  There are three possible settings: `all`, `created-and-updated` and `none`.
+  There are four possible settings: `all`, `created-and-updated`, `pods` and `none`.
   By default, the setting `all` is assumed; unless there is an operator configuration resource with
   `telemetryCollection.enabled=false`, then the setting `none` is assumed by default.
   Note that `spec.instrumentWorkloads.mode` is the path for this setting starting with version `v1beta1` of the Dash0
@@ -415,6 +415,16 @@ The Dash0 monitoring resource supports additional configuration settings:
         * instrument changed workloads in the target namespace when changes are applied to them.
       This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
       resource or restarting the Dash0 operator.
+
+    * **`pods`**: If set to `pods`, the operator will not modify workload resources (deployments, daemon
+      sets, stateful sets, replica sets, jobs and cron jobs) at all.
+      Instead, it instruments each pod when it is created.
+      The operator never restarts pods in this mode; pods that already exist keep their current state until they are
+      recreated.
+      This setting is useful if the workloads are managed by GitOps or infrastructure-as-code tools, which would
+      otherwise report the operator's modifications as drift.
+      See [Instrumenting Pods Instead of Workloads](auto-instrumentation.md#instrumenting-pods-instead-of-workloads)
+      for details.
 
     * **`none`**: You can opt out of instrumenting workloads entirely by setting this option to `none`.
       With `spec.instrumentWorkloads: none`, workloads in the target namespace will never be instrumented to emit
@@ -442,6 +452,8 @@ The Dash0 monitoring resource supports additional configuration settings:
       uninstrumented workloads will not be instrumented, existing instrumented workloads will not be uninstrumented.
       Newly deployed or updated workloads will be instrumented from the point of the configuration change onwards as
       described above.
+    * Updating this value to `spec.instrumentWorkloads.mode=pods` has no immediate effect; no pods will be restarted.
+      Pods will be instrumented when they are created from the point of the configuration change onwards.
 
   Automatic workload instrumentation will automatically add tracing to your workloads.
   You can read more about what exactly this feature entails in the section
