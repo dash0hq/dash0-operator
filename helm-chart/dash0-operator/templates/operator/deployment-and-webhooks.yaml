@@ -111,6 +111,20 @@ spec:
 {{- if .Values.operator.managerPriorityClassName }}
       priorityClassName: {{ .Values.operator.managerPriorityClassName }}
 {{- end }}
+{{- if include "dash0-operator.operatorManagerHasMultipleReplicas" . }}
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: dash0-operator
+            app.kubernetes.io/component: controller
+{{- if semverCompare ">=1.27-0" .Capabilities.KubeVersion.Version }}
+        matchLabelKeys:
+        - pod-template-hash
+{{- end }}
+{{- end }}
       containers:
       - name: manager
         image: {{ include "dash0-operator.image" . | quote }}

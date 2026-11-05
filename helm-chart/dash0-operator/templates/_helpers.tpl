@@ -240,6 +240,16 @@ Parameters: kind and name of the object, and the name of the webhook entry (omit
 {{- end }}
 
 {{/*
+Returns "true" if operator.replicaCount is greater than 1, and an empty string otherwise. Null counts as 1, which is the
+Kubernetes default.
+*/}}
+{{- define "dash0-operator.operatorManagerHasMultipleReplicas" -}}
+{{- if and (not (kindIs "invalid" .Values.operator.replicaCount)) (gt (int (toString .Values.operator.replicaCount)) 1) -}}
+true
+{{- end }}
+{{- end }}
+
+{{/*
 Fails rendering the chart (install or upgrade) if a replica count (.value) is set but is not an integer of at least 1.
 Null is allowed, the default for the respective setting applies then.
 */}}

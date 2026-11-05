@@ -31,19 +31,18 @@ import (
 
 type OperatorConfigurationReconciler struct {
 	client.Client
-	clientset                    *kubernetes.Clientset
-	apiClients                   []ApiClient
-	collectorManager             *collectors.CollectorManager
-	targetAllocatorManager       *targetallocator.TargetAllocatorManager
-	agent0ConnectorManager       *agent0connector.Agent0ConnectorManager
-	syntheticsWorkerManager      *syntheticsworker.SyntheticsWorkerManager
-	signalControlManager         *signalcontrol.SignalControlManager
-	clusterInstrumentationConfig *util.ClusterInstrumentationConfig
-	pseudoClusterUid             types.UID
-	operatorDeploymentNamespace  string
-	operatorDeploymentUID        types.UID
-	operatorDeploymentName       string
-	OperatorManagerPodName       string
+	clientset                   *kubernetes.Clientset
+	apiClients                  []ApiClient
+	collectorManager            *collectors.CollectorManager
+	targetAllocatorManager      *targetallocator.TargetAllocatorManager
+	agent0ConnectorManager      *agent0connector.Agent0ConnectorManager
+	syntheticsWorkerManager     *syntheticsworker.SyntheticsWorkerManager
+	signalControlManager        *signalcontrol.SignalControlManager
+	pseudoClusterUid            types.UID
+	operatorDeploymentNamespace string
+	operatorDeploymentUID       types.UID
+	operatorDeploymentName      string
+	OperatorManagerPodName      string
 	// ComponentSettingsConflictReporter (optional) logs settings that are configured both via Helm and via
 	// spec.components.
 	ComponentSettingsConflictReporter *componentsettings.ConflictReporter
@@ -72,7 +71,6 @@ func NewOperatorConfigurationReconciler(
 	agent0ConnectorManager *agent0connector.Agent0ConnectorManager,
 	syntheticsWorkerManager *syntheticsworker.SyntheticsWorkerManager,
 	signalControlManager *signalcontrol.SignalControlManager,
-	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
 	pseudoClusterUid types.UID,
 	operatorDeploymentNamespace string,
 	operatorDeploymentUID types.UID,
@@ -83,23 +81,22 @@ func NewOperatorConfigurationReconciler(
 	developmentMode bool,
 ) *OperatorConfigurationReconciler {
 	return &OperatorConfigurationReconciler{
-		Client:                       k8sClient,
-		clientset:                    clientset,
-		apiClients:                   apiClients,
-		collectorManager:             collectorManager,
-		targetAllocatorManager:       targetAllocatorManager,
-		agent0ConnectorManager:       agent0ConnectorManager,
-		syntheticsWorkerManager:      syntheticsWorkerManager,
-		signalControlManager:         signalControlManager,
-		clusterInstrumentationConfig: clusterInstrumentationConfig,
-		pseudoClusterUid:             pseudoClusterUid,
-		operatorDeploymentNamespace:  operatorDeploymentNamespace,
-		operatorDeploymentUID:        operatorDeploymentUID,
-		operatorDeploymentName:       operatorDeploymentName,
-		oTelSdkStarter:               oTelSdkStarter,
-		images:                       images,
-		operatorNamespace:            operatorNamespace,
-		developmentMode:              developmentMode,
+		Client:                      k8sClient,
+		clientset:                   clientset,
+		apiClients:                  apiClients,
+		collectorManager:            collectorManager,
+		targetAllocatorManager:      targetAllocatorManager,
+		agent0ConnectorManager:      agent0ConnectorManager,
+		syntheticsWorkerManager:     syntheticsWorkerManager,
+		signalControlManager:        signalControlManager,
+		pseudoClusterUid:            pseudoClusterUid,
+		operatorDeploymentNamespace: operatorDeploymentNamespace,
+		operatorDeploymentUID:       operatorDeploymentUID,
+		operatorDeploymentName:      operatorDeploymentName,
+		oTelSdkStarter:              oTelSdkStarter,
+		images:                      images,
+		operatorNamespace:           operatorNamespace,
+		developmentMode:             developmentMode,
 	}
 }
 
@@ -241,7 +238,6 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 
 	r.applyApiAccessSettings(ctx, operatorConfigurationResource, logger)
 
-	r.updateRequestedInstrumentationDelivery(operatorConfigurationResource, logger)
 	r.ComponentSettingsConflictReporter.Report(ctx, logger)
 
 	if err = r.reconcileOpenTelemetryCollector(ctx, logger); err != nil {
@@ -375,36 +371,6 @@ func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 
 	for _, apiClient := range r.apiClients {
 		apiClient.SetDefaultApiConfigs(ctx, apiConfigs, logger)
-	}
-}
-
-// updateRequestedInstrumentationDelivery resolves spec.instrumentWorkloads.instrumentationDelivery against the detected
-// Kubernetes version knowledge (the Kubernetes API server version and the minimum kubelet version) and stores the
-// result into the clusterInstrumentationConfig. Subsequent workload instrumentation actions then use the new resolved delivery
-// mechanism. Existing instrumented workloads are not re-instrumented, even if the delivery mechanism changes.
-func (r *OperatorConfigurationReconciler) updateRequestedInstrumentationDelivery(
-	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
-	logger logd.Logger,
-) {
-	if r.clusterInstrumentationConfig == nil {
-		return
-	}
-	originalDeliverySetting := operatorConfigurationResource.Spec.InstrumentWorkloads.InstrumentationDelivery
-	previousResolvedDelivery, newResolvedDelivery :=
-		r.clusterInstrumentationConfig.UpdateRequestedInstrumentationDelivery(
-			originalDeliverySetting,
-			true,
-			logger,
-		)
-	if previousResolvedDelivery != newResolvedDelivery {
-		logger.Info(
-			"The instrumentation delivery mechanism resolved from spec.instrumentWorkloads.instrumentationDelivery has "+
-				"changed. The new setting will become effective for subsequent workload instrumentations. (Existing "+
-				"instrumented workloads will not be re-instrumented.)",
-			"instrumentation delivery setting in operator configuration", originalDeliverySetting,
-			"previous resolved instrumentation delivery setting", previousResolvedDelivery,
-			"updated resolved instrumentation delivery setting", newResolvedDelivery,
-		)
 	}
 }
 

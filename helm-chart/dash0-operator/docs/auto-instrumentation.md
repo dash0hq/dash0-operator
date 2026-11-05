@@ -172,6 +172,11 @@ Pods are instrumented by the operator's admission webhook.
 A pod that is created while the webhook is not reachable, for example while the operator is being updated, starts
 without instrumentation and is instrumented the next time it is recreated.
 Running the operator with two replicas (`operator.replicaCount=2`) is recommended for namespaces with `mode: pods`.
+Every replica of the operator manager serves the webhook, while only the replica that holds the leader election lease
+runs the controllers.
+With more than one replica, the Helm chart adds a pod disruption budget that allows at most one replica to be
+unavailable (`operator.podDisruptionBudget.enabled=false` disables it), and a topology spread constraint that prefers
+scheduling the replicas on different nodes.
 
 The [label selector](#using-a-custom-label-selector-to-control-auto-instrumentation)
 (`spec.instrumentWorkloads.labelSelector`, by default `dash0.com/enable!=false`) is evaluated when the pod is created,
