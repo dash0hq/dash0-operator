@@ -183,6 +183,7 @@ type commandLineArguments struct {
 	disableOpenTelemetryCollectorHostPorts                                bool
 	otlpGrpcHostPort                                                      int
 	otlpHttpHostPort                                                      int
+	otelCollectorDaemonSetServiceAccountName                              string
 	instrumentationDelays                                                 *util.DelayConfig
 	metricsAddr                                                           string
 	enableLeaderElection                                                  bool
@@ -803,6 +804,13 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 		otelcolresources.DefaultOtlpHttpHostPort,
 		"The host port used by the HTTP OTLP receiver of the OpenTelemetry collector pods managed by the operator. "+
 			"Only takes effect when host ports are not disabled.",
+	)
+	fs.StringVar(
+		&cliArgs.otelCollectorDaemonSetServiceAccountName,
+		"dash0-otel-collector-daemonset-service-account-name",
+		"",
+		"The name of an existing service account in the operator namespace for the OpenTelemetry collector DaemonSet. "+
+			"The operator neither creates nor deletes it. When not set, the operator manages the service account itself.",
 	)
 	cliArgs.instrumentationDelays = &util.DelayConfig{}
 	fs.Uint64Var(
@@ -1728,6 +1736,8 @@ func startOperatorManager(
 		cliArgs.forceUseOpenTelemetryCollectorServiceUrl,
 		"disable OpenTelemetry collector host ports",
 		cliArgs.disableOpenTelemetryCollectorHostPorts,
+		"OpenTelemetry collector DaemonSet service account name",
+		cliArgs.otelCollectorDaemonSetServiceAccountName,
 		"is GKE Autopilot",
 		cliArgs.isGkeAutopilot,
 		"is OpenShift",
@@ -1977,6 +1987,7 @@ func startDash0Controllers(
 			DisableHostPorts:                       cliArgs.disableOpenTelemetryCollectorHostPorts,
 			OtlpGrpcHostPort:                       int32(cliArgs.otlpGrpcHostPort),
 			OtlpHttpHostPort:                       int32(cliArgs.otlpHttpHostPort),
+			DaemonSetServiceAccountName:            cliArgs.otelCollectorDaemonSetServiceAccountName,
 			IsGkeAutopilot:                         cliArgs.isGkeAutopilot,
 			DevelopmentMode:                        developmentMode,
 			DebugVerbosityDetailed:                 envVars.debugVerbosityDetailed,
