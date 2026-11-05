@@ -449,6 +449,8 @@ The Dash0 monitoring resource supports additional configuration settings:
     * When this setting is updated to `spec.instrumentWorkloads=none` (and it had a different value before):
       The instrumentation will be removed from all instrumented workloads.
       Their pods will be restarted to remove the instrumentation.
+      Pods that have been instrumented when they were created, with `spec.instrumentWorkloads.mode=pods`, keep their
+      instrumentation until they are recreated.
       (After this change, the operator will no longer instrument any workloads nor will it restart any pods.)
     * Updating this value to `spec.instrumentWorkloads=created-and-updated` has no immediate effect; existing
       uninstrumented workloads will not be instrumented, existing instrumented workloads will not be uninstrumented.

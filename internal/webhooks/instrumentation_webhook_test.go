@@ -1216,6 +1216,117 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			VerifyNoEvents(ctx, clientset, TestNamespaceName)
 		})
 
+		It("should remove the instrumentation from a new workload that has been instrumented before switching to "+
+			"mode pods", func() {
+			name := UniqueName(DeploymentNamePrefix)
+			workload := CreateWorkload(ctx, k8sClient, InstrumentedDeployment(TestNamespaceName, name))
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
+			VerifyUnmodifiedDeployment(GetDeployment(ctx, k8sClient, TestNamespaceName, name))
+			VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
+		})
+
+		It("should keep the instrumentation of a deployment from before switching to mode pods on an "+
+			"update that does not change the pod template", func() {
+			name := UniqueName(DeploymentNamePrefix)
+			createdObjectsInstrumentationWebhookTest = createWorkloadWithLeftoverInstrumentation(
+				InstrumentedDeployment(TestNamespaceName, name),
+				createdObjectsInstrumentationWebhookTest,
+			)
+			workload := GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+			AddLabel(&workload.ObjectMeta, "test-label", "test-value")
+			Expect(k8sClient.Update(ctx, workload)).To(Succeed())
+			workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+			VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
+			VerifyNoEvents(ctx, clientset, TestNamespaceName)
+		})
+
+		It("should remove the instrumentation of a deployment from before switching to mode pods on an "+
+			"update that changes the pod template", func() {
+			name := UniqueName(DeploymentNamePrefix)
+			createdObjectsInstrumentationWebhookTest = createWorkloadWithLeftoverInstrumentation(
+				InstrumentedDeployment(TestNamespaceName, name),
+				createdObjectsInstrumentationWebhookTest,
+			)
+			workload := GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+			AddLabel(&workload.Spec.Template.ObjectMeta, "test-label", "test-value")
+			Expect(k8sClient.Update(ctx, workload)).To(Succeed())
+			workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+			VerifyUnmodifiedDeployment(workload)
+			Expect(workload.Spec.Template.Labels).To(HaveKeyWithValue("test-label", "test-value"))
+			VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
+		})
+
+		DescribeTable("should remove the instrumentation from before switching to mode pods on any "+
+			"update of a workload that does not replace its pods when the pod template changes",
+			func(newWorkload func() client.Object, verify func(client.Object)) {
+				workload := newWorkload()
+				createdObjectsInstrumentationWebhookTest = createWorkloadWithLeftoverInstrumentation(
+					workload,
+					createdObjectsInstrumentationWebhookTest,
+				)
+				labels := workload.GetLabels()
+				labels["test-label"] = "test-value"
+				workload.SetLabels(labels)
+				Expect(k8sClient.Update(ctx, workload)).To(Succeed())
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(workload), workload)).To(Succeed())
+				verify(workload)
+				VerifySuccessfulUninstrumentationEvent(
+					ctx, clientset, TestNamespaceName, workload.GetName(), testActor)
+			},
+			Entry("a cron job",
+				func() client.Object { return InstrumentedCronJob(TestNamespaceName, UniqueName(CronJobNamePrefix)) },
+				func(o client.Object) { VerifyUnmodifiedCronJob(o.(*batchv1.CronJob)) },
+			),
+			Entry("a daemon set with the update strategy OnDelete",
+				func() client.Object {
+					return daemonSetWithOnDeleteStrategy(
+						InstrumentedDaemonSet(TestNamespaceName, UniqueName(DaemonSetNamePrefix)),
+					)
+				},
+				func(o client.Object) { VerifyUnmodifiedDaemonSet(o.(*appsv1.DaemonSet)) },
+			),
+			Entry("a replica set that is not owned by a deployment",
+				func() client.Object {
+					return InstrumentedReplicaSet(TestNamespaceName, UniqueName(ReplicaSetNamePrefix))
+				},
+				func(o client.Object) { VerifyUnmodifiedReplicaSet(o.(*appsv1.ReplicaSet)) },
+			),
+			Entry("a stateful set with the update strategy OnDelete",
+				func() client.Object {
+					return statefulSetWithOnDeleteStrategy(
+						InstrumentedStatefulSet(TestNamespaceName, UniqueName(StatefulSetNamePrefix)),
+					)
+				},
+				func(o client.Object) { VerifyUnmodifiedStatefulSet(o.(*appsv1.StatefulSet)) },
+			),
+		)
+
+		DescribeTable("should keep the instrumentation from before switching to mode pods for new "+
+			"workloads whose pod template cannot or must not be changed",
+			func(newWorkload func() client.Object, verify func(client.Object)) {
+				workload := CreateWorkload(ctx, k8sClient, newWorkload())
+				createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(workload), workload)).To(Succeed())
+				verify(workload)
+				VerifyNoEvents(ctx, clientset, TestNamespaceName)
+			},
+			Entry("a job",
+				func() client.Object { return InstrumentedJob(TestNamespaceName, UniqueName(JobNamePrefix)) },
+				func(o client.Object) {
+					VerifyModifiedJob(o.(*batchv1.Job), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
+				},
+			),
+			Entry("a replica set owned by a deployment",
+				func() client.Object {
+					return InstrumentedReplicaSetOwnedByDeployment(TestNamespaceName, UniqueName(ReplicaSetNamePrefix))
+				},
+				func(o client.Object) {
+					VerifyModifiedReplicaSet(
+						o.(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
+				},
+			),
+		)
+
 		It("should instrument a new ownerless pod", func() {
 			name := UniqueName(PodNamePrefix)
 			workload := CreateBasicPod(ctx, k8sClient, TestNamespaceName, name)
@@ -1289,10 +1400,25 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			var pod *corev1.Pod
 			pod, createdObjectsInstrumentationWebhookTest = createPodOfDeployment(
 				deployment,
+				BasicPod(TestNamespaceName, ""),
 				createdObjectsInstrumentationWebhookTest,
 			)
 			VerifyUnmodifiedPod(pod)
 			VerifyNoEvents(ctx, clientset, TestNamespaceName)
+		})
+
+		It("should remove the instrumentation that a new pod has inherited from the pod template of its deployment "+
+			"if the deployment has opted out of instrumentation", func() {
+			deployment := DeploymentWithOptOutLabel(TestNamespaceName, UniqueName(DeploymentNamePrefix))
+			var pod *corev1.Pod
+			pod, createdObjectsInstrumentationWebhookTest = createPodOfDeployment(
+				deployment,
+				InstrumentedPod(TestNamespaceName, ""),
+				createdObjectsInstrumentationWebhookTest,
+			)
+			VerifyUnmodifiedPod(pod)
+			event := VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, deployment.Name, testActor)
+			Expect(event.Regarding.Kind).To(Equal("Deployment"))
 		})
 
 		It("should instrument a new pod with service attributes from its deployment, and record events for the "+
@@ -1302,6 +1428,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			var pod *corev1.Pod
 			pod, createdObjectsInstrumentationWebhookTest = createPodOfDeployment(
 				deployment,
+				BasicPod(TestNamespaceName, ""),
 				createdObjectsInstrumentationWebhookTest,
 			)
 			Expect(pod.Labels).To(HaveKeyWithValue("dash0.com/instrumented", "true"))
@@ -1315,18 +1442,30 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 	})
 })
 
-// createPodOfDeployment creates the deployment, a replica set controlled by it, and a pod controlled by the replica
-// set, created via generateName like the replica set controller does, and returns the pod as stored.
+// createPodOfDeployment creates the deployment, a replica set controlled by it, and the given pod controlled by the
+// replica set, created via generateName like the replica set controller does, and returns the pod as stored.
 func createPodOfDeployment(
 	deployment *appsv1.Deployment,
+	pod *corev1.Pod,
 	createdObjects []client.Object,
 ) (*corev1.Pod, []client.Object) {
 	CreateWorkload(ctx, k8sClient, deployment)
-	pod := BasicPod(TestNamespaceName, "")
 	pod.GenerateName = "pod-of-deployment-"
 	replicaSet, pod := CreateReplicaSetAndPodControlledByDeployment(ctx, k8sClient, deployment, pod)
 	createdObjects = append(createdObjects, deployment, replicaSet, pod)
 	return GetPod(ctx, k8sClient, TestNamespaceName, pod.Name), createdObjects
+}
+
+// createWorkloadWithLeftoverInstrumentation creates an instrumented workload without the webhook modifying it, like a
+// workload that has been instrumented before switching to mode pods.
+func createWorkloadWithLeftoverInstrumentation(workload client.Object, createdObjects []client.Object) []client.Object {
+	labels := workload.GetLabels()
+	labels["dash0.com/webhook-ignore-once"] = "true"
+	workload.SetLabels(labels)
+	CreateWorkload(ctx, k8sClient, workload)
+	Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(workload), workload)).To(Succeed())
+	Expect(workload.GetLabels()).To(HaveKeyWithValue("dash0.com/instrumented", "true"))
+	return append(createdObjects, workload)
 }
 
 func verifyThatDeploymentIsInstrumented(createdObjects []client.Object) []client.Object {
@@ -1361,4 +1500,14 @@ func verifyThatIgnoreOnceLabelIsRemovedOnUpdate(createdObjects []client.Object) 
 	VerifyWebhookIgnoreOnceLabelIsAbsent(&workload.ObjectMeta)
 	VerifyNoEvents(ctx, clientset, TestNamespaceName)
 	return createdObjects
+}
+
+func daemonSetWithOnDeleteStrategy(daemonSet *appsv1.DaemonSet) *appsv1.DaemonSet {
+	daemonSet.Spec.UpdateStrategy = appsv1.DaemonSetUpdateStrategy{Type: appsv1.OnDeleteDaemonSetStrategyType}
+	return daemonSet
+}
+
+func statefulSetWithOnDeleteStrategy(statefulSet *appsv1.StatefulSet) *appsv1.StatefulSet {
+	statefulSet.Spec.UpdateStrategy = appsv1.StatefulSetUpdateStrategy{Type: appsv1.OnDeleteStatefulSetStrategyType}
+	return statefulSet
 }
