@@ -5,10 +5,14 @@ package util
 
 import (
 	"encoding/json"
+	"fmt"
 	"maps"
+	"reflect"
+	"slices"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
@@ -1662,4 +1666,267 @@ var _ = Describe("component settings", func() {
 		)
 		Expect(toJson(ExtraConfigDefaults)).To(MatchJSON(defaultsBefore))
 	})
+
+	It("drift protection: every field in spec.components has an effect on the extra config", func() {
+		for setting, changedFields := range extraConfigFieldsChangedPerComponentSetting() {
+			Expect(changedFields).ToNot(
+				BeEmpty(),
+				"%s has no effect: setting it to different values leaves every field of the effective extra config "+
+					"unchanged. Apply it in componentSettingsApplier (component_settings.go).",
+				setting,
+			)
+		}
+	})
+
+	It("drift protection: every extra config field can be set via spec.components, unless it is Helm-only", func() {
+		settingsPerExtraConfigField := map[string][]string{}
+		for setting, changedFields := range extraConfigFieldsChangedPerComponentSetting() {
+			for _, name := range changedFields {
+				settingsPerExtraConfigField[name] = append(settingsPerExtraConfigField[name], setting.String())
+			}
+		}
+		extraConfigKeys := map[string]bool{}
+		for field := range reflect.TypeFor[ExtraConfig]().Fields() {
+			name := extraConfigFieldName(field)
+			if jsonKey(field) != "-" {
+				extraConfigKeys[name] = true
+			}
+			if _, isHelmOnly := helmOnlyExtraConfigKeys[name]; isHelmOnly {
+				Expect(settingsPerExtraConfigField[name]).To(
+					BeEmpty(),
+					"the extra config key %s is listed in helmOnlyExtraConfigKeys, but can be set via %v",
+					name,
+					settingsPerExtraConfigField[name],
+				)
+				continue
+			}
+			Expect(settingsPerExtraConfigField[name]).ToNot(
+				BeEmpty(),
+				"the extra config field %s cannot be set via spec.components: no field in spec.components changes it. "+
+					"Add a field to Dash0OperatorConfiguration or Dash0SignalControl and apply it in "+
+					"componentSettingsApplier (component_settings.go), or add the key to helmOnlyExtraConfigKeys with "+
+					"the reason why it is only configurable via Helm.",
+				name,
+			)
+		}
+		for key := range helmOnlyExtraConfigKeys {
+			Expect(extraConfigKeys).To(HaveKey(key), "helmOnlyExtraConfigKeys has the unknown key %s", key)
+		}
+	})
 })
+
+// componentSetting is a field in spec.components of a custom resource.
+type componentSetting struct {
+	// resource is the kind of the custom resource, e.g. Dash0OperatorConfiguration.
+	resource string
+	// path is the path of the field relative to spec.components.
+	path string
+}
+
+func (s componentSetting) String() string {
+	return fmt.Sprintf("%s %s.%s", s.resource, componentSettingsPath, s.path)
+}
+
+// helmOnlyExtraConfigKeys are the keys of the extra config map without a setting in spec.components, with the reason.
+var helmOnlyExtraConfigKeys = map[string]string{
+	"agent0ConnectorClusterRoleRules": "the Helm chart renders the same rules into the operator's own cluster role, " +
+		"the operator can only grant permissions it holds itself",
+	"targetAllocatorAllowSecretAccessInNamespaces": "the Helm chart grants the target-allocator access to secrets in " +
+		"these namespaces via role bindings instead of cluster-wide access (role-binding-target-allocator-secrets.yaml, " +
+		"cluster-roles.yaml)",
+	"exports": "only used for the operator configuration resource that the operator creates from the Helm values, " +
+		"which has spec.exports",
+	"monitoringTemplate": "only used for the operator configuration resource that the operator creates from the Helm " +
+		"values, which has spec.monitoringTemplate",
+	"filter": "only used for the operator configuration resource that the operator creates from the Helm values, " +
+		"which has spec.filter",
+	"transform": "only used for the operator configuration resource that the operator creates from the Helm values, " +
+		"which has spec.transform",
+}
+
+// componentSettingPrerequisites are the settings in spec.components that only take effect if other settings are set to
+// their first sample value (see setSampleValue).
+var componentSettingPrerequisites = map[componentSetting][]componentSetting{
+	{operatorConfigurationKind, "targetAllocator.mTls.serverCertSecretName"}: {
+		{operatorConfigurationKind, "targetAllocator.mTls.enabled"},
+	},
+	{operatorConfigurationKind, "targetAllocator.mTls.clientCertSecretName"}: {
+		{operatorConfigurationKind, "targetAllocator.mTls.enabled"},
+	},
+}
+
+// componentSettingField is a field in spec.components, found by reflection. Objects of the v1alpha1 package are not
+// listed themselves, only their fields.
+type componentSettingField struct {
+	setting componentSetting
+	// index is the index sequence of the field, starting at the components type of the resource.
+	index []int
+}
+
+func componentSettingFields() []componentSettingField {
+	return slices.Concat(
+		componentSettingFieldsOf(
+			operatorConfigurationKind, reflect.TypeFor[dash0v1alpha1.OperatorConfigurationComponents](), "", nil),
+		componentSettingFieldsOf(
+			signalControlKind, reflect.TypeFor[dash0v1alpha1.SignalControlComponents](), "", nil),
+	)
+}
+
+func componentSettingFieldsOf(
+	resource string,
+	structType reflect.Type,
+	pathPrefix string,
+	indexPrefix []int,
+) []componentSettingField {
+	var fields []componentSettingField
+	for field := range structType.Fields() {
+		index := append(slices.Clone(indexPrefix), field.Index...)
+		fieldType := field.Type
+		if fieldType.Kind() == reflect.Pointer {
+			fieldType = fieldType.Elem()
+		}
+		key := jsonKey(field)
+		if field.Anonymous && key == "" {
+			fields = append(fields, componentSettingFieldsOf(resource, fieldType, pathPrefix, index)...)
+			continue
+		}
+		path := pathPrefix + key
+		if fieldType.Kind() == reflect.Struct &&
+			fieldType.PkgPath() == reflect.TypeFor[dash0v1alpha1.OperatorConfigurationComponents]().PkgPath() {
+			fields = append(fields, componentSettingFieldsOf(resource, fieldType, path+".", index)...)
+			continue
+		}
+		fields = append(fields, componentSettingField{
+			setting: componentSetting{resource: resource, path: path},
+			index:   index,
+		})
+	}
+	return fields
+}
+
+// extraConfigFieldsChangedPerComponentSetting returns, for every field in spec.components, the extra config fields that
+// it changes (see extraConfigFieldsChangedBy).
+func extraConfigFieldsChangedPerComponentSetting() map[componentSetting][]string {
+	GinkgoHelper()
+	fields := componentSettingFields()
+	fieldsBySetting := map[componentSetting]componentSettingField{}
+	for _, field := range fields {
+		fieldsBySetting[field.setting] = field
+	}
+	changedFields := map[componentSetting][]string{}
+	for _, field := range fields {
+		changedFields[field.setting] = extraConfigFieldsChangedBy(field, fieldsBySetting)
+	}
+	return changedFields
+}
+
+// extraConfigFieldsChangedBy returns the extra config fields (see extraConfigFieldName) that differ in the effective
+// extra config when the setting is set to two different sample values.
+func extraConfigFieldsChangedBy(
+	field componentSettingField,
+	fieldsBySetting map[componentSetting]componentSettingField,
+) []string {
+	GinkgoHelper()
+	effectiveExtraConfig := func(variant int) reflect.Value {
+		operatorConfigurationComponents := dash0v1alpha1.OperatorConfigurationComponents{}
+		signalControlComponents := dash0v1alpha1.SignalControlComponents{}
+		components := reflect.ValueOf(&operatorConfigurationComponents).Elem()
+		if field.setting.resource == signalControlKind {
+			components = reflect.ValueOf(&signalControlComponents).Elem()
+		}
+		for _, prerequisite := range componentSettingPrerequisites[field.setting] {
+			Expect(fieldsBySetting).To(HaveKey(prerequisite), "the prerequisite %s does not exist", prerequisite)
+			setComponentSetting(components, fieldsBySetting[prerequisite].index, 0)
+		}
+		setComponentSetting(components, field.index, variant)
+		return reflect.ValueOf(EffectiveExtraConfig(
+			ExtraConfigDefaults,
+			ExtraConfigDefaults,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{Components: &operatorConfigurationComponents},
+			},
+			&dash0v1alpha1.Dash0SignalControl{
+				Spec: dash0v1alpha1.Dash0SignalControlSpec{Components: &signalControlComponents},
+			},
+		))
+	}
+	first, second := effectiveExtraConfig(0), effectiveExtraConfig(1)
+	var changed []string
+	for extraConfigField := range reflect.TypeFor[ExtraConfig]().Fields() {
+		if !apiequality.Semantic.DeepEqual(
+			first.FieldByIndex(extraConfigField.Index).Interface(),
+			second.FieldByIndex(extraConfigField.Index).Interface(),
+		) {
+			changed = append(changed, extraConfigFieldName(extraConfigField))
+		}
+	}
+	return changed
+}
+
+// setComponentSetting sets the field with the given index sequence to a sample value (see setSampleValue), creating the
+// objects that contain it if necessary.
+func setComponentSetting(components reflect.Value, index []int, variant int) {
+	GinkgoHelper()
+	value := components
+	for _, i := range index {
+		if value.Kind() == reflect.Pointer {
+			if value.IsNil() {
+				value.Set(reflect.New(value.Type().Elem()))
+			}
+			value = value.Elem()
+		}
+		value = value.Field(i)
+	}
+	setSampleValue(value, variant)
+}
+
+// setSampleValue sets the value to one of two different sample values, depending on the variant (0 or 1). Every nested
+// field, list and map is filled. The first sample value of a bool is true.
+func setSampleValue(value reflect.Value, variant int) {
+	GinkgoHelper()
+	if value.Type() == reflect.TypeFor[resource.Quantity]() {
+		value.Set(reflect.ValueOf(resource.MustParse(fmt.Sprintf("%dMi", 100+variant))))
+		return
+	}
+	switch value.Kind() {
+	case reflect.Pointer:
+		value.Set(reflect.New(value.Type().Elem()))
+		setSampleValue(value.Elem(), variant)
+	case reflect.Struct:
+		for field := range value.Type().Fields() {
+			Expect(field.IsExported()).To(BeTrue(), "there is no sample value for %s", value.Type())
+			setSampleValue(value.FieldByIndex(field.Index), variant)
+		}
+	case reflect.Slice:
+		value.Set(reflect.MakeSlice(value.Type(), 1, 1))
+		setSampleValue(value.Index(0), variant)
+	case reflect.Map:
+		key := reflect.New(value.Type().Key()).Elem()
+		setSampleValue(key, variant)
+		element := reflect.New(value.Type().Elem()).Elem()
+		setSampleValue(element, variant)
+		value.Set(reflect.MakeMap(value.Type()))
+		value.SetMapIndex(key, element)
+	case reflect.String:
+		value.SetString(fmt.Sprintf("sample-%d", variant))
+	case reflect.Bool:
+		value.SetBool(variant == 0)
+	case reflect.Int, reflect.Int32, reflect.Int64:
+		value.SetInt(int64(100 + variant))
+	default:
+		Fail(fmt.Sprintf("there is no sample value for %s", value.Type()))
+	}
+}
+
+func jsonKey(field reflect.StructField) string {
+	key, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+	return key
+}
+
+// extraConfigFieldName returns the key of the field in the extra config file, or its Go name if it has none.
+func extraConfigFieldName(field reflect.StructField) string {
+	if key := jsonKey(field); key != "-" {
+		return key
+	}
+	return field.Name
+}
