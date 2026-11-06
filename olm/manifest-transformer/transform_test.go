@@ -83,6 +83,12 @@ spec:
           value: "olm-bundle-placeholder"
         - name: DASH0_AGENT0_CONNECTOR_INSECURE
           value: "true"
+        - name: DASH0_EBPF_PROFILER_ENABLED
+          value: "true"
+        - name: DASH0_EBPF_PROFILER_IMAGE
+          value: "parca-agent:v0.51.2"
+        - name: DASH0_DEBUGINFO_PROXY_IMAGE
+          value: "debuginfo-proxy:latest"
         ports:
         - containerPort: 9443
           name: webhook-server
@@ -224,45 +230,53 @@ var _ = Describe("the OLM manifest transformer", func() {
 		out, log := transformSuccessfully(helmHookManifest, "# Source: empty.yaml\n", webhookManifest, deploymentManifest)
 
 		docs := parseOutput(out)
-		Expect(docs).To(HaveLen(5))
+		Expect(docs).To(HaveLen(8))
 		Expect(docs[0].GetKind()).To(Equal("MutatingWebhookConfiguration"))
 		Expect(docs[1].GetKind()).To(Equal("Deployment"))
 		Expect(log).To(ContainSubstring("dropped the Helm hook Job dash0-operator-pre-delete"))
 	})
 
-	It("adds the service account of the collector daemonset with the use of the privileged SCC", func() {
-		out, log := transformSuccessfully(deploymentManifest)
+	DescribeTable("adds a service account with the use of the privileged SCC",
+		func(firstDocIndex int, serviceAccountName string, workload string) {
+			out, log := transformSuccessfully(deploymentManifest)
 
-		docs := parseOutput(out)
-		Expect(docs).To(HaveLen(4))
-		serviceAccount := &corev1.ServiceAccount{}
-		Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(docs[1].Object, serviceAccount)).To(Succeed())
-		Expect(serviceAccount.Kind).To(Equal("ServiceAccount"))
-		Expect(serviceAccount.Name).To(Equal("dash0-operator-olm-collector"))
-		Expect(serviceAccount.Namespace).To(Equal("default"))
+			docs := parseOutput(out)
+			Expect(docs).To(HaveLen(7))
+			serviceAccount := &corev1.ServiceAccount{}
+			Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(
+				docs[firstDocIndex].Object, serviceAccount)).To(Succeed())
+			Expect(serviceAccount.Kind).To(Equal("ServiceAccount"))
+			Expect(serviceAccount.Name).To(Equal(serviceAccountName))
+			Expect(serviceAccount.Namespace).To(Equal("default"))
 
-		clusterRole := &rbacv1.ClusterRole{}
-		Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(docs[2].Object, clusterRole)).To(Succeed())
-		Expect(clusterRole.Kind).To(Equal("ClusterRole"))
-		Expect(clusterRole.Rules).To(Equal([]rbacv1.PolicyRule{{
-			APIGroups:     []string{"security.openshift.io"},
-			Resources:     []string{"securitycontextconstraints"},
-			ResourceNames: []string{"privileged"},
-			Verbs:         []string{"use"},
-		}}))
+			clusterRole := &rbacv1.ClusterRole{}
+			Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(
+				docs[firstDocIndex+1].Object, clusterRole)).To(Succeed())
+			Expect(clusterRole.Kind).To(Equal("ClusterRole"))
+			Expect(clusterRole.Name).To(Equal(serviceAccountName + "-scc"))
+			Expect(clusterRole.Rules).To(Equal([]rbacv1.PolicyRule{{
+				APIGroups:     []string{"security.openshift.io"},
+				Resources:     []string{"securitycontextconstraints"},
+				ResourceNames: []string{"privileged"},
+				Verbs:         []string{"use"},
+			}}))
 
-		clusterRoleBinding := &rbacv1.ClusterRoleBinding{}
-		Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(docs[3].Object, clusterRoleBinding)).To(Succeed())
-		Expect(clusterRoleBinding.Kind).To(Equal("ClusterRoleBinding"))
-		Expect(clusterRoleBinding.RoleRef).To(Equal(rbacv1.RoleRef{
-			APIGroup: "rbac.authorization.k8s.io", Kind: "ClusterRole", Name: clusterRole.Name,
-		}))
-		Expect(clusterRoleBinding.Subjects).To(Equal([]rbacv1.Subject{{
-			Kind: "ServiceAccount", Name: "dash0-operator-olm-collector", Namespace: "default",
-		}}))
-		Expect(log).To(ContainSubstring("added the service account dash0-operator-olm-collector for the collector " +
-			"daemonset with the use of the privileged SecurityContextConstraints"))
-	})
+			clusterRoleBinding := &rbacv1.ClusterRoleBinding{}
+			Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(
+				docs[firstDocIndex+2].Object, clusterRoleBinding)).To(Succeed())
+			Expect(clusterRoleBinding.Kind).To(Equal("ClusterRoleBinding"))
+			Expect(clusterRoleBinding.RoleRef).To(Equal(rbacv1.RoleRef{
+				APIGroup: "rbac.authorization.k8s.io", Kind: "ClusterRole", Name: clusterRole.Name,
+			}))
+			Expect(clusterRoleBinding.Subjects).To(Equal([]rbacv1.Subject{{
+				Kind: "ServiceAccount", Name: serviceAccountName, Namespace: "default",
+			}}))
+			Expect(log).To(ContainSubstring("added the service account " + serviceAccountName + " for the " + workload +
+				" with the use of the privileged SecurityContextConstraints"))
+		},
+		Entry("the collector daemonset", 1, "dash0-operator-olm-collector", "collector daemonset"),
+		Entry("the eBPF profiler", 4, "dash0-operator-olm-ebpf-profiler", "eBPF profiler"),
+	)
 
 	It("warns about webhook namespace selectors, which OLM does not apply", func() {
 		_, log := transformSuccessfully(webhookManifest, deploymentManifest)
@@ -546,22 +560,61 @@ data:
 				"the environment variable DASH0_COLLECTOR_IMAGE has no literal value")))
 		})
 
-		It("sets the service account of the collector daemonset", func() {
+		It("sets the service accounts of the collector daemonset and the eBPF profiler", func() {
 			container, _ := transformManagerContainer(deploymentManifest)
 
-			Expect(container.Env).To(ContainElement(corev1.EnvVar{
-				Name: "DASH0_OTEL_COLLECTOR_DAEMONSET_SERVICE_ACCOUNT_NAME", Value: "dash0-operator-olm-collector",
-			}))
+			Expect(container.Env).To(ContainElements(
+				corev1.EnvVar{
+					Name: "DASH0_OTEL_COLLECTOR_DAEMONSET_SERVICE_ACCOUNT_NAME", Value: "dash0-operator-olm-collector",
+				},
+				corev1.EnvVar{
+					Name: "DASH0_EBPF_PROFILER_SERVICE_ACCOUNT_NAME", Value: "dash0-operator-olm-ebpf-profiler",
+				},
+			))
 		})
 
-		It("fails if the service account of the collector daemonset is already set", func() {
-			err := runTransform(deploymentWith(
-				"        - name: DASH0_OPERATOR_IMAGE\n",
-				"        - name: DASH0_OTEL_COLLECTOR_DAEMONSET_SERVICE_ACCOUNT_NAME\n          value: other\n"+
-					"        - name: DASH0_OPERATOR_IMAGE\n"))
-			Expect(err).To(MatchError(ContainSubstring(
-				"the environment variable DASH0_OTEL_COLLECTOR_DAEMONSET_SERVICE_ACCOUNT_NAME is already set")))
+		DescribeTable("fails if a service account is already set",
+			func(envVarName string) {
+				err := runTransform(deploymentWith(
+					"        - name: DASH0_OPERATOR_IMAGE\n",
+					"        - name: "+envVarName+"\n          value: other\n"+
+						"        - name: DASH0_OPERATOR_IMAGE\n"))
+				Expect(err).To(MatchError(ContainSubstring(
+					"the environment variable " + envVarName + " is already set")))
+			},
+			Entry("the collector daemonset", "DASH0_OTEL_COLLECTOR_DAEMONSET_SERVICE_ACCOUNT_NAME"),
+			Entry("the eBPF profiler", "DASH0_EBPF_PROFILER_SERVICE_ACCOUNT_NAME"),
+		)
+
+		It("disables the eBPF profiler and keeps its images", func() {
+			container, log := transformManagerContainer(deploymentManifest)
+
+			Expect(container.Env).To(ContainElements(
+				corev1.EnvVar{Name: "DASH0_EBPF_PROFILER_ENABLED", Value: "false"},
+				corev1.EnvVar{Name: "DASH0_EBPF_PROFILER_IMAGE", Value: "parca-agent:v0.51.2"},
+				corev1.EnvVar{Name: "DASH0_DEBUGINFO_PROXY_IMAGE", Value: "debuginfo-proxy:latest"},
+			))
+			Expect(log).To(ContainSubstring(
+				"set DASH0_EBPF_PROFILER_ENABLED to false and kept the images of the eBPF profiler"))
 		})
+
+		It("fails without the eBPF profiler setting", func() {
+			err := runTransform(deploymentWith(
+				"        - name: DASH0_EBPF_PROFILER_ENABLED\n          value: \"true\"\n", ""))
+			Expect(err).To(MatchError(ContainSubstring(
+				"the environment variable DASH0_EBPF_PROFILER_ENABLED is missing")))
+		})
+
+		DescribeTable("fails if the chart was rendered without the eBPF profiler",
+			func(removedEnvVar string) {
+				err := runTransform(deploymentWith(removedEnvVar, ""))
+				Expect(err).To(MatchError(ContainSubstring("render the chart with operator.ebpfProfilerEnabled=true")))
+			},
+			Entry("without the profiler image",
+				"        - name: DASH0_EBPF_PROFILER_IMAGE\n          value: \"parca-agent:v0.51.2\"\n"),
+			Entry("without the debuginfo proxy image",
+				"        - name: DASH0_DEBUGINFO_PROXY_IMAGE\n          value: \"debuginfo-proxy:latest\"\n"),
+		)
 
 		It("adds a related image variable for every image variable", func() {
 			container, _ := transformManagerContainer(deploymentManifest)
@@ -569,6 +622,8 @@ data:
 			Expect(container.Env).To(ContainElements(
 				corev1.EnvVar{Name: "RELATED_IMAGE_OPERATOR", Value: "operator-controller:latest"},
 				corev1.EnvVar{Name: "RELATED_IMAGE_COLLECTOR", Value: "collector:latest"},
+				corev1.EnvVar{Name: "RELATED_IMAGE_EBPF_PROFILER", Value: "parca-agent:v0.51.2"},
+				corev1.EnvVar{Name: "RELATED_IMAGE_DEBUGINFO_PROXY", Value: "debuginfo-proxy:latest"},
 			))
 			for _, envVar := range container.Env {
 				Expect(envVar.Name).NotTo(Equal("RELATED_IMAGE_COLLECTOR_IMAGE_PULL_POLICY"))

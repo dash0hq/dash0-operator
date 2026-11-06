@@ -358,7 +358,7 @@ metadata:
     capabilities: Seamless Upgrades
     categories: Monitoring,Logging & Tracing
     containerImage: ghcr.io/dash0hq/operator-controller:0.0.0
-    createdAt: "2026-11-05T07:51:02Z"
+    createdAt: "2026-11-05T18:48:22Z"
     description: Collect traces, metrics and logs from your Kubernetes workloads and
       infrastructure with OpenTelemetry and send them to Dash0.
     operators.operatorframework.io/builder: operator-sdk-v1.42.3
@@ -639,8 +639,9 @@ spec:
     Some operator settings are read from `DASH0_*` environment variables, which can be set in `spec.config.env` of the
     Subscription. For example, `DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION=true` turns on Python instrumentation.
 
-    On OpenShift, the collector DaemonSet runs with the built-in `privileged` SecurityContextConstraints, which the
-    bundle grants to its service account `dash0-operator-olm-collector`.
+    On OpenShift, the collector DaemonSet and the eBPF profiler DaemonSet run with the built-in `privileged`
+    SecurityContextConstraints, which the bundle grants to their service accounts `dash0-operator-olm-collector` and
+    `dash0-operator-olm-ebpf-profiler`.
 
     This bundle does not support GKE Autopilot.
   displayName: Dash0 Operator
@@ -1471,6 +1472,16 @@ spec:
           verbs:
           - use
         serviceAccountName: dash0-operator-olm-collector
+      - rules:
+        - apiGroups:
+          - security.openshift.io
+          resourceNames:
+          - privileged
+          resources:
+          - securitycontextconstraints
+          verbs:
+          - use
+        serviceAccountName: dash0-operator-olm-ebpf-profiler
       deployments:
       - label:
           app.kubernetes.io/component: controller
@@ -1589,6 +1600,10 @@ spec:
                       fieldPath: metadata.annotations['openshift.io/scc']
                 - name: DASH0_EBPF_PROFILER_ENABLED
                   value: "false"
+                - name: DASH0_EBPF_PROFILER_IMAGE
+                  value: ghcr.io/parca-dev/parca-agent:0.0.0
+                - name: DASH0_DEBUGINFO_PROXY_IMAGE
+                  value: ghcr.io/dash0hq/debuginfo-proxy:0.0.0
                 - name: DASH0_TELEMETRY_COLLECTION_ENABLED
                   value: "true"
                 - name: DASH0_FEATURE_SIGNAL_CONTROL_ENABLED
@@ -1607,6 +1622,8 @@ spec:
                   value: info
                 - name: DASH0_OTEL_COLLECTOR_DAEMONSET_SERVICE_ACCOUNT_NAME
                   value: dash0-operator-olm-collector
+                - name: DASH0_EBPF_PROFILER_SERVICE_ACCOUNT_NAME
+                  value: dash0-operator-olm-ebpf-profiler
                 - name: RELATED_IMAGE_OPERATOR
                   value: ghcr.io/dash0hq/operator-controller:0.0.0
                 - name: RELATED_IMAGE_INSTRUMENTATION
@@ -1629,6 +1646,10 @@ spec:
                   value: ghcr.io/dash0hq/agent0-connector:0.0.0
                 - name: RELATED_IMAGE_SYNTHETICS_WORKER
                   value: ghcr.io/dash0hq/dash0-synthetics-worker:0.0.0
+                - name: RELATED_IMAGE_EBPF_PROFILER
+                  value: ghcr.io/parca-dev/parca-agent:0.0.0
+                - name: RELATED_IMAGE_DEBUGINFO_PROXY
+                  value: ghcr.io/dash0hq/debuginfo-proxy:0.0.0
                 image: ghcr.io/dash0hq/operator-controller:0.0.0
                 livenessProbe:
                   httpGet:
@@ -1841,6 +1862,10 @@ spec:
     name: agent0-connector
   - image: ghcr.io/dash0hq/dash0-synthetics-worker:0.0.0
     name: synthetics-worker
+  - image: ghcr.io/parca-dev/parca-agent:0.0.0
+    name: ebpf-profiler
+  - image: ghcr.io/dash0hq/debuginfo-proxy:0.0.0
+    name: debuginfo-proxy
   version: 0.0.1
   webhookdefinitions:
   - admissionReviewVersions:

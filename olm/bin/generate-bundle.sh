@@ -140,8 +140,9 @@ echo "generating the bundle"
 # operator-sdk writes bundle.Dockerfile into the working directory and reads the project layout for the bundle labels
 # from the PROJECT file there.
 cp PROJECT "$staging_dir/PROJECT"
-# operator-sdk only accepts a pipe on stdin, not a redirected file. The extra service account is the one the transformer
-# adds for the collector daemonset (OlmDaemonSetServiceAccountName in internal/collectors/otelcolresources).
+# operator-sdk only accepts a pipe on stdin, not a redirected file. The extra service accounts are the ones the
+# transformer adds for the collector daemonset (OlmDaemonSetServiceAccountName in internal/collectors/otelcolresources)
+# and the eBPF profiler (OlmEbpfProfilerServiceAccountName in internal/profiling/prresources).
 cat "$work_dir/bundle-input.yaml" | (
   cd "$staging_dir"
   "$operator_sdk" generate bundle \
@@ -149,7 +150,7 @@ cat "$work_dir/bundle-input.yaml" | (
     --version "$bundle_version" \
     --channels "$bundle_channels" \
     --default-channel "$bundle_default_channel" \
-    --extra-service-accounts dash0-operator-olm-collector \
+    --extra-service-accounts dash0-operator-olm-collector,dash0-operator-olm-ebpf-profiler \
     --output-dir .
 )
 rm "$staging_dir/PROJECT"
