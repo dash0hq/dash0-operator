@@ -865,6 +865,9 @@ OPERATOR_SDK=$(OPERATOR_SDK) \
 olm/bin/generate-bundle.sh $(4)
 endef
 
+# Only olm-release-bundle sets OLM_CHART_APP_VERSION, a value from the environment must not change the other bundles.
+unexport OLM_CHART_APP_VERSION
+
 .PHONY: olm-bundle
 olm-bundle: operator-sdk ## Generate the committed OLM bundle from the Helm chart, into BUNDLE_DIR (default: bundle).
 	OLM_TEST_BUNDLE=false $(call generate_olm_bundle,$(OLM_COMMITTED_BUNDLE_VERSION),$(OLM_COMMITTED_BUNDLE_CHANNEL),$(OLM_COMMITTED_BUNDLE_CHANNEL),$(OLM_COMMITTED_BUNDLE_HELM_SETTINGS))
@@ -872,6 +875,11 @@ olm-bundle: operator-sdk ## Generate the committed OLM bundle from the Helm char
 .PHONY: olm-test-bundle
 olm-test-bundle: operator-sdk ## Generate an OLM bundle with the BUNDLE_* and image settings of this Makefile into BUNDLE_DIR, e.g. olm/build/test-bundle.
 	OLM_TEST_BUNDLE=true $(call generate_olm_bundle,$(BUNDLE_VERSION),$(BUNDLE_CHANNELS),$(BUNDLE_DEFAULT_CHANNEL),$(OLM_HELM_IMAGE_SETTINGS))
+
+.PHONY: olm-release-bundle
+olm-release-bundle: operator-sdk ## Generate an OLM bundle with the images of the chart, tagged with BUNDLE_OPERATOR_IMAGE_TAG, into BUNDLE_DIR, e.g. olm/build/release-bundle.
+	@if [ -z "$(BUNDLE_OPERATOR_IMAGE_TAG)" ]; then echo "error: BUNDLE_OPERATOR_IMAGE_TAG is required"; exit 1; fi
+	OLM_TEST_BUNDLE=true OLM_CHART_APP_VERSION="$(BUNDLE_OPERATOR_IMAGE_TAG)" $(call generate_olm_bundle,$(BUNDLE_VERSION),$(BUNDLE_CHANNELS),$(BUNDLE_DEFAULT_CHANNEL),)
 
 .PHONY: olm-bundle-check
 olm-bundle-check: ## Check that the committed OLM bundle in bundle/ is up to date.
