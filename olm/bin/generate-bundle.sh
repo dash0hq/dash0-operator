@@ -4,9 +4,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Generates the OLM bundle, including its bundle.Dockerfile, into BUNDLE_DIR (default: bundle) from the Helm chart.
-# All arguments are passed on to helm template, for example --set operator.image.tag=1.2.3. Use "make olm-bundle" or
-# "make olm-test-bundle" instead of calling this directly. With OLM_TEST_BUNDLE=true, BUNDLE_DIR must be outside of
-# bundle/, which holds the committed bundle.
+# All arguments are passed on to helm template, for example --set operator.image.tag=1.2.3. Use "make olm-bundle",
+# "make olm-test-bundle" or "make olm-release-bundle" instead of calling this directly. With OLM_TEST_BUNDLE=true, BUNDLE_DIR must be outside of
+# bundle/, which holds the committed bundle. With OLM_CHART_APP_VERSION, the chart is packaged with that appVersion
+# first, so that all images whose tag defaults to the appVersion use it as their tag.
 
 set -euo pipefail
 
@@ -115,8 +116,26 @@ fi
 rm -rf "$staging_dir"
 mkdir -p "$staging_dir"
 
+chart=helm-chart/dash0-operator
+chart_app_version="${OLM_CHART_APP_VERSION-}"
+if [[ -n "${OLM_CHART_APP_VERSION+set}" && -z "$chart_app_version" ]]; then
+  echo "error: OLM_CHART_APP_VERSION must not be empty"
+  exit 1
+fi
+if [[ -n "$chart_app_version" ]]; then
+  # helm template has no option to set the appVersion, only helm package has.
+  echo "packaging the Helm chart with appVersion $chart_app_version"
+  chart_package_dir="$work_dir/chart-package"
+  rm -rf "$chart_package_dir"
+  helm package "$chart" \
+    --version "$bundle_version" \
+    --app-version "$chart_app_version" \
+    --destination "$chart_package_dir"
+  chart="$chart_package_dir/dash0-operator-$bundle_version.tgz"
+fi
+
 echo "rendering the Helm chart"
-helm template dash0-operator helm-chart/dash0-operator \
+helm template dash0-operator "$chart" \
   --namespace "$namespace_sentinel" \
   --values olm/values-olm.yaml \
   "$@" \
@@ -159,6 +178,16 @@ grep -rn -- "$namespace_sentinel" "$staging_dir" || grep_status=$?
 if [[ "$grep_status" != 1 ]]; then
   echo "error: the bundle must not contain the namespace the chart is rendered into (grep exit code $grep_status)"
   exit 1
+fi
+
+if [[ -n "$chart_app_version" ]]; then
+  # 0.0.0 is the appVersion of the chart in the repository, an image with this tag does not exist.
+  grep_status=0
+  grep -rnE -- '[a-z0-9]:0\.0\.0([^0-9.+-]|$)' "$staging_dir" || grep_status=$?
+  if [[ "$grep_status" != 1 ]]; then
+    echo "error: the bundle must not reference images with the tag 0.0.0 when OLM_CHART_APP_VERSION is set (grep exit code $grep_status)"
+    exit 1
+  fi
 fi
 
 # operator-sdk sets the annotation createdAt on every run. The previous value is kept when nothing else has changed, so

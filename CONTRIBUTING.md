@@ -663,6 +663,15 @@ To install the operator via OLM in a test cluster, use a test bundle with your o
   [test-resources/bin/delete-olm.sh](test-resources/bin/delete-olm.sh) removes OLM.
 - `make olm-scorecard BUNDLE_DIR=olm/build/test-bundle` runs the operator-sdk scorecard tests against the test bundle.
 
+CI publishes a bundle image for every commit on `main`, which references the images built for that commit, and the
+images with a pinned tag in `values.yaml` (e.g. the Signal Control collector):
+`ghcr.io/dash0hq/dash0-operator-bundle:sha-<short commit sha>`, and `ghcr.io/dash0hq/dash0-operator-bundle:main-dev`
+for the latest commit.
+It can be installed with `operator-sdk run bundle <bundle image> --namespace <namespace> --install-mode AllNamespaces`,
+without building any images.
+CI generates this bundle via `make olm-release-bundle`, which tags all images of the chart that are built in this
+repository with `BUNDLE_OPERATOR_IMAGE_TAG`.
+
 ## Testing with Kyverno
 
 [test-resources/bin/deploy-kyverno.sh](test-resources/bin/deploy-kyverno.sh) installs Kyverno and the upstream Kyverno

@@ -24,6 +24,10 @@ inputs:
     description: "path to dockerfile, defaults to ${context}/Dockerfile"
     required: false
     default: ''
+  pushOnTags:
+    description: "whether to push the image for tags, i.e. for releases; images are always pushed for the main branch"
+    required: false
+    default: 'true'
 
 runs:
   using: "composite"
@@ -63,8 +67,10 @@ runs:
     - name: determine whether to push the image
       id: determine-push
       shell: bash
+      env:
+        PUSH_ON_TAGS: ${{ inputs.pushOnTags }}
       run: |
-        if [[ $GITHUB_REF == 'refs/heads/main' || $GITHUB_REF == *"refs/tags/"* ]]; then
+        if [[ $GITHUB_REF == 'refs/heads/main' || ( $GITHUB_REF == *"refs/tags/"* && $PUSH_ON_TAGS == 'true' ) ]]; then
           echo "PUSH_ENABLED=true" >> "$GITHUB_ENV"
         else
           echo "PUSH_ENABLED=false" >> "$GITHUB_ENV"

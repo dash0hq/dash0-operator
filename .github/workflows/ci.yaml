@@ -327,6 +327,79 @@ jobs:
           context: images
           file: images/debuginfo-proxy/Dockerfile
 
+  # Builds the image of an OLM bundle that references the images build_and_push_images has just built, i.e. the images
+  # tagged with sha-<short sha> on main and with x.y.z for tags. Like the other images, the bundle image is pushed for
+  # the main branch, but not yet for tags: version tags of the bundle image are only published once the OLM support is
+  # complete.
+  #
+  # Intentionally without "permissions:", for the same reason as build_and_push_images.
+  # jactionlint ignore=missing-permissions
+  build_and_push_olm_bundle_image:
+    name: Build OLM Bundle Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - build_and_push_images
+    if: ${{ always() && needs.build_and_push_images.result == 'success' }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d
+        with:
+          mise_toml: |
+            [tools]
+            helm = "4.3.0"
+
+      - name: generate and validate the OLM bundle
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            image_tag="$GITHUB_REF_NAME"
+            bundle_version="$GITHUB_REF_NAME"
+          else
+            # The tag that docker/metadata-action creates with type=sha in .github/actions/build-image.
+            image_tag="sha-${GITHUB_SHA::7}"
+            bundle_version="0.0.0-$image_tag"
+          fi
+          echo "generating the OLM bundle version $bundle_version with the image tag $image_tag"
+          make olm-release-bundle olm-bundle-validate \
+            BUNDLE_DIR=olm/build/release-bundle \
+            BUNDLE_VERSION="$bundle_version" \
+            BUNDLE_OPERATOR_IMAGE_TAG="$image_tag"
+
+      - name: check that all images of the OLM bundle exist
+        if: ${{ github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/') }}
+        run: |
+          related_images="$(yq -r '.spec.relatedImages[].image' olm/build/release-bundle/manifests/dash0-operator.clusterserviceversion.yaml)"
+          mapfile -t images <<< "$related_images"
+          if [[ -z "$related_images" ]]; then
+            echo "error: the OLM bundle has no related images"
+            exit 1
+          fi
+          for image in "${images[@]}"; do
+            echo "checking $image"
+            docker buildx imagetools inspect "$image" > /dev/null
+          done
+
+      - name: build OLM bundle image
+        uses: ./.github/actions/build-image
+        with:
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          imageName: dash0-operator-bundle
+          imageTitle: Dash0 Kubernetes Operator OLM Bundle
+          imageDescription: the Operator Lifecycle Manager bundle of the Dash0 operator for Kubernetes
+          imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/olm
+          context: olm/build/release-bundle
+          file: olm/build/release-bundle/bundle.Dockerfile
+          pushOnTags: 'false'
+
   e2e_tests:
     name: End-to-end Tests
     needs:
