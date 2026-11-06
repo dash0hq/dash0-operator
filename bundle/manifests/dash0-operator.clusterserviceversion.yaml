@@ -254,6 +254,84 @@ metadata:
         },
         {
           "apiVersion": "operator.dash0.com/v1alpha1",
+          "kind": "Dash0TelemetryTransformationRule",
+          "metadata": {
+            "name": "normalize-synthetic-logs"
+          },
+          "spec": {
+            "conditions": [
+              "attributes[\"demo.synthetic\"] == true"
+            ],
+            "context": "log",
+            "display": {
+              "name": "Normalize synthetic logs"
+            },
+            "enabled": false,
+            "examples": [
+              {
+                "name": "Synthetic log",
+                "otlp": {
+                  "resourceLogs": [
+                    {
+                      "resource": {
+                        "attributes": [
+                          {
+                            "key": "service.name",
+                            "value": {
+                              "stringValue": "synthetic-transformation-demo"
+                            }
+                          }
+                        ]
+                      },
+                      "scopeLogs": [
+                        {
+                          "logRecords": [
+                            {
+                              "attributes": [
+                                {
+                                  "key": "demo.synthetic",
+                                  "value": {
+                                    "boolValue": true
+                                  }
+                                }
+                              ],
+                              "body": {
+                                "stringValue": "Synthetic example log"
+                              },
+                              "severityText": "info",
+                              "timeUnixNano": "1793707200000000000"
+                            }
+                          ],
+                          "scope": {
+                            "name": "synthetic-demo"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "priority": 200,
+            "signal": "logs",
+            "transformations": [
+              {
+                "name": "Normalize severity",
+                "statements": [
+                  "set(severity_text, \"INFO\")"
+                ]
+              },
+              {
+                "name": "Mark normalized logs",
+                "statements": [
+                  "set(attributes[\"demo.transformation\"], \"normalized\")"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "apiVersion": "operator.dash0.com/v1alpha1",
           "kind": "Dash0TimeSeriesAggregation",
           "metadata": {
             "name": "aggregate-http-server-duration"
@@ -358,7 +436,7 @@ metadata:
     capabilities: Seamless Upgrades
     categories: Monitoring,Logging & Tracing
     containerImage: ghcr.io/dash0hq/operator-controller:0.0.0
-    createdAt: "2026-11-03T17:22:41Z"
+    createdAt: "2026-11-04T16:02:52Z"
     description: Collect traces, metrics and logs from your Kubernetes workloads and
       infrastructure with OpenTelemetry and send them to Dash0.
     operators.operatorframework.io/builder: operator-sdk-v1.42.3
@@ -545,6 +623,40 @@ spec:
       - description: The members of the team, as member IDs or email addresses.
         displayName: Members
         path: members
+      version: v1alpha1
+    - description: A rule that transforms matching telemetry with named, ordered OTTL
+        statements.
+      displayName: Dash0 Telemetry Transformation Rule
+      kind: Dash0TelemetryTransformationRule
+      name: dash0telemetrytransformationrules.operator.dash0.com
+      specDescriptors:
+      - description: Whether the rule is active in Dash0.
+        displayName: Enabled
+        path: enabled
+      - description: The name of the rule shown in Dash0.
+        displayName: Display
+        path: display
+      - description: The telemetry signal that the rule transforms.
+        displayName: Signal
+        path: signal
+      - description: The OTTL context in which conditions and statements run.
+        displayName: Context
+        path: context
+      - description: The rule priority, from 0 to 400 in steps of 100. Defaults to
+          200.
+        displayName: Priority
+        path: priority
+      - description: The OTTL conditions that select telemetry for transformation.
+        displayName: Conditions
+        path: conditions
+      - description: Named transformations and their statements, executed in list
+          order.
+        displayName: Transformations
+        path: transformations
+      - description: Named synthetic OTLP objects stored with the rule. Do not include
+          secrets or production data.
+        displayName: Examples
+        path: examples
       version: v1alpha1
     - description: A rule that aggregates the data points of matching metrics over
         a fixed interval.
@@ -809,6 +921,30 @@ spec:
           verbs:
           - get
           - patch
+          - update
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0telemetrytransformationrules
+          verbs:
+          - get
+          - list
+          - watch
+          - patch
+          - update
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0telemetrytransformationrules/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0telemetrytransformationrules/finalizers
+          verbs:
           - update
         - apiGroups:
           - operator.dash0.com
@@ -1376,6 +1512,7 @@ spec:
           - dash0signaltometrics
           - dash0spamfilters
           - dash0syntheticchecks
+          - dash0telemetrytransformationrules
           - dash0timeseriesaggregations
           - dash0views
           verbs:

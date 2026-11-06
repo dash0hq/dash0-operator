@@ -244,9 +244,13 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 				"display.folder": "ignored by the Dash0 API, folders are set via the dash0.com/folder-path annotation",
 			},
 			map[string]string{
+				"frameFilters":         "profiling views are not supported by Dash0View yet",
+				"profileType":          "profiling views are not supported by Dash0View yet",
 				"query":                "not supported by Dash0View yet",
 				"serviceMapProperties": "not supported by Dash0View yet",
 				"serviceName":          "not supported by Dash0View yet",
+				"stackFilters":         "profiling views are not supported by Dash0View yet",
+				"sumBy":                "profiling views are not supported by Dash0View yet",
 			},
 		)
 	})

@@ -1,0 +1,185 @@
+custom resource definition for telemetry transformation rules should match snapshot:
+  1: |
+    apiVersion: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    metadata:
+      annotations:
+        controller-gen.kubebuilder.io/version: v0.19.0
+      name: dash0telemetrytransformationrules.operator.dash0.com
+    spec:
+      group: operator.dash0.com
+      names:
+        kind: Dash0TelemetryTransformationRule
+        listKind: Dash0TelemetryTransformationRuleList
+        plural: dash0telemetrytransformationrules
+        singular: dash0telemetrytransformationrule
+      scope: Namespaced
+      versions:
+        - name: v1alpha1
+          schema:
+            openAPIV3Schema:
+              description: Dash0TelemetryTransformationRule defines a telemetry transformation rule synchronized to Dash0.
+              properties:
+                apiVersion:
+                  description: |-
+                    APIVersion defines the versioned schema of this representation of an object.
+                    Servers should convert recognized schemas to the latest internal value, and
+                    may reject unrecognized values.
+                    More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+                  type: string
+                kind:
+                  description: |-
+                    Kind is a string value representing the REST resource this object represents.
+                    Servers may infer this from the endpoint the client submits requests to.
+                    Cannot be updated.
+                    In CamelCase.
+                    More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+                  type: string
+                metadata:
+                  type: object
+                spec:
+                  description: Dash0TelemetryTransformationRuleSpec defines the desired state of a telemetry transformation rule.
+                  properties:
+                    conditions:
+                      items:
+                        type: string
+                      type: array
+                    context:
+                      description: Dash0TelemetryTransformationRuleContext identifies the OTTL evaluation context.
+                      enum:
+                        - resource
+                        - scope
+                        - span
+                        - spanevent
+                        - metric
+                        - datapoint
+                        - log
+                        - profile
+                      type: string
+                    display:
+                      description: Dash0TelemetryTransformationRuleDisplay defines the rule's display configuration.
+                      properties:
+                        name:
+                          type: string
+                      required:
+                        - name
+                      type: object
+                    enabled:
+                      type: boolean
+                    examples:
+                      items:
+                        description: Dash0TelemetryTransformationRuleExample defines a named OTLP/JSON export request for testing the rule.
+                        properties:
+                          name:
+                            type: string
+                          otlp:
+                            type: object
+                            x-kubernetes-preserve-unknown-fields: true
+                        required:
+                          - name
+                          - otlp
+                        type: object
+                      maxItems: 10
+                      type: array
+                    priority:
+                      default: 200
+                      maximum: 400
+                      minimum: 0
+                      multipleOf: 100
+                      type: integer
+                    signal:
+                      description: Dash0TelemetryTransformationRuleSignalType identifies the telemetry signal to transform.
+                      enum:
+                        - traces
+                        - metrics
+                        - logs
+                        - profiles
+                      type: string
+                    transformations:
+                      items:
+                        description: Dash0TelemetryTransformationRuleTransformation defines a named, ordered list of OTTL statements.
+                        properties:
+                          name:
+                            type: string
+                          statements:
+                            items:
+                              type: string
+                            type: array
+                            x-kubernetes-list-type: atomic
+                        required:
+                          - name
+                          - statements
+                        type: object
+                      minItems: 1
+                      type: array
+                      x-kubernetes-list-type: atomic
+                  required:
+                    - context
+                    - enabled
+                    - signal
+                    - transformations
+                  type: object
+                  x-kubernetes-validations:
+                    - message: context must be valid for the selected signal
+                      rule: self.context in ['resource', 'scope'] || (self.signal == 'traces' && self.context in ['span', 'spanevent']) || (self.signal == 'metrics' && self.context in ['metric', 'datapoint']) || (self.signal == 'logs' && self.context == 'log') || (self.signal == 'profiles' && self.context == 'profile')
+                status:
+                  description: Dash0TelemetryTransformationRuleStatus defines the observed state of a telemetry transformation rule.
+                  properties:
+                    synchronizationResults:
+                      items:
+                        description: Dash0TelemetryTransformationRuleSynchronizationResultPerEndpointAndDataset defines a single synchronization result.
+                        properties:
+                          dash0ApiEndpoint:
+                            type: string
+                          dash0Dataset:
+                            type: string
+                          dash0Id:
+                            type: string
+                          dash0Origin:
+                            type: string
+                          httpStatusCode:
+                            description: HttpStatusCode is absent for successful synchronizations and transport errors without an HTTP response.
+                            type: integer
+                          synchronizationError:
+                            type: string
+                          synchronizationStatus:
+                            description: |-
+                              Dash0ApiResourceSynchronizationStatus describes the result of synchronizing a (non-third-party) Kubernetes resource
+                              (e.g. synthetic checks) to the Dash0 API.
+                            enum:
+                              - successful
+                              - partially-successful
+                              - failed
+                            type: string
+                        required:
+                          - synchronizationStatus
+                        type: object
+                      type: array
+                    synchronizationStatus:
+                      description: |-
+                        Dash0ApiResourceSynchronizationStatus describes the result of synchronizing a (non-third-party) Kubernetes resource
+                        (e.g. synthetic checks) to the Dash0 API.
+                      enum:
+                        - successful
+                        - partially-successful
+                        - failed
+                      type: string
+                    synchronizedAt:
+                      format: date-time
+                      type: string
+                    validationIssues:
+                      items:
+                        type: string
+                      type: array
+                  required:
+                    - synchronizationResults
+                    - synchronizationStatus
+                    - synchronizedAt
+                  type: object
+              required:
+                - spec
+              type: object
+          served: true
+          storage: true
+          subresources:
+            status: {}

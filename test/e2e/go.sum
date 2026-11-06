@@ -47,6 +47,8 @@ github.com/cisco-open/k8s-objectmatcher v1.10.0 h1:1TdhMPqVaU+NqECqytAkRF1SFU0QI
 github.com/cisco-open/k8s-objectmatcher v1.10.0/go.mod h1:O/TFG3vW12jbKNQejpc8SGgSfujlaWYIOCZHcXeK514=
 github.com/dash0hq/dash0-api-client-go v1.28.0 h1:mZ8TRulmmnA3HU+YWLg+Eaq7QduZKnA4sMsWlHvoO80=
 github.com/dash0hq/dash0-api-client-go v1.28.0/go.mod h1:ewwnbJTPPXbRRhPKtvIV72w6e6QfZKw8qKNvXPlmUfg=
+github.com/dash0hq/dash0-api-client-go v1.30.1-0.20261103152528-9f69c9bc6c5e h1:otNHfu1jmzBPbW91bOGuhBRYXMQHefjPFpXYLafrbkY=
+github.com/dash0hq/dash0-api-client-go v1.30.1-0.20261103152528-9f69c9bc6c5e/go.mod h1:r0AJKYZy8Y6hmGhsVbHbCEOEH3bIUKcHlg/KeZs6dJo=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
@@ -235,6 +237,8 @@ github.com/oapi-codegen/nullable v1.1.0 h1:eAh8JVc5430VtYVnq00Hrbpag9PFRGWLjxR1/
 github.com/oapi-codegen/nullable v1.1.0/go.mod h1:KUZ3vUzkmEKY90ksAmit2+5juDIhIZhfDl+0PwOQlFY=
 github.com/oapi-codegen/runtime v1.7.0 h1:t7358VYPvNbWJ9gdAkIK/smVeHpBf6yp8VTsaZsb/7k=
 github.com/oapi-codegen/runtime v1.7.0/go.mod h1:GwV7hC2hviaMzj+ITfHVRESK5J2W/GefVwIND/bMGvU=
+github.com/oapi-codegen/runtime v1.8.0 h1:RJzEgQSJQADEPaG1cYuSCKYai/cCVRE2xnkrqhJs/3c=
+github.com/oapi-codegen/runtime v1.8.0/go.mod h1:GwV7hC2hviaMzj+ITfHVRESK5J2W/GefVwIND/bMGvU=
 github.com/onsi/ginkgo/v2 v2.33.1 h1:62XfWJbEIjPSCSDYrsCPP/SHcmH7O0M8ne8zfqQ2iz4=
 github.com/onsi/ginkgo/v2 v2.33.1/go.mod h1:+aXOY+vzZ5mu2iI2HpTZUPmM//oQfsNFX6gU9kNcA44=
 github.com/onsi/gomega v1.44.0 h1:eAiGl3Pw5jz5GQdDff0BcxYpAX1JxW8xD7mFUuwNfZQ=
