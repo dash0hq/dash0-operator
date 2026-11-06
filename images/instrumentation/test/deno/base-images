@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# one base image per line
+denoland/deno:debian-2.9.8
+denoland/deno:alpine-2.9.8

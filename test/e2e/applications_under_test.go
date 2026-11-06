@@ -82,6 +82,22 @@ func determineTestAppImages() {
 			imageTag,
 			pullPolicy,
 		)
+	testAppImages[runtimeTypeDenoNodeHttp] =
+		determineContainerImage(
+			"TEST_APP_DENO_NODE_HTTP",
+			repositoryPrefix,
+			"dash0-operator-deno-node-http-test-app",
+			imageTag,
+			pullPolicy,
+		)
+	testAppImages[runtimeTypeDenoServe] =
+		determineContainerImage(
+			"TEST_APP_DENO_SERVE",
+			repositoryPrefix,
+			"dash0-operator-deno-serve-test-app",
+			imageTag,
+			pullPolicy,
+		)
 }
 
 //nolint:unparam
@@ -379,6 +395,14 @@ func uninstallRubyRelease(namespace string) error {
 	return runTestAppHelmUninstall(namespace, helmReleaseName(runtimeTypeRuby, namespace))
 }
 
+func uninstallDenoNodeHttpRelease(namespace string) error {
+	return runTestAppHelmUninstall(namespace, helmReleaseName(runtimeTypeDenoNodeHttp, namespace))
+}
+
+func uninstallDenoServeRelease(namespace string) error {
+	return runTestAppHelmUninstall(namespace, helmReleaseName(runtimeTypeDenoServe, namespace))
+}
+
 func killBatchJobsAndPods(namespace string) {
 	By("deleting job spawned by a cronjob")
 	Expect(runAndIgnoreOutput(
@@ -423,6 +447,8 @@ func removeAllTestApplications(namespace string) {
 	Expect(uninstallNodeJsRelease(namespace)).To(Succeed())
 	Expect(uninstallPythonRelease(namespace)).To(Succeed())
 	Expect(uninstallRubyRelease(namespace)).To(Succeed())
+	Expect(uninstallDenoNodeHttpRelease(namespace)).To(Succeed())
+	Expect(uninstallDenoServeRelease(namespace)).To(Succeed())
 }
 
 // compileWorkloadTypeSetParams creates a list of Helm --set flags for the test app Helm chart to deploy a specific set

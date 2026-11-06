@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+image:
+  repository: dash0-operator-deno-node-http-test-app
+  tag: latest
+  pullPolicy: Never
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+    ephemeral-storage: 500Mi
+  requests:
+    cpu: 200m
+    memory: 128Mi
+    ephemeral-storage: 500Mi
+
+daemonset:
+  enabled: false
+  port: 1706
+  targetPort: 1706
+  selector: dash0-operator-deno-node-http-test-daemonset-app
+  ingressPath: /daemonset/deno-node-http(/|$)(.*)
+
+deployment:
+  enabled: false
+  port: 1707
+  targetPort: 1707
+  selector: dash0-operator-deno-node-http-test-deployment-app
+  ingressPath: /deployment/deno-node-http(/|$)(.*)
+
+pod:
+  enabled: false
+  port: 1711
+  targetPort: 1711
+  selector: dash0-operator-deno-node-http-test-pod-app
+  ingressPath: /pod/deno-node-http(/|$)(.*)
+
+replicaset:
+  enabled: false
+  port: 1709
+  targetPort: 1709
+  selector: dash0-operator-deno-node-http-test-replicaset-app
+  ingressPath: /replicaset/deno-node-http(/|$)(.*)
+
+statefulset:
+  enabled: false
+  port: 1710
+  targetPort: 1710
+  selector: dash0-operator-deno-node-http-test-statefulset-app
+  ingressPath: /statefulset/deno-node-http(/|$)(.*)
