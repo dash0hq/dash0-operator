@@ -79,12 +79,13 @@ tests:
           path: allowedCapabilities
           value: [CHOWN]
 
-  - it: should use fullnameOverride as the name prefix for the SecurityContextConstraints and the collector service account
+  - it: should use operator.collectors.namePrefix for the SCC, its RBAC and the collector service account
     release:
       name: dash0-operator-an-argo-cd-application-name
     set:
-      fullnameOverride: dash0-operator
       operator:
+        collectors:
+          namePrefix: dash0-operator
         openShift:
           enabled: true
     asserts:
