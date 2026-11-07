@@ -2947,3 +2947,43 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].args
           content: --operator-configuration-managed-via-helm=true
+
+  - it: should use the release name as the name prefix for collector and target-allocator resources by default
+    release:
+      name: some-release
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_NAME_PREFIX
+            value: some-release
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
+            value: some-release
+
+  - it: should use operator.collectors.namePrefix as the name prefix for collector and target-allocator resources
+    release:
+      name: dash0-operator-an-argo-cd-application-name
+    set:
+      operator:
+        collectors:
+          namePrefix: dash0-operator
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_NAME_PREFIX
+            value: dash0-operator
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
+            value: dash0-operator

@@ -726,6 +726,13 @@ operator:
 
   # Settings related to the collectors managed by the operator.
   collectors:
+    # Overrides the Helm release name as the name prefix for the Kubernetes resources the operator creates for the
+    # OpenTelemetry collectors and the target allocator, for example <prefix>-opentelemetry-collector-service. Set this
+    # if the release name is long, for example when the chart is deployed with Argo CD, which uses the name of the
+    # Argo CD application as the release name. Kubernetes limits service names to 63 characters, so the prefix (the
+    # release name or this value) must not be longer than 24 characters.
+    namePrefix: ""
+
     # If set to true, adds a debug exporter with "verbosity: detailed" to the collectors managed by the operator.
     # This setting produces a large amount of logs and is not suitable for extended production use.
     debugVerbosityDetailed: false

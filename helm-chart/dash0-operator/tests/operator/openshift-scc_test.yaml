@@ -78,3 +78,32 @@ tests:
       - equal:
           path: allowedCapabilities
           value: [CHOWN]
+
+  - it: should use operator.collectors.namePrefix for the SCC, its RBAC and the collector service account
+    release:
+      name: dash0-operator-an-argo-cd-application-name
+    set:
+      operator:
+        collectors:
+          namePrefix: dash0-operator
+        openShift:
+          enabled: true
+    asserts:
+      - equal:
+          path: metadata.name
+          value: dash0-operator-dash0-collector
+        documentSelector:
+          path: kind
+          value: SecurityContextConstraints
+      - equal:
+          path: rules[0].resourceNames[0]
+          value: dash0-operator-dash0-collector
+        documentSelector:
+          path: kind
+          value: ClusterRole
+      - equal:
+          path: subjects[0].name
+          value: dash0-operator-opentelemetry-collector-sa
+        documentSelector:
+          path: kind
+          value: RoleBinding
