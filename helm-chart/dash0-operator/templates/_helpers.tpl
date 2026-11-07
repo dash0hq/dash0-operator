@@ -3,6 +3,14 @@
 {{- .Chart.Name | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
+{{/*
+The prefix for the names of the Kubernetes resources the operator manager creates for the OpenTelemetry collectors
+and the target allocator. Defaults to the Helm release name.
+*/}}
+{{- define "dash0-operator.namePrefix" -}}
+{{- default .Release.Name .Values.fullnameOverride }}
+{{- end }}
+
 {{/* chart name with version */}}
 {{- define "dash0-operator.chartNameWithVersion" -}}
 {{- printf "%s-%s" (.Chart.Name | trunc 53) .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}

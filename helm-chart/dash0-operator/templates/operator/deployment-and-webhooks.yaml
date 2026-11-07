@@ -248,9 +248,9 @@ spec:
         - name: DASH0_IAC_PERIODIC_RETRY_INTERVAL
           value: {{ .Values.operator.iac.periodicRetry.interval | toString | quote }}
         - name: OTEL_COLLECTOR_NAME_PREFIX
-          value: {{ .Release.Name | quote }}
+          value: {{ include "dash0-operator.namePrefix" . | quote }}
         - name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
-          value: {{ .Release.Name | quote }}
+          value: {{ include "dash0-operator.namePrefix" . | quote }}
         - name: DASH0_OPERATOR_IMAGE
           value: {{ include "dash0-operator.image" . | quote }}
         - name: DASH0_INSTRUMENTATION_IMAGE
