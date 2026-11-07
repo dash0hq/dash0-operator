@@ -8,7 +8,7 @@ The prefix for the names of the Kubernetes resources the operator manager create
 and the target allocator. Defaults to the Helm release name.
 */}}
 {{- define "dash0-operator.namePrefix" -}}
-{{- default .Release.Name .Values.fullnameOverride }}
+{{- default .Release.Name .Values.operator.collectors.namePrefix }}
 {{- end }}
 
 {{/* chart name with version */}}

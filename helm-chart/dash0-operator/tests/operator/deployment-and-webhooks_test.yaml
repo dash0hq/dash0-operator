@@ -2966,11 +2966,13 @@ tests:
             name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
             value: some-release
 
-  - it: should use fullnameOverride as the name prefix for collector and target-allocator resources
+  - it: should use operator.collectors.namePrefix as the name prefix for collector and target-allocator resources
     release:
       name: dash0-operator-an-argo-cd-application-name
     set:
-      fullnameOverride: dash0-operator
+      operator:
+        collectors:
+          namePrefix: dash0-operator
     documentSelector:
       path: metadata.name
       value: dash0-operator-controller
