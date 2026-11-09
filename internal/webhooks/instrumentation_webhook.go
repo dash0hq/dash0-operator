@@ -14,11 +14,13 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -35,6 +37,7 @@ type InstrumentationWebhookHandler struct {
 	APIReader                    client.Reader
 	Recorder                     events.EventRecorder
 	ClusterInstrumentationConfig *util.ClusterInstrumentationConfig
+	PodOwnerResolver             *workloads.PodOwnerResolver
 }
 
 type resourceHandler func(
@@ -101,11 +104,14 @@ var (
 )
 
 // NewInstrumentationWebhookHandler creates the handler for the instrumentation webhook. The client is expected to be
-// the cached client of the operator manager, apiReader reads directly from the API server and is used to read the cron
-// job controlling a job, so that admitting a job does not start an informer for all cron jobs in the cluster.
+// the cached client of the operator manager, apiReader reads directly from the API server. It is used to read the cron
+// job controlling a job, so that admitting a job does not start an informer for all cron jobs in the cluster, and to
+// read the owners of a pod that are not in the cache yet. informers is used to start watching the owners of pods once
+// the first namespace uses instrumentWorkloads.mode=pods (see workloads.NewPodOwnerResolver).
 func NewInstrumentationWebhookHandler(
 	client client.Client,
 	apiReader client.Reader,
+	informers cache.Informers,
 	recorder events.EventRecorder,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
 ) *InstrumentationWebhookHandler {
@@ -117,6 +123,7 @@ func NewInstrumentationWebhookHandler(
 		APIReader:                    apiReader,
 		Recorder:                     recorder,
 		ClusterInstrumentationConfig: clusterInstrumentationConfig,
+		PodOwnerResolver:             workloads.NewPodOwnerResolver(client, apiReader, informers),
 	}
 }
 
@@ -319,10 +326,10 @@ func (h *InstrumentationWebhookHandler) handleCronJob(
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
 	) {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertCronJob(cronJob)
-		return h.postProcessUninstrumentation(request, cronJob, modificationResult, logger)
+		return h.postProcessUninstrumentation(request, cronJob, cronJob, modificationResult, logger)
 	} else {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyCronJob(cronJob)
-		return h.postProcessInstrumentation(request, cronJob, modificationResult, false, logger)
+		return h.postProcessInstrumentation(request, cronJob, cronJob, modificationResult, logger)
 	}
 }
 
@@ -353,10 +360,10 @@ func (h *InstrumentationWebhookHandler) handleDaemonSet(
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
 	) {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertDaemonSet(daemonSet)
-		return h.postProcessUninstrumentation(request, daemonSet, modificationResult, logger)
+		return h.postProcessUninstrumentation(request, daemonSet, daemonSet, modificationResult, logger)
 	} else {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyDaemonSet(daemonSet)
-		return h.postProcessInstrumentation(request, daemonSet, modificationResult, false, logger)
+		return h.postProcessInstrumentation(request, daemonSet, daemonSet, modificationResult, logger)
 	}
 }
 
@@ -387,10 +394,10 @@ func (h *InstrumentationWebhookHandler) handleDeployment(
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
 	) {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertDeployment(deployment)
-		return h.postProcessUninstrumentation(request, deployment, modificationResult, logger)
+		return h.postProcessUninstrumentation(request, deployment, deployment, modificationResult, logger)
 	} else {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyDeployment(deployment)
-		return h.postProcessInstrumentation(request, deployment, modificationResult, false, logger)
+		return h.postProcessInstrumentation(request, deployment, deployment, modificationResult, logger)
 	}
 }
 
@@ -432,15 +439,21 @@ func (h *InstrumentationWebhookHandler) handleJob(
 		// This should not happen, since it can only happen for an admission request with operation=UPDATE, and we are
 		// not listening to updates for jobs. We cannot uninstrument jobs if the user adds an opt-out label after the
 		// job has been already instrumented, since jobs are immutable.
-		return h.postProcessUninstrumentation(request, job, workloads.NewNotModifiedImmutableWorkloadCannotBeRevertedResult(), logger)
+		return h.postProcessUninstrumentation(
+			request,
+			job,
+			job,
+			workloads.NewNotModifiedImmutableWorkloadCannotBeRevertedResult(),
+			logger,
+		)
 	} else {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyJob(job)
-		return h.postProcessInstrumentation(request, job, modificationResult, false, logger)
+		return h.postProcessInstrumentation(request, job, job, modificationResult, logger)
 	}
 }
 
 func (h *InstrumentationWebhookHandler) handlePod(
-	_ context.Context,
+	ctx context.Context,
 	request admission.Request,
 	gvkLabel string,
 	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
@@ -452,28 +465,69 @@ func (h *InstrumentationWebhookHandler) handlePod(
 		// if h.preProcess returns failed=true, it will already have logged the error
 		return responseIfFailed
 	}
-	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(
-		&pod.ObjectMeta,
+	var owners workloads.PodOwners
+	if namespaceInstrumentationConfig.InstrumentPods {
+		var err error
+		if owners, err = h.PodOwnerResolver.Resolve(ctx, pod, logger); err != nil {
+			wrappedErr := fmt.Errorf(
+				"not instrumenting the pod, since its owners could not be read to check whether they have opted out "+
+					"of instrumentation: %w",
+				err,
+			)
+			util.QueueFailedInstrumentationEvent(h.Recorder, podEventTarget(pod, nil), actor, wrappedErr)
+			return logErrorAndReturnAllowed(wrappedErr, logger)
+		}
+	}
+	eventTarget := podEventTarget(pod, owners)
+	hasOptedOut := workloads.PodHasOptedOutOfInstrumentation(
+		pod,
+		owners,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
-	) {
+	)
+	if hasOptedOut && !util.HasBeenInstrumentedSuccessfully(&pod.ObjectMeta) {
 		return logAndReturnAllowed(
 			fmt.Sprintf(
 				optOutAdmissionAllowedMessage, namespaceInstrumentationConfig.InstrumentationLabelSelector),
 			logger,
 		)
-	} else if util.WasInstrumentedButHasOptedOutNow(
-		&pod.ObjectMeta,
-		namespaceInstrumentationConfig.InstrumentationLabelSelector,
-	) {
+	} else if hasOptedOut {
 		// This should not happen, since it can only happen for an admission request with operation=UPDATE, and we are
 		// not listening to updates for pods. We cannot uninstrument ownerless pods if the user adds an opt-out label
 		// after the pod has been already instrumented, since we cannot restart ownerless pods, which makes them
 		// effectively immutable.
-		return h.postProcessUninstrumentation(request, pod, workloads.NewNotModifiedImmutableWorkloadCannotBeRevertedResult(), logger)
+		return h.postProcessUninstrumentation(
+			request,
+			pod,
+			eventTarget,
+			workloads.NewNotModifiedImmutableWorkloadCannotBeRevertedResult(),
+			logger,
+		)
 	} else {
-		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyPod(pod)
-		return h.postProcessInstrumentation(request, pod, modificationResult, true, logger)
+		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyPod(pod, owners)
+		return h.postProcessInstrumentation(request, pod, eventTarget, modificationResult, logger)
 	}
+}
+
+/*
+podEventTarget returns the object that events about instrumenting the pod are recorded for. A pod created via
+generateName, that is, every pod created by a higher-order workload, has neither a name nor a UID yet when the webhook
+processes it. Events recorded for the pod itself would not be attached to any object, hence events for an owned pod are
+recorded for its top-level owner instead, or for its direct owner if no owner could be resolved.
+*/
+func podEventTarget(pod *corev1.Pod, owners workloads.PodOwners) runtime.Object {
+	if topLevelOwner := owners.TopLevel(); topLevelOwner != nil {
+		return topLevelOwner
+	}
+	if ownerReference := metav1.GetControllerOfNoCopy(pod); ownerReference != nil {
+		owner := workloads.NewPartialObjectMetadata(
+			metav1.TypeMeta{APIVersion: ownerReference.APIVersion, Kind: ownerReference.Kind},
+		)
+		owner.Namespace = pod.Namespace
+		owner.Name = ownerReference.Name
+		owner.UID = ownerReference.UID
+		return owner
+	}
+	return pod
 }
 
 func (h *InstrumentationWebhookHandler) handleReplicaSet(
@@ -503,10 +557,10 @@ func (h *InstrumentationWebhookHandler) handleReplicaSet(
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
 	) {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertReplicaSet(replicaSet)
-		return h.postProcessUninstrumentation(request, replicaSet, modificationResult, logger)
+		return h.postProcessUninstrumentation(request, replicaSet, replicaSet, modificationResult, logger)
 	} else {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyReplicaSet(replicaSet)
-		return h.postProcessInstrumentation(request, replicaSet, modificationResult, false, logger)
+		return h.postProcessInstrumentation(request, replicaSet, replicaSet, modificationResult, logger)
 	}
 }
 
@@ -537,10 +591,10 @@ func (h *InstrumentationWebhookHandler) handleStatefulSet(
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
 	) {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertStatefulSet(statefulSet)
-		return h.postProcessUninstrumentation(request, statefulSet, modificationResult, logger)
+		return h.postProcessUninstrumentation(request, statefulSet, statefulSet, modificationResult, logger)
 	} else {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyStatefulSet(statefulSet)
-		return h.postProcessInstrumentation(request, statefulSet, modificationResult, false, logger)
+		return h.postProcessInstrumentation(request, statefulSet, statefulSet, modificationResult, logger)
 	}
 }
 
@@ -558,11 +612,13 @@ func (h *InstrumentationWebhookHandler) preProcess(
 	return admission.Response{}, false
 }
 
+// postProcessInstrumentation creates the patch for the modified resource, and records events for eventTarget, which is
+// the resource itself except for pods.
 func (h *InstrumentationWebhookHandler) postProcessInstrumentation(
 	request admission.Request,
 	resource runtime.Object,
+	eventTarget runtime.Object,
 	modificationResult workloads.ModificationResult,
-	isPod bool,
 	logger logd.Logger,
 ) admission.Response {
 	if !modificationResult.HasBeenModified {
@@ -570,8 +626,8 @@ func (h *InstrumentationWebhookHandler) postProcessInstrumentation(
 		if !modificationResult.LogAtDebugOnly {
 			logger.Info(msg)
 		}
-		if !isPod {
-			util.QueueNoInstrumentationNecessaryEvent(h.Recorder, resource, msg)
+		if _, isPod := resource.(*corev1.Pod); !isPod {
+			util.QueueNoInstrumentationNecessaryEvent(h.Recorder, eventTarget, msg)
 		}
 		return admission.Allowed("no changes")
 	}
@@ -579,14 +635,14 @@ func (h *InstrumentationWebhookHandler) postProcessInstrumentation(
 	marshalled, err := json.Marshal(resource)
 	if err != nil {
 		wrappedErr := fmt.Errorf("error when marshalling modfied resource to JSON: %w", err)
-		util.QueueFailedInstrumentationEvent(h.Recorder, resource, actor, wrappedErr)
+		util.QueueFailedInstrumentationEvent(h.Recorder, eventTarget, actor, wrappedErr)
 		return logErrorAndReturnAllowed(wrappedErr, logger)
 	}
 
 	logger.Debug("patching workload to instrument it")
 	util.HandlePotentiallySuccessfulInstrumentationEvent(
 		h.Recorder,
-		resource,
+		eventTarget,
 		actor,
 		modificationResult.ContainersTotal,
 		modificationResult.InstrumentationIssuesPerContainer,
@@ -595,15 +651,18 @@ func (h *InstrumentationWebhookHandler) postProcessInstrumentation(
 	return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 }
 
+// postProcessUninstrumentation creates the patch for the reverted resource, and records events for eventTarget, which
+// is the resource itself except for pods.
 func (h *InstrumentationWebhookHandler) postProcessUninstrumentation(
 	request admission.Request,
 	resource runtime.Object,
+	eventTarget runtime.Object,
 	modificationResult workloads.ModificationResult,
 	logger logd.Logger,
 ) admission.Response {
 	if modificationResult.ImmutableWorkload {
 		err := errors.New(modificationResult.RenderReasonMessage(actor))
-		util.QueueFailedUninstrumentationEvent(h.Recorder, resource, actor, err)
+		util.QueueFailedUninstrumentationEvent(h.Recorder, eventTarget, actor, err)
 		logger.Info(err.Error())
 		return admission.Allowed(err.Error())
 	}
@@ -614,19 +673,19 @@ func (h *InstrumentationWebhookHandler) postProcessUninstrumentation(
 		} else {
 			logger.Debug(modificationResult.RenderReasonMessage(actor))
 		}
-		util.QueueNoUninstrumentationNecessaryEvent(h.Recorder, resource, actor)
+		util.QueueNoUninstrumentationNecessaryEvent(h.Recorder, eventTarget, actor)
 		return admission.Allowed("no changes")
 	}
 
 	marshalled, err := json.Marshal(resource)
 	if err != nil {
 		wrappedErr := fmt.Errorf("error when marshalling modfied resource to JSON: %w", err)
-		util.QueueFailedUninstrumentationEvent(h.Recorder, resource, actor, wrappedErr)
+		util.QueueFailedUninstrumentationEvent(h.Recorder, eventTarget, actor, wrappedErr)
 		return logErrorAndReturnAllowed(wrappedErr, logger)
 	}
 
 	logger.Info("The webhook has removed the Dash0 instrumentation from the workload.")
-	util.QueueSuccessfulUninstrumentationEvent(h.Recorder, resource, actor)
+	util.QueueSuccessfulUninstrumentationEvent(h.Recorder, eventTarget, actor)
 	return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 }
 

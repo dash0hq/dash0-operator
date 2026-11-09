@@ -1581,6 +1581,30 @@ func detectDocker(
 	}
 }
 
+/*
+newManagerCacheOptions returns the cache options of the operator manager.
+
+The operator manager only reads secrets in the operator namespace and does not always hold cluster-wide permissions for
+secrets. Without restricting the secret cache to the operator namespace, the first Get for a secret would make
+controller-runtime list/watch secrets in the entire cluster to build its cache, which fails without cluster-wide
+permissions.
+
+The managed fields of all cached objects are stripped, since the operator never reads them from the cache, and they make
+up a large part of the memory of objects like config maps or the replica sets watched for pod-level instrumentation.
+*/
+func newManagerCacheOptions(operatorNamespace string) cache.Options {
+	return cache.Options{
+		ByObject: map[client.Object]cache.ByObject{
+			&corev1.Secret{}: {
+				Namespaces: map[string]cache.Config{
+					operatorNamespace: {},
+				},
+			},
+		},
+		DefaultTransform: cache.TransformStripManagedFields(),
+	}
+}
+
 func startOperatorManager(
 	ctx context.Context,
 	signalHandlerCtx context.Context,
@@ -1612,18 +1636,7 @@ func startOperatorManager(
 		// terminating (self monitoring OTel SDK shutdown etc.).
 		LeaderElectionReleaseOnCancel: false,
 
-		// The operator manager only reads secrets in the operator namespace and does not always hold cluster-wide
-		// permissions for secrets. Without this, the first Get for a secret would make controller-runtime list/watch
-		// secrets in the entire cluster to build its cache, which fails without cluster-wide permissions.
-		Cache: cache.Options{
-			ByObject: map[client.Object]cache.ByObject{
-				&corev1.Secret{}: {
-					Namespaces: map[string]cache.Config{
-						envVars.operatorNamespace: {},
-					},
-				},
-			},
-		},
+		Cache: newManagerCacheOptions(envVars.operatorNamespace),
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), options)
@@ -2407,6 +2420,7 @@ func startDash0Controllers(
 		instrumentationWebhookHandler := webhooks.NewInstrumentationWebhookHandler(
 			k8sClient,
 			mgr.GetAPIReader(),
+			mgr.GetCache(),
 			mgr.GetEventRecorder("dash0-instrumentation-webhook"),
 			clusterInstrumentationConfig,
 		)

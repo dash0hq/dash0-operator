@@ -143,6 +143,7 @@ var _ = BeforeSuite(func() {
 	Expect(NewInstrumentationWebhookHandler(
 		k8sClient,
 		k8sClient,
+		nil,
 		manager.GetEventRecorder("dash0-webhook"),
 		instrumentationWebhookClusterConfig,
 	).SetupWebhookWithManager(manager)).To(Succeed())
