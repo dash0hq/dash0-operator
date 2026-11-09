@@ -910,6 +910,24 @@ olm-bundle-image: ## Build the image of the OLM bundle in BUNDLE_DIR locally, th
 push-olm-bundle-image: ## Push the OLM bundle image.
 	@$(call push_container_image,$(BUNDLE_IMAGE_REPOSITORY),$(BUNDLE_IMAGE_TAG))
 
+CATALOG_DIR ?= olm/build/catalog
+CATALOG_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)dash0-operator-catalog
+CATALOG_IMAGE_TAG ?= $(BUNDLE_IMAGE_TAG)
+# Space-separated bundle image references, preferably by digest.
+CATALOG_BUNDLE_IMAGES ?=
+
+.PHONY: olm-catalog
+olm-catalog: opm ## Render and validate an FBC catalog with the bundle images of CATALOG_BUNDLE_IMAGES into CATALOG_DIR.
+	OPM=$(OPM) CATALOG_DIR="$(CATALOG_DIR)" CATALOG_BUNDLE_IMAGES="$(CATALOG_BUNDLE_IMAGES)" olm/bin/generate-catalog.sh
+
+.PHONY: olm-catalog-image
+olm-catalog-image: ## Build the image of the OLM catalog in CATALOG_DIR locally, the image is not pushed.
+	@$(call build_container_image,$(CATALOG_IMAGE_REPOSITORY),$(CATALOG_IMAGE_TAG),$(CATALOG_DIR),olm/catalog/catalog.Dockerfile)
+
+.PHONY: push-olm-catalog-image
+push-olm-catalog-image: ## Push the OLM catalog image.
+	@$(call push_container_image,$(CATALOG_IMAGE_REPOSITORY),$(CATALOG_IMAGE_TAG))
+
 ##@ Build Dependencies
 
 ## Location to install dependencies to
@@ -924,12 +942,16 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 HUSKY ?= $(LOCALBIN)/husky
 OPERATOR_SDK ?= $(LOCALBIN)/operator-sdk
+OPM ?= $(LOCALBIN)/opm
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.7.1
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
 # Keep the scorecard-test image tags in config/scorecard/config.yaml in sync with this version.
 OPERATOR_SDK_VERSION ?= v1.42.3
+# The opm binary renders the catalog, the opm image in olm/catalog/catalog.Dockerfile serves it, both versions are
+# independent of each other.
+OPM_VERSION ?= v1.74.0
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
@@ -957,6 +979,14 @@ operator-sdk: $(LOCALBIN) ## Download operator-sdk locally if necessary. If wron
 		set -e; \
 		curl -sSfLo $(OPERATOR_SDK) https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$(shell go env GOOS)_$(shell go env GOARCH); \
 		chmod +x $(OPERATOR_SDK); \
+	}
+
+.PHONY: opm
+opm: $(LOCALBIN) ## Download opm locally if necessary. If wrong version is installed, it will be overwritten.
+	@test -s $(OPM) && $(OPM) version | grep -q $(OPM_VERSION) || { \
+		set -e; \
+		curl -sSfLo $(OPM) https://github.com/operator-framework/operator-registry/releases/download/$(OPM_VERSION)/$(shell go env GOOS)-$(shell go env GOARCH)-opm; \
+		chmod +x $(OPM); \
 	}
 
 .PHONY: husky-install

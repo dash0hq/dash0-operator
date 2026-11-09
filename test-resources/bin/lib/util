@@ -959,6 +959,53 @@ install_monitoring_resource_with_namespaced_exporter() {
   kubectl wait --namespace ${target_namespace} dash0monitorings.operator.dash0.com/dash0-monitoring-resource --for condition=Available
 }
 
+# Creates a Dash0OperatorConfiguration resource and a Dash0Monitoring resource for an operator installed via OLM, used by
+# test-olm-bundle.sh and test-olm-catalog.sh.
+# Usage: install_olm_test_resources <operator namespace> <monitored namespace> <default cluster name>
+install_olm_test_resources() {
+  local operator_ns="$1"
+  local monitored_ns="$2"
+  local default_cluster_name="$3"
+
+  kubectl create secret generic dash0-authorization-secret --namespace "$operator_ns" \
+    --from-literal=token="$DASH0_AUTHORIZATION_TOKEN" --dry-run=client -o yaml | kubectl apply -f -
+  kubectl apply -f - <<EOF
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0OperatorConfiguration
+metadata:
+  name: dash0-operator-configuration
+spec:
+  exports:
+    - dash0:
+        endpoint: $DASH0_INGRESS_ENDPOINT
+        authorization:
+          secretRef:
+            name: dash0-authorization-secret
+            key: token
+        apiEndpoint: $DASH0_API_ENDPOINT
+  clusterName: ${CLUSTER_NAME:-$default_cluster_name}
+EOF
+  # The validation webhook rejects a monitoring resource without exports until the operator configuration is available.
+  kubectl wait dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration --for condition=Available
+
+  kubectl create namespace "$monitored_ns" --dry-run=client -o yaml | kubectl apply -f -
+  kubectl apply --namespace "$monitored_ns" -f config/samples/operator_v1beta1_dash0monitoring.yaml
+}
+
+# Deletes the Dash0Monitoring resource of install_olm_test_resources while the operator still runs, so that its finalizer
+# uninstruments the workloads.
+# Usage: delete_olm_test_monitoring_resource <monitored namespace>
+delete_olm_test_monitoring_resource() {
+  local monitored_ns="$1"
+  if kubectl get crd dash0monitorings.operator.dash0.com > /dev/null 2>&1; then
+    if ! kubectl delete --namespace "$monitored_ns" --ignore-not-found --timeout 2m \
+      -f config/samples/operator_v1beta1_dash0monitoring.yaml; then
+      echo "error: the Dash0Monitoring resource in $monitored_ns was not deleted, check that the operator is running."
+      exit 1
+    fi
+  fi
+}
+
 deploy_application_under_monitoring() {
   if [[ "${DEPLOY_APPLICATION_UNDER_MONITORING:-}" = "false" ]]; then
     return
