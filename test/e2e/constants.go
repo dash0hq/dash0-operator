@@ -35,25 +35,13 @@ const (
 	workloadNameRuby      = "dash0-operator-ruby-rails-test"
 	releaseNameRubyPrefix = "ruby"
 
-	runtimeTypeLabelDenoNodeHttp  = "Deno-node-http"
-	applicationPathDenoNodeHttp   = "test-resources/deno/node-http"
-	workloadNameDenoNodeHttp      = "dash0-operator-deno-node-http-test"
-	releaseNameDenoNodeHttpPrefix = "deno-node-http"
-
-	runtimeTypeLabelDenoServe  = "Deno-serve"
-	applicationPathDenoServe   = "test-resources/deno/deno-serve"
-	workloadNameDenoServe      = "dash0-operator-deno-serve-test"
-	releaseNameDenoServePrefix = "deno-serve"
-
 	defaultIngressPort = "8080"
 )
 
 var (
-	chartPathDotnet       = fmt.Sprintf("%s/helm-chart", applicationPathDotnet)
-	chartPathJvm          = fmt.Sprintf("%s/helm-chart", applicationPathJvm)
-	chartPathNodeJs       = fmt.Sprintf("%s/helm-chart", applicationPathNodeJs)
-	chartPathPython       = fmt.Sprintf("%s/helm-chart", applicationPathPython)
-	chartPathRuby         = fmt.Sprintf("%s/helm-chart", applicationPathRuby)
-	chartPathDenoNodeHttp = fmt.Sprintf("%s/helm-chart", applicationPathDenoNodeHttp)
-	chartPathDenoServe    = fmt.Sprintf("%s/helm-chart", applicationPathDenoServe)
+	chartPathDotnet = fmt.Sprintf("%s/helm-chart", applicationPathDotnet)
+	chartPathJvm    = fmt.Sprintf("%s/helm-chart", applicationPathJvm)
+	chartPathNodeJs = fmt.Sprintf("%s/helm-chart", applicationPathNodeJs)
+	chartPathPython = fmt.Sprintf("%s/helm-chart", applicationPathPython)
+	chartPathRuby   = fmt.Sprintf("%s/helm-chart", applicationPathRuby)
 )

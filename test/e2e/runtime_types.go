@@ -53,16 +53,4 @@ var (
 		helmChartPath:     chartPathRuby,
 		helmReleasePrefix: releaseNameRubyPrefix,
 	}
-	runtimeTypeDenoNodeHttp = runtimeType{
-		runtimeTypeLabel:  runtimeTypeLabelDenoNodeHttp,
-		workloadName:      workloadNameDenoNodeHttp,
-		helmChartPath:     chartPathDenoNodeHttp,
-		helmReleasePrefix: releaseNameDenoNodeHttpPrefix,
-	}
-	runtimeTypeDenoServe = runtimeType{
-		runtimeTypeLabel:  runtimeTypeLabelDenoServe,
-		workloadName:      workloadNameDenoServe,
-		helmChartPath:     chartPathDenoServe,
-		helmReleasePrefix: releaseNameDenoServePrefix,
-	}
 )

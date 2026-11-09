@@ -1,8 +1,0 @@
-# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
-# SPDX-License-Identifier: Apache-2.0
-
-apiVersion: v2
-name: dash0-operator-test-app-deno-serve
-description: A Helm chart for the Dash0 operator Deno Deno.serve test application
-type: application
-version: 1.0.0

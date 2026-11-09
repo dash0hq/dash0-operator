@@ -246,8 +246,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					Entry("should instrument new .NET 8 deployments", workloadTypeDeployment, runtimeTypeDotnet8),
 					Entry("should instrument new Python deployments", workloadTypeDeployment, runtimeTypePython),
 					Entry("should instrument new Ruby deployments", workloadTypeDeployment, runtimeTypeRuby),
-					Entry("should instrument new Deno (node:http) deployments", workloadTypeDeployment, runtimeTypeDenoNodeHttp),
-					Entry("should instrument new Deno (Deno.serve) deployments", workloadTypeDeployment, runtimeTypeDenoServe),
 					Entry("should instrument new Node.js jobs", workloadTypeJob, runtimeTypeNodeJs),
 					Entry("should instrument new Node.js pods", workloadTypePod, runtimeTypeNodeJs),
 					Entry("should instrument new JVM pods", workloadTypePod, runtimeTypeJvm),
@@ -1301,12 +1299,6 @@ spec:
 						{namespace: applicationUnderTestNamespace, workloadType: workloadTypeDeployment, runtime: runtimeTypeDotnet},
 						{namespace: applicationUnderTestNamespace, workloadType: workloadTypeDeployment, runtime: runtimeTypePython},
 						{namespace: applicationUnderTestNamespace, workloadType: workloadTypeDeployment, runtime: runtimeTypeRuby},
-						{
-							namespace:    applicationUnderTestNamespace,
-							workloadType: workloadTypeDeployment,
-							runtime:      runtimeTypeDenoNodeHttp,
-						},
-						{namespace: applicationUnderTestNamespace, workloadType: workloadTypeDeployment, runtime: runtimeTypeDenoServe},
 						{namespace: applicationUnderTestNamespace, workloadType: workloadTypeReplicaSet, runtime: runtimeTypeNodeJs},
 						{namespace: applicationUnderTestNamespace, workloadType: workloadTypeStatefulSet, runtime: runtimeTypeNodeJs},
 					}

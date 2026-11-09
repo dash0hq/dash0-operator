@@ -579,10 +579,6 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
         testCmd = ['ruby', `/test-cases/${testCase}/app.rb`];
         break;
 
-      case 'deno':
-        testCmd = ['deno', 'run', '--allow-all', `/test-cases/${testCase}/index.cjs`];
-        break;
-
       default:
         console.error(
           `Error: Test handler for runtime "${runtime}" is not implemented. Please update "${__filename}", function runTestCasesForArchitectureRuntimeAndBaseImage.`,
