@@ -240,6 +240,19 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 	kind := gkv.Kind
 	gvkLabel := fmt.Sprintf("%s/%s.%s", group, version, kind)
 
+	if instrumentWorkloadsMode == dash0common.InstrumentWorkloadsModePods && kind != util.K8sTypeMetaPod.Kind {
+		return admission.Allowed(
+			fmt.Sprintf(
+				"The instrumentation mode in namespace %s is %s, the %s %s will not be modified, its pods will be "+
+					"instrumented when they are created.",
+				targetNamespace,
+				dash0common.InstrumentWorkloadsModePods,
+				actionPartial,
+				gvkLabel,
+			),
+		)
+	}
+
 	logger.Debug("routing admission request to handler", "group", group, "kind", kind, "version", version)
 	return routes.routeFor(group, kind, version)(
 		h,
