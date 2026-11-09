@@ -582,6 +582,8 @@ they have not set themselves, so it would stay there indefinitely. It is removed
 pods that would not be restarted anyway: when the workload is created, when the request changes the pod template
 anyway, and for workloads that do not replace their pods when the pod template changes, like cron jobs and replica sets.
 Jobs are immutable, and replica sets controlled by a deployment are left to the deployment.
+The pod template is checked for the instrumentation label as well, since kubectl rollout undo restores an instrumented
+pod template from the revision history without restoring the label on the workload itself.
 */
 func (h *InstrumentationWebhookHandler) handleWorkloadWithPodLevelInstrumentation(
 	request admission.Request,
@@ -609,7 +611,9 @@ func (h *InstrumentationWebhookHandler) handleWorkloadWithPodLevelInstrumentatio
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, workload); err != nil {
 		return logErrorAndReturnAllowed(fmt.Errorf("cannot parse resource into a %s: %w", gvkLabel, err), logger)
 	}
-	if _, hasInstrumentationLabel := workload.GetLabels()[util.InstrumentedLabelKey]; !hasInstrumentationLabel {
+	_, workloadHasInstrumentationLabel := workload.GetLabels()[util.InstrumentedLabelKey]
+	_, podTemplateHasInstrumentationLabel := workloadType.podTemplate(workload).Labels[util.InstrumentedLabelKey]
+	if !workloadHasInstrumentationLabel && !podTemplateHasInstrumentationLabel {
 		return unmodified
 	}
 	if request.Kind.Kind == util.K8sTypeMetaReplicaSet.Kind &&

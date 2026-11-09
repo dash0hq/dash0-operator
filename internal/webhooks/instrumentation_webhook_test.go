@@ -1256,6 +1256,19 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
 		})
 
+		It("should remove the instrumentation from before switching to mode pods from a pod template that is "+
+			"restored without the instrumentation label on the deployment, like kubectl rollout undo does", func() {
+			name := UniqueName(DeploymentNamePrefix)
+			workload := CreateBasicDeployment(ctx, k8sClient, TestNamespaceName, name)
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
+			workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+			workload.Spec.Template = InstrumentedDeployment(TestNamespaceName, name).Spec.Template
+			Expect(workload.Labels).ToNot(HaveKey("dash0.com/instrumented"))
+			Expect(k8sClient.Update(ctx, workload)).To(Succeed())
+			VerifyUnmodifiedDeployment(GetDeployment(ctx, k8sClient, TestNamespaceName, name))
+			VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
+		})
+
 		DescribeTable("should remove the instrumentation from before switching to mode pods on any "+
 			"update of a workload that does not replace its pods when the pod template changes",
 			func(newWorkload func() client.Object, verify func(client.Object)) {
