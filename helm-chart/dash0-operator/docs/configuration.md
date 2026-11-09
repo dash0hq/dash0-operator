@@ -418,11 +418,13 @@ The Dash0 monitoring resource supports additional configuration settings:
       This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
       resource or restarting the Dash0 operator.
 
-    * **`pods`**: If set to `pods`, the operator will not modify workload resources (deployments, daemon
-      sets, stateful sets, replica sets, jobs and cron jobs) at all.
+    * **`pods`**: If set to `pods`, the operator will not instrument workload resources (deployments,
+      daemon sets, stateful sets, replica sets, jobs and cron jobs).
       Instead, it instruments each pod when it is created.
       The operator never restarts pods in this mode; pods that already exist keep their current state until they are
       recreated.
+      The only exception are workloads that still have instrumentation in their pod template from before the namespace
+      was switched to `pods`.
       This setting is useful if the workloads are managed by GitOps or infrastructure-as-code tools, which would
       otherwise report the operator's modifications as drift.
       See [Instrumenting Pods Instead of Workloads](auto-instrumentation.md#instrumenting-pods-instead-of-workloads)

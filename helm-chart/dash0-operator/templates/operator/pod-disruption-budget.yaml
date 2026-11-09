@@ -1,0 +1,18 @@
+{{- if and .Values.operator.podDisruptionBudget.enabled (include "dash0-operator.operatorManagerHasMultipleReplicas" .) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "dash0-operator.deploymentName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: pod-disruption-budget
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dash0-operator
+      app.kubernetes.io/component: controller
+{{- end }}

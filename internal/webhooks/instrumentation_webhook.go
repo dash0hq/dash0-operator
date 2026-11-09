@@ -421,7 +421,7 @@ func (h *InstrumentationWebhookHandler) handleJob(
 				"opted out of instrumentation: %w",
 			err,
 		)
-		util.QueueFailedInstrumentationEvent(h.Recorder, job, actor, wrappedErr)
+		util.QueueFailedInstrumentationEvent(h.Recorder, job, util.EventSubjectWorkload, actor, wrappedErr)
 		return logErrorAndReturnAllowed(wrappedErr, logger)
 	}
 	hasOptedOut := workloads.JobHasOptedOutOfInstrumentation(
@@ -474,7 +474,9 @@ func (h *InstrumentationWebhookHandler) handlePod(
 					"of instrumentation: %w",
 				err,
 			)
-			util.QueueFailedInstrumentationEvent(h.Recorder, podEventTarget(pod, nil), actor, wrappedErr)
+			eventTarget := podEventTarget(pod, nil)
+			util.QueueFailedInstrumentationEvent(
+				h.Recorder, eventTarget, eventSubject(pod, eventTarget), actor, wrappedErr)
 			return logErrorAndReturnAllowed(wrappedErr, logger)
 		}
 	}
@@ -669,6 +671,17 @@ func podEventTarget(pod *corev1.Pod, owners workloads.PodOwners) runtime.Object 
 	return pod
 }
 
+// eventSubject returns how the events about the resource that are recorded for eventTarget refer to the resource. Events
+// about a pod that are recorded for its owner refer to a pod of that workload.
+func eventSubject(resource runtime.Object, eventTarget runtime.Object) util.EventSubject {
+	if _, isPod := resource.(*corev1.Pod); isPod {
+		if _, eventTargetIsPod := eventTarget.(*corev1.Pod); !eventTargetIsPod {
+			return util.EventSubjectPodOfWorkload
+		}
+	}
+	return util.EventSubjectWorkload
+}
+
 func (h *InstrumentationWebhookHandler) handleReplicaSet(
 	_ context.Context,
 	request admission.Request,
@@ -745,7 +758,7 @@ func (h *InstrumentationWebhookHandler) preProcess(
 ) (admission.Response, bool) {
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, resource); err != nil {
 		wrappedErr := fmt.Errorf("cannot parse resource into a %s: %w", gvkLabel, err)
-		util.QueueFailedInstrumentationEvent(h.Recorder, resource, actor, wrappedErr)
+		util.QueueFailedInstrumentationEvent(h.Recorder, resource, util.EventSubjectWorkload, actor, wrappedErr)
 		return logErrorAndReturnAllowed(wrappedErr, logger), true
 	}
 	return admission.Response{}, false
@@ -774,7 +787,7 @@ func (h *InstrumentationWebhookHandler) postProcessInstrumentation(
 	marshalled, err := json.Marshal(resource)
 	if err != nil {
 		wrappedErr := fmt.Errorf("error when marshalling modfied resource to JSON: %w", err)
-		util.QueueFailedInstrumentationEvent(h.Recorder, eventTarget, actor, wrappedErr)
+		util.QueueFailedInstrumentationEvent(h.Recorder, eventTarget, eventSubject(resource, eventTarget), actor, wrappedErr)
 		return logErrorAndReturnAllowed(wrappedErr, logger)
 	}
 
@@ -782,6 +795,7 @@ func (h *InstrumentationWebhookHandler) postProcessInstrumentation(
 	util.HandlePotentiallySuccessfulInstrumentationEvent(
 		h.Recorder,
 		eventTarget,
+		eventSubject(resource, eventTarget),
 		actor,
 		modificationResult.ContainersTotal,
 		modificationResult.InstrumentationIssuesPerContainer,
@@ -799,9 +813,10 @@ func (h *InstrumentationWebhookHandler) postProcessUninstrumentation(
 	modificationResult workloads.ModificationResult,
 	logger logd.Logger,
 ) admission.Response {
+	subject := eventSubject(resource, eventTarget)
 	if modificationResult.ImmutableWorkload {
 		err := errors.New(modificationResult.RenderReasonMessage(actor))
-		util.QueueFailedUninstrumentationEvent(h.Recorder, eventTarget, actor, err)
+		util.QueueFailedUninstrumentationEvent(h.Recorder, eventTarget, subject, actor, err)
 		logger.Info(err.Error())
 		return admission.Allowed(err.Error())
 	}
@@ -812,19 +827,19 @@ func (h *InstrumentationWebhookHandler) postProcessUninstrumentation(
 		} else {
 			logger.Debug(modificationResult.RenderReasonMessage(actor))
 		}
-		util.QueueNoUninstrumentationNecessaryEvent(h.Recorder, eventTarget, actor)
+		util.QueueNoUninstrumentationNecessaryEvent(h.Recorder, eventTarget, subject, actor)
 		return admission.Allowed("no changes")
 	}
 
 	marshalled, err := json.Marshal(resource)
 	if err != nil {
 		wrappedErr := fmt.Errorf("error when marshalling modfied resource to JSON: %w", err)
-		util.QueueFailedUninstrumentationEvent(h.Recorder, eventTarget, actor, wrappedErr)
+		util.QueueFailedUninstrumentationEvent(h.Recorder, eventTarget, subject, actor, wrappedErr)
 		return logErrorAndReturnAllowed(wrappedErr, logger)
 	}
 
 	logger.Info("The webhook has removed the Dash0 instrumentation from the workload.")
-	util.QueueSuccessfulUninstrumentationEvent(h.Recorder, eventTarget, actor)
+	util.QueueSuccessfulUninstrumentationEvent(h.Recorder, eventTarget, subject, actor)
 	return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 }
 
