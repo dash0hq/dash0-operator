@@ -184,6 +184,7 @@ type commandLineArguments struct {
 	otlpGrpcHostPort                                                      int
 	otlpHttpHostPort                                                      int
 	otelCollectorDaemonSetServiceAccountName                              string
+	ebpfProfilerServiceAccountName                                        string
 	instrumentationDelays                                                 *util.DelayConfig
 	metricsAddr                                                           string
 	enableLeaderElection                                                  bool
@@ -811,6 +812,13 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 		"",
 		"The name of an existing service account in the operator namespace for the OpenTelemetry collector DaemonSet. "+
 			"The operator neither creates nor deletes it. When not set, the operator manages the service account itself.",
+	)
+	fs.StringVar(
+		&cliArgs.ebpfProfilerServiceAccountName,
+		"dash0-ebpf-profiler-service-account-name",
+		"",
+		"The name of an existing service account in the operator namespace for the eBPF profiler DaemonSet. The "+
+			"operator neither creates nor deletes it. When not set, the operator manages the service account itself.",
 	)
 	cliArgs.instrumentationDelays = &util.DelayConfig{}
 	fs.Uint64Var(
@@ -1738,6 +1746,8 @@ func startOperatorManager(
 		cliArgs.disableOpenTelemetryCollectorHostPorts,
 		"OpenTelemetry collector DaemonSet service account name",
 		cliArgs.otelCollectorDaemonSetServiceAccountName,
+		"eBPF profiler service account name",
+		cliArgs.ebpfProfilerServiceAccountName,
 		"is GKE Autopilot",
 		cliArgs.isGkeAutopilot,
 		"is OpenShift",
@@ -2076,7 +2086,7 @@ func startDash0Controllers(
 			Enabled: envVars.ebpfProfilerEnabled, TelemetryCollectionEnabled: cliArgs.telemetryCollectionEnabled,
 			ProfilerImage: envVars.ebpfProfilerImage, ProfilerImagePullPolicy: envVars.ebpfProfilerImagePullPolicy,
 			ProxyImage: envVars.debuginfoProxyImage, ProxyImagePullPolicy: envVars.debuginfoProxyImagePullPolicy,
-			IsOpenShift: cliArgs.isOpenShift,
+			ServiceAccountName: cliArgs.ebpfProfilerServiceAccountName, IsOpenShift: cliArgs.isOpenShift,
 		},
 	)
 	profilerManager := profiling.NewManager(profilerResourceManager)

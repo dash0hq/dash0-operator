@@ -73,6 +73,7 @@ AGENT0_CONNECTOR_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
 
 DEBUGINFO_PROXY_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)debuginfo-proxy
 DEBUGINFO_PROXY_IMAGE_TAG ?= $(IMAGE_TAG)
+DEBUGINFO_PROXY_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
 
 # Variables for test application container images:
 
@@ -796,7 +797,10 @@ HELM_BUILT_IMAGE_SETTINGS = \
 	--set operator.targetAllocatorImage.pullPolicy=$(TARGET_ALLOCATOR_IMAGE_PULL_POLICY) \
 	--set operator.agent0ConnectorImage.repository=$(AGENT0_CONNECTOR_IMAGE_REPOSITORY) \
 	--set operator.agent0ConnectorImage.tag=$(AGENT0_CONNECTOR_IMAGE_TAG) \
-	--set operator.agent0ConnectorImage.pullPolicy=$(AGENT0_CONNECTOR_IMAGE_PULL_POLICY)
+	--set operator.agent0ConnectorImage.pullPolicy=$(AGENT0_CONNECTOR_IMAGE_PULL_POLICY) \
+	--set operator.debuginfoProxyImage.repository=$(DEBUGINFO_PROXY_IMAGE_REPOSITORY) \
+	--set operator.debuginfoProxyImage.tag=$(DEBUGINFO_PROXY_IMAGE_TAG) \
+	--set operator.debuginfoProxyImage.pullPolicy=$(DEBUGINFO_PROXY_IMAGE_PULL_POLICY)
 
 HELM_IMAGE_SETTINGS = \
 	$(HELM_BUILT_IMAGE_SETTINGS) \
@@ -841,7 +845,8 @@ OLM_COMMITTED_BUNDLE_CHANNEL = stable
 OLM_COMMITTED_BUNDLE_HELM_SETTINGS = \
 	--set operator.signalControlCollectorImage.tag=0.0.0 \
 	--set operator.edgeProxyImage.tag=0.0.0 \
-	--set operator.syntheticsWorkerImage.tag=0.0.0
+	--set operator.syntheticsWorkerImage.tag=0.0.0 \
+	--set operator.ebpfProfilerImage.tag=0.0.0
 
 # The Signal Control collector and Edge Proxy images are not built in this repository. A test bundle keeps the images of
 # the chart unless SIGNAL_CONTROL_COLLECTOR_IMAGE_* or EDGE_PROXY_IMAGE_* are set via the environment or command line.
