@@ -9,6 +9,7 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -18,11 +19,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 const (
-	podOwnerResolutionTimeout = 2 * time.Second
-	cachedOwnerReadTimeout    = 500 * time.Millisecond
+	podOwnerResolutionTimeout  = 2 * time.Second
+	cachedOwnerReadTimeout     = 500 * time.Millisecond
+	informerStartRetryInterval = 1 * time.Minute
 )
 
 var (
@@ -56,11 +59,12 @@ type PodOwners []*metav1.PartialObjectMetadata
 // PodOwnerResolver reads the controlling owners of a pod, so that their labels and annotations can be taken into
 // account when instrumenting the pod.
 type PodOwnerResolver struct {
-	cachedReader       client.Reader
-	liveReader         client.Reader
-	informers          cache.Informers
-	startInformersOnce sync.Once
-	informerHasSynced  map[metav1.TypeMeta]func() bool
+	cachedReader             client.Reader
+	liveReader               client.Reader
+	informers                cache.Informers
+	informerHasSynced        atomic.Pointer[map[metav1.TypeMeta]func() bool]
+	informerStartMutex       sync.Mutex
+	nextInformerStartAttempt time.Time
 }
 
 /*
@@ -70,8 +74,9 @@ liveReader.
 
 The first call to Resolve starts metadata-only informers for PodOwnerMetadataTypes via informers, without waiting for
 them to sync, so that clusters without any namespace with instrumentWorkloads.mode=pods do not pay for watching all
-replica sets, deployments etc. Until the informer for a type has synced, owners of that type are read from liveReader.
-If informers is nil, owners are always read from cachedReader first.
+replica sets, deployments etc. Until the informer for a type has been started and has synced, owners of that type are
+read from liveReader. Informers that cannot be started are retried by later calls to Resolve, at most once per
+informerStartRetryInterval. If informers is nil, owners are always read from cachedReader first.
 */
 func NewPodOwnerResolver(
 	cachedReader client.Reader,
@@ -100,8 +105,8 @@ An error is returned if an owner could not be read for any other reason, includi
 podOwnerResolutionTimeout. Resolve is called from the instrumentation webhook, which needs to answer well within its
 timeout.
 */
-func (r *PodOwnerResolver) Resolve(ctx context.Context, pod *corev1.Pod) (PodOwners, error) {
-	r.startOwnerInformers(ctx)
+func (r *PodOwnerResolver) Resolve(ctx context.Context, pod *corev1.Pod, logger logd.Logger) (PodOwners, error) {
+	r.startOwnerInformers(ctx, logger)
 	ctx, cancel := context.WithTimeout(ctx, podOwnerResolutionTimeout)
 	defer cancel()
 
@@ -158,34 +163,66 @@ func (r *PodOwnerResolver) readOwner(
 	return owner, nil
 }
 
-// startOwnerInformers starts the metadata informers for the owner types once, without waiting for them to sync. If an
-// informer cannot be started, owners of its type are always read from the live reader.
-func (r *PodOwnerResolver) startOwnerInformers(ctx context.Context) {
-	if r.informers == nil {
+/*
+startOwnerInformers starts the metadata informers for the owner types that have not been started yet, without waiting
+for them to sync. Owners of a type whose informer cannot be started are read from the live reader. Starting the missing
+informers is attempted again at most once per informerStartRetryInterval, so that a persistent error does not add
+latency to every pod admission. Concurrent callers do not wait for an ongoing attempt.
+*/
+func (r *PodOwnerResolver) startOwnerInformers(ctx context.Context, logger logd.Logger) {
+	if r.informers == nil || r.allInformersStarted() {
 		return
 	}
-	r.startInformersOnce.Do(func() {
-		informerHasSynced := make(map[metav1.TypeMeta]func() bool, len(PodOwnerMetadataTypes))
-		for _, ownerType := range PodOwnerMetadataTypes {
-			informer, err := r.informers.GetInformer(
-				ctx,
-				NewPartialObjectMetadata(ownerType),
-				cache.BlockUntilSynced(false),
-			)
-			if err != nil {
-				continue
-			}
-			informerHasSynced[ownerType] = informer.HasSynced
+	if !r.informerStartMutex.TryLock() {
+		return
+	}
+	defer r.informerStartMutex.Unlock()
+	if r.allInformersStarted() || time.Now().Before(r.nextInformerStartAttempt) {
+		return
+	}
+
+	informerHasSynced := make(map[metav1.TypeMeta]func() bool, len(PodOwnerMetadataTypes))
+	if started := r.informerHasSynced.Load(); started != nil {
+		maps.Copy(informerHasSynced, *started)
+	}
+	for _, ownerType := range PodOwnerMetadataTypes {
+		if _, isStarted := informerHasSynced[ownerType]; isStarted {
+			continue
 		}
-		r.informerHasSynced = informerHasSynced
-	})
+		informer, err := r.informers.GetInformer(
+			ctx,
+			NewPartialObjectMetadata(ownerType),
+			cache.BlockUntilSynced(false),
+		)
+		if err != nil {
+			logger.Error(
+				err,
+				"cannot start the informer for owners of pods, reading them from the API server instead",
+				"kind",
+				ownerType.Kind,
+			)
+			continue
+		}
+		informerHasSynced[ownerType] = informer.HasSynced
+	}
+	r.informerHasSynced.Store(&informerHasSynced)
+	r.nextInformerStartAttempt = time.Now().Add(informerStartRetryInterval)
+}
+
+func (r *PodOwnerResolver) allInformersStarted() bool {
+	started := r.informerHasSynced.Load()
+	return started != nil && len(*started) == len(PodOwnerMetadataTypes)
 }
 
 func (r *PodOwnerResolver) canReadFromCache(typeMeta metav1.TypeMeta) bool {
 	if r.informers == nil {
 		return true
 	}
-	hasSynced, isStarted := r.informerHasSynced[typeMeta]
+	started := r.informerHasSynced.Load()
+	if started == nil {
+		return false
+	}
+	hasSynced, isStarted := (*started)[typeMeta]
 	return isStarted && hasSynced()
 }
 

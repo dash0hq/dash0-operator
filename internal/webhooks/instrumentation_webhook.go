@@ -468,7 +468,7 @@ func (h *InstrumentationWebhookHandler) handlePod(
 	var owners workloads.PodOwners
 	if namespaceInstrumentationConfig.InstrumentPods {
 		var err error
-		if owners, err = h.PodOwnerResolver.Resolve(ctx, pod); err != nil {
+		if owners, err = h.PodOwnerResolver.Resolve(ctx, pod, logger); err != nil {
 			wrappedErr := fmt.Errorf(
 				"not instrumenting the pod, since its owners could not be read to check whether they have opted out "+
 					"of instrumentation: %w",

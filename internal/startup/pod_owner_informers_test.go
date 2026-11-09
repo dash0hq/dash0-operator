@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/workloads"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -38,6 +39,7 @@ var _ = Describe("Resolving pod owners with the cache of the operator manager", 
 		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 			Scheme:  scheme.Scheme,
 			Metrics: metricsserver.Options{BindAddress: "0"},
+			Cache:   newManagerCacheOptions(OperatorNamespace),
 		})
 		Expect(err).ToNot(HaveOccurred())
 		managerCtx, cancelManager := context.WithCancel(ctx)
@@ -61,14 +63,18 @@ var _ = Describe("Resolving pod owners with the cache of the operator manager", 
 			DeleteAllCreatedObjects(ctx, k8sClient, []client.Object{pod, replicaSet, deployment})
 		})
 
+		Expect(deployment.ManagedFields).ToNot(BeEmpty())
+
 		resolver := workloads.NewPodOwnerResolver(mgr.GetClient(), failingReader{}, mgr.GetCache())
 		Eventually(func(g Gomega) {
-			owners, err := resolver.Resolve(ctx, pod)
+			owners, err := resolver.Resolve(ctx, pod, logd.Discard())
 			g.Expect(err).ToNot(HaveOccurred())
 			g.Expect(owners).To(HaveLen(2))
 			g.Expect(owners[0].Name).To(Equal(replicaSet.Name))
+			g.Expect(owners[0].ManagedFields).To(BeEmpty())
 			g.Expect(owners.TopLevel().UID).To(Equal(deployment.UID))
 			g.Expect(owners.TopLevel().Labels).To(HaveKeyWithValue("deployment-label", "value"))
+			g.Expect(owners.TopLevel().ManagedFields).To(BeEmpty())
 		}).Should(Succeed())
 	})
 })

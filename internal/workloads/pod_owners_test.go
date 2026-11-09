@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"sync/atomic"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -40,7 +41,7 @@ var _ = Describe("Resolving the owners of a pod", func() {
 		pod := controlledBy(BasicPod(podOwnersTestNamespace, "pod"), replicaSet)
 		reader := newFakeReader(deployment, replicaSet)
 
-		owners, err := NewPodOwnerResolver(reader, reader, nil).Resolve(ctx, pod)
+		owners, err := NewPodOwnerResolver(reader, reader, nil).Resolve(ctx, pod, logd.Discard())
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(ownerNames(owners)).To(Equal([]string{"ReplicaSet/replica-set", "Deployment/deployment"}))
@@ -54,7 +55,7 @@ var _ = Describe("Resolving the owners of a pod", func() {
 		pod := controlledBy(BasicPod(podOwnersTestNamespace, "pod"), job)
 		reader := newFakeReader(cronJob, job)
 
-		owners, err := NewPodOwnerResolver(reader, reader, nil).Resolve(ctx, pod)
+		owners, err := NewPodOwnerResolver(reader, reader, nil).Resolve(ctx, pod, logd.Discard())
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(ownerNames(owners)).To(Equal([]string{"Job/job", "CronJob/cron-job"}))
@@ -64,7 +65,7 @@ var _ = Describe("Resolving the owners of a pod", func() {
 		pod := controlledBy(BasicPod(podOwnersTestNamespace, "pod"), owner)
 		reader := newFakeReader(owner)
 
-		owners, err := NewPodOwnerResolver(reader, reader, nil).Resolve(ctx, pod)
+		owners, err := NewPodOwnerResolver(reader, reader, nil).Resolve(ctx, pod, logd.Discard())
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(ownerNames(owners)).To(Equal([]string{expectedName}))
@@ -87,7 +88,7 @@ var _ = Describe("Resolving the owners of a pod", func() {
 		pod := controlledBy(BasicPod(podOwnersTestNamespace, "pod"), replicaSet)
 		reader := newFakeReader(replicaSet)
 
-		owners, err := NewPodOwnerResolver(reader, reader, nil).Resolve(ctx, pod)
+		owners, err := NewPodOwnerResolver(reader, reader, nil).Resolve(ctx, pod, logd.Discard())
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(ownerNames(owners)).To(Equal([]string{"ReplicaSet/replica-set"}))
@@ -100,7 +101,7 @@ var _ = Describe("Resolving the owners of a pod", func() {
 		})
 		reader := newFakeReader()
 
-		owners, err := NewPodOwnerResolver(reader, reader, nil).Resolve(ctx, pod)
+		owners, err := NewPodOwnerResolver(reader, reader, nil).Resolve(ctx, pod, logd.Discard())
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(owners).To(BeEmpty())
@@ -112,7 +113,7 @@ var _ = Describe("Resolving the owners of a pod", func() {
 		pod.OwnerReferences[0].Controller = nil
 		reader := newFakeReader(replicaSet)
 
-		owners, err := NewPodOwnerResolver(reader, reader, nil).Resolve(ctx, pod)
+		owners, err := NewPodOwnerResolver(reader, reader, nil).Resolve(ctx, pod, logd.Discard())
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(owners).To(BeEmpty())
@@ -122,7 +123,7 @@ var _ = Describe("Resolving the owners of a pod", func() {
 		pod := PodControlledBy(podOwnersTestNamespace, "pod", util.K8sTypeMetaReplicaSet)
 		reader := newFakeReader()
 
-		owners, err := NewPodOwnerResolver(reader, reader, nil).Resolve(ctx, pod)
+		owners, err := NewPodOwnerResolver(reader, reader, nil).Resolve(ctx, pod, logd.Discard())
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(owners).To(BeEmpty())
@@ -134,7 +135,7 @@ var _ = Describe("Resolving the owners of a pod", func() {
 		pod := controlledBy(BasicPod(podOwnersTestNamespace, "pod"), replicaSet)
 
 		owners, err := NewPodOwnerResolver(newFakeReader(deployment), newFakeReader(deployment, replicaSet), nil).
-			Resolve(ctx, pod)
+			Resolve(ctx, pod, logd.Discard())
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(ownerNames(owners)).To(Equal([]string{"ReplicaSet/replica-set", "Deployment/deployment"}))
@@ -153,7 +154,8 @@ var _ = Describe("Resolving the owners of a pod", func() {
 			}).
 			Build()
 
-		owners, err := NewPodOwnerResolver(failingReader, newFakeReader(replicaSet), nil).Resolve(ctx, pod)
+		owners, err := NewPodOwnerResolver(failingReader, newFakeReader(replicaSet), nil).
+			Resolve(ctx, pod, logd.Discard())
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(ownerNames(owners)).To(Equal([]string{"ReplicaSet/replica-set"}))
@@ -164,7 +166,8 @@ var _ = Describe("Resolving the owners of a pod", func() {
 		replicaSet := replicaSetForOwnerTest("replica-set", "replica-set-uid")
 		pod := controlledBy(BasicPod(podOwnersTestNamespace, "pod"), replicaSet)
 
-		owners, err := NewPodOwnerResolver(newFakeReader(staleReplicaSet), newFakeReader(replicaSet), nil).Resolve(ctx, pod)
+		owners, err := NewPodOwnerResolver(newFakeReader(staleReplicaSet), newFakeReader(replicaSet), nil).
+			Resolve(ctx, pod, logd.Discard())
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(ownerNames(owners)).To(Equal([]string{"ReplicaSet/replica-set"}))
@@ -176,7 +179,7 @@ var _ = Describe("Resolving the owners of a pod", func() {
 		pod := controlledBy(BasicPod(podOwnersTestNamespace, "pod"), replicaSet)
 		reader := newFakeReader(replicaSetForOwnerTest("replica-set", "other-uid"))
 
-		owners, err := NewPodOwnerResolver(reader, reader, nil).Resolve(ctx, pod)
+		owners, err := NewPodOwnerResolver(reader, reader, nil).Resolve(ctx, pod, logd.Discard())
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(owners).To(BeEmpty())
@@ -194,7 +197,7 @@ var _ = Describe("Resolving the owners of a pod", func() {
 			}).
 			Build()
 
-		_, err := NewPodOwnerResolver(failingReader, failingReader, nil).Resolve(ctx, pod)
+		_, err := NewPodOwnerResolver(failingReader, failingReader, nil).Resolve(ctx, pod, logd.Discard())
 
 		Expect(err).To(MatchError(ContainSubstring("connection refused")))
 	})
@@ -212,7 +215,7 @@ var _ = Describe("Starting the informers for the owners of a pod", func() {
 		informers := &fakeInformers{}
 		resolver := NewPodOwnerResolver(cachedReader, liveReader, informers)
 
-		owners, err := resolver.Resolve(ctx, pod)
+		owners, err := resolver.Resolve(ctx, pod, logd.Discard())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(owners).To(HaveLen(2))
 		Expect(informers.requestedKinds).To(ConsistOf("CronJob", "DaemonSet", "Deployment", "Job", "ReplicaSet",
@@ -221,12 +224,51 @@ var _ = Describe("Starting the informers for the owners of a pod", func() {
 		Expect(liveReader.gets).To(Equal(2))
 
 		informers.hasSynced.Store(true)
-		owners, err = resolver.Resolve(ctx, pod)
+		owners, err = resolver.Resolve(ctx, pod, logd.Discard())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(owners).To(HaveLen(2))
 		Expect(informers.requestedKinds).To(HaveLen(6))
 		Expect(cachedReader.gets).To(Equal(2))
 		Expect(liveReader.gets).To(Equal(2))
+	})
+
+	It("should retry starting an informer that could not be started, at most once per retry interval", func() {
+		replicaSet := replicaSetForOwnerTest("replica-set", "replica-set-uid")
+		pod := controlledBy(BasicPod(podOwnersTestNamespace, "pod"), replicaSet)
+		cachedReader := &countingReader{Reader: newFakeReader(replicaSet)}
+		liveReader := &countingReader{Reader: newFakeReader(replicaSet)}
+		informers := &fakeInformers{failingKinds: map[string]bool{"ReplicaSet": true}}
+		informers.hasSynced.Store(true)
+		resolver := NewPodOwnerResolver(cachedReader, liveReader, informers)
+
+		owners, err := resolver.Resolve(ctx, pod, logd.Discard())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(owners).To(HaveLen(1))
+		Expect(informers.requestedKinds).To(ConsistOf("CronJob", "DaemonSet", "Deployment", "Job", "ReplicaSet",
+			"StatefulSet"))
+		Expect(cachedReader.gets).To(Equal(0))
+		Expect(liveReader.gets).To(Equal(1))
+
+		informers.failingKinds = nil
+		_, err = resolver.Resolve(ctx, pod, logd.Discard())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(informers.requestedKinds).To(HaveLen(6))
+		Expect(cachedReader.gets).To(Equal(0))
+		Expect(liveReader.gets).To(Equal(2))
+
+		resolver.nextInformerStartAttempt = time.Time{}
+		owners, err = resolver.Resolve(ctx, pod, logd.Discard())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(owners).To(HaveLen(1))
+		Expect(informers.requestedKinds).To(HaveLen(7))
+		Expect(informers.requestedKinds[6]).To(Equal("ReplicaSet"))
+		Expect(cachedReader.gets).To(Equal(1))
+		Expect(liveReader.gets).To(Equal(2))
+
+		resolver.nextInformerStartAttempt = time.Time{}
+		_, err = resolver.Resolve(ctx, pod, logd.Discard())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(informers.requestedKinds).To(HaveLen(7))
 	})
 })
 
@@ -243,11 +285,16 @@ func (r *countingReader) Get(ctx context.Context, key client.ObjectKey, obj clie
 type fakeInformers struct {
 	cache.Informers
 	requestedKinds []string
+	failingKinds   map[string]bool
 	hasSynced      atomic.Bool
 }
 
 func (f *fakeInformers) GetInformer(_ context.Context, obj client.Object, _ ...cache.InformerGetOption) (cache.Informer, error) {
-	f.requestedKinds = append(f.requestedKinds, obj.GetObjectKind().GroupVersionKind().Kind)
+	kind := obj.GetObjectKind().GroupVersionKind().Kind
+	f.requestedKinds = append(f.requestedKinds, kind)
+	if f.failingKinds[kind] {
+		return nil, errors.New("no matches for kind")
+	}
 	return &fakeInformer{hasSynced: &f.hasSynced}, nil
 }
 
