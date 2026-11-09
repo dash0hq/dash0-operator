@@ -156,6 +156,8 @@ spec:
 ```
 
 With `mode: pods`, the operator never restarts pods, neither to instrument them nor to remove their instrumentation.
+The only exception are workloads that still have instrumentation in their pod template from before the namespace was
+switched to `mode: pods`, see the switching between modes below.
 Pods that already exist keep their current state until they are recreated, for example by the next rollout, a scaling
 event, or a node drain:
 * Pods that were running before the namespace was switched to `mode: pods` are instrumented when they are recreated.
@@ -163,8 +165,8 @@ event, or a node drain:
   recreated.
 * Changes to the settings in `spec.instrumentWorkloads` (for example the label selector or trace context propagators)
   apply to pods created after the change.
-* When the namespace is switched to `mode: none`, or the Dash0 monitoring resource is removed, pods keep their
-  instrumentation until they are recreated.
+* When the namespace is switched to `mode: none`, or the Dash0 monitoring resource is removed, pods that have been
+  instrumented when they were created keep their instrumentation until they are recreated.
 
 Pods are instrumented by the operator's admission webhook.
 A pod that is created while the webhook is not reachable, for example while the operator is being updated, starts
@@ -189,8 +191,25 @@ account in the same way as with the other modes, see
 Kubernetes events about the instrumentation of an owned pod are recorded for its top-level owner, for example the
 deployment, since the pod does not have a name yet when it is instrumented.
 
-Workloads that have been instrumented before the namespace was switched to `mode: pods` keep the instrumentation in
-their pod template.
+Switching a namespace between `mode: pods` and the other modes behaves as follows:
+* From `all` or `created-and-updated` to `pods`: No pods are restarted.
+  The workloads keep the instrumentation in their pod template for now, so their pods stay instrumented.
+  The operator removes it from the pod template the next time the pod template changes anyway, for example with the next
+  deployment or `kubectl rollout restart`, so that no additional rollout is necessary.
+  For cron jobs, for replica sets that are not controlled by a deployment, and for daemon sets and stateful sets with the
+  update strategy `OnDelete`, changing the pod template does not replace any pods, so the instrumentation is removed on
+  the next update of the workload.
+  Jobs are immutable, they keep the instrumentation in their pod template.
+* From `pods` to `all`: The workloads are instrumented by modifying their pod template, which replaces their pods, as
+  when switching to `all` from any other mode.
+* From `pods` to `created-and-updated`: No pods are restarted.
+  Pods that have been instrumented when they were created keep their instrumentation until they are recreated; pods
+  created from the pod template of a workload that has not been updated since then are not instrumented.
+  Workloads are instrumented when they are created or updated, as described for `created-and-updated`.
+* From `pods` to `none`, or when the Dash0 monitoring resource is removed: Pods that have been instrumented when they
+  were created keep their instrumentation until they are recreated.
+  Workloads that still have instrumentation in their pod template from before the namespace was switched to `pods` are
+  reverted, which replaces their pods.
 
 ## Disabling Auto-Instrumentation for Specific Workloads
 

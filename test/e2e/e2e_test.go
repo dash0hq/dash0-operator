@@ -4042,6 +4042,96 @@ spec:
 				)
 			})
 
+			It("should not restart pods after switching from mode all to mode pods, and remove the instrumentation "+
+				"from the pod template on the next rollout", func() {
+				timestampLowerBound := time.Now()
+				c := runtimeWorkloadTestConfig{
+					namespace:    applicationUnderTestNamespace,
+					workloadType: workloadTypeDeployment,
+					runtime:      runtimeTypeNodeJs,
+				}
+				testIds := testIdMap{c.GetMapKey(): generateNewTestId(c.runtime, c.workloadType)}
+				deployWorkloadsInParallel([]runtimeWorkloadTestConfig{c}, testIds)
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+				verifyThatWorkloadHasBeenInstrumented(
+					c.namespace,
+					c.runtime,
+					c.workloadType,
+					testIds[c.GetMapKey()],
+					images,
+					"controller",
+				)
+				waitForRollout(c.namespace, c.runtime, c.workloadType)
+				podUids := readPodUids(c.namespace, c.runtime, c.workloadType)
+
+				updateInstrumentWorkloadsModeOfDash0MonitoringResource(
+					c.namespace,
+					dash0common.InstrumentWorkloadsModePods,
+				)
+				verifyThatPodsHaveNotBeenRestarted(c.namespace, c.runtime, c.workloadType, podUids)
+
+				restartWorkload(c.namespace, c.runtime, c.workloadType)
+				verifyThatPodsHaveBeenInstrumentedByTheWebhook(
+					c.namespace,
+					c.runtime,
+					c.workloadType,
+					testIds[c.GetMapKey()],
+					images,
+					podUids,
+					timestampLowerBound,
+				)
+			})
+
+			It("should instrument the workload via its pod template after switching from mode pods to mode all",
+				func() {
+					timestampLowerBound := time.Now()
+					c := runtimeWorkloadTestConfig{
+						namespace:    applicationUnderTestNamespace,
+						workloadType: workloadTypeDeployment,
+						runtime:      runtimeTypeNodeJs,
+					}
+					testIds := testIdMap{c.GetMapKey(): generateNewTestId(c.runtime, c.workloadType)}
+					deployDash0MonitoringResourceWithRetry(
+						applicationUnderTestNamespace,
+						dash0MonitoringValuesPodsMode,
+						operatorNamespace,
+					)
+					deployWorkloadsInParallel([]runtimeWorkloadTestConfig{c}, testIds)
+					verifyThatPodsHaveBeenInstrumentedByTheWebhook(
+						c.namespace,
+						c.runtime,
+						c.workloadType,
+						testIds[c.GetMapKey()],
+						images,
+						nil,
+						timestampLowerBound,
+					)
+					podUids := readPodUids(c.namespace, c.runtime, c.workloadType)
+
+					updateInstrumentWorkloadsModeOfDash0MonitoringResource(
+						c.namespace,
+						dash0common.InstrumentWorkloadsModeAll,
+					)
+					verifyThatWorkloadHasBeenInstrumented(
+						c.namespace,
+						c.runtime,
+						c.workloadType,
+						testIds[c.GetMapKey()],
+						images,
+						"controller",
+					)
+					verifyThatPodsHaveBeenReplacedWithPodsFromTheInstrumentedPodTemplate(
+						c.namespace,
+						c.runtime,
+						c.workloadType,
+						podUids,
+					)
+				})
+
 			It("should instrument new pods of all workload types without modifying the workloads", func() {
 				timestampLowerBound := time.Now()
 				deployDash0MonitoringResourceWithRetry(

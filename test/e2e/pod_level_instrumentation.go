@@ -181,3 +181,46 @@ func verifyThatNewPodsAreNotInstrumented(
 		}
 	}, podInstrumentationTimeout, pollingInterval).Should(Succeed())
 }
+
+// verifyThatPodsHaveNotBeenRestarted verifies that exactly the given pods of the workload keep running for a while.
+func verifyThatPodsHaveNotBeenRestarted(
+	namespace string,
+	runtime runtimeType,
+	workloadType workloadType,
+	podUids []string,
+) {
+	By(fmt.Sprintf("%s %s: verifying that the pods have not been restarted",
+		runtime.runtimeTypeLabel,
+		workloadType.workloadTypeString))
+	Consistently(func(g Gomega) {
+		pods := readPodsOfWorkload(g, namespace, runtime, workloadType)
+		actualUids := make([]string, 0, len(pods))
+		for _, pod := range pods {
+			actualUids = append(actualUids, string(pod.UID))
+		}
+		g.Expect(actualUids).To(ConsistOf(podUids))
+	}, podsUnchangedDuration, pollingInterval).Should(Succeed())
+}
+
+// verifyThatPodsHaveBeenReplacedWithPodsFromTheInstrumentedPodTemplate verifies that none of the given pods of the
+// workload is still running, and that the pods replacing them have been instrumented via the pod template of the
+// workload, not by the webhook.
+func verifyThatPodsHaveBeenReplacedWithPodsFromTheInstrumentedPodTemplate(
+	namespace string,
+	runtime runtimeType,
+	workloadType workloadType,
+	oldPodUids []string,
+) {
+	By(fmt.Sprintf("%s %s: verifying that the pods have been replaced by pods from the instrumented pod template",
+		runtime.runtimeTypeLabel,
+		workloadType.workloadTypeString))
+	Eventually(func(g Gomega) {
+		pods := readPodsOfWorkload(g, namespace, runtime, workloadType)
+		g.Expect(pods).ToNot(BeEmpty())
+		for _, pod := range pods {
+			g.Expect(oldPodUids).ToNot(ContainElement(string(pod.UID)), "the old pod %s is still running", pod.Name)
+			g.Expect(pod.Labels["dash0.com/instrumented"]).To(Equal("true"), "the pod %s is not instrumented", pod.Name)
+			g.Expect(pod.Labels["dash0.com/instrumented-by"]).To(Equal("controller"))
+		}
+	}, podInstrumentationTimeout, pollingInterval).Should(Succeed())
+}

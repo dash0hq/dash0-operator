@@ -195,10 +195,12 @@ type InstrumentWorkloads struct {
 	// of workload owns it. The operator never restarts pods in this mode: Pods that already exist keep their state
 	// until they are recreated, for example by the next rollout. That applies to instrumenting them, to updating their
 	// instrumentation when the Dash0 operator is updated, and to removing their instrumentation when the mode is
-	// changed to `none` or the Dash0 monitoring resource is removed. The label selector
-	// (spec.instrumentWorkloads.labelSelector) is evaluated against the labels of the pod combined with the labels of
-	// its owners (replica set and deployment, job and cron job, daemon set, stateful set); the level closest to the pod
-	// wins.
+	// changed to `none` or the Dash0 monitoring resource is removed. The only exception are workloads that still have
+	// instrumentation in their pod template from before the mode was changed to `pods`: When the mode is changed to
+	// `none` or the Dash0 monitoring resource is removed, their pod template is reverted, which replaces their pods.
+	// The label selector (spec.instrumentWorkloads.labelSelector) is evaluated against the labels of the pod combined
+	// with the labels of its owners (replica set and deployment, job and cron job, daemon set, stateful set); the
+	// level closest to the pod wins.
 	// This setting is useful if you want to avoid that the operator modifies workloads that are managed by GitOps or
 	// infrastructure-as-code tools, which would otherwise report the modifications as drift.
 	//
