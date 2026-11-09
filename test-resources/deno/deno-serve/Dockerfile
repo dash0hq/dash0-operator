@@ -7,4 +7,4 @@ FROM denoland/deno:debian-${DENO_VERSION}
 WORKDIR /usr/src/app
 COPY app.ts .
 USER deno
-ENTRYPOINT [ "deno", "run", "--allow-net", "--allow-env", "app.ts" ]
+ENTRYPOINT [ "deno", "run", "--allow-net", "--allow-env", "--allow-read", "app.ts" ]
