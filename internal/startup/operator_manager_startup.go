@@ -570,7 +570,7 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 		&cliArgs.allowlistVersion,
 		"allowlist-version",
 		"",
-		"The version of the Dash0 operator allowlist to wait for (e.g. v1.0.4). Used with --allowlist-synchronizer-ready-check.",
+		"The version of the Dash0 operator allowlist to wait for (e.g. v1.0.5). Used with --allowlist-synchronizer-ready-check.",
 	)
 	fs.BoolVar(
 		&cliArgs.deleteAllowlistSynchronizer,
@@ -2076,7 +2076,7 @@ func startDash0Controllers(
 			Enabled: envVars.ebpfProfilerEnabled, TelemetryCollectionEnabled: cliArgs.telemetryCollectionEnabled,
 			ProfilerImage: envVars.ebpfProfilerImage, ProfilerImagePullPolicy: envVars.ebpfProfilerImagePullPolicy,
 			ProxyImage: envVars.debuginfoProxyImage, ProxyImagePullPolicy: envVars.debuginfoProxyImagePullPolicy,
-			IsOpenShift: cliArgs.isOpenShift,
+			IsGkeAutopilot: cliArgs.isGkeAutopilot, IsOpenShift: cliArgs.isOpenShift,
 		},
 	)
 	profilerManager := profiling.NewManager(profilerResourceManager)

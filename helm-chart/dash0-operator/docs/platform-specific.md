@@ -43,8 +43,7 @@ GKE Autopilot [restricts](https://cloud.google.com/kubernetes-engine/docs/concep
 in an autopilot clusters can do.
 With `operator.gke.autopilot.enabled` set to `true`, the Dash0 operator Helm chart deploys an
 `auto.gke.io/AllowlistSynchronizer` resource into the target cluster, which in turn will add the required
-`auto.gke.io/WorkloadAllowlist` resources for Dash0 workloads (the operator and the OpenTelemetry collectors it
-manages).
+`auto.gke.io/WorkloadAllowlist` resources for Dash0 workloads (the operator and the workloads it manages).
 This allows the Dash0 operator to work on GKE Autopilot clusters.
 
 Not all restrictions can be lifted via workload allowlist, the following features are not available on GKE Autopilot
@@ -61,8 +60,6 @@ clusters:
   autopilot due to the lack of the `nodes/proxy` permission
 - the [synthetics-worker](synthetics-worker.md) is not yet supported, since its container image has not been added to
   the GKE Autopilot workload allowlist
-- the [operator-managed eBPF profiler](profiling.md#operator-managed-ebpf-profiler) is not yet supported. It requires a
-  new workload allowlist submitted to Google, reviewed, and published. This review usually takes a few weeks.
 
 GKE Autopilot [adjusts](https://cloud.google.com/kubernetes-engine/docs/concepts/autopilot-resource-requests) the
 resource requests and limits of all workloads, including the OpenTelemetry collectors and the other workloads managed by

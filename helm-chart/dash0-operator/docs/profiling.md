@@ -53,10 +53,6 @@ For a Helm-managed `Dash0OperatorConfiguration`, the opt-in also enables the pro
 `spec.profiling.ebpfProfiler.enabled: true`. If you manage that resource yourself, set both
 `spec.profiling.enabled: true` and `spec.profiling.ebpfProfiler.enabled: true` there.
 
-The operator-managed profiler is not yet supported on GKE Autopilot. It requires a new workload allowlist submitted
-to Google, reviewed, and published before it can run. This review usually takes a few weeks. See the
-[GKE Autopilot notes](platform-specific.md#notes-on-gke-autopilot).
-
 ### Agent image
 
 The profiler defaults to `ghcr.io/parca-dev/parca-agent:v0.51.2`. This version is independent of the operator's
@@ -74,6 +70,8 @@ signals. Earlier versions do not provide the source marker needed by the collect
 The image repository defaults to `ghcr.io/parca-dev/parca-agent`. The debuginfo proxy defaults to
 `ghcr.io/dash0hq/debuginfo-proxy` with the chart's `appVersion`. Both `operator.ebpfProfilerImage` and
 `operator.debuginfoProxyImage` accept `repository`, `tag`, `digest`, and `pullPolicy`; a digest takes precedence over a tag.
+On GKE Autopilot, the workload allowlists only accept the default repositories, so only the tag or digest can be
+changed there.
 
 ### Node-local delivery
 

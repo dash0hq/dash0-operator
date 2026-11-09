@@ -145,7 +145,9 @@ func (m *ResourceManager) apply(ctx context.Context, configuration *dash0v1alpha
 		if existing.GetLabels()[instanceLabel] != m.Config.NamePrefix || existing.GetLabels()[componentLabel] != desired.GetLabels()[componentLabel] {
 			return false, fmt.Errorf("refusing to replace unmanaged profiling resource %s", existing.GetName())
 		}
-		result, err := patch.DefaultPatchMaker.Calculate(existing, desired, patch.IgnoreField("kind"), patch.IgnoreField("apiVersion"))
+		desiredForComparison := desired.DeepCopyObject().(client.Object)
+		resources.AdoptGkeAutopilotResourceAdjustments(existing, desiredForComparison, logger)
+		result, err := patch.DefaultPatchMaker.Calculate(existing, desiredForComparison, patch.IgnoreField("kind"), patch.IgnoreField("apiVersion"))
 		if err != nil || result.IsEmpty() {
 			return false, err
 		}

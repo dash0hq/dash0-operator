@@ -18,7 +18,7 @@
 #   With a local Helm chart, all images built in this repository are deployed with the image pull policy Always, so that
 #   a node does not reuse an image it has cached for the same tag in an earlier run.
 #   The Signal Control collector and Edge Proxy images are not built in this repository, they are always pulled from the
-#   official ghcr.io/dash0hq repositories.
+#   official ghcr.io/dash0hq repositories. The same applies to the eBPF profiler image (ghcr.io/parca-dev/parca-agent).
 # - Use IMAGE_REPOSITORY_PREFIX to control the prefix of the container image repositories used with a local Helm chart
 #   (defaults to "ghcr.io/dash0hq/gke-ap-"). For example, set it to "ghcr.io/dash0hq/" to use the official image
 #   repositories (both prefixes are allow-listed on the GKE Autopilot cluster).
@@ -314,6 +314,8 @@ helm_command+=" --set operator.agent0Connector.serverAddress=agent0.dummy-url.aw
 helm_command+=" --set operator.agent0Connector.secretRef.name=dash0-authorization-secret"
 helm_command+=" --set operator.agent0Connector.secretRef.key=token"
 helm_command+=" --set operator.agent0Connector.insecure=true"
+# eBPF profiler: the Dash0 export above makes the operator deploy the debuginfo-proxy as well.
+helm_command+=" --set operator.ebpfProfilerEnabled=true"
 if [[ "$use_local_chart" = "true" ]]; then
   # Image tags of local builds are mutable, hence the pull policy Always, see the comment at the top of the file.
   helm_command+=" --set operator.image.repository=${image_repository_prefix}operator-controller"
@@ -340,6 +342,9 @@ if [[ "$use_local_chart" = "true" ]]; then
   helm_command+=" --set operator.agent0ConnectorImage.repository=${image_repository_prefix}agent0-connector"
   helm_command+=" --set operator.agent0ConnectorImage.tag=$image_tag"
   helm_command+=" --set operator.agent0ConnectorImage.pullPolicy=Always"
+  helm_command+=" --set operator.debuginfoProxyImage.repository=${image_repository_prefix}debuginfo-proxy"
+  helm_command+=" --set operator.debuginfoProxyImage.tag=$image_tag"
+  helm_command+=" --set operator.debuginfoProxyImage.pullPolicy=Always"
 fi
 helm_command+=" $helm_release_name"
 helm_command+=" $chart"
@@ -448,6 +453,30 @@ kubectl \
 set +x
 log "the agent0-connector is ready now"
 verify_matching_allowlist app.kubernetes.io/name=dash0-agent0-connector "agent0-connector"
+
+# Like for the daemonset collector, wait for one ready pod per daemonset instead of using "kubectl rollout status".
+for component in ebpf-profiler debuginfo-proxy; do
+  log "waiting for the $component daemonset to be created"
+  set -x
+  kubectl wait \
+    --for=create \
+    daemonset "${helm_release_name}-${component}" \
+    --namespace "$operator_namespace" \
+    --timeout=60s
+  set +x
+  log "waiting for at least one pod of the $component daemonset to become ready"
+  deadline=$((SECONDS + 120))
+  until [[ "$(kubectl get daemonset "${helm_release_name}-${component}" \
+    --namespace "$operator_namespace" -o jsonpath='{.status.numberReady}')" -ge 1 ]]; do
+    if (( SECONDS >= deadline )); then
+      log "ERROR: no pod of the $component daemonset became ready within 120 seconds"
+      exit 1
+    fi
+    sleep 5
+  done
+  log "at least one $component pod is ready now"
+  verify_matching_allowlist "app.kubernetes.io/component=$component" "$component"
+done
 
 # The optional settings make the operator render the optional env vars and volumes of the Signal Control collector and
 # the Edge Proxy, so that they are checked against the WorkloadAllowlists as well. This uses create instead of apply, so

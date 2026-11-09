@@ -583,6 +583,7 @@ type EbpfProfiler struct {
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:items:Enum=all;native;python;hotspot;php;ruby;perl;v8;dotnet;cuda;labels;beam;luajit
+	// +kubebuilder:validation:MaxItems=13
 	Tracers []string `json:"tracers,omitempty"`
 
 	// PID namespace translation mode. When omitted, the agent defaults to none. Use auto for nested PID namespaces,

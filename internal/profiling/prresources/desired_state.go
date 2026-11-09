@@ -29,6 +29,10 @@ const (
 	proxyComponent    = "debuginfo-proxy"
 	componentLabel    = "app.kubernetes.io/component"
 	instanceLabel     = "app.kubernetes.io/instance"
+
+	gkeAutopilotAllowlistKey           = "cloud.google.com/matching-allowlist"
+	gkeAutopilotAllowlistProfilerValue = "dash0-ebpf-profiler-v1.0.5"
+	gkeAutopilotAllowlistProxyValue    = "dash0-debuginfo-proxy-v1.0.5"
 )
 
 // Config contains installation-level settings for the managed profiler and proxy.
@@ -41,6 +45,7 @@ type Config struct {
 	ProfilerImagePullPolicy    corev1.PullPolicy
 	ProxyImage                 string
 	ProxyImagePullPolicy       corev1.PullPolicy
+	IsGkeAutopilot             bool
 	IsOpenShift                bool
 }
 
@@ -57,6 +62,16 @@ func (c Config) labels(component string) map[string]string {
 
 func (c Config) metadata(component string) metav1.ObjectMeta {
 	return metav1.ObjectMeta{Name: c.name(component), Namespace: c.Namespace, Labels: c.labels(component)}
+}
+
+// podTemplateLabels adds the GKE Autopilot WorkloadAllowlist match label on top of the selector labels; it must not be
+// part of the selector, which is immutable.
+func (c Config) podTemplateLabels(custom map[string]string, component string, allowlist string) map[string]string {
+	labels := mergeLabels(custom, c.labels(component))
+	if c.IsGkeAutopilot {
+		labels[gkeAutopilotAllowlistKey] = allowlist
+	}
+	return labels
 }
 
 func (c Config) profiler(configuration *dash0v1alpha1.Dash0OperatorConfiguration, uploads bool) []client.Object {
@@ -138,7 +153,7 @@ func (c Config) profiler(configuration *dash0v1alpha1.Dash0OperatorConfiguration
 	ds := &appsv1.DaemonSet{ObjectMeta: metadata, Spec: appsv1.DaemonSetSpec{
 		Selector: &metav1.LabelSelector{MatchLabels: c.labels(profilerComponent)},
 		Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{
-			Labels:      mergeLabels(settings.EbpfProfilerPodLabels, c.labels(profilerComponent)),
+			Labels:      c.podTemplateLabels(settings.EbpfProfilerPodLabels, profilerComponent, gkeAutopilotAllowlistProfilerValue),
 			Annotations: settings.EbpfProfilerPodAnnotations,
 		}, Spec: pod},
 	}}
@@ -172,7 +187,8 @@ func (c Config) proxy(configuration *dash0v1alpha1.Dash0OperatorConfiguration, c
 		},
 		Selector: &metav1.LabelSelector{MatchLabels: c.labels(proxyComponent)},
 		Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{
-			Labels: mergeLabels(settings.DebuginfoProxyPodLabels, c.labels(proxyComponent)), Annotations: podAnnotations,
+			Labels:      c.podTemplateLabels(settings.DebuginfoProxyPodLabels, proxyComponent, gkeAutopilotAllowlistProxyValue),
+			Annotations: podAnnotations,
 		}, Spec: corev1.PodSpec{
 			ServiceAccountName: c.name(proxyComponent), AutomountServiceAccountToken: ptr.To(false),
 			NodeSelector:    map[string]string{"kubernetes.io/os": "linux"},

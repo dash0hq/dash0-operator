@@ -14,12 +14,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -474,6 +476,70 @@ func TestDebuginfoProxyOmitsRunAsUserButPinsRunAsGroupOnOpenShift(t *testing.T) 
 	require.NoError(t, r.Get(context.Background(), key("debuginfo-proxy"), proxy))
 	require.Nil(t, proxy.Spec.Template.Spec.SecurityContext.RunAsUser)
 	require.EqualValues(t, 65532, *proxy.Spec.Template.Spec.SecurityContext.RunAsGroup)
+}
+
+func TestWorkloadsCarryGkeAutopilotAllowlistLabel(t *testing.T) {
+	for _, isGkeAutopilot := range []bool{true, false} {
+		t.Run(fmt.Sprintf("gke-autopilot=%t", isGkeAutopilot), func(t *testing.T) {
+			r, configuration := fixture(t)
+			r.Manager.ResourceManager.Config.IsGkeAutopilot = isGkeAutopilot
+			reconcile(t, r, configuration)
+			for component, allowlist := range map[string]string{
+				"ebpf-profiler": "dash0-ebpf-profiler-v1.0.5", "debuginfo-proxy": "dash0-debuginfo-proxy-v1.0.5",
+			} {
+				ds := &appsv1.DaemonSet{}
+				require.NoError(t, r.Get(context.Background(), key(component), ds))
+				if isGkeAutopilot {
+					require.Equal(t, allowlist, ds.Spec.Template.Labels["cloud.google.com/matching-allowlist"])
+				} else {
+					require.NotContains(t, ds.Spec.Template.Labels, "cloud.google.com/matching-allowlist")
+				}
+				require.NotContains(t, ds.Spec.Selector.MatchLabels, "cloud.google.com/matching-allowlist")
+			}
+		})
+	}
+}
+
+func TestGkeAutopilotResourceAdjustmentsAreNotReverted(t *testing.T) {
+	gomega.RegisterTestingT(t)
+	r, configuration := fixture(t)
+	r.Manager.ResourceManager.Config.IsGkeAutopilot = true
+	reconcile(t, r, configuration)
+	ctx := context.Background()
+	for _, component := range []string{"ebpf-profiler", "debuginfo-proxy"} {
+		ds := &appsv1.DaemonSet{}
+		require.NoError(t, r.Get(ctx, key(component), ds))
+		testutil.SimulateGkeAutopilotResourceAdjustment(ds, &ds.Spec.Template.Spec)
+		require.NoError(t, r.Update(ctx, ds))
+	}
+	adjusted := map[string]*appsv1.DaemonSet{}
+	for _, component := range []string{"ebpf-profiler", "debuginfo-proxy"} {
+		adjusted[component] = &appsv1.DaemonSet{}
+		require.NoError(t, r.Get(ctx, key(component), adjusted[component]))
+	}
+
+	reconcile(t, r, configuration)
+	for component, before := range adjusted {
+		after := &appsv1.DaemonSet{}
+		require.NoError(t, r.Get(ctx, key(component), after))
+		require.Equal(t, before.ResourceVersion, after.ResourceVersion, component)
+		require.Equal(t, before.Spec.Template.Spec, after.Spec.Template.Spec, component)
+	}
+
+	memoryLimit := &dash0v1alpha1.ContainerResourcesWithGoMemLimit{ContainerResources: dash0v1alpha1.ContainerResources{
+		Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")},
+	}}
+	configuration.Spec.Components = &dash0v1alpha1.OperatorConfigurationComponents{
+		EbpfProfiler:   &dash0v1alpha1.EbpfProfilerSettings{ContainerResources: memoryLimit},
+		DebuginfoProxy: &dash0v1alpha1.DebuginfoProxySettings{ContainerResources: memoryLimit},
+	}
+	reconcile(t, r, configuration)
+	for _, component := range []string{"ebpf-profiler", "debuginfo-proxy"} {
+		ds := &appsv1.DaemonSet{}
+		require.NoError(t, r.Get(ctx, key(component), ds))
+		limit := ds.Spec.Template.Spec.Containers[0].Resources.Limits[corev1.ResourceMemory]
+		require.True(t, limit.Equal(resource.MustParse("1Gi")), component)
+	}
 }
 
 func fixture(t *testing.T) (*profiling.Reconciler, *dash0v1alpha1.Dash0OperatorConfiguration) {
