@@ -269,10 +269,10 @@ operator:
   # The number of replicas for the operator manager deployment. Must be at least 1.
   #
   # Every replica serves the operator's admission webhooks, while only the replica that holds the leader election lease
-  # runs the controllers. In namespaces with instrumentWorkloads.mode=pods, pods that are created while no replica serves
-  # the webhook are not instrumented until they are recreated, so running two replicas is recommended there. With more
-  # than one replica, the chart adds a pod disruption budget (see operator.podDisruptionBudget) and a topology spread
-  # constraint that prefers spreading the replicas across nodes.
+  # runs the controllers. Running two replicas is recommended in setups that use instrumentWorkloads.mode=pods: in that
+  # mode, pods that are created while no replica serves the webhook are not instrumented until they are recreated. With
+  # more than one replica, the chart adds a pod disruption budget (see operator.podDisruptionBudget) and a topology
+  # spread constraint that prefers spreading the replicas across nodes.
   replicaCount: 1
 
   # Settings for the pod disruption budget of the operator manager deployment. The pod disruption budget is only

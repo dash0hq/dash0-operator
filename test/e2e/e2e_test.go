@@ -4345,8 +4345,8 @@ spec:
 				verifyThatLogsShowNoLeaderElection(nonLeader)
 			})
 
-			It("should not instrument pods that have been created while the webhook was not available until they are "+
-				"restarted", func() {
+			It("should not block rolling out a workload while the webhook is not available, and instrument its pods "+
+				"once they are restarted", func() {
 				timestampLowerBound := time.Now()
 				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
 				deployDash0MonitoringResourceWithRetry(
@@ -4355,7 +4355,7 @@ spec:
 					operatorNamespace,
 				)
 				restoreWebhook := makeInstrumentationWebhookUnavailable()
-				By("installing the Node.js deployment while the webhook is not available")
+				By("verifying that the Node.js deployment rolls out while the webhook is not available")
 				Expect(installTestAppWorkload(
 					runtimeTypeNodeJs,
 					workloadTypeDeployment,
