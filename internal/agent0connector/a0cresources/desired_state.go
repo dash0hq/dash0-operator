@@ -357,6 +357,7 @@ var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 			"dash0signaltometrics",
 			"dash0spamfilters",
 			"dash0syntheticchecks",
+			"dash0telemetrytransformationrules",
 			"dash0timeseriesaggregations",
 			"dash0views",
 		},

@@ -168,6 +168,36 @@ spec:
         displayName: Schedule
         path: schedule
       version: v1alpha1
+    - description: A rule that transforms matching telemetry with named, ordered OTTL statements.
+      displayName: Dash0 Telemetry Transformation Rule
+      kind: Dash0TelemetryTransformationRule
+      name: dash0telemetrytransformationrules.operator.dash0.com
+      specDescriptors:
+      - description: Whether the rule is active in Dash0.
+        displayName: Enabled
+        path: enabled
+      - description: The name of the rule shown in Dash0.
+        displayName: Display
+        path: display
+      - description: The telemetry signal that the rule transforms.
+        displayName: Signal
+        path: signal
+      - description: The OTTL context in which conditions and statements run.
+        displayName: Context
+        path: context
+      - description: The rule priority, from 0 to 400 in steps of 100. Defaults to 200.
+        displayName: Priority
+        path: priority
+      - description: The OTTL conditions that select telemetry for transformation.
+        displayName: Conditions
+        path: conditions
+      - description: Named transformations and their statements, executed in list order.
+        displayName: Transformations
+        path: transformations
+      - description: Named synthetic OTLP objects stored with the rule. Do not include secrets or production data.
+        displayName: Examples
+        path: examples
+      version: v1alpha1
     - description: A rule that aggregates the data points of matching metrics over a fixed interval.
       displayName: Dash0 Time Series Aggregation
       kind: Dash0TimeSeriesAggregation
