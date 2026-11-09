@@ -308,6 +308,33 @@ rules:
   - patch
   - update
 
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0telemetrytransformationrules
+  verbs:
+  - get
+  - list
+  - watch
+  - patch
+  - update
+
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0telemetrytransformationrules/status
+  verbs:
+  - get
+  - patch
+  - update
+
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0telemetrytransformationrules/finalizers
+  verbs:
+  - update
+
 # Permissions required to watch Dash0 view resources:
 - apiGroups:
   - operator.dash0.com

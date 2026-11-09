@@ -36,7 +36,7 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cisco-open/k8s-objectmatcher v1.10.0 // indirect
-	github.com/dash0hq/dash0-api-client-go v1.28.0 // indirect
+	github.com/dash0hq/dash0-api-client-go v1.31.1-0.20261109153932-e22a45129b31 // indirect
 	github.com/dash0hq/dash0-operator/images/pkg/common v0.0.0-00010101000000-000000000000 // indirect
 	github.com/dash0hq/dash0-operator/images/pkg/nodeuid v0.0.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -104,7 +104,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect
 	github.com/nexucis/lamenv v0.5.2 // indirect
-	github.com/oapi-codegen/runtime v1.7.0 // indirect
+	github.com/oapi-codegen/runtime v1.8.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/coreinternal v0.164.1 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/filter v0.164.1 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/pdatautil v0.164.1 // indirect
