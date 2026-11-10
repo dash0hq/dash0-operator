@@ -1683,6 +1683,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(connectors).ToNot(HaveKey("forward/profiles-processors"))
 			Expect(connectors).ToNot(HaveKey("forward/profiles-default-exporter"))
 
+			Expect(ReadFromMap(collectorConfig, []string{"processors", "transform/profiles/service_attributes"})).To(BeNil())
+
 			pipelines := readPipelines(collectorConfig)
 			for pipelineName := range pipelines {
 				Expect(pipelineName).ToNot(HavePrefix("profiles"))
@@ -1718,7 +1720,22 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(commonProcessors).To(ContainElement("resource_detection"))
 			Expect(commonProcessors).To(ContainElement("k8s_attributes/profiles"))
 			Expect(commonProcessors).ToNot(ContainElement("k8s_attributes"))
+			Expect(commonProcessors).To(ContainElement("transform/profiles/service_attributes"))
 			Expect(commonProcessors).To(ContainElement("transform/resources"))
+			Expect(slices.Index(commonProcessors, "transform/profiles/service_attributes")).To(
+				BeNumerically(">", slices.Index(commonProcessors, "k8s_attributes/profiles")))
+
+			serviceAttributesProcessor :=
+				ReadFromMap(collectorConfig, []string{"processors", "transform/profiles/service_attributes"})
+			Expect(serviceAttributesProcessor).ToNot(BeNil())
+			statementGroups := ReadFromMap(serviceAttributesProcessor, []string{"profile_statements"}).([]any)
+			Expect(statementGroups).To(HaveLen(1))
+			Expect(statementGroups[0].(map[string]any)["context"]).To(Equal("resource"))
+			Expect(statementGroups[0].(map[string]any)["statements"]).To(ConsistOf(
+				`set(attributes["service.version"], attributes["k8s.pod.label.app.kubernetes.io/version"])   where attributes["service.name"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil and attributes["k8s.pod.label.app.kubernetes.io/version"] != nil`,
+				`set(attributes["service.namespace"], attributes["k8s.pod.label.app.kubernetes.io/part-of"]) where attributes["service.name"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil and attributes["k8s.pod.label.app.kubernetes.io/part-of"] != nil`,
+				`set(attributes["service.name"], attributes["k8s.pod.label.app.kubernetes.io/name"])         where attributes["service.name"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil`,
+			))
 			commonExporters := readPipelineExporters(pipelines, "profiles/common-processors")
 			Expect(commonExporters).To(ContainElement("forward/profiles-default-exporter"))
 
