@@ -55,7 +55,7 @@ func TestProfilerRoutesSamplesAndDebuginfoSeparately(t *testing.T) {
 	require.True(t, pod.HostPID)
 	require.False(t, *pod.AutomountServiceAccountToken)
 	container := pod.Containers[0]
-	require.Equal(t, "ghcr.io/parca-dev/parca-agent:v0.51.2", container.Image)
+	require.Equal(t, "ghcr.io/parca-dev/parca-agent:v0.51.5", container.Image)
 	require.True(t, *container.SecurityContext.Privileged)
 	require.Zero(t, *container.SecurityContext.RunAsUser)
 	podUIDIndex := slices.IndexFunc(container.Env, func(env corev1.EnvVar) bool { return env.Name == "K8S_POD_UID" })
@@ -548,7 +548,7 @@ func fixtureWithOpenShift(t *testing.T, isOpenShift bool) (*profiling.Reconciler
 	resourceManager := prresources.NewResourceManager(c, scheme, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
 		Name: "operator", Namespace: "operator", UID: "operator-deployment",
 	}}, prresources.Config{Namespace: "operator", NamePrefix: "test", Enabled: true, TelemetryCollectionEnabled: true,
-		ProfilerImage: "ghcr.io/parca-dev/parca-agent:v0.51.2", ProxyImage: "debuginfo-proxy:test", IsOpenShift: isOpenShift,
+		ProfilerImage: "ghcr.io/parca-dev/parca-agent:v0.51.5", ProxyImage: "debuginfo-proxy:test", IsOpenShift: isOpenShift,
 	})
 	r := profiling.NewReconciler(c, profiling.NewManager(resourceManager))
 	require.NoError(t, c.Get(context.Background(), client.ObjectKeyFromObject(configuration), configuration))

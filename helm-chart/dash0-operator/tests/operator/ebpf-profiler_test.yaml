@@ -29,7 +29,7 @@ tests:
       - failedTemplate:
           errorMessage: "Error: operator.ebpfProfilerEnabled requires operator.telemetryCollectionEnabled=true."
 
-  - it: should default to agent v0.51.2 independently of appVersion
+  - it: should default to agent v0.51.5 independently of appVersion
     chart:
       appVersion: 99.100.101
     set:
@@ -42,7 +42,7 @@ tests:
           path: spec.template.spec.containers[0].env
           content:
             name: DASH0_EBPF_PROFILER_IMAGE
-            value: ghcr.io/parca-dev/parca-agent:v0.51.2
+            value: ghcr.io/parca-dev/parca-agent:v0.51.5
 
   - it: should reject an empty agent tag and digest instead of falling back to appVersion
     chart:
@@ -81,7 +81,7 @@ tests:
           path: spec.template.spec.containers[0].env
           content:
             name: DASH0_EBPF_PROFILER_IMAGE
-            value: ghcr.io/parca-dev/parca-agent:v0.51.2
+            value: ghcr.io/parca-dev/parca-agent:v0.51.5
       - contains:
           path: spec.template.spec.containers[0].env
           content:

@@ -627,7 +627,7 @@ operator:
   ebpfProfilerImage:
     repository: "ghcr.io/parca-dev/parca-agent"
     # Never defaults to the operator appVersion.
-    tag: "v0.51.2"
+    tag: "v0.51.5"
     # Pull by digest instead of tag; takes precedence over tag.
     digest:
     pullPolicy:
