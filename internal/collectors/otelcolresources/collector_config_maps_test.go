@@ -122,6 +122,13 @@ const (
 )
 
 var (
+	// expectedProfilerServiceAttributeStatements are the statements with which the transform processors for profiles and
+	// for the traces, metrics and logs of the eBPF profiler derive service attributes from Kubernetes labels.
+	expectedProfilerServiceAttributeStatements = []string{
+		`set(attributes["service.version"], attributes["k8s.pod.label.app.kubernetes.io/version"])   where attributes["service.name"] == nil and attributes["service.version"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil and attributes["k8s.pod.label.app.kubernetes.io/version"] != nil`,
+		`set(attributes["service.namespace"], attributes["k8s.pod.label.app.kubernetes.io/part-of"]) where attributes["service.name"] == nil and attributes["service.namespace"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil and attributes["k8s.pod.label.app.kubernetes.io/part-of"] != nil`,
+		`set(attributes["service.name"], attributes["k8s.pod.label.app.kubernetes.io/name"])         where attributes["service.name"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil`,
+	}
 	bearerWithAuthToken                             = fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefaultIndexed(0))
 	monitoredNamespaces                             = []string{namespace1, namespace2}
 	emptyTargetAllocatorMtlsConfig                  = TargetAllocatorMtlsConfig{}
@@ -1731,11 +1738,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			statementGroups := ReadFromMap(serviceAttributesProcessor, []string{"profile_statements"}).([]any)
 			Expect(statementGroups).To(HaveLen(1))
 			Expect(statementGroups[0].(map[string]any)["context"]).To(Equal("resource"))
-			Expect(statementGroups[0].(map[string]any)["statements"]).To(ConsistOf(
-				`set(attributes["service.version"], attributes["k8s.pod.label.app.kubernetes.io/version"])   where attributes["service.name"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil and attributes["k8s.pod.label.app.kubernetes.io/version"] != nil`,
-				`set(attributes["service.namespace"], attributes["k8s.pod.label.app.kubernetes.io/part-of"]) where attributes["service.name"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil and attributes["k8s.pod.label.app.kubernetes.io/part-of"] != nil`,
-				`set(attributes["service.name"], attributes["k8s.pod.label.app.kubernetes.io/name"])         where attributes["service.name"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil`,
-			))
+			Expect(statementGroups[0].(map[string]any)["statements"]).To(ConsistOf(expectedProfilerServiceAttributeStatements))
 			commonExporters := readPipelineExporters(pipelines, "profiles/common-processors")
 			Expect(commonExporters).To(ContainElement("forward/profiles-default-exporter"))
 
@@ -1811,11 +1814,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					statementGroups := ReadFromMap(serviceAttributesProcessor, []string{signal[:len(signal)-1] + "_statements"})
 					Expect(statementGroups).To(HaveLen(1))
 					Expect(statementGroups.([]any)[0].(map[string]any)["context"]).To(Equal("resource"))
-					Expect(statementGroups.([]any)[0].(map[string]any)["statements"]).To(ConsistOf(
-						`set(attributes["service.version"], attributes["k8s.pod.label.app.kubernetes.io/version"])   where attributes["service.name"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil and attributes["k8s.pod.label.app.kubernetes.io/version"] != nil`,
-						`set(attributes["service.namespace"], attributes["k8s.pod.label.app.kubernetes.io/part-of"]) where attributes["service.name"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil and attributes["k8s.pod.label.app.kubernetes.io/part-of"] != nil`,
-						`set(attributes["service.name"], attributes["k8s.pod.label.app.kubernetes.io/name"])         where attributes["service.name"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil`,
-					))
+					Expect(statementGroups.([]any)[0].(map[string]any)["statements"]).To(ConsistOf(expectedProfilerServiceAttributeStatements))
 					remaining := func(processors []any) []any {
 						return slices.DeleteFunc(slices.Clone(processors), func(processor any) bool {
 							return processor == "memory_limiter" || processor == "k8s_attributes" ||
