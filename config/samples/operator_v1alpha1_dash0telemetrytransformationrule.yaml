@@ -1,0 +1,41 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0TelemetryTransformationRule
+metadata:
+  name: normalize-synthetic-logs
+spec:
+  enabled: false
+  display:
+    name: Normalize synthetic logs
+  signal: logs
+  context: log
+  priority: 200
+  conditions:
+    - 'attributes["demo.synthetic"] == true'
+  transformations:
+    - name: Normalize severity
+      statements:
+        - 'set(severity_text, "INFO")'
+    - name: Mark normalized logs
+      statements:
+        - 'set(attributes["demo.transformation"], "normalized")'
+  examples:
+    - name: Synthetic log
+      otlp:
+        resourceLogs:
+          - resource:
+              attributes:
+                - key: service.name
+                  value:
+                    stringValue: synthetic-transformation-demo
+            scopeLogs:
+              - scope:
+                  name: synthetic-demo
+                logRecords:
+                  - timeUnixNano: "1793707200000000000"
+                    severityText: info
+                    body:
+                      stringValue: Synthetic example log
+                    attributes:
+                      - key: demo.synthetic
+                        value:
+                          boolValue: true

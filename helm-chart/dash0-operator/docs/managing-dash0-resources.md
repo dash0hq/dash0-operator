@@ -987,6 +987,38 @@ Status:
   Synchronized At:        2026-05-16T12:00:00Z
 ```
 
+### Managing telemetry transformation rules, local development preview
+
+`Dash0TelemetryTransformationRule` support is under development and is not part of a released operator version.
+The CRD and reconciler do not require an in-cluster SignalControl deployment.
+
+Create a rule in a namespace that already has a `Dash0Monitoring` resource. The operator uses that monitoring
+resource's Dash0 API endpoint, token, and dataset overrides, or falls back to the `Dash0OperatorConfiguration` defaults.
+The namespace selects the API configuration. It does not restrict which telemetry the rule transforms in the target
+dataset. Use `spec.conditions` to restrict matching telemetry when needed.
+
+The [sample rule](../../../config/samples/operator_v1alpha1_dash0telemetrytransformationrule.yaml) is disabled and uses
+synthetic log data. `spec.enabled: false` still synchronizes the rule to Dash0, but keeps its transformations inactive.
+Its named transformations and their OTTL statements run in list order. The sample uses `signal: logs`, `context: log`,
+and `priority: 200`. Conditions are optional. `spec.examples[].otlp` is a nested OTLP/JSON export request object, not
+a JSON string.
+
+Updates use PUT with full replacement semantics. Omitting `spec.examples` removes the rule's previously stored
+examples in Dash0. Examples persist with the rule and do not expire according to telemetry retention settings.
+Use only synthetic, non-secret data. Do not copy production telemetry, credentials, or personal data into examples.
+Users with Kubernetes read access to the rule, including the agent0-connector under its default RBAC rules, can read
+its examples. Credential redaction does not cover arbitrary values inside OTLP attributes or log bodies.
+
+The operator derives a stable origin from the cluster identity, dataset, Kubernetes namespace, and resource name,
+so updates address the same remote rule. Changing the selected dataset creates a separate rule in the new dataset;
+it does not move or delete the previous rule. Delete the resource before changing its target configuration if the
+previous rule must be removed.
+
+Deleting the Kubernetes resource deletes its rule in the currently configured targets. The finalizer
+`operator.dash0.com/telemetry-transformation-rule` keeps deletion pending until remote deletion succeeds.
+Keep the namespace's `Dash0Monitoring`, API configuration, and credentials available until deletion finishes.
+Synchronization results and errors appear in the transformation rule's status.
+
 ### Managing Dash0 Teams
 
 You can manage your Dash0 teams via the Dash0 operator.
