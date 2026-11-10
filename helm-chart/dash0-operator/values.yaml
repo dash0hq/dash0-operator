@@ -792,7 +792,7 @@ operator:
 
     # A reference to a persistent volume to use for the filelog offset sync. We strongly recommend providing a volume
     # for all clusters except small development or test clusters. By default, the filelog offset sync uses a single
-    # config map for its persistent storage, which every collector pod updates every few seconds. This has two
+    # config map for its persistent storage, which every collector pod updates once per minute. This has two
     # consequences: ConfigMaps are limited to 1 MB in size, which clusters with around 100 pods or more can exceed. And
     # etcd stores a complete copy of the config map for every update until the next compaction, so the disk space used
     # by etcd grows with the square of the number of nodes. In larger clusters, this can exhaust the etcd storage quota,

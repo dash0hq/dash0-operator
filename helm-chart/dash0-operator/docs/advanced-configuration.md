@@ -36,8 +36,8 @@ For production clusters, larger staging clusters, or clusters with many short-li
 providing a persistent volume for storing offsets.
 
 > **Warning:** The default config map storage puts a significant write load on the Kubernetes API server and on etcd.
-> All collector pods share one config map, with one entry per node, and each collector pod updates its entry every few
-> seconds while log files are being written.
+> All collector pods share one config map, with one entry per node, and each collector pod updates its entry once per
+> minute while log files are being written.
 > etcd stores a complete copy of the config map for every update and keeps these copies until the next compaction, so
 > the disk space used by etcd grows with the square of the number of nodes.
 > In larger clusters, this can exhaust the etcd storage quota.

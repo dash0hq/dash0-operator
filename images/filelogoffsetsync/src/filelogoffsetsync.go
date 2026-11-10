@@ -49,6 +49,11 @@ const (
 	meterName       = "dash0.operator.filelog_offset_sync"
 	metricNameLabel = "metric.name"
 	errorLabel      = "error"
+
+	// syncInterval is deliberately long: every update writes a full copy of the config map shared by all nodes to
+	// etcd, so a short interval lets the etcd database grow quickly in larger clusters. Offsets are also synced on
+	// SIGTERM, so a graceful pod shutdown does not lose any updates.
+	syncInterval = 60 * time.Second
 )
 
 var (
@@ -273,7 +278,7 @@ func restoreFile(tr *tar.Reader) (IsArchiveOver, HasRestoredFileFromArchive, err
 }
 
 func syncOffsets(ctx context.Context, settings *Settings) {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(syncInterval)
 	shutdown := make(chan os.Signal, 1)
 	done := make(chan bool, 1)
 	signal.Notify(shutdown, syscall.SIGTERM)
