@@ -226,6 +226,16 @@ func (i *Instrumenter) CheckSettingsAndInstrumentExistingWorkloads(
 		)
 		return nil
 	}
+	if slices.Contains(util.RestrictedNamespaces, dash0MonitoringResource.Namespace) {
+		logger.Info(
+			fmt.Sprintf(
+				"Workloads in the Kubernetes system namespace %s are never instrumented, ignoring "+
+					"instrumentWorkloads.mode=%s.",
+				dash0MonitoringResource.Namespace,
+				instrumentWorkloadsMode,
+			))
+		return nil
+	}
 
 	logger.Info("Now instrumenting existing workloads in namespace so they send telemetry to Dash0.")
 	if err := i.instrumentAllWorkloads(ctx, dash0MonitoringResource, logger); err != nil {
