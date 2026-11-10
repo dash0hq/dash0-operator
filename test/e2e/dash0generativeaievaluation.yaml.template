@@ -1,0 +1,22 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0GenerativeAiEvaluation
+metadata:
+  name: generative-ai-evaluation-e2e-test
+  labels:
+    app.kubernetes.io/name: generative-ai-evaluation-e2e-test
+spec:
+  enabled: true
+  display:
+    name: E2E test eval
+  match:
+    filters:
+      - key: "gen_ai.operation.name"
+        operator: "is_set"
+  sample:
+    rate: 0.5
+  judge:
+    model: light
+    systemPrompt: "You review the answers of an AI assistant."
+    userPrompt: "Was the answer polite?"
+    output:
+      kind: boolean

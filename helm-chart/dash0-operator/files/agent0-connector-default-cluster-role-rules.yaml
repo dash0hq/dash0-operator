@@ -234,6 +234,7 @@
 - apiGroups:
   - operator.dash0.com
   resources:
+  - dash0generativeaievaluations
   - dash0monitorings
   - dash0notificationchannels
   - dash0operatorconfigurations

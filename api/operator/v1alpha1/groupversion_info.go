@@ -34,6 +34,7 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&Dash0SpamFilter{}, &Dash0SpamFilterList{},
 		&Dash0View{}, &Dash0ViewList{},
 		&Dash0TimeSeriesAggregation{}, &Dash0TimeSeriesAggregationList{},
+		&Dash0GenerativeAiEvaluation{}, &Dash0GenerativeAiEvaluationList{},
 	)
 	metav1.AddToGroupVersion(scheme, GroupVersion)
 	return nil

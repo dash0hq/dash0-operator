@@ -1,0 +1,66 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0GenerativeAiEvaluation
+metadata:
+  name: answer-relevance
+  labels:
+    dash0.com/dataset: $DASH0_DATASET
+  annotations:
+    dash0.com/folder-path: /operator-test-resources
+spec:
+  enabled: true
+  display:
+    name: Answer relevance (operator test resource)
+    description: Checks that the answer addresses the question that was asked.
+  match:
+    filters:
+      - key: gen_ai.operation.name
+        operator: is_set
+      - key: k8s.namespace.name
+        operator: is
+        value: $TARGET_NAMESPACE
+  sample:
+    rate: 0.1
+  judge:
+    model: light
+    systemPrompt: You review the answers of an AI assistant.
+    userPrompt: |
+      Score from 0 to 1 how well the answer addresses the question.
+      Question: {{ gen_ai.input.messages }}
+      Answer: {{ gen_ai.output.messages }}
+    output:
+      kind: numeric
+      spec:
+        threshold: 0.7
+---
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0GenerativeAiEvaluation
+metadata:
+  name: answer-tone
+  labels:
+    dash0.com/dataset: $DASH0_DATASET
+spec:
+  enabled: true
+  display:
+    name: Answer tone (operator test resource)
+  match:
+    filters:
+      - key: gen_ai.operation.name
+        operator: is_set
+  sample:
+    rate: 0.1
+  judge:
+    model: light
+    systemPrompt: You review the answers of an AI assistant.
+    userPrompt: |
+      Classify the tone of this answer: {{ gen_ai.output.messages }}
+    allowPartialPrompt: true
+    output:
+      kind: categorical
+      spec:
+        options:
+          - label: friendly
+            intent: positive
+          - label: neutral
+            intent: neutral
+          - label: rude
+            intent: negative
