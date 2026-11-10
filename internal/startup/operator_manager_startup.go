@@ -1360,6 +1360,28 @@ func setupTeamReconciler(
 	return teamReconciler, nil
 }
 
+// setupGenerativeAiEvaluationReconciler constructs and wires the generative AI evaluation reconciler with the manager
+// and the leader-election-aware runnable. Companion to setupSpamFilterReconciler; see its godoc for the rationale.
+func setupGenerativeAiEvaluationReconciler(
+	mgr manager.Manager,
+	k8sClient client.Client,
+	clusterUid types.UID,
+	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
+	apiClientPool *controller.ApiClientPool,
+) (*controller.GenerativeAiEvaluationReconciler, error) {
+	generativeAiEvaluationReconciler := controller.NewGenerativeAiEvaluationReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		apiClientPool,
+	)
+	if err := generativeAiEvaluationReconciler.SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("unable to set up the generative AI evaluation reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(generativeAiEvaluationReconciler)
+	return generativeAiEvaluationReconciler, nil
+}
+
 // setupTimeSeriesAggregationReconciler constructs and wires the time-series-aggregation reconciler with the manager and
 // the leader-election-aware runnable. Companion to setupSpamFilterReconciler; see its godoc for the rationale.
 func setupTimeSeriesAggregationReconciler(
@@ -1394,10 +1416,12 @@ func allOwnedIacResourceSynchronizationControllers(
 	syntheticCheckReconciler *controller.SyntheticCheckReconciler,
 	teamReconciler *controller.TeamReconciler,
 	timeSeriesAggregationReconciler *controller.TimeSeriesAggregationReconciler,
+	generativeAiEvaluationReconciler *controller.GenerativeAiEvaluationReconciler,
 	viewReconciler *controller.ViewReconciler,
 	samplingRuleReconciler *controller.SamplingRuleReconciler,
 ) []controller.OwnedIacResourceSynchronizationController {
 	controllers := []controller.OwnedIacResourceSynchronizationController{
+		generativeAiEvaluationReconciler,
 		notificationChannelReconciler,
 		signalToMetricsReconciler,
 		sloReconciler,
@@ -2232,6 +2256,17 @@ func startDash0Controllers(
 		return err
 	}
 
+	generativeAiEvaluationReconciler, err := setupGenerativeAiEvaluationReconciler(
+		mgr,
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		apiClientPool,
+	)
+	if err != nil {
+		return err
+	}
+
 	var samplingRuleReconciler *controller.SamplingRuleReconciler
 	if cliArgs.featureSignalControlEnabled {
 		samplingRuleReconciler = controller.NewSamplingRuleReconciler(
@@ -2319,6 +2354,7 @@ func startDash0Controllers(
 			syntheticCheckReconciler,
 			teamReconciler,
 			timeSeriesAggregationReconciler,
+			generativeAiEvaluationReconciler,
 			viewReconciler,
 			samplingRuleReconciler,
 		),
@@ -2338,6 +2374,7 @@ func startDash0Controllers(
 		spamFilterReconciler,
 		teamReconciler,
 		timeSeriesAggregationReconciler,
+		generativeAiEvaluationReconciler,
 		signalToMetricsReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
@@ -2380,6 +2417,7 @@ func startDash0Controllers(
 			spamFilterReconciler,
 			teamReconciler,
 			timeSeriesAggregationReconciler,
+			generativeAiEvaluationReconciler,
 			signalToMetricsReconciler,
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
@@ -2459,6 +2497,7 @@ func startDash0Controllers(
 		viewReconciler,
 		spamFilterReconciler,
 		timeSeriesAggregationReconciler,
+		generativeAiEvaluationReconciler,
 		signalToMetricsReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,

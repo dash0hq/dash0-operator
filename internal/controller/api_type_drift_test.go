@@ -458,6 +458,45 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 		)
 	})
 
+	generativeAiEvaluationUnionReason :=
+		"a union in the API client which keeps the raw JSON, see generative_ai_evaluation_definition_roundtrip_test.go"
+
+	It("finds no unexpected drift between Dash0GenerativeAiEvaluation and the API client's generative AI evaluation type",
+		func() {
+			expectNoUnexpectedApiTypeDrift(
+				reflect.TypeFor[dash0v1alpha1.Dash0GenerativeAiEvaluationSpec](),
+				reflect.TypeFor[dash0apiclient.GenerativeAiEvaluationSpec](),
+				map[string]string{
+					"judge.output.kind": generativeAiEvaluationUnionReason,
+					"judge.output.spec": generativeAiEvaluationUnionReason,
+				},
+				nil,
+			)
+		})
+
+	DescribeTable("finds no unexpected drift between the judge output and the API client's judge output types",
+		func(clientType reflect.Type, allowedOnlyInCrd map[string]string) {
+			expectNoUnexpectedApiTypeDrift(
+				reflect.TypeFor[dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutput](),
+				clientType,
+				allowedOnlyInCrd,
+				nil,
+			)
+		},
+		Entry("numeric", reflect.TypeFor[dash0apiclient.GenerativeAiEvaluationJudgeOutputNumeric](), map[string]string{
+			"spec.options": "only used by the categorical output kind",
+		}),
+		Entry("boolean", reflect.TypeFor[dash0apiclient.GenerativeAiEvaluationJudgeOutputBoolean](), map[string]string{
+			"spec": "only used by the numeric and categorical output kinds",
+		}),
+		Entry("categorical",
+			reflect.TypeFor[dash0apiclient.GenerativeAiEvaluationJudgeOutputCategorical](),
+			map[string]string{
+				"spec.threshold": "only used by the numeric output kind",
+			},
+		),
+	)
+
 	It("finds no unexpected drift between Dash0Team and the API client's team type", func() {
 		expectNoUnexpectedApiTypeDrift(
 			reflect.TypeFor[dash0dashv1alpha1.Dash0TeamSpec](),

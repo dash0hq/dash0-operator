@@ -988,6 +988,45 @@ spec:
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
 
+				//nolint:dupl
+				It("should synchronize a generative AI evaluation to the Dash0 API", func() {
+					deployGenerativeAiEvaluationResource(applicationUnderTestNamespace)
+
+					//nolint:lll
+					routeRegex := "/api/generative-ai-evaluations/dash0-operator_.*_default_e2e-test-ns_generative-ai-evaluation-e2e-test\\?dataset=default"
+
+					By("verifying the generative AI evaluation has been synchronized to the Dash0 API via PUT")
+					req := fetchCapturedApiRequest(0)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(req.Body).ToNot(BeNil())
+					Expect(*req.Body).To(ContainSubstring("Was the answer polite?"))
+					verifyApiSyncRequest(req)
+
+					setOptOutLabelInGenerativeAiEvaluation(applicationUnderTestNamespace, "false")
+					//nolint:lll
+					By("verifying the generative AI evaluation has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
+					req = fetchCapturedApiRequest(1)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+
+					setOptOutLabelInGenerativeAiEvaluation(applicationUnderTestNamespace, "true")
+					//nolint:lll
+					By("verifying the generative AI evaluation has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
+					req = fetchCapturedApiRequest(2)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(*req.Body).To(ContainSubstring("Was the answer polite?"))
+					verifyApiSyncRequest(req)
+
+					removeGenerativeAiEvaluationResource(applicationUnderTestNamespace)
+					//nolint:lll
+					By("verifying the generative AI evaluation has been deleted via the Dash0 API (after removing the resource)")
+					req = fetchCapturedApiRequest(3)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+				})
+
 				runPersesDashboardSyncTest := func(persesDashboardCrdVersion string) {
 					verifyPersesDashboardCrdConversionWebhookConfigured(operatorNamespace)
 
@@ -5957,6 +5996,30 @@ spec:
 					g.Expect(countCapturedApiRequests(g, "PUT", timeSeriesAggregationPutRegex)).To(
 						BeNumerically(">=", apiMockFailTimesForOneSyncAttempt+1),
 						"expected the time series aggregation to be re-synchronized by the periodic retry",
+					)
+				}, 90*time.Second, 2*time.Second).Should(Succeed())
+			})
+
+			It("retries a Dash0 generative AI evaluation synchronization after a transient server error (HTTP 503)", func() {
+				By("configuring the API mock to fail the generative AI evaluation with HTTP 503 for the first sync attempt")
+				configureApiMockResponseOverrides(apiMockResponseOverride{
+					Method:         "PUT",
+					RouteSubstring: "generative-ai-evaluation-e2e-test",
+					StatusCode:     503,
+					Times:          apiMockFailTimesForOneSyncAttempt,
+				})
+
+				deployGenerativeAiEvaluationResource(applicationUnderTestNamespace)
+
+				//nolint:lll
+				generativeAiEvaluationPutRegex := "^/api/generative-ai-evaluations/dash0-operator_.*_default_e2e-test-ns_generative-ai-evaluation-e2e-test\\?dataset=default$"
+
+				//nolint:lll
+				By("verifying the operator performs a second synchronization attempt and the generative AI evaluation is synchronized")
+				Eventually(func(g Gomega) {
+					g.Expect(countCapturedApiRequests(g, "PUT", generativeAiEvaluationPutRegex)).To(
+						BeNumerically(">=", apiMockFailTimesForOneSyncAttempt+1),
+						"expected the generative AI evaluation to be re-synchronized by the periodic retry",
 					)
 				}, 90*time.Second, 2*time.Second).Should(Succeed())
 			})

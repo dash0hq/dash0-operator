@@ -186,6 +186,27 @@ spec:
         displayName: Sample
         path: sample
       version: v1alpha1
+    - description: An eval, an LLM judge that scores a sample of the generative AI spans that match its filters.
+      displayName: Dash0 Generative AI Evaluation
+      kind: Dash0GenerativeAiEvaluation
+      name: dash0generativeaievaluations.operator.dash0.com
+      specDescriptors:
+      - description: Whether the eval judges spans.
+        displayName: Enabled
+        path: enabled
+      - description: The name and description of the eval shown in Dash0.
+        displayName: Display
+        path: display
+      - description: The spans that the eval judges.
+        displayName: Match
+        path: match
+      - description: The share of the matching traces that is judged.
+        displayName: Sample
+        path: sample
+      - description: The model, the prompts and the kind of result of the judge.
+        displayName: Judge
+        path: judge
+      version: v1alpha1
     - description: A saved Dash0 view with a filter and table layout for exploring telemetry such as logs, spans or
         metrics.
       displayName: Dash0 View

@@ -1315,6 +1315,11 @@ deploy_dash0_api_sync_resources() {
     kubectl apply -n "$target_namespace" -f test-resources/customresources/dash0timeseriesaggregation/dash0timeseriesaggregation.yaml
     finish_step
   fi
+  if [[ "${DEPLOY_GENERATIVE_AI_EVALUATION:-}" = "true" ]]; then
+    echo "STEP $step_counter: deploy Dash0 generative AI evaluation resources to namespace ${target_namespace}"
+    kubectl apply -n "$target_namespace" -f test-resources/customresources/dash0generativeaievaluation/dash0generativeaievaluation.yaml
+    finish_step
+  fi
   if [[ "${DEPLOY_PERSES_DASHBOARD:-}" = "true" ]]; then
     DEPLOY_PERSES_DASHBOARD="v1alpha2"
   fi
