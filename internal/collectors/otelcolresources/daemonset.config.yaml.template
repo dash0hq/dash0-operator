@@ -897,6 +897,19 @@ processors:
       - set(attributes["service.name"], attributes["k8s.pod.label.app.kubernetes.io/name"])         where attributes["service.name"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil
   {{- end }}
 
+  {{- if .ProfilingEnabled }}
+  # Derive service attributes for profiles from the Kubernetes labels, in the same way as for logs from the file_log
+  # receiver (see transform/logs/filelog_service_attributes).
+  transform/profiles/service_attributes:
+    error_mode: ignore
+    profile_statements:
+    - context: resource
+      statements:
+      - set(attributes["service.version"], attributes["k8s.pod.label.app.kubernetes.io/version"])   where attributes["service.name"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil and attributes["k8s.pod.label.app.kubernetes.io/version"] != nil
+      - set(attributes["service.namespace"], attributes["k8s.pod.label.app.kubernetes.io/part-of"]) where attributes["service.name"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil and attributes["k8s.pod.label.app.kubernetes.io/part-of"] != nil
+      - set(attributes["service.name"], attributes["k8s.pod.label.app.kubernetes.io/name"])         where attributes["service.name"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil
+  {{- end }}
+
   {{- if .ClusterName }}
   resource/clustername:
     attributes:
@@ -1574,6 +1587,7 @@ service:
         - memory_limiter
         - resource_detection
         - k8s_attributes/profiles
+        - transform/profiles/service_attributes
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
