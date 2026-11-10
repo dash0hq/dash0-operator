@@ -69,7 +69,7 @@ jobs:
         run: |
           go version
 
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d
+      - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b
         with:
           mise_toml: |
             [tools]
@@ -352,7 +352,7 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d
+      - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b
         with:
           mise_toml: |
             [tools]
