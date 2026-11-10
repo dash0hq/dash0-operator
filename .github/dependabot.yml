@@ -136,6 +136,7 @@ updates:
       - "/images/volumeownership"
       - "/images/instrumentation"
       - "/images/target-allocator"
+      - "/olm/catalog"
     schedule:
       interval: "daily"
       time: "07:15"

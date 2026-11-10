@@ -34,14 +34,7 @@ monitored_ns="$default_target_ns"
 operator_sdk="${OPERATOR_SDK:-bin/operator-sdk}"
 
 cleanup() {
-  # Delete the monitoring resource while the operator still runs, so that its finalizer uninstruments the workloads.
-  if kubectl get crd dash0monitorings.operator.dash0.com > /dev/null 2>&1; then
-    if ! kubectl delete --namespace "$monitored_ns" --ignore-not-found --timeout 2m \
-      -f config/samples/operator_v1beta1_dash0monitoring.yaml; then
-      echo "error: the Dash0Monitoring resource in $monitored_ns was not deleted, check that the operator is running."
-      exit 1
-    fi
-  fi
+  delete_olm_test_monitoring_resource "$monitored_ns"
   make operator-sdk
   "$operator_sdk" cleanup dash0-operator --namespace "$operator_ns"
 }
@@ -52,6 +45,13 @@ if [[ "${1:-}" = "cleanup" ]]; then
 fi
 
 : "${IMAGE_REPOSITORY_PREFIX:?IMAGE_REPOSITORY_PREFIX is required}"
+catalog_test_installation=$(kubectl get catalogsources.operators.coreos.com dash0-operator-catalog-test \
+  --namespace "$operator_ns" --ignore-not-found -o name)
+if [[ -n "$catalog_test_installation" ]]; then
+  echo "error: the operator has been installed by test-olm-catalog.sh, run test-resources/bin/test-olm-catalog.sh" \
+    "cleanup first"
+  exit 1
+fi
 bundle_image="${BUNDLE_IMAGE_REPOSITORY:-${IMAGE_REPOSITORY_PREFIX}dash0-operator-bundle}:${BUNDLE_IMAGE_TAG:-v$bundle_version}"
 
 determine_container_images
@@ -83,26 +83,4 @@ fi
 "$operator_sdk" run bundle "$bundle_image" "${run_bundle_args[@]}"
 kubectl get csv --namespace "$operator_ns"
 
-kubectl create secret generic dash0-authorization-secret --namespace "$operator_ns" \
-  --from-literal=token="$DASH0_AUTHORIZATION_TOKEN" --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply -f - <<EOF
-apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0OperatorConfiguration
-metadata:
-  name: dash0-operator-configuration
-spec:
-  exports:
-    - dash0:
-        endpoint: $DASH0_INGRESS_ENDPOINT
-        authorization:
-          secretRef:
-            name: dash0-authorization-secret
-            key: token
-        apiEndpoint: $DASH0_API_ENDPOINT
-  clusterName: ${CLUSTER_NAME:-olm-bundle-test}
-EOF
-# The validation webhook rejects a monitoring resource without exports until the operator configuration is available.
-kubectl wait dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration --for condition=Available
-
-kubectl create namespace "$monitored_ns" --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply --namespace "$monitored_ns" -f config/samples/operator_v1beta1_dash0monitoring.yaml
+install_olm_test_resources "$operator_ns" "$monitored_ns" olm-bundle-test

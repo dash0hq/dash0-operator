@@ -672,6 +672,28 @@ without building any images.
 CI generates this bundle via `make olm-release-bundle`, which tags all images of the chart that are built in this
 repository with `BUNDLE_OPERATOR_IMAGE_TAG`.
 
+## OLM Catalog
+
+CI also publishes an OLM catalog image (a file-based catalog with the package `dash0-operator` and the channel
+`stable-v0`) for every commit on `main`, which holds the bundle image of that commit:
+`ghcr.io/dash0hq/dash0-operator-catalog:main-dev`.
+Pull requests and other branches build the catalog image from the bundle image `main-dev` without pushing it.
+Release builds do not publish a catalog image yet.
+
+- [test-resources/bin/test-olm-catalog.sh](test-resources/bin/test-olm-catalog.sh) installs the operator from a catalog
+  image via a `CatalogSource`, an `OperatorGroup` and a `Subscription`, and creates a `Dash0OperatorConfiguration` and
+  a `Dash0Monitoring` resource. It installs the catalog `main-dev` unless `CATALOG_IMAGE` is set, and does not build
+  any images. `test-resources/bin/test-olm-catalog.sh cleanup` removes the operator again; the CRDs remain, as after an
+  uninstall via OLM.
+- `make olm-catalog CATALOG_BUNDLE_IMAGES="<bundle image> ..."` renders and validates a catalog with the given bundle
+  images into `olm/build/catalog` (`CATALOG_DIR`). Reference the bundle images by digest, a tag can be overwritten.
+  With the local registry of the kind setup, also set `CATALOG_REGISTRY_USE_HTTP=true`.
+  `make olm-catalog-image push-olm-catalog-image` builds and pushes the catalog image
+  `${IMAGE_REPOSITORY_PREFIX}dash0-operator-catalog:v0.0.1` (`CATALOG_IMAGE_REPOSITORY`, `CATALOG_IMAGE_TAG`), which
+  `test-olm-catalog.sh` then installs with `CATALOG_IMAGE`.
+- In CI, [olm/bin/resolve-catalog-bundles.sh](olm/bin/resolve-catalog-bundles.sh) determines the bundle images of the
+  catalog and resolves them to digests.
+
 ## Testing with Kyverno
 
 [test-resources/bin/deploy-kyverno.sh](test-resources/bin/deploy-kyverno.sh) installs Kyverno and the upstream Kyverno
@@ -694,4 +716,4 @@ in the Helm output or in the operator manager's log, and it rejects pods, which 
 Kyverno validates the operator's pre-delete hook as well. A rejected hook shows up as an error of `helm uninstall` in
 the output of the cleanup script. All test scenario scripts except
 `test-scenario-03-rebuild-update-operator-no-cleanup.sh` start with the cleanup and therefore remove Kyverno;
-`test-olm-bundle.sh` and `test-env-var-fallback.sh` do not remove it.
+`test-olm-bundle.sh`, `test-olm-catalog.sh` and `test-env-var-fallback.sh` do not remove it.
