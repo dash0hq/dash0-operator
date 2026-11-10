@@ -1778,7 +1778,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					processor := collectorConfig["processors"].(map[string]any)["filter/profiler-source"]
 					Expect(ReadFromMap(processor.(map[string]any), []string{signal, "resource"})).To(
 						ConsistOf(`attributes["parca.agent"] == "true"`))
+					serviceAttributesProcessor := collectorConfig["processors"].(map[string]any)["transform/ebpf_profiler/service_attributes"]
+					Expect(readPipelineProcessors(pipelines, commonPipeline)).ToNot(
+						ContainElement("transform/ebpf_profiler/service_attributes"))
 					if !entry.config.EbpfProfilerEnabled {
+						Expect(serviceAttributesProcessor).To(BeNil())
 						Expect(connectors).ToNot(HaveKey(sourceRouter))
 						Expect(pipelines).ToNot(HaveKey(signal + "/route-source"))
 						Expect(pipelines).ToNot(HaveKey(agentPipeline))
@@ -1802,10 +1806,21 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Expect(processors).To(ContainElement("k8s_attributes/profiles"))
 					Expect(processors).ToNot(ContainElement("k8s_attributes"))
 					Expect(processors).ToNot(ContainElement("filter/profiler-source"))
+					Expect(slices.Index(processors, any("transform/ebpf_profiler/service_attributes"))).To(
+						Equal(slices.Index(processors, any("k8s_attributes/profiles")) + 1))
+					statementGroups := ReadFromMap(serviceAttributesProcessor, []string{signal[:len(signal)-1] + "_statements"})
+					Expect(statementGroups).To(HaveLen(1))
+					Expect(statementGroups.([]any)[0].(map[string]any)["context"]).To(Equal("resource"))
+					Expect(statementGroups.([]any)[0].(map[string]any)["statements"]).To(ConsistOf(
+						`set(attributes["service.version"], attributes["k8s.pod.label.app.kubernetes.io/version"])   where attributes["service.name"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil and attributes["k8s.pod.label.app.kubernetes.io/version"] != nil`,
+						`set(attributes["service.namespace"], attributes["k8s.pod.label.app.kubernetes.io/part-of"]) where attributes["service.name"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil and attributes["k8s.pod.label.app.kubernetes.io/part-of"] != nil`,
+						`set(attributes["service.name"], attributes["k8s.pod.label.app.kubernetes.io/name"])         where attributes["service.name"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil`,
+					))
 					remaining := func(processors []any) []any {
 						return slices.DeleteFunc(slices.Clone(processors), func(processor any) bool {
 							return processor == "memory_limiter" || processor == "k8s_attributes" ||
-								processor == "k8s_attributes/profiles" || processor == "filter/profiler-source"
+								processor == "k8s_attributes/profiles" || processor == "filter/profiler-source" ||
+								processor == "transform/ebpf_profiler/service_attributes"
 						})
 					}
 					Expect(remaining(processors)).To(Equal(remaining(readPipelineProcessors(pipelines, commonPipeline))))
