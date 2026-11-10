@@ -76,8 +76,8 @@ coverage:
 # Each entry is labeled with the file's `navTitle` (falling back to `title`).
 nav:
   target: dash0-operator/nav.json
-  # `order` must stay above the Kubernetes' nav entry's order  so the placeholder exists when this fragment is merged.
-  order: 52.5
+  # `order` must stay above the Kubernetes' nav entry's order so the placeholder exists when this fragment is merged.
+  order: 58.02
   id: monitoring-kubernetes-dash0-operator
   # The entries listed here are attached via `parentPath`, which must match the placeholder title of the parent item
   # exactly.
