@@ -119,6 +119,8 @@ const (
 	namespace1               = "namespace-1"
 	namespace2               = "namespace-2"
 	namespace3               = "namespace-3"
+
+	dropEbpfProfilerServiceName = "transform/ebpf_profiler/drop_service_name"
 )
 
 var (
@@ -127,6 +129,12 @@ var (
 	emptyTargetAllocatorMtlsConfig                  = TargetAllocatorMtlsConfig{}
 	defaultNamespacesWithEventCollection            = []string{namespace2, namespace3}
 	defaultNamespacesWithKubernetesObjectCollection = []string{namespace2, namespace3}
+	dropEbpfProfilerServiceNameStatements           = []any{map[string]any{
+		"context": "resource",
+		"statements": []any{
+			`delete_key(resource.attributes, "service.name") where resource.attributes["parca.agent"] == "true"`,
+		},
+	}}
 )
 
 func cmTestSingleDefaultOtlpExporter() otlpExporters {
@@ -1747,8 +1755,16 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					To(Equal(endpoint))
 				if entry.config.ProfilingEnabled {
 					Expect(readPipelineReceivers(pipelines, "profiles")).To(ConsistOf("otlp"))
+					profilesProcessors := readPipelineProcessors(pipelines, "profiles/common-processors")
+					Expect(slices.Index(profilesProcessors, any(dropEbpfProfilerServiceName))).To(
+						BeNumerically(">", slices.Index(profilesProcessors, any("k8s_attributes/profiles"))))
+					Expect(ReadFromMap(collectorConfig, []string{"processors", dropEbpfProfilerServiceName,
+						"profile_statements"})).To(Equal(dropEbpfProfilerServiceNameStatements))
 				} else {
 					Expect(pipelines).ToNot(HaveKey("profiles"))
+				}
+				if !entry.config.ProfilingEnabled && !entry.config.EbpfProfilerEnabled {
+					Expect(collectorConfig["processors"]).ToNot(HaveKey(dropEbpfProfilerServiceName))
 				}
 				for _, signal := range []string{"traces", "metrics", "logs"} {
 					agentPipeline := signal + "/ebpf-profiler"
@@ -1785,10 +1801,16 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Expect(processors).To(ContainElement("k8s_attributes/profiles"))
 					Expect(processors).ToNot(ContainElement("k8s_attributes"))
 					Expect(processors).ToNot(ContainElement("filter/profiler-source"))
+					Expect(slices.Index(processors, any(dropEbpfProfilerServiceName))).To(
+						BeNumerically(">", slices.Index(processors, any("k8s_attributes/profiles"))))
+					Expect(readPipelineProcessors(pipelines, commonPipeline)).ToNot(ContainElement(dropEbpfProfilerServiceName))
+					Expect(ReadFromMap(collectorConfig, []string{"processors", dropEbpfProfilerServiceName,
+						strings.TrimSuffix(signal, "s") + "_statements"})).To(Equal(dropEbpfProfilerServiceNameStatements))
 					remaining := func(processors []any) []any {
 						return slices.DeleteFunc(slices.Clone(processors), func(processor any) bool {
 							return processor == "memory_limiter" || processor == "k8s_attributes" ||
-								processor == "k8s_attributes/profiles" || processor == "filter/profiler-source"
+								processor == "k8s_attributes/profiles" || processor == "filter/profiler-source" ||
+								processor == dropEbpfProfilerServiceName
 						})
 					}
 					Expect(remaining(processors)).To(Equal(remaining(readPipelineProcessors(pipelines, commonPipeline))))

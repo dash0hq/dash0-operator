@@ -75,6 +75,12 @@ The image repository defaults to `ghcr.io/parca-dev/parca-agent`. The debuginfo 
 `ghcr.io/dash0hq/debuginfo-proxy` with the chart's `appVersion`. Both `operator.ebpfProfilerImage` and
 `operator.debuginfoProxyImage` accept `repository`, `tag`, `digest`, and `pullPolicy`; a digest takes precedence over a tag.
 
+### Service attributes
+
+The collector currently removes `service.name` from all telemetry the profiler sends: profiles, GPU metrics, and NVTX
+spans and logs. This also applies to service names set via `OTEL_SERVICE_NAME` or `OTEL_RESOURCE_ATTRIBUTES`. Other
+attributes like `service.namespace` and `service.version` are kept. Profiles from other sources are not affected.
+
 ### Node-local delivery
 
 The profiler sends all its OTLP signals to the shared gRPC receiver on port 4317 of the collector DaemonSet instance

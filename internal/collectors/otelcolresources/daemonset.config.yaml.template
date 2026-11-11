@@ -605,6 +605,32 @@ processors:
     logs:
       resource:
         - 'attributes["parca.agent"] == "true"'
+  {{- if or .ProfilingEnabled .EbpfProfilerEnabled }}
+  # The eBPF profiler falls back to the thread name (comm) for service.name, which splits one process into many
+  # services. Drop service.name from the profiler's telemetry until service attributes are derived differently.
+  transform/ebpf_profiler/drop_service_name:
+    error_mode: ignore
+    {{- if .EbpfProfilerEnabled }}
+    trace_statements:
+      - context: resource
+        statements:
+        - delete_key(resource.attributes, "service.name") where resource.attributes["parca.agent"] == "true"
+    metric_statements:
+      - context: resource
+        statements:
+        - delete_key(resource.attributes, "service.name") where resource.attributes["parca.agent"] == "true"
+    log_statements:
+      - context: resource
+        statements:
+        - delete_key(resource.attributes, "service.name") where resource.attributes["parca.agent"] == "true"
+    {{- end }}
+    {{- if .ProfilingEnabled }}
+    profile_statements:
+      - context: resource
+        statements:
+        - delete_key(resource.attributes, "service.name") where resource.attributes["parca.agent"] == "true"
+    {{- end }}
+  {{- end }}
   {{- if or .SendBatchSize .SendBatchMaxSize }}
   batch:
     {{- if .SendBatchSize }}
@@ -1171,6 +1197,9 @@ service:
         {{- end }}
         - resource_detection
         - {{ $podAssociation }}
+        {{- if eq $pipeline "ebpf-profiler" }}
+        - transform/ebpf_profiler/drop_service_name
+        {{- end }}
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
@@ -1310,6 +1339,9 @@ service:
         {{- end }}
         - resource_detection
         - {{ $podAssociation }}
+        {{- if eq $pipeline "ebpf-profiler" }}
+        - transform/ebpf_profiler/drop_service_name
+        {{- end }}
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
@@ -1461,6 +1493,9 @@ service:
         {{- if .NamespacesWithLogCollection }}
         - transform/logs/filelog_service_attributes
         {{- end }}
+        {{- if eq $pipeline "ebpf-profiler" }}
+        - transform/ebpf_profiler/drop_service_name
+        {{- end }}
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
@@ -1574,6 +1609,7 @@ service:
         - memory_limiter
         - resource_detection
         - k8s_attributes/profiles
+        - transform/ebpf_profiler/drop_service_name
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
