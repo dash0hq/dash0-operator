@@ -73,13 +73,11 @@ var AllInstrumentationEvents = []Reason{
 type CollectorConfig struct {
 	Images            Images
 	OperatorNamespace string
-	// OTelCollectorNamePrefix is used as a prefix for OTel collector Kubernetes resources created by the operator, set
-	// to value of the environment variable OTEL_COLLECTOR_NAME_PREFIX, which the operator Helm chart sets to
+	// NamePrefix is used as a prefix for all Kubernetes resources created by the operator (the collectors, the
+	// target-allocator, the eBPF profiler, the agent0-connector and the synthetics workers), set to the value of
+	// the environment variable DASH0_MANAGED_RESOURCE_NAME_PREFIX, which the operator Helm chart sets to
 	// operator.managedResourceNamePrefix, or to the Helm release name if that is not set.
-	OTelCollectorNamePrefix string
-	// The collector needs to know about the target-allocator name prefix, so it can build the service name needed for the
-	// config of the prometheus_receiver
-	TargetAllocatorNamePrefix              string
+	NamePrefix                             string
 	Agent0ConnectorEnabledViaHelm          bool
 	SyntheticsWorkerEnabledViaHelm         bool
 	EbpfProfilerEnabledViaHelm             bool
@@ -142,10 +140,10 @@ type KubeletStatsReceiverConfig struct {
 type TargetAllocatorConfig struct {
 	Images            Images
 	OperatorNamespace string
-	// TargetAllocatorNamePrefix is used as a prefix for OTel target-allocator Kubernetes resources created by the operator, set
-	// to value of the environment variable OTEL_TARGET_ALLOCATOR_NAME_PREFIX, which the operator Helm chart sets to
+	// NamePrefix is used as a prefix for the OTel target-allocator Kubernetes resources created by the operator, set to
+	// the value of the environment variable DASH0_MANAGED_RESOURCE_NAME_PREFIX, which the operator Helm chart sets to
 	// operator.managedResourceNamePrefix, or to the Helm release name if that is not set.
-	TargetAllocatorNamePrefix string
+	NamePrefix string
 	// CollectorComponent is used as a label matcher, so scrape targets are only assigned to Dash0 daemonset collectors.
 	CollectorComponent string
 	IsGkeAutopilot     bool
@@ -156,8 +154,9 @@ type TargetAllocatorConfig struct {
 type Agent0ConnectorConfig struct {
 	Images            Images
 	OperatorNamespace string
-	// NamePrefix is used as a prefix for the agent0-connector Kubernetes resources created by the operator. It is the
-	// same prefix that is used for the collector workloads and the target-allocator, that is, the Helm release name.
+	// NamePrefix is used as a prefix for the agent0-connector Kubernetes resources created by the operator, set to the
+	// value of the environment variable DASH0_MANAGED_RESOURCE_NAME_PREFIX, which the operator Helm chart sets to
+	// operator.managedResourceNamePrefix, or to the Helm release name if that is not set.
 	NamePrefix string
 	// PseudoClusterUid is the UID of the kube-system namespace (equal to the k8s.cluster.uid resource attribute). The
 	// agent0-connector workload uses it as its client ID when connecting to the Dash0 backend.
@@ -188,8 +187,9 @@ type Agent0ConnectorConfig struct {
 type SyntheticsWorkerConfig struct {
 	Images            Images
 	OperatorNamespace string
-	// NamePrefix is used as a prefix for the synthetics-worker Kubernetes resources created by the operator. It is the
-	// same prefix that is used for the collector workloads and the target-allocator, that is, the Helm release name.
+	// NamePrefix is used as a prefix for the synthetics-worker Kubernetes resources created by the operator, set to the
+	// value of the environment variable DASH0_MANAGED_RESOURCE_NAME_PREFIX, which the operator Helm chart sets to
+	// operator.managedResourceNamePrefix, or to the Helm release name if that is not set.
 	NamePrefix string
 	// ServerAddress is the address of the Dash0 backend service the synthetics-worker workload connects to. It is set
 	// from the Helm value operator.syntheticsWorker.serverAddress and passed to the workload via the

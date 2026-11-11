@@ -26,22 +26,22 @@ import (
 
 type CollectorReconciler struct {
 	client.Client
-	collectorManager        *CollectorManager
-	operatorNamespace       string
-	oTelCollectorNamePrefix string
+	collectorManager  *CollectorManager
+	operatorNamespace string
+	namePrefix        string
 }
 
 func NewCollectorReconciler(
 	k8sClient client.Client,
 	collectorManager *CollectorManager,
 	operatorNamespace string,
-	oTelCollectorNamePrefix string,
+	namePrefix string,
 ) *CollectorReconciler {
 	return &CollectorReconciler{
-		Client:                  k8sClient,
-		collectorManager:        collectorManager,
-		operatorNamespace:       operatorNamespace,
-		oTelCollectorNamePrefix: oTelCollectorNamePrefix,
+		Client:            k8sClient,
+		collectorManager:  collectorManager,
+		operatorNamespace: operatorNamespace,
+		namePrefix:        namePrefix,
 	}
 }
 
@@ -52,9 +52,9 @@ func (r *CollectorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&corev1.ConfigMap{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
-				otelcolresources.DaemonSetCollectorConfigConfigMapName(r.oTelCollectorNamePrefix),
-				otelcolresources.DeploymentCollectorConfigConfigMapName(r.oTelCollectorNamePrefix),
-				otelcolresources.SignalControlCollectorConfigConfigMapName(r.oTelCollectorNamePrefix),
+				otelcolresources.DaemonSetCollectorConfigConfigMapName(r.namePrefix),
+				otelcolresources.DeploymentCollectorConfigConfigMapName(r.namePrefix),
+				otelcolresources.SignalControlCollectorConfigConfigMapName(r.namePrefix),
 				// Note: We are deliberately not watching the file_log receiver offsets ConfigMap, since it is updated
 				// frequently by the filelog offset sync container and does not require reconciliation.
 			}, true)).
@@ -62,43 +62,43 @@ func (r *CollectorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&rbacv1.ClusterRole{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
-				otelcolresources.DaemonSetClusterRoleName(r.oTelCollectorNamePrefix),
-				otelcolresources.DeploymentClusterRoleName(r.oTelCollectorNamePrefix),
+				otelcolresources.DaemonSetClusterRoleName(r.namePrefix),
+				otelcolresources.DeploymentClusterRoleName(r.namePrefix),
 			}, false)).
 		Watches(
 			&rbacv1.ClusterRoleBinding{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
-				otelcolresources.DeploymentClusterRoleBindingName(r.oTelCollectorNamePrefix),
-				otelcolresources.DaemonSetClusterRoleBindingName(r.oTelCollectorNamePrefix),
+				otelcolresources.DeploymentClusterRoleBindingName(r.namePrefix),
+				otelcolresources.DaemonSetClusterRoleBindingName(r.namePrefix),
 			}, false)).
 		Watches(
 			&corev1.Service{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
-				otelcolresources.ServiceName(r.oTelCollectorNamePrefix),
-				otelcolresources.SignalControlCollectorServiceName(r.oTelCollectorNamePrefix),
+				otelcolresources.ServiceName(r.namePrefix),
+				otelcolresources.SignalControlCollectorServiceName(r.namePrefix),
 			}, true)).
 		Watches(
 			&appsv1.DaemonSet{},
 			&handler.EnqueueRequestForObject{},
 			builder.WithPredicates(
 				r.createNameFilterPredicate([]string{
-					otelcolresources.DaemonSetName(r.oTelCollectorNamePrefix),
+					otelcolresources.DaemonSetName(r.namePrefix),
 				}, true), generationOrLabelChangePredicate)).
 		Watches(
 			&appsv1.Deployment{},
 			&handler.EnqueueRequestForObject{},
 			builder.WithPredicates(
 				r.createNameFilterPredicate([]string{
-					otelcolresources.DeploymentName(r.oTelCollectorNamePrefix),
-					otelcolresources.SignalControlCollectorDeploymentName(r.oTelCollectorNamePrefix),
+					otelcolresources.DeploymentName(r.namePrefix),
+					otelcolresources.SignalControlCollectorDeploymentName(r.namePrefix),
 				}, true), generationOrLabelChangePredicate)).
 		Watches(
 			&policyv1.PodDisruptionBudget{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
-				otelcolresources.SignalControlCollectorPodDisruptionBudgetName(r.oTelCollectorNamePrefix),
+				otelcolresources.SignalControlCollectorPodDisruptionBudgetName(r.namePrefix),
 			}, true)).
 		Watches(
 			&corev1.Secret{},

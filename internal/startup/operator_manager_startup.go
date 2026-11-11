@@ -85,8 +85,7 @@ type environmentVariables struct {
 	iacPeriodicRetryEnabled                     bool
 	iacPeriodicRetryInterval                    time.Duration
 	autoPatchPersesDashboardConversionWebhook   bool
-	oTelCollectorNamePrefix                     string
-	targetAllocatorNamePrefix                   string
+	managedResourceNamePrefix                   string
 	operatorImage                               string
 	instrumentationImage                        string
 	instrumentationImagePullPolicy              corev1.PullPolicy
@@ -223,8 +222,7 @@ const (
 	persesDashboardAutoPatchConversionWebhookEnvVarName   = "DASH0_PERSES_DASHBOARD_AUTO_PATCH_CONVERSION_WEBHOOK"
 	periodicRetryEnabledEnvVarName                        = "DASH0_IAC_PERIODIC_RETRY_ENABLED"
 	periodicRetryIntervalEnvVarName                       = "DASH0_IAC_PERIODIC_RETRY_INTERVAL"
-	oTelCollectorNamePrefixEnvVarName                     = "OTEL_COLLECTOR_NAME_PREFIX"
-	targetAllocatorNamePrefixEnvVarName                   = "OTEL_TARGET_ALLOCATOR_NAME_PREFIX"
+	managedResourceNamePrefixEnvVarName                   = "DASH0_MANAGED_RESOURCE_NAME_PREFIX"
 	operatorImageEnvVarName                               = "DASH0_OPERATOR_IMAGE"
 	instrumentationImageEnvVarName                        = "DASH0_INSTRUMENTATION_IMAGE"
 	instrumentationImagePullPolicyEnvVarName              = "DASH0_INSTRUMENTATION_IMAGE_PULL_POLICY"
@@ -988,14 +986,9 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	iacPeriodicRetryInterval :=
 		readOptionalDurationFromEnvironmentVariable(periodicRetryIntervalEnvVarName, defaultPeriodicRetryInterval)
 
-	oTelCollectorNamePrefix, isSet := os.LookupEnv(oTelCollectorNamePrefixEnvVarName)
+	managedResourceNamePrefix, isSet := os.LookupEnv(managedResourceNamePrefixEnvVarName)
 	if !isSet {
-		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, oTelCollectorNamePrefixEnvVarName)
-	}
-
-	targetAllocatorNamePrefix, isSet := os.LookupEnv(targetAllocatorNamePrefixEnvVarName)
-	if !isSet {
-		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, targetAllocatorNamePrefixEnvVarName)
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, managedResourceNamePrefixEnvVarName)
 	}
 
 	operatorImage, isSet := os.LookupEnv(operatorImageEnvVarName)
@@ -1144,8 +1137,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		iacPeriodicRetryEnabled:                     iacPeriodicRetryEnabled,
 		iacPeriodicRetryInterval:                    iacPeriodicRetryInterval,
 		autoPatchPersesDashboardConversionWebhook:   autoPatchPersesDashboardConversionWebhook,
-		oTelCollectorNamePrefix:                     oTelCollectorNamePrefix,
-		targetAllocatorNamePrefix:                   targetAllocatorNamePrefix,
+		managedResourceNamePrefix:                   managedResourceNamePrefix,
 		operatorImage:                               operatorImage,
 		instrumentationImage:                        instrumentationImage,
 		instrumentationImagePullPolicy:              instrumentationImagePullPolicy,
@@ -1712,8 +1704,8 @@ func startOperatorManager(
 		envVars.operatorNamespace,
 		"operator manager deployment name",
 		envVars.deploymentName,
-		"otel collector name prefix",
-		envVars.oTelCollectorNamePrefix,
+		"managed resource name prefix",
+		envVars.managedResourceNamePrefix,
 
 		"operator configuration endpoint",
 		cliArgs.operatorConfigurationEndpoint,
@@ -1916,7 +1908,7 @@ func startDash0Controllers(
 
 	isIPv6Cluster := util.IsIPv6Address(envVars.podIp)
 	possibleCollectorUrls := collectors.RenderCollectorBaseUrls(
-		envVars.oTelCollectorNamePrefix,
+		envVars.managedResourceNamePrefix,
 		envVars.operatorNamespace,
 		int32(cliArgs.otlpHttpHostPort),
 	)
@@ -1993,8 +1985,7 @@ func startDash0Controllers(
 		collectorConfig := util.CollectorConfig{
 			Images:                                 images,
 			OperatorNamespace:                      envVars.operatorNamespace,
-			OTelCollectorNamePrefix:                envVars.oTelCollectorNamePrefix,
-			TargetAllocatorNamePrefix:              envVars.targetAllocatorNamePrefix,
+			NamePrefix:                             envVars.managedResourceNamePrefix,
 			Agent0ConnectorEnabledViaHelm:          envVars.agent0ConnectorEnabled,
 			SyntheticsWorkerEnabledViaHelm:         envVars.syntheticsWorkerEnabled,
 			EbpfProfilerEnabledViaHelm:             envVars.ebpfProfilerEnabled,
@@ -2100,7 +2091,7 @@ func startDash0Controllers(
 	profilerResourceManager := prresources.NewResourceManager(
 		k8sClient, mgr.GetScheme(), operatorDeploymentSelfReference,
 		prresources.Config{
-			Namespace: envVars.operatorNamespace, NamePrefix: envVars.oTelCollectorNamePrefix,
+			Namespace: envVars.operatorNamespace, NamePrefix: envVars.managedResourceNamePrefix,
 			Enabled: envVars.ebpfProfilerEnabled, TelemetryCollectionEnabled: cliArgs.telemetryCollectionEnabled,
 			ProfilerImage: envVars.ebpfProfilerImage, ProfilerImagePullPolicy: envVars.ebpfProfilerImagePullPolicy,
 			ProxyImage: envVars.debuginfoProxyImage, ProxyImagePullPolicy: envVars.debuginfoProxyImagePullPolicy,
@@ -2123,7 +2114,7 @@ func startDash0Controllers(
 			mgr.GetScheme(),
 			operatorDeploymentSelfReference,
 			envVars.operatorNamespace,
-			envVars.oTelCollectorNamePrefix,
+			envVars.managedResourceNamePrefix,
 			envVars.edgeProxyImage,
 			envVars.edgeProxyImagePullPolicy,
 			images.GetOperatorVersion(),
@@ -2658,12 +2649,12 @@ func setupTargetAllocatorManager(
 	developmentMode bool,
 ) (*targetallocator.TargetAllocatorManager, error) {
 	targetAllocatorConfig := util.TargetAllocatorConfig{
-		Images:                    images,
-		OperatorNamespace:         envVars.operatorNamespace,
-		TargetAllocatorNamePrefix: envVars.targetAllocatorNamePrefix,
-		CollectorComponent:        otelcolresources.CollectorDaemonSetServiceComponent(),
-		IsGkeAutopilot:            cliArgs.isGkeAutopilot,
-		IsOpenShift:               cliArgs.isOpenShift,
+		Images:             images,
+		OperatorNamespace:  envVars.operatorNamespace,
+		NamePrefix:         envVars.managedResourceNamePrefix,
+		CollectorComponent: otelcolresources.CollectorDaemonSetServiceComponent(),
+		IsGkeAutopilot:     cliArgs.isGkeAutopilot,
+		IsOpenShift:        cliArgs.isOpenShift,
 	}
 	targetallocatorResourceManager := taresources.NewTargetAllocatorResourceManager(
 		k8sClient,
@@ -2681,7 +2672,7 @@ func setupTargetAllocatorManager(
 		k8sClient,
 		targetallocatorManager,
 		envVars.operatorNamespace,
-		envVars.targetAllocatorNamePrefix,
+		envVars.managedResourceNamePrefix,
 	)
 	if err := targetAllocatorReconciler.SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("unable to set up the target-allocator reconciler: %w", err)
@@ -2708,7 +2699,7 @@ func setupCollectorReconciler(
 		k8sClient,
 		collectorManager,
 		envVars.operatorNamespace,
-		envVars.oTelCollectorNamePrefix,
+		envVars.managedResourceNamePrefix,
 	)
 	if err := collectorReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the collector reconciler: %w", err)
@@ -2735,7 +2726,7 @@ func setupAgent0ConnectorManager(
 	agent0ConnectorConfig := util.Agent0ConnectorConfig{
 		Images:            images,
 		OperatorNamespace: envVars.operatorNamespace,
-		NamePrefix:        envVars.oTelCollectorNamePrefix,
+		NamePrefix:        envVars.managedResourceNamePrefix,
 		PseudoClusterUid:  pseudoClusterUid,
 		ServerAddress:     envVars.agent0ConnectorServerAddress,
 		Insecure:          envVars.agent0ConnectorInsecure,
@@ -2763,7 +2754,7 @@ func setupAgent0ConnectorManager(
 		k8sClient,
 		agent0ConnectorManager,
 		envVars.operatorNamespace,
-		envVars.oTelCollectorNamePrefix,
+		envVars.managedResourceNamePrefix,
 	)
 	if err := agent0ConnectorReconciler.SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("unable to set up the agent0-connector reconciler: %w", err)
@@ -2788,7 +2779,7 @@ func setupSyntheticsWorkerManager(
 	syntheticsWorkerConfig := util.SyntheticsWorkerConfig{
 		Images:            images,
 		OperatorNamespace: envVars.operatorNamespace,
-		NamePrefix:        envVars.oTelCollectorNamePrefix,
+		NamePrefix:        envVars.managedResourceNamePrefix,
 		ServerAddress:     envVars.syntheticsWorkerServerAddress,
 		Insecure:          envVars.syntheticsWorkerInsecure,
 		PriorityClassName: envVars.syntheticsWorkerPriorityClassName,
@@ -2811,7 +2802,7 @@ func setupSyntheticsWorkerManager(
 		k8sClient,
 		syntheticsWorkerManager,
 		envVars.operatorNamespace,
-		envVars.oTelCollectorNamePrefix,
+		envVars.managedResourceNamePrefix,
 	)
 	if err := syntheticsWorkerReconciler.SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("unable to set up the synthetics-worker reconciler: %w", err)

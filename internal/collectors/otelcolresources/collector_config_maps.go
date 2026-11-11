@@ -400,7 +400,7 @@ func newCollectorConfigurationTemplateValues(
 			config.SelfMonitoringConfiguration,
 		)
 
-	targetAllocatorServiceName := taresources.ServiceName(config.TargetAllocatorNamePrefix)
+	targetAllocatorServiceName := taresources.ServiceName(config.NamePrefix)
 
 	memoryLimiterLimitMiB := 0
 	memoryLimiterSpikeMiB := 0
@@ -511,7 +511,7 @@ func renderOttlNamespaceFilter(
 	// config (and prometheusCrdSupportEnabled) from the Dash0OperatorConfiguration.
 	taExclusion := ""
 	if selfMonitoringEnabled && config.PrometheusCrdSupportEnabled {
-		taDeploymentName := taresources.DeploymentName(config.TargetAllocatorNamePrefix)
+		taDeploymentName := taresources.DeploymentName(config.NamePrefix)
 		taExclusion = fmt.Sprintf("(resource.attributes[\"k8s.deployment.name\"] != \"%s\" or "+
 			"resource.attributes[\"k8s.namespace.name\"] != \"%s\") and\n          ",
 			taDeploymentName,

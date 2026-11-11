@@ -31,12 +31,12 @@ type targetAllocatorExpectedResource struct {
 
 //nolint:lll
 var (
-	ExpectedTargetAllocatorServiceAccountName     = fmt.Sprintf("%s-opentelemetry-target-allocator-sa", testutil.TargetAllocatorPrefixTest)
-	ExpectedTargetAllocatorClusterRoleName        = fmt.Sprintf("%s-opentelemetry-target-allocator-cr", testutil.TargetAllocatorPrefixTest)
-	ExpectedTargetAllocatorClusterRoleBindingName = fmt.Sprintf("%s-opentelemetry-target-allocator-crb", testutil.TargetAllocatorPrefixTest)
-	ExpectedTargetAllocatorConfigMapName          = fmt.Sprintf("%s-opentelemetry-target-allocator-cm", testutil.TargetAllocatorPrefixTest)
-	ExpectedTargetAllocatorDeploymentName         = fmt.Sprintf("%s-opentelemetry-target-allocator-deployment", testutil.TargetAllocatorPrefixTest)
-	ExpectedTargetAllocatorServiceName            = fmt.Sprintf("%s-opentelemetry-target-allocator-service", testutil.TargetAllocatorPrefixTest)
+	ExpectedTargetAllocatorServiceAccountName     = fmt.Sprintf("%s-opentelemetry-target-allocator-sa", testutil.ManagedResourceNamePrefixTest)
+	ExpectedTargetAllocatorClusterRoleName        = fmt.Sprintf("%s-opentelemetry-target-allocator-cr", testutil.ManagedResourceNamePrefixTest)
+	ExpectedTargetAllocatorClusterRoleBindingName = fmt.Sprintf("%s-opentelemetry-target-allocator-crb", testutil.ManagedResourceNamePrefixTest)
+	ExpectedTargetAllocatorConfigMapName          = fmt.Sprintf("%s-opentelemetry-target-allocator-cm", testutil.ManagedResourceNamePrefixTest)
+	ExpectedTargetAllocatorDeploymentName         = fmt.Sprintf("%s-opentelemetry-target-allocator-deployment", testutil.ManagedResourceNamePrefixTest)
+	ExpectedTargetAllocatorServiceName            = fmt.Sprintf("%s-opentelemetry-target-allocator-service", testutil.ManagedResourceNamePrefixTest)
 )
 
 var (

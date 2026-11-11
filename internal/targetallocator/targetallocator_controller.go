@@ -23,22 +23,22 @@ import (
 
 type TargetAllocatorReconciler struct {
 	client.Client
-	targetAllocatorManager    *TargetAllocatorManager
-	operatorNamespace         string
-	targetAllocatorNamePrefix string
+	targetAllocatorManager *TargetAllocatorManager
+	operatorNamespace      string
+	namePrefix             string
 }
 
 func NewTargetAllocatorReconciler(
 	k8sClient client.Client,
 	targetAllocatorManager *TargetAllocatorManager,
 	operatorNamespace string,
-	targetAllocatorNamePrefix string,
+	namePrefix string,
 ) *TargetAllocatorReconciler {
 	return &TargetAllocatorReconciler{
-		Client:                    k8sClient,
-		targetAllocatorManager:    targetAllocatorManager,
-		operatorNamespace:         operatorNamespace,
-		targetAllocatorNamePrefix: targetAllocatorNamePrefix,
+		Client:                 k8sClient,
+		targetAllocatorManager: targetAllocatorManager,
+		operatorNamespace:      operatorNamespace,
+		namePrefix:             namePrefix,
 	}
 }
 
@@ -49,38 +49,38 @@ func (r *TargetAllocatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&corev1.ConfigMap{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
-				taresources.ConfigMapName(r.targetAllocatorNamePrefix),
+				taresources.ConfigMapName(r.namePrefix),
 			}, true)).
 		Watches(
 			&corev1.ServiceAccount{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
-				taresources.ServiceAccountName(r.targetAllocatorNamePrefix),
+				taresources.ServiceAccountName(r.namePrefix),
 			}, true)).
 		Watches(
 			&rbacv1.ClusterRole{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
-				taresources.ClusterRoleName(r.targetAllocatorNamePrefix),
+				taresources.ClusterRoleName(r.namePrefix),
 			}, false)).
 		Watches(
 			&rbacv1.ClusterRoleBinding{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
-				taresources.ClusterRoleBindingName(r.targetAllocatorNamePrefix),
+				taresources.ClusterRoleBindingName(r.namePrefix),
 			}, false)).
 		Watches(
 			&corev1.Service{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
-				taresources.ServiceName(r.targetAllocatorNamePrefix),
+				taresources.ServiceName(r.namePrefix),
 			}, true)).
 		Watches(
 			&appsv1.Deployment{},
 			&handler.EnqueueRequestForObject{},
 			builder.WithPredicates(
 				r.createNameFilterPredicate([]string{
-					taresources.DeploymentName(r.targetAllocatorNamePrefix),
+					taresources.DeploymentName(r.namePrefix),
 				}, true), generationOrLabelChangePredicate)).
 		Complete(r)
 }
