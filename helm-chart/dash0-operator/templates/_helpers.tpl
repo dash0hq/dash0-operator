@@ -11,7 +11,8 @@ Fails rendering the chart if the prefix would produce a service name that Kubern
 DNS-1035 labels of at most 63 characters. The maximum length of the prefix is 63 minus the length of the longest
 service name suffix of the enabled features. Rendering only fails if a service would certainly be rejected; enabling
 the target allocator via an operator configuration resource that the chart does not create is not visible to the
-chart, so the target allocator limit only applies if the chart creates that resource. The limits are pinned against the Go code by internal/startup/managed_resource_name_prefix_test.go.
+chart, so the target allocator limit only applies if the chart creates that resource. The limits are pinned against
+the Go code by internal/startup/managed_resource_name_prefix_test.go.
 */}}
 {{- define "dash0-operator.managedResourceNamePrefix" -}}
 {{- $prefix := default .Release.Name .Values.operator.managedResourceNamePrefix -}}
