@@ -59,9 +59,6 @@ fi
 if kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0timeseriesaggregation/dash0timeseriesaggregation.yaml; then
   wait_for_third_party_resource_deletion="true"
 fi
-if kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0generativeaievaluation/dash0generativeaievaluation.yaml; then
-  wait_for_third_party_resource_deletion="true"
-fi
 if kubectl delete -n "$target_namespace" -f test-resources/customresources/persesdashboard/v1alpha2/persesdashboard.yaml; then
   wait_for_third_party_resource_deletion="true"
 fi
