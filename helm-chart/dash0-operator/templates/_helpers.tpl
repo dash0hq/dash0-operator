@@ -4,11 +4,44 @@
 {{- end }}
 
 {{/*
-The prefix for the names of the Kubernetes resources the operator manager creates for the OpenTelemetry collectors
-and the target allocator. Defaults to the Helm release name.
+The name prefix for the Kubernetes resources the operator manager creates: the OpenTelemetry collectors, the target
+allocator, the eBPF profiler, the agent0-connector and the synthetics workers. Defaults to the Helm release name.
+
+Fails rendering the chart if the prefix would produce a service name that Kubernetes rejects: service names must be
+DNS-1035 labels of at most 63 characters. The maximum length of the prefix is 63 minus the length of the longest
+service name suffix of the enabled features. Rendering only fails if a service would certainly be rejected; enabling
+the target allocator via a manually created operator configuration resource is not visible to the chart. The limits
+are pinned against the Go code by internal/startup/managed_resource_name_prefix_test.go.
 */}}
-{{- define "dash0-operator.namePrefix" -}}
-{{- default .Release.Name .Values.operator.collectors.namePrefix }}
+{{- define "dash0-operator.managedResourceNamePrefix" -}}
+{{- $prefix := default .Release.Name .Values.operator.managedResourceNamePrefix -}}
+{{- $source := "the Helm release name" -}}
+{{- if .Values.operator.managedResourceNamePrefix -}}
+{{- $source = "operator.managedResourceNamePrefix" -}}
+{{- end -}}
+{{- $maxLength := 0 -}}
+{{- $longestServiceNameSuffix := "" -}}
+{{- if .Values.operator.telemetryCollectionEnabled -}}
+{{- $maxLength = 31 -}}
+{{- $longestServiceNameSuffix = "opentelemetry-collector-service" -}}
+{{- end -}}
+{{- if .Values.operator.signalControl.enabled -}}
+{{- $maxLength = 30 -}}
+{{- $longestServiceNameSuffix = "signal-control-collector-service" -}}
+{{- end -}}
+{{- if and .Values.operator.telemetryCollectionEnabled .Values.operator.prometheusCrdSupportEnabled -}}
+{{- $maxLength = 24 -}}
+{{- $longestServiceNameSuffix = "opentelemetry-target-allocator-service" -}}
+{{- end -}}
+{{- if gt $maxLength 0 -}}
+{{- if not (regexMatch "^[a-z]([-a-z0-9]*[a-z0-9])?$" $prefix) -}}
+{{- fail (printf "Error: the name prefix for the resources the operator creates (taken from %s) is \"%s\". The operator would create the service %s-%s, which is not a valid Kubernetes service name. The prefix must start with a lowercase letter, end with a lowercase letter or digit, and contain only lowercase letters, digits and '-'. Set operator.managedResourceNamePrefix to a valid value, or use a different Helm release name." $source $prefix $prefix $longestServiceNameSuffix) -}}
+{{- end -}}
+{{- if gt (len $prefix) $maxLength -}}
+{{- fail (printf "Error: the name prefix for the resources the operator creates (taken from %s) is \"%s\", which is %d characters long. The operator would create the service %s-%s, which exceeds the Kubernetes limit of 63 characters for service names. With the enabled features, the prefix must not be longer than %d characters. Set operator.managedResourceNamePrefix to a shorter value, or use a shorter Helm release name." $source $prefix (len $prefix) $prefix $longestServiceNameSuffix $maxLength) -}}
+{{- end -}}
+{{- end -}}
+{{- $prefix -}}
 {{- end }}
 
 {{/* chart name with version */}}

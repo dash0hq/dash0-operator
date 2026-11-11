@@ -132,6 +132,29 @@ operator:
   #               key: token
   exports: []
 
+  # The name prefix for the Kubernetes resources the operator creates and manages: the OpenTelemetry collectors, the
+  # target allocator, the eBPF profiler, the agent0-connector and the synthetics workers. For example
+  # <prefix>-opentelemetry-collector-service. Defaults to the Helm release name.
+  #
+  # Set this if the Helm release name is too long (for example when the chart is deployed with Argo CD, which uses the
+  # name of the Argo CD application as the release name). Kubernetes limits service names to 63 characters, so the
+  # prefix (this value, or the release name if this value is not set) plus the longest service name suffix must not be
+  # longer than that.
+  # The chart limits the resource prefix to the following values, depending on the features that are enabled:
+  # - 24 characters if operator.prometheusCrdSupportEnabled is true (the target allocator service),
+  # - 30 characters if operator.signalControl.enabled is true (the Signal Control collector service),
+  # - 31 characters otherwise (the OpenTelemetry collector service).
+  #
+  # Rendering the chart fails if the prefix is too long for the enabled features. If you enable Prometheus CRD support
+  # via a Dash0OperatorConfiguration resource that is not managed by this chart, make sure the prefix is not longer
+  # than 24 characters.
+  #
+  # Set this value when installing the operator. Do not change the managedResourceNamePrefix value for an existing
+  # installation: the operator will not remove the resources it has created with the previous prefix, so the collectors
+  # with the old names would keep running next to the new ones. To change the prefix of an existing installation,
+  # uninstall and reinstall the operator.
+  managedResourceNamePrefix: ""
+
   # An opt-out for operator self-monitoring. If set to false, self monitoring for the operator will be disabled, that
   # is, the operator will not send self-monitoring telemetry to the configured Dash0 backend. This setting is optional,
   # it defaults to true.
@@ -738,13 +761,6 @@ operator:
 
   # Settings related to the collectors managed by the operator.
   collectors:
-    # Overrides the Helm release name as the name prefix for the Kubernetes resources the operator creates for the
-    # OpenTelemetry collectors and the target allocator, for example <prefix>-opentelemetry-collector-service. Set this
-    # if the release name is long, for example when the chart is deployed with Argo CD, which uses the name of the
-    # Argo CD application as the release name. Kubernetes limits service names to 63 characters, so the prefix (the
-    # release name or this value) must not be longer than 24 characters.
-    namePrefix: ""
-
     # If set to true, adds a debug exporter with "verbosity: detailed" to the collectors managed by the operator.
     # This setting produces a large amount of logs and is not suitable for extended production use.
     debugVerbosityDetailed: false

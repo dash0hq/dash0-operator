@@ -1,6 +1,8 @@
 suite: test openshift scc
 templates:
   - operator/openshift-scc.yaml
+release:
+  name: test-release
 tests:
   - it: should not render the SecurityContextConstraints and RBAC when operator.openShift.enabled is false
     asserts:
@@ -27,7 +29,7 @@ tests:
     asserts:
       - equal:
           path: metadata.name
-          value: RELEASE-NAME-dash0-collector
+          value: test-release-dash0-collector
       - equal:
           path: allowHostDirVolumePlugin
           value: true
@@ -52,10 +54,10 @@ tests:
     asserts:
       - equal:
           path: roleRef.name
-          value: RELEASE-NAME-dash0-collector-scc-use
+          value: test-release-dash0-collector-scc-use
       - equal:
           path: subjects[0].name
-          value: RELEASE-NAME-opentelemetry-collector-sa
+          value: test-release-opentelemetry-collector-sa
 
   - it: should not broaden the collector SCC when profiling is enabled
     set:
@@ -79,13 +81,12 @@ tests:
           path: allowedCapabilities
           value: [CHOWN]
 
-  - it: should use operator.collectors.namePrefix for the SCC, its RBAC and the collector service account
+  - it: should use operator.managedResourceNamePrefix for the SCC, its RBAC and the collector service account
     release:
       name: dash0-operator-an-argo-cd-application-name
     set:
       operator:
-        collectors:
-          namePrefix: dash0-operator
+        managedResourceNamePrefix: dash0-operator
         openShift:
           enabled: true
     asserts:

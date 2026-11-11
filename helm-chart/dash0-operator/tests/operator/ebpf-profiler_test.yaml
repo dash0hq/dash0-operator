@@ -1,6 +1,8 @@
 suite: test eBPF profiler opt-in and images
 templates:
   - operator/deployment-and-webhooks.yaml
+release:
+  name: test-release
 tests:
   - it: should explicitly disable the profiler by default without configuring an agent image
     documentSelector:

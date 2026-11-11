@@ -14,6 +14,7 @@ This document provides platform-specific guidance, compatibility notes, and work
 - [Kyverno Admission Controller](#notes-on-kyverno-admission-controller)
   - [Kyverno Policies and the Collector DaemonSet](#kyverno-policies-and-the-collector-daemonset)
 - [GitOps Deployments](#notes-on-gitops)
+  - [Long Release Names](#long-release-names)
 - [ArgoCD](#notes-on-argocd)
 - [Local Development Environments](#local-development-environments)
   - [Apple Silicon](#notes-on-running-the-operator-on-apple-silicon)
@@ -278,6 +279,35 @@ Environment variable definitions in pod spec templates are the most likely sourc
 * `OTEL_INJECTOR_RESOURCE_ATTRIBUTES`
 
 This recommendation does not apply to workloads that are [excluded from workload instrumentation](auto-instrumentation.md#disabling-auto-instrumentation-for-specific-workloads) or workloads in namespaces without a [Dash0 monitoring resource](configuration.md#enable-dash0-monitoring-for-a-namespace) or a monitoring resource with instrumentation disabled.
+
+### Long Release Names
+
+The operator uses the Helm release name as the name prefix for the resources it creates, for example
+`<release-name>-opentelemetry-collector-service`.
+GitOps tools often use long release names.
+ArgoCD uses the name of the ArgoCD application, and Flux uses `<targetNamespace>-<name>` if the HelmRelease sets a
+target namespace.
+Kubernetes limits service names to 63 characters, so the prefix must not be longer than
+* 24 characters if `operator.prometheusCrdSupportEnabled` is `true`,
+* 30 characters if `operator.signalControl.enabled` is `true`, and
+* 31 characters otherwise.
+
+Rendering the chart fails with an error message if the prefix is too long for the enabled features.
+
+To use a shorter prefix, set it independently of the release name:
+
+```yaml
+operator:
+  managedResourceNamePrefix: dash0-operator
+```
+
+Alternatively, set a shorter release name explicitly (`spec.source.helm.releaseName` in an ArgoCD application,
+`spec.releaseName` in a Flux HelmRelease).
+
+Set `managedResourceNamePrefix when installing the operator and do not change it afterwards.
+The operator does not remove the resources it has created with the previous prefix, so the collectors with the old
+names would keep running next to the new ones.
+To change the prefix of an existing installation, uninstall and reinstall the operator.
 
 ## Notes on ArgoCD
 

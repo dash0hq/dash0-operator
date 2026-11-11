@@ -1,6 +1,8 @@
 suite: test cluster role bindings
 templates:
   - operator/cluster-role-bindings.yaml
+release:
+  name: test-release
 tests:
   - it: cluster role bindings should match snapshot
     asserts:

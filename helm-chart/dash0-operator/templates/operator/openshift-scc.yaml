@@ -10,7 +10,7 @@ not exist on non-OpenShift clusters.
 apiVersion: security.openshift.io/v1
 kind: SecurityContextConstraints
 metadata:
-  name: {{ include "dash0-operator.namePrefix" . }}-dash0-collector
+  name: {{ include "dash0-operator.managedResourceNamePrefix" . }}-dash0-collector
   labels:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: collector
@@ -52,7 +52,7 @@ groups: []
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "dash0-operator.namePrefix" . }}-dash0-collector-scc-use
+  name: {{ include "dash0-operator.managedResourceNamePrefix" . }}-dash0-collector-scc-use
   labels:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: collector
@@ -64,14 +64,14 @@ rules:
     resources:
       - securitycontextconstraints
     resourceNames:
-      - {{ include "dash0-operator.namePrefix" . }}-dash0-collector
+      - {{ include "dash0-operator.managedResourceNamePrefix" . }}-dash0-collector
     verbs:
       - use
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: {{ include "dash0-operator.namePrefix" . }}-dash0-collector-scc-use
+  name: {{ include "dash0-operator.managedResourceNamePrefix" . }}-dash0-collector-scc-use
   namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: dash0-operator
@@ -81,9 +81,9 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ include "dash0-operator.namePrefix" . }}-dash0-collector-scc-use
+  name: {{ include "dash0-operator.managedResourceNamePrefix" . }}-dash0-collector-scc-use
 subjects:
   - kind: ServiceAccount
-    name: {{ include "dash0-operator.namePrefix" . }}-opentelemetry-collector-sa
+    name: {{ include "dash0-operator.managedResourceNamePrefix" . }}-opentelemetry-collector-sa
     namespace: {{ .Release.Namespace }}
 {{- end }}
