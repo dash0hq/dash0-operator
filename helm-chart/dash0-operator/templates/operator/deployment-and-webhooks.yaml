@@ -529,7 +529,7 @@ spec:
       {{ include "dash0-operator.restrictivePodSecurityContext" dict | nindent 6 }}
       serviceAccountName: {{ template "dash0-operator.serviceAccountName" . }}
       automountServiceAccountToken: true
-      terminationGracePeriodSeconds: 10
+      terminationGracePeriodSeconds: 15
       volumes:
       {{- if not $selfManagedCertificates }}
       {{- if not .Values.operator.certManager.secretName }}
