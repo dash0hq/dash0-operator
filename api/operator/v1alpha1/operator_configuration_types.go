@@ -44,143 +44,78 @@ type Dash0OperatorConfiguration struct {
 
 // Dash0OperatorConfigurationSpec describes cluster-wide configuration settings for the Dash0 operator.
 type Dash0OperatorConfigurationSpec struct {
-	// Deprecated: Use `exports` instead. If both `export` and `exports` are specified, `export` will be ignored.
-	// The mutating webhook will automatically migrate `export` to `exports` if only `export` is specified.
-	//
-	// The configuration of the default observability backend to which telemetry data will be sent by the operator, as
-	// well as the backend that will receive the operator's self-monitoring data. This property is mandatory.
-	// This can either be Dash0 or another OTLP-compatible backend. You can also combine up to three exporters (i.e.,
-	// Dash0 plus gRPC plus HTTP). This allows sending the same data to two or three targets simultaneously. At least
-	// one exporter has to be defined.
-	//
-	// Please note that self-monitoring data is only sent to one backend, with Dash0 taking precedence over gRPC and
-	// HTTP, and gRPC taking precedence over HTTP if multiple exports are defined. Furthermore, HTTP export with JSON
-	// encoding is not supported for self-monitoring telemetry.
+	// Deprecated: Use `exports` instead. If both `export` and `exports` are specified, `export` is ignored. The mutating
+	// webhook migrates `export` to `exports` if only `export` is specified.
 	Export *dash0common.Export `json:"export,omitempty"`
 
-	// The configuration of the default observability backends to which telemetry data will be sent by the operator, as
-	// well as the backend that will receive the operator's self-monitoring data. This property is mandatory.
-	// These can either be Dash0 or another OTLP-compatible backend. Every Export entry can contain up to three distinct
-	// exporters (i.e., Dash0 plus gRPC plus HTTP).
-	//
-	// The telemetry data will be sent to all backends of all Export entries. At least one exporter has to be defined.
-	//
-	// Please note that self-monitoring data is only sent to a single backend of the first defined Export.
-	// If there are multiple backends in the Export, the Dash0 export is taking precedence over gRPC and HTTP, and gRPC taking
-	// precedence over HTTP if multiple exports are defined. Furthermore, HTTP export with JSON encoding is not supported
-	// for self-monitoring telemetry.
+	// The default observability backends to which the operator sends telemetry data. Each export can combine up to
+	// three exporters (Dash0, gRPC and HTTP). Telemetry is sent to every exporter of every export. Required unless
+	// `selfMonitoring.enabled=false`. Self-monitoring data is only sent to one exporter of the first export, preferring
+	// Dash0 over gRPC over HTTP; HTTP with JSON encoding is not supported for self-monitoring data.
 	Exports []dash0common.Export `json:"exports,omitempty"`
 
-	// Global opt-out for self-monitoring for this operator
+	// Global opt-out for the operator's self-monitoring.
 	//
 	// +kubebuilder:default={enabled: true}
 	SelfMonitoring SelfMonitoring `json:"selfMonitoring,omitempty"`
 
-	// Settings for collecting Kubernetes infrastructure metrics. This setting is optional, by default, the operator will
-	// collect Kubernetes infrastructure metrics; unless `telemetryCollection.enabled` is set to `false`, then
-	// collecting Kubernetes infrastructure metrics is off by default as well. It is a validation error to set
-	// `telemetryCollection.enabled=false` and `kubernetesInfrastructureMetricsCollection.enabled=true` at the same time.
+	// Settings for collecting Kubernetes infrastructure metrics.
 	//
 	// +kubebuilder:validation:Optional
 	KubernetesInfrastructureMetricsCollection KubernetesInfrastructureMetricsCollection `json:"kubernetesInfrastructureMetricsCollection,omitempty"`
 
-	// Settings for collecting the manifests of Kubernetes objects cluster-wide. This setting is optional, by default
-	// the operator will not collect Kubernetes object manifests. It is a validation error to set
-	// `telemetryCollection.enabled=false` and `kubernetesObjectCollection.enabled=true` at the same time.
+	// Settings for collecting the manifests of Kubernetes objects.
 	//
 	// +kubebuilder:validation:Optional
 	KubernetesObjectCollection KubernetesObjectCollection `json:"kubernetesObjectCollection,omitempty"`
 
-	// Deprecated: This setting is deprecated. Please use
-	//     kubernetesInfrastructureMetricsCollection:
-	//       enabled: false
-	// instead of
-	//     kubernetesInfrastructureMetricsCollectionEnabled: false
-	//
-	// If enabled, the operator will collect Kubernetes infrastructure metrics. This setting is optional, it defaults
-	// to true; unless `telemetryCollection.enabled` is set to `false`, then it defaults to `false` as well. It is a
-	// validation error to set `telemetryCollection.enabled=false` and
-	// `kubernetesInfrastructureMetricsCollectionEnabledEnabled=true` at the same time.
+	// Deprecated: Use `kubernetesInfrastructureMetricsCollection.enabled` instead.
 	//
 	// +kubebuilder:validation:Optional
 	KubernetesInfrastructureMetricsCollectionEnabled *bool `json:"kubernetesInfrastructureMetricsCollectionEnabled,omitempty"`
 
-	// Settings for collecting pod labels and annotations. This setting is optional, by default the operator will
-	// collect pod labels and annotations as resource attributes in all namespaces; unless `telemetryCollection.enabled`
-	// is set to `false`, then collecting pod labels and annotations is off by default as well. It is a validation error
-	// to set `telemetryCollection.enabled=false` and `collectPodLabelsAndAnnotations.enabled=true` at the same time.
+	// Settings for collecting pod labels and annotations as resource attributes.
 	//
 	// +kubebuilder:validation:Optional
 	CollectPodLabelsAndAnnotations CollectPodLabelsAndAnnotations `json:"collectPodLabelsAndAnnotations,omitempty"`
 
-	// Settings for collecting namespace labels and annotations. This setting is optional, by default the operator will
-	// not collect namespace labels and annotations as resource attributes. It is a validation error to set
-	// `telemetryCollection.enabled=false` and `collectNamespaceLabelsAndAnnotations.enabled=true` at the same time.
+	// Settings for collecting namespace labels and annotations as resource attributes.
 	//
 	// +kubebuilder:validation:Optional
 	CollectNamespaceLabelsAndAnnotations CollectNamespaceLabelsAndAnnotations `json:"collectNamespaceLabelsAndAnnotations,omitempty"`
 
-	// Settings for collecting node labels and annotations. This setting is optional, by default the operator will
-	// not collect node labels and annotations as resource attributes. It is a validation error to set
-	// `telemetryCollection.enabled=false` and `collectNodeLabelsAndAnnotations.enabled=true` at the same time.
+	// Settings for collecting node labels and annotations as resource attributes.
 	//
 	// +kubebuilder:validation:Optional
 	CollectNodeLabelsAndAnnotations CollectNodeLabelsAndAnnotations `json:"collectNodeLabelsAndAnnotations,omitempty"`
 
 	// Settings for discovering scrape targets via Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig).
-	// This setting is optional and opt-in, by default the operator will not consider Prometheus CRDs when configuring
-	// the Prometheus receiver in the OpenTelemetry collectors.
-	// It is a validation error to set`telemetryCollection.enabled=false` and `prometheusCrdSupport.enabled=true` at
-	// the same time.
 	//
 	// +kubebuilder:validation:Optional
 	PrometheusCrdSupport PrometheusCrdSupport `json:"prometheusCrdSupport,omitempty"`
 
-	// If set, the value will be added as the resource attribute k8s.cluster.name to all telemetry. This setting is
-	// optional. By default, k8s.cluster.name will not be added to telemetry.
+	// If set, the value is added to all telemetry as the resource attribute k8s.cluster.name.
 	//
 	// +kubebuilder:validation:Optional
 	ClusterName string `json:"clusterName,omitempty"`
 
-	// Optional filters for telemetry data that is collected in this cluster. This can be used to drop entire spans,
-	// span events, metrics, metric data points, or log records. See "Transform" for advanced transformations (e.g.
-	// removing span attributes, metric data point attributes, log record attributes etc.).
-	//
-	// In contrast to the filters in a Dash0 monitoring resource, which only apply to the telemetry collected in the
-	// namespace of that monitoring resource, these filters apply to all telemetry collected in the cluster, including
-	// telemetry that is not associated with a namespace, like node metrics or cluster-level metrics.
-	//
-	// The filters of monitoring resources and the filters configured here are evaluated by the same filter processor;
-	// telemetry is dropped if at least one condition of either matches.
-	//
-	// This setting is optional, by default, no filters are applied. It is a validation error to set
-	// `telemetryCollection.enabled=false` and set filters at the same time.
+	// Optional filters to drop spans, span events, metrics, metric data points, log records or profiles (see transform
+	// for modifying telemetry). In contrast to the filters of a monitoring resource, they apply to all telemetry of the
+	// cluster, including telemetry without a namespace, like node metrics. Telemetry is dropped if at least one
+	// condition of these filters or of the monitoring resource's filters matches. It is a validation error to set
+	// filters together with
+	// `telemetryCollection.enabled=false`.
 	//
 	// +kubebuilder:validation:Optional
 	Filter *dash0common.Filter `json:"filter,omitempty"`
 
-	// Optional custom transformations for telemetry data that is collected in this cluster. This can be used to remove
-	// span attributes, metric data point attributes, log record attributes etc. See "Filter" for basic filters that can
-	// be used to drop entire spans, span events, metrics, metric data points, or log records.
-	//
-	// In contrast to the transformations in a Dash0 monitoring resource, which only apply to the telemetry collected in
-	// the namespace of that monitoring resource, these transformations apply to all telemetry collected in the cluster,
-	// including telemetry that is not associated with a namespace, like node metrics or cluster-level metrics.
-	//
-	// For each signal type (traces, metrics, logs, profiles), a list of OTTL statements can be defined. These will be
-	// applied to all telemetry collected in the cluster, following the order specified in the configuration. Each
-	// statement can access and transform telemetry using OTTL functions.
-	// See https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/transformprocessor
-	// for details and examples. Both the
-	// [basic config style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#basic-config)
-	// and the
-	// [advanced config style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#advanced-config)
-	// of the transform processor are supported.
-	//
-	// The transformations of monitoring resources are applied before the transformations configured here.
-	//
-	// This setting is optional, by default, no transformations are applied. It is a validation error to set
-	// `telemetryCollection.enabled=false` and set transformations at the same time.
+	// Optional transformations, e.g. to remove span, metric data point or log record attributes (see filter for dropping
+	// telemetry). In contrast to the transformations of a monitoring resource, they apply to all telemetry of the
+	// cluster, including telemetry without a namespace, like node metrics, and they are applied after those of the
+	// monitoring resources. The OTTL statements of each signal type are applied in the given order. Both the basic and
+	// the advanced config style of the transform processor are supported, see
+	// https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/transformprocessor. It is a
+	// validation error to set transformations together with `telemetryCollection.enabled=false`.
 	//
 	// +kubebuilder:validation:Optional
 	Transform *dash0common.Transform `json:"transform,omitempty"`
@@ -188,22 +123,18 @@ type Dash0OperatorConfigurationSpec struct {
 	// Only used internally, this field must not be specified by users.
 	NormalizedTransformSpec *dash0common.NormalizedTransformSpec `json:"__dash0_internal__normalizedTransform,omitempty"`
 
-	// InstrumentWorkloads contains cluster-wide settings that govern how the operator auto-instruments workloads.
-	//
-	// Note: There are also instrumentWorkloads settings in the Dash0 monitoring resource, for per-namespace settings for
-	// workload instrumentation.
+	// Cluster-wide settings for the instrumentation of workloads. Per-namespace settings are in the monitoring
+	// resources.
 	//
 	// +kubebuilder:default={instrumentationDelivery: init-container}
 	InstrumentWorkloads InstrumentWorkloads `json:"instrumentWorkloads,omitempty"`
 
-	// An opt-out switch for all telemetry collection, and to avoid having the operator deploy OpenTelemetry collectors
-	// to the cluster. This setting is optional, it defaults to true.
+	// An opt-out switch for all telemetry collection, including the deployment of OpenTelemetry collectors.
 	//
 	// +kubebuilder:default={enabled: true}
 	TelemetryCollection TelemetryCollection `json:"telemetryCollection,omitempty"`
 
-	// Settings for automatically monitoring namespaces. This feature is off by default and needs to be enabled
-	// explicitly.
+	// Settings for automatically monitoring namespaces.
 	//
 	// +kubebuilder:default={enabled: false, labelSelector: "dash0.com/enable!=false"}
 	AutoMonitorNamespaces AutoMonitorNamespaces `json:"autoMonitorNamespaces,omitempty"`
@@ -246,29 +177,25 @@ type Dash0OperatorConfigurationSpec struct {
 
 // SelfMonitoring describes how the operator will report telemetry about its working to the backend.
 type SelfMonitoring struct {
-	// If enabled, the operator will collect self-monitoring telemetry and send it to the configured Dash0 backend.
-	// This setting is optional, it defaults to `true`.
+	// Whether the operator collects self-monitoring telemetry and sends it to the configured backend. Defaults to
+	// `true`.
 	//
 	// +kubebuilder:default=true
 	Enabled *bool `json:"enabled"`
 }
 
 type KubernetesInfrastructureMetricsCollection struct {
-	// If enabled, the operator will collect Kubernetes infrastructure metrics. This setting is optional, it defaults
-	// to `true`; unless `telemetryCollection.enabled` is set to `false`, then
-	// `kubernetesInfrastructureMetricsCollection.enabled` defaults to `false` as well. It is a validation error to set
-	// `telemetryCollection.enabled=false` and `kubernetesInfrastructureMetricsCollection.enabled=true` at the same
-	// time.
+	// Whether to collect Kubernetes infrastructure metrics. Defaults to `true`, or to `false` if
+	// `telemetryCollection.enabled=false`, in which case setting it to `true` is a validation error.
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type PrometheusCrdSupport struct {
-	// If enabled, the operator will add support for Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig) by
-	// deploying the OpenTelemetry target-allocator.
-	// It is a validation error to set`telemetryCollection.enabled=false` and `prometheusCrdSupport.enabled=true` at
-	// the same time.
+	// Whether to discover scrape targets via Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig) by deploying the
+	// OpenTelemetry target-allocator. Defaults to `false`. It is a validation error to set it to `true` together with
+	// `telemetryCollection.enabled=false`.
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
@@ -307,9 +234,8 @@ type SyntheticsWorker struct {
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
 
-	// Instances lists the synthetics-worker deployments the operator manages, one per Dash0 private location. Each
-	// instance's LocationID must be unique within this list; it is also used to derive the names of that instance's
-	// Kubernetes resources. At least one instance is required when the synthetics-worker is enabled.
+	// The synthetics-worker deployments the operator manages, one per Dash0 private location. At least one instance is
+	// required when the synthetics-worker is enabled.
 	//
 	// +kubebuilder:validation:Optional
 	// +listType=map
@@ -319,25 +245,21 @@ type SyntheticsWorker struct {
 
 // SyntheticsWorkerInstance describes a single synthetics-worker Deployment, pinned to one Dash0 private location.
 type SyntheticsWorkerInstance struct {
-	// LocationID is the customer-chosen identifier of the private location that this instance executes checks for.
-	// Dash0 resolves it to the location's identity. It must be unique within spec.syntheticsWorker.instances, and is
-	// used to derive the names of this instance's Kubernetes resources.
+	// The identifier of the private location that this instance executes checks for. It must be unique within
+	// spec.syntheticsWorker.instances, and is used to derive the names of this instance's Kubernetes resources.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 	// +kubebuilder:validation:MaxLength=40
 	LocationID string `json:"locationId"`
 
-	// Authorization holds the Dash0 authorization token for this instance's workload, either as a literal token or as
-	// a reference to a Kubernetes secret. Required when the synthetics-worker is enabled. This is a pointer so that
-	// the field can be omitted entirely; the Authorization type itself requires at least one of its own properties to
-	// be set, which would reject an explicit empty object.
+	// The Dash0 authorization token for this instance, either as a literal token or as a reference to a Kubernetes
+	// secret. Required when the synthetics-worker is enabled.
 	//
 	// +kubebuilder:validation:Optional
 	Authorization *dash0common.Authorization `json:"authorization,omitempty"`
 
-	// Replicas is the number of pods this instance runs. It must not be negative. This setting is optional, it defaults
-	// to 1.
+	// The number of pods this instance runs. Defaults to 1.
 	//
 	// +kubebuilder:default=1
 	// +kubebuilder:validation:Minimum=0
@@ -392,101 +314,69 @@ const (
 
 // InstrumentWorkloads contains cluster-wide settings that govern how the operator instruments workloads.
 type InstrumentWorkloads struct {
-	// InstrumentationDelivery controls how the Dash0 instrumentation files are made available to instrumented
-	// workload containers. Allowed values:
-	//   - "auto": use image volumes if the Kubernetes API server version and the kubelet version of all nodes is 1.36 or
-	//     later, otherwise use the init container approach. The operator determines the minimum kubelet version by
-	//     inspecting the cluster's nodes once at startup, until that has finished it uses the init container approach.
-	//     Nodes joining the cluster later are not taken into account.
-	//   - "image-volume": always use a Kubernetes image volume sourced from the Dash0 instrumentation image. If the
-	//     operator has already detected that the Kubernetes API server version or the kubelet version of a node is
-	//     older than 1.31, it logs a warning and falls back to the init container approach. That fallback is
-	//     best-effort: it does not cover workloads instrumented before the operator has inspected the cluster's nodes,
-	//     nor nodes that join the cluster later. Note that on Kubernetes 1.34 and earlier, image volumes need to be
-	//     enabled at cluster creation time, since the feature gate is disabled by default in versions older than 1.35.
-	//   - "init-container" (default): always use the traditional init container plus emptyDir volume approach, regardless
-	//     of the Kubernetes version.
-	//
-	// Note: Changing the instrumentationDelivery setting in the operator configuration resource while the operator is
-	// running will not trigger a bulk re-instrumentation of all existing workloads, even for namespaces that are set to
-	// instrumentWorkloadsMode=all. Once a workload has been successfully instrumented, there is no benefit in
-	// re-instrumenting it with a different delivery mechanism. The new setting will be applied when instrumenting
-	// newly deployed workloads, or when a workload is updated/re-deployed.
+	// How the Dash0 instrumentation files are made available to instrumented workload containers:
+	//   - "auto": use image volumes if the Kubernetes API server and the kubelets of all nodes are 1.36 or later,
+	//     otherwise use an init container. The operator inspects the nodes once at startup and uses an init container
+	//     until then. Nodes joining the cluster later are not taken into account.
+	//   - "image-volume": always use an image volume sourced from the Dash0 instrumentation image. If the operator has
+	//     detected that the API server or the kubelet of a node is older than 1.31, it logs a warning and falls back to
+	//     an init container. That fallback does not cover workloads instrumented before the nodes have been inspected,
+	//     nor nodes that join later. Kubernetes 1.34 and earlier need the image volume feature gate enabled at cluster
+	//     creation time.
+	//   - "init-container" (default): always use an init container plus emptyDir volume.
+	// Changing this setting does not re-instrument existing workloads. It applies to workloads that are deployed or
+	// updated afterwards.
 	//
 	// +kubebuilder:default=init-container
 	InstrumentationDelivery InstrumentationDelivery `json:"instrumentationDelivery,omitempty"`
 }
 
 type CollectPodLabelsAndAnnotations struct {
-	// Opt-out for collecting all pod labels and annotations as resource attributes. If set to `false`, the operator
-	// will not collect Kubernetes labels and annotations as resource attributes.
-	//
-	// This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
-	// and the operator will collect pod labels and annotations as resource attributes; unless
-	// `telemetryCollection.enabled` is set to `false`, then  `collectPodLabelsAndAnnotations.enabled` defaults to
-	// `false` as well. It is a validation error to set `telemetryCollection.enabled=false` and
-	// `collectPodLabelsAndAnnotations.enabled=true` at the same time.
+	// Opt-out for collecting pod labels and annotations as resource attributes. Defaults to `true`, or to `false` if
+	// `telemetryCollection.enabled=false`, in which case setting it to `true` is a validation error.
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type CollectNamespaceLabelsAndAnnotations struct {
-	// Opt-in for collecting all namespace labels and annotations as resource attributes. If set to `true`, the operator
-	// will collect Kubernetes namespace labels and annotations as resource attributes.
-	//
-	// This setting is optional, it defaults to `false`, that is, if this setting is omitted, the value `false` is
-	// assumed and the operator will not collect namespace labels and annotations as resource attributes. It is a
-	// validation error to set `telemetryCollection.enabled=false` and
-	// `collectNamespaceLabelsAndAnnotations.enabled=true` at the same time.
+	// Opt-in for collecting namespace labels and annotations as resource attributes. Defaults to `false`. It is a
+	// validation error to set it to `true` together with `telemetryCollection.enabled=false`.
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type CollectNodeLabelsAndAnnotations struct {
-	// Opt-in for collecting all node labels and annotations as resource attributes. If set to `true`, the operator
-	// will collect Kubernetes node labels and annotations as resource attributes.
-	//
-	// This setting is optional, it defaults to `false`, that is, if this setting is omitted, the value `false` is
-	// assumed and the operator will not collect node labels and annotations as resource attributes. It is a
-	// validation error to set `telemetryCollection.enabled=false` and
-	// `collectNodeLabelsAndAnnotations.enabled=true` at the same time.
+	// Opt-in for collecting node labels and annotations as resource attributes. Defaults to `false`. It is a validation
+	// error to set it to `true` together with `telemetryCollection.enabled=false`.
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type KubernetesObjectCollection struct {
-	// Opt-in for collecting the manifests of Kubernetes objects. If set to `true`, the operator will collect the
-	// manifests of pods and workloads in every namespace whose Dash0Monitoring resource has
-	// `kubernetesObjectCollection.enabled=true`, as well as the manifests of nodes and persistent volumes.
-	//
-	// This setting is optional, it defaults to `false`. It is the cluster-wide switch for the feature: with it off, no
-	// manifests are collected no matter what the Dash0Monitoring resources say. It is a validation error to set
-	// `telemetryCollection.enabled=false` and `kubernetesObjectCollection.enabled=true` at the same time.
+	// Cluster-wide opt-in for collecting Kubernetes object manifests. Defaults to `false`. If enabled, the operator
+	// collects the manifests of pods and workloads in every namespace whose Dash0Monitoring resource has
+	// `kubernetesObjectCollection.enabled=true`, as well as those of nodes and persistent volumes. If disabled, no
+	// manifests are collected. It is a validation error to set it to `true` together with
+	// `telemetryCollection.enabled=false`.
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
 
-	// Opt-out for collecting the manifests of cluster-scoped objects (nodes and persistent volumes). This setting is
-	// optional, it defaults to `true`. It does not enable Kubernetes object collection on its own: cluster-scoped
-	// objects are only collected when `kubernetesObjectCollection.enabled` is `true` and at least one namespace has
-	// opted into Kubernetes object collection via its Dash0Monitoring resource.
+	// Opt-out for collecting the manifests of nodes and persistent volumes. Defaults to `true`. They are only collected
+	// if `kubernetesObjectCollection.enabled` is `true` and at least one Dash0Monitoring resource has opted into
+	// Kubernetes object collection.
 	//
 	// +kubebuilder:validation:Optional
 	CollectClusterScopedObjects *bool `json:"collectClusterScopedObjects,omitempty"`
 }
 
 type TelemetryCollection struct {
-	// If disabled, the operator will not collect any telemetry, in particular it will not deploy any OpenTelemetry
-	// collectors to the cluster. This is useful if you want to do infrastructure-as-code (dashboards, check rules) with
-	// the operator, but do not want it to deploy the OpenTelemetry collector. This setting is optional, it defaults to
-	// `true` (i.e., by default telemetry collection is enabled).
-	//
-	// Note that setting this to false does not disable the operator's self-monitoring telemetry, use the setting
-	// selfMonitoring.enabled to disable self-monitoring if required (self-monitoring does not require an OpenTelemetry
-	// collector).
+	// If disabled, the operator does not collect any telemetry and does not deploy OpenTelemetry collectors, e.g. to only
+	// manage dashboards and check rules. Defaults to `true`. The operator's self-monitoring is controlled separately
+	// via selfMonitoring.enabled.
 	//
 	// +kubebuilder:default=true
 	Enabled *bool `json:"enabled"`
@@ -494,39 +384,16 @@ type TelemetryCollection struct {
 
 type AutoMonitorNamespaces struct {
 
-	// Controls whether monitoring is set up for namespaces automatically. By default, a Dash0Monitoring resource has to
-	// be added to each namespace that you want to monitor. With automatic namespace monitoring, you can let the Dash0
-	// operator automate this. This is useful if you want to monitor all or almost all namespaces in your cluster. It is
-	// also useful if you create new namespaces frequently and want to have them monitored right away, without additional
-	// setup. It is best suited if almost all namespace should be monitored in the same fashion.
-	//
-	// If enabled, the operator will:
-	// * automatically add monitoring to all existing namespaces at startup, and
-	// * automatically add monitoring to new namespaces, as they are created.
-	//
-	// Even when enabled, individual namespaces can opt out of automatic monitoring via label selectors
-	// (see spec.autoMonitorNamespaces.labelSelector).
-	//
-	// Namespaces which are subject to automatic namespace monitoring will be monitored according to the settings of
-	// spec.monitoringTemplate.
+	// Whether the operator automatically adds a Dash0Monitoring resource to all existing namespaces at startup and to
+	// new namespaces when they are created, based on spec.monitoringTemplate. Namespaces can opt out via
+	// spec.autoMonitorNamespaces.labelSelector. Defaults to `false`.
 	//
 	// +kubebuilder:default=false
 	Enabled *bool `json:"enabled"`
 
-	// An optional configurable label selector for controlling which namespaces are automatically monitored. Namespaces
-	// which match this label selector will be monitored automatically (if spec.autoMonitorNamespaces.enabled is also
-	// set). Namespaces which do not match this label selector will not be monitored, regardless of the value of
-	// spec.autoMonitorNamespaces.enabled.
-	//
-	// This attribute is ignored if spec.autoMonitorNamespaces.enabled has not been set to true explicitly.
-	//
-	// By default, this label selector has the value "dash0.com/enable!=false" - that is, the following namespaces will
-	// be monitored (assuming spec.autoMonitorNamespaces.enabled is true):
-	// - namespaces which do not have the label dash0.com/enable at all, and
-	// - namespaces which have the label dash0.com/enable with a value other than "false".
-	//
-	// Namespaces which are subject to automatic namespace monitoring will be monitored according to the settings of
-	// spec.monitoringTemplate.
+	// A label selector for the namespaces that are monitored automatically. It is only used if
+	// spec.autoMonitorNamespaces.enabled is true. The default "dash0.com/enable!=false" matches all namespaces except
+	// those with the label dash0.com/enable=false.
 	//
 	// +kubebuilder:default=dash0.com/enable!=false
 	LabelSelector string `json:"labelSelector,omitempty"`
@@ -683,33 +550,27 @@ type ProbabilisticSampling struct {
 type Dash0OperatorConfigurationStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 
-	// PreviousAutoMonitorNamespacesLabelSelector records the label selector that was active when the operator
-	// configuration resource was reconciled the last time by the auto-namespace-monitoring controller. If it differs from
-	// the current spec.autoMonitorNamespaces.labelSelector, the namespace watch will be recreated with the new selector.
+	// The spec.autoMonitorNamespaces.labelSelector of the last reconciliation by the auto-namespace-monitoring
+	// controller. If it differs from the current one, the namespace watch is recreated.
 	//
 	// +kubebuilder:validation:Optional
 	PreviousAutoMonitorNamespacesLabelSelector string `json:"previousAutoMonitorNamespacesLabelSelector,omitempty"`
 
-	// PreviousMonitoringTemplate records the monitoring template that was active when the operator configuration
-	// resource was reconciled the last time by the auto-namespace-monitoring controller.
+	// The spec.monitoringTemplate of the last reconciliation by the auto-namespace-monitoring controller.
 	//
 	// +kubebuilder:validation:Optional
 	PreviousMonitoringTemplate *MonitoringTemplate `json:"previousMonitoringTemplate,omitempty"`
 
-	// Agent0Connector reports whether the operator has deployed the agent0-connector, and why not if it hasn't. A
-	// disabled agent0-connector is reported with deployed=false and reason=Disabled, which is what distinguishes it
-	// from one that failed to deploy. This is absent until the operator reconciles the agent0-connector for the first
-	// time, which it only does when the agent0-connector is enabled via the Helm chart
-	// (operator.agent0Connector.enabled).
+	// Whether the operator has deployed the agent0-connector, and why not if it hasn't. A disabled agent0-connector
+	// has deployed=false and reason=Disabled. Absent until the operator reconciles the agent0-connector for the first
+	// time, which it only does when it is enabled via the Helm value operator.agent0Connector.enabled.
 	//
 	// +kubebuilder:validation:Optional
 	Agent0Connector *Agent0ConnectorStatus `json:"agent0Connector,omitempty"`
 
-	// SyntheticsWorker reports whether the operator has deployed the synthetics-worker, and why not if it hasn't. A
-	// disabled synthetics-worker is reported with deployed=false and reason=Disabled, which is what distinguishes it
-	// from one that failed to deploy. This is absent until the operator reconciles the synthetics-worker for the
-	// first time, which it only does when the synthetics-worker is enabled via the Helm chart
-	// (operator.syntheticsWorker.enabled).
+	// Whether the operator has deployed the synthetics-worker, and why not if it hasn't. A disabled synthetics-worker
+	// has deployed=false and reason=Disabled. Absent until the operator reconciles the synthetics-worker for the first
+	// time, which it only does when it is enabled via the Helm value operator.syntheticsWorker.enabled.
 	//
 	// +kubebuilder:validation:Optional
 	SyntheticsWorker *SyntheticsWorkerStatus `json:"syntheticsWorker,omitempty"`

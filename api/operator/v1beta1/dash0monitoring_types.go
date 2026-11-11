@@ -43,105 +43,59 @@ type Dash0Monitoring struct {
 // Dash0MonitoringSpec describes the details of monitoring a single Kubernetes namespace with Dash0 and sending
 // telemetry to an observability backend.
 type Dash0MonitoringSpec struct {
-	// Deprecated: Use `exports` instead. If both `export` and `exports` are specified, `export` will be ignored.
-	// The mutating webhook will automatically migrate `export` to `exports` if only `export` is specified.
-	//
-	// The configuration of the observability backend to which telemetry data will be sent. This property is optional.
-	// If not set, the operator will use the default export configuration from the cluster-wide
-	// Dash0OperatorConfiguration resource, if present. If no Dash0OperatorConfiguration resource has been created for
-	// the cluster, or if the Dash0OperatorConfiguration resource does not have at least one export defined, creating a
-	// Dash0Monitoring resource without export settings will result in an error.
-	//
-	// The export can either be Dash0 or another OTLP-compatible backend. You can also combine up to three exporters
-	// (i.e. Dash0 plus gRPC plus HTTP). This allows sending the same data to two or three targets simultaneously. When
-	// the export setting is present, it has to contain at least one exporter.
+	// Deprecated: Use `exports` instead. If both `export` and `exports` are specified, `export` is ignored. The mutating
+	// webhook migrates `export` to `exports` if only `export` is specified.
 	//
 	// +kubebuilder:validation:Optional
 	Export *dash0common.Export `json:"export,omitempty"`
 
-	// The configuration of the observability backend(s) to which telemetry data will be sent. This property is optional.
-	// If not set, the operator will use the default export configuration from the cluster-wide
-	// Dash0OperatorConfiguration resource, if present. If no Dash0OperatorConfiguration resource has been created for
-	// the cluster, or if the Dash0OperatorConfiguration resource does not have at least one export defined, creating a
-	// Dash0Monitoring resource without export settings will result in an error.
-	//
-	// Each export can either be Dash0 or another OTLP-compatible backend. You can also combine up to three exporters
-	// per export (i.e. Dash0 plus gRPC plus HTTP). This allows sending the same data to multiple targets simultaneously.
-	// When the exports setting is present, it has to contain at least one export with at least one exporter.
+	// The observability backends to which the telemetry of this namespace will be sent. Each export can combine up to
+	// three exporters (Dash0, gRPC and HTTP). Telemetry is sent to every exporter of every export. If omitted, the
+	// exports of the Dash0OperatorConfiguration resource are used. In that case, creating the resource fails if there is
+	// no operator configuration resource or if it has no exports.
 	//
 	// +kubebuilder:validation:Optional
 	Exports []dash0common.Export `json:"exports,omitempty"`
 
-	// Settings for automatic instrumentation of workloads in the target namespace. This setting is optional, by default
-	// the operator will instrument existing workloads, as well as new workloads at deploy time and changed workloads
-	// when they are updated.
-	//
-	// Note: There are also instrumentWorkloads in the Dash0 operator configuration resource, for cluster-wide settings
-	// for workload instrumentation.
+	// Settings for the automatic instrumentation of workloads in the target namespace. Cluster-wide instrumentation
+	// settings are in the operator configuration resource.
 	//
 	// +kubebuilder:validation:Optional
 	InstrumentWorkloads InstrumentWorkloads `json:"instrumentWorkloads,omitempty"`
 
-	// Settings for log collection in the target namespace. This setting is optional, by default the operator will
-	// collect pod logs in the target namespace; unless there is an operator configuration resource with
-	// `telemetryCollection.enabled=false`, then log collection is off by default. It is a validation error to set
-	// `telemetryCollection.enabled=false` in the operator configuration resource and `logCollection.enabled=true` in any
-	// monitoring resource at the same time.
+	// Settings for collecting pod logs in the target namespace.
 	//
 	// +kubebuilder:validation:Optional
 	LogCollection dash0common.LogCollection `json:"logCollection,omitempty"`
 
-	// Settings for collecting Kubernetes events in the target namespace. This setting is optional, by default the
-	// operator will collect Kubernetes events in the target namespace; unless there is an operator configuration
-	// resource with `telemetryCollection.enabled=false`, then event collection is off by default. It is a validation
-	// error to set `telemetryCollection.enabled=false` in the operator configuration resource and
-	//`eventCollection.enabled=true` in any monitoring resource at the same time.
+	// Settings for collecting Kubernetes events in the target namespace.
 	//
 	// +kubebuilder:validation:Optional
 	EventCollection dash0common.EventCollection `json:"eventCollection,omitempty"`
 
-	// Settings for collecting the manifests of pods and workloads in the target namespace. This setting is optional,
-	// by default the operator will not collect Kubernetes object manifests.
+	// Settings for collecting the manifests of pods and workloads in the target namespace.
 	//
 	// +kubebuilder:validation:Optional
 	KubernetesObjectCollection dash0common.KubernetesObjectCollection `json:"kubernetesObjectCollection,omitempty"`
 
-	// Settings for scraping Prometheus metrics from pods in the target namespace according to their
-	// prometheus.io/scrape annotations. This setting is optional, by default the operator will scrape metrics from pods
-	// with these notations in the target namespace; unless there is an operator configuration resource with
-	// `telemetryCollection.enabled=false`, then Prometheus scraping is off by default. It is a validation error to set
-	// `telemetryCollection.enabled=false` in the operator configuration resource and `prometheusScraping.enabled=true`
-	// in any monitoring resource at the same time.
+	// Settings for scraping Prometheus metrics from pods in the target namespace.
 	//
 	// +kubebuilder:validation:Optional
 	PrometheusScraping dash0common.PrometheusScraping `json:"prometheusScraping,omitempty"`
 
-	// Optional filters for telemetry data that is collected in this namespace. This can be used to drop entire spans,
-	// span events, metrics, metric data points, or log records. See "Transform" for advanced transformations (e.g.
-	// removing span attributes, metric data point attributes, log record attributes etc.). This setting is optional,
-	// by default, no filters are applied. It is a validation error to set `telemetryCollection.enabled=false` in the
-	// operator configuration resource and set filters in any monitoring resource at the same time.
+	// Optional filters to drop spans, span events, metrics, metric data points, log records or profiles collected in
+	// this namespace (see transform for modifying telemetry). It is a validation error to set filters while the operator
+	// configuration resource has `telemetryCollection.enabled=false`.
 	//
 	// +kubebuilder:validation:Optional
 	Filter *dash0common.Filter `json:"filter,omitempty"`
 
-	// Optional custom transformations for telemetry data that is collected in this namespace. This can be used to
-	// remove span attributes, metric data point attributes, log record attributes etc. See "Filter" for basic filters
-	// that can be used to drop entire spans, span events, metrics, metric data points, or log records.
-	//
-	// For each signal type (traces, metrics, logs), a list of OTTL statements can be defined. These will be applied to
-	// the telemetry collected in the namespace, following the order specified in the configuration. Each statement can
-	// access and transform telemetry using OTTL functions.
-	// See https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/transformprocessor
-	// for details and examples. Note that this configuration currently supports the
-	// [basic config style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#basic-config)
-	// of the transform processor. The
-	// [advanced config style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#advanced-config)
-	// is not supported.
-	//
-	// This setting is optional, by default, no transformations are applied. It is a validation error to set
-	// `telemetryCollection.enabled=false` in the operator configuration resource and set transforms in any monitoring
-	// resource at the same time.
+	// Optional transformations for telemetry collected in this namespace, e.g. to remove span, metric data point or log
+	// record attributes (see filter for dropping telemetry). The OTTL statements of each signal type are applied in the
+	// given order. Only the basic config style of the transform processor is supported, see
+	// https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/transformprocessor. It is a
+	// validation error to set transforms while the operator configuration resource has
+	// `telemetryCollection.enabled=false`.
 	//
 	// +kubebuilder:validation:Optional
 	Transform *dash0common.Transform `json:"transform,omitempty"`
@@ -149,103 +103,51 @@ type Dash0MonitoringSpec struct {
 	// Only used internally, this field must not be specified by users.
 	NormalizedTransformSpec *dash0common.NormalizedTransformSpec `json:"__dash0_internal__normalizedTransform,omitempty"`
 
-	// If enabled, the operator will watch Perses dashboard resources in this namespace and create corresponding
-	// dashboards in Dash0 via the Dash0 API.
-	// See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/managing-dash0-resources.md#managing-dash0-dashboards-with-the-operator
-	// for details. This setting is optional, it defaults to `true`.
+	// Whether to synchronize the Perses dashboard resources in this namespace to Dash0 via the Dash0 API. Defaults to
+	// `true`.
 	//
 	// +kubebuilder:default=true
 	SynchronizePersesDashboards *bool `json:"synchronizePersesDashboards"`
 
-	// If enabled, the operator will watch Prometheus rule resources in this namespace and create corresponding check
-	// rules in Dash0 via the Dash0 API.
-	// See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/managing-dash0-resources.md#managing-dash0-check-rules-with-the-operator
-	// for details. This setting is optional, it defaults to `true`.
+	// Whether to synchronize the Prometheus rule resources in this namespace to Dash0 check rules via the Dash0 API.
+	// Defaults to `true`.
 	//
 	// +kubebuilder:default=true
 	SynchronizePrometheusRules *bool `json:"synchronizePrometheusRules"`
 }
 
 type InstrumentWorkloads struct {
-	// Controls the automatic workload instrumentation for the target namespace, that is, which events will trigger the
-	// auto-instrumentation of a workload, and whether workloads or pods are instrumented. There are four possible
-	// settings:
-	// `all`, `created-and-updated`, `pods` and `none`. By default, the setting `all` is assumed, unless there is an
-	// operator configuration resource with `telemetryCollection.enabled=false`, then the setting `none` is assumed.
-	//
-	// If set to `all`, the operator will:
-	// * automatically instrument existing workloads in the target namespace (i.e. workloads already running in the
-	//   namespace) when the Dash0 monitoring resource is deployed,
-	// * instrument existing workloads or update the instrumentation of already instrumented workloads in the target
-	//   namespace when the Dash0 operator is first started or restarted (for example when updating the operator),
-	// * instrument new workloads in the target namespace when they are deployed, and
-	// * instrument changed workloads in the target namespace when changes are applied to them.
-	// Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
-	// affected workloads.
-	//
-	// If set to `created-and-updated`, the operator will not instrument existing workloads in the target namespace,
-	// neither when a Dash0 monitoring resource is deployed, nor when the Dash0 operator is started or restarted.
-	// Instead, it will only:
-	// * instrument new workloads in the target namespace when they are deployed, and
-	// * instrument changed workloads in the target namespace when changes are applied to them.
-	// This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
-	// resource or restarting the Dash0 operator.
-	//
-	// If set to `pods`, the operator will not instrument workloads like deployments, daemon sets,
-	// stateful sets, replica sets, jobs and cron jobs. Instead, it instruments each pod when it is created, regardless
-	// of which kind of workload owns it. The operator never restarts pods in this mode: Pods that already exist keep
-	// their state until they are recreated, for example by the next rollout. That applies to instrumenting them, to
-	// updating their instrumentation when the Dash0 operator is updated, and to removing their instrumentation when
-	// the mode is changed to `none` or the Dash0 monitoring resource is removed. Since only new pods are affected, a
-	// workload can run instrumented and uninstrumented pods side by side, for example after a scale-up. The only
-	// exception are workloads that still have instrumentation in their pod template from before the mode was changed
-	// to `pods`: The operator removes it the next time the workload is updated, if that does not replace any pods
-	// that would not be replaced anyway, for example with the next rollout. When the mode is changed to `none` or the
-	// Dash0 monitoring resource is removed before that, their pod template is reverted, which replaces their pods.
-	// The label selector (spec.instrumentWorkloads.labelSelector) is evaluated against the labels of the pod combined
-	// with the labels of its owners (replica set and deployment, job and cron job, daemon set, stateful set); the
-	// level closest to the pod wins. The other modes only evaluate it against the labels in the top level metadata of
-	// the workload.
-	// This setting is useful if you want to avoid that the operator modifies workloads that are managed by GitOps or
-	// infrastructure-as-code tools, which would otherwise report the modifications as drift.
-	//
-	// You can opt out of automatically instrumenting workloads entirely by setting this option to `none`. With
-	// `mode: none`, workloads in the target namespace will never be instrumented to send telemetry to Dash0.
-	//
-	// If this setting is omitted, the value `all` is assumed and new, updated as well as existing Kubernetes workloads
-	// will be automatically intrumented by the operator to send telemetry to Dash0, as described above. There is one
-	// exception to this rule: If there is an operator configuration resource with `telemetryCollection.enabled=false`,
-	// then the default setting is `none` instead of `all`, and no workloads will be instrumented by the Dash0 operator.
-	//
-	// It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
-	// `mode: all`, `mode: created-and-updated` or `mode: pods` in any monitoring resource at the same time.
-	//
-	// More fine-grained per-workload control over instrumentation is available by setting the label
-	// dash0.com/enable=false on individual workloads, or by using a custom label selector via
+	// Which events trigger the instrumentation of workloads in the target namespace, and whether workloads or pods are
+	// instrumented:
+	// * `all` (default): The operator instruments existing workloads when the Dash0 monitoring resource is deployed,
+	//   instruments existing workloads or updates their instrumentation when the operator starts or restarts (e.g. when
+	//   it is updated), and instruments new workloads when they are deployed and changed workloads when they are
+	//   updated. Instrumenting existing workloads restarts their pods.
+	// * `created-and-updated`: The operator only instruments new workloads when they are deployed and changed workloads
+	//   when they are updated. This avoids pod restarts when the monitoring resource is deployed or the operator
+	//   restarts.
+	// * `pods`: The operator does not modify workloads (deployments, daemon sets, stateful sets, replica sets, jobs, cron
+	//   jobs), but instruments each pod when it is created. It never restarts pods: Existing pods keep their state until
+	//   they are recreated (e.g. by the next rollout), also when the operator is updated, the mode is changed to `none`
+	//   or the monitoring resource is removed. Hence, a workload can run instrumented and uninstrumented pods side by
+	//   side. Instrumentation that a pod template still has from an earlier mode is removed with the next update of the
+	//   workload, unless that would replace pods that would not be replaced otherwise. If the mode is changed to `none`
+	//   or the monitoring resource is removed before that, the pod template is reverted, which replaces the pods. The
+	//   label selector is evaluated against the labels of the pod combined with those of its owners, the level closest
+	//   to the pod wins; the other modes only use the labels of the workload. Use this mode to avoid drift reports by
+	//   GitOps or infrastructure-as-code tools.
+	// * `none`: Workloads in the target namespace are never instrumented.
+	// If the operator configuration resource has `telemetryCollection.enabled=false`, the default is `none`, and any
+	// other mode is a validation error. Individual workloads can be excluded via the label dash0.com/enable=false or
 	// spec.instrumentWorkloads.labelSelector.
 	//
 	// +kubebuilder:validation:Optional
 	Mode dash0common.InstrumentWorkloadsMode `json:"mode,omitempty"`
 
-	// An optional configurable label selector for fine-grained per-workload control over instrumentation. Workloads
-	// which match this label selector will be instrumented (according to the value of spec.instrumentWorkloads.mode).
-	// Workloads which do not match this label selector will never be instrumented, regardless of the value of
-	// spec.instrumentWorkloads.mode.
-	//
-	// This attribute is ignored if spec.instrumentWorkloads.mode=none.
-	//
-	// By default, this label selector has the value "dash0.com/enable!=false" - that is, the following workloads will
-	// be instrumented (assuming spec.instrumentWorkloads.mode!=none)
-	// - workloads that do not have the label dash0.com/enable at all, or
-	// - workloads that have the label dash0.com/enable with a value other than "false".
-	//
-	// It is recommended to leave this setting unset (i.e., leave the default "dash0.com/enable!=false" in place), unless
-	// you have a specific use case that requires a different label selector. One such use case is implementing an
-	// opt-in model for workload instrumentation instead of the usual opt-out model. That is, instead of instrumenting
-	// all workloads by default and only disabling instrumentation for a few specific workloads, you want to
-	// deliberately turn on instrumentation for a few specific workloads and leave all others uninstrumented. Use a
-	// label selector with equals instead of not-equals to achieve this, i.e.,
-	// spec.instrumentWorkloads.labelSelector="auto-instrument-this-workload-with-dash0=true".
+	// A label selector for per-workload control over instrumentation: Only workloads that match it are instrumented. It
+	// is ignored if spec.instrumentWorkloads.mode is `none`. The default "dash0.com/enable!=false" matches all workloads
+	// except those with the label dash0.com/enable=false. A selector with equals instead of not-equals (e.g.
+	// "auto-instrument-this-workload-with-dash0=true") implements an opt-in model instead.
 	//
 	// +kubebuilder:default=dash0.com/enable!=false
 	LabelSelector string `json:"labelSelector,omitempty"`
@@ -255,48 +157,25 @@ type InstrumentWorkloads struct {
 	// +kubebuilder:validation:Optional
 	TraceContext TraceContext `json:"traceContext,omitempty"`
 
-	// If set to true, the operator enables SQL query parameter capture in the language agents that support it. Currently
-	// this covers the OpenTelemetry Java agent's JDBC instrumentation and the OpenTelemetry .NET auto-instrumentation
-	// for Microsoft.Data.SqlClient and Entity Framework Core, by adding the following environment variables (all set to
-	// "true") to instrumented containers:
+	// If set to true, the operator enables SQL query parameter capture in the OpenTelemetry Java agent (JDBC) and the
+	// OpenTelemetry .NET auto-instrumentation (Microsoft.Data.SqlClient, Entity Framework Core). It sets the following
+	// environment variables to "true" in instrumented containers, unless a container sets them to a different value:
 	//   - OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS
 	//   - OTEL_DOTNET_EXPERIMENTAL_SQLCLIENT_ENABLE_TRACE_DB_QUERY_PARAMETERS
 	//   - OTEL_DOTNET_EXPERIMENTAL_EFCORE_ENABLE_TRACE_DB_QUERY_PARAMETERS
-	// Recorded query parameter values are added to the resulting database span attributes. Other language agents ignore
-	// these variables.
-	//
-	// If a container already has one of these environment variables set to a value other than "true", the existing value
-	// is preserved.
-	//
-	// Note: These are experimental upstream OpenTelemetry agent flags and may be renamed or removed in future agent
-	// releases. Recorded query parameter values may include sensitive data such as personally identifiable information
-	// (PII), so enable this only for namespaces where capturing query parameter values is acceptable.
-	//
-	// By default, the value is not set and the environment variables will not be added to workloads. If this option is
-	// set to true at some point and then later set to false or removed, the operator will remove each environment
-	// variable from instrumented workloads if and only if its current value still matches what the operator would have
-	// set ("true").
+	// The parameter values are added to the database spans and may include sensitive data such as PII. These
+	// experimental agent flags may be renamed or removed in future agent releases. If the setting is later set to false
+	// or removed, the operator removes each variable whose value is still "true".
 	//
 	// +kubebuilder:validation:Optional
 	CaptureSqlQueryParameters *bool `json:"captureSqlQueryParameters,omitempty"`
 }
 
 type TraceContext struct {
-	// An optional comma-separated list of trace context propagators. If set, the environment variable OTEL_PROPAGATORS
-	// is added to workloads with the value of this field. This allows configuring the OpenTelemetry SDK to use specific
-	// propagators for trace context propagation. The value can be a comma-separated list of propagators, for exampmle
-	// "tracecontext,xray" for the W3C trace context traceparent header and AWS X-Ray headers.
-	//
-	// Note that you usually want to list the preferred propagator last, if multiple propagators are specified. The
-	// reason is that both `Extract` (reading trace context information from headers and adding it to the span) and
-	// `Inject` (addding trace context information to headers on outgoing requests) are both run in the order in which
-	// the propagators are defined. For extract that means that the _last one wins_, if multiple propagators extract the
-	// same information (e.g. trace ID and span ID). Hence, the need to specify them in reverse order of priority.
-	//
-	// By default, the value is not set and the environment variable OTEL_PROPAGATORS will not be added to workloads.
-	// (The default values for OpenTelemetry SDKs when OTEL_PROPAGATORS is not set is "tracecontext,baggage".)
-	//
-	// See also: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators
+	// A comma-separated list of trace context propagators, e.g. "tracecontext,xray" for the W3C traceparent header and
+	// AWS X-Ray headers. If set, it is added to workloads as the environment variable OTEL_PROPAGATORS (the SDK default
+	// is "tracecontext,baggage"). If several propagators extract the same information, the last one wins, so list the
+	// preferred propagator last.
 	//
 	// +kubebuilder:validation:Optional
 	Propagators *string `json:"propagators,omitempty"`

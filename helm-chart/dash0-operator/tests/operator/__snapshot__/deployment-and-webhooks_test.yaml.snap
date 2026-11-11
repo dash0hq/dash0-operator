@@ -422,9 +422,7 @@ monitoring resource CRD should match snapshot:
                   description: Only used internally, this field must not be specified by users.
                   properties:
                     error_mode:
-                      description: |-
-                        FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
-                        processing a condition.
+                      description: FilterTransformErrorMode determines how the filter or the transform processor reacts to errors.
                       enum:
                         - ignore
                         - silent
@@ -440,9 +438,7 @@ monitoring resource CRD should match snapshot:
                           context:
                             type: string
                           error_mode:
-                            description: |-
-                              FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
-                              processing a condition.
+                            description: FilterTransformErrorMode determines how the filter or the transform processor reacts to errors.
                             enum:
                               - ignore
                               - silent
@@ -464,9 +460,7 @@ monitoring resource CRD should match snapshot:
                           context:
                             type: string
                           error_mode:
-                            description: |-
-                              FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
-                              processing a condition.
+                            description: FilterTransformErrorMode determines how the filter or the transform processor reacts to errors.
                             enum:
                               - ignore
                               - silent
@@ -488,9 +482,7 @@ monitoring resource CRD should match snapshot:
                           context:
                             type: string
                           error_mode:
-                            description: |-
-                              FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
-                              processing a condition.
+                            description: FilterTransformErrorMode determines how the filter or the transform processor reacts to errors.
                             enum:
                               - ignore
                               - silent
@@ -512,9 +504,7 @@ monitoring resource CRD should match snapshot:
                           context:
                             type: string
                           error_mode:
-                            description: |-
-                              FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
-                              processing a condition.
+                            description: FilterTransformErrorMode determines how the filter or the transform processor reacts to errors.
                             enum:
                               - ignore
                               - silent
@@ -544,26 +534,22 @@ monitoring resource CRD should match snapshot:
                   minProperties: 1
                   properties:
                     dash0:
-                      description: The configuration of the Dash0 ingress endpoint to which telemetry data will be sent.
+                      description: Settings for sending telemetry to Dash0.
                       properties:
                         apiEndpoint:
                           description: |-
-                            The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
-                            dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
-                            needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied from
-                            https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. The correct endpoint value will always
-                            start with "https://api." and end in ".dash0.com"
+                            The API endpoint of your Dash0 organization, see
+                            https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. It starts with `https://api.` and ends in
+                            `.dash0.com`. It is not used for telemetry, but for managing dashboards, check rules, synthetic checks and views
+                            via the operator.
                           type: string
                         authorization:
-                          description: Mandatory authorization settings for sending data to Dash0.
+                          description: The authorization settings for sending data to Dash0. Exactly one of token and secretRef has to be provided.
                           maxProperties: 1
                           minProperties: 1
                           properties:
                             secretRef:
-                              description: |-
-                                A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
-                                ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-                                https://app.dash0.com/settings/auth-tokens.
+                              description: A reference to a Kubernetes secret containing the Dash0 authorization token.
                               properties:
                                 key:
                                   default: token
@@ -578,32 +564,24 @@ monitoring resource CRD should match snapshot:
                                 - name
                               type: object
                             token:
-                              description: |-
-                                The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
-                                to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-                                token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
+                              description: The Dash0 authorization token, see https://app.dash0.com/settings/auth-tokens.
                               type: string
                           type: object
                         dataset:
                           description: |-
-                            The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
-                            identifier, not its display name; for example, a dataset named "Production" can have the identifier "prod". The
-                            identifier can be looked up in https://app.dash0.com/settings/datasets. This property is optional. If omitted, no
-                            dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token. API
-                            access (dashboards, check rules, etc.) uses the dataset "default" in that case.
+                            The identifier (not the display name) of the Dash0 dataset to which telemetry data will be sent, see
+                            https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token,
+                            and API access (dashboards, check rules, etc.) uses the dataset "default".
                           type: string
                         endpoint:
                           description: |-
-                            The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
-                            needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
-                            https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. The correct endpoint value will always
-                            start with `ingress.` and end in `dash0.com:4317`.
+                            The OTLP/gRPC endpoint of your Dash0 organization, see
+                            https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. It starts with `ingress.` and ends in
+                            `dash0.com:4317`.
                           minLength: 1
                           type: string
                         keepalive:
-                          description: |-
-                            The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
-                            This setting is optional and there should usually be no need to configure it.
+                          description: The client-side gRPC keepalive settings. There is usually no need to configure them.
                           properties:
                             permit_without_stream:
                               description: Allow keepalive pings when there are no active streams.
@@ -620,41 +598,33 @@ monitoring resource CRD should match snapshot:
                         - endpoint
                       type: object
                     grpc:
-                      description: The settings for an exporter to send telemetry to an arbitrary OTLP-compatible receiver via gRPC.
+                      description: Settings for sending telemetry to an OTLP-compatible receiver via gRPC.
                       properties:
                         balancer_name:
-                          description: |-
-                            The name of the load balancer to use. Can be either round_robin or pick_first. Optional; when omitted, the
-                            collector's default (round_robin) is used.
+                          description: The load balancer to use, round_robin or pick_first. When omitted, the collector's default (round_robin) is used.
                           enum:
                             - round_robin
                             - pick_first
                           type: string
                         endpoint:
-                          description: The URL of the OTLP-compatible receiver to which telemetry data will be sent. This property is mandatory.
+                          description: The URL of the OTLP-compatible receiver to which telemetry data will be sent.
                           type: string
                         headers:
-                          description: Additional headers to be sent with each gRPC request, for example for authorization. This property is optional.
+                          description: Additional headers to be sent with each gRPC request, for example for authorization.
                           items:
-                            description: |-
-                              Header describes a single header to be sent with each request. The header value can either be provided directly via
-                              the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
-                              has to be provided.
+                            description: Header describes a single header to be sent with each request. Exactly one of value and valueFrom has to be provided.
                             properties:
                               name:
                                 description: The name of the header.
                                 type: string
                               value:
-                                description: |-
-                                  The value of the header, provided directly as a literal string. This property is optional, but either this
-                                  property or the valueFrom property has to be provided. It is a validation error to provide both.
+                                description: The value of the header as a literal string.
                                 minLength: 1
                                 type: string
                               valueFrom:
                                 description: |-
-                                  A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
-                                  header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
-                                  either this property or the value property has to be provided. It is a validation error to provide both.
+                                  The value of the header, sourced from a Kubernetes secret. Use this for sensitive values like authorization tokens
+                                  or API keys.
                                 properties:
                                   secretKeyRef:
                                     description: A reference to a key in a Kubernetes secret containing the header value.
@@ -682,17 +652,15 @@ monitoring resource CRD should match snapshot:
                                 rule: has(self.value) != has(self.valueFrom)
                           type: array
                         insecure:
-                          description: Explicitly defines whether TLS is used. Per default, a secure connection is assumed, unless the endpoint starts with 'http://'.
+                          description: Whether to disable TLS. By default, TLS is used unless the endpoint starts with 'http://'.
                           type: boolean
                         insecureSkipVerify:
                           description: |-
-                            Whether to skip verifying the server's certificate chain. It is a validation error to explicitly set
-                            `insecure=true` and `insecureSkipVerify=true` at the same time, since `insecure` means TLS won't be used at all.
+                            Whether to skip verifying the server's certificate chain. It is a validation error to combine this with
+                            `insecure=true`, which disables TLS altogether.
                           type: boolean
                         keepalive:
-                          description: |-
-                            The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
-                            This setting is optional and there should usually be no need to configure it.
+                          description: The client-side gRPC keepalive settings. There is usually no need to configure them.
                           properties:
                             permit_without_stream:
                               description: Allow keepalive pings when there are no active streams.
@@ -708,7 +676,7 @@ monitoring resource CRD should match snapshot:
                         - endpoint
                       type: object
                     http:
-                      description: The settings for an exporter to send telemetry to an arbitrary OTLP-compatible receiver via HTTP.
+                      description: Settings for sending telemetry to an OTLP-compatible receiver via HTTP.
                       properties:
                         encoding:
                           default: proto
@@ -718,30 +686,24 @@ monitoring resource CRD should match snapshot:
                             - json
                           type: string
                         endpoint:
-                          description: The URL of the OTLP-compatible receiver to which telemetry data will be sent. This property is mandatory.
+                          description: The URL of the OTLP-compatible receiver to which telemetry data will be sent.
                           type: string
                         headers:
-                          description: Additional headers to be sent with each HTTP request, for example for authorization. This property is optional.
+                          description: Additional headers to be sent with each HTTP request, for example for authorization.
                           items:
-                            description: |-
-                              Header describes a single header to be sent with each request. The header value can either be provided directly via
-                              the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
-                              has to be provided.
+                            description: Header describes a single header to be sent with each request. Exactly one of value and valueFrom has to be provided.
                             properties:
                               name:
                                 description: The name of the header.
                                 type: string
                               value:
-                                description: |-
-                                  The value of the header, provided directly as a literal string. This property is optional, but either this
-                                  property or the valueFrom property has to be provided. It is a validation error to provide both.
+                                description: The value of the header as a literal string.
                                 minLength: 1
                                 type: string
                               valueFrom:
                                 description: |-
-                                  A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
-                                  header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
-                                  either this property or the value property has to be provided. It is a validation error to provide both.
+                                  The value of the header, sourced from a Kubernetes secret. Use this for sensitive values like authorization tokens
+                                  or API keys.
                                 properties:
                                   secretKeyRef:
                                     description: A reference to a key in a Kubernetes secret containing the header value.
@@ -788,32 +750,27 @@ monitoring resource CRD should match snapshot:
                     When the exports setting is present, it has to contain at least one export with at least one exporter.
                   items:
                     description: |-
-                      Export describes the observability backend to which telemetry data will be sent. This can either be Dash0 or another
-                      OTLP-compatible backend. You can also combine up to three exporters (i.e. Dash0 plus gRPC plus HTTP). This allows
-                      sending the same data to two or three targets simultaneously. At least one exporter has to be defined.
+                      Export describes the observability backend to which telemetry data will be sent: Dash0, an OTLP-compatible receiver
+                      via gRPC or HTTP, or a combination of these three exporters. At least one exporter has to be defined.
                     minProperties: 1
                     properties:
                       dash0:
-                        description: The configuration of the Dash0 ingress endpoint to which telemetry data will be sent.
+                        description: Settings for sending telemetry to Dash0.
                         properties:
                           apiEndpoint:
                             description: |-
-                              The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
-                              dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
-                              needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied from
-                              https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. The correct endpoint value will always
-                              start with "https://api." and end in ".dash0.com"
+                              The API endpoint of your Dash0 organization, see
+                              https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. It starts with `https://api.` and ends in
+                              `.dash0.com`. It is not used for telemetry, but for managing dashboards, check rules, synthetic checks and views
+                              via the operator.
                             type: string
                           authorization:
-                            description: Mandatory authorization settings for sending data to Dash0.
+                            description: The authorization settings for sending data to Dash0. Exactly one of token and secretRef has to be provided.
                             maxProperties: 1
                             minProperties: 1
                             properties:
                               secretRef:
-                                description: |-
-                                  A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
-                                  ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-                                  https://app.dash0.com/settings/auth-tokens.
+                                description: A reference to a Kubernetes secret containing the Dash0 authorization token.
                                 properties:
                                   key:
                                     default: token
@@ -828,32 +785,24 @@ monitoring resource CRD should match snapshot:
                                   - name
                                 type: object
                               token:
-                                description: |-
-                                  The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
-                                  to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-                                  token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
+                                description: The Dash0 authorization token, see https://app.dash0.com/settings/auth-tokens.
                                 type: string
                             type: object
                           dataset:
                             description: |-
-                              The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
-                              identifier, not its display name; for example, a dataset named "Production" can have the identifier "prod". The
-                              identifier can be looked up in https://app.dash0.com/settings/datasets. This property is optional. If omitted, no
-                              dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token. API
-                              access (dashboards, check rules, etc.) uses the dataset "default" in that case.
+                              The identifier (not the display name) of the Dash0 dataset to which telemetry data will be sent, see
+                              https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token,
+                              and API access (dashboards, check rules, etc.) uses the dataset "default".
                             type: string
                           endpoint:
                             description: |-
-                              The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
-                              needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
-                              https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. The correct endpoint value will always
-                              start with `ingress.` and end in `dash0.com:4317`.
+                              The OTLP/gRPC endpoint of your Dash0 organization, see
+                              https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. It starts with `ingress.` and ends in
+                              `dash0.com:4317`.
                             minLength: 1
                             type: string
                           keepalive:
-                            description: |-
-                              The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
-                              This setting is optional and there should usually be no need to configure it.
+                            description: The client-side gRPC keepalive settings. There is usually no need to configure them.
                             properties:
                               permit_without_stream:
                                 description: Allow keepalive pings when there are no active streams.
@@ -870,41 +819,33 @@ monitoring resource CRD should match snapshot:
                           - endpoint
                         type: object
                       grpc:
-                        description: The settings for an exporter to send telemetry to an arbitrary OTLP-compatible receiver via gRPC.
+                        description: Settings for sending telemetry to an OTLP-compatible receiver via gRPC.
                         properties:
                           balancer_name:
-                            description: |-
-                              The name of the load balancer to use. Can be either round_robin or pick_first. Optional; when omitted, the
-                              collector's default (round_robin) is used.
+                            description: The load balancer to use, round_robin or pick_first. When omitted, the collector's default (round_robin) is used.
                             enum:
                               - round_robin
                               - pick_first
                             type: string
                           endpoint:
-                            description: The URL of the OTLP-compatible receiver to which telemetry data will be sent. This property is mandatory.
+                            description: The URL of the OTLP-compatible receiver to which telemetry data will be sent.
                             type: string
                           headers:
-                            description: Additional headers to be sent with each gRPC request, for example for authorization. This property is optional.
+                            description: Additional headers to be sent with each gRPC request, for example for authorization.
                             items:
-                              description: |-
-                                Header describes a single header to be sent with each request. The header value can either be provided directly via
-                                the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
-                                has to be provided.
+                              description: Header describes a single header to be sent with each request. Exactly one of value and valueFrom has to be provided.
                               properties:
                                 name:
                                   description: The name of the header.
                                   type: string
                                 value:
-                                  description: |-
-                                    The value of the header, provided directly as a literal string. This property is optional, but either this
-                                    property or the valueFrom property has to be provided. It is a validation error to provide both.
+                                  description: The value of the header as a literal string.
                                   minLength: 1
                                   type: string
                                 valueFrom:
                                   description: |-
-                                    A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
-                                    header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
-                                    either this property or the value property has to be provided. It is a validation error to provide both.
+                                    The value of the header, sourced from a Kubernetes secret. Use this for sensitive values like authorization tokens
+                                    or API keys.
                                   properties:
                                     secretKeyRef:
                                       description: A reference to a key in a Kubernetes secret containing the header value.
@@ -932,17 +873,15 @@ monitoring resource CRD should match snapshot:
                                   rule: has(self.value) != has(self.valueFrom)
                             type: array
                           insecure:
-                            description: Explicitly defines whether TLS is used. Per default, a secure connection is assumed, unless the endpoint starts with 'http://'.
+                            description: Whether to disable TLS. By default, TLS is used unless the endpoint starts with 'http://'.
                             type: boolean
                           insecureSkipVerify:
                             description: |-
-                              Whether to skip verifying the server's certificate chain. It is a validation error to explicitly set
-                              `insecure=true` and `insecureSkipVerify=true` at the same time, since `insecure` means TLS won't be used at all.
+                              Whether to skip verifying the server's certificate chain. It is a validation error to combine this with
+                              `insecure=true`, which disables TLS altogether.
                             type: boolean
                           keepalive:
-                            description: |-
-                              The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
-                              This setting is optional and there should usually be no need to configure it.
+                            description: The client-side gRPC keepalive settings. There is usually no need to configure them.
                             properties:
                               permit_without_stream:
                                 description: Allow keepalive pings when there are no active streams.
@@ -958,7 +897,7 @@ monitoring resource CRD should match snapshot:
                           - endpoint
                         type: object
                       http:
-                        description: The settings for an exporter to send telemetry to an arbitrary OTLP-compatible receiver via HTTP.
+                        description: Settings for sending telemetry to an OTLP-compatible receiver via HTTP.
                         properties:
                           encoding:
                             default: proto
@@ -968,30 +907,24 @@ monitoring resource CRD should match snapshot:
                               - json
                             type: string
                           endpoint:
-                            description: The URL of the OTLP-compatible receiver to which telemetry data will be sent. This property is mandatory.
+                            description: The URL of the OTLP-compatible receiver to which telemetry data will be sent.
                             type: string
                           headers:
-                            description: Additional headers to be sent with each HTTP request, for example for authorization. This property is optional.
+                            description: Additional headers to be sent with each HTTP request, for example for authorization.
                             items:
-                              description: |-
-                                Header describes a single header to be sent with each request. The header value can either be provided directly via
-                                the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
-                                has to be provided.
+                              description: Header describes a single header to be sent with each request. Exactly one of value and valueFrom has to be provided.
                               properties:
                                 name:
                                   description: The name of the header.
                                   type: string
                                 value:
-                                  description: |-
-                                    The value of the header, provided directly as a literal string. This property is optional, but either this
-                                    property or the valueFrom property has to be provided. It is a validation error to provide both.
+                                  description: The value of the header as a literal string.
                                   minLength: 1
                                   type: string
                                 valueFrom:
                                   description: |-
-                                    A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
-                                    header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
-                                    either this property or the value property has to be provided. It is a validation error to provide both.
+                                    The value of the header, sourced from a Kubernetes secret. Use this for sensitive values like authorization tokens
+                                    or API keys.
                                   properties:
                                     secretKeyRef:
                                       description: A reference to a key in a Kubernetes secret containing the header value.
@@ -1037,20 +970,12 @@ monitoring resource CRD should match snapshot:
                     error_mode:
                       default: ignore
                       description: |-
-                        An optional field which will determine how the filter processor reacts to errors that occur while processing a
-                        condition. Possible values:
-                        - ignore: ignore errors returned by conditions, log them, continue with to the next condition.
-                                  This is the recommended mode and also the default mode if this property is omitted.
-                        - silent: ignore errors returned by conditions, do not log them, continue with to the next condition.
-                        - propagate: return the error up the processing pipeline. This will result in the payload being dropped from the
-                                  collector. Not recommended.
-
-                        This is optional, default to "ignore", there is usually no reason to change this.
-
-                        Note that although this can be specified per namespace and cluster-wide, the filter conditions will be aggregated
-                        into one single filter processor in the resulting OpenTelemetry collector configuration; if different error modes
-                        are specified in different namespaces, or cluster-wide in the operator configuration resource, the "most severe"
-                        error mode will be used (propagate > ignore > silent).
+                        How the filter processor reacts to errors returned by conditions:
+                        - ignore (default, recommended): log the error and continue with the next condition.
+                        - silent: continue with the next condition without logging the error.
+                        - propagate: return the error up the pipeline, which drops the payload. Not recommended.
+                        All filters of the cluster end up in a single filter processor, which uses the most severe of the configured error
+                        modes (propagate > ignore > silent).
                       enum:
                         - ignore
                         - silent
@@ -1063,11 +988,7 @@ monitoring resource CRD should match snapshot:
                       properties:
                         log_records:
                           description: |-
-                            A list of conditions for filtering log records.
-                            This is a list of OTTL conditions.
-                            All log records where at least one condition evaluates to true will be dropped.
-                            (That is, the conditions are implicitly connected by a logical OR.)
-                            Example:
+                            OTTL conditions for dropping log records. A log record is dropped if at least one condition is true. Example:
                             - 'IsMatch(body, ".*password.*")'
                             - 'severity_number < SEVERITY_NUMBER_WARN'
                           items:
@@ -1081,26 +1002,17 @@ monitoring resource CRD should match snapshot:
                       properties:
                         datapoint:
                           description: |-
-                            A list of conditions for filtering metrics data points.
-                            This is a list of OTTL conditions.
-                            All data points where at least one condition evaluates to true will be dropped.
-                            (That is, the conditions are implicitly connected by a logical OR.)
-                            Note: If all datapoints for a metric are dropped, the metric will also be dropped.
-                            Example:
-                            - 'metric.name == "a.noisy.metric.with.many.datapoints" and value_int == 0' # filter metrics by value
-                            - 'resource.attributes["service.name"] == "my_service_name"' # filter data points by resource attributes
+                            OTTL conditions for dropping metric data points. A data point is dropped if at least one condition is true. A
+                            metric whose data points are all dropped is dropped as well. Example:
+                            - 'metric.name == "a.noisy.metric" and value_int == 0'
+                            - 'resource.attributes["service.name"] == "my_service_name"'
                           items:
                             type: string
                           type: array
                         metric:
                           description: |-
-                            A list of conditions for filtering metrics.
-                            This is a list of OTTL conditions.
-                            All metrics where at least one condition evaluates to true will be dropped.
-                            (That is, the conditions are implicitly connected by a logical OR.)
-                            Example:
+                            OTTL conditions for dropping metrics. A metric is dropped if at least one condition is true. Example:
                             - 'name == "k8s.replicaset.available"'
-                            - 'name == "k8s.replicaset.desired"'
                             - 'type == METRIC_DATA_TYPE_HISTOGRAM'
                           items:
                             type: string
@@ -1112,11 +1024,7 @@ monitoring resource CRD should match snapshot:
                         This can be used to drop _profiles_.
                       properties:
                         profile:
-                          description: |-
-                            A list of conditions for filtering profiles.
-                            This is a list of OTTL conditions.
-                            All profiles where at least one condition evaluates to true will be dropped.
-                            (That is, the conditions are implicitly connected by a logical OR.)
+                          description: OTTL conditions for dropping profiles. A profile is dropped if at least one condition is true.
                           items:
                             type: string
                           type: array
@@ -1128,11 +1036,7 @@ monitoring resource CRD should match snapshot:
                       properties:
                         span:
                           description: |-
-                            A list of conditions for filtering spans.
-                            This is a list of OTTL conditions.
-                            All spans where at least one condition evaluates to true will be dropped.
-                            (That is, the conditions are implicitly connected by a logical OR.)
-                            Example:
+                            OTTL conditions for dropping spans. A span is dropped if at least one condition is true. Example:
                             - 'attributes["http.route"] == "/ready"'
                             - 'attributes["http.route"] == "/metrics"'
                           items:
@@ -1140,11 +1044,8 @@ monitoring resource CRD should match snapshot:
                           type: array
                         spanevent:
                           description: |-
-                            A list of conditions for filtering span events.
-                            This is a list of OTTL conditions.
-                            All span events where at least one condition evaluates to true will be dropped.
-                            (That is, the conditions are implicitly connected by a logical OR.)
-                            If all span events for a span are dropped, the span will be left intact.
+                            OTTL conditions for dropping span events. A span event is dropped if at least one condition is true. The span
+                            itself is kept, even if all of its span events are dropped.
                           items:
                             type: string
                           type: array
@@ -1204,14 +1105,9 @@ monitoring resource CRD should match snapshot:
                   properties:
                     enabled:
                       description: |-
-                        Opt-out for log collection for the target namespace. If set to `false`, the operator will not collect pod logs
-                        in the target namespace and send the resulting log records to Dash0.
-
-                        This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
-                        and the operator will collect pod logs in the target namespace; unless there is an operator configuration
-                        resource with `telemetryCollection.enabled=false`, then log collection is off by default. It is a validation error
-                        to set `telemetryCollection.enabled=false` in the operator configuration resource and
-                        `logCollection.enabled=true` in any monitoring resource at the same time.
+                        Opt-out for collecting pod logs in the target namespace. Defaults to `true`, or to `false` if the operator
+                        configuration resource has `telemetryCollection.enabled=false`, in which case setting it to `true` is a
+                        validation error.
                       type: boolean
                   type: object
                 prometheusScraping:
@@ -1225,12 +1121,9 @@ monitoring resource CRD should match snapshot:
                   properties:
                     enabled:
                       description: |-
-                        If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
-                        of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry
-                        Prometheus receiver. This setting is optional, it defaults to `true`; unless there is an operator configuration
-                        resource with `telemetryCollection.enabled=false`, then Prometheus scraping is off by default. It is a validation
-                        error to set `telemetryCollection.enabled=false` in the operator configuration resource and
-                        `prometheusScraping.enabled=true` in any monitoring resource at the same time.
+                        Whether to scrape metrics from pods in the target namespace according to their prometheus.io/scrape annotations.
+                        Defaults to `true`, or to `false` if the operator configuration resource has `telemetryCollection.enabled=false`,
+                        in which case setting it to `true` is a validation error.
                       type: boolean
                   type: object
                 prometheusScrapingEnabled:
@@ -1287,19 +1180,12 @@ monitoring resource CRD should match snapshot:
                     error_mode:
                       default: ignore
                       description: |-
-                        An optional field which will determine how the transform processor reacts to errors that occur while processing a
-                        statement. Possible values:
-                        - ignore: ignore errors returned by statements, log them, continue with to the next statement.
-                        - silent: ignore errors returned by statements, do not log them, continue with to the next statement.
-                        - propagate: return the error up the processing pipeline. This will result in the payload being dropped from the
-                          collector.
-
-                        This is optional, default to "ignore".
-
-                        Note that although this can be specified per namespace and cluster-wide, the transform statements will be
-                        aggregated into one single transform processor in the resulting OpenTelemetry collector configuration; if
-                        different error modes are specified in different namespaces, or cluster-wide in the operator configuration
-                        resource, the "most severe" error mode will be used (propagate > ignore > silent).
+                        How the transform processor reacts to errors returned by statements:
+                        - ignore (default): log the error and continue with the next statement.
+                        - silent: continue with the next statement without logging the error.
+                        - propagate: return the error up the pipeline, which drops the payload.
+                        All transforms of the cluster end up in a single transform processor, which uses the most severe of the
+                        configured error modes (propagate > ignore > silent).
                       enum:
                         - ignore
                         - silent
@@ -1551,9 +1437,7 @@ monitoring resource CRD should match snapshot:
                   description: Only used internally, this field must not be specified by users.
                   properties:
                     error_mode:
-                      description: |-
-                        FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
-                        processing a condition.
+                      description: FilterTransformErrorMode determines how the filter or the transform processor reacts to errors.
                       enum:
                         - ignore
                         - silent
@@ -1569,9 +1453,7 @@ monitoring resource CRD should match snapshot:
                           context:
                             type: string
                           error_mode:
-                            description: |-
-                              FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
-                              processing a condition.
+                            description: FilterTransformErrorMode determines how the filter or the transform processor reacts to errors.
                             enum:
                               - ignore
                               - silent
@@ -1593,9 +1475,7 @@ monitoring resource CRD should match snapshot:
                           context:
                             type: string
                           error_mode:
-                            description: |-
-                              FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
-                              processing a condition.
+                            description: FilterTransformErrorMode determines how the filter or the transform processor reacts to errors.
                             enum:
                               - ignore
                               - silent
@@ -1617,9 +1497,7 @@ monitoring resource CRD should match snapshot:
                           context:
                             type: string
                           error_mode:
-                            description: |-
-                              FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
-                              processing a condition.
+                            description: FilterTransformErrorMode determines how the filter or the transform processor reacts to errors.
                             enum:
                               - ignore
                               - silent
@@ -1641,9 +1519,7 @@ monitoring resource CRD should match snapshot:
                           context:
                             type: string
                           error_mode:
-                            description: |-
-                              FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
-                              processing a condition.
+                            description: FilterTransformErrorMode determines how the filter or the transform processor reacts to errors.
                             enum:
                               - ignore
                               - silent
@@ -1657,62 +1533,38 @@ monitoring resource CRD should match snapshot:
                       type: array
                   type: object
                 eventCollection:
-                  description: |-
-                    Settings for collecting Kubernetes events in the target namespace. This setting is optional, by default the
-                    operator will collect Kubernetes events in the target namespace; unless there is an operator configuration
-                    resource with `telemetryCollection.enabled=false`, then event collection is off by default. It is a validation
-                    error to set `telemetryCollection.enabled=false` in the operator configuration resource and
-                    `eventCollection.enabled=true` in any monitoring resource at the same time.
+                  description: Settings for collecting Kubernetes events in the target namespace.
                   properties:
                     enabled:
                       description: |-
-                        Opt-out for Kubernetes event collection for the target namespace. If set to `false`, the operator will not
-                        collect Kubernetes events in the target namespace.
-
-                        This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
-                        and the operator will collect Kubernetes events in the target namespace; unless there is an operator
-                        configuration resource with `telemetryCollection.enabled=false`, then event collection is off by default. It is a
-                        validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
-                        `eventCollection.enabled=true` in any monitoring resource at the same time.
+                        Opt-out for collecting Kubernetes events in the target namespace. Defaults to `true`, or to `false` if the
+                        operator configuration resource has `telemetryCollection.enabled=false`, in which case setting it to `true` is a
+                        validation error.
                       type: boolean
                   type: object
                 export:
                   description: |-
-                    Deprecated: Use `exports` instead. If both `export` and `exports` are specified, `export` will be ignored.
-                    The mutating webhook will automatically migrate `export` to `exports` if only `export` is specified.
-
-                    The configuration of the observability backend to which telemetry data will be sent. This property is optional.
-                    If not set, the operator will use the default export configuration from the cluster-wide
-                    Dash0OperatorConfiguration resource, if present. If no Dash0OperatorConfiguration resource has been created for
-                    the cluster, or if the Dash0OperatorConfiguration resource does not have at least one export defined, creating a
-                    Dash0Monitoring resource without export settings will result in an error.
-
-                    The export can either be Dash0 or another OTLP-compatible backend. You can also combine up to three exporters
-                    (i.e. Dash0 plus gRPC plus HTTP). This allows sending the same data to two or three targets simultaneously. When
-                    the export setting is present, it has to contain at least one exporter.
+                    Deprecated: Use `exports` instead. If both `export` and `exports` are specified, `export` is ignored. The mutating
+                    webhook migrates `export` to `exports` if only `export` is specified.
                   minProperties: 1
                   properties:
                     dash0:
-                      description: The configuration of the Dash0 ingress endpoint to which telemetry data will be sent.
+                      description: Settings for sending telemetry to Dash0.
                       properties:
                         apiEndpoint:
                           description: |-
-                            The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
-                            dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
-                            needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied from
-                            https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. The correct endpoint value will always
-                            start with "https://api." and end in ".dash0.com"
+                            The API endpoint of your Dash0 organization, see
+                            https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. It starts with `https://api.` and ends in
+                            `.dash0.com`. It is not used for telemetry, but for managing dashboards, check rules, synthetic checks and views
+                            via the operator.
                           type: string
                         authorization:
-                          description: Mandatory authorization settings for sending data to Dash0.
+                          description: The authorization settings for sending data to Dash0. Exactly one of token and secretRef has to be provided.
                           maxProperties: 1
                           minProperties: 1
                           properties:
                             secretRef:
-                              description: |-
-                                A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
-                                ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-                                https://app.dash0.com/settings/auth-tokens.
+                              description: A reference to a Kubernetes secret containing the Dash0 authorization token.
                               properties:
                                 key:
                                   default: token
@@ -1727,32 +1579,24 @@ monitoring resource CRD should match snapshot:
                                 - name
                               type: object
                             token:
-                              description: |-
-                                The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
-                                to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-                                token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
+                              description: The Dash0 authorization token, see https://app.dash0.com/settings/auth-tokens.
                               type: string
                           type: object
                         dataset:
                           description: |-
-                            The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
-                            identifier, not its display name; for example, a dataset named "Production" can have the identifier "prod". The
-                            identifier can be looked up in https://app.dash0.com/settings/datasets. This property is optional. If omitted, no
-                            dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token. API
-                            access (dashboards, check rules, etc.) uses the dataset "default" in that case.
+                            The identifier (not the display name) of the Dash0 dataset to which telemetry data will be sent, see
+                            https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token,
+                            and API access (dashboards, check rules, etc.) uses the dataset "default".
                           type: string
                         endpoint:
                           description: |-
-                            The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
-                            needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
-                            https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. The correct endpoint value will always
-                            start with `ingress.` and end in `dash0.com:4317`.
+                            The OTLP/gRPC endpoint of your Dash0 organization, see
+                            https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. It starts with `ingress.` and ends in
+                            `dash0.com:4317`.
                           minLength: 1
                           type: string
                         keepalive:
-                          description: |-
-                            The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
-                            This setting is optional and there should usually be no need to configure it.
+                          description: The client-side gRPC keepalive settings. There is usually no need to configure them.
                           properties:
                             permit_without_stream:
                               description: Allow keepalive pings when there are no active streams.
@@ -1769,41 +1613,33 @@ monitoring resource CRD should match snapshot:
                         - endpoint
                       type: object
                     grpc:
-                      description: The settings for an exporter to send telemetry to an arbitrary OTLP-compatible receiver via gRPC.
+                      description: Settings for sending telemetry to an OTLP-compatible receiver via gRPC.
                       properties:
                         balancer_name:
-                          description: |-
-                            The name of the load balancer to use. Can be either round_robin or pick_first. Optional; when omitted, the
-                            collector's default (round_robin) is used.
+                          description: The load balancer to use, round_robin or pick_first. When omitted, the collector's default (round_robin) is used.
                           enum:
                             - round_robin
                             - pick_first
                           type: string
                         endpoint:
-                          description: The URL of the OTLP-compatible receiver to which telemetry data will be sent. This property is mandatory.
+                          description: The URL of the OTLP-compatible receiver to which telemetry data will be sent.
                           type: string
                         headers:
-                          description: Additional headers to be sent with each gRPC request, for example for authorization. This property is optional.
+                          description: Additional headers to be sent with each gRPC request, for example for authorization.
                           items:
-                            description: |-
-                              Header describes a single header to be sent with each request. The header value can either be provided directly via
-                              the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
-                              has to be provided.
+                            description: Header describes a single header to be sent with each request. Exactly one of value and valueFrom has to be provided.
                             properties:
                               name:
                                 description: The name of the header.
                                 type: string
                               value:
-                                description: |-
-                                  The value of the header, provided directly as a literal string. This property is optional, but either this
-                                  property or the valueFrom property has to be provided. It is a validation error to provide both.
+                                description: The value of the header as a literal string.
                                 minLength: 1
                                 type: string
                               valueFrom:
                                 description: |-
-                                  A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
-                                  header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
-                                  either this property or the value property has to be provided. It is a validation error to provide both.
+                                  The value of the header, sourced from a Kubernetes secret. Use this for sensitive values like authorization tokens
+                                  or API keys.
                                 properties:
                                   secretKeyRef:
                                     description: A reference to a key in a Kubernetes secret containing the header value.
@@ -1831,17 +1667,15 @@ monitoring resource CRD should match snapshot:
                                 rule: has(self.value) != has(self.valueFrom)
                           type: array
                         insecure:
-                          description: Explicitly defines whether TLS is used. Per default, a secure connection is assumed, unless the endpoint starts with 'http://'.
+                          description: Whether to disable TLS. By default, TLS is used unless the endpoint starts with 'http://'.
                           type: boolean
                         insecureSkipVerify:
                           description: |-
-                            Whether to skip verifying the server's certificate chain. It is a validation error to explicitly set
-                            `insecure=true` and `insecureSkipVerify=true` at the same time, since `insecure` means TLS won't be used at all.
+                            Whether to skip verifying the server's certificate chain. It is a validation error to combine this with
+                            `insecure=true`, which disables TLS altogether.
                           type: boolean
                         keepalive:
-                          description: |-
-                            The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
-                            This setting is optional and there should usually be no need to configure it.
+                          description: The client-side gRPC keepalive settings. There is usually no need to configure them.
                           properties:
                             permit_without_stream:
                               description: Allow keepalive pings when there are no active streams.
@@ -1857,7 +1691,7 @@ monitoring resource CRD should match snapshot:
                         - endpoint
                       type: object
                     http:
-                      description: The settings for an exporter to send telemetry to an arbitrary OTLP-compatible receiver via HTTP.
+                      description: Settings for sending telemetry to an OTLP-compatible receiver via HTTP.
                       properties:
                         encoding:
                           default: proto
@@ -1867,30 +1701,24 @@ monitoring resource CRD should match snapshot:
                             - json
                           type: string
                         endpoint:
-                          description: The URL of the OTLP-compatible receiver to which telemetry data will be sent. This property is mandatory.
+                          description: The URL of the OTLP-compatible receiver to which telemetry data will be sent.
                           type: string
                         headers:
-                          description: Additional headers to be sent with each HTTP request, for example for authorization. This property is optional.
+                          description: Additional headers to be sent with each HTTP request, for example for authorization.
                           items:
-                            description: |-
-                              Header describes a single header to be sent with each request. The header value can either be provided directly via
-                              the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
-                              has to be provided.
+                            description: Header describes a single header to be sent with each request. Exactly one of value and valueFrom has to be provided.
                             properties:
                               name:
                                 description: The name of the header.
                                 type: string
                               value:
-                                description: |-
-                                  The value of the header, provided directly as a literal string. This property is optional, but either this
-                                  property or the valueFrom property has to be provided. It is a validation error to provide both.
+                                description: The value of the header as a literal string.
                                 minLength: 1
                                 type: string
                               valueFrom:
                                 description: |-
-                                  A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
-                                  header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
-                                  either this property or the value property has to be provided. It is a validation error to provide both.
+                                  The value of the header, sourced from a Kubernetes secret. Use this for sensitive values like authorization tokens
+                                  or API keys.
                                 properties:
                                   secretKeyRef:
                                     description: A reference to a key in a Kubernetes secret containing the header value.
@@ -1926,43 +1754,33 @@ monitoring resource CRD should match snapshot:
                   type: object
                 exports:
                   description: |-
-                    The configuration of the observability backend(s) to which telemetry data will be sent. This property is optional.
-                    If not set, the operator will use the default export configuration from the cluster-wide
-                    Dash0OperatorConfiguration resource, if present. If no Dash0OperatorConfiguration resource has been created for
-                    the cluster, or if the Dash0OperatorConfiguration resource does not have at least one export defined, creating a
-                    Dash0Monitoring resource without export settings will result in an error.
-
-                    Each export can either be Dash0 or another OTLP-compatible backend. You can also combine up to three exporters
-                    per export (i.e. Dash0 plus gRPC plus HTTP). This allows sending the same data to multiple targets simultaneously.
-                    When the exports setting is present, it has to contain at least one export with at least one exporter.
+                    The observability backends to which the telemetry of this namespace will be sent. Each export can combine up to
+                    three exporters (Dash0, gRPC and HTTP). Telemetry is sent to every exporter of every export. If omitted, the
+                    exports of the Dash0OperatorConfiguration resource are used. In that case, creating the resource fails if there is
+                    no operator configuration resource or if it has no exports.
                   items:
                     description: |-
-                      Export describes the observability backend to which telemetry data will be sent. This can either be Dash0 or another
-                      OTLP-compatible backend. You can also combine up to three exporters (i.e. Dash0 plus gRPC plus HTTP). This allows
-                      sending the same data to two or three targets simultaneously. At least one exporter has to be defined.
+                      Export describes the observability backend to which telemetry data will be sent: Dash0, an OTLP-compatible receiver
+                      via gRPC or HTTP, or a combination of these three exporters. At least one exporter has to be defined.
                     minProperties: 1
                     properties:
                       dash0:
-                        description: The configuration of the Dash0 ingress endpoint to which telemetry data will be sent.
+                        description: Settings for sending telemetry to Dash0.
                         properties:
                           apiEndpoint:
                             description: |-
-                              The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
-                              dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
-                              needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied from
-                              https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. The correct endpoint value will always
-                              start with "https://api." and end in ".dash0.com"
+                              The API endpoint of your Dash0 organization, see
+                              https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. It starts with `https://api.` and ends in
+                              `.dash0.com`. It is not used for telemetry, but for managing dashboards, check rules, synthetic checks and views
+                              via the operator.
                             type: string
                           authorization:
-                            description: Mandatory authorization settings for sending data to Dash0.
+                            description: The authorization settings for sending data to Dash0. Exactly one of token and secretRef has to be provided.
                             maxProperties: 1
                             minProperties: 1
                             properties:
                               secretRef:
-                                description: |-
-                                  A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
-                                  ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-                                  https://app.dash0.com/settings/auth-tokens.
+                                description: A reference to a Kubernetes secret containing the Dash0 authorization token.
                                 properties:
                                   key:
                                     default: token
@@ -1977,32 +1795,24 @@ monitoring resource CRD should match snapshot:
                                   - name
                                 type: object
                               token:
-                                description: |-
-                                  The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
-                                  to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-                                  token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
+                                description: The Dash0 authorization token, see https://app.dash0.com/settings/auth-tokens.
                                 type: string
                             type: object
                           dataset:
                             description: |-
-                              The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
-                              identifier, not its display name; for example, a dataset named "Production" can have the identifier "prod". The
-                              identifier can be looked up in https://app.dash0.com/settings/datasets. This property is optional. If omitted, no
-                              dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token. API
-                              access (dashboards, check rules, etc.) uses the dataset "default" in that case.
+                              The identifier (not the display name) of the Dash0 dataset to which telemetry data will be sent, see
+                              https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token,
+                              and API access (dashboards, check rules, etc.) uses the dataset "default".
                             type: string
                           endpoint:
                             description: |-
-                              The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
-                              needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
-                              https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. The correct endpoint value will always
-                              start with `ingress.` and end in `dash0.com:4317`.
+                              The OTLP/gRPC endpoint of your Dash0 organization, see
+                              https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. It starts with `ingress.` and ends in
+                              `dash0.com:4317`.
                             minLength: 1
                             type: string
                           keepalive:
-                            description: |-
-                              The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
-                              This setting is optional and there should usually be no need to configure it.
+                            description: The client-side gRPC keepalive settings. There is usually no need to configure them.
                             properties:
                               permit_without_stream:
                                 description: Allow keepalive pings when there are no active streams.
@@ -2019,41 +1829,33 @@ monitoring resource CRD should match snapshot:
                           - endpoint
                         type: object
                       grpc:
-                        description: The settings for an exporter to send telemetry to an arbitrary OTLP-compatible receiver via gRPC.
+                        description: Settings for sending telemetry to an OTLP-compatible receiver via gRPC.
                         properties:
                           balancer_name:
-                            description: |-
-                              The name of the load balancer to use. Can be either round_robin or pick_first. Optional; when omitted, the
-                              collector's default (round_robin) is used.
+                            description: The load balancer to use, round_robin or pick_first. When omitted, the collector's default (round_robin) is used.
                             enum:
                               - round_robin
                               - pick_first
                             type: string
                           endpoint:
-                            description: The URL of the OTLP-compatible receiver to which telemetry data will be sent. This property is mandatory.
+                            description: The URL of the OTLP-compatible receiver to which telemetry data will be sent.
                             type: string
                           headers:
-                            description: Additional headers to be sent with each gRPC request, for example for authorization. This property is optional.
+                            description: Additional headers to be sent with each gRPC request, for example for authorization.
                             items:
-                              description: |-
-                                Header describes a single header to be sent with each request. The header value can either be provided directly via
-                                the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
-                                has to be provided.
+                              description: Header describes a single header to be sent with each request. Exactly one of value and valueFrom has to be provided.
                               properties:
                                 name:
                                   description: The name of the header.
                                   type: string
                                 value:
-                                  description: |-
-                                    The value of the header, provided directly as a literal string. This property is optional, but either this
-                                    property or the valueFrom property has to be provided. It is a validation error to provide both.
+                                  description: The value of the header as a literal string.
                                   minLength: 1
                                   type: string
                                 valueFrom:
                                   description: |-
-                                    A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
-                                    header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
-                                    either this property or the value property has to be provided. It is a validation error to provide both.
+                                    The value of the header, sourced from a Kubernetes secret. Use this for sensitive values like authorization tokens
+                                    or API keys.
                                   properties:
                                     secretKeyRef:
                                       description: A reference to a key in a Kubernetes secret containing the header value.
@@ -2081,17 +1883,15 @@ monitoring resource CRD should match snapshot:
                                   rule: has(self.value) != has(self.valueFrom)
                             type: array
                           insecure:
-                            description: Explicitly defines whether TLS is used. Per default, a secure connection is assumed, unless the endpoint starts with 'http://'.
+                            description: Whether to disable TLS. By default, TLS is used unless the endpoint starts with 'http://'.
                             type: boolean
                           insecureSkipVerify:
                             description: |-
-                              Whether to skip verifying the server's certificate chain. It is a validation error to explicitly set
-                              `insecure=true` and `insecureSkipVerify=true` at the same time, since `insecure` means TLS won't be used at all.
+                              Whether to skip verifying the server's certificate chain. It is a validation error to combine this with
+                              `insecure=true`, which disables TLS altogether.
                             type: boolean
                           keepalive:
-                            description: |-
-                              The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
-                              This setting is optional and there should usually be no need to configure it.
+                            description: The client-side gRPC keepalive settings. There is usually no need to configure them.
                             properties:
                               permit_without_stream:
                                 description: Allow keepalive pings when there are no active streams.
@@ -2107,7 +1907,7 @@ monitoring resource CRD should match snapshot:
                           - endpoint
                         type: object
                       http:
-                        description: The settings for an exporter to send telemetry to an arbitrary OTLP-compatible receiver via HTTP.
+                        description: Settings for sending telemetry to an OTLP-compatible receiver via HTTP.
                         properties:
                           encoding:
                             default: proto
@@ -2117,30 +1917,24 @@ monitoring resource CRD should match snapshot:
                               - json
                             type: string
                           endpoint:
-                            description: The URL of the OTLP-compatible receiver to which telemetry data will be sent. This property is mandatory.
+                            description: The URL of the OTLP-compatible receiver to which telemetry data will be sent.
                             type: string
                           headers:
-                            description: Additional headers to be sent with each HTTP request, for example for authorization. This property is optional.
+                            description: Additional headers to be sent with each HTTP request, for example for authorization.
                             items:
-                              description: |-
-                                Header describes a single header to be sent with each request. The header value can either be provided directly via
-                                the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
-                                has to be provided.
+                              description: Header describes a single header to be sent with each request. Exactly one of value and valueFrom has to be provided.
                               properties:
                                 name:
                                   description: The name of the header.
                                   type: string
                                 value:
-                                  description: |-
-                                    The value of the header, provided directly as a literal string. This property is optional, but either this
-                                    property or the valueFrom property has to be provided. It is a validation error to provide both.
+                                  description: The value of the header as a literal string.
                                   minLength: 1
                                   type: string
                                 valueFrom:
                                   description: |-
-                                    A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
-                                    header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
-                                    either this property or the value property has to be provided. It is a validation error to provide both.
+                                    The value of the header, sourced from a Kubernetes secret. Use this for sensitive values like authorization tokens
+                                    or API keys.
                                   properties:
                                     secretKeyRef:
                                       description: A reference to a key in a Kubernetes secret containing the header value.
@@ -2177,29 +1971,19 @@ monitoring resource CRD should match snapshot:
                   type: array
                 filter:
                   description: |-
-                    Optional filters for telemetry data that is collected in this namespace. This can be used to drop entire spans,
-                    span events, metrics, metric data points, or log records. See "Transform" for advanced transformations (e.g.
-                    removing span attributes, metric data point attributes, log record attributes etc.). This setting is optional,
-                    by default, no filters are applied. It is a validation error to set `telemetryCollection.enabled=false` in the
-                    operator configuration resource and set filters in any monitoring resource at the same time.
+                    Optional filters to drop spans, span events, metrics, metric data points, log records or profiles collected in
+                    this namespace (see transform for modifying telemetry). It is a validation error to set filters while the operator
+                    configuration resource has `telemetryCollection.enabled=false`.
                   properties:
                     error_mode:
                       default: ignore
                       description: |-
-                        An optional field which will determine how the filter processor reacts to errors that occur while processing a
-                        condition. Possible values:
-                        - ignore: ignore errors returned by conditions, log them, continue with to the next condition.
-                                  This is the recommended mode and also the default mode if this property is omitted.
-                        - silent: ignore errors returned by conditions, do not log them, continue with to the next condition.
-                        - propagate: return the error up the processing pipeline. This will result in the payload being dropped from the
-                                  collector. Not recommended.
-
-                        This is optional, default to "ignore", there is usually no reason to change this.
-
-                        Note that although this can be specified per namespace and cluster-wide, the filter conditions will be aggregated
-                        into one single filter processor in the resulting OpenTelemetry collector configuration; if different error modes
-                        are specified in different namespaces, or cluster-wide in the operator configuration resource, the "most severe"
-                        error mode will be used (propagate > ignore > silent).
+                        How the filter processor reacts to errors returned by conditions:
+                        - ignore (default, recommended): log the error and continue with the next condition.
+                        - silent: continue with the next condition without logging the error.
+                        - propagate: return the error up the pipeline, which drops the payload. Not recommended.
+                        All filters of the cluster end up in a single filter processor, which uses the most severe of the configured error
+                        modes (propagate > ignore > silent).
                       enum:
                         - ignore
                         - silent
@@ -2212,11 +1996,7 @@ monitoring resource CRD should match snapshot:
                       properties:
                         log_records:
                           description: |-
-                            A list of conditions for filtering log records.
-                            This is a list of OTTL conditions.
-                            All log records where at least one condition evaluates to true will be dropped.
-                            (That is, the conditions are implicitly connected by a logical OR.)
-                            Example:
+                            OTTL conditions for dropping log records. A log record is dropped if at least one condition is true. Example:
                             - 'IsMatch(body, ".*password.*")'
                             - 'severity_number < SEVERITY_NUMBER_WARN'
                           items:
@@ -2230,26 +2010,17 @@ monitoring resource CRD should match snapshot:
                       properties:
                         datapoint:
                           description: |-
-                            A list of conditions for filtering metrics data points.
-                            This is a list of OTTL conditions.
-                            All data points where at least one condition evaluates to true will be dropped.
-                            (That is, the conditions are implicitly connected by a logical OR.)
-                            Note: If all datapoints for a metric are dropped, the metric will also be dropped.
-                            Example:
-                            - 'metric.name == "a.noisy.metric.with.many.datapoints" and value_int == 0' # filter metrics by value
-                            - 'resource.attributes["service.name"] == "my_service_name"' # filter data points by resource attributes
+                            OTTL conditions for dropping metric data points. A data point is dropped if at least one condition is true. A
+                            metric whose data points are all dropped is dropped as well. Example:
+                            - 'metric.name == "a.noisy.metric" and value_int == 0'
+                            - 'resource.attributes["service.name"] == "my_service_name"'
                           items:
                             type: string
                           type: array
                         metric:
                           description: |-
-                            A list of conditions for filtering metrics.
-                            This is a list of OTTL conditions.
-                            All metrics where at least one condition evaluates to true will be dropped.
-                            (That is, the conditions are implicitly connected by a logical OR.)
-                            Example:
+                            OTTL conditions for dropping metrics. A metric is dropped if at least one condition is true. Example:
                             - 'name == "k8s.replicaset.available"'
-                            - 'name == "k8s.replicaset.desired"'
                             - 'type == METRIC_DATA_TYPE_HISTOGRAM'
                           items:
                             type: string
@@ -2261,11 +2032,7 @@ monitoring resource CRD should match snapshot:
                         This can be used to drop _profiles_.
                       properties:
                         profile:
-                          description: |-
-                            A list of conditions for filtering profiles.
-                            This is a list of OTTL conditions.
-                            All profiles where at least one condition evaluates to true will be dropped.
-                            (That is, the conditions are implicitly connected by a logical OR.)
+                          description: OTTL conditions for dropping profiles. A profile is dropped if at least one condition is true.
                           items:
                             type: string
                           type: array
@@ -2277,11 +2044,7 @@ monitoring resource CRD should match snapshot:
                       properties:
                         span:
                           description: |-
-                            A list of conditions for filtering spans.
-                            This is a list of OTTL conditions.
-                            All spans where at least one condition evaluates to true will be dropped.
-                            (That is, the conditions are implicitly connected by a logical OR.)
-                            Example:
+                            OTTL conditions for dropping spans. A span is dropped if at least one condition is true. Example:
                             - 'attributes["http.route"] == "/ready"'
                             - 'attributes["http.route"] == "/metrics"'
                           items:
@@ -2289,11 +2052,8 @@ monitoring resource CRD should match snapshot:
                           type: array
                         spanevent:
                           description: |-
-                            A list of conditions for filtering span events.
-                            This is a list of OTTL conditions.
-                            All span events where at least one condition evaluates to true will be dropped.
-                            (That is, the conditions are implicitly connected by a logical OR.)
-                            If all span events for a span are dropped, the span will be left intact.
+                            OTTL conditions for dropping span events. A span event is dropped if at least one condition is true. The span
+                            itself is kept, even if all of its span events are dropped.
                           items:
                             type: string
                           type: array
@@ -2301,117 +2061,53 @@ monitoring resource CRD should match snapshot:
                   type: object
                 instrumentWorkloads:
                   description: |-
-                    Settings for automatic instrumentation of workloads in the target namespace. This setting is optional, by default
-                    the operator will instrument existing workloads, as well as new workloads at deploy time and changed workloads
-                    when they are updated.
-
-                    Note: There are also instrumentWorkloads in the Dash0 operator configuration resource, for cluster-wide settings
-                    for workload instrumentation.
+                    Settings for the automatic instrumentation of workloads in the target namespace. Cluster-wide instrumentation
+                    settings are in the operator configuration resource.
                   properties:
                     captureSqlQueryParameters:
                       description: |-
-                        If set to true, the operator enables SQL query parameter capture in the language agents that support it. Currently
-                        this covers the OpenTelemetry Java agent's JDBC instrumentation and the OpenTelemetry .NET auto-instrumentation
-                        for Microsoft.Data.SqlClient and Entity Framework Core, by adding the following environment variables (all set to
-                        "true") to instrumented containers:
+                        If set to true, the operator enables SQL query parameter capture in the OpenTelemetry Java agent (JDBC) and the
+                        OpenTelemetry .NET auto-instrumentation (Microsoft.Data.SqlClient, Entity Framework Core). It sets the following
+                        environment variables to "true" in instrumented containers, unless a container sets them to a different value:
                           - OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS
                           - OTEL_DOTNET_EXPERIMENTAL_SQLCLIENT_ENABLE_TRACE_DB_QUERY_PARAMETERS
                           - OTEL_DOTNET_EXPERIMENTAL_EFCORE_ENABLE_TRACE_DB_QUERY_PARAMETERS
-                        Recorded query parameter values are added to the resulting database span attributes. Other language agents ignore
-                        these variables.
-
-                        If a container already has one of these environment variables set to a value other than "true", the existing value
-                        is preserved.
-
-                        Note: These are experimental upstream OpenTelemetry agent flags and may be renamed or removed in future agent
-                        releases. Recorded query parameter values may include sensitive data such as personally identifiable information
-                        (PII), so enable this only for namespaces where capturing query parameter values is acceptable.
-
-                        By default, the value is not set and the environment variables will not be added to workloads. If this option is
-                        set to true at some point and then later set to false or removed, the operator will remove each environment
-                        variable from instrumented workloads if and only if its current value still matches what the operator would have
-                        set ("true").
+                        The parameter values are added to the database spans and may include sensitive data such as PII. These
+                        experimental agent flags may be renamed or removed in future agent releases. If the setting is later set to false
+                        or removed, the operator removes each variable whose value is still "true".
                       type: boolean
                     labelSelector:
                       default: dash0.com/enable!=false
                       description: |-
-                        An optional configurable label selector for fine-grained per-workload control over instrumentation. Workloads
-                        which match this label selector will be instrumented (according to the value of spec.instrumentWorkloads.mode).
-                        Workloads which do not match this label selector will never be instrumented, regardless of the value of
-                        spec.instrumentWorkloads.mode.
-
-                        This attribute is ignored if spec.instrumentWorkloads.mode=none.
-
-                        By default, this label selector has the value "dash0.com/enable!=false" - that is, the following workloads will
-                        be instrumented (assuming spec.instrumentWorkloads.mode!=none)
-                        - workloads that do not have the label dash0.com/enable at all, or
-                        - workloads that have the label dash0.com/enable with a value other than "false".
-
-                        It is recommended to leave this setting unset (i.e., leave the default "dash0.com/enable!=false" in place), unless
-                        you have a specific use case that requires a different label selector. One such use case is implementing an
-                        opt-in model for workload instrumentation instead of the usual opt-out model. That is, instead of instrumenting
-                        all workloads by default and only disabling instrumentation for a few specific workloads, you want to
-                        deliberately turn on instrumentation for a few specific workloads and leave all others uninstrumented. Use a
-                        label selector with equals instead of not-equals to achieve this, i.e.,
-                        spec.instrumentWorkloads.labelSelector="auto-instrument-this-workload-with-dash0=true".
+                        A label selector for per-workload control over instrumentation: Only workloads that match it are instrumented. It
+                        is ignored if spec.instrumentWorkloads.mode is `none`. The default "dash0.com/enable!=false" matches all workloads
+                        except those with the label dash0.com/enable=false. A selector with equals instead of not-equals (e.g.
+                        "auto-instrument-this-workload-with-dash0=true") implements an opt-in model instead.
                       type: string
                     mode:
                       description: |-
-                        Controls the automatic workload instrumentation for the target namespace, that is, which events will trigger the
-                        auto-instrumentation of a workload, and whether workloads or pods are instrumented. There are four possible
-                        settings:
-                        `all`, `created-and-updated`, `pods` and `none`. By default, the setting `all` is assumed, unless there is an
-                        operator configuration resource with `telemetryCollection.enabled=false`, then the setting `none` is assumed.
-
-                        If set to `all`, the operator will:
-                        * automatically instrument existing workloads in the target namespace (i.e. workloads already running in the
-                          namespace) when the Dash0 monitoring resource is deployed,
-                        * instrument existing workloads or update the instrumentation of already instrumented workloads in the target
-                          namespace when the Dash0 operator is first started or restarted (for example when updating the operator),
-                        * instrument new workloads in the target namespace when they are deployed, and
-                        * instrument changed workloads in the target namespace when changes are applied to them.
-                        Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
-                        affected workloads.
-
-                        If set to `created-and-updated`, the operator will not instrument existing workloads in the target namespace,
-                        neither when a Dash0 monitoring resource is deployed, nor when the Dash0 operator is started or restarted.
-                        Instead, it will only:
-                        * instrument new workloads in the target namespace when they are deployed, and
-                        * instrument changed workloads in the target namespace when changes are applied to them.
-                        This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
-                        resource or restarting the Dash0 operator.
-
-                        If set to `pods`, the operator will not instrument workloads like deployments, daemon sets,
-                        stateful sets, replica sets, jobs and cron jobs. Instead, it instruments each pod when it is created, regardless
-                        of which kind of workload owns it. The operator never restarts pods in this mode: Pods that already exist keep
-                        their state until they are recreated, for example by the next rollout. That applies to instrumenting them, to
-                        updating their instrumentation when the Dash0 operator is updated, and to removing their instrumentation when
-                        the mode is changed to `none` or the Dash0 monitoring resource is removed. Since only new pods are affected, a
-                        workload can run instrumented and uninstrumented pods side by side, for example after a scale-up. The only
-                        exception are workloads that still have instrumentation in their pod template from before the mode was changed
-                        to `pods`: The operator removes it the next time the workload is updated, if that does not replace any pods
-                        that would not be replaced anyway, for example with the next rollout. When the mode is changed to `none` or the
-                        Dash0 monitoring resource is removed before that, their pod template is reverted, which replaces their pods.
-                        The label selector (spec.instrumentWorkloads.labelSelector) is evaluated against the labels of the pod combined
-                        with the labels of its owners (replica set and deployment, job and cron job, daemon set, stateful set); the
-                        level closest to the pod wins. The other modes only evaluate it against the labels in the top level metadata of
-                        the workload.
-                        This setting is useful if you want to avoid that the operator modifies workloads that are managed by GitOps or
-                        infrastructure-as-code tools, which would otherwise report the modifications as drift.
-
-                        You can opt out of automatically instrumenting workloads entirely by setting this option to `none`. With
-                        `mode: none`, workloads in the target namespace will never be instrumented to send telemetry to Dash0.
-
-                        If this setting is omitted, the value `all` is assumed and new, updated as well as existing Kubernetes workloads
-                        will be automatically intrumented by the operator to send telemetry to Dash0, as described above. There is one
-                        exception to this rule: If there is an operator configuration resource with `telemetryCollection.enabled=false`,
-                        then the default setting is `none` instead of `all`, and no workloads will be instrumented by the Dash0 operator.
-
-                        It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
-                        `mode: all`, `mode: created-and-updated` or `mode: pods` in any monitoring resource at the same time.
-
-                        More fine-grained per-workload control over instrumentation is available by setting the label
-                        dash0.com/enable=false on individual workloads, or by using a custom label selector via
+                        Which events trigger the instrumentation of workloads in the target namespace, and whether workloads or pods are
+                        instrumented:
+                        * `all` (default): The operator instruments existing workloads when the Dash0 monitoring resource is deployed,
+                          instruments existing workloads or updates their instrumentation when the operator starts or restarts (e.g. when
+                          it is updated), and instruments new workloads when they are deployed and changed workloads when they are
+                          updated. Instrumenting existing workloads restarts their pods.
+                        * `created-and-updated`: The operator only instruments new workloads when they are deployed and changed workloads
+                          when they are updated. This avoids pod restarts when the monitoring resource is deployed or the operator
+                          restarts.
+                        * `pods`: The operator does not modify workloads (deployments, daemon sets, stateful sets, replica sets, jobs, cron
+                          jobs), but instruments each pod when it is created. It never restarts pods: Existing pods keep their state until
+                          they are recreated (e.g. by the next rollout), also when the operator is updated, the mode is changed to `none`
+                          or the monitoring resource is removed. Hence, a workload can run instrumented and uninstrumented pods side by
+                          side. Instrumentation that a pod template still has from an earlier mode is removed with the next update of the
+                          workload, unless that would replace pods that would not be replaced otherwise. If the mode is changed to `none`
+                          or the monitoring resource is removed before that, the pod template is reverted, which replaces the pods. The
+                          label selector is evaluated against the labels of the pod combined with those of its owners, the level closest
+                          to the pod wins; the other modes only use the labels of the workload. Use this mode to avoid drift reports by
+                          GitOps or infrastructure-as-code tools.
+                        * `none`: Workloads in the target namespace are never instrumented.
+                        If the operator configuration resource has `telemetryCollection.enabled=false`, the default is `none`, and any
+                        other mode is a validation error. Individual workloads can be excluded via the label dash0.com/enable=false or
                         spec.instrumentWorkloads.labelSelector.
                       enum:
                         - all
@@ -2424,132 +2120,74 @@ monitoring resource CRD should match snapshot:
                       properties:
                         propagators:
                           description: |-
-                            An optional comma-separated list of trace context propagators. If set, the environment variable OTEL_PROPAGATORS
-                            is added to workloads with the value of this field. This allows configuring the OpenTelemetry SDK to use specific
-                            propagators for trace context propagation. The value can be a comma-separated list of propagators, for exampmle
-                            "tracecontext,xray" for the W3C trace context traceparent header and AWS X-Ray headers.
-
-                            Note that you usually want to list the preferred propagator last, if multiple propagators are specified. The
-                            reason is that both `Extract` (reading trace context information from headers and adding it to the span) and
-                            `Inject` (addding trace context information to headers on outgoing requests) are both run in the order in which
-                            the propagators are defined. For extract that means that the _last one wins_, if multiple propagators extract the
-                            same information (e.g. trace ID and span ID). Hence, the need to specify them in reverse order of priority.
-
-                            By default, the value is not set and the environment variable OTEL_PROPAGATORS will not be added to workloads.
-                            (The default values for OpenTelemetry SDKs when OTEL_PROPAGATORS is not set is "tracecontext,baggage".)
-
-                            See also: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators
+                            A comma-separated list of trace context propagators, e.g. "tracecontext,xray" for the W3C traceparent header and
+                            AWS X-Ray headers. If set, it is added to workloads as the environment variable OTEL_PROPAGATORS (the SDK default
+                            is "tracecontext,baggage"). If several propagators extract the same information, the last one wins, so list the
+                            preferred propagator last.
                           type: string
                       type: object
                   type: object
                 kubernetesObjectCollection:
-                  description: |-
-                    Settings for collecting the manifests of pods and workloads in the target namespace. This setting is optional,
-                    by default the operator will not collect Kubernetes object manifests.
+                  description: Settings for collecting the manifests of pods and workloads in the target namespace.
                   properties:
                     enabled:
                       description: |-
-                        Opt-in for Kubernetes object collection for the target namespace. If set to `true`, the operator will collect the
-                        manifests of pods, deployments, replica sets, stateful sets and daemon sets in the target namespace and send them
-                        to Dash0 as log records. Values of environment variables as well as the annotations in which well-known deploy
-                        tools (kubectl, kapp, Rancher) store a serialized copy of the whole manifest are removed from the manifests
-                        before they leave the cluster.
-
-                        This setting is optional, it defaults to `false`, that is, if this setting is omitted, the operator will not
-                        collect Kubernetes object manifests in the target namespace.
+                        Opt-in for sending the manifests of pods, deployments, replica sets, stateful sets and daemon sets in the target
+                        namespace to Dash0 as log records. Defaults to `false`. Values of environment variables and the annotations in
+                        which deploy tools (kubectl, kapp, Rancher) store a copy of the whole manifest are removed before the manifests
+                        leave the cluster.
                       type: boolean
                   type: object
                 logCollection:
-                  description: |-
-                    Settings for log collection in the target namespace. This setting is optional, by default the operator will
-                    collect pod logs in the target namespace; unless there is an operator configuration resource with
-                    `telemetryCollection.enabled=false`, then log collection is off by default. It is a validation error to set
-                    `telemetryCollection.enabled=false` in the operator configuration resource and `logCollection.enabled=true` in any
-                    monitoring resource at the same time.
+                  description: Settings for collecting pod logs in the target namespace.
                   properties:
                     enabled:
                       description: |-
-                        Opt-out for log collection for the target namespace. If set to `false`, the operator will not collect pod logs
-                        in the target namespace and send the resulting log records to Dash0.
-
-                        This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
-                        and the operator will collect pod logs in the target namespace; unless there is an operator configuration
-                        resource with `telemetryCollection.enabled=false`, then log collection is off by default. It is a validation error
-                        to set `telemetryCollection.enabled=false` in the operator configuration resource and
-                        `logCollection.enabled=true` in any monitoring resource at the same time.
+                        Opt-out for collecting pod logs in the target namespace. Defaults to `true`, or to `false` if the operator
+                        configuration resource has `telemetryCollection.enabled=false`, in which case setting it to `true` is a
+                        validation error.
                       type: boolean
                   type: object
                 prometheusScraping:
-                  description: |-
-                    Settings for scraping Prometheus metrics from pods in the target namespace according to their
-                    prometheus.io/scrape annotations. This setting is optional, by default the operator will scrape metrics from pods
-                    with these notations in the target namespace; unless there is an operator configuration resource with
-                    `telemetryCollection.enabled=false`, then Prometheus scraping is off by default. It is a validation error to set
-                    `telemetryCollection.enabled=false` in the operator configuration resource and `prometheusScraping.enabled=true`
-                    in any monitoring resource at the same time.
+                  description: Settings for scraping Prometheus metrics from pods in the target namespace.
                   properties:
                     enabled:
                       description: |-
-                        If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
-                        of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry
-                        Prometheus receiver. This setting is optional, it defaults to `true`; unless there is an operator configuration
-                        resource with `telemetryCollection.enabled=false`, then Prometheus scraping is off by default. It is a validation
-                        error to set `telemetryCollection.enabled=false` in the operator configuration resource and
-                        `prometheusScraping.enabled=true` in any monitoring resource at the same time.
+                        Whether to scrape metrics from pods in the target namespace according to their prometheus.io/scrape annotations.
+                        Defaults to `true`, or to `false` if the operator configuration resource has `telemetryCollection.enabled=false`,
+                        in which case setting it to `true` is a validation error.
                       type: boolean
                   type: object
                 synchronizePersesDashboards:
                   default: true
                   description: |-
-                    If enabled, the operator will watch Perses dashboard resources in this namespace and create corresponding
-                    dashboards in Dash0 via the Dash0 API.
-                    See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/managing-dash0-resources.md#managing-dash0-dashboards-with-the-operator
-                    for details. This setting is optional, it defaults to `true`.
+                    Whether to synchronize the Perses dashboard resources in this namespace to Dash0 via the Dash0 API. Defaults to
+                    `true`.
                   type: boolean
                 synchronizePrometheusRules:
                   default: true
                   description: |-
-                    If enabled, the operator will watch Prometheus rule resources in this namespace and create corresponding check
-                    rules in Dash0 via the Dash0 API.
-                    See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/managing-dash0-resources.md#managing-dash0-check-rules-with-the-operator
-                    for details. This setting is optional, it defaults to `true`.
+                    Whether to synchronize the Prometheus rule resources in this namespace to Dash0 check rules via the Dash0 API.
+                    Defaults to `true`.
                   type: boolean
                 transform:
                   description: |-
-                    Optional custom transformations for telemetry data that is collected in this namespace. This can be used to
-                    remove span attributes, metric data point attributes, log record attributes etc. See "Filter" for basic filters
-                    that can be used to drop entire spans, span events, metrics, metric data points, or log records.
-
-                    For each signal type (traces, metrics, logs), a list of OTTL statements can be defined. These will be applied to
-                    the telemetry collected in the namespace, following the order specified in the configuration. Each statement can
-                    access and transform telemetry using OTTL functions.
-                    See https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/transformprocessor
-                    for details and examples. Note that this configuration currently supports the
-                    [basic config style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#basic-config)
-                    of the transform processor. The
-                    [advanced config style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#advanced-config)
-                    is not supported.
-
-                    This setting is optional, by default, no transformations are applied. It is a validation error to set
-                    `telemetryCollection.enabled=false` in the operator configuration resource and set transforms in any monitoring
-                    resource at the same time.
+                    Optional transformations for telemetry collected in this namespace, e.g. to remove span, metric data point or log
+                    record attributes (see filter for dropping telemetry). The OTTL statements of each signal type are applied in the
+                    given order. Only the basic config style of the transform processor is supported, see
+                    https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/transformprocessor. It is a
+                    validation error to set transforms while the operator configuration resource has
+                    `telemetryCollection.enabled=false`.
                   properties:
                     error_mode:
                       default: ignore
                       description: |-
-                        An optional field which will determine how the transform processor reacts to errors that occur while processing a
-                        statement. Possible values:
-                        - ignore: ignore errors returned by statements, log them, continue with to the next statement.
-                        - silent: ignore errors returned by statements, do not log them, continue with to the next statement.
-                        - propagate: return the error up the processing pipeline. This will result in the payload being dropped from the
-                          collector.
-
-                        This is optional, default to "ignore".
-
-                        Note that although this can be specified per namespace and cluster-wide, the transform statements will be
-                        aggregated into one single transform processor in the resulting OpenTelemetry collector configuration; if
-                        different error modes are specified in different namespaces, or cluster-wide in the operator configuration
-                        resource, the "most severe" error mode will be used (propagate > ignore > silent).
+                        How the transform processor reacts to errors returned by statements:
+                        - ignore (default): log the error and continue with the next statement.
+                        - silent: continue with the next statement without logging the error.
+                        - propagate: return the error up the pipeline, which drops the payload.
+                        All transforms of the cluster end up in a single transform processor, which uses the most severe of the
+                        configured error modes (propagate > ignore > silent).
                       enum:
                         - ignore
                         - silent
@@ -2679,108 +2317,48 @@ monitoring resource CRD should match snapshot:
                   properties:
                     captureSqlQueryParameters:
                       description: |-
-                        If set to true, the operator enables SQL query parameter capture in the language agents that support it. Currently
-                        this covers the OpenTelemetry Java agent's JDBC instrumentation and the OpenTelemetry .NET auto-instrumentation
-                        for Microsoft.Data.SqlClient and Entity Framework Core, by adding the following environment variables (all set to
-                        "true") to instrumented containers:
+                        If set to true, the operator enables SQL query parameter capture in the OpenTelemetry Java agent (JDBC) and the
+                        OpenTelemetry .NET auto-instrumentation (Microsoft.Data.SqlClient, Entity Framework Core). It sets the following
+                        environment variables to "true" in instrumented containers, unless a container sets them to a different value:
                           - OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS
                           - OTEL_DOTNET_EXPERIMENTAL_SQLCLIENT_ENABLE_TRACE_DB_QUERY_PARAMETERS
                           - OTEL_DOTNET_EXPERIMENTAL_EFCORE_ENABLE_TRACE_DB_QUERY_PARAMETERS
-                        Recorded query parameter values are added to the resulting database span attributes. Other language agents ignore
-                        these variables.
-
-                        If a container already has one of these environment variables set to a value other than "true", the existing value
-                        is preserved.
-
-                        Note: These are experimental upstream OpenTelemetry agent flags and may be renamed or removed in future agent
-                        releases. Recorded query parameter values may include sensitive data such as personally identifiable information
-                        (PII), so enable this only for namespaces where capturing query parameter values is acceptable.
-
-                        By default, the value is not set and the environment variables will not be added to workloads. If this option is
-                        set to true at some point and then later set to false or removed, the operator will remove each environment
-                        variable from instrumented workloads if and only if its current value still matches what the operator would have
-                        set ("true").
+                        The parameter values are added to the database spans and may include sensitive data such as PII. These
+                        experimental agent flags may be renamed or removed in future agent releases. If the setting is later set to false
+                        or removed, the operator removes each variable whose value is still "true".
                       type: boolean
                     labelSelector:
                       default: dash0.com/enable!=false
                       description: |-
-                        An optional configurable label selector for fine-grained per-workload control over instrumentation. Workloads
-                        which match this label selector will be instrumented (according to the value of spec.instrumentWorkloads.mode).
-                        Workloads which do not match this label selector will never be instrumented, regardless of the value of
-                        spec.instrumentWorkloads.mode.
-
-                        This attribute is ignored if spec.instrumentWorkloads.mode=none.
-
-                        By default, this label selector has the value "dash0.com/enable!=false" - that is, the following workloads will
-                        be instrumented (assuming spec.instrumentWorkloads.mode!=none)
-                        - workloads that do not have the label dash0.com/enable at all, or
-                        - workloads that have the label dash0.com/enable with a value other than "false".
-
-                        It is recommended to leave this setting unset (i.e., leave the default "dash0.com/enable!=false" in place), unless
-                        you have a specific use case that requires a different label selector. One such use case is implementing an
-                        opt-in model for workload instrumentation instead of the usual opt-out model. That is, instead of instrumenting
-                        all workloads by default and only disabling instrumentation for a few specific workloads, you want to
-                        deliberately turn on instrumentation for a few specific workloads and leave all others uninstrumented. Use a
-                        label selector with equals instead of not-equals to achieve this, i.e.,
-                        spec.instrumentWorkloads.labelSelector="auto-instrument-this-workload-with-dash0=true".
+                        A label selector for per-workload control over instrumentation: Only workloads that match it are instrumented. It
+                        is ignored if spec.instrumentWorkloads.mode is `none`. The default "dash0.com/enable!=false" matches all workloads
+                        except those with the label dash0.com/enable=false. A selector with equals instead of not-equals (e.g.
+                        "auto-instrument-this-workload-with-dash0=true") implements an opt-in model instead.
                       type: string
                     mode:
                       description: |-
-                        Controls the automatic workload instrumentation for the target namespace, that is, which events will trigger the
-                        auto-instrumentation of a workload, and whether workloads or pods are instrumented. There are four possible
-                        settings:
-                        `all`, `created-and-updated`, `pods` and `none`. By default, the setting `all` is assumed, unless there is an
-                        operator configuration resource with `telemetryCollection.enabled=false`, then the setting `none` is assumed.
-
-                        If set to `all`, the operator will:
-                        * automatically instrument existing workloads in the target namespace (i.e. workloads already running in the
-                          namespace) when the Dash0 monitoring resource is deployed,
-                        * instrument existing workloads or update the instrumentation of already instrumented workloads in the target
-                          namespace when the Dash0 operator is first started or restarted (for example when updating the operator),
-                        * instrument new workloads in the target namespace when they are deployed, and
-                        * instrument changed workloads in the target namespace when changes are applied to them.
-                        Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
-                        affected workloads.
-
-                        If set to `created-and-updated`, the operator will not instrument existing workloads in the target namespace,
-                        neither when a Dash0 monitoring resource is deployed, nor when the Dash0 operator is started or restarted.
-                        Instead, it will only:
-                        * instrument new workloads in the target namespace when they are deployed, and
-                        * instrument changed workloads in the target namespace when changes are applied to them.
-                        This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
-                        resource or restarting the Dash0 operator.
-
-                        If set to `pods`, the operator will not instrument workloads like deployments, daemon sets,
-                        stateful sets, replica sets, jobs and cron jobs. Instead, it instruments each pod when it is created, regardless
-                        of which kind of workload owns it. The operator never restarts pods in this mode: Pods that already exist keep
-                        their state until they are recreated, for example by the next rollout. That applies to instrumenting them, to
-                        updating their instrumentation when the Dash0 operator is updated, and to removing their instrumentation when
-                        the mode is changed to `none` or the Dash0 monitoring resource is removed. Since only new pods are affected, a
-                        workload can run instrumented and uninstrumented pods side by side, for example after a scale-up. The only
-                        exception are workloads that still have instrumentation in their pod template from before the mode was changed
-                        to `pods`: The operator removes it the next time the workload is updated, if that does not replace any pods
-                        that would not be replaced anyway, for example with the next rollout. When the mode is changed to `none` or the
-                        Dash0 monitoring resource is removed before that, their pod template is reverted, which replaces their pods.
-                        The label selector (spec.instrumentWorkloads.labelSelector) is evaluated against the labels of the pod combined
-                        with the labels of its owners (replica set and deployment, job and cron job, daemon set, stateful set); the
-                        level closest to the pod wins. The other modes only evaluate it against the labels in the top level metadata of
-                        the workload.
-                        This setting is useful if you want to avoid that the operator modifies workloads that are managed by GitOps or
-                        infrastructure-as-code tools, which would otherwise report the modifications as drift.
-
-                        You can opt out of automatically instrumenting workloads entirely by setting this option to `none`. With
-                        `mode: none`, workloads in the target namespace will never be instrumented to send telemetry to Dash0.
-
-                        If this setting is omitted, the value `all` is assumed and new, updated as well as existing Kubernetes workloads
-                        will be automatically intrumented by the operator to send telemetry to Dash0, as described above. There is one
-                        exception to this rule: If there is an operator configuration resource with `telemetryCollection.enabled=false`,
-                        then the default setting is `none` instead of `all`, and no workloads will be instrumented by the Dash0 operator.
-
-                        It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
-                        `mode: all`, `mode: created-and-updated` or `mode: pods` in any monitoring resource at the same time.
-
-                        More fine-grained per-workload control over instrumentation is available by setting the label
-                        dash0.com/enable=false on individual workloads, or by using a custom label selector via
+                        Which events trigger the instrumentation of workloads in the target namespace, and whether workloads or pods are
+                        instrumented:
+                        * `all` (default): The operator instruments existing workloads when the Dash0 monitoring resource is deployed,
+                          instruments existing workloads or updates their instrumentation when the operator starts or restarts (e.g. when
+                          it is updated), and instruments new workloads when they are deployed and changed workloads when they are
+                          updated. Instrumenting existing workloads restarts their pods.
+                        * `created-and-updated`: The operator only instruments new workloads when they are deployed and changed workloads
+                          when they are updated. This avoids pod restarts when the monitoring resource is deployed or the operator
+                          restarts.
+                        * `pods`: The operator does not modify workloads (deployments, daemon sets, stateful sets, replica sets, jobs, cron
+                          jobs), but instruments each pod when it is created. It never restarts pods: Existing pods keep their state until
+                          they are recreated (e.g. by the next rollout), also when the operator is updated, the mode is changed to `none`
+                          or the monitoring resource is removed. Hence, a workload can run instrumented and uninstrumented pods side by
+                          side. Instrumentation that a pod template still has from an earlier mode is removed with the next update of the
+                          workload, unless that would replace pods that would not be replaced otherwise. If the mode is changed to `none`
+                          or the monitoring resource is removed before that, the pod template is reverted, which replaces the pods. The
+                          label selector is evaluated against the labels of the pod combined with those of its owners, the level closest
+                          to the pod wins; the other modes only use the labels of the workload. Use this mode to avoid drift reports by
+                          GitOps or infrastructure-as-code tools.
+                        * `none`: Workloads in the target namespace are never instrumented.
+                        If the operator configuration resource has `telemetryCollection.enabled=false`, the default is `none`, and any
+                        other mode is a validation error. Individual workloads can be excluded via the label dash0.com/enable=false or
                         spec.instrumentWorkloads.labelSelector.
                       enum:
                         - all
@@ -2793,21 +2371,10 @@ monitoring resource CRD should match snapshot:
                       properties:
                         propagators:
                           description: |-
-                            An optional comma-separated list of trace context propagators. If set, the environment variable OTEL_PROPAGATORS
-                            is added to workloads with the value of this field. This allows configuring the OpenTelemetry SDK to use specific
-                            propagators for trace context propagation. The value can be a comma-separated list of propagators, for exampmle
-                            "tracecontext,xray" for the W3C trace context traceparent header and AWS X-Ray headers.
-
-                            Note that you usually want to list the preferred propagator last, if multiple propagators are specified. The
-                            reason is that both `Extract` (reading trace context information from headers and adding it to the span) and
-                            `Inject` (addding trace context information to headers on outgoing requests) are both run in the order in which
-                            the propagators are defined. For extract that means that the _last one wins_, if multiple propagators extract the
-                            same information (e.g. trace ID and span ID). Hence, the need to specify them in reverse order of priority.
-
-                            By default, the value is not set and the environment variable OTEL_PROPAGATORS will not be added to workloads.
-                            (The default values for OpenTelemetry SDKs when OTEL_PROPAGATORS is not set is "tracecontext,baggage".)
-
-                            See also: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators
+                            A comma-separated list of trace context propagators, e.g. "tracecontext,xray" for the W3C traceparent header and
+                            AWS X-Ray headers. If set, it is added to workloads as the environment variable OTEL_PROPAGATORS (the SDK default
+                            is "tracecontext,baggage"). If several propagators extract the same information, the last one wins, so list the
+                            preferred propagator last.
                           type: string
                       type: object
                   type: object
@@ -2819,14 +2386,9 @@ monitoring resource CRD should match snapshot:
                   properties:
                     enabled:
                       description: |-
-                        Opt-out for log collection for the target namespace. If set to `false`, the operator will not collect pod logs
-                        in the target namespace and send the resulting log records to Dash0.
-
-                        This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
-                        and the operator will collect pod logs in the target namespace; unless there is an operator configuration
-                        resource with `telemetryCollection.enabled=false`, then log collection is off by default. It is a validation error
-                        to set `telemetryCollection.enabled=false` in the operator configuration resource and
-                        `logCollection.enabled=true` in any monitoring resource at the same time.
+                        Opt-out for collecting pod logs in the target namespace. Defaults to `true`, or to `false` if the operator
+                        configuration resource has `telemetryCollection.enabled=false`, in which case setting it to `true` is a
+                        validation error.
                       type: boolean
                   type: object
                 prometheusRuleSynchronizationResults:
