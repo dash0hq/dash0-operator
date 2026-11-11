@@ -705,7 +705,7 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 	fs.BoolVar(
 		&cliArgs.operatorConfigurationProfilingEnabled,
 		"operator-configuration-profiling-enabled",
-		false,
+		true,
 		"The value for profiling.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)

@@ -35,7 +35,7 @@ func (m *Manager) Reconcile(ctx context.Context) (ctrl.Result, error) {
 	config := m.ResourceManager.Config
 	enabled := config.Enabled && config.TelemetryCollectionEnabled && configuration != nil &&
 		ptr.Deref(configuration.Spec.TelemetryCollection.Enabled, true) && len(configuration.EffectiveExports()) > 0 &&
-		configuration.Spec.Profiling != nil && ptr.Deref(configuration.Spec.Profiling.Enabled, false) &&
+		configuration.Spec.Profiling != nil && ptr.Deref(configuration.Spec.Profiling.Enabled, true) &&
 		configuration.Spec.Profiling.EbpfProfiler != nil && ptr.Deref(configuration.Spec.Profiling.EbpfProfiler.Enabled, false)
 	var changes prresources.Changes
 	if enabled {

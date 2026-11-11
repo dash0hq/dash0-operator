@@ -4873,7 +4873,7 @@ spec:
                   enabled:
                     description: |-
                       If enabled, the operator will set up the pipelines to receive, process and forward profiling data over OTLP.
-                      This setting is optional, it defaults to `false`.
+                      This setting is optional, it defaults to `true`, unless `telemetryCollection.enabled` is `false`.
                     type: boolean
                 type: object
               prometheusCrdSupport:

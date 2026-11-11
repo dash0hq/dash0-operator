@@ -315,6 +315,33 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			}
 		})
 
+		DescribeTable("should enable profiling pipelines unless profiling is disabled explicitly",
+			func(profiling *dash0v1alpha1.Profiling, wantProfiling bool) {
+				operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
+				operatorConfiguration.Spec.Profiling = profiling
+				_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+					ctx, util.ExtraConfigDefaults, operatorConfiguration, nil, nil, logger)
+				Expect(err).ToNot(HaveOccurred())
+				collectorConfig := parseConfigMapContent(GetOTelColDaemonSetConfigMap(ctx, k8sClient, OperatorNamespace))
+				daemonSet := &appsv1.DaemonSet{}
+				Expect(k8sClient.Get(ctx, client.ObjectKey{
+					Namespace: OperatorNamespace, Name: ExpectedDaemonSetName,
+				}, daemonSet)).To(Succeed())
+				featureGatesArg := ContainElement(ContainSubstring(profilesSupportFeatureGate))
+				if wantProfiling {
+					Expect(readPipelines(collectorConfig)).To(HaveKey("profiles/export/default"))
+					Expect(daemonSet.Spec.Template.Spec.Containers[0].Args).To(featureGatesArg)
+				} else {
+					Expect(readPipelines(collectorConfig)).ToNot(HaveKey("profiles/export/default"))
+					Expect(daemonSet.Spec.Template.Spec.Containers[0].Args).ToNot(featureGatesArg)
+				}
+			},
+			Entry("profiling omitted", nil, true),
+			Entry("profiling.enabled omitted", &dash0v1alpha1.Profiling{}, true),
+			Entry("profiling enabled explicitly", &dash0v1alpha1.Profiling{Enabled: ptr.To(true)}, true),
+			Entry("profiling disabled explicitly", &dash0v1alpha1.Profiling{Enabled: ptr.To(false)}, false),
+		)
+
 		It("should make the operator configuration resource the owner of cluster-scoped resources", func() {
 			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 			_, _, err :=

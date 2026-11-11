@@ -29,6 +29,14 @@ tests:
       - failedTemplate:
           errorMessage: "Error: operator.ebpfProfilerEnabled requires operator.telemetryCollectionEnabled=true."
 
+  - it: should reject enabling the profiler with profiling pipelines disabled
+    set:
+      operator.ebpfProfilerEnabled: true
+      operator.profilingEnabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.ebpfProfilerEnabled requires operator.profilingEnabled=true."
+
   - it: should default to agent v0.51.2 independently of appVersion
     chart:
       appVersion: 99.100.101

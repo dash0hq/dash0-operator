@@ -56,9 +56,10 @@ Helm chart documentation.
 
 ### Profiling
 
-The Dash0 operator can be configured to accept, process, and export profiling data via OTLP.
+The Dash0 operator accepts, processes, and exports profiling data via OTLP. The profiling pipelines are enabled by
+default. Collecting profiles requires a profiler.
 
-For more information on how to enable profiling support, see the
+For more information on profiling support, see the
 [Profiling](https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/profiling)
 section of the Dash0 operator Helm chart documentation.
 

@@ -778,6 +778,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				operatorConfigurationResource.Spec.KubernetesInfrastructureMetricsCollectionEnabled = new(false)
 				operatorConfigurationResource.Spec.CollectPodLabelsAndAnnotations.Enabled = new(false)
 				operatorConfigurationResource.Spec.PrometheusCrdSupport.Enabled = new(false)
+				operatorConfigurationResource.Spec.Profiling.Enabled = new(false)
 
 				Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
 			})
