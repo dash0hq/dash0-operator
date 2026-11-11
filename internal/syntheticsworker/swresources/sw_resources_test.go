@@ -456,6 +456,39 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 		})
 	})
 
+	Context("when the operator is switched to GKE Autopilot", func() {
+		It("should add the allowlist match label to the pod template of an existing deployment, keeping its selector",
+			func() {
+				_, err := manager.CreateOrUpdateSyntheticsWorkerResources(
+					ctx,
+					operatorConfigurationResourceWithSyntheticsWorker(syntheticsWorkerAuthToken),
+					logger,
+				)
+				Expect(err).ToNot(HaveOccurred())
+				key := client.ObjectKey{Name: DeploymentName(testNamePrefix, testLocationID), Namespace: OperatorNamespace}
+				before := &appsv1.Deployment{}
+				Expect(k8sClient.Get(ctx, key, before)).To(Succeed())
+				Expect(before.Spec.Template.Labels).ToNot(HaveKey("cloud.google.com/matching-allowlist"))
+
+				manager.syntheticsWorkerConfig.IsGkeAutopilot = true
+				results, err := manager.CreateOrUpdateSyntheticsWorkerResources(
+					ctx,
+					operatorConfigurationResourceWithSyntheticsWorker(syntheticsWorkerAuthToken),
+					logger,
+				)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(results).To(HaveLen(1))
+				Expect(results[0].Err).ToNot(HaveOccurred())
+				Expect(results[0].Updated).To(BeTrue())
+
+				after := &appsv1.Deployment{}
+				Expect(k8sClient.Get(ctx, key, after)).To(Succeed())
+				Expect(after.Spec.Template.Labels).To(
+					HaveKeyWithValue("cloud.google.com/matching-allowlist", "dash0-synthetics-worker-v1.0.5"))
+				Expect(after.Spec.Selector).To(Equal(before.Spec.Selector))
+			})
+	})
+
 	Context("when a synthetics-worker deployment has been restarted via kubectl rollout restart", func() {
 		It("should keep the restart annotation, also when reconciling other changes", func() {
 			createOrUpdate := func() (bool, bool) {

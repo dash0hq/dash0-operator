@@ -85,8 +85,9 @@ per `locationId`.
   cannot be used together with `operator.dash0Export.enabled=true`, which has the Helm chart create and manage that
   resource automatically; install with `operator.dash0Export.enabled=false` and create the resource yourself instead
   (see [Configuration](configuration.md)).
-- **Not yet supported on GKE Autopilot.** GKE Autopilot requires every container image to be explicitly allowlisted;
-  the synthetics-worker image has not been added to that allowlist yet.
+- **Fixed image repository on GKE Autopilot.** The GKE Autopilot workload allowlist only accepts the default image
+  repository `ghcr.io/dash0hq/dash0-synthetics-worker`, so only the tag or digest of `operator.syntheticsWorkerImage`
+  can be changed there.
 
 ## Related Documentation
 

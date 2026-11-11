@@ -2063,6 +2063,7 @@ func startDash0Controllers(
 		images,
 		operatorDeploymentSelfReference,
 		developmentMode,
+		cliArgs.isGkeAutopilot,
 		cliArgs.isOpenShift,
 	)
 	if err != nil {
@@ -2746,6 +2747,7 @@ func setupSyntheticsWorkerManager(
 	images util.Images,
 	operatorDeploymentSelfReference *appsv1.Deployment,
 	developmentMode bool,
+	isGkeAutopilot bool,
 	isOpenShift bool,
 ) (*syntheticsworker.SyntheticsWorkerManager, error) {
 	if !envVars.syntheticsWorkerEnabled {
@@ -2760,6 +2762,7 @@ func setupSyntheticsWorkerManager(
 		ServerAddress:     envVars.syntheticsWorkerServerAddress,
 		Insecure:          envVars.syntheticsWorkerInsecure,
 		PriorityClassName: envVars.syntheticsWorkerPriorityClassName,
+		IsGkeAutopilot:    isGkeAutopilot,
 		IsOpenShift:       isOpenShift,
 		DevelopmentMode:   developmentMode,
 	}

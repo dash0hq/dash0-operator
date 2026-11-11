@@ -202,6 +202,7 @@ type SyntheticsWorkerConfig struct {
 	// PriorityClassName is the priority class applied to every synthetics-worker pod, regardless of instance. It is
 	// set from the Helm value operator.syntheticsWorker.priorityClassName.
 	PriorityClassName string
+	IsGkeAutopilot    bool
 	IsOpenShift       bool
 	DevelopmentMode   bool
 }
