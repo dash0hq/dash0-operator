@@ -56,6 +56,22 @@ const (
 	// requests makes the first sync attempt fail (so the periodic retry kicks in) while letting the first request of the
 	// subsequent retry attempt succeed.
 	apiMockFailTimesForOneSyncAttempt = 3
+
+	// dash0ApiClientTimeout is the default timeout of the operator's Dash0 API client (dash0-api-client-go), i.e. the
+	// time after which a synchronization attempt fails if the Dash0 API (mock) does not respond.
+	dash0ApiClientTimeout = 30 * time.Second
+
+	// iacPeriodicRetryInterval is used as the Helm value operator.iac.periodicRetry.interval for the operator deployment
+	// that is shared by all specs which run against an existing operator deployment, including the "synchronizing Dash0
+	// API resources" specs.
+	iacPeriodicRetryInterval = 10 * time.Second
+
+	// capturedApiRequestsTimeout is long enough for a synchronization attempt that fails with a transport error after
+	// dash0ApiClientTimeout to be retried once by the operator's periodic retry (given iacPeriodicRetryInterval), even if
+	// the retried request is slow to arrive itself. It is not long enough for a second failed attempt to be retried.
+	capturedApiRequestsTimeout = 2 * (dash0ApiClientTimeout + iacPeriodicRetryInterval)
+
+	capturedApiRequestsQuietPeriod = 3 * time.Second
 )
 
 var (
@@ -134,26 +150,45 @@ func uninstallDash0ApiMock() {
 		))).To(Succeed())
 }
 
-func fetchCapturedApiRequest(idx int) StoredRequest {
-	return fetchCapturedApiRequests(idx, 1)[0]
+func fetchCapturedApiRequest(urlRegex string, idx int) StoredRequest {
+	return fetchCapturedApiRequests(urlRegex, idx, 1)[0]
 }
 
-func fetchCapturedApiRequests(idx int, count int) []StoredRequest {
+// fetchCapturedApiRequests waits until the Dash0 API mock has captured at least idx+count requests with a URL matching
+// urlRegex, and returns count of these requests, starting at index idx. Captured requests with other URLs are ignored,
+// so that requests for resources of other tests do not interfere.
+func fetchCapturedApiRequests(urlRegex string, idx int, count int) []StoredRequest {
 	var requests []StoredRequest
 	Eventually(func(g Gomega) {
-		storedRequests := getStoredApiRequests(g)
-		g.Expect(storedRequests).NotTo(BeNil())
+		matchingRequests := getStoredApiRequestsMatching(g, urlRegex)
 		g.Expect(
-			len(storedRequests.Requests) >= idx+count).To(
+			len(matchingRequests) >= idx+count).To(
 			BeTrue(),
-			"expected at least %d requests, but got %d: %v",
+			"expected at least %d requests matching %s, but got %d: %v",
 			idx+count,
-			len(storedRequests.Requests),
-			storedRequests.Requests,
+			urlRegex,
+			len(matchingRequests),
+			matchingRequests,
 		)
-		requests = storedRequests.Requests[idx:(idx + count)]
-	}, 30*time.Second, pollingInterval).Should(Succeed())
+		requests = matchingRequests[idx:(idx + count)]
+	}, capturedApiRequestsTimeout, pollingInterval).Should(Succeed())
 	return requests
+}
+
+// getStoredApiRequestsMatching returns the requests captured by the Dash0 API mock with a URL matching urlRegex, in the
+// order in which the mock received them.
+func getStoredApiRequestsMatching(g Gomega, urlRegex string) []StoredRequest {
+	urlMatcher, err := regexp.Compile(urlRegex)
+	g.Expect(err).NotTo(HaveOccurred())
+	storedRequests := getStoredApiRequests(g)
+	g.Expect(storedRequests).NotTo(BeNil())
+	matchingRequests := make([]StoredRequest, 0, len(storedRequests.Requests))
+	for _, req := range storedRequests.Requests {
+		if urlMatcher.MatchString(req.Url) {
+			matchingRequests = append(matchingRequests, req)
+		}
+	}
+	return matchingRequests
 }
 
 func getStoredApiRequests(g Gomega) *StoredRequests {
@@ -232,20 +267,31 @@ func clearApiMockResponseOverrides() {
 
 // countCapturedApiRequests returns how many captured requests have the given HTTP method and a URL matching urlRegex.
 func countCapturedApiRequests(g Gomega, method string, urlRegex string) int {
-	storedRequests := getStoredApiRequests(g)
-	g.Expect(storedRequests).NotTo(BeNil())
 	count := 0
-	for _, req := range storedRequests.Requests {
-		if req.Method != method {
-			continue
-		}
-		matched, err := regexp.MatchString(urlRegex, req.Url)
-		g.Expect(err).NotTo(HaveOccurred())
-		if matched {
+	for _, req := range getStoredApiRequestsMatching(g, urlRegex) {
+		if req.Method == method {
 			count++
 		}
 	}
 	return count
+}
+
+// waitForCapturedApiRequestsToSettle waits until the Dash0 API mock has not captured any new request for
+// capturedApiRequestsQuietPeriod. Deleting a Kubernetes resource returns before the operator has sent the resulting
+// DELETE requests, so this needs to be called after removing resources and before cleaning up the captured requests.
+func waitForCapturedApiRequestsToSettle() {
+	By("waiting until the Dash0 API mock server does not receive any more requests")
+	lastCount := -1
+	var lastChange time.Time
+	Eventually(func(g Gomega) {
+		storedRequests := getStoredApiRequests(g)
+		g.Expect(storedRequests).NotTo(BeNil())
+		if count := len(storedRequests.Requests); count != lastCount {
+			lastCount = count
+			lastChange = time.Now()
+		}
+		g.Expect(time.Since(lastChange)).To(BeNumerically(">=", capturedApiRequestsQuietPeriod))
+	}, 30*time.Second, pollingInterval).Should(Succeed())
 }
 
 func cleanupStoredApiRequests() {
