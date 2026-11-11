@@ -86,7 +86,7 @@ spec:
         - name: DASH0_EBPF_PROFILER_ENABLED
           value: "true"
         - name: DASH0_EBPF_PROFILER_IMAGE
-          value: "parca-agent:v0.51.2"
+          value: "parca-agent:v0.51.5"
         - name: DASH0_DEBUGINFO_PROXY_IMAGE
           value: "debuginfo-proxy:latest"
         ports:
@@ -591,7 +591,7 @@ data:
 
 			Expect(container.Env).To(ContainElements(
 				corev1.EnvVar{Name: "DASH0_EBPF_PROFILER_ENABLED", Value: "false"},
-				corev1.EnvVar{Name: "DASH0_EBPF_PROFILER_IMAGE", Value: "parca-agent:v0.51.2"},
+				corev1.EnvVar{Name: "DASH0_EBPF_PROFILER_IMAGE", Value: "parca-agent:v0.51.5"},
 				corev1.EnvVar{Name: "DASH0_DEBUGINFO_PROXY_IMAGE", Value: "debuginfo-proxy:latest"},
 			))
 			Expect(log).To(ContainSubstring(
@@ -611,7 +611,7 @@ data:
 				Expect(err).To(MatchError(ContainSubstring("render the chart with operator.ebpfProfilerEnabled=true")))
 			},
 			Entry("without the profiler image",
-				"        - name: DASH0_EBPF_PROFILER_IMAGE\n          value: \"parca-agent:v0.51.2\"\n"),
+				"        - name: DASH0_EBPF_PROFILER_IMAGE\n          value: \"parca-agent:v0.51.5\"\n"),
 			Entry("without the debuginfo proxy image",
 				"        - name: DASH0_DEBUGINFO_PROXY_IMAGE\n          value: \"debuginfo-proxy:latest\"\n"),
 		)
@@ -622,7 +622,7 @@ data:
 			Expect(container.Env).To(ContainElements(
 				corev1.EnvVar{Name: "RELATED_IMAGE_OPERATOR", Value: "operator-controller:latest"},
 				corev1.EnvVar{Name: "RELATED_IMAGE_COLLECTOR", Value: "collector:latest"},
-				corev1.EnvVar{Name: "RELATED_IMAGE_EBPF_PROFILER", Value: "parca-agent:v0.51.2"},
+				corev1.EnvVar{Name: "RELATED_IMAGE_EBPF_PROFILER", Value: "parca-agent:v0.51.5"},
 				corev1.EnvVar{Name: "RELATED_IMAGE_DEBUGINFO_PROXY", Value: "debuginfo-proxy:latest"},
 			))
 			for _, envVar := range container.Env {
