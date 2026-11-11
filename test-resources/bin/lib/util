@@ -845,8 +845,8 @@ run_helm() {
     if [[ "${PROMETHEUS_CRD_SUPPORT_ENABLED:-}" = "true" ]]; then
       helm_install_command+=" --set operator.prometheusCrdSupportEnabled=true"
     fi
-    if [[ "${PROFILING_ENABLED:-}" = "true" ]]; then
-      helm_install_command+=" --set operator.profilingEnabled=true"
+    if [[ "${PROFILING_ENABLED:-}" = "false" ]]; then
+      helm_install_command+=" --set operator.profilingEnabled=false"
     fi
     if [[ "${AUTO_MONITOR_NAMESPACES_ENABLED:-}" = "true" ]]; then
       helm_install_command+=" --set operator.autoMonitorNamespaces.enabled=true"

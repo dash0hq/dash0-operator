@@ -371,7 +371,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) validateEbpfProfiler(
 		}
 		return admission.Response{}, false
 	}
-	if !pointers.ReadBoolPointerWithDefault(spec.Profiling.Enabled, false) {
+	if !pointers.ReadBoolPointerWithDefault(spec.Profiling.Enabled, true) {
 		logger.Warn(ErrorMessageEbpfProfilerRequiresProfiling)
 		return admission.Denied(ErrorMessageEbpfProfilerRequiresProfiling), true
 	}
@@ -540,7 +540,7 @@ func validateTelemetryCollectionDisabledConsistency(
 		logger.Warn(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)
 		return admission.Denied(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid), true
 	}
-	if spec.Profiling != nil && pointers.ReadBoolPointerWithDefault(spec.Profiling.Enabled, false) {
+	if spec.Profiling != nil && pointers.ReadBoolPointerWithDefault(spec.Profiling.Enabled, true) {
 		msg := "The provided Dash0 operator configuration resource has profiling " +
 			"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
 			"Please either set telemetryCollection.enabled=true or " +

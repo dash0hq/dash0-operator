@@ -553,7 +553,7 @@ type MonitoringTemplate struct {
 // pipeline definitions for the profiles signal type.
 type Profiling struct {
 	// If enabled, the operator will set up the pipelines to receive, process and forward profiling data over OTLP.
-	// This setting is optional, it defaults to `false`.
+	// This setting is optional, it defaults to `true`, unless `telemetryCollection.enabled` is `false`.
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
 

@@ -163,10 +163,10 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			false,
 		)
 	profilingEnabled :=
-		operatorConfigurationResource.Spec.Profiling != nil &&
+		operatorConfigurationResource.Spec.Profiling == nil ||
 			pointers.ReadBoolPointerWithDefault(
 				operatorConfigurationResource.Spec.Profiling.Enabled,
-				false,
+				true,
 			)
 	agent0ConnectorEnabled :=
 		operatorConfigurationResource.Spec.Agent0Connector.IsEnabled(m.collectorConfig.Agent0ConnectorEnabledViaHelm)
@@ -257,6 +257,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		EnableProfExtension:       m.collectorConfig.EnableProfExtension,
 		ProfilingEnabled:          profilingEnabled,
 		EbpfProfilerEnabled: m.collectorConfig.EbpfProfilerEnabledViaHelm && profilingEnabled &&
+			operatorConfigurationResource.Spec.Profiling != nil &&
 			operatorConfigurationResource.Spec.Profiling.EbpfProfiler != nil &&
 			pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.Profiling.EbpfProfiler.Enabled, false),
 		CompressConfigMap:        m.collectorConfig.CompressConfigMap,

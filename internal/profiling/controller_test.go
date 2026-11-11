@@ -186,6 +186,13 @@ func TestProfilerOmitsDisabledOffCPUThreshold(t *testing.T) {
 	}
 }
 
+func TestProfilerTreatsOmittedProfilingEnabledAsEnabled(t *testing.T) {
+	r, configuration := fixture(t)
+	configuration.Spec.Profiling.Enabled = nil
+	reconcile(t, r, configuration)
+	require.NoError(t, r.Get(context.Background(), key("ebpf-profiler"), &appsv1.DaemonSet{}))
+}
+
 func TestDebuginfoDestinationsAndCredentialRotation(t *testing.T) {
 	r, configuration := fixture(t)
 	configuration.Spec.Exports = append(configuration.Spec.Exports, dash0common.Export{

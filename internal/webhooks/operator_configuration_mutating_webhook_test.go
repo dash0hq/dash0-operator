@@ -234,6 +234,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 						Enabled: new(true),
 					},
+					Profiling: &dash0v1alpha1.Profiling{
+						Enabled: new(true),
+					},
 				},
 			}),
 		Entry("given empty structs, set all default values",
@@ -268,6 +271,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 						Enabled: new(true),
 					},
+					Profiling: &dash0v1alpha1.Profiling{
+						Enabled: new(true),
+					},
 				},
 			}),
 		Entry("given telemetry collection disabled, set most other flags to false",
@@ -299,6 +305,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 						Enabled: new(false),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: new(false),
+					},
+					Profiling: &dash0v1alpha1.Profiling{
 						Enabled: new(false),
 					},
 				},
@@ -336,6 +345,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 						Enabled: new(false),
 					},
+					Profiling: &dash0v1alpha1.Profiling{
+						Enabled: new(false),
+					},
 				},
 			}),
 		Entry("given telemetry collection absent & individual flags disabled, set telemetry collection to true and leave other flags as provided",
@@ -355,6 +367,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
+						Enabled: new(false),
+					},
+					Profiling: &dash0v1alpha1.Profiling{
 						Enabled: new(false),
 					},
 				},
@@ -380,6 +395,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 						Enabled: new(true),
+					},
+					Profiling: &dash0v1alpha1.Profiling{
+						Enabled: new(false),
 					},
 				},
 			}),
@@ -405,6 +423,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 						Enabled: new(true),
 					},
+					Profiling: &dash0v1alpha1.Profiling{
+						Enabled: new(false),
+					},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
@@ -428,6 +449,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 						Enabled: new(true),
+					},
+					Profiling: &dash0v1alpha1.Profiling{
+						Enabled: new(false),
 					},
 				},
 			}),
@@ -474,6 +498,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 						Enabled: new(true),
 					},
+					Profiling: &dash0v1alpha1.Profiling{
+						Enabled: new(true),
+					},
 				},
 			}),
 		Entry("given telemetry collection disabled & individual flags enabled, do nothing",
@@ -494,6 +521,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 						Enabled: new(false),
+					},
+					Profiling: &dash0v1alpha1.Profiling{
+						Enabled: new(true),
 					},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
@@ -518,6 +548,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 						Enabled: new(false),
+					},
+					Profiling: &dash0v1alpha1.Profiling{
+						Enabled: new(true),
 					},
 				},
 			}),
@@ -552,6 +585,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 						Enabled: new(true),
 					},
+					Profiling: &dash0v1alpha1.Profiling{
+						Enabled: new(true),
+					},
 				},
 			}),
 		Entry("should not modify exports when only exports is set",
@@ -582,6 +618,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 						Enabled: new(false),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: new(true),
+					},
+					Profiling: &dash0v1alpha1.Profiling{
 						Enabled: new(true),
 					},
 				},
@@ -616,6 +655,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 						Enabled: new(false),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: new(true),
+					},
+					Profiling: &dash0v1alpha1.Profiling{
 						Enabled: new(true),
 					},
 				},

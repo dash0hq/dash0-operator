@@ -177,6 +177,13 @@ func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigura
 		spec.PrometheusCrdSupport.Enabled = ptr.To(false)
 		patchRequired = true
 	}
+	if spec.Profiling == nil {
+		spec.Profiling = &dash0v1alpha1.Profiling{}
+	}
+	if spec.Profiling.Enabled == nil {
+		spec.Profiling.Enabled = ptr.To(telemetryCollectionEnabled)
+		patchRequired = true
+	}
 
 	// spec.agent0Connector.enabled is deliberately not defaulted: an unset flag means "follow the Helm value", which
 	// Agent0Connector#IsEnabled resolves against the Helm value the operator holds for the lifetime of the process.

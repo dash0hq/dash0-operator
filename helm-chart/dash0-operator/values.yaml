@@ -213,17 +213,17 @@ operator:
   # be disabled implicitly.
   prometheusCrdSupportEnabled: false
 
-  # An opt-in for enabling profiling data pipelines. If set to true, the operator will configure its OpenTelemetry
-  # collectors to accept, process and export profiling data over OTLP.
+  # An opt-out for profiling data pipelines. If set to true, the operator will configure its OpenTelemetry collectors
+  # to accept, process and export profiling data over OTLP. This setting is optional, it defaults to true. It does not
+  # deploy a profiler, see operator.ebpfProfilerEnabled for that.
   #
   # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
   # resource will be created by the Helm chart then.
   # This setting has no effect if operator.telemetryCollectionEnabled is set to false, profiling pipelines will be
   # disabled implicitly.
-  profilingEnabled: false
+  profilingEnabled: true
 
-  # Deploy a privileged node-local eBPF profiler. Requires telemetryCollectionEnabled=true.
-  # Also enables profiling pipelines in the Helm-managed operator configuration.
+  # Deploy a privileged node-local eBPF profiler. Requires telemetryCollectionEnabled=true and profilingEnabled=true.
   # The namespace's Pod Security Admission policy must allow privileged pods; the chart never changes namespace labels.
   # See docs/profiling.md for agent release compatibility, security requirements and workload customization.
   ebpfProfilerEnabled: false

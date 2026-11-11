@@ -10,22 +10,24 @@ This document covers profiling support in the Dash0 operator.
 
 ## Enabling Profiling Support
 
-The Dash0 operator can be configured to accept, process, and export [profiling data](https://opentelemetry.io/docs/specs/otel/profiles/) via OTLP.
+The Dash0 operator accepts, processes, and exports [profiling data](https://opentelemetry.io/docs/specs/otel/profiles/) via OTLP.
+The profiling pipelines are enabled by default, unless telemetry collection is disabled.
+They do not generate profiles themselves.
 
 To collect profiles, opt in to the [operator-managed eBPF profiler](#operator-managed-ebpf-profiler), or deploy the
 [OpenTelemetry eBPF profiler](#collecting-profiles-with-the-opentelemetry-ebpf-profiler) separately.
 
-To enable profiling support, set the `operator.profilingEnabled` Helm value to `true`:
+To disable the profiling pipelines, set the `operator.profilingEnabled` Helm value to `false`:
 
 ```console
 helm install \
-  --set operator.profilingEnabled=true \
+  --set operator.profilingEnabled=false \
   ... \
   dash0-operator \
   dash0-operator/dash0-operator
 ```
 
-Alternatively, you can set `spec.profiling.enabled: true` directly on the `Dash0OperatorConfiguration` custom resource:
+Alternatively, you can set `spec.profiling.enabled: false` directly on the `Dash0OperatorConfiguration` custom resource:
 
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
@@ -34,7 +36,7 @@ metadata:
   name: dash0-operator-configuration-resource
 spec:
   profiling:
-    enabled: true
+    enabled: false
   # ... other settings
 ```
 
@@ -44,14 +46,16 @@ See [Filtering and Transforming Telemetry](configuration.md#filtering-and-transf
 **Note:** [Namespace-specific exports](configuration.md#namespace-specific-exports-and-api-sync-overrides) (`spec.export` or `spec.exports` on a `Dash0Monitoring` resource) do not apply to profiling data.
 Profiles from all namespaces are sent to the default export of the operator configuration (for example via the `operator.dash0Export` or `operator.exports` Helm values), including profiles from namespaces that have a namespace-specific export.
 The reason is that the operator sends telemetry to namespace-specific exports via the routing connector of the OpenTelemetry collector, which does not support profiles.
+When Signal Control is enabled, profiles are also exported directly from the collector DaemonSet, not via the Signal Control collector.
 
 ## Operator-managed eBPF profiler
 
 Set `operator.ebpfProfilerEnabled: true` to let the operator deploy a Parca agent DaemonSet in the operator namespace.
-Telemetry collection must remain enabled. The chart rejects `operator.telemetryCollectionEnabled: false` with this opt-in.
-For a Helm-managed `Dash0OperatorConfiguration`, the opt-in also enables the profiling pipeline and sets
-`spec.profiling.ebpfProfiler.enabled: true`. If you manage that resource yourself, set both
-`spec.profiling.enabled: true` and `spec.profiling.ebpfProfiler.enabled: true` there.
+Telemetry collection and the profiling pipelines must remain enabled. The chart rejects this opt-in together with
+`operator.telemetryCollectionEnabled: false` or `operator.profilingEnabled: false`.
+For a Helm-managed `Dash0OperatorConfiguration`, the opt-in sets `spec.profiling.ebpfProfiler.enabled: true`. If you
+manage that resource yourself, set `spec.profiling.ebpfProfiler.enabled: true` there. Setting it together with
+`spec.profiling.enabled: false` is a validation error.
 
 The operator-managed profiler is not yet supported on GKE Autopilot. It requires a new workload allowlist submitted
 to Google, reviewed, and published before it can run. This review usually takes a few weeks. See the
