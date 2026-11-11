@@ -209,7 +209,8 @@ Kyverno only applies policy exceptions if the feature is enabled, for example vi
 exception (or `*`).
 The following example assumes that the Dash0 operator has been installed with the Helm release name `dash0-operator`
 into the namespace `dash0-operator`. The name of the DaemonSet is
-`<release name>-opentelemetry-collector-agent-daemonset`.
+`<name-prefix>-opentelemetry-collector-agent-daemonset`, where `<name-prefix>` is the value of
+`operator.managedResourceNamePrefix`, or the Helm release name if that is not set.
 The policy and rule names in the example are those of the
 [upstream Kyverno policies](https://github.com/kyverno/policies), they need to match the names of the policies that are
 enforced in the cluster.
@@ -282,7 +283,7 @@ This recommendation does not apply to workloads that are [excluded from workload
 
 ### Long Release Names
 
-The operator uses the Helm release name as the name prefix for the resources it creates, for example
+By default, the operator uses the Helm release name as the name prefix for the resources it creates, for example
 `<release-name>-opentelemetry-collector-service`.
 GitOps tools often use long release names.
 ArgoCD uses the name of the ArgoCD application, and Flux uses `<targetNamespace>-<name>` if the HelmRelease sets a
@@ -293,6 +294,10 @@ Kubernetes limits service names to 63 characters, so the prefix must not be long
 * 31 characters otherwise.
 
 Rendering the chart fails with an error message if the prefix is too long for the enabled features.
+The chart only checks the limit of 24 characters if it creates the operator configuration resource
+(`operator.dash0Export.enabled` is `true` or `operator.exports` is not empty).
+If the operator configuration resource is managed outside the chart, make sure the prefix is not longer than 24
+characters before enabling Prometheus CRD support.
 
 To use a shorter prefix, set it independently of the release name:
 
@@ -304,7 +309,7 @@ operator:
 Alternatively, set a shorter release name explicitly (`spec.source.helm.releaseName` in an ArgoCD application,
 `spec.releaseName` in a Flux HelmRelease).
 
-Set `managedResourceNamePrefix when installing the operator and do not change it afterwards.
+Set `operator.managedResourceNamePrefix` when installing the operator and do not change it afterwards.
 The operator does not remove the resources it has created with the previous prefix, so the collectors with the old
 names would keep running next to the new ones.
 To change the prefix of an existing installation, uninstall and reinstall the operator.

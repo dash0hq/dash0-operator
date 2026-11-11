@@ -3120,6 +3120,10 @@ tests:
       name: a23456789012345678901234
     set:
       operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
         prometheusCrdSupportEnabled: true
     documentSelector:
       path: metadata.name
@@ -3136,6 +3140,10 @@ tests:
       name: a234567890123456789012345
     set:
       operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
         prometheusCrdSupportEnabled: true
     asserts:
       - failedTemplate:
@@ -3173,3 +3181,76 @@ tests:
       - failedTemplate:
           errorPattern: 'the name prefix for the resources the operator creates \(taken from the Helm release name\) is "release\.with\.dots"\. .* which is not a valid Kubernetes service name\.'
 
+  - it: should use the 24 character limit of the target allocator if Signal Control is enabled as well
+    release:
+      name: a234567890123456789012345
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+        prometheusCrdSupportEnabled: true
+        signalControl:
+          enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: 'The operator would create the service a234567890123456789012345-opentelemetry-target-allocator-service, .* the prefix must not be longer than 24 characters\.'
+
+  - it: should use the 30 character limit of the Signal Control collector if telemetry collection is disabled
+    release:
+      name: a234567890123456789012345678901
+    set:
+      operator:
+        telemetryCollectionEnabled: false
+        signalControl:
+          enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: 'The operator would create the service a234567890123456789012345678901-signal-control-collector-service, .* the prefix must not be longer than 30 characters\.'
+
+  - it: should fail if operator.managedResourceNamePrefix ends with a hyphen
+    set:
+      operator:
+        managedResourceNamePrefix: dash0-
+    asserts:
+      - failedTemplate:
+          errorPattern: 'is "dash0-"\. .* which is not a valid Kubernetes service name\.'
+
+  - it: should fail if operator.managedResourceNamePrefix contains uppercase letters
+    set:
+      operator:
+        managedResourceNamePrefix: Dash0
+    asserts:
+      - failedTemplate:
+          errorPattern: 'is "Dash0"\. .* which is not a valid Kubernetes service name\.'
+
+  - it: should accept a name prefix of a single letter
+    set:
+      operator:
+        managedResourceNamePrefix: d
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_NAME_PREFIX
+            value: d
+
+  - it: should not apply the 24 character limit with Prometheus CRD support if the chart does not create the operator configuration resource
+    release:
+      name: a234567890123456789012345
+    set:
+      operator:
+        prometheusCrdSupportEnabled: true
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
+            value: a234567890123456789012345

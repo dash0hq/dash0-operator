@@ -10,8 +10,8 @@ allocator, the eBPF profiler, the agent0-connector and the synthetics workers. D
 Fails rendering the chart if the prefix would produce a service name that Kubernetes rejects: service names must be
 DNS-1035 labels of at most 63 characters. The maximum length of the prefix is 63 minus the length of the longest
 service name suffix of the enabled features. Rendering only fails if a service would certainly be rejected; enabling
-the target allocator via a manually created operator configuration resource is not visible to the chart. The limits
-are pinned against the Go code by internal/startup/managed_resource_name_prefix_test.go.
+the target allocator via an operator configuration resource that the chart does not create is not visible to the
+chart, so the target allocator limit only applies if the chart creates that resource. The limits are pinned against the Go code by internal/startup/managed_resource_name_prefix_test.go.
 */}}
 {{- define "dash0-operator.managedResourceNamePrefix" -}}
 {{- $prefix := default .Release.Name .Values.operator.managedResourceNamePrefix -}}
@@ -29,7 +29,7 @@ are pinned against the Go code by internal/startup/managed_resource_name_prefix_
 {{- $maxLength = 30 -}}
 {{- $longestServiceNameSuffix = "signal-control-collector-service" -}}
 {{- end -}}
-{{- if and .Values.operator.telemetryCollectionEnabled .Values.operator.prometheusCrdSupportEnabled -}}
+{{- if and .Values.operator.telemetryCollectionEnabled .Values.operator.prometheusCrdSupportEnabled (include "dash0-operator.createOperatorConfigurationResource" .) -}}
 {{- $maxLength = 24 -}}
 {{- $longestServiceNameSuffix = "opentelemetry-target-allocator-service" -}}
 {{- end -}}
