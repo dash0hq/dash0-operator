@@ -96,15 +96,26 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	if request.Operation == admissionv1.Update {
-		if !slices.Contains(monitoringResource.Finalizers, dash0common.MonitoringFinalizerId) {
-			// Always allow requests that remove the finalizer. Otherwise, we might accidentally block removing a manually
-			// managed monitoring resource from a namespace that is enabled for auto-namespace monitoring.
+	instrumentWorkloadsMode := monitoringResource.Spec.InstrumentWorkloads.Mode
+	if request.Operation == admissionv1.Update &&
+		!slices.Contains(monitoringResource.Finalizers, dash0common.MonitoringFinalizerId) {
+		// Always allow requests that remove the finalizer. Otherwise, we might accidentally block removing a manually
+		// managed monitoring resource from a namespace that is enabled for auto-namespace monitoring. The exception is
+		// a request that changes instrumentWorkloads.mode to a value other than none in a namespace that only allows
+		// mode none.
+		changesRestrictedMode, errorResponse := h.changesInstrumentWorkloadsModeInRestrictedNamespace(
+			request,
+			monitoringResource,
+		)
+		if errorResponse != nil {
+			logger.Warn("rejecting monitoring resource update", "error", errorResponse.Result.Message)
+			return *errorResponse
+		}
+		if !changesRestrictedMode {
 			return admission.Allowed("")
 		}
 	}
 
-	instrumentWorkloadsMode := monitoringResource.Spec.InstrumentWorkloads.Mode
 	if slices.Contains(util.RestrictedNamespaces, request.Namespace) && instrumentWorkloadsMode != dash0common.InstrumentWorkloadsModeNone {
 		msg := fmt.Sprintf(
 			"Rejecting the deployment of Dash0 monitoring resource \"%s\" to the Kubernetes system namespace "+
@@ -171,6 +182,30 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 	}
 
 	return admission.Allowed("")
+}
+
+// changesInstrumentWorkloadsModeInRestrictedNamespace checks whether an update request changes the effective
+// instrumentWorkloads.mode to a value other than none in a namespace that only allows mode none, that is, a Kubernetes
+// system namespace or the operator namespace.
+func (h *MonitoringValidationWebhookHandler) changesInstrumentWorkloadsModeInRestrictedNamespace(
+	request admission.Request,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+) (bool, *admission.Response) {
+	if !slices.Contains(util.RestrictedNamespaces, request.Namespace) && request.Namespace != h.operatorNamespace {
+		return false, nil
+	}
+	if monitoringResource.Spec.InstrumentWorkloads.Mode == dash0common.InstrumentWorkloadsModeNone {
+		return false, nil
+	}
+	oldMonitoringResource := &dash0v1beta1.Dash0Monitoring{}
+	if _, _, err := decoder.Decode(request.OldObject.Raw, nil, oldMonitoringResource); err != nil {
+		response := admission.Errored(
+			http.StatusBadRequest,
+			fmt.Errorf("cannot decode the previous version of the monitoring resource: %w", err),
+		)
+		return false, &response
+	}
+	return oldMonitoringResource.ReadInstrumentWorkloadsMode() != monitoringResource.ReadInstrumentWorkloadsMode(), nil
 }
 
 func (h *MonitoringValidationWebhookHandler) rejectCustomMonitoringResourceInAutomaticallyMonitoredNamespace(
