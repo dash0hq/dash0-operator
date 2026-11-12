@@ -358,7 +358,7 @@ metadata:
     capabilities: Seamless Upgrades
     categories: Monitoring,Logging & Tracing
     containerImage: ghcr.io/dash0hq/operator-controller:0.0.0
-    createdAt: "2026-11-11T08:53:15Z"
+    createdAt: "2026-11-12T12:00:36Z"
     description: Collect traces, metrics and logs from your Kubernetes workloads and
       infrastructure with OpenTelemetry and send them to Dash0.
     operators.operatorframework.io/builder: operator-sdk-v1.42.3
@@ -612,8 +612,8 @@ spec:
 
     ### Features
 
-    * **Automatic instrumentation** of Java, Node.js and .NET workloads, without changes to images or manifests.
-      Python and Ruby support (beta) is opt-in.
+    * **Automatic instrumentation** of Java, Node.js, .NET, Python and Ruby workloads, without changes to images or
+      manifests.
     * **Log collection** from the pods in monitored namespaces.
     * **Kubernetes infrastructure metrics** for the cluster, its nodes, pods and containers.
     * **Prometheus scraping** of pods annotated with `prometheus.io/scrape`.
@@ -637,7 +637,7 @@ spec:
        like views and synthetic checks, are only synchronized in namespaces that have a `Dash0Monitoring` resource.
 
     Some operator settings are read from `DASH0_*` environment variables, which can be set in `spec.config.env` of the
-    Subscription. For example, `DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION=true` turns on Python instrumentation.
+    Subscription. For example, `DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION=false` turns off Python instrumentation.
 
     On OpenShift, the collector DaemonSet and the eBPF profiler DaemonSet run with the built-in `privileged`
     SecurityContextConstraints, which the bundle grants to their service accounts `dash0-operator-olm-collector` and
@@ -1574,6 +1574,10 @@ spec:
                   value: "false"
                 - name: DASH0_SYNTHETICS_WORKER_IMAGE
                   value: ghcr.io/dash0hq/dash0-synthetics-worker:0.0.0
+                - name: DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION
+                  value: "true"
+                - name: DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION
+                  value: "true"
                 - name: K8S_POD_UID
                   valueFrom:
                     fieldRef:

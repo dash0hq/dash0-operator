@@ -98,6 +98,10 @@ deployment should match snapshot (default values):
                   value: ghcr.io/dash0hq/agent0-connector:0.0.0
                 - name: DASH0_SYNTHETICS_WORKER_IMAGE
                   value: ghcr.io/dash0hq/dash0-synthetics-worker:0.2.0
+                - name: DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION
+                  value: "true"
+                - name: DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION
+                  value: "true"
                 - name: K8S_POD_UID
                   valueFrom:
                     fieldRef:
@@ -281,6 +285,10 @@ deployment should match snapshot when using cert-manager:
                   value: ghcr.io/dash0hq/agent0-connector:0.0.0
                 - name: DASH0_SYNTHETICS_WORKER_IMAGE
                   value: ghcr.io/dash0hq/dash0-synthetics-worker:0.2.0
+                - name: DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION
+                  value: "true"
+                - name: DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION
+                  value: "true"
                 - name: K8S_POD_UID
                   valueFrom:
                     fieldRef:

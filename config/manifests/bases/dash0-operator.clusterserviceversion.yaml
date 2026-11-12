@@ -248,8 +248,8 @@ spec:
 
     ### Features
 
-    * **Automatic instrumentation** of Java, Node.js and .NET workloads, without changes to images or manifests.
-      Python and Ruby support (beta) is opt-in.
+    * **Automatic instrumentation** of Java, Node.js, .NET, Python and Ruby workloads, without changes to images or
+      manifests.
     * **Log collection** from the pods in monitored namespaces.
     * **Kubernetes infrastructure metrics** for the cluster, its nodes, pods and containers.
     * **Prometheus scraping** of pods annotated with `prometheus.io/scrape`.
@@ -273,7 +273,7 @@ spec:
        like views and synthetic checks, are only synchronized in namespaces that have a `Dash0Monitoring` resource.
 
     Some operator settings are read from `DASH0_*` environment variables, which can be set in `spec.config.env` of the
-    Subscription. For example, `DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION=true` turns on Python instrumentation.
+    Subscription. For example, `DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION=false` turns off Python instrumentation.
 
     On OpenShift, the collector DaemonSet and the eBPF profiler DaemonSet run with the built-in `privileged`
     SecurityContextConstraints, which the bundle grants to their service accounts `dash0-operator-olm-collector` and

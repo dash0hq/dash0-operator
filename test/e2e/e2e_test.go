@@ -188,10 +188,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				"",
 				&images,
 				true,
-				map[string]string{
-					"operator.instrumentation.enablePythonAutoInstrumentation": "true",
-					"operator.instrumentation.enableRubyAutoInstrumentation":   "true",
-				},
+				nil,
 			)
 		})
 

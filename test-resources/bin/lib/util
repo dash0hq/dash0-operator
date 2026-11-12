@@ -851,11 +851,11 @@ run_helm() {
     if [[ "${AUTO_MONITOR_NAMESPACES_ENABLED:-}" = "true" ]]; then
       helm_install_command+=" --set operator.autoMonitorNamespaces.enabled=true"
     fi
-    if [[ "${ENABLE_PYTHON_AUTO_INSTRUMENTATION:-}" = "true" ]]; then
-      helm_install_command+=" --set operator.instrumentation.enablePythonAutoInstrumentation=true"
+    if [[ "${ENABLE_PYTHON_AUTO_INSTRUMENTATION:-}" = "false" ]]; then
+      helm_install_command+=" --set operator.instrumentation.enablePythonAutoInstrumentation=false"
     fi
-    if [[ "${ENABLE_RUBY_AUTO_INSTRUMENTATION:-}" = "true" ]]; then
-      helm_install_command+=" --set operator.instrumentation.enableRubyAutoInstrumentation=true"
+    if [[ "${ENABLE_RUBY_AUTO_INSTRUMENTATION:-}" = "false" ]]; then
+      helm_install_command+=" --set operator.instrumentation.enableRubyAutoInstrumentation=false"
     fi
     helm_install_command+=" --set operator.clusterName=$(kubectl config current-context)"
   fi
