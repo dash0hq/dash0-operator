@@ -1227,15 +1227,20 @@ operator:
     # Settings for the k8s_attributes processor in the Dash0 operator collectors:
     k8s_attributes:
 
-      # Disables the replicaset informer for the k8s_attributes processor. This will lead to not collecting the resource
-      # attribute k8s.deployment.uid, and might lead to wrong values k8s.deployment.name in some edge cases.
-      # The default is false, do not override this unless explicitly instructed by Dash0 support.
+      # Omits k8s.deployment.uid from the k8s_attributes extract list, which keeps the processor from starting its
+      # ReplicaSet informer. This will lead to not collecting the resource attribute k8s.deployment.uid.
+      # This setting can be useful to reduce the memory usage of the collectors and the traffic between the collectors
+      # and the Kubernetes API server. (The replicaset informer watches and caches all ReplicaSets in the cluster,
+      # including the default 10 revision history ReplicaSets per deployment, and it does so in every collector pod on
+      # each node. The effect is most noticeable in large clusters.)
+      # The default is false.
       disableReplicasetInformer: false
 
-      # Disables the job informer for the k8s_attributes processor. This will lead to not collecting the resource
-      # attribute k8s.cronjob.uid, and might lead to wrong values for k8s.cronjob.name in some edge cases.
-      # Disabling the job informer reduces the traffic between the collectors and the Kubernetes API server in large
-      # clusters with many jobs. The default is false.
+      # Omits k8s.cronjob.uid from the k8s_attributes extract list, which keeps the processor from starting its
+      # Job informer. This will lead to not collecting the resource attribute k8s.cronjob.uid.
+      # This setting can be useful to reduce the memory usage of the collectors and the traffic between the collectors
+      # and the Kubernetes API server in large clusters with many jobs.
+      # The default is false.
       disableJobInformer: false
 
       # By default, the k8s_attributes processor will not wait until Kubernetes metadata has been fetched from the
