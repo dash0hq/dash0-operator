@@ -1,6 +1,8 @@
 suite: test signal-to-metrics CRD
 templates:
   - operator/custom-resource-definition-signal-to-metrics.yaml
+release:
+  name: test-release
 tests:
   - it: custom resource definition for signal-to-metrics should match snapshot
     asserts:

@@ -74,8 +74,8 @@ type CollectorConfig struct {
 	Images            Images
 	OperatorNamespace string
 	// OTelCollectorNamePrefix is used as a prefix for OTel collector Kubernetes resources created by the operator, set
-	// to value of the environment variable OTEL_COLLECTOR_NAME_PREFIX, which is set to the Helm release name by the
-	// operator Helm chart.
+	// to value of the environment variable OTEL_COLLECTOR_NAME_PREFIX, which the operator Helm chart sets to
+	// operator.managedResourceNamePrefix, or to the Helm release name if that is not set.
 	OTelCollectorNamePrefix string
 	// The collector needs to know about the target-allocator name prefix, so it can build the service name needed for the
 	// config of the prometheus_receiver
@@ -143,8 +143,8 @@ type TargetAllocatorConfig struct {
 	Images            Images
 	OperatorNamespace string
 	// TargetAllocatorNamePrefix is used as a prefix for OTel target-allocator Kubernetes resources created by the operator, set
-	// to value of the environment variable OTEL_TARGET_ALLOCATOR_NAME_PREFIX, which is set to the Helm release name by the
-	// operator Helm chart.
+	// to value of the environment variable OTEL_TARGET_ALLOCATOR_NAME_PREFIX, which the operator Helm chart sets to
+	// operator.managedResourceNamePrefix, or to the Helm release name if that is not set.
 	TargetAllocatorNamePrefix string
 	// CollectorComponent is used as a label matcher, so scrape targets are only assigned to Dash0 daemonset collectors.
 	CollectorComponent string

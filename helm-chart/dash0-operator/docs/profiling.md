@@ -129,8 +129,9 @@ The namespace and its labels are user-owned. The chart neither creates a namespa
 and installs no namespace-relabeling hooks. Review this policy with your cluster administrator before enabling profiling.
 
 On OpenShift, also set `operator.openShift.enabled: true`. The chart creates a separate profiler SCC and a namespaced
-SCC-use binding only when both options are enabled. Only the `<release>-ebpf-profiler` service account receives that
-binding. The collector SCC does not gain privileged-container or host-PID permissions.
+SCC-use binding only when both options are enabled. Only the `<name-prefix>-ebpf-profiler` service account receives that
+binding (`<name-prefix>` is `operator.managedResourceNamePrefix`, or the Helm release name if that is not set). The
+collector SCC does not gain privileged-container or host-PID permissions.
 
 ### Debuginfo uploads
 
@@ -279,7 +280,7 @@ data:
 
     exporters:
       otlp/collector:
-        endpoint: ${helm-release-name}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4317
+        endpoint: ${name-prefix}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4317
         # The operator's OTLP receiver listens on plain-text gRPC (no TLS), so the exporter must
         # be configured accordingly. Without this, the gRPC exporter defaults to requiring TLS.
         tls:
@@ -340,7 +341,8 @@ spec:
             path: /sys
 ```
 
-Replace `${helm-release-name}` and `${namespace-of-the-dash0-operator}` with the actual Helm release name and namespace.
+Replace `${name-prefix}` with the value of `operator.managedResourceNamePrefix`, or with the Helm release name if that
+is not set, and `${namespace-of-the-dash0-operator}` with the namespace of the operator.
 
 The eBPF profiler requires:
 

@@ -54,8 +54,8 @@ type targetAllocatorConfig struct {
 	OperatorNamespace string
 
 	// NamePrefix is used as a prefix for OTel target-allocator Kubernetes resources created by the operator, set to value of
-	// the environment variable OTEL_TARGET_ALLOCATOR_NAME_PREFIX, which is set to the Helm release name by the operator Helm
-	// chart.
+	// the environment variable OTEL_TARGET_ALLOCATOR_NAME_PREFIX, which the operator Helm chart sets to
+	// operator.managedResourceNamePrefix, or to the Helm release name if that is not set.
 	NamePrefix string
 
 	CollectorComponent string

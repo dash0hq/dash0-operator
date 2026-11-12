@@ -26,7 +26,7 @@ pre-delete hook job should match snapshot:
             app.kubernetes.io/managed-by: Helm
             app.kubernetes.io/name: dash0-operator
             helm.sh/chart: dash0-operator-0.0.0
-          name: RELEASE-NAME-pre-delete-job
+          name: test-release-pre-delete-job
         spec:
           affinity:
             nodeAffinity:
