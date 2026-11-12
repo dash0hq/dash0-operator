@@ -77,9 +77,9 @@ deployment should match snapshot (default values):
                 - name: DASH0_IAC_PERIODIC_RETRY_INTERVAL
                   value: 10m
                 - name: OTEL_COLLECTOR_NAME_PREFIX
-                  value: RELEASE-NAME
+                  value: test-release
                 - name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
-                  value: RELEASE-NAME
+                  value: test-release
                 - name: DASH0_OPERATOR_IMAGE
                   value: ghcr.io/dash0hq/operator-controller:0.0.0
                 - name: DASH0_INSTRUMENTATION_IMAGE
@@ -180,7 +180,7 @@ deployment should match snapshot (default values):
             seccompProfile:
               type: RuntimeDefault
           serviceAccountName: dash0-operator-controller
-          terminationGracePeriodSeconds: 10
+          terminationGracePeriodSeconds: 15
           volumes:
             - configMap:
                 name: dash0-operator-extra-config
@@ -264,9 +264,9 @@ deployment should match snapshot when using cert-manager:
                 - name: DASH0_IAC_PERIODIC_RETRY_INTERVAL
                   value: 10m
                 - name: OTEL_COLLECTOR_NAME_PREFIX
-                  value: RELEASE-NAME
+                  value: test-release
                 - name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
-                  value: RELEASE-NAME
+                  value: test-release
                 - name: DASH0_OPERATOR_IMAGE
                   value: ghcr.io/dash0hq/operator-controller:0.0.0
                 - name: DASH0_INSTRUMENTATION_IMAGE
@@ -364,7 +364,7 @@ deployment should match snapshot when using cert-manager:
             seccompProfile:
               type: RuntimeDefault
           serviceAccountName: dash0-operator-controller
-          terminationGracePeriodSeconds: 10
+          terminationGracePeriodSeconds: 15
           volumes:
             - name: certificates
               secret:

@@ -188,7 +188,9 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				"",
 				&images,
 				true,
-				nil,
+				map[string]string{
+					"operator.iac.periodicRetry.interval": iacPeriodicRetryInterval.String(),
+				},
 			)
 		})
 
@@ -660,8 +662,9 @@ spec:
 				})
 
 				AfterEach(func() {
-					cleanupStoredApiRequests()
 					removeDash0ApiSyncResources(applicationUnderTestNamespace)
+					waitForCapturedApiRequestsToSettle()
+					cleanupStoredApiRequests()
 				})
 
 				AfterAll(func() {
@@ -678,7 +681,7 @@ spec:
 					routeRegex := "/api/synthetic-checks/dash0-operator_.*_default_e2e-test-ns_synthetic-check-e2e-test\\?dataset=default"
 
 					By("verifying the synthetic check has been synchronized to the Dash0 API via PUT")
-					req := fetchCapturedApiRequest(0)
+					req := fetchCapturedApiRequest(routeRegex, 0)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
@@ -687,14 +690,14 @@ spec:
 
 					setOptOutLabelInSyntheticCheck(applicationUnderTestNamespace, "false")
 					By("verifying the synthetic check has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
-					req = fetchCapturedApiRequest(1)
+					req = fetchCapturedApiRequest(routeRegex, 1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
 					setOptOutLabelInSyntheticCheck(applicationUnderTestNamespace, "true")
 					//nolint:lll
 					By("verifying the synthetic check has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					req = fetchCapturedApiRequest(2)
+					req = fetchCapturedApiRequest(routeRegex, 2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("This is a test synthetic check."))
@@ -702,7 +705,7 @@ spec:
 
 					removeSyntheticCheckResource(applicationUnderTestNamespace)
 					By("verifying the synthetic check has been deleted via the Dash0 API (after removing the resource)")
-					req = fetchCapturedApiRequest(3)
+					req = fetchCapturedApiRequest(routeRegex, 3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
@@ -717,7 +720,7 @@ spec:
 					routeRegex := "/api/slos/dash0-operator_.*_default_e2e-test-ns_slo-e2e-test\\?dataset=default"
 
 					By("verifying the SLO has been synchronized to the Dash0 API via PUT")
-					req := fetchCapturedApiRequest(0)
+					req := fetchCapturedApiRequest(routeRegex, 0)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
@@ -726,14 +729,14 @@ spec:
 
 					setOptOutLabelInSLO(applicationUnderTestNamespace, "false")
 					By("verifying the SLO has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
-					req = fetchCapturedApiRequest(1)
+					req = fetchCapturedApiRequest(routeRegex, 1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
 					setOptOutLabelInSLO(applicationUnderTestNamespace, "true")
 					//nolint:lll
 					By("verifying the SLO has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					req = fetchCapturedApiRequest(2)
+					req = fetchCapturedApiRequest(routeRegex, 2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("E2E test SLO for synchronizing SLOs with the Dash0 Operator."))
@@ -741,7 +744,7 @@ spec:
 
 					removeSLOResource(applicationUnderTestNamespace)
 					By("verifying the SLO has been deleted via the Dash0 API (after removing the resource)")
-					req = fetchCapturedApiRequest(3)
+					req = fetchCapturedApiRequest(routeRegex, 3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
@@ -756,7 +759,7 @@ spec:
 					routeRegex := "/api/signal-to-metrics/dash0-operator_.*_default_e2e-test-ns_signal-to-metrics-e2e-test\\?dataset=default"
 
 					By("verifying the signal-to-metrics rule has been synchronized to the Dash0 API via PUT")
-					req := fetchCapturedApiRequest(0)
+					req := fetchCapturedApiRequest(routeRegex, 0)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
@@ -766,14 +769,14 @@ spec:
 					setOptOutLabelInSignalToMetrics(applicationUnderTestNamespace, "false")
 					//nolint:lll
 					By("verifying the signal-to-metrics rule has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
-					req = fetchCapturedApiRequest(1)
+					req = fetchCapturedApiRequest(routeRegex, 1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
 					setOptOutLabelInSignalToMetrics(applicationUnderTestNamespace, "true")
 					//nolint:lll
 					By("verifying the signal-to-metrics rule has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					req = fetchCapturedApiRequest(2)
+					req = fetchCapturedApiRequest(routeRegex, 2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("E2E test signal-to-metrics rule"))
@@ -781,7 +784,7 @@ spec:
 
 					removeSignalToMetricsResource(applicationUnderTestNamespace)
 					By("verifying the signal-to-metrics rule has been deleted via the Dash0 API (after removing the resource)")
-					req = fetchCapturedApiRequest(3)
+					req = fetchCapturedApiRequest(routeRegex, 3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
@@ -796,7 +799,7 @@ spec:
 					routeRegex := "/api/views/dash0-operator_.*_default_e2e-test-ns_view-e2e-test\\?dataset=default"
 
 					By("verifying the view has been synchronized to the Dash0 API via PUT")
-					req := fetchCapturedApiRequest(0)
+					req := fetchCapturedApiRequest(routeRegex, 0)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
@@ -805,14 +808,14 @@ spec:
 
 					setOptOutLabelInView(applicationUnderTestNamespace, "false")
 					By("verifying the view has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
-					req = fetchCapturedApiRequest(1)
+					req = fetchCapturedApiRequest(routeRegex, 1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
 					setOptOutLabelInView(applicationUnderTestNamespace, "true")
 					//nolint:lll
 					By("verifying the view has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					req = fetchCapturedApiRequest(2)
+					req = fetchCapturedApiRequest(routeRegex, 2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("\"name\":\"E2E test view\""))
@@ -820,7 +823,7 @@ spec:
 
 					removeViewResource(applicationUnderTestNamespace)
 					By("verifying the view has been deleted via the Dash0 API (after removing the resource)")
-					req = fetchCapturedApiRequest(3)
+					req = fetchCapturedApiRequest(routeRegex, 3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
@@ -836,7 +839,7 @@ spec:
 					routeRegex := "/api/notification-channels/dash0-operator_.*_e2e-test-ns_notification-channel-e2e-test"
 
 					By("verifying the notification channel has been synchronized to the Dash0 API via PUT")
-					req := fetchCapturedApiRequest(0)
+					req := fetchCapturedApiRequest(routeRegex, 0)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
@@ -846,14 +849,14 @@ spec:
 					setOptOutLabelInNotificationChannel(applicationUnderTestNamespace, "false")
 					//nolint:lll
 					By("verifying the notification channel has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
-					req = fetchCapturedApiRequest(1)
+					req = fetchCapturedApiRequest(routeRegex, 1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
 					setOptOutLabelInNotificationChannel(applicationUnderTestNamespace, "true")
 					//nolint:lll
 					By("verifying the notification channel has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					req = fetchCapturedApiRequest(2)
+					req = fetchCapturedApiRequest(routeRegex, 2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("E2E test notification channel"))
@@ -861,7 +864,7 @@ spec:
 
 					removeNotificationChannelResource(applicationUnderTestNamespace)
 					By("verifying the notification channel has been deleted via the Dash0 API (after removing the resource)")
-					req = fetchCapturedApiRequest(3)
+					req = fetchCapturedApiRequest(routeRegex, 3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
@@ -876,7 +879,7 @@ spec:
 					routeRegex := "/api/teams/dash0-operator_.*_e2e-test-ns_team-e2e-test"
 
 					By("verifying the team has been synchronized to the Dash0 API via PUT")
-					req := fetchCapturedApiRequest(0)
+					req := fetchCapturedApiRequest(routeRegex, 0)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
@@ -885,14 +888,14 @@ spec:
 
 					setOptOutLabelInTeam(applicationUnderTestNamespace, "false")
 					By("verifying the team has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
-					req = fetchCapturedApiRequest(1)
+					req = fetchCapturedApiRequest(routeRegex, 1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
 					setOptOutLabelInTeam(applicationUnderTestNamespace, "true")
 					//nolint:lll
 					By("verifying the team has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					req = fetchCapturedApiRequest(2)
+					req = fetchCapturedApiRequest(routeRegex, 2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("E2E test team"))
@@ -900,7 +903,7 @@ spec:
 
 					removeTeamResource(applicationUnderTestNamespace)
 					By("verifying the team has been deleted via the Dash0 API (after removing the resource)")
-					req = fetchCapturedApiRequest(3)
+					req = fetchCapturedApiRequest(routeRegex, 3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
@@ -915,7 +918,7 @@ spec:
 					routeRegex := "/api/spam-filters/dash0-operator_.*_default_e2e-test-ns_spam-filter-e2e-test\\?dataset=default"
 
 					By("verifying the spam filter has been synchronized to the Dash0 API via PUT")
-					req := fetchCapturedApiRequest(0)
+					req := fetchCapturedApiRequest(routeRegex, 0)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
@@ -924,14 +927,14 @@ spec:
 
 					setOptOutLabelInSpamFilter(applicationUnderTestNamespace, "false")
 					By("verifying the spam filter has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
-					req = fetchCapturedApiRequest(1)
+					req = fetchCapturedApiRequest(routeRegex, 1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
 					setOptOutLabelInSpamFilter(applicationUnderTestNamespace, "true")
 					//nolint:lll
 					By("verifying the spam filter has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					req = fetchCapturedApiRequest(2)
+					req = fetchCapturedApiRequest(routeRegex, 2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("k8s.namespace.name"))
@@ -939,7 +942,7 @@ spec:
 
 					removeSpamFilterResource(applicationUnderTestNamespace)
 					By("verifying the spam filter has been deleted via the Dash0 API (after removing the resource)")
-					req = fetchCapturedApiRequest(3)
+					req = fetchCapturedApiRequest(routeRegex, 3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
@@ -954,7 +957,7 @@ spec:
 					routeRegex := "/api/time-series-aggregations/dash0-operator_.*_default_e2e-test-ns_time-series-aggregation-e2e-test\\?dataset=default"
 
 					By("verifying the time series aggregation has been synchronized to the Dash0 API via PUT")
-					req := fetchCapturedApiRequest(0)
+					req := fetchCapturedApiRequest(routeRegex, 0)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
@@ -964,14 +967,14 @@ spec:
 					setOptOutLabelInTimeSeriesAggregation(applicationUnderTestNamespace, "false")
 					//nolint:lll
 					By("verifying the time series aggregation has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
-					req = fetchCapturedApiRequest(1)
+					req = fetchCapturedApiRequest(routeRegex, 1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
 					setOptOutLabelInTimeSeriesAggregation(applicationUnderTestNamespace, "true")
 					//nolint:lll
 					By("verifying the time series aggregation has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					req = fetchCapturedApiRequest(2)
+					req = fetchCapturedApiRequest(routeRegex, 2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("http.server.duration"))
@@ -980,7 +983,7 @@ spec:
 					removeTimeSeriesAggregationResource(applicationUnderTestNamespace)
 					//nolint:lll
 					By("verifying the time series aggregation has been deleted via the Dash0 API (after removing the resource)")
-					req = fetchCapturedApiRequest(3)
+					req = fetchCapturedApiRequest(routeRegex, 3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
@@ -993,11 +996,13 @@ spec:
 						persesDashboardCrdVersion,
 					)
 
-					//nolint:lll
-					routeRegex := "/api/dashboards/dash0-operator_.*_default_e2e-test-ns_perses-dashboard-e2e-test-v1alpha\\d\\?dataset=default"
+					routeRegex := fmt.Sprintf(
+						"/api/dashboards/dash0-operator_.*_default_e2e-test-ns_%s\\?dataset=default",
+						persesDashboardName(persesDashboardCrdVersion),
+					)
 
 					By("verifying the dashboard has been synchronized to the Dash0 API via PUT")
-					req := fetchCapturedApiRequest(0)
+					req := fetchCapturedApiRequest(routeRegex, 0)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
@@ -1006,13 +1011,13 @@ spec:
 
 					setOptOutLabelInPersesDashboard(applicationUnderTestNamespace, persesDashboardCrdVersion, "false")
 					By("verifying the dashboard has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
-					req = fetchCapturedApiRequest(1)
+					req = fetchCapturedApiRequest(routeRegex, 1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
 					setOptOutLabelInPersesDashboard(applicationUnderTestNamespace, persesDashboardCrdVersion, "true")
 					By("verifying the dashboard has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					req = fetchCapturedApiRequest(2)
+					req = fetchCapturedApiRequest(routeRegex, 2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("This is a test dashboard."))
@@ -1020,7 +1025,7 @@ spec:
 
 					removePersesDashboardResource(applicationUnderTestNamespace, persesDashboardCrdVersion)
 					By("verifying the dashboard has been deleted via the Dash0 API (after removing the resource)")
-					req = fetchCapturedApiRequest(3)
+					req = fetchCapturedApiRequest(routeRegex, 3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				}
@@ -1032,6 +1037,8 @@ spec:
 				It("should synchronize Perses v1alpha2 dashboards to the Dash0 API", func() {
 					runPersesDashboardSyncTest(persesDashboardV1Alpha2)
 				})
+
+				prometheusRuleRequestsRegex := "^/api/(alerting/check-rules|recording-rules)[/?]"
 
 				//nolint:lll
 				It("should synchronize Prometheus rules to the Dash0 API", func() {
@@ -1057,7 +1064,7 @@ spec:
 					}
 
 					By("verifying the rules have been synchronized to the Dash0 API via PUT")
-					requests := fetchCapturedApiRequests(0, 6)
+					requests := fetchCapturedApiRequests(prometheusRuleRequestsRegex, 0, 6)
 					Expect(requests).To(HaveLen(6))
 					for i := 0; i < 2; i++ {
 						Expect(requests[i].Method).To(Equal("GET"))
@@ -1074,7 +1081,7 @@ spec:
 
 					setOptOutLabelInPrometheusRule(applicationUnderTestNamespace, "false")
 					By("verifying the rules have been deleted via the Dash0 API (after setting dash0.com/enable=false)")
-					requests = fetchCapturedApiRequests(6, 6)
+					requests = fetchCapturedApiRequests(prometheusRuleRequestsRegex, 6, 6)
 					Expect(requests).To(HaveLen(6))
 					for i := 0; i < 2; i++ {
 						Expect(requests[i].Method).To(Equal("GET"))
@@ -1089,21 +1096,19 @@ spec:
 					addLabelToPrometheusRule(applicationUnderTestNamespace, "e2e-test/trigger-update=1")
 					//nolint:lll
 					By("verifying no DELETE requests are sent for rules that do not exist in Dash0 (after updating the resource while dash0.com/enable=false is set)")
-					requests = fetchCapturedApiRequests(12, 2)
+					requests = fetchCapturedApiRequests(prometheusRuleRequestsRegex, 12, 2)
 					Expect(requests).To(HaveLen(2))
 					for i := 0; i < 2; i++ {
 						Expect(requests[i].Method).To(Equal("GET"))
 						Expect(requests[i].Url).To(MatchRegexp(listRouteRegexes[i]))
 					}
 					Consistently(func(g Gomega) {
-						storedRequests := getStoredApiRequests(g)
-						g.Expect(storedRequests).NotTo(BeNil())
-						g.Expect(storedRequests.Requests).To(HaveLen(14))
+						g.Expect(getStoredApiRequestsMatching(g, prometheusRuleRequestsRegex)).To(HaveLen(14))
 					}, 5*time.Second, 1*time.Second).Should(Succeed())
 
 					setOptOutLabelInPrometheusRule(applicationUnderTestNamespace, "true")
 					By("verifying the rules have been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					requests = fetchCapturedApiRequests(14, 6)
+					requests = fetchCapturedApiRequests(prometheusRuleRequestsRegex, 14, 6)
 					Expect(requests).To(HaveLen(6))
 					for i := 0; i < 2; i++ {
 						Expect(requests[i].Method).To(Equal("GET"))
@@ -1119,7 +1124,7 @@ spec:
 
 					removePrometheusRuleResource(applicationUnderTestNamespace)
 					By("verifying the rules have been deleted via the Dash0 API (after removing the resource)")
-					requests = fetchCapturedApiRequests(20, 6)
+					requests = fetchCapturedApiRequests(prometheusRuleRequestsRegex, 20, 6)
 					Expect(requests).To(HaveLen(6))
 					for i := 0; i < 2; i++ {
 						Expect(requests[i].Method).To(Equal("GET"))
@@ -1166,9 +1171,7 @@ spec:
 
 					By("verifying no API requests are made while sync is disabled")
 					Consistently(func(g Gomega) {
-						storedRequests := getStoredApiRequests(g)
-						g.Expect(storedRequests).NotTo(BeNil())
-						g.Expect(storedRequests.Requests).To(BeEmpty())
+						g.Expect(getStoredApiRequestsMatching(g, prometheusRuleRequestsRegex)).To(BeEmpty())
 					}, 10*time.Second, 1*time.Second).Should(Succeed())
 
 					By("re-enabling synchronization of Prometheus rules")
@@ -1178,7 +1181,7 @@ spec:
 					)
 
 					By("verifying the rules have been synchronized after re-enabling sync")
-					requests := fetchCapturedApiRequests(0, 6)
+					requests := fetchCapturedApiRequests(prometheusRuleRequestsRegex, 0, 6)
 					Expect(requests).To(HaveLen(6))
 					for i := 0; i < 2; i++ {
 						Expect(requests[i].Method).To(Equal("GET"))
@@ -2111,7 +2114,7 @@ log_statements:
 			routeRegex := "/api/sampling-rules/dash0-operator_.*_default_e2e-test-ns_sampling-rule-e2e-test\\?dataset=default"
 
 			By("verifying the sampling rule has been synchronized to the Dash0 API via PUT")
-			req := fetchCapturedApiRequest(0)
+			req := fetchCapturedApiRequest(routeRegex, 0)
 			Expect(req.Method).To(Equal("PUT"))
 			Expect(req.Url).To(MatchRegexp(routeRegex))
 			Expect(req.Body).ToNot(BeNil())
@@ -2123,14 +2126,14 @@ log_statements:
 
 			setOptOutLabelInSamplingRule(applicationUnderTestNamespace, "false")
 			By("verifying the sampling rule has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
-			req = fetchCapturedApiRequest(1)
+			req = fetchCapturedApiRequest(routeRegex, 1)
 			Expect(req.Method).To(Equal("DELETE"))
 			Expect(req.Url).To(MatchRegexp(routeRegex))
 
 			setOptOutLabelInSamplingRule(applicationUnderTestNamespace, "true")
 			//nolint:lll
 			By("verifying the sampling rule has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-			req = fetchCapturedApiRequest(2)
+			req = fetchCapturedApiRequest(routeRegex, 2)
 			Expect(req.Method).To(Equal("PUT"))
 			Expect(req.Url).To(MatchRegexp(routeRegex))
 			Expect(*req.Body).To(ContainSubstring("E2E test sampling rule"))
@@ -2139,7 +2142,7 @@ log_statements:
 
 			removeSamplingRuleResource(applicationUnderTestNamespace)
 			By("verifying the sampling rule has been deleted via the Dash0 API (after removing the resource)")
-			req = fetchCapturedApiRequest(3)
+			req = fetchCapturedApiRequest(routeRegex, 3)
 			Expect(req.Method).To(Equal("DELETE"))
 			Expect(req.Url).To(MatchRegexp(routeRegex))
 		})
@@ -2645,7 +2648,7 @@ log_statements:
 			routeRegex := "/api/dashboards/dash0-operator_.*_default_e2e-test-ns_perses-dashboard-e2e-test-v1alpha2\\?dataset=default"
 
 			By("verifying the dashboard has been synchronized to the Dash0 API via PUT")
-			req := fetchCapturedApiRequest(0)
+			req := fetchCapturedApiRequest(routeRegex, 0)
 			Expect(req.Method).To(Equal("PUT"))
 			Expect(req.Url).To(MatchRegexp(routeRegex))
 			Expect(req.Body).ToNot(BeNil())

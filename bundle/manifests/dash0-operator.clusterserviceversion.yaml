@@ -1700,7 +1700,7 @@ spec:
                 seccompProfile:
                   type: RuntimeDefault
               serviceAccountName: dash0-operator-controller
-              terminationGracePeriodSeconds: 10
+              terminationGracePeriodSeconds: 15
               volumes:
               - configMap:
                   name: dash0-operator-extra-config

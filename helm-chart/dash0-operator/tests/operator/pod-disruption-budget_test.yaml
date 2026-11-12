@@ -1,6 +1,8 @@
 suite: test pod disruption budget
 templates:
   - operator/pod-disruption-budget.yaml
+release:
+  name: test-release
 tests:
   - it: should not render a pod disruption budget for a single replica
     asserts:

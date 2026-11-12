@@ -1,6 +1,8 @@
 suite: test synthetics-worker role
 templates:
   - operator/role-synthetics-worker.yaml
+release:
+  name: test-release
 tests:
   - it: should not render by default
     asserts:

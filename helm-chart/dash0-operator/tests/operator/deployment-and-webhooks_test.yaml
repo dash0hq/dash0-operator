@@ -1,6 +1,8 @@
 suite: test deployment
 templates:
   - operator/deployment-and-webhooks.yaml
+release:
+  name: test-release
 tests:
   - it: deployment should match snapshot (default values)
     documentSelector:
@@ -911,13 +913,13 @@ tests:
           value: OTEL_COLLECTOR_NAME_PREFIX
       - equal:
           path: spec.template.spec.containers[0].env[8].value
-          value: RELEASE-NAME
+          value: test-release
       - equal:
           path: spec.template.spec.containers[0].env[9].name
           value: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
       - equal:
           path: spec.template.spec.containers[0].env[9].value
-          value: RELEASE-NAME
+          value: test-release
       - equal:
           path: spec.template.spec.containers[0].env[10].name
           value: DASH0_OPERATOR_IMAGE
@@ -3051,3 +3053,254 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].args
           content: --operator-configuration-managed-via-helm=true
+
+  - it: should use the release name as the name prefix for the resources the operator creates by default
+    release:
+      name: some-release
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_NAME_PREFIX
+            value: some-release
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
+            value: some-release
+
+  - it: should use operator.managedResourceNamePrefix as the name prefix for the resources the operator creates
+    release:
+      name: dash0-operator-an-argo-cd-application-name
+    set:
+      operator:
+        managedResourceNamePrefix: dash0-operator
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_NAME_PREFIX
+            value: dash0-operator
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
+            value: dash0-operator
+
+  - it: should accept a name prefix of 31 characters
+    release:
+      name: a234567890123456789012345678901
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_NAME_PREFIX
+            value: a234567890123456789012345678901
+
+  - it: should fail if the release name is longer than 31 characters
+    release:
+      name: a2345678901234567890123456789012
+    asserts:
+      - failedTemplate:
+          errorPattern: 'the name prefix for the resources the operator creates \(taken from the Helm release name\) is "a2345678901234567890123456789012", which is 32 characters long\. The operator would create the service a2345678901234567890123456789012-opentelemetry-collector-service, .* the prefix must not be longer than 31 characters\.'
+
+  - it: should fail if operator.managedResourceNamePrefix is longer than 31 characters
+    set:
+      operator:
+        managedResourceNamePrefix: a2345678901234567890123456789012
+    asserts:
+      - failedTemplate:
+          errorPattern: 'the name prefix for the resources the operator creates \(taken from operator\.managedResourceNamePrefix\) is "a2345678901234567890123456789012", which is 32 characters long\. .* the prefix must not be longer than 31 characters\.'
+
+  - it: should accept a long release name if operator.managedResourceNamePrefix is short enough
+    release:
+      name: a234567890123456789012345678901234567890
+    set:
+      operator:
+        managedResourceNamePrefix: dash0-operator
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_NAME_PREFIX
+            value: dash0-operator
+
+  - it: should accept a name prefix of 30 characters with Signal Control
+    release:
+      name: a23456789012345678901234567890
+    set:
+      operator:
+        signalControl:
+          enabled: true
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_NAME_PREFIX
+            value: a23456789012345678901234567890
+
+  - it: should fail if the name prefix is longer than 30 characters with Signal Control
+    release:
+      name: a234567890123456789012345678901
+    set:
+      operator:
+        signalControl:
+          enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: 'The operator would create the service a234567890123456789012345678901-signal-control-collector-service, .* the prefix must not be longer than 30 characters\.'
+
+  - it: should accept a name prefix of 24 characters with Prometheus CRD support
+    release:
+      name: a23456789012345678901234
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+        prometheusCrdSupportEnabled: true
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
+            value: a23456789012345678901234
+
+  - it: should fail if the name prefix is longer than 24 characters with Prometheus CRD support
+    release:
+      name: a234567890123456789012345
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+        prometheusCrdSupportEnabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: 'The operator would create the service a234567890123456789012345-opentelemetry-target-allocator-service, .* the prefix must not be longer than 24 characters\.'
+
+  - it: should not check the name prefix if the operator creates no services
+    release:
+      name: a234567890123456789012345678901234567890
+    set:
+      operator:
+        telemetryCollectionEnabled: false
+        prometheusCrdSupportEnabled: true
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_NAME_PREFIX
+            value: a234567890123456789012345678901234567890
+
+  - it: should fail if operator.managedResourceNamePrefix is not a valid service name prefix
+    set:
+      operator:
+        managedResourceNamePrefix: 0-starts-with-a-digit
+    asserts:
+      - failedTemplate:
+          errorPattern: 'the name prefix for the resources the operator creates \(taken from operator\.managedResourceNamePrefix\) is "0-starts-with-a-digit"\. The operator would create the service 0-starts-with-a-digit-opentelemetry-collector-service, which is not a valid Kubernetes service name\.'
+
+  - it: should fail if the release name is not a valid service name prefix
+    release:
+      name: release.with.dots
+    asserts:
+      - failedTemplate:
+          errorPattern: 'the name prefix for the resources the operator creates \(taken from the Helm release name\) is "release\.with\.dots"\. .* which is not a valid Kubernetes service name\.'
+
+  - it: should use the 24 character limit of the target allocator if Signal Control is enabled as well
+    release:
+      name: a234567890123456789012345
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+        prometheusCrdSupportEnabled: true
+        signalControl:
+          enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: 'The operator would create the service a234567890123456789012345-opentelemetry-target-allocator-service, .* the prefix must not be longer than 24 characters\.'
+
+  - it: should use the 30 character limit of the Signal Control collector if telemetry collection is disabled
+    release:
+      name: a234567890123456789012345678901
+    set:
+      operator:
+        telemetryCollectionEnabled: false
+        signalControl:
+          enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: 'The operator would create the service a234567890123456789012345678901-signal-control-collector-service, .* the prefix must not be longer than 30 characters\.'
+
+  - it: should fail if operator.managedResourceNamePrefix ends with a hyphen
+    set:
+      operator:
+        managedResourceNamePrefix: dash0-
+    asserts:
+      - failedTemplate:
+          errorPattern: 'is "dash0-"\. .* which is not a valid Kubernetes service name\.'
+
+  - it: should fail if operator.managedResourceNamePrefix contains uppercase letters
+    set:
+      operator:
+        managedResourceNamePrefix: Dash0
+    asserts:
+      - failedTemplate:
+          errorPattern: 'is "Dash0"\. .* which is not a valid Kubernetes service name\.'
+
+  - it: should accept a name prefix of a single letter
+    set:
+      operator:
+        managedResourceNamePrefix: d
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_NAME_PREFIX
+            value: d
+
+  - it: should not apply the 24 character limit with Prometheus CRD support if the chart does not create the operator configuration resource
+    release:
+      name: a234567890123456789012345
+    set:
+      operator:
+        prometheusCrdSupportEnabled: true
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
+            value: a234567890123456789012345

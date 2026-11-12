@@ -434,10 +434,12 @@ func Start() {
 			c.GetCertificate = webhookCertificatesStore.GetCertificate
 		})
 	}
-	webhookServer := k8swebhook.NewServer(
-		k8swebhook.Options{
-			TLSOpts: webhookServerTlsOpts,
-		},
+	webhookServer := newDrainingWebhookServer(
+		k8swebhook.NewServer(
+			k8swebhook.Options{
+				TLSOpts: webhookServerTlsOpts,
+			},
+		),
 	)
 	if err = validateOtlpHostPorts(cliArgs.otlpGrpcHostPort, cliArgs.otlpHttpHostPort); err != nil {
 		setupLog.Error(err, "invalid OTLP collector host port configuration")
@@ -473,8 +475,9 @@ func Start() {
 		os.Exit(1)
 	}
 
-	// The signal handler can only be set up once; the webhook certificates controller and the manager share it.
-	signalHandlerCtx := ctrl.SetupSignalHandler()
+	// The signal handler can only be set up once; the webhook certificates controller and the manager share it. Both
+	// keep running for shutdownDelay after the signal, so the webhook server keeps serving with up-to-date certificates.
+	signalHandlerCtx := delayCancellation(ctrl.SetupSignalHandler(), shutdownDelay, webhookServer.startDraining, setupLog)
 	if webhookCertificatesStore != nil {
 		startWebhookCertificatesManagement(ctx, signalHandlerCtx, webhookCertificatesStore)
 	}
@@ -2499,6 +2502,10 @@ func registerHealthAndReadyChecks(ctx context.Context, mgr manager.Manager) (*Re
 	readyCheckExecuter.start(ctx, setupLog)
 	if err := mgr.AddReadyzCheck("readyz", readyCheckExecuter.isReady); err != nil {
 		return readyCheckExecuter, fmt.Errorf("unable to set up the operator manager ready check: %w", err)
+	}
+	// The webhook service endpoint check above is also satisfied by the endpoint of another replica.
+	if err := mgr.AddReadyzCheck("webhook-server", mgr.GetWebhookServer().StartedChecker()); err != nil {
+		return readyCheckExecuter, fmt.Errorf("unable to set up the webhook server ready check: %w", err)
 	}
 	if webhookCertificates != nil {
 		if err := mgr.AddReadyzCheck("webhook-certificates", webhookCertificates.Store().ReadyCheck); err != nil {
