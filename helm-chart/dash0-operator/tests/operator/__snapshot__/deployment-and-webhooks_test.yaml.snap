@@ -176,7 +176,7 @@ deployment should match snapshot (default values):
             seccompProfile:
               type: RuntimeDefault
           serviceAccountName: dash0-operator-controller
-          terminationGracePeriodSeconds: 10
+          terminationGracePeriodSeconds: 15
           volumes:
             - configMap:
                 name: dash0-operator-extra-config
@@ -356,7 +356,7 @@ deployment should match snapshot when using cert-manager:
             seccompProfile:
               type: RuntimeDefault
           serviceAccountName: dash0-operator-controller
-          terminationGracePeriodSeconds: 10
+          terminationGracePeriodSeconds: 15
           volumes:
             - name: certificates
               secret:
