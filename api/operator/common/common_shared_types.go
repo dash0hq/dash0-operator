@@ -14,23 +14,22 @@ const (
 	RedactedValue                        = "<redacted>"
 )
 
-// Export describes the observability backend to which telemetry data will be sent. This can either be Dash0 or another
-// OTLP-compatible backend. You can also combine up to three exporters (i.e. Dash0 plus gRPC plus HTTP). This allows
-// sending the same data to two or three targets simultaneously. At least one exporter has to be defined.
+// Export describes the observability backend to which telemetry data will be sent: Dash0, an OTLP-compatible receiver
+// via gRPC or HTTP, or a combination of these three exporters. At least one exporter has to be defined.
 //
 // +kubebuilder:validation:MinProperties=1
 type Export struct {
-	// The configuration of the Dash0 ingress endpoint to which telemetry data will be sent.
+	// Settings for sending telemetry to Dash0.
 	//
 	// +kubebuilder:validation:Optional
 	Dash0 *Dash0Configuration `json:"dash0,omitempty"`
 
-	// The settings for an exporter to send telemetry to an arbitrary OTLP-compatible receiver via HTTP.
+	// Settings for sending telemetry to an OTLP-compatible receiver via HTTP.
 	//
 	// +kubebuilder:validation:Optional
 	Http *HttpConfiguration `json:"http,omitempty"`
 
-	// The settings for an exporter to send telemetry to an arbitrary OTLP-compatible receiver via gRPC.
+	// Settings for sending telemetry to an OTLP-compatible receiver via gRPC.
 	//
 	// +kubebuilder:validation:Optional
 	Grpc *GrpcConfiguration `json:"grpc,omitempty"`
@@ -38,38 +37,33 @@ type Export struct {
 
 // Dash0Configuration describes to which Dash0 ingress endpoint telemetry data will be sent.
 type Dash0Configuration struct {
-	// The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
-	// needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
-	// https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. The correct endpoint value will always
-	// start with `ingress.` and end in `dash0.com:4317`.
+	// The OTLP/gRPC endpoint of your Dash0 organization, see
+	// https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. It starts with `ingress.` and ends in
+	// `dash0.com:4317`.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	Endpoint string `json:"endpoint"`
 
-	// The identifier of the Dash0 dataset to which telemetry data will be sent. Note that this is the dataset's
-	// identifier, not its display name; for example, a dataset named "Production" can have the identifier "prod". The
-	// identifier can be looked up in https://app.dash0.com/settings/datasets. This property is optional. If omitted, no
-	// dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token. API
-	// access (dashboards, check rules, etc.) uses the dataset "default" in that case.
+	// The identifier (not the display name) of the Dash0 dataset to which telemetry data will be sent, see
+	// https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token,
+	// and API access (dashboards, check rules, etc.) uses the dataset "default".
 	Dataset string `json:"dataset,omitempty"`
 
-	// Mandatory authorization settings for sending data to Dash0.
+	// The authorization settings for sending data to Dash0. Exactly one of token and secretRef has to be provided.
 	//
 	// +kubebuilder:validation:Required
 	Authorization Authorization `json:"authorization"`
 
-	// The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
-	// dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
-	// needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied from
-	// https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. The correct endpoint value will always
-	// start with "https://api." and end in ".dash0.com"
+	// The API endpoint of your Dash0 organization, see
+	// https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. It starts with `https://api.` and ends in
+	// `.dash0.com`. It is not used for telemetry, but for managing dashboards, check rules, synthetic checks and views
+	// via the operator.
 	//
 	// +kubebuilder:validation:Optional
 	ApiEndpoint string `json:"apiEndpoint,omitempty"`
 
-	// The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
-	// This setting is optional and there should usually be no need to configure it.
+	// The client-side gRPC keepalive settings. There is usually no need to configure them.
 	//
 	// +kubebuilder:validation:Optional
 	Keepalive *KeepaliveClientConfig `json:"keepalive,omitempty"`
@@ -80,16 +74,12 @@ type Dash0Configuration struct {
 // +kubebuilder:validation:MinProperties=1
 // +kubebuilder:validation:MaxProperties=1
 type Authorization struct {
-	// The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
-	// to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-	// token for your Dash0 organization can be copied from https://app.dash0.com/settings/auth-tokens.
+	// The Dash0 authorization token, see https://app.dash0.com/settings/auth-tokens.
 	//
 	// +kubebuilder:validation:Optional
 	Token *string `json:"token,omitempty"` // either token or secret ref, with token taking precedence
 
-	// A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
-	// ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-	// https://app.dash0.com/settings/auth-tokens.
+	// A reference to a Kubernetes secret containing the Dash0 authorization token.
 	//
 	// +kubebuilder:validation:Optional
 	SecretRef *SecretRef `json:"secretRef,omitempty"`
@@ -108,12 +98,12 @@ type SecretRef struct {
 // HttpConfiguration describe the settings for an exporter to send telemetry to an arbitrary OTLP-compatible receiver
 // via HTTP.
 type HttpConfiguration struct {
-	// The URL of the OTLP-compatible receiver to which telemetry data will be sent. This property is mandatory.
+	// The URL of the OTLP-compatible receiver to which telemetry data will be sent.
 	//
 	// +kubebuilder:validation:Required
 	Endpoint string `json:"endpoint"`
 
-	// Additional headers to be sent with each HTTP request, for example for authorization. This property is optional.
+	// Additional headers to be sent with each HTTP request, for example for authorization.
 	//
 	// +kubebuilder:validation:Optional
 	Headers []Header `json:"headers,omitempty"`
@@ -132,35 +122,33 @@ type HttpConfiguration struct {
 // GrpcConfiguration descibe the settings for an exporter to send telemetry to an arbitrary OTLP-compatible receiver
 // via gRPC.
 type GrpcConfiguration struct {
-	// The URL of the OTLP-compatible receiver to which telemetry data will be sent. This property is mandatory.
+	// The URL of the OTLP-compatible receiver to which telemetry data will be sent.
 	//
 	// +kubebuilder:validation:Required
 	Endpoint string `json:"endpoint"`
 
-	// Additional headers to be sent with each gRPC request, for example for authorization. This property is optional.
+	// Additional headers to be sent with each gRPC request, for example for authorization.
 	//
 	// +kubebuilder:validation:Optional
 	Headers []Header `json:"headers,omitempty"`
 
-	// Explicitly defines whether TLS is used. Per default, a secure connection is assumed, unless the endpoint starts with 'http://'.
+	// Whether to disable TLS. By default, TLS is used unless the endpoint starts with 'http://'.
 	//
 	// +kubebuilder:validation:Optional
 	Insecure *bool `json:"insecure,omitempty"`
 
-	// Whether to skip verifying the server's certificate chain. It is a validation error to explicitly set
-	// `insecure=true` and `insecureSkipVerify=true` at the same time, since `insecure` means TLS won't be used at all.
+	// Whether to skip verifying the server's certificate chain. It is a validation error to combine this with
+	// `insecure=true`, which disables TLS altogether.
 	//
 	// +kubebuilder:validation:Optional
 	InsecureSkipVerify *bool `json:"insecureSkipVerify,omitempty"`
 
-	// The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
-	// This setting is optional and there should usually be no need to configure it.
+	// The client-side gRPC keepalive settings. There is usually no need to configure them.
 	//
 	// +kubebuilder:validation:Optional
 	Keepalive *KeepaliveClientConfig `json:"keepalive,omitempty"`
 
-	// The name of the load balancer to use. Can be either round_robin or pick_first. Optional; when omitted, the
-	// collector's default (round_robin) is used.
+	// The load balancer to use, round_robin or pick_first. When omitted, the collector's default (round_robin) is used.
 	//
 	// +kubebuilder:validation:Optional
 	BalancerName BalancerName `json:"balancer_name,omitempty"`
@@ -176,9 +164,7 @@ const (
 	Json  OtlpEncoding = "json"
 )
 
-// Header describes a single header to be sent with each request. The header value can either be provided directly via
-// the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
-// has to be provided.
+// Header describes a single header to be sent with each request. Exactly one of value and valueFrom has to be provided.
 //
 // +kubebuilder:validation:XValidation:rule="has(self.value) != has(self.valueFrom)",message="exactly one of value or valueFrom has to be provided for a header"
 type Header struct {
@@ -187,16 +173,14 @@ type Header struct {
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 
-	// The value of the header, provided directly as a literal string. This property is optional, but either this
-	// property or the valueFrom property has to be provided. It is a validation error to provide both.
+	// The value of the header as a literal string.
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MinLength=1
 	Value string `json:"value,omitempty"`
 
-	// A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
-	// header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
-	// either this property or the value property has to be provided. It is a validation error to provide both.
+	// The value of the header, sourced from a Kubernetes secret. Use this for sensitive values like authorization tokens
+	// or API keys.
 	//
 	// +kubebuilder:validation:Optional
 	ValueFrom *HeaderValueFrom `json:"valueFrom,omitempty"`

@@ -11,6 +11,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -1064,6 +1065,25 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			)
 			VerifyImmutableJobCouldNotBeModified(GetJob(ctx, k8sClient, namespace, name))
 		})
+	})
+
+	It("should not instrument existing workloads in a Kubernetes system namespace at startup", func() {
+		// The validation webhook, which rejects instrumentWorkloads.mode=all in Kubernetes system namespaces, is not
+		// active in this test suite.
+		monitoringResourceName := types.NamespacedName{Namespace: "kube-system", Name: MonitoringResourceName}
+		spec := MonitoringResourceDefaultSpec
+		spec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeAll
+		EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(ctx, k8sClient, spec, monitoringResourceName)
+		DeferCleanup(func() {
+			DeleteMonitoringResourceByName(ctx, k8sClient, monitoringResourceName, true)
+		})
+		name := UniqueName(DeploymentNamePrefix)
+		deployment := CreateBasicDeployment(ctx, k8sClient, monitoringResourceName.Namespace, name)
+		createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, deployment)
+
+		instrumenter.InstrumentAtStartup(ctx, logger)
+
+		VerifyUnmodifiedDeployment(GetDeployment(ctx, k8sClient, monitoringResourceName.Namespace, name))
 	})
 
 	DescribeTable("when updating instrumented workloads at startup", func(config WorkloadTestConfig) {

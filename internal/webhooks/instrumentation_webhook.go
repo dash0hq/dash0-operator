@@ -169,6 +169,12 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 	}
 
 	targetNamespace := request.Namespace
+	if slices.Contains(util.RestrictedNamespaces, targetNamespace) {
+		return admission.Allowed(fmt.Sprintf(
+			"Workloads in the Kubernetes system namespace %s are never instrumented by the webhook.",
+			targetNamespace,
+		))
+	}
 
 	dash0List := &dash0v1beta1.Dash0MonitoringList{}
 	if err := h.Client.List(ctx, dash0List, &client.ListOptions{
