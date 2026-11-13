@@ -590,3 +590,49 @@ jobs:
       DASH0_DOCS_REPO_GITHUB_PAT: ${{ secrets.DASH0_DOCS_REPO_GITHUB_PAT }}
       SYNC_DOCUMENTATION_TARGET_REPOSITORY: ${{ secrets.SYNC_DOCUMENTATION_TARGET_REPOSITORY }}
       SYNC_DOCUMENTATION_TARGET_DIRECTORY: ${{ secrets.SYNC_DOCUMENTATION_TARGET_DIRECTORY }}
+
+  # After publishing a release, create the matching release in the Linear "Dash0 Operator" release pipeline, so that
+  # OPE issues show which operator release shipped them. Scans the commits since the previous release tag reachable
+  # from this one, so the commits of a tag whose build failed land in the next release.
+  sync_release_to_linear:
+    name: Sync release to Linear
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Linear bookkeeping must never fail a release.
+    continue-on-error: true
+    permissions:
+      contents: read
+    needs:
+      - publish_helm_chart
+    if: ${{ always() && contains(github.ref, 'refs/tags/') && needs.publish_helm_chart.result == 'success' }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          # the Linear release CLI scans the commit history since the previous release tag
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: determine previous release tag
+        id: previous_release_tag
+        run: |
+          previous_tag="$(git tag --list --sort=-version:refname --merged HEAD \
+            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+            | grep -vx "${GITHUB_REF_NAME}" \
+            | head -n 1 || true)"
+          echo "previous release tag: ${previous_tag:-<none>}"
+          echo "previous_tag=${previous_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: sync release to Linear
+        uses: linear/linear-release-action@d4af10092984f9bc6d5efa075b242bdf01333463
+        with:
+          access_key: ${{ secrets.LINEAR_RELEASE_ACCESS_KEY }}
+          name: ${{ github.ref_name }}
+          version: ${{ github.ref_name }}
+          base_ref: ${{ steps.previous_release_tag.outputs.previous_tag }}
+          # Issues are linked via PR references in the squashed commit messages; stale branch refs pointing at
+          # already-shipped commits would otherwise attribute unrelated issues to the release.
+          no_branch_ref_detection: 'true'
+          links: |
+            GitHub release=${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+            CI run=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
