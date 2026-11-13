@@ -80,6 +80,9 @@ func main() {
 	router.PUT("/api/time-series-aggregations/:origin", handleTimeSeriesAggregationRequest)
 	router.DELETE("/api/time-series-aggregations/:origin", handleTimeSeriesAggregationRequest)
 
+	router.PUT("/api/generative-ai-evaluations/:origin", handleGenerativeAiEvaluationRequest)
+	router.DELETE("/api/generative-ai-evaluations/:origin", handleGenerativeAiEvaluationRequest)
+
 	router.PUT("/api/dashboards/:origin", handleDashboardRequest)
 	router.DELETE("/api/dashboards/:origin", handleDashboardRequest)
 
@@ -223,6 +226,11 @@ func handleSpamFilterRequest(ginCtx *gin.Context) {
 }
 
 func handleTimeSeriesAggregationRequest(ginCtx *gin.Context) {
+	storeRequest(ginCtx)
+	respondWithOverrideOrOK(ginCtx)
+}
+
+func handleGenerativeAiEvaluationRequest(ginCtx *gin.Context) {
 	storeRequest(ginCtx)
 	respondWithOverrideOrOK(ginCtx)
 }

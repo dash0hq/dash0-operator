@@ -1,0 +1,25 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0GenerativeAiEvaluation
+metadata:
+  name: answer-relevance
+spec:
+  enabled: true
+  display:
+    name: Answer relevance
+  match:
+    filters:
+      - key: gen_ai.operation.name
+        operator: is_set
+  sample:
+    rate: 0.1
+  judge:
+    model: light
+    systemPrompt: You review the answers of an AI assistant.
+    userPrompt: |
+      Score from 0 to 1 how well the answer addresses the question.
+      Question: {{ gen_ai.input.messages }}
+      Answer: {{ gen_ai.output.messages }}
+    output:
+      kind: numeric
+      spec:
+        threshold: 0.7

@@ -79,6 +79,41 @@ metadata:
         },
         {
           "apiVersion": "operator.dash0.com/v1alpha1",
+          "kind": "Dash0GenerativeAiEvaluation",
+          "metadata": {
+            "name": "answer-relevance"
+          },
+          "spec": {
+            "display": {
+              "name": "Answer relevance"
+            },
+            "enabled": true,
+            "judge": {
+              "model": "light",
+              "output": {
+                "kind": "numeric",
+                "spec": {
+                  "threshold": 0.7
+                }
+              },
+              "systemPrompt": "You review the answers of an AI assistant.",
+              "userPrompt": "Score from 0 to 1 how well the answer addresses the question.\nQuestion: {{ gen_ai.input.messages }}\nAnswer: {{ gen_ai.output.messages }}\n"
+            },
+            "match": {
+              "filters": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "operator": "is_set"
+                }
+              ]
+            },
+            "sample": {
+              "rate": 0.1
+            }
+          }
+        },
+        {
+          "apiVersion": "operator.dash0.com/v1alpha1",
           "kind": "Dash0OperatorConfiguration",
           "metadata": {
             "name": "dash0-operator-configuration"
@@ -370,6 +405,28 @@ spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
     owned:
+    - description: An eval, an LLM judge that scores a sample of the generative AI
+        spans that match its filters.
+      displayName: Dash0 Generative AI Evaluation
+      kind: Dash0GenerativeAiEvaluation
+      name: dash0generativeaievaluations.operator.dash0.com
+      specDescriptors:
+      - description: Whether the eval judges spans.
+        displayName: Enabled
+        path: enabled
+      - description: The name and description of the eval shown in Dash0.
+        displayName: Display
+        path: display
+      - description: The spans that the eval judges.
+        displayName: Match
+        path: match
+      - description: The share of the matching traces that is judged.
+        displayName: Sample
+        path: sample
+      - description: The model, the prompts and the kind of result of the judge.
+        displayName: Judge
+        path: judge
+      version: v1alpha1
     - description: A destination for Dash0 alert notifications, for example a Slack
         channel, email recipients or a webhook.
       displayName: Dash0 Notification Channel
@@ -897,6 +954,22 @@ spec:
         - apiGroups:
           - operator.dash0.com
           resources:
+          - dash0generativeaievaluations
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - operator.dash0.com
+          resources:
+          - dash0generativeaievaluations/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - operator.dash0.com
+          resources:
           - dash0signalcontrols
           verbs:
           - create
@@ -1372,6 +1445,7 @@ spec:
         - apiGroups:
           - operator.dash0.com
           resources:
+          - dash0generativeaievaluations
           - dash0monitorings
           - dash0notificationchannels
           - dash0operatorconfigurations
