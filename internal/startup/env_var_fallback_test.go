@@ -254,6 +254,7 @@ func reservedEnvVarNames() map[string]bool {
 		sendBatchSizeEnvVarName,
 		sendBatchMaxSizeEnvVarName,
 		k8sAttributesDisableReplicasetInformerEnvVarName,
+		k8sAttributesDisableJobInformerEnvVarName,
 		k8sAttributesWaitForMetadataEnvVarName,
 		k8sAttributesWaitForMetadataTimeoutEnvVarName,
 		enablePprofExtensionEnvVarName,

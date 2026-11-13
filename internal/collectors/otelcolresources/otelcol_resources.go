@@ -217,6 +217,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		KubernetesObjectCollectionEnabled:                kubernetesObjectCollectionEnabled,
 		CollectClusterScopedObjects:                      collectClusterScopedObjects,
 		K8sAttributesDisableReplicasetInformer:           m.collectorConfig.K8sAttributesDisableReplicasetInformer,
+		K8sAttributesDisableJobInformer:                  m.collectorConfig.K8sAttributesDisableJobInformer,
 		K8sAttributesWaitForMetadata:                     m.collectorConfig.K8sAttributesWaitForMetadata,
 		K8sAttributesWaitForMetadataTimeout:              m.collectorConfig.K8sAttributesWaitForMetadataTimeout,
 		K8sAttributesShareProcessor:                      m.collectorConfig.K8sAttributesShareProcessor,
@@ -570,6 +571,7 @@ func (m *OTelColResourceManager) DeleteResources(
 		// whether both sets have been created earlier or not.
 		KubernetesInfrastructureMetricsCollectionEnabled: true,
 		K8sAttributesDisableReplicasetInformer:           m.collectorConfig.K8sAttributesDisableReplicasetInformer,
+		K8sAttributesDisableJobInformer:                  m.collectorConfig.K8sAttributesDisableJobInformer,
 		K8sAttributesWaitForMetadata:                     m.collectorConfig.K8sAttributesWaitForMetadata,
 		K8sAttributesWaitForMetadataTimeout:              m.collectorConfig.K8sAttributesWaitForMetadataTimeout,
 		UseHostMetricsReceiver:                           !m.collectorConfig.IsDocker,                                 // irrelevant for deletion

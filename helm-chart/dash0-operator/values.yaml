@@ -1232,6 +1232,12 @@ operator:
       # The default is false, do not override this unless explicitly instructed by Dash0 support.
       disableReplicasetInformer: false
 
+      # Disables the job informer for the k8s_attributes processor. This will lead to not collecting the resource
+      # attribute k8s.cronjob.uid, and might lead to wrong values for k8s.cronjob.name in some edge cases.
+      # Disabling the job informer reduces the traffic between the collectors and the Kubernetes API server in large
+      # clusters with many jobs. The default is false.
+      disableJobInformer: false
+
       # By default, the k8s_attributes processor will not wait until Kubernetes metadata has been fetched from the
       # Kubernetes API. Telemetry which is collected before the Kubernetes metadata has been synchronized will not be
       # enriched. That is, the first few spans, log records and metric data points will have less resource attributes
