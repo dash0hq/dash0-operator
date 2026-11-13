@@ -813,10 +813,14 @@ operator:
     # resources contain a lot of filters or transforms, this limit might be smaller.
     compressConfigMaps: false
 
-    # A reference to a persistent volume to use for the filelog offset sync. Specify this is you have a cluster
-    # with more than pods 100 pods active at the same time. By default, the filelog offset sync will use a config map
-    # for its peristent storage, but ConfigMaps are limited to 1 MB in size. If you have around 100 pods running in
-    # your cluster, the recommendation is to provide volume.
+    # A reference to a persistent volume to use for the filelog offset sync. We strongly recommend providing a volume
+    # for all clusters except small development or test clusters. By default, the filelog offset sync uses a single
+    # config map for its persistent storage, which every collector pod updates once per minute. This has two
+    # consequences: ConfigMaps are limited to 1 MB in size, which clusters with around 100 pods or more can exceed. And
+    # etcd stores a complete copy of the config map for every update until the next compaction, so the disk space used
+    # by etcd grows with the square of the number of nodes. In larger clusters, this can exhaust the etcd storage quota,
+    # which makes the cluster unusable. This risk is highest for self-managed control planes (e.g. on-premises
+    # clusters). See docs/advanced-configuration.md#providing-a-filelog-offset-volume for details.
     #
     # Here is an example with a hostPath volume (see also https://kubernetes.io/docs/concepts/storage/volumes/#hostpath
     # for considerations around using hostPath volumes):
