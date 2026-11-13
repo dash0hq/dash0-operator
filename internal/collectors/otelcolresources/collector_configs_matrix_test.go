@@ -105,6 +105,7 @@ func maximalMatrixBaseline() collectorConfigMatrixEntry {
 			CollectNodeLabelsAndAnnotationsEnabled:           true,
 			CollectClusterScopedObjects:                      true,
 			K8sAttributesDisableReplicasetInformer:           true,
+			K8sAttributesDisableJobInformer:                  true,
 			K8sAttributesWaitForMetadata:                     true,
 			K8sAttributesWaitForMetadataTimeout:              "10s",
 			K8sAttributesShareProcessor:                      true,
@@ -285,6 +286,12 @@ func matrixSettings() []matrixSetting {
 			name: "k8s-attributes-disable-replicaset-informer",
 			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
 				e.config.K8sAttributesDisableReplicasetInformer = enabled
+			},
+		},
+		{
+			name: "k8s-attributes-disable-job-informer",
+			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				e.config.K8sAttributesDisableJobInformer = enabled
 			},
 		},
 		{

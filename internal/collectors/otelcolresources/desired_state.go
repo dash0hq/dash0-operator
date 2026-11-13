@@ -119,6 +119,7 @@ type oTelColConfig struct {
 	KubernetesObjectCollectionEnabled                bool
 	CollectClusterScopedObjects                      bool
 	K8sAttributesDisableReplicasetInformer           bool
+	K8sAttributesDisableJobInformer                  bool
 	K8sAttributesWaitForMetadata                     bool
 	K8sAttributesWaitForMetadataTimeout              string
 	K8sAttributesShareProcessor                      bool

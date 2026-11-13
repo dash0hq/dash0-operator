@@ -128,6 +128,7 @@ type environmentVariables struct {
 	sendBatchSize                               *uint32
 	sendBatchMaxSize                            *uint32
 	k8sAttributesDisableReplicasetInformer      bool
+	k8sAttributesDisableJobInformer             bool
 	k8sAttributesWaitForMetadata                bool
 	k8sAttributesWaitForMetadataTimeout         string
 	k8sAttributesShareProcessor                 bool
@@ -272,6 +273,7 @@ const (
 	sendBatchSizeEnvVarName                          = "OTEL_COLLECTOR_SEND_BATCH_SIZE"
 	sendBatchMaxSizeEnvVarName                       = "OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
 	k8sAttributesDisableReplicasetInformerEnvVarName = "OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER"
+	k8sAttributesDisableJobInformerEnvVarName        = "OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_JOB_INFORMER"
 	k8sAttributesWaitForMetadataEnvVarName           = "OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA"
 	k8sAttributesWaitForMetadataTimeoutEnvVarName    = "OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA_TIMEOUT"
 	k8sAttributesShareProcessorEnvVarName            = "OTEL_COLLECTOR_K8SATTRIBUTES_SHARE_PROCESSOR_BETWEEN_PIPELINES"
@@ -1114,6 +1116,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	}
 
 	k8sAttributesDisableReplicasetInformer := readBooleanEnvVar(k8sAttributesDisableReplicasetInformerEnvVarName)
+	k8sAttributesDisableJobInformer := readBooleanEnvVar(k8sAttributesDisableJobInformerEnvVarName)
 
 	k8sAttributesWaitForMetadata := readBooleanEnvVar(k8sAttributesWaitForMetadataEnvVarName)
 	k8sAttributesWaitForMetadataTimeout, _ := os.LookupEnv(k8sAttributesWaitForMetadataTimeoutEnvVarName)
@@ -1180,6 +1183,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		sendBatchSize:                               sendBatchSize,
 		sendBatchMaxSize:                            sendBatchMaxSize,
 		k8sAttributesDisableReplicasetInformer:      k8sAttributesDisableReplicasetInformer,
+		k8sAttributesDisableJobInformer:             k8sAttributesDisableJobInformer,
 		k8sAttributesWaitForMetadata:                k8sAttributesWaitForMetadata,
 		k8sAttributesWaitForMetadataTimeout:         k8sAttributesWaitForMetadataTimeout,
 		k8sAttributesShareProcessor:                 k8sAttributesShareProcessor,
@@ -1992,6 +1996,7 @@ func startDash0Controllers(
 			SendBatchSize:                          envVars.sendBatchSize,
 			SendBatchMaxSize:                       envVars.sendBatchMaxSize,
 			K8sAttributesDisableReplicasetInformer: envVars.k8sAttributesDisableReplicasetInformer,
+			K8sAttributesDisableJobInformer:        envVars.k8sAttributesDisableJobInformer,
 			K8sAttributesWaitForMetadata:           envVars.k8sAttributesWaitForMetadata,
 			K8sAttributesWaitForMetadataTimeout:    envVars.k8sAttributesWaitForMetadataTimeout,
 			K8sAttributesShareProcessor:            envVars.k8sAttributesShareProcessor,

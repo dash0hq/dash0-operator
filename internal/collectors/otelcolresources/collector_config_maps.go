@@ -96,6 +96,7 @@ type collectorConfigurationTemplateValues struct {
 	CollectNodeLabelsAndAnnotationsEnabled           bool
 	LabelAndAnnotationExclusionPatterns              []string
 	K8sAttributesDisableReplicasetInformer           bool
+	K8sAttributesDisableJobInformer                  bool
 	K8sAttributesWaitForMetadata                     bool
 	K8sAttributesWaitForMetadataTimeout              string
 	PrometheusCrdSupportEnabled                      bool
@@ -427,6 +428,7 @@ func newCollectorConfigurationTemplateValues(
 		CollectNodeLabelsAndAnnotationsEnabled:           config.CollectNodeLabelsAndAnnotationsEnabled,
 		LabelAndAnnotationExclusionPatterns:              labelAndAnnotationExclusionPatterns(),
 		K8sAttributesDisableReplicasetInformer:           config.K8sAttributesDisableReplicasetInformer,
+		K8sAttributesDisableJobInformer:                  config.K8sAttributesDisableJobInformer,
 		K8sAttributesWaitForMetadata:                     config.K8sAttributesWaitForMetadata,
 		K8sAttributesWaitForMetadataTimeout:              config.K8sAttributesWaitForMetadataTimeout,
 		PrometheusCrdSupportEnabled:                      config.PrometheusCrdSupportEnabled,

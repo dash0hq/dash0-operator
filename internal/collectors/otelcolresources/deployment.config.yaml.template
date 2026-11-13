@@ -241,7 +241,9 @@ processors:
       metadata:
       - k8s.cluster.uid
       - k8s.cronjob.name
+      {{- if not .K8sAttributesDisableJobInformer }}
       - k8s.cronjob.uid
+      {{- end }}
       - k8s.daemonset.name
       - k8s.daemonset.uid
       - k8s.deployment.name
