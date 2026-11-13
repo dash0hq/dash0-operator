@@ -1089,8 +1089,10 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	}
 
 	instrumentationDebug := readBooleanEnvVar(instrumentationDebugEnvVarName)
-	enablePythonAutoInstrumentation := readBooleanEnvVar(enablePythonAutoInstrumentationEnvVarName)
-	enableRubyAutoInstrumentation := readBooleanEnvVar(enableRubyAutoInstrumentationEnvVarName)
+	enablePythonAutoInstrumentation :=
+		readOptionalBoolFromEnvironmentVariable(enablePythonAutoInstrumentationEnvVarName, true)
+	enableRubyAutoInstrumentation :=
+		readOptionalBoolFromEnvironmentVariable(enableRubyAutoInstrumentationEnvVarName, true)
 
 	debugVerbosityDetailed := readBooleanEnvVar(debugVerbosityDetailedEnvVarName)
 

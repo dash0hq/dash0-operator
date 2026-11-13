@@ -189,9 +189,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				&images,
 				true,
 				map[string]string{
-					"operator.instrumentation.enablePythonAutoInstrumentation": "true",
-					"operator.instrumentation.enableRubyAutoInstrumentation":   "true",
-					"operator.iac.periodicRetry.interval":                      iacPeriodicRetryInterval.String(),
+					"operator.iac.periodicRetry.interval": iacPeriodicRetryInterval.String(),
 				},
 			)
 		})
@@ -3821,7 +3819,6 @@ spec:
 			})
 		})
 
-		// This test suite should be removed once Python auto-instrumentation is on by default.
 		//nolint:dupl
 		Describe("with Python auto-instrumentation disabled", func() {
 			BeforeAll(func() {
@@ -3833,7 +3830,9 @@ spec:
 					"",
 					&images,
 					true,
-					nil,
+					map[string]string{
+						"operator.instrumentation.enablePythonAutoInstrumentation": "false",
+					},
 				)
 				deployDash0MonitoringResourceWithRetry(
 					applicationUnderTestNamespace,
@@ -3847,7 +3846,7 @@ spec:
 				undeployOperator(operatorNamespace)
 			})
 
-			It("should not instrument Python if Python auto-instrumentation is not enabled", func() {
+			It("should not instrument Python if Python auto-instrumentation is disabled", func() {
 				testId := generateNewTestId(runtimeTypePython, workloadTypeDeployment)
 				query := fmt.Sprintf("id=%s", testId)
 				By("installing the Python deployment")
@@ -3891,7 +3890,6 @@ spec:
 			})
 		})
 
-		// This test suite should be removed once Ruby auto-instrumentation is on by default.
 		//nolint:dupl
 		Describe("with Ruby auto-instrumentation disabled", func() {
 			BeforeAll(func() {
@@ -3903,7 +3901,9 @@ spec:
 					"",
 					&images,
 					true,
-					nil,
+					map[string]string{
+						"operator.instrumentation.enableRubyAutoInstrumentation": "false",
+					},
 				)
 				deployDash0MonitoringResourceWithRetry(
 					applicationUnderTestNamespace,
@@ -3917,7 +3917,7 @@ spec:
 				undeployOperator(operatorNamespace)
 			})
 
-			It("should not instrument Ruby if Ruby auto-instrumentation is not enabled", func() {
+			It("should not instrument Ruby if Ruby auto-instrumentation is disabled", func() {
 				testId := generateNewTestId(runtimeTypeRuby, workloadTypeDeployment)
 				query := fmt.Sprintf("id=%s", testId)
 				By("installing the Ruby deployment")

@@ -76,7 +76,7 @@ The new setting will be applied when instrumenting newly deployed workloads, or 
 
 ## Python Auto-Instrumentation
 
-To enable auto-instrumentation for Python workloads, set `operator.instrumentation.enablePythonAutoInstrumentation=true` via Helm. If this setting is enabled for an existing operator installation, Python auto-instrumentation will be enabled immediately for workloads in namespaces that have a Dash0Monitoring resource with `instrumentWorkloads.mode` set to `all`. This will cause all pods in these namespaces to be restarted. For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will become active with the next re-deployment of the workload. The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a Dash0Monitoring resource.
+Python auto-instrumentation is enabled by default. To disable it, set `operator.instrumentation.enablePythonAutoInstrumentation=false` via Helm. If this setting is changed for an existing operator installation, the change takes effect immediately for workloads in namespaces that have a Dash0Monitoring resource with `instrumentWorkloads.mode` set to `all`. This will cause all pods in these namespaces to be restarted. For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will take effect with the next re-deployment of the workload. The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a Dash0Monitoring resource.
 
 Python auto-instrumentation is only supported for Python 3.10 or later. If the Dash0 Python auto-instrumentation detects an incompatible Python version (i.e. version 3.9 or older), it will automatically deactivate itself safely and print a warning to `stderr`:
 ```
@@ -106,7 +106,7 @@ This warning is also visible in the Dash0 UI's log view, unless log collection h
 
 ## Ruby Auto-Instrumentation
 
-To enable auto-instrumentation for Ruby workloads, set `operator.instrumentation.enableRubyAutoInstrumentation=true` via Helm. If this setting is enabled for an existing operator installation, Ruby auto-instrumentation will be enabled immediately for workloads in namespaces that have a Dash0Monitoring resource with `instrumentWorkloads.mode` set to `all`. This will cause all pods in these namespaces to be restarted. For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will become active with the next re-deployment of the workload. The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a Dash0Monitoring resource.
+Ruby auto-instrumentation is enabled by default. To disable it, set `operator.instrumentation.enableRubyAutoInstrumentation=false` via Helm. If this setting is changed for an existing operator installation, the change takes effect immediately for workloads in namespaces that have a Dash0Monitoring resource with `instrumentWorkloads.mode` set to `all`. This will cause all pods in these namespaces to be restarted. For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will take effect with the next re-deployment of the workload. The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a Dash0Monitoring resource.
 
 Ruby auto-instrumentation is only supported for Ruby 3.3 or later. On an older Ruby version, the Dash0 Ruby distribution deactivates itself safely and prints a warning to `stderr`:
 ```

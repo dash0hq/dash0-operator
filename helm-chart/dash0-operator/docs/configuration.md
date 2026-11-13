@@ -988,13 +988,13 @@ The new setting will be applied when instrumenting newly deployed workloads, or 
 
 ### Python Auto-Instrumentation
 
-To enable auto-instrumentation for Python workloads, set `operator.instrumentation.enablePythonAutoInstrumentation=true`
-via Helm.
-If this setting is enabled for an existing operator installation, Python auto-instrumentation will be enabled
-immediately for workloads in namespaces that have a Dash0Monitoring resource with
+Python auto-instrumentation is enabled by default.
+To disable it, set `operator.instrumentation.enablePythonAutoInstrumentation=false` via Helm.
+If this setting is changed for an existing operator installation, the change takes effect immediately for workloads in
+namespaces that have a Dash0Monitoring resource with
 [`instrumentWorkloads.mode`](#monitoringresource.spec.instrumentWorkloads.mode) `all`.
 This will cause all pods in these namespaces to be restarted.
-For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will become active with the next
+For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will take effect with the next
 re-deployment of the workload.
 The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a
 Dash0Monitoring resource.
@@ -1052,13 +1052,13 @@ example by using the OpenTelemetry Python [zero-code instrumentation](https://op
 
 ### Ruby Auto-Instrumentation
 
-To enable auto-instrumentation for Ruby workloads, set `operator.instrumentation.enableRubyAutoInstrumentation=true`
-via Helm.
-If this setting is enabled for an existing operator installation, Ruby auto-instrumentation will be enabled
-immediately for workloads in namespaces that have a Dash0Monitoring resource with
+Ruby auto-instrumentation is enabled by default.
+To disable it, set `operator.instrumentation.enableRubyAutoInstrumentation=false` via Helm.
+If this setting is changed for an existing operator installation, the change takes effect immediately for workloads in
+namespaces that have a Dash0Monitoring resource with
 [`instrumentWorkloads.mode`](#monitoringresource.spec.instrumentWorkloads.mode) `all`.
 This will cause all pods in these namespaces to be restarted.
-For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will become active with the next
+For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will take effect with the next
 re-deployment of the workload.
 The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a
 Dash0Monitoring resource.

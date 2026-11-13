@@ -27,9 +27,9 @@ Auto-instrumentation is supported for the following runtimes:
 * Java 8+, using the [OpenTelemetry Java agent](https://github.com/open-telemetry/opentelemetry-java-instrumentation)
 * .NET 6+, using the
   [Dash0 .NET OpenTelemetry distribution](https://github.com/dash0hq/opentelemetry-dotnet-distribution)
-* Python 3.10+ (opt-in), using the
+* Python 3.10+, using the
   [Dash0 Python OpenTelemetry distribution](https://github.com/dash0hq/opentelemetry-python-distribution)
-* Ruby 3.3+ (opt-in), using the
+* Ruby 3.3+, using the
   [Dash0 Ruby OpenTelemetry distribution](https://github.com/dash0hq/opentelemetry-ruby-distribution)
 
 For more information on how the Dash0 operator automatically traces your applications, see the

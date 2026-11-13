@@ -72,54 +72,66 @@ tests:
           value: ghcr.io/dash0hq/dash0-synthetics-worker:0.2.0
       - equal:
           path: spec.template.spec.containers[0].env[19].name
-          value: K8S_POD_UID
+          value: DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION
       - equal:
-          path: spec.template.spec.containers[0].env[19].valueFrom.fieldRef.fieldPath
-          value: metadata.uid
+          path: spec.template.spec.containers[0].env[19].value
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[20].name
-          value: K8S_NODE_IP
+          value: DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION
       - equal:
-          path: spec.template.spec.containers[0].env[20].valueFrom.fieldRef.fieldPath
-          value: status.hostIP
+          path: spec.template.spec.containers[0].env[20].value
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[21].name
-          value: K8S_NODE_NAME
+          value: K8S_POD_UID
       - equal:
           path: spec.template.spec.containers[0].env[21].valueFrom.fieldRef.fieldPath
-          value: spec.nodeName
+          value: metadata.uid
       - equal:
           path: spec.template.spec.containers[0].env[22].name
-          value: K8S_POD_IP
+          value: K8S_NODE_IP
       - equal:
           path: spec.template.spec.containers[0].env[22].valueFrom.fieldRef.fieldPath
-          value: status.podIP
+          value: status.hostIP
       - equal:
           path: spec.template.spec.containers[0].env[23].name
-          value: K8S_POD_NAME
+          value: K8S_NODE_NAME
       - equal:
           path: spec.template.spec.containers[0].env[23].valueFrom.fieldRef.fieldPath
-          value: metadata.name
+          value: spec.nodeName
       - equal:
           path: spec.template.spec.containers[0].env[24].name
-          value: K8S_POD_OPENSHIFT_SCC
+          value: K8S_POD_IP
       - equal:
           path: spec.template.spec.containers[0].env[24].valueFrom.fieldRef.fieldPath
-          value: metadata.annotations['openshift.io/scc']
+          value: status.podIP
       - equal:
           path: spec.template.spec.containers[0].env[25].name
-          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[25].valueFrom.fieldRef.fieldPath
+          value: metadata.name
       - equal:
           path: spec.template.spec.containers[0].env[26].name
-          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+          value: K8S_POD_OPENSHIFT_SCC
+      - equal:
+          path: spec.template.spec.containers[0].env[26].valueFrom.fieldRef.fieldPath
+          value: metadata.annotations['openshift.io/scc']
       - equal:
           path: spec.template.spec.containers[0].env[27].name
-          value: DASH0_CA_BUNDLE_TARGETS
+          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
       - equal:
           path: spec.template.spec.containers[0].env[28].name
+          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[29].name
+          value: DASH0_CA_BUNDLE_TARGETS
+      - equal:
+          path: spec.template.spec.containers[0].env[30].name
           value: DASH0_EBPF_PROFILER_ENABLED
       - notExists:
-          path: spec.template.spec.containers[0].env[29].name
+          path: spec.template.spec.containers[0].env[31].name
 
   - it: webhook certificates secret should be rendered without data
     documentSelector:
@@ -744,6 +756,8 @@ tests:
           delayAfterEachWorkloadMillis: 13
           delayAfterEachNamespaceMillis: 123
           debug: true
+          enablePythonAutoInstrumentation: false
+          enableRubyAutoInstrumentation: false
         disableCollectorResourceWatches: true
         collectors:
           debugVerbosityDetailed: true
@@ -1022,105 +1036,117 @@ tests:
           value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[29].name
-          value: DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES
+          value: DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION
       - equal:
           path: spec.template.spec.containers[0].env[29].value
-          value: "true"
+          value: "false"
       - equal:
           path: spec.template.spec.containers[0].env[30].name
-          value: OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED
+          value: DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION
       - equal:
           path: spec.template.spec.containers[0].env[30].value
-          value: "true"
+          value: "false"
       - equal:
           path: spec.template.spec.containers[0].env[31].name
-          value: OTEL_COLLECTOR_SEND_BATCH_SIZE
+          value: DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES
       - equal:
           path: spec.template.spec.containers[0].env[31].value
-          value: "16384"
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[32].name
-          value: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
+          value: OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED
       - equal:
           path: spec.template.spec.containers[0].env[32].value
-          value: "32768"
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[33].name
-          value: OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER
+          value: OTEL_COLLECTOR_SEND_BATCH_SIZE
       - equal:
           path: spec.template.spec.containers[0].env[33].value
-          value: "true"
+          value: "16384"
       - equal:
           path: spec.template.spec.containers[0].env[34].name
-          value: OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA
+          value: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
       - equal:
           path: spec.template.spec.containers[0].env[34].value
-          value: "true"
+          value: "32768"
       - equal:
           path: spec.template.spec.containers[0].env[35].name
-          value: OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA_TIMEOUT
+          value: OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER
       - equal:
           path: spec.template.spec.containers[0].env[35].value
-          value: "13s"
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[36].name
-          value: OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION
+          value: OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA
       - equal:
           path: spec.template.spec.containers[0].env[36].value
           value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[37].name
-          value: OTEL_COLLECTOR_COMPRESS_CONFIG_MAPS
+          value: OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA_TIMEOUT
       - equal:
           path: spec.template.spec.containers[0].env[37].value
-          value: "true"
+          value: "13s"
       - equal:
           path: spec.template.spec.containers[0].env[38].name
-          value: K8S_POD_UID
+          value: OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION
       - equal:
-          path: spec.template.spec.containers[0].env[38].valueFrom.fieldRef.fieldPath
-          value: metadata.uid
+          path: spec.template.spec.containers[0].env[38].value
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[39].name
-          value: K8S_NODE_IP
+          value: OTEL_COLLECTOR_COMPRESS_CONFIG_MAPS
       - equal:
-          path: spec.template.spec.containers[0].env[39].valueFrom.fieldRef.fieldPath
-          value: status.hostIP
+          path: spec.template.spec.containers[0].env[39].value
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[40].name
-          value: K8S_NODE_NAME
+          value: K8S_POD_UID
       - equal:
           path: spec.template.spec.containers[0].env[40].valueFrom.fieldRef.fieldPath
-          value: spec.nodeName
+          value: metadata.uid
       - equal:
           path: spec.template.spec.containers[0].env[41].name
-          value: K8S_POD_IP
+          value: K8S_NODE_IP
       - equal:
           path: spec.template.spec.containers[0].env[41].valueFrom.fieldRef.fieldPath
-          value: status.podIP
+          value: status.hostIP
       - equal:
           path: spec.template.spec.containers[0].env[42].name
-          value: K8S_POD_NAME
+          value: K8S_NODE_NAME
       - equal:
           path: spec.template.spec.containers[0].env[42].valueFrom.fieldRef.fieldPath
-          value: metadata.name
+          value: spec.nodeName
       - equal:
           path: spec.template.spec.containers[0].env[43].name
-          value: K8S_POD_OPENSHIFT_SCC
+          value: K8S_POD_IP
+      - equal:
+          path: spec.template.spec.containers[0].env[43].valueFrom.fieldRef.fieldPath
+          value: status.podIP
       - equal:
           path: spec.template.spec.containers[0].env[44].name
-          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[44].valueFrom.fieldRef.fieldPath
+          value: metadata.name
       - equal:
           path: spec.template.spec.containers[0].env[45].name
-          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+          value: K8S_POD_OPENSHIFT_SCC
       - equal:
           path: spec.template.spec.containers[0].env[46].name
-          value: DASH0_CA_BUNDLE_TARGETS
+          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
       - equal:
           path: spec.template.spec.containers[0].env[47].name
+          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[48].name
+          value: DASH0_CA_BUNDLE_TARGETS
+      - equal:
+          path: spec.template.spec.containers[0].env[49].name
           value: DASH0_EBPF_PROFILER_ENABLED
       - notExists:
-          path: spec.template.spec.containers[0].env[48].name
+          path: spec.template.spec.containers[0].env[50].name
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
           value: 123m
@@ -1204,10 +1230,10 @@ tests:
           disableReplicasetInformer: true
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].env[19].name
+          path: spec.template.spec.containers[0].env[21].name
           value: OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER
       - equal:
-          path: spec.template.spec.containers[0].env[19].value
+          path: spec.template.spec.containers[0].env[21].value
           value: "true"
 
   - it: should not render the k8s_attributes share processor env var by default
@@ -1785,7 +1811,7 @@ tests:
           value: "ghcr.io/dash0hq/collector:1.2.3"
       # no DASH0_EDGE_PROXY_IMAGE when Signal Control is disabled
       - equal:
-          path: spec.template.spec.containers[0].env[19].name
+          path: spec.template.spec.containers[0].env[21].name
           value: K8S_POD_UID
 
   - it: should use Signal Control collector image when Signal Control is enabled
@@ -1827,7 +1853,7 @@ tests:
           path: spec.template.spec.containers[0].env[18].value
           value: "ghcr.io/dash0hq/edge-proxy:1.6.0"
       - equal:
-          path: spec.template.spec.containers[0].env[21].name
+          path: spec.template.spec.containers[0].env[23].name
           value: K8S_POD_UID
 
   - it: should pass both flags that SCE-only mode is derived from
@@ -2018,54 +2044,66 @@ tests:
           value: DASH0_SYNTHETICS_WORKER_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[19].name
-          value: K8S_POD_UID
+          value: DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION
       - equal:
-          path: spec.template.spec.containers[0].env[19].valueFrom.fieldRef.fieldPath
-          value: metadata.uid
+          path: spec.template.spec.containers[0].env[19].value
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[20].name
-          value: K8S_NODE_IP
+          value: DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION
       - equal:
-          path: spec.template.spec.containers[0].env[20].valueFrom.fieldRef.fieldPath
-          value: status.hostIP
+          path: spec.template.spec.containers[0].env[20].value
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[21].name
-          value: K8S_NODE_NAME
+          value: K8S_POD_UID
       - equal:
           path: spec.template.spec.containers[0].env[21].valueFrom.fieldRef.fieldPath
-          value: spec.nodeName
+          value: metadata.uid
       - equal:
           path: spec.template.spec.containers[0].env[22].name
-          value: K8S_POD_IP
+          value: K8S_NODE_IP
       - equal:
           path: spec.template.spec.containers[0].env[22].valueFrom.fieldRef.fieldPath
-          value: status.podIP
+          value: status.hostIP
       - equal:
           path: spec.template.spec.containers[0].env[23].name
-          value: K8S_POD_NAME
+          value: K8S_NODE_NAME
       - equal:
           path: spec.template.spec.containers[0].env[23].valueFrom.fieldRef.fieldPath
-          value: metadata.name
+          value: spec.nodeName
       - equal:
           path: spec.template.spec.containers[0].env[24].name
-          value: K8S_POD_OPENSHIFT_SCC
+          value: K8S_POD_IP
       - equal:
           path: spec.template.spec.containers[0].env[24].valueFrom.fieldRef.fieldPath
-          value: metadata.annotations['openshift.io/scc']
+          value: status.podIP
       - equal:
           path: spec.template.spec.containers[0].env[25].name
-          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[25].valueFrom.fieldRef.fieldPath
+          value: metadata.name
       - equal:
           path: spec.template.spec.containers[0].env[26].name
-          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+          value: K8S_POD_OPENSHIFT_SCC
+      - equal:
+          path: spec.template.spec.containers[0].env[26].valueFrom.fieldRef.fieldPath
+          value: metadata.annotations['openshift.io/scc']
       - equal:
           path: spec.template.spec.containers[0].env[27].name
-          value: DASH0_CA_BUNDLE_TARGETS
+          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
       - equal:
           path: spec.template.spec.containers[0].env[28].name
+          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[29].name
+          value: DASH0_CA_BUNDLE_TARGETS
+      - equal:
+          path: spec.template.spec.containers[0].env[30].name
           value: DASH0_EBPF_PROFILER_ENABLED
       - notExists:
-          path: spec.template.spec.containers[0].env[29].name
+          path: spec.template.spec.containers[0].env[31].name
 
   - it: deployment should support changing repositories for images
     chart:
@@ -2150,54 +2188,66 @@ tests:
           value: DASH0_SYNTHETICS_WORKER_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[19].name
-          value: K8S_POD_UID
+          value: DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION
       - equal:
-          path: spec.template.spec.containers[0].env[19].valueFrom.fieldRef.fieldPath
-          value: metadata.uid
+          path: spec.template.spec.containers[0].env[19].value
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[20].name
-          value: K8S_NODE_IP
+          value: DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION
       - equal:
-          path: spec.template.spec.containers[0].env[20].valueFrom.fieldRef.fieldPath
-          value: status.hostIP
+          path: spec.template.spec.containers[0].env[20].value
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[21].name
-          value: K8S_NODE_NAME
+          value: K8S_POD_UID
       - equal:
           path: spec.template.spec.containers[0].env[21].valueFrom.fieldRef.fieldPath
-          value: spec.nodeName
+          value: metadata.uid
       - equal:
           path: spec.template.spec.containers[0].env[22].name
-          value: K8S_POD_IP
+          value: K8S_NODE_IP
       - equal:
           path: spec.template.spec.containers[0].env[22].valueFrom.fieldRef.fieldPath
-          value: status.podIP
+          value: status.hostIP
       - equal:
           path: spec.template.spec.containers[0].env[23].name
-          value: K8S_POD_NAME
+          value: K8S_NODE_NAME
       - equal:
           path: spec.template.spec.containers[0].env[23].valueFrom.fieldRef.fieldPath
-          value: metadata.name
+          value: spec.nodeName
       - equal:
           path: spec.template.spec.containers[0].env[24].name
-          value: K8S_POD_OPENSHIFT_SCC
+          value: K8S_POD_IP
       - equal:
           path: spec.template.spec.containers[0].env[24].valueFrom.fieldRef.fieldPath
-          value: metadata.annotations['openshift.io/scc']
+          value: status.podIP
       - equal:
           path: spec.template.spec.containers[0].env[25].name
-          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[25].valueFrom.fieldRef.fieldPath
+          value: metadata.name
       - equal:
           path: spec.template.spec.containers[0].env[26].name
-          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+          value: K8S_POD_OPENSHIFT_SCC
+      - equal:
+          path: spec.template.spec.containers[0].env[26].valueFrom.fieldRef.fieldPath
+          value: metadata.annotations['openshift.io/scc']
       - equal:
           path: spec.template.spec.containers[0].env[27].name
-          value: DASH0_CA_BUNDLE_TARGETS
+          value: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
       - equal:
           path: spec.template.spec.containers[0].env[28].name
+          value: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[29].name
+          value: DASH0_CA_BUNDLE_TARGETS
+      - equal:
+          path: spec.template.spec.containers[0].env[30].name
           value: DASH0_EBPF_PROFILER_ENABLED
       - notExists:
-          path: spec.template.spec.containers[0].env[29].name
+          path: spec.template.spec.containers[0].env[31].name
 
   - it: webhook configurations should not render a caBundle if the live objects cannot be read
     set:
