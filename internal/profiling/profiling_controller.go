@@ -58,6 +58,10 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		&corev1.ConfigMap{}, &corev1.Service{}, &networkingv1.NetworkPolicy{}} {
 		controller = controller.WatchesRawSource(source.Kind(operandCache, object, &handler.EnqueueRequestForObject{}, managed))
 	}
+	controller = controller.WatchesRawSource(source.Channel(r.Manager.extraConfigUpdates,
+		handler.TypedEnqueueRequestsFromMapFunc(func(context.Context, struct{}) []reconcile.Request {
+			return []reconcile.Request{{}}
+		})))
 	return controller.WatchesRawSource(source.Kind(operandCache, client.Object(&corev1.Secret{}),
 		handler.EnqueueRequestsFromMapFunc(r.secretRequests))).Complete(r)
 }

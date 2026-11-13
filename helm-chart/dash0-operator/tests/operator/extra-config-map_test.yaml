@@ -333,6 +333,51 @@ tests:
                       operator: In
                       values:
                         - value-15
+        ebpfProfilerEnabled: true
+        ebpfProfiler:
+          containerResources:
+            limits:
+              cpu: 500m
+              memory: 1Gi
+            gomemlimit: 800MiB
+            requests:
+              cpu: 200m
+              memory: 256Mi
+          tolerations:
+            - key: key7
+              operator: Exists
+              effect: NoSchedule
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: node-label-key-11
+                      operator: In
+                      values:
+                        - value-16
+          priorityClassName: ebpf-profiler-priority-class
+        debuginfoProxy:
+          containerResources:
+            limits:
+              cpu: 100m
+              memory: 256Mi
+            gomemlimit: 200MiB
+            requests:
+              cpu: 20m
+              memory: 64Mi
+          tolerations:
+            - key: key8
+              operator: Exists
+              effect: NoSchedule
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: node-label-key-12
+                      operator: In
+                      values:
+                        - value-17
+          priorityClassName: debuginfo-proxy-priority-class
         monitoringTemplate:
           metadata:
             name: monitoring-template-name
@@ -715,6 +760,48 @@ tests:
                     values:
                     - value-13
                     - value-14
+            ebpfProfilerContainerResources:
+              gomemlimit: 800MiB
+              limits:
+                cpu: 500m
+                memory: 1Gi
+              requests:
+                cpu: 200m
+                memory: 256Mi
+            ebpfProfilerTolerations:
+              - effect: NoSchedule
+                key: key7
+                operator: Exists
+            ebpfProfilerNodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: node-label-key-11
+                    operator: In
+                    values:
+                    - value-16
+            ebpfProfilerPriorityClassName: "ebpf-profiler-priority-class"
+            debuginfoProxyContainerResources:
+              gomemlimit: 200MiB
+              limits:
+                cpu: 100m
+                memory: 256Mi
+              requests:
+                cpu: 20m
+                memory: 64Mi
+            debuginfoProxyTolerations:
+              - effect: NoSchedule
+                key: key8
+                operator: Exists
+            debuginfoProxyNodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: node-label-key-12
+                    operator: In
+                    values:
+                    - value-17
+            debuginfoProxyPriorityClassName: "debuginfo-proxy-priority-class"
             monitoringTemplate:
               metadata:
                 annotations:
@@ -1226,6 +1313,124 @@ tests:
               requests:
                 cpu: 20m
                 memory: 128Mi
+
+  - it: should not render eBPF profiler and debuginfo proxy settings if the eBPF profiler is disabled
+    set:
+      operator:
+        ebpfProfiler:
+          labels:
+            profiler-label: profiler-label-value
+          priorityClassName: ebpf-profiler-priority-class
+        debuginfoProxy:
+          podLabels:
+            proxy-pod-label: proxy-pod-label-value
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: ebpfProfiler
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: debuginfoProxy
+
+  - it: should render the default eBPF profiler and debuginfo proxy settings
+    set:
+      operator:
+        ebpfProfilerEnabled: true
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            ebpfProfilerContainerResources:
+              gomemlimit: ""
+              limits:
+                memory: 512Mi
+              requests:
+                cpu: 100m
+                memory: 128Mi
+            ebpfProfilerTolerations:
+              \[\]
+            ebpfProfilerNodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: dash0.com/enable
+                    operator: NotIn
+                    values:
+                    - "false"
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                    - linux
+            debuginfoProxyContainerResources:
+              gomemlimit: ""
+              limits:
+                memory: 128Mi
+              requests:
+                cpu: 10m
+                memory: 32Mi
+            debuginfoProxyTolerations:
+              \[\]
+            debuginfoProxyNodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: dash0.com/enable
+                    operator: NotIn
+                    values:
+                    - "false"
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                    - linux
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: (ebpfProfiler|debuginfoProxy)(Labels|Annotations|PodLabels|PodAnnotations|PriorityClassName)
+
+  - it: should render eBPF profiler and debuginfo proxy labels and annotations when set
+    set:
+      operator:
+        ebpfProfilerEnabled: true
+        ebpfProfiler:
+          labels:
+            profiler-label: profiler-label-value
+          annotations:
+            profiler-annotation: profiler-annotation-value
+          podLabels:
+            profiler-pod-label: profiler-pod-label-value
+          podAnnotations:
+            profiler-pod-annotation: profiler-pod-annotation-value
+        debuginfoProxy:
+          labels:
+            proxy-label: proxy-label-value
+          annotations:
+            proxy-annotation: proxy-annotation-value
+          podLabels:
+            proxy-pod-label: proxy-pod-label-value
+          podAnnotations:
+            proxy-pod-annotation: proxy-pod-annotation-value
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            ebpfProfilerLabels:
+              profiler-label: profiler-label-value
+            ebpfProfilerAnnotations:
+              profiler-annotation: profiler-annotation-value
+            ebpfProfilerPodLabels:
+              profiler-pod-label: profiler-pod-label-value
+            ebpfProfilerPodAnnotations:
+              profiler-pod-annotation: profiler-pod-annotation-value
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            debuginfoProxyLabels:
+              proxy-label: proxy-label-value
+            debuginfoProxyAnnotations:
+              proxy-annotation: proxy-annotation-value
+            debuginfoProxyPodLabels:
+              proxy-pod-label: proxy-pod-label-value
+            debuginfoProxyPodAnnotations:
+              proxy-pod-annotation: proxy-pod-annotation-value
 
   - it: should render the default number of concurrent agent0-connector commands
     set:

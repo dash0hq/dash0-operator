@@ -536,6 +536,10 @@ edgeProxyReplicas: 3
 agent0ConnectorMaxConcurrentCommands: 4
 agent0ConnectorAllowedKubectlCommands:
   get: true
+ebpfProfilerContainerResources:
+  limits:
+    memory: 1Gi
+ebpfProfilerNodeAffinity: null
 `)
 					Expect(err).ToNot(HaveOccurred())
 
@@ -558,10 +562,16 @@ agent0ConnectorAllowedKubectlCommands:
 					Expect(extraConfig.EdgeProxyReplicas).To(Equal(int32(3)))
 					Expect(extraConfig.Agent0ConnectorMaxConcurrentCommands).To(Equal(int32(4)))
 					Expect(extraConfig.Agent0ConnectorAllowedKubectlCommands).To(Equal(map[string]bool{"get": true}))
+					Expect(extraConfig.EbpfProfilerContainerResources.Limits).To(HaveLen(1))
+					Expect(extraConfig.EbpfProfilerContainerResources.Limits.Memory().String()).To(Equal("1Gi"))
+					Expect(extraConfig.EbpfProfilerContainerResources.Requests).To(BeNil())
+					Expect(extraConfig.EbpfProfilerNodeAffinity).To(BeNil())
 
 					// keys that are missing still get their defaults
 					Expect(extraConfig.DeploymentProbes).To(Equal(defaultCollectorProbes))
 					Expect(extraConfig.EdgeProxyNodeAffinity).To(Equal(defaultNodeAffinity()))
+					Expect(extraConfig.DebuginfoProxyContainerResources).To(Equal(ExtraConfigDefaults.DebuginfoProxyContainerResources))
+					Expect(extraConfig.DebuginfoProxyNodeAffinity).To(Equal(defaultNodeAffinity()))
 				})
 
 				It("should use the default replica counts for explicit nulls", func() {
@@ -1745,6 +1755,22 @@ var extraConfigKeysToHelmValues = map[string]string{
 	"agent0ConnectorPodAnnotations":                                 "operator.agent0Connector.podAnnotations",
 	"agent0ConnectorTolerations":                                    "operator.agent0Connector.tolerations",
 	"agent0ConnectorNodeAffinity":                                   "operator.agent0Connector.nodeAffinity",
+	"ebpfProfilerContainerResources":                                "operator.ebpfProfiler.containerResources",
+	"ebpfProfilerLabels":                                            "operator.ebpfProfiler.labels",
+	"ebpfProfilerAnnotations":                                       "operator.ebpfProfiler.annotations",
+	"ebpfProfilerPodLabels":                                         "operator.ebpfProfiler.podLabels",
+	"ebpfProfilerPodAnnotations":                                    "operator.ebpfProfiler.podAnnotations",
+	"ebpfProfilerTolerations":                                       "operator.ebpfProfiler.tolerations",
+	"ebpfProfilerNodeAffinity":                                      "operator.ebpfProfiler.nodeAffinity",
+	"ebpfProfilerPriorityClassName":                                 "operator.ebpfProfiler.priorityClassName",
+	"debuginfoProxyContainerResources":                              "operator.debuginfoProxy.containerResources",
+	"debuginfoProxyLabels":                                          "operator.debuginfoProxy.labels",
+	"debuginfoProxyAnnotations":                                     "operator.debuginfoProxy.annotations",
+	"debuginfoProxyPodLabels":                                       "operator.debuginfoProxy.podLabels",
+	"debuginfoProxyPodAnnotations":                                  "operator.debuginfoProxy.podAnnotations",
+	"debuginfoProxyTolerations":                                     "operator.debuginfoProxy.tolerations",
+	"debuginfoProxyNodeAffinity":                                    "operator.debuginfoProxy.nodeAffinity",
+	"debuginfoProxyPriorityClassName":                               "operator.debuginfoProxy.priorityClassName",
 	"exports":                                                       "operator.exports",
 	"monitoringTemplate":                                            "operator.monitoringTemplate",
 	"filter":                                                        "operator.filter",

@@ -1822,6 +1822,119 @@ operator:
       top: true
       version: true
 
+  # Settings for the eBPF profiler DaemonSet managed by the operator. All settings in operator.ebpfProfiler will be
+  # ignored if operator.ebpfProfilerEnabled is false. See docs/profiling.md.
+  ebpfProfiler:
+
+    # Resource settings for the profiler container.
+    containerResources:
+      limits:
+        memory: 512Mi
+      # The GOMEMLIMIT environment variable value for the profiler container. Leaving this empty is recommended; the
+      # operator then derives it from containerResources.limits.memory (about 80%). Set a value only to override it.
+      # Valid units differ from Kubernetes resource settings, use MiB or GiB (see
+      # https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+    # Additional labels to be set on the eBPF profiler DaemonSet.
+    labels: {}
+
+    # Additional annotations to be set on the eBPF profiler DaemonSet.
+    annotations: {}
+
+    # Additional labels to be set on the eBPF profiler pods.
+    podLabels: {}
+
+    # Additional annotations to be set on the eBPF profiler pods.
+    podAnnotations: {}
+
+    # An array of tolerations for the eBPF profiler DaemonSet. The tolerations of the DaemonSet collector
+    # (operator.collectors.daemonSetTolerations) are not applied to the profiler. To profile workloads on tainted
+    # nodes, set the same tolerations here and in operator.debuginfoProxy.tolerations.
+    # Example:
+    # tolerations:
+    #   - key: "key1"
+    #     operator: "Equal"
+    #     value: "value1"
+    #     effect: "NoSchedule"
+    tolerations: []
+
+    # The nodeAffinity for the eBPF profiler DaemonSet. This can be used to constrain which nodes the profiler pods will
+    # be scheduled on.
+    #
+    # See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: "dash0.com/enable"
+                operator: "NotIn"
+                values: ["false"]
+              - key: "kubernetes.io/os"
+                operator: "In"
+                values: ["linux"]
+
+    # The priority class name for the eBPF profiler pods. If set, these pods will be scheduled with the specified
+    # priority class. See https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/.
+    # priorityClassName:
+
+  # Settings for the debuginfo upload proxy DaemonSet managed by the operator, which runs whenever the eBPF profiler
+  # uploads debug information. All settings in operator.debuginfoProxy will be ignored if operator.ebpfProfilerEnabled
+  # is false. See docs/profiling.md.
+  debuginfoProxy:
+
+    # Resource settings for the debuginfo proxy container.
+    containerResources:
+      limits:
+        memory: 128Mi
+      # The GOMEMLIMIT environment variable value for the debuginfo proxy container. Leaving this empty is recommended;
+      # the operator then derives it from containerResources.limits.memory (about 80%). Set a value only to override it.
+      # Valid units differ from Kubernetes resource settings, use MiB or GiB (see
+      # https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
+      requests:
+        cpu: 10m
+        memory: 32Mi
+
+    # Additional labels to be set on the debuginfo proxy DaemonSet.
+    labels: {}
+
+    # Additional annotations to be set on the debuginfo proxy DaemonSet.
+    annotations: {}
+
+    # Additional labels to be set on the debuginfo proxy pods.
+    podLabels: {}
+
+    # Additional annotations to be set on the debuginfo proxy pods.
+    podAnnotations: {}
+
+    # An array of tolerations for the debuginfo proxy DaemonSet. The profiler only uploads debug information to the
+    # proxy pod on its own node, so the proxy needs the same tolerations as the profiler
+    # (operator.ebpfProfiler.tolerations).
+    tolerations: []
+
+    # The nodeAffinity for the debuginfo proxy DaemonSet. This can be used to constrain which nodes the proxy pods will
+    # be scheduled on.
+    #
+    # See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: "dash0.com/enable"
+                operator: "NotIn"
+                values: ["false"]
+              - key: "kubernetes.io/os"
+                operator: "In"
+                values: ["linux"]
+
+    # The priority class name for the debuginfo proxy pods. If set, these pods will be scheduled with the specified
+    # priority class. See https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/.
+    # priorityClassName:
+
   # Settings related to the synthetics-worker, the private-location runner that dials outbound to Dash0 and executes
   # synthetic checks assigned to this cluster's private location (experimental).
   syntheticsWorker:

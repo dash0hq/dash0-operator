@@ -1255,7 +1255,7 @@ custom resource definition for operator configuration should match snapshot:
                                 annotations keep them.
                               type: object
                             containerResources:
-                              description: The resource requests, limits and GOMEMLIMIT of the proxy container.
+                              description: The resources of the proxy container (Helm value operator.debuginfoProxy.containerResources).
                               properties:
                                 gomemlimit:
                                   description: |-
@@ -1501,7 +1501,7 @@ custom resource definition for operator configuration should match snapshot:
                                 pod labels keep them.
                               type: object
                             priorityClassName:
-                              description: The priority class name for the pods. When omitted, no priority class is set.
+                              description: The priority class name for the pods. It replaces the one provided via the Helm chart, an empty value keeps it.
                               type: string
                             tolerations:
                               description: |-
@@ -2045,7 +2045,7 @@ custom resource definition for operator configuration should match snapshot:
                                 annotations keep them.
                               type: object
                             containerResources:
-                              description: The resource requests, limits and GOMEMLIMIT of the profiler container.
+                              description: The resources of the profiler container (Helm value operator.ebpfProfiler.containerResources).
                               properties:
                                 gomemlimit:
                                   description: |-
@@ -2291,7 +2291,7 @@ custom resource definition for operator configuration should match snapshot:
                                 pod labels keep them.
                               type: object
                             priorityClassName:
-                              description: The priority class name for the pods. When omitted, no priority class is set.
+                              description: The priority class name for the pods. It replaces the one provided via the Helm chart, an empty value keeps it.
                               type: string
                             tolerations:
                               description: |-

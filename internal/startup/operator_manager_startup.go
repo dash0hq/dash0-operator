@@ -2102,7 +2102,8 @@ func startDash0Controllers(
 			ServiceAccountName: cliArgs.ebpfProfilerServiceAccountName, IsOpenShift: cliArgs.isOpenShift,
 		},
 	)
-	profilerManager := profiling.NewManager(profilerResourceManager)
+	profilerManager := profiling.NewManager(profilerResourceManager, extraConfig, extraConfigDefaults)
+	extraConfigMapWatcher.AddClient(profilerManager)
 	profilerReconciler := profiling.NewReconciler(k8sClient, profilerManager)
 	if err := profilerReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the eBPF profiler reconciler: %w", err)

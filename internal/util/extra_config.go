@@ -135,24 +135,23 @@ type ExtraConfig struct {
 	Agent0ConnectorTolerations            []corev1.Toleration                `json:"agent0ConnectorTolerations,omitempty"`
 	Agent0ConnectorNodeAffinity           *corev1.NodeAffinity               `json:"agent0ConnectorNodeAffinity,omitempty"`
 
-	// Profiling component settings come from spec.components, not the extra config file.
-	EbpfProfilerContainerResources ResourceRequirementsWithGoMemLimit `json:"-"`
-	EbpfProfilerLabels             map[string]string                  `json:"-"`
-	EbpfProfilerAnnotations        map[string]string                  `json:"-"`
-	EbpfProfilerPodLabels          map[string]string                  `json:"-"`
-	EbpfProfilerPodAnnotations     map[string]string                  `json:"-"`
-	EbpfProfilerTolerations        []corev1.Toleration                `json:"-"`
-	EbpfProfilerNodeAffinity       *corev1.NodeAffinity               `json:"-"`
-	EbpfProfilerPriorityClassName  string                             `json:"-"`
+	EbpfProfilerContainerResources ResourceRequirementsWithGoMemLimit `json:"ebpfProfilerContainerResources"`
+	EbpfProfilerLabels             map[string]string                  `json:"ebpfProfilerLabels,omitempty"`
+	EbpfProfilerAnnotations        map[string]string                  `json:"ebpfProfilerAnnotations,omitempty"`
+	EbpfProfilerPodLabels          map[string]string                  `json:"ebpfProfilerPodLabels,omitempty"`
+	EbpfProfilerPodAnnotations     map[string]string                  `json:"ebpfProfilerPodAnnotations,omitempty"`
+	EbpfProfilerTolerations        []corev1.Toleration                `json:"ebpfProfilerTolerations,omitempty"`
+	EbpfProfilerNodeAffinity       *corev1.NodeAffinity               `json:"ebpfProfilerNodeAffinity,omitempty"`
+	EbpfProfilerPriorityClassName  string                             `json:"ebpfProfilerPriorityClassName,omitempty"`
 
-	DebuginfoProxyContainerResources ResourceRequirementsWithGoMemLimit `json:"-"`
-	DebuginfoProxyLabels             map[string]string                  `json:"-"`
-	DebuginfoProxyAnnotations        map[string]string                  `json:"-"`
-	DebuginfoProxyPodLabels          map[string]string                  `json:"-"`
-	DebuginfoProxyPodAnnotations     map[string]string                  `json:"-"`
-	DebuginfoProxyTolerations        []corev1.Toleration                `json:"-"`
-	DebuginfoProxyNodeAffinity       *corev1.NodeAffinity               `json:"-"`
-	DebuginfoProxyPriorityClassName  string                             `json:"-"`
+	DebuginfoProxyContainerResources ResourceRequirementsWithGoMemLimit `json:"debuginfoProxyContainerResources"`
+	DebuginfoProxyLabels             map[string]string                  `json:"debuginfoProxyLabels,omitempty"`
+	DebuginfoProxyAnnotations        map[string]string                  `json:"debuginfoProxyAnnotations,omitempty"`
+	DebuginfoProxyPodLabels          map[string]string                  `json:"debuginfoProxyPodLabels,omitempty"`
+	DebuginfoProxyPodAnnotations     map[string]string                  `json:"debuginfoProxyPodAnnotations,omitempty"`
+	DebuginfoProxyTolerations        []corev1.Toleration                `json:"debuginfoProxyTolerations,omitempty"`
+	DebuginfoProxyNodeAffinity       *corev1.NodeAffinity               `json:"debuginfoProxyNodeAffinity,omitempty"`
+	DebuginfoProxyPriorityClassName  string                             `json:"debuginfoProxyPriorityClassName,omitempty"`
 
 	// Actually we would like to use the types *dash0v1alpha1.MonitoringTemplate, *dash0common.Filter and
 	// *dash0common.Transform here, but that leads to circular package dependencies. We should revisit how to untangle
@@ -252,26 +251,6 @@ var (
 				corev1.ResourceMemory: resource.MustParse("64Mi"),
 			},
 		},
-		EbpfProfilerContainerResources: ResourceRequirementsWithGoMemLimit{
-			Limits: corev1.ResourceList{
-				corev1.ResourceMemory: resource.MustParse("512Mi"),
-			},
-			Requests: corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse("100m"),
-				corev1.ResourceMemory: resource.MustParse("128Mi"),
-			},
-		},
-		EbpfProfilerNodeAffinity: defaultNodeAffinity(),
-		DebuginfoProxyContainerResources: ResourceRequirementsWithGoMemLimit{
-			Limits: corev1.ResourceList{
-				corev1.ResourceMemory: resource.MustParse("128Mi"),
-			},
-			Requests: corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse("10m"),
-				corev1.ResourceMemory: resource.MustParse("32Mi"),
-			},
-		},
-		DebuginfoProxyNodeAffinity: defaultNodeAffinity(),
 
 		// The following defaults are only applied when the respective key is missing from the extra config map (see
 		// readExtraConfigurationFromFile), since the Helm chart renders them whenever the respective component is
@@ -323,6 +302,26 @@ var (
 			"version":       true,
 		},
 		Agent0ConnectorNodeAffinity: defaultNodeAffinity(),
+		EbpfProfilerContainerResources: ResourceRequirementsWithGoMemLimit{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("512Mi"),
+			},
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("100m"),
+				corev1.ResourceMemory: resource.MustParse("128Mi"),
+			},
+		},
+		EbpfProfilerNodeAffinity: defaultNodeAffinity(),
+		DebuginfoProxyContainerResources: ResourceRequirementsWithGoMemLimit{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("128Mi"),
+			},
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("10m"),
+				corev1.ResourceMemory: resource.MustParse("32Mi"),
+			},
+		},
+		DebuginfoProxyNodeAffinity: defaultNodeAffinity(),
 	}
 
 	// gkeAutopilotInstrumentationInitContainerResources mirrors the Helm chart's fallback for GKE Autopilot when
@@ -529,6 +528,18 @@ func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig
 	}
 	if missing("agent0ConnectorNodeAffinity") {
 		extraConfig.Agent0ConnectorNodeAffinity = defaults.Agent0ConnectorNodeAffinity.DeepCopy()
+	}
+	if missing("ebpfProfilerContainerResources") {
+		extraConfig.EbpfProfilerContainerResources = defaults.EbpfProfilerContainerResources.DeepCopy()
+	}
+	if missing("ebpfProfilerNodeAffinity") {
+		extraConfig.EbpfProfilerNodeAffinity = defaults.EbpfProfilerNodeAffinity.DeepCopy()
+	}
+	if missing("debuginfoProxyContainerResources") {
+		extraConfig.DebuginfoProxyContainerResources = defaults.DebuginfoProxyContainerResources.DeepCopy()
+	}
+	if missing("debuginfoProxyNodeAffinity") {
+		extraConfig.DebuginfoProxyNodeAffinity = defaults.DebuginfoProxyNodeAffinity.DeepCopy()
 	}
 }
 

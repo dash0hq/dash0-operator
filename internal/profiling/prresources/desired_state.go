@@ -80,9 +80,12 @@ func (c Config) metadata(component string) metav1.ObjectMeta {
 	return metav1.ObjectMeta{Name: c.name(component), Namespace: c.Namespace, Labels: c.labels(component)}
 }
 
-func (c Config) profiler(configuration *dash0v1alpha1.Dash0OperatorConfiguration, uploads bool) []client.Object {
+func (c Config) profiler(
+	configuration *dash0v1alpha1.Dash0OperatorConfiguration,
+	settings util.ExtraConfig,
+	uploads bool,
+) []client.Object {
 	spec := configuration.Spec.Profiling.EbpfProfiler
-	settings := util.EffectiveExtraConfig(util.ExtraConfigDefaults, util.ExtraConfigDefaults, configuration, nil)
 	tracers := spec.Tracers
 	if len(tracers) == 0 {
 		tracers = []string{"python", "hotspot", "php", "ruby", "perl", "v8", "dotnet", "beam", "luajit", "labels", "cuda"}
@@ -155,12 +158,12 @@ func (c Config) profiler(configuration *dash0v1alpha1.Dash0OperatorConfiguration
 	}
 	metadata := c.metadata(profilerComponent)
 	metadata.Labels = mergeLabels(settings.EbpfProfilerLabels, metadata.Labels)
-	metadata.Annotations = settings.EbpfProfilerAnnotations
+	metadata.Annotations = util.MergeMaps(nil, settings.EbpfProfilerAnnotations)
 	ds := &appsv1.DaemonSet{ObjectMeta: metadata, Spec: appsv1.DaemonSetSpec{
 		Selector: &metav1.LabelSelector{MatchLabels: c.labels(profilerComponent)},
 		Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{
 			Labels:      mergeLabels(settings.EbpfProfilerPodLabels, c.labels(profilerComponent)),
-			Annotations: settings.EbpfProfilerPodAnnotations,
+			Annotations: util.MergeMaps(nil, settings.EbpfProfilerPodAnnotations),
 		}, Spec: pod},
 	}}
 	if c.usesExternalProfilerServiceAccount() {
@@ -169,8 +172,7 @@ func (c Config) profiler(configuration *dash0v1alpha1.Dash0OperatorConfiguration
 	return []client.Object{&corev1.ServiceAccount{ObjectMeta: c.metadata(profilerComponent), AutomountServiceAccountToken: ptr.To(false)}, ds}
 }
 
-func (c Config) proxy(configuration *dash0v1alpha1.Dash0OperatorConfiguration, config proxyConfiguration, revision string) []client.Object {
-	settings := util.EffectiveExtraConfig(util.ExtraConfigDefaults, util.ExtraConfigDefaults, configuration, nil)
+func (c Config) proxy(settings util.ExtraConfig, config proxyConfiguration, revision string) []client.Object {
 	security := &corev1.SecurityContext{
 		RunAsNonRoot: ptr.To(true), AllowPrivilegeEscalation: ptr.To(false), ReadOnlyRootFilesystem: ptr.To(true),
 		Capabilities:   &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
@@ -181,7 +183,7 @@ func (c Config) proxy(configuration *dash0v1alpha1.Dash0OperatorConfiguration, c
 	env = append(env, corev1.EnvVar{Name: "GOMEMLIMIT", Value: settings.DebuginfoProxyContainerResources.EffectiveGoMemLimitPercent(util.GoMemLimitDefaultPercent)})
 	metadata := c.metadata(proxyComponent)
 	metadata.Labels = mergeLabels(settings.DebuginfoProxyLabels, metadata.Labels)
-	metadata.Annotations = settings.DebuginfoProxyAnnotations
+	metadata.Annotations = util.MergeMaps(nil, settings.DebuginfoProxyAnnotations)
 	podAnnotations := maps.Clone(settings.DebuginfoProxyPodAnnotations)
 	if podAnnotations == nil {
 		podAnnotations = map[string]string{}

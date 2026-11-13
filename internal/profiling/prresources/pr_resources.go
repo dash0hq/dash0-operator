@@ -21,6 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
@@ -52,8 +53,13 @@ func (m *ResourceManager) Manages(object client.Object) bool {
 		(object.GetLabels()[componentLabel] == profilerComponent || object.GetLabels()[componentLabel] == proxyComponent)
 }
 
-// CreateOrUpdateResources applies desired profiling resources and removes an unused proxy.
-func (m *ResourceManager) CreateOrUpdateResources(ctx context.Context, configuration *dash0v1alpha1.Dash0OperatorConfiguration) (Changes, error) {
+// CreateOrUpdateResources applies desired profiling resources and removes an unused proxy. The settings are the
+// effective extra configuration, with spec.components of the configuration already applied.
+func (m *ResourceManager) CreateOrUpdateResources(
+	ctx context.Context,
+	configuration *dash0v1alpha1.Dash0OperatorConfiguration,
+	settings util.ExtraConfig,
+) (Changes, error) {
 	changes := Changes{}
 	proxyConfig := proxyConfiguration{}
 	profiler := configuration.Spec.Profiling.EbpfProfiler
@@ -74,9 +80,9 @@ func (m *ResourceManager) CreateOrUpdateResources(ctx context.Context, configura
 		if err != nil {
 			return changes, err
 		}
-		desired = m.Config.proxy(configuration, proxyConfig, revision)
+		desired = m.Config.proxy(settings, proxyConfig, revision)
 	}
-	desired = append(desired, m.Config.profiler(configuration, uploads)...)
+	desired = append(desired, m.Config.profiler(configuration, settings, uploads)...)
 	for _, object := range desired {
 		created, updated, err := m.apply(ctx, configuration, object)
 		changes.Created = changes.Created || created

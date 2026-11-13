@@ -50,12 +50,12 @@ type OperatorConfigurationComponents struct {
 type EbpfProfilerSettings struct {
 	WorkloadSettings `json:",inline"`
 
-	// The resource requests, limits and GOMEMLIMIT of the profiler container.
+	// The resources of the profiler container (Helm value operator.ebpfProfiler.containerResources).
 	//
 	// +kubebuilder:validation:Optional
 	ContainerResources *ContainerResourcesWithGoMemLimit `json:"containerResources,omitempty"`
 
-	// The priority class name for the pods. When omitted, no priority class is set.
+	// The priority class name for the pods. It replaces the one provided via the Helm chart, an empty value keeps it.
 	//
 	// +kubebuilder:validation:Optional
 	PriorityClassName string `json:"priorityClassName,omitempty"`
@@ -65,12 +65,12 @@ type EbpfProfilerSettings struct {
 type DebuginfoProxySettings struct {
 	WorkloadSettings `json:",inline"`
 
-	// The resource requests, limits and GOMEMLIMIT of the proxy container.
+	// The resources of the proxy container (Helm value operator.debuginfoProxy.containerResources).
 	//
 	// +kubebuilder:validation:Optional
 	ContainerResources *ContainerResourcesWithGoMemLimit `json:"containerResources,omitempty"`
 
-	// The priority class name for the pods. When omitted, no priority class is set.
+	// The priority class name for the pods. It replaces the one provided via the Helm chart, an empty value keeps it.
 	//
 	// +kubebuilder:validation:Optional
 	PriorityClassName string `json:"priorityClassName,omitempty"`
