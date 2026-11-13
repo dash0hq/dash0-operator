@@ -20,7 +20,7 @@ const (
 // host port). The URL that is actually used for instrumentation is picked from these two values via
 // SelectCollectorBaseUrl.
 func RenderCollectorBaseUrls(
-	oTelCollectorNamePrefix string,
+	namePrefix string,
 	operatorNamespace string,
 	otlpHttpHostPort int32,
 ) util.PossibleCollectorUrls {
@@ -32,7 +32,7 @@ func RenderCollectorBaseUrls(
 		),
 		ServiceBaseUrl: fmt.Sprintf(
 			oTelCollectorServiceBaseUrlPattern,
-			oTelCollectorNamePrefix,
+			namePrefix,
 			operatorNamespace,
 		),
 	}

@@ -58,9 +58,9 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 			k8sClient.Scheme(),
 			OperatorManagerDeployment,
 			util.TargetAllocatorConfig{
-				Images:                    TestImages,
-				OperatorNamespace:         operatorNamespace,
-				TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
+				Images:            TestImages,
+				OperatorNamespace: operatorNamespace,
+				NamePrefix:        ManagedResourceNamePrefixTest,
 			},
 		)
 		targetAllocatorManager = NewTargetAllocatorManager(

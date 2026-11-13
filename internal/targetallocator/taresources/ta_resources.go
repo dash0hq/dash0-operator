@@ -50,7 +50,7 @@ func (m *TargetAllocatorResourceManager) CreateOrUpdateTargetAllocatorResources(
 ) (bool, bool, error) {
 	config := &targetAllocatorConfig{
 		OperatorNamespace:  m.targetAllocatorConfig.OperatorNamespace,
-		NamePrefix:         m.targetAllocatorConfig.TargetAllocatorNamePrefix,
+		NamePrefix:         m.targetAllocatorConfig.NamePrefix,
 		CollectorComponent: m.targetAllocatorConfig.CollectorComponent,
 		Images:             m.targetAllocatorConfig.Images,
 		IsGkeAutopilot:     m.targetAllocatorConfig.IsGkeAutopilot,
@@ -204,7 +204,7 @@ func (m *TargetAllocatorResourceManager) DeleteResources(
 		))
 	config := &targetAllocatorConfig{
 		OperatorNamespace: m.targetAllocatorConfig.OperatorNamespace,
-		NamePrefix:        m.targetAllocatorConfig.TargetAllocatorNamePrefix,
+		NamePrefix:        m.targetAllocatorConfig.NamePrefix,
 		IsGkeAutopilot:    m.targetAllocatorConfig.IsGkeAutopilot,
 		IsOpenShift:       m.targetAllocatorConfig.IsOpenShift,
 	}

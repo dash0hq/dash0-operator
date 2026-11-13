@@ -4679,7 +4679,6 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					SelfMonitoringEnabled: testConfig.selfMonitoringEnabled,
 				},
 				PrometheusCrdSupportEnabled:     testConfig.prometheusCrdSupportEnabled,
-				TargetAllocatorNamePrefix:       TargetAllocatorPrefixTest,
 				SignalControl:                   testConfig.signalControl,
 				SyntheticsWorkerDeploymentNames: testConfig.syntheticsWorkerDeploymentNames,
 			}
@@ -4908,7 +4907,6 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					SelfMonitoringEnabled: testConfig.selfMonitoringEnabled,
 				},
 				PrometheusCrdSupportEnabled:     testConfig.prometheusCrdSupportEnabled,
-				TargetAllocatorNamePrefix:       TargetAllocatorPrefixTest,
 				SignalControl:                   testConfig.signalControl,
 				SyntheticsWorkerDeploymentNames: testConfig.syntheticsWorkerDeploymentNames,
 			}
@@ -8713,7 +8711,6 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace:           OperatorNamespace,
 				NamePrefix:                  namePrefix,
 				Exporters:                   cmTestSingleDefaultOtlpExporter(),
-				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
 				PrometheusCrdSupportEnabled: false,
 			}
 			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, nsWithPrometheusScraping, nil, nil, taMtlsConfig, false)
@@ -8729,7 +8726,6 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace:           OperatorNamespace,
 				NamePrefix:                  namePrefix,
 				Exporters:                   cmTestSingleDefaultOtlpExporter(),
-				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
 				PrometheusCrdSupportEnabled: true,
 			}
 			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, nsWithPrometheusScraping, nil, nil, taMtlsConfig, false)
@@ -8756,7 +8752,6 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace:           OperatorNamespace,
 				NamePrefix:                  namePrefix,
 				Exporters:                   cmTestSingleDefaultOtlpExporter(),
-				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
 				PrometheusCrdSupportEnabled: true,
 			}
 			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, nsWithPrometheusScraping, nil, nil, emptyTargetAllocatorMtlsConfig, false)

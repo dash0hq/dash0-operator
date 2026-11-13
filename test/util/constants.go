@@ -22,12 +22,11 @@ const (
 	// ENVTEST_K8S_VERSION in the Makefile.
 	EnvtestK8sVersion = "1.34.1"
 
-	ClusterUidTest              = "cluster-uid-test"
-	ClusterNameTest             = "cluster-name-test"
-	TestNamespaceName           = "test-namespace"
-	OperatorNamespace           = "test-operator-namespace"
-	OTelCollectorNamePrefixTest = "unit-test"
-	TargetAllocatorPrefixTest   = "unit-test"
+	ClusterUidTest                = "cluster-uid-test"
+	ClusterNameTest               = "cluster-name-test"
+	TestNamespaceName             = "test-namespace"
+	OperatorNamespace             = "test-operator-namespace"
+	ManagedResourceNamePrefixTest = "unit-test"
 
 	CronJobNamePrefix     = "cronjob"
 	DaemonSetNamePrefix   = "daemonset"

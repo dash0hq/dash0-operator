@@ -16,8 +16,8 @@ import (
 // maxServiceNameLength is the maximum length of a Kubernetes service name (a DNS-1035 label).
 const maxServiceNameLength = 63
 
-// The Helm chart validates the name prefix for the resources the operator creates (OTEL_COLLECTOR_NAME_PREFIX and
-// OTEL_TARGET_ALLOCATOR_NAME_PREFIX) against the longest service name of the enabled features, see the helper
+// The Helm chart validates the name prefix for the resources the operator creates (DASH0_MANAGED_RESOURCE_NAME_PREFIX)
+// against the longest service name of the enabled features, see the helper
 // "dash0-operator.managedResourceNamePrefix" in helm-chart/dash0-operator/templates/_helpers.tpl. These tests pin the
 // limits used there against the service names the operator actually creates. If one of them fails, update the limit
 // in the helper, the corresponding Helm chart unit tests and the documentation of operator.managedResourceNamePrefix

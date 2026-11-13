@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	namePrefix = OTelCollectorNamePrefixTest
+	namePrefix = ManagedResourceNamePrefixTest
 )
 
 var (

@@ -510,7 +510,7 @@ func TestProfilerManagesTheServiceAccountIfItsOwnNameIsConfigured(t *testing.T) 
 func TestProfilerNeverDeletesTheOlmServiceAccount(t *testing.T) {
 	r, _ := fixture(t)
 	ctx := context.Background()
-	// the OLM bundle sets OTEL_COLLECTOR_NAME_PREFIX to dash0-operator
+	// the OLM bundle sets DASH0_MANAGED_RESOURCE_NAME_PREFIX to dash0-operator
 	r.Manager.ResourceManager.Config.NamePrefix = "dash0-operator"
 	r.Manager.ResourceManager.Config.ServiceAccountName = prresources.OlmEbpfProfilerServiceAccountName
 	external := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{

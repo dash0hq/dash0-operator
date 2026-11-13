@@ -31,7 +31,7 @@ var _ = Describe("The collector reconciler", func() {
 				false,
 				nil,
 			)
-			reconciler = NewCollectorReconciler(k8sClient, collectorManager, OperatorNamespace, OTelCollectorNamePrefixTest)
+			reconciler = NewCollectorReconciler(k8sClient, collectorManager, OperatorNamespace, ManagedResourceNamePrefixTest)
 		})
 
 		secret := func(namespace string, name string) *corev1.Secret {

@@ -60,10 +60,9 @@ var _ = Describe("The collector manager", Ordered, func() {
 			k8sClient.Scheme(),
 			OperatorManagerDeployment,
 			util.CollectorConfig{
-				Images:                    TestImages,
-				OperatorNamespace:         operatorNamespace,
-				OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
-				TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
+				Images:            TestImages,
+				OperatorNamespace: operatorNamespace,
+				NamePrefix:        ManagedResourceNamePrefixTest,
 			},
 			leaderElectionAware,
 		)
@@ -1130,11 +1129,10 @@ func newSignalControlCollectorManager(sceOnlyMode bool) *CollectorManager {
 		k8sClient.Scheme(),
 		OperatorManagerDeployment,
 		util.CollectorConfig{
-			Images:                    TestImages,
-			OperatorNamespace:         operatorNamespace,
-			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
-			TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
-			SignalControlSceOnlyMode:  sceOnlyMode,
+			Images:                   TestImages,
+			OperatorNamespace:        operatorNamespace,
+			NamePrefix:               ManagedResourceNamePrefixTest,
+			SignalControlSceOnlyMode: sceOnlyMode,
 		},
 		NewLeaderElectionAwareMock(true),
 	)

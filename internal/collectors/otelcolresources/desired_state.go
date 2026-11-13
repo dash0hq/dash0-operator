@@ -99,9 +99,10 @@ type SignalControlOperationMatcher struct {
 type oTelColConfig struct {
 	// OperatorNamespace is the namespace of the Dash0 operator
 	OperatorNamespace string
-	// NamePrefix is used as a prefix for OTel collector Kubernetes resources created by the operator, set to
-	// value of the environment variable OTEL_COLLECTOR_NAME_PREFIX, which the operator Helm chart sets to
+	// NamePrefix is used as a prefix for all Kubernetes resources created by the operator, set to the value of
+	// the environment variable DASH0_MANAGED_RESOURCE_NAME_PREFIX, which the operator Helm chart sets to
 	// operator.managedResourceNamePrefix, or to the Helm release name if that is not set.
+	// The collector configuration also uses it to derive the names of the target-allocator resources.
 	NamePrefix string
 	// OperatorManagerDeploymentName is the name of the operator manager deployment, used to exclude the operator
 	// manager's own metrics from namespace-based filtering.
@@ -122,7 +123,6 @@ type oTelColConfig struct {
 	K8sAttributesWaitForMetadataTimeout              string
 	K8sAttributesShareProcessor                      bool
 	PrometheusCrdSupportEnabled                      bool
-	TargetAllocatorNamePrefix                        string
 	Agent0ConnectorEnabled                           bool
 	Agent0ConnectorDeploymentName                    string
 	SyntheticsWorkerDeploymentNames                  []string

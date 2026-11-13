@@ -1546,9 +1546,7 @@ spec:
                   value: "true"
                 - name: DASH0_IAC_PERIODIC_RETRY_INTERVAL
                   value: 10m
-                - name: OTEL_COLLECTOR_NAME_PREFIX
-                  value: dash0-operator
-                - name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
+                - name: DASH0_MANAGED_RESOURCE_NAME_PREFIX
                   value: dash0-operator
                 - name: DASH0_OPERATOR_IMAGE
                   value: ghcr.io/dash0hq/operator-controller:0.0.0
