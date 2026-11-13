@@ -575,7 +575,7 @@ receivers:
   file_log/selfmonitoring:
     include:
       {{- if .PrometheusCrdSupportEnabled }}
-      - /var/log/pods/{{ .OperatorNamespace }}_{{ .OperatorResourcesNamePrefix }}-opentelemetry-target-allocator*/*/*.log
+      - /var/log/pods/{{ .OperatorNamespace }}_{{ .NamePrefix }}-opentelemetry-target-allocator*/*/*.log
       {{- end }}
       {{- if and .SignalControl.Enabled .SignalControl.EdgeProxyEnabled }}
       - /var/log/pods/{{ .OperatorNamespace }}_{{ .SignalControl.EdgeProxyName }}*/*/*.log

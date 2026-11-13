@@ -140,9 +140,10 @@ type KubeletStatsReceiverConfig struct {
 type TargetAllocatorConfig struct {
 	Images            Images
 	OperatorNamespace string
-	// NamePrefix is used as a prefix for the OTel target-allocator Kubernetes resources created by the operator, set to
-	// the value of the environment variable DASH0_MANAGED_RESOURCE_NAME_PREFIX, which the operator Helm chart sets to
-	// operator.managedResourceNamePrefix, or to the Helm release name if that is not set.
+	// NamePrefix is used as a prefix for all Kubernetes resources created by the operator, including the OTel
+	// target-allocator resources, set to the value of the environment variable DASH0_MANAGED_RESOURCE_NAME_PREFIX,
+	// which the operator Helm chart sets to operator.managedResourceNamePrefix, or to the Helm release name if that is
+	// not set.
 	NamePrefix string
 	// CollectorComponent is used as a label matcher, so scrape targets are only assigned to Dash0 daemonset collectors.
 	CollectorComponent string

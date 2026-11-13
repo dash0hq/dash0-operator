@@ -86,7 +86,7 @@ func (ct *customTransforms) HasProfileTransforms() bool {
 
 type collectorConfigurationTemplateValues struct {
 	OperatorNamespace                                string
-	OperatorResourcesNamePrefix                      string
+	NamePrefix                                       string
 	Exporters                                        otlpExporters
 	SendBatchSize                                    *uint32
 	SendBatchMaxSize                                 *uint32
@@ -416,11 +416,11 @@ func newCollectorConfigurationTemplateValues(
 	}
 
 	return &collectorConfigurationTemplateValues{
-		OperatorNamespace:           config.OperatorNamespace,
-		OperatorResourcesNamePrefix: config.NamePrefix,
-		Exporters:                   config.Exporters,
-		SendBatchSize:               config.SendBatchSize,
-		SendBatchMaxSize:            config.SendBatchMaxSize,
+		OperatorNamespace: config.OperatorNamespace,
+		NamePrefix:        config.NamePrefix,
+		Exporters:         config.Exporters,
+		SendBatchSize:     config.SendBatchSize,
+		SendBatchMaxSize:  config.SendBatchMaxSize,
 		KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
 		CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
 		CollectNamespaceLabelsAndAnnotationsEnabled:      config.CollectNamespaceLabelsAndAnnotationsEnabled,
