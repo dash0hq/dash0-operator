@@ -8,9 +8,10 @@
 # and a Dash0Monitoring resource. By default, the dev catalog of the main branch is installed
 # (ghcr.io/dash0hq/dash0-operator-catalog:main-dev). Set CATALOG_IMAGE to install another catalog image, e.g. one built
 # with "make olm-catalog olm-catalog-image push-olm-catalog-image", and CATALOG_CHANNEL (default: stable-v0) to
-# subscribe to another channel. The script does not build any images. Like the test scenarios, the script reads
-# test-resources/.env, see test-resources/.env.template for DASH0_INGRESS_ENDPOINT, DASH0_API_ENDPOINT,
-# DASH0_AUTHORIZATION_TOKEN and the other settings.
+# subscribe to another channel. Set CATALOG_POLL_INTERVAL (e.g. 5m, default: no polling) to let OLM poll the catalog
+# image for updates, e.g. to test the upgrade to a newer image under a moving tag such as latest. The script does not
+# build any images. Like the test scenarios, the script reads test-resources/.env, see test-resources/.env.template for
+# DASH0_INGRESS_ENDPOINT, DASH0_API_ENDPOINT, DASH0_AUTHORIZATION_TOKEN and the other settings.
 # Usage: test-resources/bin/test-olm-catalog.sh [cleanup]
 
 set -euo pipefail
@@ -31,6 +32,7 @@ verify_kubectx
 
 catalog_image="${CATALOG_IMAGE:-ghcr.io/dash0hq/dash0-operator-catalog:main-dev}"
 catalog_channel="${CATALOG_CHANNEL:-stable-v0}"
+catalog_poll_interval="${CATALOG_POLL_INTERVAL:-}"
 operator_ns="${OPERATOR_NAMESPACE:-$default_operator_ns}"
 monitored_ns="$default_target_ns"
 # test-olm-bundle.sh treats a catalog source named dash0-operator-catalog as a leftover of its own runs.
@@ -104,6 +106,13 @@ EOF
 fi
 
 echo "creating the catalog source for $catalog_image"
+# Without an update strategy, OLM only pulls the catalog image again when the catalog pod is recreated.
+update_strategy=""
+if [[ -n "$catalog_poll_interval" ]]; then
+  update_strategy="  updateStrategy:
+    registryPoll:
+      interval: $catalog_poll_interval"
+fi
 kubectl apply -f - <<EOF
 apiVersion: operators.coreos.com/v1alpha1
 kind: CatalogSource
@@ -117,6 +126,7 @@ spec:
   publisher: Dash0
   grpcPodConfig:
     securityContextConfig: restricted
+$update_strategy
 EOF
 deadline=$((SECONDS + install_timeout_seconds))
 echo "waiting for the catalog source to become ready"
