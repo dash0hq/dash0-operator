@@ -100,7 +100,7 @@ func updateRequestedInstrumentationDelivery(
 ) {
 	originalDeliverySetting := operatorConfigurationResource.Spec.InstrumentWorkloads.InstrumentationDelivery
 	previousResolvedDelivery, newResolvedDelivery :=
-		clusterInstrumentationConfig.UpdateRequestedInstrumentationDelivery(originalDeliverySetting, true, logger)
+		clusterInstrumentationConfig.UpdateRequestedInstrumentationDelivery(originalDeliverySetting, logger)
 	if previousResolvedDelivery != newResolvedDelivery {
 		logger.Info(
 			"The instrumentation delivery mechanism resolved from spec.instrumentWorkloads.instrumentationDelivery has "+
