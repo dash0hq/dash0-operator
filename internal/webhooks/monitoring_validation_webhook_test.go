@@ -240,7 +240,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 			rawNew, err := json.Marshal(newMonitoringResource)
 			Expect(err).ToNot(HaveOccurred())
 
-			response := NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace, true).Handle(ctx, admission.Request{
+			response := NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace, true, true).Handle(ctx, admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
 					Operation: admissionv1.Update,
 					Namespace: namespace,
@@ -290,7 +290,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 					Expect(err).ToNot(HaveOccurred())
 					request.OldObject = runtime.RawExtension{Raw: rawOld}
 				}
-				return NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace, false).Handle(ctx, request)
+				return NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace, true, false).Handle(ctx, request)
 			}
 
 			DescribeTable("should reject creating a monitoring resource with a mode other than none", func(
@@ -563,7 +563,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 					Filter: &dash0common.Filter{},
 				},
 				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
-					"(telemetryCollection.enabled=false), and yet the monitoring resource has filter setting. " +
+					"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting filter. " +
 					"This is an invalid combination. Please either set telemetryCollection.enabled=true in the " +
 					"operator configuration resource or remove the filter setting in the monitoring resource.",
 			}),
@@ -572,11 +572,83 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 					Transform: &dash0common.Transform{},
 				},
 				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
-					"(telemetryCollection.enabled=false), and yet the monitoring resource has a transform setting " +
+					"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting transform. " +
 					"This is an invalid combination. Please either set telemetryCollection.enabled=true in the " +
 					"operator configuration resource or remove the transform setting in the monitoring resource.",
 			}),
 		)
+
+		Describe("when telemetry collection is disabled via Helm", func() {
+			handle := func(spec dash0v1beta1.Dash0MonitoringSpec) admission.Response {
+				monitoringResource := DefaultMonitoringResourceWithName(
+					types.NamespacedName{Namespace: TestNamespaceName, Name: MonitoringResourceName},
+				)
+				spec.Exports = monitoringResource.Spec.Exports
+				spec.InstrumentWorkloads.LabelSelector = monitoringResource.Spec.InstrumentWorkloads.LabelSelector
+				monitoringResource.Spec = spec
+				rawNew, err := json.Marshal(monitoringResource)
+				Expect(err).ToNot(HaveOccurred())
+				return NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace, false, true).Handle(
+					ctx,
+					admission.Request{
+						AdmissionRequest: admissionv1.AdmissionRequest{
+							Operation: admissionv1.Create,
+							Namespace: TestNamespaceName,
+							Name:      MonitoringResourceName,
+							Object:    runtime.RawExtension{Raw: rawNew},
+						},
+					},
+				)
+			}
+
+			allDisabled := func() dash0v1beta1.Dash0MonitoringSpec {
+				return dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode: dash0common.InstrumentWorkloadsModeNone,
+					},
+					LogCollection:      dash0common.LogCollection{Enabled: new(false)},
+					EventCollection:    dash0common.EventCollection{Enabled: new(false)},
+					PrometheusScraping: dash0common.PrometheusScraping{Enabled: new(false)},
+				}
+			}
+
+			It("should reject instrumentWorkloads.mode=all without an operator configuration resource", func() {
+				spec := allDisabled()
+				spec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeAll
+				response := handle(spec)
+				Expect(response.Allowed).To(BeFalse())
+				Expect(response.Result.Message).To(Equal(
+					"Telemetry collection is disabled via the Helm value operator.telemetryCollectionEnabled=false, " +
+						"and yet the monitoring resource has the setting instrumentWorkloads.mode=all. This is an " +
+						"invalid combination. Please either set operator.telemetryCollectionEnabled=true via Helm or " +
+						"set instrumentWorkloads.mode=none in the monitoring resource (or leave it unspecified).",
+				))
+			})
+
+			It("should reject logCollection.enabled=true even if the operator configuration resource enables telemetry collection", func() {
+				operatorConfigurationResource := CreateOperatorConfigurationResourceWithSpec(
+					ctx,
+					k8sClient,
+					dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Export: Dash0ExportWithEndpointAndToken(),
+					},
+				)
+				operatorConfigurationResource.EnsureResourceIsMarkedAsAvailable()
+				Expect(k8sClient.Status().Update(ctx, operatorConfigurationResource)).To(Succeed())
+
+				spec := allDisabled()
+				spec.LogCollection.Enabled = new(true)
+				response := handle(spec)
+				Expect(response.Allowed).To(BeFalse())
+				Expect(response.Result.Message).To(ContainSubstring("operator.telemetryCollectionEnabled=false"))
+				Expect(response.Result.Message).To(ContainSubstring("logCollection.enabled=true"))
+			})
+
+			It("should allow a monitoring resource with instrumentation and telemetry collection disabled", func() {
+				response := handle(allDisabled())
+				Expect(response.Allowed).To(BeTrue())
+			})
+		})
 
 		DescribeTable("should validate the auto-instrumentation label selector", func(testConfig validationTestConfig) {
 			operatorConfigurationResource := CreateOperatorConfigurationResourceWithSpec(
