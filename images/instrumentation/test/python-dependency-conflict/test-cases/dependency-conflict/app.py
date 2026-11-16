@@ -3,9 +3,23 @@
 
 import sys
 from importlib.metadata import version
+from pathlib import Path
 
 dependency_name = 'opentelemetry-api'
-expected_version = '1.40.0'
+
+
+def read_expected_version():
+    requirements_file = Path(__file__).parent / 'requirements.txt'
+    for line in requirements_file.read_text().splitlines():
+        requirement = line.split('#', 1)[0].strip()
+        name, separator, pinned_version = requirement.partition('==')
+        if separator and name.strip() == dependency_name:
+            return pinned_version.strip()
+    print(f"No pinned {dependency_name} version (\"{dependency_name}==x.y.z\") in {requirements_file}", file=sys.stderr)
+    sys.exit(1)
+
+
+expected_version = read_expected_version()
 actual_version = version(dependency_name)
 if actual_version != expected_version:
     print(f"Unexpected {dependency_name} version in {__file__}: {actual_version}", file=sys.stderr)
