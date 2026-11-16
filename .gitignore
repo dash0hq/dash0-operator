@@ -49,5 +49,8 @@ test-resources/*.env
 # cluster diagnostics collected by the GKE Autopilot WorkloadAllowlist check on failure
 /gke-ap-allowlist-check-diagnostics
 
+# cluster diagnostics collected by the MicroShift OLM catalog check on failure
+/microshift-olm-catalog-check-diagnostics
+
 # the intermediate files of the OLM bundle generation and test bundles (make olm-bundle, make olm-test-bundle)
 /olm/build/

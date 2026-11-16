@@ -518,6 +518,20 @@ jobs:
       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
       SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
 
+  # Installs the operator on MicroShift for every commit pushed to main, from the OLM catalog that
+  # build_and_push_olm_catalog_image just pushed with the "main-dev" tag.
+  microshift_olm_catalog_check:
+    name: MicroShift OLM Catalog Check
+    needs:
+      - build_and_push_olm_catalog_image
+    if: ${{ always() && github.ref == 'refs/heads/main' && needs.build_and_push_olm_catalog_image.result == 'success' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/microshift-olm-catalog-check.yaml
+    secrets:
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+
   # The dry run neither calls the GitHub API nor uses secrets, so it also works with the read-only token of Dependabot
   # PRs. Note that the name of this job is referenced by the branch protection rules as a required check.
   publish_helm_chart_dry_run:
