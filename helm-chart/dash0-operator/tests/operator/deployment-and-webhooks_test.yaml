@@ -2019,16 +2019,16 @@ tests:
       - isKind:
           of: MutatingWebhookConfiguration
 
-  - it: should render the injector webhook when telemetry collection is disabled without Signal Control
-    documentSelector:
-      path: metadata.name
-      value: dash0-operator-injector
+  - it: should not render the injector webhook when telemetry collection is disabled without Signal Control
     set:
       operator:
         telemetryCollectionEnabled: false
     asserts:
-      - isKind:
-          of: MutatingWebhookConfiguration
+      - containsDocument:
+          kind: MutatingWebhookConfiguration
+          apiVersion: admissionregistration.k8s.io/v1
+          name: dash0-operator-injector
+        not: true
 
   - it: should support custom Signal Control collector and Edge Proxy images with pull policies
     chart:

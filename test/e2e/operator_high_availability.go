@@ -145,6 +145,23 @@ func verifyThatLogsShowNoLeaderElection(podName string) {
 	Expect(readOperatorManagerLogs(podName)).NotTo(MatchRegexp(leaseAcquiredLogPattern))
 }
 
+// verifyInstrumentationWebhookIsNotRegistered verifies that the Helm chart has not registered the instrumentation
+// webhook.
+func verifyInstrumentationWebhookIsNotRegistered() {
+	By("verifying that the instrumentation webhook is not registered")
+	output, err := run(exec.Command(
+		"kubectl",
+		"get",
+		"mutatingwebhookconfiguration",
+		instrumentationWebhookName,
+		"--ignore-not-found",
+		"-o",
+		"name",
+	))
+	Expect(err).ToNot(HaveOccurred())
+	Expect(strings.TrimSpace(output)).To(BeEmpty())
+}
+
 // setInstrumentationWebhookPath sets the path of the instrumentation webhook.
 func setInstrumentationWebhookPath(path string) error {
 	return runAndIgnoreOutput(exec.Command(
