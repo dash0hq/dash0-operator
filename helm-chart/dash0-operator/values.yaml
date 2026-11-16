@@ -705,7 +705,9 @@ operator:
     #
     # If this is false, the chart does not register the mutating webhook that instruments workloads. The Kubernetes API
     # server then no longer sends an admission request to the operator for every workload and pod that is created or
-    # updated in the cluster, which reduces the traffic between the operator and the Kubernetes API server.
+    # updated in the cluster, which reduces the traffic between the operator and the Kubernetes API server. (The
+    # webhook is also not registered if operator.telemetryCollectionEnabled is false, since workloads are not
+    # instrumented then either.)
     # In addition:
     # - Dash0Monitoring resources and the operator.monitoringTemplate default to instrumentWorkloads.mode=none.
     # - Creating a Dash0Monitoring resource, or the monitoring template of a Dash0OperatorConfiguration resource, with

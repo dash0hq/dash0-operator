@@ -3725,6 +3725,7 @@ spec:
 					verifyCollectorDeploymentIsNotPresent(g)
 				}, 20*time.Second, pollingInterval).Should(Succeed())
 				verifyThatTargetAllocatorIsNotDeployed(operatorNamespace)
+				verifyInstrumentationWebhookIsNotRegistered()
 			})
 		})
 
@@ -3752,18 +3753,7 @@ spec:
 			})
 
 			It("should not register the instrumentation webhook and not instrument workloads", func() {
-				By("verifying that the instrumentation webhook is not registered")
-				output, err := run(exec.Command(
-					"kubectl",
-					"get",
-					"mutatingwebhookconfiguration",
-					instrumentationWebhookName,
-					"--ignore-not-found",
-					"-o",
-					"name",
-				))
-				Expect(err).ToNot(HaveOccurred())
-				Expect(strings.TrimSpace(output)).To(BeEmpty())
+				verifyInstrumentationWebhookIsNotRegistered()
 
 				deployDash0MonitoringResourceExpectingRejection(
 					applicationUnderTestNamespace,

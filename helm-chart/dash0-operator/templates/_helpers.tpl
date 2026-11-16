@@ -120,11 +120,12 @@ true
 
 {{/*
 Renders the string "true" if the mutating webhook that instruments workloads is registered, and the empty string
-otherwise. It is not registered if workload instrumentation is disabled via operator.instrumentation.enabled, or in
-SCE-only mode.
+otherwise. It is not registered if workload instrumentation is disabled via operator.instrumentation.enabled, or if
+telemetry collection is disabled via operator.telemetryCollectionEnabled (which includes SCE-only mode), since the
+operator manager does not serve the webhook then.
 */}}
 {{- define "dash0-operator.instrumentationWebhookEnabled" -}}
-{{- if and .Values.operator.instrumentation.enabled (not (include "dash0-operator.signalControlSceOnlyMode" .)) -}}
+{{- if and .Values.operator.instrumentation.enabled .Values.operator.telemetryCollectionEnabled -}}
 true
 {{- end }}
 {{- end }}
