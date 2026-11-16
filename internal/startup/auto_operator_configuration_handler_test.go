@@ -120,7 +120,7 @@ var _ = Describe(
 					MatchError(
 						ContainSubstring(
 							"--operator-configuration-ebpf-profiler-enabled (Helm value operator.ebpfProfilerEnabled) " +
-								"requires --operator-configuration-profiling-enabled=true",
+								"cannot be combined with --operator-configuration-profiling-enabled=false",
 						),
 					),
 				)

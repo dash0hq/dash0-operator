@@ -553,12 +553,12 @@ type MonitoringTemplate struct {
 // pipeline definitions for the profiles signal type.
 type Profiling struct {
 	// If enabled, the operator will set up the pipelines to receive, process and forward profiling data over OTLP.
-	// This setting is optional, it defaults to `true`, unless `telemetryCollection.enabled` is `false`.
+	// This setting is optional. If it is not set, profiling is enabled together with `ebpfProfiler.enabled`.
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
 
-	// Settings for the node-level eBPF profiler. Enabling it requires profiling and telemetry collection to be enabled,
-	// and the eBPF profiler to be enabled via Helm.
+	// Settings for the node-level eBPF profiler. Enabling it requires telemetry collection to be enabled, and the eBPF
+	// profiler to be enabled via Helm. It cannot be combined with `enabled: false`.
 	//
 	// +kubebuilder:validation:Optional
 	EbpfProfiler *EbpfProfiler `json:"ebpfProfiler,omitempty"`

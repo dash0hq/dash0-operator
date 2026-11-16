@@ -49,8 +49,9 @@ const ErrorMessageEbpfProfilerDisabledViaHelm = "The eBPF profiler has been disa
 	"(operator.ebpfProfilerEnabled: false). Set operator.ebpfProfilerEnabled: true via Helm before enabling " +
 	"spec.profiling.ebpfProfiler.enabled."
 
-const ErrorMessageEbpfProfilerRequiresProfiling = "The eBPF profiler requires spec.profiling.enabled=true. " +
-	"Enable profiling or set spec.profiling.ebpfProfiler.enabled=false."
+const ErrorMessageEbpfProfilerRequiresProfiling = "The eBPF profiler cannot be combined with " +
+	"spec.profiling.enabled=false. Set spec.profiling.enabled to true, remove it, or set " +
+	"spec.profiling.ebpfProfiler.enabled=false."
 
 const ErrorMessageEbpfProfilerRequiresTelemetry = "The eBPF profiler requires telemetry collection to be enabled " +
 	"both via Helm and spec.telemetryCollection.enabled. Enable telemetry collection or set " +
@@ -540,7 +541,7 @@ func validateTelemetryCollectionDisabledConsistency(
 		logger.Warn(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)
 		return admission.Denied(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid), true
 	}
-	if spec.Profiling != nil && pointers.ReadBoolPointerWithDefault(spec.Profiling.Enabled, true) {
+	if spec.Profiling != nil && pointers.ReadBoolPointerWithDefault(spec.Profiling.Enabled, false) {
 		msg := "The provided Dash0 operator configuration resource has profiling " +
 			"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
 			"Please either set telemetryCollection.enabled=true or " +

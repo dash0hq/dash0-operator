@@ -10,24 +10,24 @@ This document covers profiling support in the Dash0 operator.
 
 ## Enabling Profiling Support
 
-The Dash0 operator accepts, processes, and exports [profiling data](https://opentelemetry.io/docs/specs/otel/profiles/) via OTLP.
-The profiling pipelines are enabled by default, unless telemetry collection is disabled.
-They do not generate profiles themselves.
+The Dash0 operator can be configured to accept, process, and export [profiling data](https://opentelemetry.io/docs/specs/otel/profiles/) via OTLP.
 
-To collect profiles, opt in to the [operator-managed eBPF profiler](#operator-managed-ebpf-profiler), or deploy the
+To collect profiles, opt in to the [operator-managed eBPF profiler](#operator-managed-ebpf-profiler), which also enables
+the profiling pipelines, or deploy the
 [OpenTelemetry eBPF profiler](#collecting-profiles-with-the-opentelemetry-ebpf-profiler) separately.
 
-To disable the profiling pipelines, set the `operator.profilingEnabled` Helm value to `false`:
+To enable profiling support without the operator-managed eBPF profiler, set the `operator.profilingEnabled` Helm value
+to `true`:
 
 ```console
 helm install \
-  --set operator.profilingEnabled=false \
+  --set operator.profilingEnabled=true \
   ... \
   dash0-operator \
   dash0-operator/dash0-operator
 ```
 
-Alternatively, you can set `spec.profiling.enabled: false` directly on the `Dash0OperatorConfiguration` custom resource:
+Alternatively, you can set `spec.profiling.enabled: true` directly on the `Dash0OperatorConfiguration` custom resource:
 
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
@@ -36,7 +36,7 @@ metadata:
   name: dash0-operator-configuration-resource
 spec:
   profiling:
-    enabled: false
+    enabled: true
   # ... other settings
 ```
 
@@ -51,11 +51,12 @@ When Signal Control is enabled, profiles are also exported directly from the col
 ## Operator-managed eBPF profiler
 
 Set `operator.ebpfProfilerEnabled: true` to let the operator deploy a Parca agent DaemonSet in the operator namespace.
-Telemetry collection and the profiling pipelines must remain enabled. The chart rejects this opt-in together with
-`operator.telemetryCollectionEnabled: false` or `operator.profilingEnabled: false`.
+Unless `operator.profilingEnabled` is set explicitly, the opt-in also enables the profiling pipelines. The chart
+rejects this opt-in together with `operator.telemetryCollectionEnabled: false` or `operator.profilingEnabled: false`.
 For a Helm-managed `Dash0OperatorConfiguration`, the opt-in sets `spec.profiling.ebpfProfiler.enabled: true`. If you
-manage that resource yourself, set `spec.profiling.ebpfProfiler.enabled: true` there. Setting it together with
-`spec.profiling.enabled: false` is a validation error.
+manage that resource yourself, set `spec.profiling.ebpfProfiler.enabled: true` there. If `spec.profiling.enabled` is
+not set, the profiling pipelines follow that setting. Setting it together with `spec.profiling.enabled: false` is a
+validation error.
 
 The operator-managed profiler is not yet supported on GKE Autopilot. It requires a new workload allowlist submitted
 to Google, reviewed, and published before it can run. This review usually takes a few weeks. See the
@@ -90,9 +91,9 @@ resource-only pod-association pipeline. It associates workload telemetry using a
 telemetry without a pod identity remains host-level and uses the default exports. Unmarked application telemetry
 retains its existing pod association. No additional receiver or port is required.
 
-The source-routing and eBPF processing pipelines are rendered only when the Helm opt-in, `spec.profiling.enabled`, and
-`spec.profiling.ebpfProfiler.enabled` are all true. The common processing pipelines always drop marked profiler
-metrics, logs, and traces before Kubernetes enrichment. During collector enablement lag or agent shutdown, a
+The source-routing and eBPF processing pipelines are rendered only when the Helm opt-in and
+`spec.profiling.ebpfProfiler.enabled` are true and `spec.profiling.enabled` is not `false`. The common processing
+pipelines always drop marked profiler metrics, logs, and traces before Kubernetes enrichment. During collector enablement lag or agent shutdown, a
 collector without the eBPF pipelines drops these signals instead of associating them with the profiler Pod.
 
 The `parca.agent` attribute is reserved for profiler source routing, not authentication. Do not set a conflicting

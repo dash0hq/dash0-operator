@@ -285,8 +285,8 @@ func (r *AutoOperatorConfigurationResourceHandler) validateOperatorConfiguration
 		!r.operatorConfigurationValues.ProfilingEnabled {
 		return fmt.Errorf(
 			"invalid operator configuration: --operator-configuration-ebpf-profiler-enabled (Helm value " +
-				"operator.ebpfProfilerEnabled) requires --operator-configuration-profiling-enabled=true (Helm value " +
-				"operator.profilingEnabled)",
+				"operator.ebpfProfilerEnabled) cannot be combined with --operator-configuration-profiling-enabled=false " +
+				"(Helm value operator.profilingEnabled); set it to true or leave it unset",
 		)
 	}
 	for i, export := range exports {

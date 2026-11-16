@@ -3,8 +3,8 @@
 {{- if and .Values.operator.ebpfProfilerEnabled (not .Values.operator.telemetryCollectionEnabled) }}
 {{- fail "Error: operator.ebpfProfilerEnabled requires operator.telemetryCollectionEnabled=true." }}
 {{- end }}
-{{- if and .Values.operator.ebpfProfilerEnabled (not .Values.operator.profilingEnabled) }}
-{{- fail "Error: operator.ebpfProfilerEnabled requires operator.profilingEnabled=true." }}
+{{- if and .Values.operator.ebpfProfilerEnabled (eq (toString .Values.operator.profilingEnabled) "false") }}
+{{- fail "Error: operator.ebpfProfilerEnabled cannot be combined with operator.profilingEnabled=false. Set operator.profilingEnabled to true or leave it unset." }}
 {{- end }}
 
 {{- if $selfManagedCertificates }}
@@ -167,7 +167,10 @@ spec:
         - --operator-configuration-collect-namespace-labels-and-annotations-enabled={{ .Values.operator.collectNamespaceLabelsAndAnnotationsEnabled }}
         - --operator-configuration-collect-node-labels-and-annotations-enabled={{ .Values.operator.collectNodeLabelsAndAnnotationsEnabled }}
         - --operator-configuration-prometheus-crd-support-enabled={{ .Values.operator.prometheusCrdSupportEnabled }}
+{{- /* Without the argument, profiling follows --operator-configuration-ebpf-profiler-enabled. */}}
+{{- if not (kindIs "invalid" .Values.operator.profilingEnabled) }}
         - --operator-configuration-profiling-enabled={{ .Values.operator.profilingEnabled }}
+{{- end }}
 {{- if .Values.operator.ebpfProfilerEnabled }}
         - --operator-configuration-ebpf-profiler-enabled=true
 {{- end }}

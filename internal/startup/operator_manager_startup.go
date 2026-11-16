@@ -213,6 +213,8 @@ func (l pprofLogger) Error(msg string, args ...any) {
 }
 
 const (
+	operatorConfigurationProfilingEnabledFlagName = "operator-configuration-profiling-enabled"
+
 	operatorNamespaceEnvVarName                           = "DASH0_OPERATOR_NAMESPACE"
 	deploymentNameEnvVarName                              = "DASH0_DEPLOYMENT_NAME"
 	webhookServiceNameEnvVarName                          = "DASH0_WEBHOOK_SERVICE_NAME"
@@ -444,6 +446,11 @@ func Start() {
 		os.Exit(1)
 	}
 	cliArgs.isOpenShift = resolveOpenShiftMode(flag.CommandLine, cliArgs.isOpenShift, setupLog)
+	cliArgs.operatorConfigurationProfilingEnabled = resolveOperatorConfigurationProfilingEnabled(
+		flag.CommandLine,
+		cliArgs.operatorConfigurationProfilingEnabled,
+		cliArgs.operatorConfigurationEbpfProfilerEnabled,
+	)
 	extraConfigDefaults = util.ExtraConfigDefaultsFor(cliArgs.isGkeAutopilot, cliArgs.isOpenShift)
 	if err = readExtraConfigMap(extraConfigDefaults); err != nil {
 		setupLog.Error(err, "cannot read extra config map file at startup")
@@ -704,10 +711,11 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 	)
 	fs.BoolVar(
 		&cliArgs.operatorConfigurationProfilingEnabled,
-		"operator-configuration-profiling-enabled",
-		true,
-		"The value for profiling.enabled on the operator configuration resource; "+
-			"will be ignored if operator-configuration-endpoint is not set.",
+		operatorConfigurationProfilingEnabledFlagName,
+		false,
+		"The value for profiling.enabled on the operator configuration resource; if not set, it follows "+
+			"operator-configuration-ebpf-profiler-enabled; will be ignored if operator-configuration-endpoint is not "+
+			"set.",
 	)
 	fs.BoolVar(
 		&cliArgs.operatorConfigurationEbpfProfilerEnabled,
@@ -1220,6 +1228,22 @@ func readKubeletStatsReceiverConfigFromEnv() (bool, *util.KubeletStatsReceiverCo
 		AuthType:           authType,
 		InsecureSkipVerify: insecureSkipVerify,
 	}
+}
+
+// resolveOperatorConfigurationProfilingEnabled returns the value of --operator-configuration-profiling-enabled if the
+// flag has been set explicitly, either as a command-line argument or via its environment variable. Otherwise, profiling
+// is enabled together with the eBPF profiler (--operator-configuration-ebpf-profiler-enabled).
+func resolveOperatorConfigurationProfilingEnabled(fs *flag.FlagSet, flagValue bool, ebpfProfilerEnabled bool) bool {
+	explicit := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == operatorConfigurationProfilingEnabledFlagName {
+			explicit = true
+		}
+	})
+	if explicit {
+		return flagValue
+	}
+	return ebpfProfilerEnabled
 }
 
 // readExtraConfigMap reads the config map content, which is basically a container for structured configuration data
