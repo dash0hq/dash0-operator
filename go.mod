@@ -5,7 +5,7 @@ go 1.27.4
 require (
 	github.com/bep/debounce v1.2.1
 	github.com/cisco-open/k8s-objectmatcher v1.10.0
-	github.com/dash0hq/dash0-api-client-go v1.31.0
+	github.com/dash0hq/dash0-api-client-go v1.33.0
 	github.com/dash0hq/dash0-operator/images/pkg/common v0.0.0-00010101000000-000000000000
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-logr/logr v1.4.4
@@ -14,11 +14,11 @@ require (
 	github.com/h2non/gock v1.2.0
 	github.com/onsi/ginkgo/v2 v2.34.0
 	github.com/onsi/gomega v1.44.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v1.4.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.165.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.165.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v1.4.1
+	github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.165.1
+	github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.165.1
 	github.com/perses/perses-operator v0.6.1
-	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.95.1
+	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.95.2
 	github.com/stretchr/testify v1.12.1
 	go.opentelemetry.io/collector/component v1.71.0
 	go.opentelemetry.io/collector/confmap v1.71.0
@@ -115,12 +115,12 @@ require (
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect
 	github.com/nexucis/lamenv v0.5.2 // indirect
 	github.com/oapi-codegen/runtime v1.8.0 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/internal/coreinternal v0.165.0 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/internal/filter v0.165.0 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/internal/pdatautil v0.165.0 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/expohisto v0.165.0 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/contexts/xprofile v0.165.0 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/xottl v0.165.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/internal/coreinternal v0.165.1 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/internal/filter v0.165.1 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/internal/pdatautil v0.165.1 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/expohisto v0.165.1 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/contexts/xprofile v0.165.1 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/xottl v0.165.1 // indirect
 	github.com/pandatix/go-abnf v0.5.3 // indirect
 	github.com/perses/common v0.31.2 // indirect
 	github.com/perses/perses v0.55.1 // indirect
