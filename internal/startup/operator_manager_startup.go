@@ -1923,12 +1923,13 @@ func startDash0Controllers(
 		return err
 	}
 
-	operatorConfigurationResource := createOrUpdateAutoOperatorConfigurationResource(
-		ctx,
-		readyCheckExecuter,
-		operatorConfigurationValues,
-		setupLog,
-	)
+	operatorConfigurationResource, autoOperatorConfigurationResourceHandler :=
+		createOrUpdateAutoOperatorConfigurationResource(
+			ctx,
+			readyCheckExecuter,
+			operatorConfigurationValues,
+			setupLog,
+		)
 
 	k8sClient := mgr.GetClient()
 
@@ -1977,7 +1978,18 @@ func startDash0Controllers(
 				return fmt.Errorf("unable to add the task for checking for instrumented pods: %w", err)
 			}
 		} else {
-			if instrumenter, err = setupInstrumenters(mgr, k8sClient, clientset, clusterInstrumentationConfig); err != nil {
+			if instrumenter, err = setupInstrumenters(
+				mgr,
+				k8sClient,
+				clientset,
+				clusterInstrumentationConfig,
+				newWaitForHelmManagedInstrumentationSettings(
+					autoOperatorConfigurationResourceHandler,
+					startupTasksK8sClient,
+					clusterInstrumentationConfig,
+					extraConfigDefaults,
+				),
+			); err != nil {
 				return err
 			}
 		}
@@ -2546,9 +2558,9 @@ func createOrUpdateAutoOperatorConfigurationResource(
 	readyCheckExecuter *ReadyCheckExecuter,
 	operatorConfigurationValues *OperatorConfigurationValues,
 	logger logd.Logger,
-) *dash0v1alpha1.Dash0OperatorConfiguration {
+) (*dash0v1alpha1.Dash0OperatorConfiguration, *AutoOperatorConfigurationResourceHandler) {
 	if operatorConfigurationValues == nil {
-		return nil
+		return nil, nil
 	}
 	autoOperatorConfigurationResourceHandler := NewAutoOperatorConfigurationResourceHandler(
 		startupTasksK8sClient,
@@ -2563,10 +2575,10 @@ func createOrUpdateAutoOperatorConfigurationResource(
 			logger,
 		); err != nil {
 		logger.Error(err, "Failed to create the requested Dash0 operator configuration resource.")
-		return nil
+		return nil, autoOperatorConfigurationResourceHandler
 	} else {
 		extraConfigMapWatcher.AddClient(autoOperatorConfigurationResourceHandler)
-		return operatorConfigurationResource
+		return operatorConfigurationResource, autoOperatorConfigurationResourceHandler
 	}
 }
 
@@ -2606,6 +2618,7 @@ func setupInstrumenters(
 	k8sClient client.Client,
 	clientset *kubernetes.Clientset,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
+	waitForOperatorConfigurationResource func(context.Context, logd.Logger),
 ) (*instrumentation.Instrumenter, error) {
 	startupInstrumenter := instrumentation.NewInstrumenter(
 		// The k8s client will be added later, in internal/startup/instrument_at_startup.go#Start.
@@ -2619,7 +2632,9 @@ func setupInstrumenters(
 	// this instrumenter only runs once at startup, this has no effect whatsoever.
 	extraConfigMapWatcher.AddClient(startupInstrumenter)
 	// register the instrument-at-startup task to run once this operator manager becomes leader
-	if err := mgr.Add(NewInstrumentAtStartupRunnable(mgr, startupInstrumenter)); err != nil {
+	if err := mgr.Add(
+		NewInstrumentAtStartupRunnable(mgr, startupInstrumenter, waitForOperatorConfigurationResource),
+	); err != nil {
 		return nil, fmt.Errorf("unable to add instrument-at-startup task: %w", err)
 	}
 
