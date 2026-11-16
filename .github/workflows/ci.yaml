@@ -624,7 +624,7 @@ jobs:
           echo "previous_tag=${previous_tag}" >> "$GITHUB_OUTPUT"
 
       - name: sync release to Linear
-        uses: linear/linear-release-action@d4af10092984f9bc6d5efa075b242bdf01333463
+        uses: linear/linear-release-action@dd4fc407f860b9460d2cf0b3fb1edd8985cf443f
         with:
           access_key: ${{ secrets.LINEAR_RELEASE_ACCESS_KEY }}
           name: ${{ github.ref_name }}
