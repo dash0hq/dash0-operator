@@ -1,6 +1,8 @@
 suite: test role
 templates:
   - operator/role-binding.yaml
+release:
+  name: test-release
 tests:
   - it: leader election role binding should match snapshot
     asserts:

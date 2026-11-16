@@ -76,7 +76,7 @@ The new setting will be applied when instrumenting newly deployed workloads, or 
 
 ## Python Auto-Instrumentation
 
-To enable auto-instrumentation for Python workloads, set `operator.instrumentation.enablePythonAutoInstrumentation=true` via Helm. If this setting is enabled for an existing operator installation, Python auto-instrumentation will be enabled immediately for workloads in namespaces that have a Dash0Monitoring resource with `instrumentWorkloads.mode` set to `all`. This will cause all pods in these namespaces to be restarted. For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will become active with the next re-deployment of the workload. The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a Dash0Monitoring resource.
+Python auto-instrumentation is enabled by default. To disable it, set `operator.instrumentation.enablePythonAutoInstrumentation=false` via Helm. If this setting is changed for an existing operator installation, the change takes effect immediately for workloads in namespaces that have a Dash0Monitoring resource with `instrumentWorkloads.mode` set to `all`. This will cause all pods in these namespaces to be restarted. For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will take effect with the next re-deployment of the workload. The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a Dash0Monitoring resource.
 
 Python auto-instrumentation is only supported for Python 3.10 or later. If the Dash0 Python auto-instrumentation detects an incompatible Python version (i.e. version 3.9 or older), it will automatically deactivate itself safely and print a warning to `stderr`:
 ```
@@ -106,7 +106,7 @@ This warning is also visible in the Dash0 UI's log view, unless log collection h
 
 ## Ruby Auto-Instrumentation
 
-To enable auto-instrumentation for Ruby workloads, set `operator.instrumentation.enableRubyAutoInstrumentation=true` via Helm. If this setting is enabled for an existing operator installation, Ruby auto-instrumentation will be enabled immediately for workloads in namespaces that have a Dash0Monitoring resource with `instrumentWorkloads.mode` set to `all`. This will cause all pods in these namespaces to be restarted. For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will become active with the next re-deployment of the workload. The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a Dash0Monitoring resource.
+Ruby auto-instrumentation is enabled by default. To disable it, set `operator.instrumentation.enableRubyAutoInstrumentation=false` via Helm. If this setting is changed for an existing operator installation, the change takes effect immediately for workloads in namespaces that have a Dash0Monitoring resource with `instrumentWorkloads.mode` set to `all`. This will cause all pods in these namespaces to be restarted. For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will take effect with the next re-deployment of the workload. The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a Dash0Monitoring resource.
 
 Ruby auto-instrumentation is only supported for Ruby 3.3 or later. On an older Ruby version, the Dash0 Ruby distribution deactivates itself safely and prints a warning to `stderr`:
 ```
@@ -406,7 +406,8 @@ env:
 
 To use the service endpoint instead of the host port, you need to know:
 
-* the Helm release name of the Dash0 operator (for example `dash0-operator`), and
+* the name prefix of the resources the Dash0 operator creates, that is, the value of `operator.managedResourceNamePrefix`,
+  or the Helm release name if that is not set (for example `dash0-operator`), and
 * the namespace where the Dash0 operator is installed (for example `dash0-system`).
 
 With that information at hand, add the following to your workload:
@@ -414,7 +415,7 @@ With that information at hand, add the following to your workload:
 ```yaml
 env:
   - name: OTEL_EXPORTER_OTLP_ENDPOINT
-    value: "http://${helm-release-name}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4318"
+    value: "http://${name-prefix}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4318"
   - name: OTEL_EXPORTER_OTLP_PROTOCOL
     value: "http/protobuf"
 ```
@@ -424,12 +425,12 @@ or, for gRPC:
 ```yaml
 env:
   - name: OTEL_EXPORTER_OTLP_ENDPOINT
-    value: "http://${helm-release-name}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4317"
+    value: "http://${name-prefix}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4317"
   - name: OTEL_EXPORTER_OTLP_PROTOCOL
     value: "grpc"
 ```
 
-In both cases, `${helm-release-name}` and `${namespace-of-the-dash0-operator}` needs to be replaced with the actual values.
+In both cases, `${name-prefix}` and `${namespace-of-the-dash0-operator}` needs to be replaced with the actual values.
 
 If the workload is in a namespace that is monitored by Dash0 and workload instrumentation is enabled, Dash0 will automatically add Kubernetes-related OpenTelemetry resource attributes to your telemetry, even if the runtime in question is not yet supported by Dash0's auto-instrumentation. There is currently one caveat: The resource attribute auto-detection relies on the process or runtime in question to use dynamic linking at startup (that is, binding to a flavor of libc), which is true for almost all runtimes. One notable exception are so called freestanding a.k.a. libc-free binaries, for example most binaries built with Go.
 
@@ -471,7 +472,7 @@ Regardless of the instrumentation delivery:
 >     value: http://$(MY_NODE_IP):40317
 >   ```
 >   Use the port configured via `operator.collectors.otlpGrpcHostPort` instead of 40317 if the operator has been deployed with a custom gRPC host port.
->   To disable workload instrumentation for a workload, you can opt out of auto-instrumentation via a workload label (i.e. `dash0.com/enable: "false"`, see [Disabling Auto-Instrumentation for Specific Workloads](#disabling-auto-instrumentation-for-specific-workloads)), or by not installing a Dash0 monitoring resource in the namespace where these workloads are located. The workloads can then be monitored by following the setup described in [Sending Data to the OpenTelemetry Collectors Managed by the Dash0 Operator](#sending-data-to-the-opentelemetry-collectors-managed-by-the-dash0-operator) to have the workload send telemetry to the collectors managed by the Dash0 operator, using gRPC. Note that this is not relevant for workloads that do not have an OpenTelemetry SDK at all, since they will ignore `OTEL_EXPORTER_OTLP_ENDPOINT`. In case the Dash0 operator Helm chart has been deployed with `operator.collectors.forceUseServiceUrl=true` or `operator.collectors.disableHostPorts=true`, `OTEL_EXPORTER_OTLP_ENDPOINT` is not set to `http://$(NODE_IP):40318`, but to the HTTP port of the DaemonSet collector's service URL `http://${helm-release-name}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4318` instead.
+>   To disable workload instrumentation for a workload, you can opt out of auto-instrumentation via a workload label (i.e. `dash0.com/enable: "false"`, see [Disabling Auto-Instrumentation for Specific Workloads](#disabling-auto-instrumentation-for-specific-workloads)), or by not installing a Dash0 monitoring resource in the namespace where these workloads are located. The workloads can then be monitored by following the setup described in [Sending Data to the OpenTelemetry Collectors Managed by the Dash0 Operator](#sending-data-to-the-opentelemetry-collectors-managed-by-the-dash0-operator) to have the workload send telemetry to the collectors managed by the Dash0 operator, using gRPC. Note that this is not relevant for workloads that do not have an OpenTelemetry SDK at all, since they will ignore `OTEL_EXPORTER_OTLP_ENDPOINT`. In case the Dash0 operator Helm chart has been deployed with `operator.collectors.forceUseServiceUrl=true` or `operator.collectors.disableHostPorts=true`, `OTEL_EXPORTER_OTLP_ENDPOINT` is not set to `http://$(NODE_IP):40318`, but to the HTTP port of the DaemonSet collector's service URL `http://${name-prefix}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4318` instead.
 
 ### Technical Details
 

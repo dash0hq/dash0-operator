@@ -109,9 +109,9 @@ type ContainerResources struct {
 type ContainerResourcesWithGoMemLimit struct {
 	ContainerResources `json:",inline"`
 
-	// The GOMEMLIMIT environment variable, in the format of the Go runtime (e.g. 400MiB, not 400Mi), or off. If it is
-	// empty (recommended), the operator derives it from the memory limit. It must be greater than 0 and below the
-	// effective memory limit. In collectorContainerResources, it should also be below the memory_limiter soft limit.
+	// The GOMEMLIMIT in the format of the Go runtime (e.g. 400MiB, not 400Mi), or off. If empty (recommended), it is
+	// derived from the memory limit. It must be greater than 0 and below the effective memory limit. In
+	// collectorContainerResources, it should also be below the memory_limiter soft limit.
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Pattern=`^(off|[0-9]+(([KMGT]i)?B)?)$`
@@ -212,12 +212,10 @@ type WorkloadSettings struct {
 	// +kubebuilder:validation:Optional
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 
-	// The node affinity for the pods of the workload. It is merged with the default node affinity of the Helm chart,
-	// not with the one provided via Helm: requiredDuringSchedulingIgnoredDuringExecution and
-	// preferredDuringSchedulingIgnoredDuringExecution each replace their default, unless they are absent. The default
-	// requires nodes that are not labelled with dash0.com/enable=false and run Linux, and has no preferred node
-	// affinity. requiredDuringSchedulingIgnoredDuringExecution with an empty list of nodeSelectorTerms removes the
-	// required node affinity.
+	// The node affinity for the pods of the workload. The required and the preferred node affinity each replace the
+	// default of the Helm chart (not the one provided via Helm), unless they are absent. The default requires nodes that
+	// run Linux and are not labelled with dash0.com/enable=false, and has no preferred node affinity. A required node
+	// affinity with an empty list of nodeSelectorTerms removes it.
 	//
 	// +kubebuilder:validation:Optional
 	NodeAffinity *corev1.NodeAffinity `json:"nodeAffinity,omitempty"`

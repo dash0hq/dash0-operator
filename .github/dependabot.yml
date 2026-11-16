@@ -182,8 +182,9 @@ updates:
     cooldown:
       default-days: 4
     groups:
-      development-dependencies:
-        dependency-type: "development"
+      all:
+        patterns:
+          - "*"
     commit-message:
       prefix: "test"
     ignore:
@@ -205,8 +206,9 @@ updates:
         # cooldown, it proposes such a tag as the update.
         - "otel/opentelemetry-collector-contrib"
     groups:
-      development-dependencies:
-        dependency-type: "development"
+      all:
+        patterns:
+          - "*"
     commit-message:
       prefix: "test"
 

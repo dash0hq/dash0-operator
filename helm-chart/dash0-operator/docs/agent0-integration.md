@@ -538,7 +538,8 @@ kubectl get deployment --namespace dash0-system dash0-operator-agent0-connector
 kubectl logs --namespace dash0-system deployment/dash0-operator-agent0-connector
 ```
 
-(Substitute the Helm release name for the `dash0-operator` prefix if you installed the chart under a different name.)
+(If you have set `operator.managedResourceNamePrefix`, substitute its value for the `dash0-operator` prefix. Otherwise,
+substitute the Helm release name.)
 
 ## Disabling the Integration Again
 

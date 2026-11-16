@@ -1,6 +1,8 @@
 suite: test post-install hook job
 templates:
   - operator/post-install-hook-operator-configuration-available-check.yaml
+release:
+  name: test-release
 tests:
   - it: post-install hook job should match snapshot
     set:

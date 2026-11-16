@@ -1,6 +1,8 @@
 suite: test sampling rules CRD
 templates:
   - operator/custom-resource-definition-sampling-rules.yaml
+release:
+  name: test-release
 tests:
   - it: should not render the sampling rules CRD by default
     asserts:

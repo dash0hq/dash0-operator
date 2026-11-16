@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
@@ -1039,6 +1040,50 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			VerifyUnmodifiedDeployment(deployment)
 		})
 	})
+
+	DescribeTable("should never instrument workloads in Kubernetes system namespaces", func(namespace string, expectInstrumentation bool) {
+		// The validation webhook rejects instrumentWorkloads.mode=all in Kubernetes system namespaces, hence the
+		// monitoring resource is only provided via a fake client.
+		monitoringResource := DefaultMonitoringResourceWithName(
+			types.NamespacedName{Namespace: namespace, Name: MonitoringResourceName},
+		)
+		monitoringResource.Spec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeAll
+		monitoringResource.EnsureResourceIsMarkedAsAvailable()
+		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(monitoringResource).Build()
+		handler := NewInstrumentationWebhookHandler(
+			fakeClient,
+			fakeClient,
+			nil,
+			manager.GetEventRecorder("dash0-webhook"),
+			instrumentationWebhookClusterConfig,
+		)
+		deployment := BasicDeployment(namespace, UniqueName(DeploymentNamePrefix))
+		deployment.TypeMeta = util.K8sTypeMetaDeployment
+		rawDeployment, err := json.Marshal(deployment)
+		Expect(err).NotTo(HaveOccurred())
+
+		response := handler.Handle(ctx, admission.Request{
+			AdmissionRequest: admissionv1.AdmissionRequest{
+				Operation: admissionv1.Create,
+				Kind:      metav1.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"},
+				Namespace: namespace,
+				Name:      deployment.Name,
+				Object:    runtime.RawExtension{Raw: rawDeployment},
+			},
+		})
+
+		Expect(response.Allowed).To(BeTrue())
+		if expectInstrumentation {
+			Expect(response.Patches).ToNot(BeEmpty())
+		} else {
+			Expect(response.Patches).To(BeEmpty())
+		}
+	},
+		Entry("should instrument a deployment in a regular namespace", TestNamespaceName, true),
+		Entry("should not instrument a deployment in kube-system", "kube-system", false),
+		Entry("should not instrument a deployment in kube-node-lease", "kube-node-lease", false),
+		Entry("should not instrument a deployment in kube-public", "kube-public", false),
+	)
 
 	Describe("when the Dash0 monitoring resource does not exist", func() {
 		It("should not instrument workloads", func() {

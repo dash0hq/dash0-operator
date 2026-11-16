@@ -101,10 +101,9 @@ var _ = Describe(
 					k8sClient.Scheme(),
 					OperatorManagerDeployment,
 					util.CollectorConfig{
-						Images:                    TestImages,
-						OperatorNamespace:         OperatorNamespace,
-						OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
-						TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
+						Images:            TestImages,
+						OperatorNamespace: OperatorNamespace,
+						NamePrefix:        ManagedResourceNamePrefixTest,
 					},
 					NewLeaderElectionAwareMock(true),
 				)
@@ -122,10 +121,10 @@ var _ = Describe(
 					k8sClient.Scheme(),
 					OperatorManagerDeployment,
 					util.TargetAllocatorConfig{
-						Images:                    TestImages,
-						OperatorNamespace:         OperatorNamespace,
-						TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
-						CollectorComponent:        otelcolresources.CollectorDaemonSetServiceComponent(),
+						Images:             TestImages,
+						OperatorNamespace:  OperatorNamespace,
+						NamePrefix:         ManagedResourceNamePrefixTest,
+						CollectorComponent: otelcolresources.CollectorDaemonSetServiceComponent(),
 					},
 				)
 				targetAllocatorManager := targetallocator.NewTargetAllocatorManager(

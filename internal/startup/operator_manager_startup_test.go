@@ -34,9 +34,9 @@ var _ = Describe("operator manager startup", func() {
 	Context("agent0 connector", func() {
 		It("does not create the manager or register the controller when the agent0-connector feature is disabled", func() {
 			envVars := environmentVariables{
-				operatorNamespace:       OperatorNamespace,
-				oTelCollectorNamePrefix: "dash0-operator-test",
-				agent0ConnectorEnabled:  false,
+				operatorNamespace:         OperatorNamespace,
+				managedResourceNamePrefix: "dash0-operator-test",
+				agent0ConnectorEnabled:    false,
 			}
 			agent0ConnectorManager, err := setupAgent0ConnectorManager(
 				mgr,
@@ -56,7 +56,7 @@ var _ = Describe("operator manager startup", func() {
 		It("creates the manager and registers the controller when the agent0-connector feature is enabled", func() {
 			envVars := environmentVariables{
 				operatorNamespace:            OperatorNamespace,
-				oTelCollectorNamePrefix:      "dash0-operator-test",
+				managedResourceNamePrefix:    "dash0-operator-test",
 				agent0ConnectorEnabled:       true,
 				agent0ConnectorServerAddress: "example.com:4317",
 			}
