@@ -280,6 +280,15 @@ func (r *AutoOperatorConfigurationResourceHandler) validateOperatorConfiguration
 			)
 		}
 	}
+	if r.operatorConfigurationValues.TelemetryCollectionEnabled &&
+		r.operatorConfigurationValues.EbpfProfilerEnabled &&
+		!r.operatorConfigurationValues.ProfilingEnabled {
+		return fmt.Errorf(
+			"invalid operator configuration: --operator-configuration-ebpf-profiler-enabled (Helm value " +
+				"operator.ebpfProfilerEnabled) requires --operator-configuration-profiling-enabled=true (Helm value " +
+				"operator.profilingEnabled)",
+		)
+	}
 	for i, export := range exports {
 		if err := validateExportFromHelm(i, export); err != nil {
 			return err
@@ -520,7 +529,7 @@ func convertValuesToResource(
 		Transform:          transform,
 		MonitoringTemplate: monitoringTemplate,
 		Profiling: &dash0v1alpha1.Profiling{
-			Enabled: new(operatorConfigurationValues.ProfilingEnabled || operatorConfigurationValues.EbpfProfilerEnabled),
+			Enabled: new(operatorConfigurationValues.ProfilingEnabled),
 		},
 		TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 			Enabled: new(operatorConfigurationValues.TelemetryCollectionEnabled),
