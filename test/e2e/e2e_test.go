@@ -3728,6 +3728,72 @@ spec:
 			})
 		})
 
+		Describe("with operator.instrumentation.enabled=false via Helm values", func() {
+
+			BeforeAll(func() {
+				By("deploying the Dash0 operator with instrumentation.enabled=false via Helm values")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					true,
+					map[string]string{
+						"operator.instrumentation.enabled": "false",
+					},
+				)
+			})
+
+			AfterAll(func() {
+				removeAllTestApplications(applicationUnderTestNamespace)
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should not register the instrumentation webhook and not instrument workloads", func() {
+				By("verifying that the instrumentation webhook is not registered")
+				output, err := run(exec.Command(
+					"kubectl",
+					"get",
+					"mutatingwebhookconfiguration",
+					instrumentationWebhookName,
+					"--ignore-not-found",
+					"-o",
+					"name",
+				))
+				Expect(err).ToNot(HaveOccurred())
+				Expect(strings.TrimSpace(output)).To(BeEmpty())
+
+				deployDash0MonitoringResourceExpectingRejection(
+					applicationUnderTestNamespace,
+					dash0MonitoringValues{
+						InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
+						Endpoint:                defaultEndpoint,
+						Token:                   defaultToken,
+					},
+					"operator.instrumentation.enabled=false",
+				)
+
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValues{
+						InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeNone,
+						Endpoint:                defaultEndpoint,
+						Token:                   defaultToken,
+					},
+					operatorNamespace,
+				)
+
+				By("installing the Node.js deployment")
+				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+				By("verifying that the Node.js deployment has not been instrumented")
+				Consistently(func(g Gomega) {
+					verifyNoDash0Labels(g, applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDeployment)
+				}, 10*time.Second, pollingInterval).Should(Succeed())
+			})
+		})
+
 		Describe("when using cert-manager instead of auto-generated certs", func() {
 
 			BeforeAll(func() {

@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -76,6 +77,13 @@ const ErrorMessageOperatorConfigurationExportAndExportsAreMutuallyExclusive = "T
 const ErrorMessageOperatorConfigurationMonitoringTemplateWithExports = "The provided Dash0 operator configuration resource has a monitoring template with `exports`. Please use the " +
 	"`exports` field in the operator configuration and remove the `exports` from the monitoringTemplate.spec."
 
+// ErrorMessageOperatorConfigurationMonitoringTemplateInstrumentationDisabled is the message for rejecting a monitoring
+// template with instrumentWorkloads.mode other than none while workload instrumentation is disabled.
+const ErrorMessageOperatorConfigurationMonitoringTemplateInstrumentationDisabled = "The provided Dash0 operator " +
+	"configuration resource has a monitoring template with instrumentWorkloads.mode=%s, but workload instrumentation " +
+	"is disabled via the Helm value operator.instrumentation.enabled=false. Please set " +
+	"monitoringTemplate.spec.instrumentWorkloads.mode to none."
+
 const ErrorMessageOperatorConfigurationMonitoringTemplateWithExport = "The provided Dash0 operator configuration resource has a monitoring template with `export`. Please use the " +
 	"`exports` field in the operator configuration and remove the `export` from the monitoringTemplate.spec."
 
@@ -88,6 +96,7 @@ type OperatorConfigurationValidationWebhookHandler struct {
 	Client                            client.Client
 	EbpfProfilerEnabledViaHelm        bool
 	telemetryCollectionEnabledViaHelm bool
+	instrumentationEnabledViaHelm     bool
 	agent0ConnectorEnabledViaHelm     bool
 	syntheticsWorkerEnabledViaHelm    bool
 	extraConfig                       atomic.Pointer[util.ExtraConfig]
@@ -96,10 +105,12 @@ type OperatorConfigurationValidationWebhookHandler struct {
 
 // NewOperatorConfigurationValidationWebhookHandler creates the validation webhook handler for operator configuration
 // resources. The extra configuration and its defaults are used to warn about settings in spec.components that override
-// a value provided via the Helm chart.
+// a value provided via the Helm chart. If instrumentationEnabledViaHelm is false, monitoring templates with
+// instrumentWorkloads.mode other than none are rejected.
 func NewOperatorConfigurationValidationWebhookHandler(
 	k8sClient client.Client,
 	telemetryCollectionEnabledViaHelm bool,
+	instrumentationEnabledViaHelm bool,
 	agent0ConnectorEnabledViaHelm bool,
 	syntheticsWorkerEnabledViaHelm bool,
 	extraConfig util.ExtraConfig,
@@ -108,6 +119,7 @@ func NewOperatorConfigurationValidationWebhookHandler(
 	h := &OperatorConfigurationValidationWebhookHandler{
 		Client:                            k8sClient,
 		telemetryCollectionEnabledViaHelm: telemetryCollectionEnabledViaHelm,
+		instrumentationEnabledViaHelm:     instrumentationEnabledViaHelm,
 		agent0ConnectorEnabledViaHelm:     agent0ConnectorEnabledViaHelm,
 		syntheticsWorkerEnabledViaHelm:    syntheticsWorkerEnabledViaHelm,
 		extraConfigDefaults:               extraConfigDefaults,
@@ -213,20 +225,8 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		}
 	}
 
-	if spec.MonitoringTemplate != nil {
-		// Defining an export in the monitoring template makes no sense, since all monitoring resources would have their
-		// individual export then, but it is the same export target over and over. Users should put the export into the
-		// operator configuration instead.
-
-		//nolint:staticcheck
-		if spec.MonitoringTemplate.Spec.Export != nil {
-			logger.Warn(ErrorMessageOperatorConfigurationMonitoringTemplateWithExport)
-			return admission.Denied(ErrorMessageOperatorConfigurationMonitoringTemplateWithExport)
-		}
-		if len(spec.MonitoringTemplate.Spec.Exports) > 0 {
-			logger.Warn(ErrorMessageOperatorConfigurationMonitoringTemplateWithExports)
-			return admission.Denied(ErrorMessageOperatorConfigurationMonitoringTemplateWithExports)
-		}
+	if response, denied := h.validateMonitoringTemplate(spec.MonitoringTemplate, logger); denied {
+		return response
 	}
 
 	if !operatorConfigurationResource.HasDash0ExportConfigured() {
@@ -270,6 +270,38 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		)
 	}
 	return h.validateComponentSettings(request, spec, logger).WithWarnings(warnings...)
+}
+
+func (h *OperatorConfigurationValidationWebhookHandler) validateMonitoringTemplate(
+	monitoringTemplate *dash0v1alpha1.MonitoringTemplate,
+	logger logd.Logger,
+) (admission.Response, bool) {
+	if monitoringTemplate == nil {
+		return admission.Response{}, false
+	}
+
+	// Defining an export in the monitoring template makes no sense, since all monitoring resources would have their
+	// individual export then, but it is the same export target over and over. Users should put the export into the
+	// operator configuration instead.
+	//nolint:staticcheck
+	if monitoringTemplate.Spec.Export != nil {
+		logger.Warn(ErrorMessageOperatorConfigurationMonitoringTemplateWithExport)
+		return admission.Denied(ErrorMessageOperatorConfigurationMonitoringTemplateWithExport), true
+	}
+	if len(monitoringTemplate.Spec.Exports) > 0 {
+		logger.Warn(ErrorMessageOperatorConfigurationMonitoringTemplateWithExports)
+		return admission.Denied(ErrorMessageOperatorConfigurationMonitoringTemplateWithExports), true
+	}
+
+	templateMode := monitoringTemplate.Spec.InstrumentWorkloads.Mode
+	if !h.instrumentationEnabledViaHelm &&
+		templateMode != "" &&
+		templateMode != dash0common.InstrumentWorkloadsModeNone {
+		msg := fmt.Sprintf(ErrorMessageOperatorConfigurationMonitoringTemplateInstrumentationDisabled, templateMode)
+		logger.Warn(msg)
+		return admission.Denied(msg), true
+	}
+	return admission.Response{}, false
 }
 
 // validateComponentSettings checks spec.components, unless an UPDATE leaves it unchanged.

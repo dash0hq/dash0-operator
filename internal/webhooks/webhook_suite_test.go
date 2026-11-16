@@ -148,19 +148,19 @@ var _ = BeforeSuite(func() {
 		instrumentationWebhookClusterConfig,
 	).SetupWebhookWithManager(manager)).To(Succeed())
 
-	operatorConfigurationMutatingWebhookHandler = NewOperatorConfigurationMutatingWebhookHandler(k8sClient)
+	operatorConfigurationMutatingWebhookHandler = NewOperatorConfigurationMutatingWebhookHandler(k8sClient, true)
 	Expect(operatorConfigurationMutatingWebhookHandler.SetupWebhookWithManager(manager)).To(Succeed())
 
 	operatorConfigurationValidationWebhookHandler = NewOperatorConfigurationValidationWebhookHandler(
-		k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+		k8sClient, true, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 	Expect(operatorConfigurationValidationWebhookHandler.SetupWebhookWithManager(manager)).To(Succeed())
 
 	Expect(SetupDash0MonitoringConversionWebhookWithManager(manager)).To(Succeed())
 
-	monitoringMutatingWebhookHandler = NewMonitoringMutatingWebhookHandler(k8sClient, OperatorNamespace, false)
+	monitoringMutatingWebhookHandler = NewMonitoringMutatingWebhookHandler(k8sClient, OperatorNamespace, true, false)
 	Expect(monitoringMutatingWebhookHandler.SetupWebhookWithManager(manager)).To(Succeed())
 
-	Expect(NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace).
+	Expect(NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace, true).
 		SetupWebhookWithManager(manager)).To(Succeed())
 
 	//+kubebuilder:scaffold:webhook

@@ -42,14 +42,20 @@ var (
 )
 
 type OperatorConfigurationMutatingWebhookHandler struct {
-	Client client.Client
+	Client                 client.Client
+	instrumentationEnabled bool
 }
 
+// NewOperatorConfigurationMutatingWebhookHandler creates the mutating webhook handler for operator configuration
+// resources, which sets defaults for unset fields. If instrumentationEnabled is false, instrumentWorkloads.mode of the
+// monitoring template defaults to none.
 func NewOperatorConfigurationMutatingWebhookHandler(
 	k8sClient client.Client,
+	instrumentationEnabled bool,
 ) *OperatorConfigurationMutatingWebhookHandler {
 	return &OperatorConfigurationMutatingWebhookHandler{
-		Client: k8sClient,
+		Client:                 k8sClient,
+		instrumentationEnabled: instrumentationEnabled,
 	}
 }
 
@@ -264,7 +270,11 @@ func (h *OperatorConfigurationMutatingWebhookHandler) setMonitoringTemplateDefau
 	}
 	monitoringTemplateSpec := &spec.MonitoringTemplate.Spec
 	if monitoringTemplateSpec.InstrumentWorkloads.Mode == "" {
-		monitoringTemplateSpec.InstrumentWorkloads.Mode = monitoringTemplateDefaults.InstrumentWorkloads.Mode
+		if h.instrumentationEnabled {
+			monitoringTemplateSpec.InstrumentWorkloads.Mode = monitoringTemplateDefaults.InstrumentWorkloads.Mode
+		} else {
+			monitoringTemplateSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeNone
+		}
 		patchRequired = true
 	}
 	if monitoringTemplateSpec.InstrumentWorkloads.LabelSelector == "" {

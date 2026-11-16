@@ -37,6 +37,12 @@ type Instrumenter struct {
 	Clientset                    *kubernetes.Clientset
 	Recorder                     events.EventRecorder
 	ClusterInstrumentationConfig *util.ClusterInstrumentationConfig
+
+	// InstrumentationDisabled is true if workload instrumentation has been disabled via the Helm value
+	// operator.instrumentation.enabled=false. The instrumenter then never instruments workloads, but it still removes
+	// the instrumentation from workloads, for example when the instrumentWorkloads.mode of a monitoring resource is
+	// changed to none. The mutating webhook that instruments workloads is not registered in that case.
+	InstrumentationDisabled bool
 }
 
 type ImmutableWorkloadError struct {
@@ -210,6 +216,15 @@ func (i *Instrumenter) CheckSettingsAndInstrumentExistingWorkloads(
 			"Instrumentation is not enabled, neither new nor existing workloads will be modified to send telemetry " +
 				"to Dash0.",
 		)
+		return nil
+	}
+	if i.InstrumentationDisabled {
+		logger.Info(
+			fmt.Sprintf(
+				"Workload instrumentation is disabled via the Helm value operator.instrumentation.enabled=false, "+
+					"ignoring instrumentWorkloads.mode=%s.",
+				instrumentWorkloadsMode,
+			))
 		return nil
 	}
 	if instrumentWorkloadsMode == dash0common.InstrumentWorkloadsModeCreatedAndUpdated {
@@ -1231,8 +1246,10 @@ func (i *Instrumenter) revertWorkloadInstrumentation(
 		if modificationResult.HasBeenModified {
 			// Changing the workload spec sometimes triggers a new admission request, which would re-instrument the
 			// workload via the webhook immediately. To prevent this, we add a label that the webhook can check to
-			// prevent instrumentation.
-			util.AddWebhookIgnoreOnceLabel(objectMeta)
+			// prevent instrumentation. Without the webhook, nothing would remove the label again.
+			if !i.InstrumentationDisabled {
+				util.AddWebhookIgnoreOnceLabel(objectMeta)
+			}
 			return i.Update(ctx, workload.asClientObject(), &client.UpdateOptions{FieldManager: util.FieldManager})
 		} else {
 			return nil

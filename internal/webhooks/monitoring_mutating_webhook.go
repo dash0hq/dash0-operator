@@ -26,17 +26,22 @@ import (
 type MonitoringMutatingWebhookHandler struct {
 	Client                   client.Client
 	operatorNamespace        string
+	instrumentationEnabled   bool
 	signalControlSceOnlyMode bool
 }
 
+// NewMonitoringMutatingWebhookHandler creates the mutating webhook handler for monitoring resources, which sets
+// defaults for unset fields. If instrumentationEnabled is false, instrumentWorkloads.mode defaults to none.
 func NewMonitoringMutatingWebhookHandler(
 	k8sClient client.Client,
 	OperatorNamespace string,
+	instrumentationEnabled bool,
 	signalControlSceOnlyMode bool,
 ) *MonitoringMutatingWebhookHandler {
 	return &MonitoringMutatingWebhookHandler{
 		Client:                   k8sClient,
 		operatorNamespace:        OperatorNamespace,
+		instrumentationEnabled:   instrumentationEnabled,
 		signalControlSceOnlyMode: signalControlSceOnlyMode,
 	}
 }
@@ -169,7 +174,7 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 	}
 
 	if monitoringSpec.InstrumentWorkloads.Mode == "" {
-		if request.Namespace == h.operatorNamespace {
+		if request.Namespace == h.operatorNamespace || !h.instrumentationEnabled {
 			monitoringSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeNone
 		} else if telemetryCollectionEnabled {
 			monitoringSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeAll
