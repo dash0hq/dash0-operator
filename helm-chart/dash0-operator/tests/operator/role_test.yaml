@@ -53,6 +53,12 @@ tests:
       - contains:
           path: rules
           content:
+            apiGroups: [""]
+            resources: [pods]
+            verbs: [create]
+      - contains:
+          path: rules
+          content:
             apiGroups: [apps]
             resources: [daemonsets]
             verbs: [get, list, watch, create, update, patch, delete]

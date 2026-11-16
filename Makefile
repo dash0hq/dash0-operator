@@ -189,7 +189,7 @@ go-fix: ## Run go fix against code.
 test: go-unit-tests helm-unit-tests ## Run all unit tests (Go, Helm chart unit tests).
 
 .PHONY: go-unit-tests
-go-unit-tests: common-package-unit-tests nodeuid-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests collector-telemetry-unit-tests debuginfo-proxy-unit-tests ## Run the Go unit tests for all packages.
+go-unit-tests: common-package-unit-tests nodeuid-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests collector-telemetry-unit-tests debuginfo-proxy-unit-tests filelog-offset-sync-unit-tests ## Run the Go unit tests for all packages.
 
 .PHONY: operator-manager-unit-tests
 operator-manager-unit-tests: manifests generate fmt vet envtest ## Run the Go unit tests for the operator code.
@@ -218,6 +218,10 @@ collector-telemetry-unit-tests: ## Run the Go unit tests for the collector image
 .PHONY: debuginfo-proxy-unit-tests
 debuginfo-proxy-unit-tests: ## Run the debuginfo upload proxy tests.
 	cd images/debuginfo-proxy/src && go test -race ./...
+
+.PHONY: filelog-offset-sync-unit-tests
+filelog-offset-sync-unit-tests: ## Run the Go unit tests for the filelog offset sync image Go app.
+	cd images/filelogoffsetsync/src && go test -race ./...
 
 .PHONY: helm-unit-tests
 helm-unit-tests: ## Run the Helm chart unit tests.

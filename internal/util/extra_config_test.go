@@ -594,6 +594,50 @@ edgeProxyReplicas: null
 						"edgeProxyReplicas (operator.signalControl.edgeProxy.replicas) must be at least 1, but was -1"),
 				)
 
+				It("should use the default filelog offset storage settings for missing, null and empty values", func() {
+					_, err := tmpFile.WriteString(`
+collectorFilelogOffsetStorageMode: null
+collectorFilelogOffsetHostPath: ""
+`)
+					Expect(err).ToNot(HaveOccurred())
+
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(extraConfig.CollectorFilelogOffsetStorageMode).To(Equal(FilelogOffsetStorageModeAuto))
+					Expect(extraConfig.CollectorFilelogOffsetHostPath).To(Equal("/var/lib/dash0-operator/filelog-offsets"))
+				})
+
+				It("should read the filelog offset storage settings", func() {
+					_, err := tmpFile.WriteString(`
+collectorFilelogOffsetStorageMode: hostPath
+collectorFilelogOffsetHostPath: /data/offsets
+`)
+					Expect(err).ToNot(HaveOccurred())
+
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(extraConfig.CollectorFilelogOffsetStorageMode).To(Equal(FilelogOffsetStorageModeHostPath))
+					Expect(extraConfig.CollectorFilelogOffsetHostPath).To(Equal("/data/offsets"))
+				})
+
+				DescribeTable("should reject invalid filelog offset storage settings", func(content string, expectedError string) {
+					_, err := tmpFile.WriteString(content)
+					Expect(err).ToNot(HaveOccurred())
+
+					_, err = readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
+					Expect(err).To(MatchError(ContainSubstring(expectedError)))
+				},
+					Entry("unknown mode", "collectorFilelogOffsetStorageMode: volume",
+						"collectorFilelogOffsetStorageMode (operator.collectors.filelogOffsetStorageMode) must be one of auto, "+
+							"configMap or hostPath, but was \"volume\""),
+					Entry("relative host path", "collectorFilelogOffsetHostPath: data/offsets",
+						"collectorFilelogOffsetHostPath (operator.collectors.filelogOffsetHostPath) must be an absolute path "+
+							"without \"..\" segments, but was \"data/offsets\""),
+					Entry("host path with parent directory segment", "collectorFilelogOffsetHostPath: /var/lib/../offsets",
+						"collectorFilelogOffsetHostPath (operator.collectors.filelogOffsetHostPath) must be an absolute path "+
+							"without \"..\" segments, but was \"/var/lib/../offsets\""),
+				)
+
 				It("should not share the defaults with the extra config that has been read", func() {
 					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name(), ExtraConfigDefaults, true, logger)
 					Expect(err).ToNot(HaveOccurred())
@@ -1677,6 +1721,8 @@ var helmChartGkeAutopilotInitContainerResourcesFile = filepath.Join(
 var extraConfigKeysToHelmValues = map[string]string{
 	"initContainerResources":                                        "operator.initContainerResources",
 	"collectorFilelogOffsetStorageVolume":                           "operator.collectors.filelogOffsetSyncStorageVolume",
+	"collectorFilelogOffsetStorageMode":                             "operator.collectors.filelogOffsetStorageMode",
+	"collectorFilelogOffsetHostPath":                                "operator.collectors.filelogOffsetHostPath",
 	"collectorDaemonSetCollectorContainerResources":                 "operator.collectors.daemonSetCollectorContainerResources",
 	"collectorDaemonSetConfigurationReloaderContainerResources":     "operator.collectors.daemonSetConfigurationReloaderContainerResources",
 	"collectorDaemonSetFileLogOffsetSyncContainerResources":         "operator.collectors.daemonSetFileLogOffsetSyncContainerResources",

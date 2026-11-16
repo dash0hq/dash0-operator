@@ -11,6 +11,8 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/bep/debounce"
@@ -36,6 +38,23 @@ type CollectorProbes struct {
 	Startup   corev1.Probe `json:"startup"`
 }
 
+// FilelogOffsetStorageMode selects where the collector daemonset persists the offsets of the filelog receiver, see the
+// Helm value operator.collectors.filelogOffsetStorageMode.
+type FilelogOffsetStorageMode string
+
+const (
+	// FilelogOffsetStorageModeAuto uses a hostPath volume if the cluster admits a collector pod with a writable hostPath
+	// volume, and the config map otherwise.
+	FilelogOffsetStorageModeAuto FilelogOffsetStorageMode = "auto"
+	// FilelogOffsetStorageModeConfigMap stores the offsets in a config map, synchronized by a sidecar container.
+	FilelogOffsetStorageModeConfigMap FilelogOffsetStorageMode = "configMap"
+	// FilelogOffsetStorageModeHostPath stores the offsets in a hostPath volume, without checking whether the cluster
+	// admits it.
+	FilelogOffsetStorageModeHostPath FilelogOffsetStorageMode = "hostPath"
+
+	DefaultFilelogOffsetHostPath = "/var/lib/dash0-operator/filelog-offsets"
+)
+
 // ExtraConfig holds the additional configuration values for the operator, which the operator reads from
 // /etc/config/extra.yaml at startup, mostly Kubernetes-related settings like resource requests, resource limits, the
 // filelog offset volume and tolerations for the collector daemonset.
@@ -43,6 +62,11 @@ type ExtraConfig struct {
 	InstrumentationInitContainerResources ResourceRequirementsWithGoMemLimit `json:"initContainerResources"`
 
 	CollectorFilelogOffsetStorageVolume *corev1.Volume `json:"collectorFilelogOffsetStorageVolume,omitempty"`
+
+	// CollectorFilelogOffsetStorageMode and CollectorFilelogOffsetHostPath are only relevant when
+	// CollectorFilelogOffsetStorageVolume is nil; an explicitly configured volume always takes precedence.
+	CollectorFilelogOffsetStorageMode FilelogOffsetStorageMode `json:"collectorFilelogOffsetStorageMode,omitempty"`
+	CollectorFilelogOffsetHostPath    string                   `json:"collectorFilelogOffsetHostPath,omitempty"`
 
 	CollectorDaemonSetCollectorContainerResources             ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetCollectorContainerResources"`
 	CollectorDaemonSetConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetConfigurationReloaderContainerResources"`
@@ -178,6 +202,8 @@ const (
 
 var (
 	ExtraConfigDefaults = ExtraConfig{
+		CollectorFilelogOffsetStorageMode: FilelogOffsetStorageModeAuto,
+		CollectorFilelogOffsetHostPath:    DefaultFilelogOffsetHostPath,
 		CollectorDaemonSetCollectorContainerResources: ResourceRequirementsWithGoMemLimit{
 			Limits: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
@@ -432,6 +458,9 @@ func readExtraConfigurationFromFile(
 	if err = validateReplicaCounts(extraConfig); err != nil {
 		return ExtraConfig{}, err
 	}
+	if err = validateFilelogOffsetStorage(extraConfig); err != nil {
+		return ExtraConfig{}, err
+	}
 
 	applyDefaults(
 		&extraConfig.CollectorDaemonSetCollectorContainerResources,
@@ -482,6 +511,12 @@ func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig
 	if missing("initContainerResources") {
 		extraConfig.InstrumentationInitContainerResources = defaults.InstrumentationInitContainerResources.DeepCopy()
 	}
+	if missingOrNull("collectorFilelogOffsetStorageMode") || extraConfig.CollectorFilelogOffsetStorageMode == "" {
+		extraConfig.CollectorFilelogOffsetStorageMode = defaults.CollectorFilelogOffsetStorageMode
+	}
+	if missingOrNull("collectorFilelogOffsetHostPath") || extraConfig.CollectorFilelogOffsetHostPath == "" {
+		extraConfig.CollectorFilelogOffsetHostPath = defaults.CollectorFilelogOffsetHostPath
+	}
 	if missing("daemonSetNodeAffinity") {
 		extraConfig.DaemonSetNodeAffinity = defaults.DaemonSetNodeAffinity.DeepCopy()
 	}
@@ -530,6 +565,32 @@ func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig
 	if missing("agent0ConnectorNodeAffinity") {
 		extraConfig.Agent0ConnectorNodeAffinity = defaults.Agent0ConnectorNodeAffinity.DeepCopy()
 	}
+}
+
+// validateFilelogOffsetStorage rejects an unknown filelog offset storage mode and a host path that is not absolute or
+// contains parent directory segments.
+func validateFilelogOffsetStorage(extraConfig *ExtraConfig) error {
+	switch extraConfig.CollectorFilelogOffsetStorageMode {
+	case FilelogOffsetStorageModeAuto, FilelogOffsetStorageModeConfigMap, FilelogOffsetStorageModeHostPath:
+	default:
+		return fmt.Errorf(
+			"collectorFilelogOffsetStorageMode (operator.collectors.filelogOffsetStorageMode) must be one of %s, %s or "+
+				"%s, but was %q",
+			FilelogOffsetStorageModeAuto,
+			FilelogOffsetStorageModeConfigMap,
+			FilelogOffsetStorageModeHostPath,
+			extraConfig.CollectorFilelogOffsetStorageMode,
+		)
+	}
+	hostPath := extraConfig.CollectorFilelogOffsetHostPath
+	if !strings.HasPrefix(hostPath, "/") || slices.Contains(strings.Split(hostPath, "/"), "..") {
+		return fmt.Errorf(
+			"collectorFilelogOffsetHostPath (operator.collectors.filelogOffsetHostPath) must be an absolute path without "+
+				"\"..\" segments, but was %q",
+			hostPath,
+		)
+	}
+	return nil
 }
 
 // validateReplicaCounts rejects replica counts below 1 in the extra config map.

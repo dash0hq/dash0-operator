@@ -274,6 +274,98 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
 		})
 
+		It("should store the filelog offsets in a hostPath volume on a fresh installation, without a config map", func() {
+			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx, util.ExtraConfigDefaults, DefaultOperatorConfigurationResourceWithUid(), nil, nil, logger)
+			Expect(err).ToNot(HaveOccurred())
+
+			daemonSet := getDaemonSetFromCluster(ctx)
+			offsetsVolume := FindVolumeByName(daemonSet.Spec.Template.Spec.Volumes, "filelogreceiver-offsets")
+			Expect(offsetsVolume.HostPath.Path).To(Equal("/var/lib/dash0-operator/filelog-offsets/" + OperatorNamespace))
+			Expect(containerNames(daemonSet.Spec.Template.Spec.InitContainers)).
+				To(Equal([]string{"filelog-offset-volume-ownership"}))
+			VerifyResourceDoesNotExist(
+				ctx, k8sClient, OperatorNamespace, ExpectedDaemonSetFilelogOffsetSyncConfigMapName, &corev1.ConfigMap{})
+		})
+
+		It("should migrate the filelog offsets from the config map and delete the config map once the volume has "+
+			"rolled out", func() {
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
+			configMapMode := util.ExtraConfigDefaults
+			configMapMode.CollectorFilelogOffsetStorageMode = util.FilelogOffsetStorageModeConfigMap
+			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx, configMapMode, operatorConfiguration, nil, nil, logger)
+			Expect(err).ToNot(HaveOccurred())
+			VerifyResourceExists(
+				ctx, k8sClient, OperatorNamespace, ExpectedDaemonSetFilelogOffsetSyncConfigMapName, &corev1.ConfigMap{})
+			daemonSet := getDaemonSetFromCluster(ctx)
+			Expect(containerNames(daemonSet.Spec.Template.Spec.Containers)).To(ContainElement("filelog-offset-sync"))
+			Expect(FindVolumeByName(daemonSet.Spec.Template.Spec.Volumes, "filelogreceiver-offsets").EmptyDir).
+				ToNot(BeNil())
+
+			_, _, err = oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx, util.ExtraConfigDefaults, operatorConfiguration, nil, nil, logger)
+			Expect(err).ToNot(HaveOccurred())
+			VerifyResourceExists(
+				ctx, k8sClient, OperatorNamespace, ExpectedDaemonSetFilelogOffsetSyncConfigMapName, &corev1.ConfigMap{})
+			daemonSet = getDaemonSetFromCluster(ctx)
+			Expect(containerNames(daemonSet.Spec.Template.Spec.InitContainers)).
+				To(Equal([]string{"filelog-offset-volume-ownership", "filelog-offset-migrate"}))
+			Expect(containerNames(daemonSet.Spec.Template.Spec.Containers)).ToNot(ContainElement("filelog-offset-sync"))
+			Expect(FindVolumeByName(daemonSet.Spec.Template.Spec.Volumes, "filelogreceiver-offsets").HostPath).
+				ToNot(BeNil())
+
+			daemonSet.Status = appsv1.DaemonSetStatus{
+				ObservedGeneration:     daemonSet.Generation,
+				CurrentNumberScheduled: 2,
+				DesiredNumberScheduled: 2,
+				NumberReady:            2,
+				UpdatedNumberScheduled: 2,
+				NumberAvailable:        2,
+			}
+			Expect(k8sClient.Status().Update(ctx, daemonSet)).To(Succeed())
+
+			_, _, err = oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx, util.ExtraConfigDefaults, operatorConfiguration, nil, nil, logger)
+			Expect(err).ToNot(HaveOccurred())
+			VerifyResourceDoesNotExist(
+				ctx, k8sClient, OperatorNamespace, ExpectedDaemonSetFilelogOffsetSyncConfigMapName, &corev1.ConfigMap{})
+			daemonSet = getDaemonSetFromCluster(ctx)
+			Expect(containerNames(daemonSet.Spec.Template.Spec.InitContainers)).
+				To(Equal([]string{"filelog-offset-volume-ownership", "filelog-offset-migrate"}))
+
+			_, _, err = oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx, util.ExtraConfigDefaults, operatorConfiguration, nil, nil, logger)
+			Expect(err).ToNot(HaveOccurred())
+			VerifyResourceDoesNotExist(
+				ctx, k8sClient, OperatorNamespace, ExpectedDaemonSetFilelogOffsetSyncConfigMapName, &corev1.ConfigMap{})
+			Expect(getDaemonSetFromCluster(ctx).Generation).To(Equal(daemonSet.Generation))
+		})
+
+		It("should not probe the cluster for the filelog offset storage if no collector daemonset is deployed", func() {
+			probeClient := &dryRunPodClient{Client: k8sClient}
+			sceOnlyManager := NewOTelColResourceManager(
+				probeClient,
+				k8sClient.Scheme(),
+				OperatorManagerDeployment,
+				util.CollectorConfig{
+					Images:                   TestImages,
+					OperatorNamespace:        OperatorNamespace,
+					NamePrefix:               ManagedResourceNamePrefixTest,
+					SignalControlSceOnlyMode: true,
+				},
+				NewLeaderElectionAwareMock(true),
+			)
+			_, _, err := sceOnlyManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx, util.ExtraConfigDefaults, DefaultOperatorConfigurationResourceWithUid(), nil, nil, logger)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(probeClient.probePods).To(BeEmpty())
+			VerifyResourceDoesNotExist(ctx, k8sClient, OperatorNamespace, ExpectedDaemonSetName, &appsv1.DaemonSet{})
+			VerifyResourceDoesNotExist(
+				ctx, k8sClient, OperatorNamespace, ExpectedDaemonSetServiceAccountName, &corev1.ServiceAccount{})
+		})
+
 		It("should enable profiler source routing only with profiling and the profiler enabled without adding ports", func() {
 			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 			operatorConfiguration.Spec.Profiling = &dash0v1alpha1.Profiling{
@@ -410,7 +502,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			ds := ds_.(*appsv1.DaemonSet)
 
 			containers := ds.Spec.Template.Spec.Containers
-			Expect(containers).To(HaveLen(3))
+			Expect(containers).To(HaveLen(2))
 			for _, container := range containers {
 				Expect(container.Env).ToNot(
 					ContainElement(MatchEnvVar("SELF_MONITORING_AUTH_TOKEN", AuthorizationTokenTest)))
@@ -443,7 +535,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			ds := ds_.(*appsv1.DaemonSet)
 
 			containers := ds.Spec.Template.Spec.Containers
-			Expect(containers).To(HaveLen(3))
+			Expect(containers).To(HaveLen(2))
 			for _, container := range containers {
 				Expect(container.Env).To(
 					ContainElement(MatchEnvVar("SELF_MONITORING_AUTH_TOKEN", AuthorizationTokenTest)))
@@ -2177,4 +2269,19 @@ func verifyObject(ctx context.Context, testObject *corev1.ConfigMap) {
 	Expect(object.Namespace).To(Equal(testObject.Namespace))
 	Expect(object.Labels).To(Equal(testObject.Labels))
 	Expect(object.Data).To(Equal(testObject.Data))
+}
+
+func getDaemonSetFromCluster(ctx context.Context) *appsv1.DaemonSet {
+	GinkgoHelper()
+	return VerifyResourceExists(
+		ctx, k8sClient, OperatorNamespace, ExpectedDaemonSetName, &appsv1.DaemonSet{},
+	).(*appsv1.DaemonSet)
+}
+
+func containerNames(containers []corev1.Container) []string {
+	names := make([]string, 0, len(containers))
+	for _, container := range containers {
+		names = append(names, container.Name)
+	}
+	return names
 }

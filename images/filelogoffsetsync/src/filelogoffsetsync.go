@@ -34,7 +34,7 @@ import (
 )
 
 type Settings struct {
-	Clientset                  *kubernetes.Clientset
+	Clientset                  kubernetes.Interface
 	NodeName                   string
 	ConfigMapNamespace         string
 	ConfigMapName              string
@@ -90,7 +90,8 @@ func main() {
 
 	mode := flag.String("mode", "sync",
 		"if set to 'init', it will fetch the offset files from the configmap and store it to the "+
-			"path stored at ${FILELOG_OFFSET_DIRECTORY_PATH}; sync mode instead will persist the offset "+
+			"path stored at ${FILELOG_OFFSET_DIRECTORY_PATH}; 'migrate' does the same, but only if that directory is "+
+			"still empty, and tolerates a missing configmap; sync mode instead will persist the offset "+
 			"files at regular intervals")
 
 	flag.Parse()
@@ -157,20 +158,40 @@ func main() {
 		} else if restoredFiles == 0 {
 			logger.Info("no offset files restored")
 		}
+	case "migrate":
+		if restoredFiles, err := migrateOffsets(ctx, settings); err != nil {
+			logger.Error("no offset files migrated", errorLabel, err)
+			os.Exit(1)
+		} else if restoredFiles == 0 {
+			logger.Info("no offset files migrated")
+		}
 	case "sync":
 		syncOffsets(ctx, settings)
+	default:
+		logger.Error("unknown mode, expected one of init, migrate or sync", "mode", *mode)
+		os.Exit(1)
 	}
 
 	common.ShutDownOTelSdk(ctx)
 }
 
 func initOffsets(ctx context.Context, settings *Settings) (int, error) {
+	tr, err := readOffsetArchive(ctx, settings)
+	if err != nil || tr == nil {
+		return 0, err
+	}
+	return restoreArchive(tr, func(entryName string) string { return entryName })
+}
+
+// readOffsetArchive returns a reader for the archive of offset files that the sync mode has stored for this node in the
+// config map, or nil if the config map holds no offset files for this node.
+func readOffsetArchive(ctx context.Context, settings *Settings) (*tar.Reader, error) {
 	configMap, err :=
 		settings.Clientset.CoreV1().
 			ConfigMaps(settings.ConfigMapNamespace).
 			Get(ctx, settings.ConfigMapName, metav1.GetOptions{})
 	if err != nil {
-		return 0, fmt.Errorf(
+		return nil, fmt.Errorf(
 			"cannot retrieve %v/%v config map: %w",
 			settings.ConfigMapNamespace,
 			settings.ConfigMapName,
@@ -181,26 +202,56 @@ func initOffsets(ctx context.Context, settings *Settings) (int, error) {
 	offsetBytes, isSet := configMap.BinaryData[settings.NodeName]
 	if !isSet {
 		// No previous state found
-		return 0, nil
+		return nil, nil
 	}
 
 	gr, err := gzip.NewReader(bytes.NewReader(offsetBytes))
 	if err != nil {
-		return 0, fmt.Errorf(
+		return nil, fmt.Errorf(
 			"cannot uncompress '%v' field of %v/%v config map: %w",
 			settings.NodeName,
 			settings.ConfigMapNamespace,
 			settings.ConfigMapName,
-			err,
+			&corruptArchiveError{err: err},
 		)
 	}
 
-	tr := tar.NewReader(gr)
+	return tar.NewReader(gr), nil
+}
 
+// corruptArchiveError marks an error caused by the content of the offset archive stored in the config map, as opposed
+// to an error accessing the Kubernetes API or the file system.
+type corruptArchiveError struct {
+	err error
+}
+
+func (e *corruptArchiveError) Error() string {
+	return e.err.Error()
+}
+
+func (e *corruptArchiveError) Unwrap() error {
+	return e.err
+}
+
+type archiveContentReader struct {
+	tr *tar.Reader
+}
+
+func (r archiveContentReader) Read(p []byte) (int, error) {
+	n, err := r.tr.Read(p)
+	if err != nil && err != io.EOF {
+		return n, &corruptArchiveError{err: err}
+	}
+	return n, err
+}
+
+// entryPathMapper maps the name of an archive entry to the path it is restored to; an empty path skips the entry.
+type entryPathMapper func(entryName string) string
+
+func restoreArchive(tr *tar.Reader, targetPath entryPathMapper) (int, error) {
 	restoredFiles := 0
 	for {
-		// Reached the end of the tarfile
-		archiveFullyRead, hasRestoredFile, err := restoreFile(tr)
+		archiveFullyRead, hasRestoredFile, err := restoreFile(tr, targetPath)
 
 		if err != nil {
 			return restoredFiles, err
@@ -222,53 +273,66 @@ type IsArchiveOver bool
 
 type HasRestoredFileFromArchive bool
 
-func restoreFile(tr *tar.Reader) (IsArchiveOver, HasRestoredFileFromArchive, error) {
+func restoreFile(tr *tar.Reader, targetPath entryPathMapper) (IsArchiveOver, HasRestoredFileFromArchive, error) {
 	nextHeader, err := tr.Next()
 
 	switch {
-	case err == io.EOF || nextHeader == nil:
+	case err == io.EOF:
 		return true, false, nil
 	case err != nil:
-		return false, false, fmt.Errorf("cannot read next archive header: %w", err)
+		return false, false, fmt.Errorf("cannot read next archive header: %w", &corruptArchiveError{err: err})
+	case nextHeader == nil:
+		return true, false, nil
+	}
+
+	path := targetPath(nextHeader.Name)
+	if path == "" {
+		return false, false, nil
 	}
 
 	switch nextHeader.Typeflag {
 	case tar.TypeDir:
-		if _, err := os.Stat(nextHeader.Name); err != nil {
-			if err := os.Mkdir(nextHeader.Name, 0755); err != nil {
-				return false, false, fmt.Errorf("cannot create directory '%v': %w", nextHeader.Name, err)
+		if _, err := os.Stat(path); err != nil {
+			if err := os.Mkdir(path, 0755); err != nil {
+				return false, false, fmt.Errorf("cannot create directory '%v': %w", path, err)
 			}
-			logger.Info("restored directory", "name", nextHeader.Name)
+			logger.Info("restored directory", "name", path)
 		}
 		return false, false, nil
 	case tar.TypeReg:
-		file, err := os.OpenFile(nextHeader.Name, os.O_CREATE|os.O_TRUNC|os.O_RDWR, os.FileMode(nextHeader.Mode))
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, os.FileMode(nextHeader.Mode))
 		if err != nil {
-			return false, false, fmt.Errorf("cannot create file '%v': %w", nextHeader.Name, err)
+			return false, false, fmt.Errorf("cannot create file '%v': %w", path, err)
 		}
 
-		if _, err := io.Copy(file, tr); err != nil {
+		if _, err := io.Copy(file, archiveContentReader{tr: tr}); err != nil {
+			_ = file.Close()
 			return false, false, fmt.Errorf(
 				"cannot write %v bytes to file '%v': %w",
 				nextHeader.Size,
-				nextHeader.Name,
+				path,
 				err,
 			)
 		}
 
-		if err := file.Close(); err != nil {
-			return false, false, fmt.Errorf("cannot close file '%v': %w", nextHeader.Name, err)
+		if err := file.Sync(); err != nil {
+			_ = file.Close()
+			return false, false, fmt.Errorf("cannot sync file '%v': %w", path, err)
 		}
 
-		logger.Info("restored file", "name", nextHeader.Name, "bytes", nextHeader.Size)
+		if err := file.Close(); err != nil {
+			return false, false, fmt.Errorf("cannot close file '%v': %w", path, err)
+		}
+
+		logger.Info("restored file", "name", path, "bytes", nextHeader.Size)
 		return false, true, nil
 	default:
-		return false, false, fmt.Errorf(
+		return false, false, &corruptArchiveError{err: fmt.Errorf(
 			`unexpected tar type '%v' for entry '%v' (size: %v)`,
 			nextHeader.Typeflag,
 			nextHeader.Name,
 			nextHeader.Size,
-		)
+		)}
 	}
 }
 
@@ -366,7 +430,7 @@ func doSyncOffsets(settings *Settings) (IsOffsetUpdated, OffsetSizeBytes, error)
 }
 
 func patchConfigMap(
-	clientset *kubernetes.Clientset,
+	clientset kubernetes.Interface,
 	nodeName string,
 	configMapNamespace string,
 	configMapName string,

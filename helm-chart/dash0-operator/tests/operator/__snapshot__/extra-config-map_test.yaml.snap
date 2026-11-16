@@ -5,6 +5,8 @@ extra config map should match snapshot:
       extra.yaml: |-
         initContainerResources:
           {}
+        collectorFilelogOffsetStorageMode: auto
+        collectorFilelogOffsetHostPath: "/var/lib/dash0-operator/filelog-offsets"
         collectorDaemonSetCollectorContainerResources:
           gomemlimit: ""
           limits:

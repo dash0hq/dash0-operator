@@ -300,8 +300,8 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       to "true".
     * `ENABLE_RUBY_AUTO_INSTRUMENTATION`: Set this to "false" to disable Ruby auto-instrumentation. This corresponds to
       the Helm setting `operator.instrumentation.enableRubyAutoInstrumentation=false`. This defaults to "true".
-    * `FILELOG_OFFSETS_PVC`: Use a persistent volume claim to store filelog offsets, instead of the default config map
-      based storage. Possible values:
+    * `FILELOG_OFFSETS_PVC`: Use a persistent volume claim to store filelog offsets, instead of letting the operator
+      choose the storage. Possible values:
         * `FILELOG_OFFSETS_PVC=kind`: deploy a PersistentVolume and PersistentVolumeClaim suitable for kind clusters
           created via test-resources/bin/create_cluster_and_registry.sh or based on `test-resources/kind-config.yaml`
           (i.e. clusters that have the `offset-storage` extra mounts), then use this for filelog offset storage
@@ -313,8 +313,14 @@ Moving beyond the quickstart instructions, here are more details on the test scr
           https://github.com/kubernetes-sigs/aws-efs-csi-driver/tree/master/examples/kubernetes/dynamic_provisioning)
       Take a look at the files in `test-resources/filelog-offset-storage` for details.
       Test scenario 12 configures the volume via `spec.components` instead of via Helm.
-    * `FILELOG_OFFSETS_HOST_PATH_VOLUME`: Use a `hostPath` volume to store filelog offsets, instead of the default
-      config map based storage.
+    * `FILELOG_OFFSETS_HOST_PATH_VOLUME`: Use a user-provided `hostPath` volume to store filelog offsets
+      (`operator.collectors.filelogOffsetSyncStorageVolume`), instead of letting the operator choose the storage.
+    * `FILELOG_OFFSETS_STORAGE_MODE`: Set `operator.collectors.filelogOffsetStorageMode` (`auto`, `configMap` or
+      `hostPath`). This defaults to being empty, which means the Helm chart default (`auto`) is used, that is, the
+      operator uses a `hostPath` volume (`/var/lib/dash0-operator/filelog-offsets/<operator namespace>` on each node)
+      if the cluster admits it, and the config map otherwise. To test the migration from the config map to the
+      `hostPath` volume, deploy with `FILELOG_OFFSETS_STORAGE_MODE=configMap` first, then run
+      `test-scenario-03-rebuild-update-operator-no-cleanup.sh` without it.
     * `INSTRUMENT_WORKLOADS_MODE`: Set this to "all", "created-and-updated" or "none" to control the
       `instrumentWorkloads.mode` setting of the monitoring resource that will be deployed.
       This defaults to "all", unless `$TELEMETRY_COLLECTION_ENABLED` is "false", then it defaults to "none".

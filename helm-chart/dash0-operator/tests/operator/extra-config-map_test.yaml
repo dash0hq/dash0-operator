@@ -403,6 +403,8 @@ tests:
               name: filelogreceiver-offsets
               persistentVolumeClaim:
                 claimName: offset-storage-claim
+            collectorFilelogOffsetStorageMode: auto
+            collectorFilelogOffsetHostPath: "/var/lib/dash0-operator/filelog-offsets"
             collectorDaemonSetCollectorContainerResources:
               gomemlimit: 401MiB
               limits:
@@ -1596,6 +1598,8 @@ tests:
           value:  |-
             initContainerResources:
               {}
+            collectorFilelogOffsetStorageMode: auto
+            collectorFilelogOffsetHostPath: "/var/lib/dash0-operator/filelog-offsets"
             collectorDaemonSetCollectorContainerResources:
               gomemlimit: 301MiB
               limits:
@@ -2021,3 +2025,60 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: "Error: operator.exports[0].http has no endpoint."
+
+  - it: should render the default filelog offset storage settings
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: "collectorFilelogOffsetStorageMode: auto\ncollectorFilelogOffsetHostPath: \"/var/lib/dash0-operator/filelog-offsets\""
+
+  - it: should render custom filelog offset storage settings
+    set:
+      operator:
+        collectors:
+          filelogOffsetStorageMode: hostPath
+          filelogOffsetHostPath: /data/dash0/offsets
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: "collectorFilelogOffsetStorageMode: hostPath\ncollectorFilelogOffsetHostPath: \"/data/dash0/offsets\""
+
+  - it: should reject an unknown filelog offset storage mode
+    set:
+      operator:
+        collectors:
+          filelogOffsetStorageMode: volume
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.filelogOffsetStorageMode must be one of auto, configMap or hostPath, but was volume."
+
+  - it: should reject combining the filelog offset storage mode with a filelog offset volume
+    set:
+      operator:
+        collectors:
+          filelogOffsetStorageMode: configMap
+          filelogOffsetSyncStorageVolume:
+            name: filelogreceiver-offsets
+            persistentVolumeClaim:
+              claimName: offset-storage-claim
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.filelogOffsetStorageMode cannot be combined with operator.collectors.filelogOffsetSyncStorageVolume, the volume always takes precedence. Please remove one of the two settings."
+
+  - it: should reject a relative filelog offset host path
+    set:
+      operator:
+        collectors:
+          filelogOffsetHostPath: data/offsets
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.filelogOffsetHostPath must be an absolute path without \"..\" segments, but was data/offsets."
+
+  - it: should reject a filelog offset host path with parent directory segments
+    set:
+      operator:
+        collectors:
+          filelogOffsetHostPath: /var/lib/../offsets
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.filelogOffsetHostPath must be an absolute path without \"..\" segments, but was /var/lib/../offsets."

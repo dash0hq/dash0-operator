@@ -813,10 +813,42 @@ operator:
     # resources contain a lot of filters or transforms, this limit might be smaller.
     compressConfigMaps: false
 
-    # A reference to a persistent volume to use for the filelog offset sync. Specify this is you have a cluster
-    # with more than pods 100 pods active at the same time. By default, the filelog offset sync will use a config map
-    # for its peristent storage, but ConfigMaps are limited to 1 MB in size. If you have around 100 pods running in
-    # your cluster, the recommendation is to provide volume.
+    # Where the filelog receiver of the collector DaemonSet persists the offsets of the pod log files it reads, so that
+    # log records are neither lost nor sent twice when a collector pod restarts. One of:
+    # - auto (the default): store the offsets in a hostPath volume on each node (see filelogOffsetHostPath), if the
+    #   cluster admits a collector pod with a writable hostPath volume; otherwise in a config map. On GKE Autopilot,
+    #   the config map is always used, since GKE Autopilot does not admit writable hostPath volumes. Unless the
+    #   collector DaemonSet pods run with the SELinux type spc_t (see daemonSetSeLinuxOptions), the config map is also
+    #   used on OpenShift and on clusters whose nodes likely enforce SELinux (nodes with the container runtime CRI-O,
+    #   RKE2, K3s, k0s), since the default container type cannot write to hostPath directories. Otherwise, the operator
+    #   checks via a server-side dry run of a collector pod whether the pod security admission, the validating
+    #   admission policies and the admission webhooks (e.g. OPA gatekeeper, Kyverno) of the cluster admit the hostPath
+    #   volume. If the dry run fails for another reason than an admission denial, the collector DaemonSet keeps the
+    #   storage it currently uses (a new installation starts with the config map) and the check is repeated on the
+    #   next reconciliation.
+    # - hostPath: always store the offsets in the hostPath volume, without any of these checks.
+    # - configMap: always store the offsets in a config map, which a sidecar container updates every few seconds.
+    #   Not recommended for clusters with more than around 100 pods per node (the config map is limited to 1 MB), for
+    #   clusters with admission webhooks that process every config map update (e.g. OPA gatekeeper, Kyverno), or for
+    #   self-hosted clusters where the frequent config map updates can exhaust the disk space of etcd.
+    # When switching from the config map to a volume, the offsets are migrated from the config map, which is deleted
+    # afterwards. Switching from a volume back to the config map does not carry the offsets over, so log records may be
+    # lost or sent twice during that switch.
+    # This setting is ignored when filelogOffsetSyncStorageVolume is set.
+    # See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/advanced-configuration.md#filelog-offset-storage.
+    filelogOffsetStorageMode: auto
+
+    # The directory on the nodes in which the filelog receiver offsets are stored when filelogOffsetStorageMode
+    # resolves to hostPath. The offsets of each node are stored in <filelogOffsetHostPath>/<operator namespace>/<node
+    # name>. The directory is created and handed over to the collector's user via an init container that runs as root
+    # with the CHOWN capability. Uninstalling the operator does not remove the directory
+    # <filelogOffsetHostPath>/<operator namespace> from the nodes.
+    filelogOffsetHostPath: /var/lib/dash0-operator/filelog-offsets
+
+    # A volume to use for the filelog receiver offsets instead of the hostPath volume or config map selected via
+    # filelogOffsetStorageMode. Any volume that is accessible from the collector pods can be used, for example a
+    # hostPath volume with a custom path or a ReadWriteMany persistent volume claim. The volume ownership init container
+    # that runs as root with the CHOWN capability is added in this case as well.
     #
     # Here is an example with a hostPath volume (see also https://kubernetes.io/docs/concepts/storage/volumes/#hostpath
     # for considerations around using hostPath volumes):

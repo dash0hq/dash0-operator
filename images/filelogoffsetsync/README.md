@@ -7,14 +7,18 @@ This container is added to the daemonset OTel collector pod, to keep track of lo
 Its main purpose is to ensure that log records are not emitted multiple times by the file_log receiver when the collector
 pod is restarted.
 
-*Note:* If a user-provided volume is configured via the Helm chart property
-`operator.collectors.filelogOffsetSyncStorageVolume`), this container image is not used.
-Instead, the log file offset information is directly stored on the user-provided volume.
-The purpose of this container image is to improve the out-of-the-box experience for users with small- to medium-sized
-clusters, as they do not need to create or configure a volume.
+*Note:* By default, the operator stores the offsets in a `hostPath` volume on each node, if the cluster admits a
+collector pod with a writable `hostPath` volume (see `resolveFilelogOffsetStorage` in
+`internal/collectors/otelcolresources/filelog_offset_storage.go`).
+In that case, and if a user-provided volume is configured via the Helm chart property
+`operator.collectors.filelogOffsetSyncStorageVolume`, the log file offset information is directly stored on the volume,
+and the sync container and the init container described below are not used, except for migrating
+existing offsets from the config map to the volume, see the last section.
+The config map based storage described here is the fallback for clusters that do not admit writable `hostPath`
+volumes (for example GKE Autopilot, OpenShift, or clusters with admission policies that reject them), and can be
+requested explicitly via `operator.collectors.filelogOffsetStorageMode=configMap`.
 
-The remainder of this document assumes that the user-provided volume has not been set, and offsets are persisted with
-the help of this container image.
+The remainder of this document assumes that the config map based storage is used.
 
 Since the whole mechanism requires a couple of components to work together, here is a description of how everything is
 connected:
@@ -48,3 +52,41 @@ Note that config maps are limited to 1 MB in size.
 For clusters with a lot of pods, we might run into this limit.
 Please use `operator.collectors.filelogOffsetSyncStorageVolume` for those clusters, see
 https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/advanced-configuration.md#providing-a-filelog-offset-volume.
+
+Migrating Offsets from the Config Map to a Volume
+-------------------------------------------------
+
+When the collector daemonset stores the offsets on a volume (the `hostPath` volume chosen by the operator, or a
+user-provided volume) while the offsets config map of the config map based storage still exists (for example after
+upgrading from an operator version that only had the config map based storage), the collector pods get a
+`filelog-offset-migrate` init container (`--mode=migrate`).
+It runs after the volume ownership init container and restores the offsets of its node from the config map into the
+volume, like `--mode=init`, but only if the offset directory on the volume is still empty, so it never overwrites
+offsets that a collector has already written to the volume.
+This way, the collector continues where it left off, instead of losing or re-sending log records after the switch.
+The operator deletes the config map once the daemonset has been rolled out completely with the volume.
+From then on, the migrate container finds no config map and does nothing.
+
+The migration is crash-safe, so that an interrupted attempt (disk full, OOM kill, pod deletion) never leaves the
+collector with a partially written offset file:
+- The offset files are restored into the staging directory `.filelogoffsetsync-migrate-staging` inside the offset
+  directory and synced to disk.
+  The volume is mounted with a per-node `subPath`, so the offset directory is the only directory on that file system
+  the container can access.
+- The staging directory is then renamed to `.filelogoffsetsync-migrate-committed`.
+- Only after that are the files moved to their final paths in the offset directory, each with a single rename, and
+  the committed directory is removed.
+
+On start, the migrate container discards a staging directory left over by an earlier attempt and finishes moving the
+files of a leftover committed directory.
+It ignores both directories when checking whether the offset directory is empty, so an attempt that failed before
+committing is simply repeated.
+
+Errors reading the config map from the Kubernetes API and errors writing to the volume (for example a full disk or
+missing permissions) make the migrate container fail, so that it is retried.
+Offset files in the config map that cannot be restored, because the node's archive is corrupt or contains no offset
+files, would fail on every retry and keep the collector from starting on that node.
+Instead, the migrate container logs an error naming the config map and the node, discards what it has restored so far,
+and exits successfully.
+The collector then starts without these offsets, as it would on a new node, so log records written while switching to
+the volume may be missed or emitted again.

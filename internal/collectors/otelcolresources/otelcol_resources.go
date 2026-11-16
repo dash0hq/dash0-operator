@@ -45,6 +45,11 @@ type OTelColResourceManager struct {
 	obsoleteResourcesHaveBeenDeleted atomic.Bool
 	kubeletStatsReceiverConfig       atomic.Pointer[util.KubeletStatsReceiverConfig]
 	leaderElectionAware              util.LeaderElectionAware
+	// filelogOffsetHostPathProbeResult caches the conclusive outcome of the hostPath admission probe for the lifetime
+	// of the process, see probeFilelogOffsetHostPath. Nil until the probe has had a conclusive outcome.
+	filelogOffsetHostPathProbeResult atomic.Pointer[hostPathProbeResult]
+	lastInconclusiveHostPathProbe    atomic.Pointer[string]
+	lastFilelogOffsetStorageDecision atomic.Pointer[string]
 
 	// reportMutex guards the reporter and reportsHaveBeenSkipped, and serializes the leader check of
 	// reportGoMemLimitInversions with ConsumeSkippedReports.
@@ -261,13 +266,13 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		CompressConfigMap:        m.collectorConfig.CompressConfigMap,
 		SignalControlSceOnlyMode: m.collectorConfig.SignalControlSceOnlyMode,
 	}
-	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
-		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume
-	}
 	config.DaemonSetCollectorMemoryLimit = *extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Memory()
 	config.DeploymentCollectorMemoryLimit = *extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory()
 	config.SignalControlCollectorMemoryLimit = *extraConfig.SignalControlCollectorContainerResources.Limits.Memory()
 	config.TargetAllocatorMtlsCaSha = m.targetAllocatorMtlsCaSha(ctx, extraConfig, logger)
+	if err = m.resolveFilelogOffsetStorage(ctx, config, extraConfig, operatorConfigurationResource, logger); err != nil {
+		return false, false, err
+	}
 	if config.signalControlGatewayActive() {
 		logger.Debug(fmt.Sprintf("Deploying the Signal Control collector (image %s), since Signal Control is enabled "+
 			"via the Dash0SignalControl resource. The daemonset and the cluster-metrics collector export their "+
