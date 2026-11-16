@@ -1961,6 +1961,52 @@ tests:
           name: dash0-operator-injector
         not: true
 
+  - it: should not render the injector webhook if workload instrumentation is disabled
+    set:
+      operator:
+        instrumentation:
+          enabled: false
+    asserts:
+      - containsDocument:
+          kind: MutatingWebhookConfiguration
+          apiVersion: admissionregistration.k8s.io/v1
+          name: dash0-operator-injector
+        not: true
+
+  - it: should still render the other webhooks if workload instrumentation is disabled
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-monitoring-mutating
+    set:
+      operator:
+        instrumentation:
+          enabled: false
+    asserts:
+      - isKind:
+          of: MutatingWebhookConfiguration
+
+  - it: should pass --dash0-instrumentation-enabled=false if workload instrumentation is disabled
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        instrumentation:
+          enabled: false
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --dash0-instrumentation-enabled=false
+
+  - it: should not pass --dash0-instrumentation-enabled if workload instrumentation is enabled
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --dash0-instrumentation-enabled=false
+
   - it: should render the injector webhook when Signal Control is enabled together with telemetry collection
     documentSelector:
       path: metadata.name

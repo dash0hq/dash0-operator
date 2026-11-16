@@ -240,7 +240,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 			rawNew, err := json.Marshal(newMonitoringResource)
 			Expect(err).ToNot(HaveOccurred())
 
-			response := NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace).Handle(ctx, admission.Request{
+			response := NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace, true).Handle(ctx, admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
 					Operation: admissionv1.Update,
 					Namespace: namespace,
@@ -256,6 +256,108 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 			Entry("kube-system, the mutating webhook sets an empty mode to all", "kube-system", dash0common.InstrumentWorkloadsMode("")),
 			Entry("operator namespace", OperatorNamespace, dash0common.InstrumentWorkloadsModeAll),
 		)
+
+		Describe("when workload instrumentation is disabled", func() {
+			monitoringResourceWithMode := func(
+				mode dash0common.InstrumentWorkloadsMode,
+				finalizers []string,
+			) *dash0v1beta1.Dash0Monitoring {
+				monitoringResource := DefaultMonitoringResourceWithName(
+					types.NamespacedName{Namespace: TestNamespaceName, Name: MonitoringResourceName},
+				)
+				monitoringResource.Spec.InstrumentWorkloads.Mode = mode
+				monitoringResource.Finalizers = finalizers
+				return monitoringResource
+			}
+
+			handle := func(
+				operation admissionv1.Operation,
+				oldMonitoringResource *dash0v1beta1.Dash0Monitoring,
+				newMonitoringResource *dash0v1beta1.Dash0Monitoring,
+			) admission.Response {
+				request := admission.Request{
+					AdmissionRequest: admissionv1.AdmissionRequest{
+						Operation: operation,
+						Namespace: TestNamespaceName,
+						Name:      MonitoringResourceName,
+					},
+				}
+				rawNew, err := json.Marshal(newMonitoringResource)
+				Expect(err).ToNot(HaveOccurred())
+				request.Object = runtime.RawExtension{Raw: rawNew}
+				if oldMonitoringResource != nil {
+					rawOld, err := json.Marshal(oldMonitoringResource)
+					Expect(err).ToNot(HaveOccurred())
+					request.OldObject = runtime.RawExtension{Raw: rawOld}
+				}
+				return NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace, false).Handle(ctx, request)
+			}
+
+			DescribeTable("should reject creating a monitoring resource with a mode other than none", func(
+				mode dash0common.InstrumentWorkloadsMode,
+			) {
+				response := handle(admissionv1.Create, nil, monitoringResourceWithMode(mode, nil))
+				Expect(response.Allowed).To(BeFalse())
+				Expect(response.Result.Message).To(Equal(fmt.Sprintf(
+					ErrorMessageMonitoringInstrumentationDisabled,
+					MonitoringResourceName,
+					TestNamespaceName,
+					mode,
+				)))
+			},
+				Entry("all", dash0common.InstrumentWorkloadsModeAll),
+				Entry("created-and-updated", dash0common.InstrumentWorkloadsModeCreatedAndUpdated),
+				Entry("pods", dash0common.InstrumentWorkloadsModePods),
+			)
+
+			It("should allow creating a monitoring resource with mode none", func() {
+				response := handle(
+					admissionv1.Create,
+					nil,
+					monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeNone, nil),
+				)
+				Expect(response.Allowed).To(BeTrue())
+			})
+
+			It("should reject an update that keeps a mode other than none", func() {
+				finalizers := []string{dash0common.MonitoringFinalizerId}
+				oldMonitoringResource := monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeAll, finalizers)
+				newMonitoringResource := oldMonitoringResource.DeepCopy()
+				newMonitoringResource.Spec.LogCollection.Enabled = new(false)
+				response := handle(admissionv1.Update, oldMonitoringResource, newMonitoringResource)
+				Expect(response.Allowed).To(BeFalse())
+				Expect(response.Result.Message).To(ContainSubstring("operator.instrumentation.enabled=false"))
+			})
+
+			It("should allow an update that changes the mode to none", func() {
+				finalizers := []string{dash0common.MonitoringFinalizerId}
+				oldMonitoringResource := monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeAll, finalizers)
+				newMonitoringResource := monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeNone, finalizers)
+				response := handle(admissionv1.Update, oldMonitoringResource, newMonitoringResource)
+				Expect(response.Allowed).To(BeTrue())
+			})
+
+			It("should allow removing the finalizer from a monitoring resource that keeps a mode other than none", func() {
+				oldMonitoringResource := monitoringResourceWithMode(
+					dash0common.InstrumentWorkloadsModeAll,
+					[]string{dash0common.MonitoringFinalizerId},
+				)
+				newMonitoringResource := monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeAll, nil)
+				response := handle(admissionv1.Update, oldMonitoringResource, newMonitoringResource)
+				Expect(response.Allowed).To(BeTrue())
+			})
+
+			It("should reject removing the finalizer if the update also changes the mode to a value other than none", func() {
+				oldMonitoringResource := monitoringResourceWithMode(
+					dash0common.InstrumentWorkloadsModeNone,
+					[]string{dash0common.MonitoringFinalizerId},
+				)
+				newMonitoringResource := monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeAll, nil)
+				response := handle(admissionv1.Update, oldMonitoringResource, newMonitoringResource)
+				Expect(response.Allowed).To(BeFalse())
+				Expect(response.Result.Message).To(ContainSubstring("operator.instrumentation.enabled=false"))
+			})
+		})
 
 		It("should reject monitoring resources without export if no operator configuration resource exists", func() {
 			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{

@@ -60,6 +60,12 @@ type statusUpdateInfo struct {
 
 const (
 	updateStatusFailedMessageMonitoring = "Failed to update Dash0 monitoring status conditions, requeuing reconcile request."
+
+	logMsgInstrumentationDisabledButModeIsNotNone = "Workload instrumentation is disabled via the Helm value " +
+		"operator.instrumentation.enabled=false, but the Dash0 monitoring resource %s/%s has " +
+		"instrumentWorkloads.mode=%s. No new workloads will be instrumented in this namespace, workloads that have " +
+		"been instrumented before keep their instrumentation. Set instrumentWorkloads.mode=none to remove the " +
+		"instrumentation from the workloads in this namespace."
 )
 
 var (
@@ -236,6 +242,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	r.warnIfInOperatorNamespace(monitoringResource, logger)
+	r.warnIfInstrumentationIsDisabled(monitoringResource, logger)
 
 	var requiredAction util.ModificationMode
 	monitoringResource, requiredAction, statusUpdate :=
@@ -292,6 +299,26 @@ func (r *MonitoringReconciler) warnIfInOperatorNamespace(
 				"Collecting the operator's own telemetry is handled via self-monitoring.",
 			monitoringResource.Name,
 			r.operatorNamespace,
+		))
+}
+
+func (r *MonitoringReconciler) warnIfInstrumentationIsDisabled(
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+	logger logd.Logger,
+) {
+	if r.instrumenter == nil || !r.instrumenter.InstrumentationDisabled {
+		return
+	}
+	instrumentWorkloadsMode := monitoringResource.ReadInstrumentWorkloadsMode()
+	if instrumentWorkloadsMode == dash0common.InstrumentWorkloadsModeNone {
+		return
+	}
+	logger.Warn(
+		fmt.Sprintf(
+			logMsgInstrumentationDisabledButModeIsNotNone,
+			monitoringResource.Namespace,
+			monitoringResource.Name,
+			instrumentWorkloadsMode,
 		))
 }
 

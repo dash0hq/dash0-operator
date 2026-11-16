@@ -34,22 +34,33 @@ const ErrorMessageMonitoringGrpcExportInvalidInsecure = "The provided Dash0 moni
 	"explicitly enabled for the GRPC export. This is an invalid combination. " +
 	"Please set at most one of these two flags to true."
 
+// ErrorMessageMonitoringInstrumentationDisabled is the message for rejecting a monitoring resource with
+// instrumentWorkloads.mode other than none while workload instrumentation is disabled.
+const ErrorMessageMonitoringInstrumentationDisabled = "Rejecting the Dash0 monitoring resource \"%s\" in the " +
+	"namespace \"%s\" with instrumentWorkloads.mode=%s, since workload instrumentation is disabled via the Helm " +
+	"value operator.instrumentation.enabled=false. Use instrumentWorkloads.mode=none instead."
+
 const ErrorMessageMonitoringExportAndExportsAreMutuallyExclusive = "The provided Dash0 monitoring resource has both the " +
 	"deprecated `export` and the `exports` field set. These fields are mutually exclusive. Please use only the " +
 	"`exports` field and remove the `export` field."
 
 type MonitoringValidationWebhookHandler struct {
-	Client            client.Client
-	operatorNamespace string
+	Client                 client.Client
+	operatorNamespace      string
+	instrumentationEnabled bool
 }
 
+// NewMonitoringValidationWebhookHandler creates the validation webhook handler for monitoring resources. If
+// instrumentationEnabled is false, monitoring resources with instrumentWorkloads.mode other than none are rejected.
 func NewMonitoringValidationWebhookHandler(
 	k8sClient client.Client,
 	operatorNamespace string,
+	instrumentationEnabled bool,
 ) *MonitoringValidationWebhookHandler {
 	return &MonitoringValidationWebhookHandler{
-		Client:            k8sClient,
-		operatorNamespace: operatorNamespace,
+		Client:                 k8sClient,
+		operatorNamespace:      operatorNamespace,
+		instrumentationEnabled: instrumentationEnabled,
 	}
 }
 
@@ -102,8 +113,8 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 		// Always allow requests that remove the finalizer. Otherwise, we might accidentally block removing a manually
 		// managed monitoring resource from a namespace that is enabled for auto-namespace monitoring. The exception is
 		// a request that changes instrumentWorkloads.mode to a value other than none in a namespace that only allows
-		// mode none.
-		changesRestrictedMode, errorResponse := h.changesInstrumentWorkloadsModeInRestrictedNamespace(
+		// mode none, or while workload instrumentation is disabled.
+		changesRestrictedMode, errorResponse := h.changesInstrumentWorkloadsModeWhereOnlyNoneIsAllowed(
 			request,
 			monitoringResource,
 		)
@@ -131,6 +142,16 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 		msg := fmt.Sprintf(
 			"Rejecting the deployment of Dash0 monitoring resource \"%s\" to the Dash0 operator namespace "+
 				"\"%s\" with instrumentWorkloads.mode=%s, use instrumentWorkloads.mode=none instead.",
+			request.Name,
+			request.Namespace,
+			instrumentWorkloadsMode,
+		)
+		logger.Warn(msg)
+		return admission.Denied(msg)
+	}
+	if !h.instrumentationEnabled && instrumentWorkloadsMode != dash0common.InstrumentWorkloadsModeNone {
+		msg := fmt.Sprintf(
+			ErrorMessageMonitoringInstrumentationDisabled,
 			request.Name,
 			request.Namespace,
 			instrumentWorkloadsMode,
@@ -184,14 +205,16 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 	return admission.Allowed("")
 }
 
-// changesInstrumentWorkloadsModeInRestrictedNamespace checks whether an update request changes the effective
-// instrumentWorkloads.mode to a value other than none in a namespace that only allows mode none, that is, a Kubernetes
-// system namespace or the operator namespace.
-func (h *MonitoringValidationWebhookHandler) changesInstrumentWorkloadsModeInRestrictedNamespace(
+// changesInstrumentWorkloadsModeWhereOnlyNoneIsAllowed checks whether an update request changes the effective
+// instrumentWorkloads.mode to a value other than none where only mode none is allowed, that is, in a Kubernetes system
+// namespace, in the operator namespace, or in any namespace while workload instrumentation is disabled.
+func (h *MonitoringValidationWebhookHandler) changesInstrumentWorkloadsModeWhereOnlyNoneIsAllowed(
 	request admission.Request,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 ) (bool, *admission.Response) {
-	if !slices.Contains(util.RestrictedNamespaces, request.Namespace) && request.Namespace != h.operatorNamespace {
+	if h.instrumentationEnabled &&
+		!slices.Contains(util.RestrictedNamespaces, request.Namespace) &&
+		request.Namespace != h.operatorNamespace {
 		return false, nil
 	}
 	if monitoringResource.Spec.InstrumentWorkloads.Mode == dash0common.InstrumentWorkloadsModeNone {

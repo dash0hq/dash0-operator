@@ -118,6 +118,17 @@ true
 {{- end }}
 {{- end }}
 
+{{/*
+Renders the string "true" if the mutating webhook that instruments workloads is registered, and the empty string
+otherwise. It is not registered if workload instrumentation is disabled via operator.instrumentation.enabled, or in
+SCE-only mode.
+*/}}
+{{- define "dash0-operator.instrumentationWebhookEnabled" -}}
+{{- if and .Values.operator.instrumentation.enabled (not (include "dash0-operator.signalControlSceOnlyMode" .)) -}}
+true
+{{- end }}
+{{- end }}
+
 {{- define "dash0-operator.deploymentName" -}}
 {{ include "dash0-operator.chartName" . }}-controller
 {{- end }}

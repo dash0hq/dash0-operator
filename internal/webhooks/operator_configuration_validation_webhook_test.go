@@ -5,6 +5,7 @@ package webhooks
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	admissionv1 "k8s.io/api/admission/v1"
@@ -924,7 +925,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 
 		It("should not return warnings when the Helm chart uses the default values", func() {
 			handler := NewOperatorConfigurationValidationWebhookHandler(
-				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+				k8sClient, true, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(componentsSpec))
 			Expect(response.Allowed).To(BeTrue())
 			Expect(response.Warnings).To(BeEmpty())
@@ -934,7 +935,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			extraConfig := util.ExtraConfigDefaults
 			extraConfig.Agent0ConnectorMaxConcurrentCommands = 3
 			handler := NewOperatorConfigurationValidationWebhookHandler(
-				k8sClient, true, false, false, extraConfig, util.ExtraConfigDefaults)
+				k8sClient, true, true, false, false, extraConfig, util.ExtraConfigDefaults)
 			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(componentsSpec))
 			Expect(response.Allowed).To(BeTrue())
 			Expect(response.Warnings).To(ConsistOf(
@@ -944,7 +945,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 
 		It("should use the extra configuration from the latest update", func() {
 			handler := NewOperatorConfigurationValidationWebhookHandler(
-				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+				k8sClient, true, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 			extraConfig := util.ExtraConfigDefaults
 			extraConfig.Agent0ConnectorMaxConcurrentCommands = 3
 			handler.UpdateExtraConfig(ctx, extraConfig, logd.FromContext(ctx))
@@ -955,7 +956,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 
 		It("should reject a resource request that is greater than the limit", func() {
 			handler := NewOperatorConfigurationValidationWebhookHandler(
-				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+				k8sClient, true, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 			spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
 				Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 				Components: &dash0v1alpha1.OperatorConfigurationComponents{
@@ -981,7 +982,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 
 		It("should reject allowed kubectl commands that disable every command", func() {
 			handler := NewOperatorConfigurationValidationWebhookHandler(
-				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+				k8sClient, true, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 			spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
 				Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 				Components: &dash0v1alpha1.OperatorConfigurationComponents{
@@ -1035,7 +1036,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				extraConfig := util.ExtraConfigDefaults
 				extraConfig.Agent0ConnectorMaxConcurrentCommands = 3
 				handler := NewOperatorConfigurationValidationWebhookHandler(
-					k8sClient, true, false, false, extraConfig, util.ExtraConfigDefaults)
+					k8sClient, true, true, false, false, extraConfig, util.ExtraConfigDefaults)
 				spec := *invalidSpec.DeepCopy()
 				spec.Components.Agent0Connector = &dash0v1alpha1.Agent0ConnectorSettings{MaxConcurrentCommands: new(int32(4))}
 				updatedSpec := *spec.DeepCopy()
@@ -1047,7 +1048,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 
 			It("should reject an update that changes spec.components while a setting is invalid", func() {
 				handler := NewOperatorConfigurationValidationWebhookHandler(
-					k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+					k8sClient, true, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 				updatedSpec := *invalidSpec.DeepCopy()
 				updatedSpec.Components.Agent0Connector =
 					&dash0v1alpha1.Agent0ConnectorSettings{MaxConcurrentCommands: new(int32(4))}
@@ -1060,7 +1061,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 
 			It("should reject an update with an OldObject that cannot be decoded", func() {
 				handler := NewOperatorConfigurationValidationWebhookHandler(
-					k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+					k8sClient, true, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 				request := updateRequest(invalidSpec, invalidSpec)
 				request.OldObject = runtime.RawExtension{Raw: []byte("{")}
 				response := handler.Handle(ctx, request)
@@ -1071,7 +1072,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 
 		It("should accept a required node affinity without node selector terms, which removes the default", func() {
 			handler := NewOperatorConfigurationValidationWebhookHandler(
-				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+				k8sClient, true, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(
 				dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
@@ -1093,7 +1094,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 
 		It("should check a GOMEMLIMIT against the default memory limit if the setting does not set one", func() {
 			handler := NewOperatorConfigurationValidationWebhookHandler(
-				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+				k8sClient, true, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(
 				dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
@@ -1107,6 +1108,63 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			Expect(response.Result.Message).To(ContainSubstring(
 				"spec.components.targetAllocator.containerResources.gomemlimit: Invalid value: \"600MiB\": must be " +
 					"less than the memory limit of 500Mi"))
+		})
+	})
+
+	Describe("when workload instrumentation is disabled via Helm", func() {
+		specWithTemplateMode := func(mode dash0common.InstrumentWorkloadsMode) dash0v1alpha1.Dash0OperatorConfigurationSpec {
+			return dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+				AutoMonitorNamespaces: dash0v1alpha1.AutoMonitorNamespaces{
+					Enabled: new(true),
+				},
+				MonitoringTemplate: &dash0v1alpha1.MonitoringTemplate{
+					Spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+							Mode: mode,
+						},
+					},
+				},
+			}
+		}
+
+		DescribeTable("should reject a monitoring template with a mode other than none", func(
+			mode dash0common.InstrumentWorkloadsMode,
+		) {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			request := operatorConfigurationAdmissionRequest(specWithTemplateMode(mode))
+			for _, operation := range []admissionv1.Operation{admissionv1.Create, admissionv1.Update} {
+				request.Operation = operation
+				response := handler.Handle(ctx, request)
+				Expect(response.Allowed).To(BeFalse())
+				Expect(response.Result.Message).To(Equal(
+					fmt.Sprintf(ErrorMessageOperatorConfigurationMonitoringTemplateInstrumentationDisabled, mode)))
+			}
+		},
+			Entry("all", dash0common.InstrumentWorkloadsModeAll),
+			Entry("created-and-updated", dash0common.InstrumentWorkloadsModeCreatedAndUpdated),
+			Entry("pods", dash0common.InstrumentWorkloadsModePods),
+		)
+
+		It("should allow a monitoring template with mode none", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			response := handler.Handle(
+				ctx,
+				operatorConfigurationAdmissionRequest(specWithTemplateMode(dash0common.InstrumentWorkloadsModeNone)),
+			)
+			Expect(response.Allowed).To(BeTrue())
+		})
+
+		It("should allow a monitoring template with a mode other than none if instrumentation is enabled", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			response := handler.Handle(
+				ctx,
+				operatorConfigurationAdmissionRequest(specWithTemplateMode(dash0common.InstrumentWorkloadsModeAll)),
+			)
+			Expect(response.Allowed).To(BeTrue())
 		})
 	})
 
