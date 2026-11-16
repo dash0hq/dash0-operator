@@ -119,13 +119,25 @@ true
 {{- end }}
 
 {{/*
+Renders the string "true" unless workload instrumentation has been disabled via operator.instrumentation.enabled=false,
+and the empty string otherwise. A missing value counts as true: "helm upgrade --reuse-values" reuses the values of the
+previous release instead of the defaults of the new chart, so the value is missing when upgrading from a chart version
+that did not have it yet.
+*/}}
+{{- define "dash0-operator.instrumentationEnabled" -}}
+{{- if ne (toString .Values.operator.instrumentation.enabled) "false" -}}
+true
+{{- end }}
+{{- end }}
+
+{{/*
 Renders the string "true" if the mutating webhook that instruments workloads is registered, and the empty string
 otherwise. It is not registered if workload instrumentation is disabled via operator.instrumentation.enabled, or if
 telemetry collection is disabled via operator.telemetryCollectionEnabled (which includes SCE-only mode), since the
 operator manager does not serve the webhook then.
 */}}
 {{- define "dash0-operator.instrumentationWebhookEnabled" -}}
-{{- if and .Values.operator.instrumentation.enabled .Values.operator.telemetryCollectionEnabled -}}
+{{- if and (include "dash0-operator.instrumentationEnabled" .) .Values.operator.telemetryCollectionEnabled -}}
 true
 {{- end }}
 {{- end }}

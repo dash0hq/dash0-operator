@@ -700,6 +700,7 @@ operator:
 
   # Settings related to the modification and instrumentation of workloads in the cluster.
   instrumentation:
+
     # Whether the operator instruments workloads automatically. Set this to false if no namespace uses
     # instrumentWorkloads.mode other than none, for example if you only collect logs, metrics and Kubernetes events.
     #

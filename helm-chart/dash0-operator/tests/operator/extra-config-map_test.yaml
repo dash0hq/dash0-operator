@@ -2122,6 +2122,18 @@ tests:
     asserts:
       - notFailedTemplate: {}
 
+  - it: should allow instrumentWorkloads.mode other than none in the monitoring template if operator.instrumentation.enabled is missing
+    set:
+      operator:
+        instrumentation:
+          enabled: null
+        monitoringTemplate:
+          spec:
+            instrumentWorkloads:
+              mode: all
+    asserts:
+      - notFailedTemplate: {}
+
   - it: should disallow export in the monitoring template
     set:
       operator:

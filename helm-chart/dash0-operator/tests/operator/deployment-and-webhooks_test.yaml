@@ -2007,6 +2007,33 @@ tests:
           path: spec.template.spec.containers[0].args
           content: --dash0-instrumentation-enabled=false
 
+  # helm upgrade --reuse-values reuses the values of the previous release, which do not have
+  # operator.instrumentation.enabled if they were created by an older chart version.
+  - it: should render the injector webhook if operator.instrumentation.enabled is missing
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-injector
+    set:
+      operator:
+        instrumentation:
+          enabled: null
+    asserts:
+      - isKind:
+          of: MutatingWebhookConfiguration
+
+  - it: should not pass --dash0-instrumentation-enabled if operator.instrumentation.enabled is missing
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        instrumentation:
+          enabled: null
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --dash0-instrumentation-enabled=false
+
   - it: should render the injector webhook when Signal Control is enabled together with telemetry collection
     documentSelector:
       path: metadata.name
