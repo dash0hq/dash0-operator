@@ -2544,7 +2544,6 @@ func startDash0Controllers(
 		cliArgs.telemetryCollectionEnabled,
 		cliArgs.instrumentationEnabled,
 		cliArgs.featureSignalControlEnabled,
-		cliArgs.signalControlSceOnlyMode,
 		envVars.agent0ConnectorEnabled,
 		envVars.syntheticsWorkerEnabled,
 		envVars.ebpfProfilerEnabled,
@@ -3135,7 +3134,6 @@ func setupResourceWebhooks(
 	telemetryCollectionEnabled bool,
 	instrumentationEnabled bool,
 	signalControlEnabled bool,
-	signalControlSceOnlyMode bool,
 	agent0ConnectorEnabled bool,
 	syntheticsWorkerEnabled bool,
 	ebpfProfilerEnabled bool,
@@ -3174,14 +3172,15 @@ func setupResourceWebhooks(
 	if err := webhooks.NewMonitoringMutatingWebhookHandler(
 		k8sClient,
 		operatorNamespace,
+		telemetryCollectionEnabled,
 		instrumentationEnabled,
-		signalControlSceOnlyMode,
 	).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the monitoring mutating webhook: %w", err)
 	}
 	if err := webhooks.NewMonitoringValidationWebhookHandler(
 		k8sClient,
 		operatorNamespace,
+		telemetryCollectionEnabled,
 		instrumentationEnabled,
 	).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the monitoring validation webhook: %w", err)

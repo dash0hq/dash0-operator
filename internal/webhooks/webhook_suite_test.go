@@ -157,10 +157,10 @@ var _ = BeforeSuite(func() {
 
 	Expect(SetupDash0MonitoringConversionWebhookWithManager(manager)).To(Succeed())
 
-	monitoringMutatingWebhookHandler = NewMonitoringMutatingWebhookHandler(k8sClient, OperatorNamespace, true, false)
+	monitoringMutatingWebhookHandler = NewMonitoringMutatingWebhookHandler(k8sClient, OperatorNamespace, true, true)
 	Expect(monitoringMutatingWebhookHandler.SetupWebhookWithManager(manager)).To(Succeed())
 
-	Expect(NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace, true).
+	Expect(NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace, true, true).
 		SetupWebhookWithManager(manager)).To(Succeed())
 
 	//+kubebuilder:scaffold:webhook

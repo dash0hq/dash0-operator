@@ -304,8 +304,8 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 				}),
 		)
 
-		DescribeTable("should normalize the resource spec in SCE-only mode", func(testConfig normalizeTelemetryRelatedSettingsTestConfig) {
-			handler := NewMonitoringMutatingWebhookHandler(k8sClient, OperatorNamespace, true, true)
+		DescribeTable("should normalize the resource spec if telemetry collection is disabled via Helm (e.g. in SCE-only mode)", func(testConfig normalizeTelemetryRelatedSettingsTestConfig) {
+			handler := NewMonitoringMutatingWebhookHandler(k8sClient, OperatorNamespace, false, true)
 			spec := testConfig.spec
 			// no operator configuration resource exists yet
 			handler.setTelemetryCollectionRelatedDefaults(toAdmissionRequest(TestNamespaceName, spec), nil, &spec)
@@ -332,7 +332,7 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 		)
 
 		DescribeTable("should normalize the resource spec if workload instrumentation is disabled", func(testConfig normalizeTelemetryRelatedSettingsTestConfig) {
-			handler := NewMonitoringMutatingWebhookHandler(k8sClient, OperatorNamespace, false, false)
+			handler := NewMonitoringMutatingWebhookHandler(k8sClient, OperatorNamespace, true, false)
 			spec := testConfig.spec
 			handler.setTelemetryCollectionRelatedDefaults(toAdmissionRequest(TestNamespaceName, spec), nil, &spec)
 			Expect(spec).To(Equal(testConfig.wanted))

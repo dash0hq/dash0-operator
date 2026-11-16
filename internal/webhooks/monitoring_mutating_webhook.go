@@ -24,25 +24,26 @@ import (
 )
 
 type MonitoringMutatingWebhookHandler struct {
-	Client                   client.Client
-	operatorNamespace        string
-	instrumentationEnabled   bool
-	signalControlSceOnlyMode bool
+	Client                            client.Client
+	operatorNamespace                 string
+	telemetryCollectionEnabledViaHelm bool
+	instrumentationEnabled            bool
 }
 
 // NewMonitoringMutatingWebhookHandler creates the mutating webhook handler for monitoring resources, which sets
-// defaults for unset fields. If instrumentationEnabled is false, instrumentWorkloads.mode defaults to none.
+// defaults for unset fields. If telemetryCollectionEnabledViaHelm is false, instrumentation and telemetry collection
+// default to disabled. If instrumentationEnabled is false, instrumentWorkloads.mode defaults to none.
 func NewMonitoringMutatingWebhookHandler(
 	k8sClient client.Client,
 	OperatorNamespace string,
+	telemetryCollectionEnabledViaHelm bool,
 	instrumentationEnabled bool,
-	signalControlSceOnlyMode bool,
 ) *MonitoringMutatingWebhookHandler {
 	return &MonitoringMutatingWebhookHandler{
-		Client:                   k8sClient,
-		operatorNamespace:        OperatorNamespace,
-		instrumentationEnabled:   instrumentationEnabled,
-		signalControlSceOnlyMode: signalControlSceOnlyMode,
+		Client:                            k8sClient,
+		operatorNamespace:                 OperatorNamespace,
+		telemetryCollectionEnabledViaHelm: telemetryCollectionEnabledViaHelm,
+		instrumentationEnabled:            instrumentationEnabled,
 	}
 }
 
@@ -167,9 +168,10 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 	if operatorConfigurationSpec != nil {
 		telemetryCollectionEnabled = pointers.ReadBoolPointerWithDefault(operatorConfigurationSpec.TelemetryCollection.Enabled, true)
 	}
-	if h.signalControlSceOnlyMode {
-		// The operator configuration resource, which has telemetryCollection.enabled=false in SCE-only mode, might not
-		// exist yet.
+	if !h.telemetryCollectionEnabledViaHelm {
+		// The operator configuration resource might not exist yet, or it might be managed manually without having set
+		// telemetryCollection.enabled=false. Telemetry collection cannot be enabled there anyway if it has been
+		// disabled via Helm.
 		telemetryCollectionEnabled = false
 	}
 
