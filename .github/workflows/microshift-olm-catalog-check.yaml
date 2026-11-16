@@ -13,8 +13,6 @@ on:
       SLACK_CHANNEL_ID:
         required: true
   workflow_dispatch:
-  # TODO remove before merging: runs the check for the pull request that adds this workflow.
-  pull_request:
 
 env:
   MINC_VERSION: v0.2.0
@@ -78,8 +76,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: send Slack notification on success
-        # TODO remove the event name condition before merging, together with the pull_request trigger.
-        if: success() && github.event_name != 'pull_request'
+        if: success()
         uses: ./.github/actions/slack-notification
         with:
           status: success
@@ -88,8 +85,7 @@ jobs:
           channelId: ${{ secrets.SLACK_CHANNEL_ID }}
 
       - name: send Slack notification on failure
-        # TODO remove the event name condition before merging, together with the pull_request trigger.
-        if: failure() && github.event_name != 'pull_request'
+        if: failure()
         uses: ./.github/actions/slack-notification
         with:
           status: failure
