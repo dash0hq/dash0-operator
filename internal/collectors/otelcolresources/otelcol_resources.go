@@ -162,11 +162,16 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			operatorConfigurationResource.Spec.PrometheusCrdSupport.Enabled,
 			false,
 		)
+	ebpfProfilerEnabled := m.collectorConfig.EbpfProfilerEnabledViaHelm &&
+		operatorConfigurationResource.Spec.Profiling != nil &&
+		operatorConfigurationResource.Spec.Profiling.EbpfProfiler != nil &&
+		pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.Profiling.EbpfProfiler.Enabled, false)
+	// An unset profiling.enabled follows the eBPF profiler.
 	profilingEnabled :=
 		operatorConfigurationResource.Spec.Profiling != nil &&
 			pointers.ReadBoolPointerWithDefault(
 				operatorConfigurationResource.Spec.Profiling.Enabled,
-				false,
+				ebpfProfilerEnabled,
 			)
 	agent0ConnectorEnabled :=
 		operatorConfigurationResource.Spec.Agent0Connector.IsEnabled(m.collectorConfig.Agent0ConnectorEnabledViaHelm)
@@ -255,11 +260,9 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		DebugVerbosityDetailed:    m.collectorConfig.DebugVerbosityDetailed,
 		EnableProfExtension:       m.collectorConfig.EnableProfExtension,
 		ProfilingEnabled:          profilingEnabled,
-		EbpfProfilerEnabled: m.collectorConfig.EbpfProfilerEnabledViaHelm && profilingEnabled &&
-			operatorConfigurationResource.Spec.Profiling.EbpfProfiler != nil &&
-			pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.Profiling.EbpfProfiler.Enabled, false),
-		CompressConfigMap:        m.collectorConfig.CompressConfigMap,
-		SignalControlSceOnlyMode: m.collectorConfig.SignalControlSceOnlyMode,
+		EbpfProfilerEnabled:       ebpfProfilerEnabled && profilingEnabled,
+		CompressConfigMap:         m.collectorConfig.CompressConfigMap,
+		SignalControlSceOnlyMode:  m.collectorConfig.SignalControlSceOnlyMode,
 	}
 	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
 		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume

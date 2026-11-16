@@ -216,6 +216,44 @@ var _ = Describe("operator manager startup", func() {
 			}),
 		)
 	})
+
+	Context("resolveOperatorConfigurationProfilingEnabled", func() {
+		const profilingEnvVarName = "DASH0_OPERATOR_CONFIGURATION_PROFILING_ENABLED"
+
+		AfterEach(func() {
+			Expect(os.Unsetenv(profilingEnvVarName)).To(Succeed())
+		})
+
+		DescribeTable("resolves the profiling setting of the operator configuration resource",
+			func(args []string, envVarValue string, expected bool) {
+				if envVarValue != "" {
+					Expect(os.Setenv(profilingEnvVarName, envVarValue)).To(Succeed())
+				}
+				fs, cliArgs := freshOperatorFlagSet()
+				Expect(fs.Parse(args)).To(Succeed())
+				_, err := applyEnvironmentVariableDefaults(fs)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(resolveOperatorConfigurationProfilingEnabled(
+					fs,
+					cliArgs.operatorConfigurationProfilingEnabled,
+					cliArgs.operatorConfigurationEbpfProfilerEnabled,
+				)).To(Equal(expected))
+			},
+			Entry("disabled when nothing is set", nil, "", false),
+			Entry("enabled together with the eBPF profiler",
+				[]string{"--operator-configuration-ebpf-profiler-enabled=true"}, "", true),
+			Entry("explicit argument true without the eBPF profiler",
+				[]string{"--operator-configuration-profiling-enabled=true"}, "", true),
+			Entry("explicit argument false with the eBPF profiler", []string{
+				"--operator-configuration-profiling-enabled=false",
+				"--operator-configuration-ebpf-profiler-enabled=true",
+			}, "", false),
+			Entry("environment variable true without the eBPF profiler", nil, "true", true),
+			Entry("environment variable false with the eBPF profiler",
+				[]string{"--operator-configuration-ebpf-profiler-enabled=true"}, "false", false),
+		)
+	})
 })
 
 var _ = Describe("validateOtlpHostPorts", func() {
