@@ -1,6 +1,6 @@
 module github.com/dash0hq/dash0-operator/images/debuginfo-proxy
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/parca-dev/parca v0.30.0
