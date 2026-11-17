@@ -6165,8 +6165,11 @@ spec:
 				By("waiting for profiles to be captured")
 				timestampLowerBound := time.Now()
 				Eventually(func(g Gomega) {
-					// The profiler only samples processes that are on CPU, the requests keep the idle test app busy.
-					sendRequest(g, runtimeTypeNodeJs, workloadTypeDeployment, "/dash0-k8s-operator-test", "")
+					// The profiler only samples processes that are on CPU. A single request per poll is too cheap to be
+					// sampled reliably, hence the burst.
+					for range 100 {
+						sendRequest(g, runtimeTypeNodeJs, workloadTypeDeployment, "/dash0-k8s-operator-test", "")
+					}
 					verifyProfiles(g, timestampLowerBound, applicationUnderTestNamespace)
 				}, 120*time.Second, 5*time.Second).Should(Succeed())
 				By("matching profiles have been received")
