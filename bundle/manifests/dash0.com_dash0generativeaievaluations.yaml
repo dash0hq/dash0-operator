@@ -221,6 +221,12 @@ spec:
                 required:
                 - filters
                 type: object
+                x-kubernetes-validations:
+                - message: filters must contain an is_set filter for the key gen_ai.operation.name
+                    without a value
+                  rule: self.filters.exists(f, f.key == 'gen_ai.operation.name' &&
+                    f.operator == 'is_set' && !has(f.value) && (!has(f.values) ||
+                    size(f.values) == 0))
               sample:
                 description: Sample controls which share of the matching traces is
                   judged.

@@ -942,6 +942,7 @@ spec:
   If two eval resources with the same name (for example in different namespaces) are synchronized to the same dataset,
   Dash0 rejects the second one, and its status shows the error.
 * `spec.match.filters` must contain an `is_set` filter for the attribute `gen_ai.operation.name`, without a value.
+  Kubernetes rejects an eval without it.
   All filters must match.
 * `spec.sample.rate` is the share of the matching traces that is judged, between 0 and 1.
 * `spec.judge.model` is `light` (fast, low-cost) or `standard` (balanced quality and cost).

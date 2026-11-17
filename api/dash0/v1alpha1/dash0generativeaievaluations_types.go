@@ -61,6 +61,8 @@ type Dash0GenerativeAiEvaluationDisplay struct {
 }
 
 // Dash0GenerativeAiEvaluationMatch selects the spans an eval judges.
+//
+// +kubebuilder:validation:XValidation:rule="self.filters.exists(f, f.key == 'gen_ai.operation.name' && f.operator == 'is_set' && !has(f.value) && (!has(f.values) || size(f.values) == 0))",message="filters must contain an is_set filter for the key gen_ai.operation.name without a value"
 type Dash0GenerativeAiEvaluationMatch struct {
 	// All filters must match. The Dash0 API requires an is_set filter for the key gen_ai.operation.name without a
 	// value.

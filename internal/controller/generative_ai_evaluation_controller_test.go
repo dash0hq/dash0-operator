@@ -94,7 +94,7 @@ var _ = Describe(
 				defer gock.Off()
 
 				Expect(k8sClient.Create(
-					ctx, createGenerativeAiEvaluationResource(TestNamespaceName, generativeAiEvaluationName),
+					ctx, createGenerativeAiEvaluationResource(),
 				)).To(Succeed())
 
 				result, err := generativeAiEvaluationReconciler.Reconcile(
@@ -183,7 +183,7 @@ spec:
 				DescribeTable(
 					"validates the judge output",
 					func(output dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutput, expectedError string) {
-						resource := createGenerativeAiEvaluationResource(TestNamespaceName, generativeAiEvaluationName)
+						resource := createGenerativeAiEvaluationResource()
 						resource.Spec.Judge.Output = output
 						err := k8sClient.Create(ctx, resource)
 						if expectedError == "" {
@@ -281,8 +281,59 @@ spec:
 					),
 				)
 
+				DescribeTable(
+					"requires an is_set filter for gen_ai.operation.name without a value",
+					func(filters []dash0dashv1alpha1.Dash0GenerativeAiEvaluationAttributeFilter, expectAccepted bool) {
+						resource := createGenerativeAiEvaluationResource()
+						resource.Spec.Match.Filters = filters
+						err := k8sClient.Create(ctx, resource)
+						if expectAccepted {
+							Expect(err).ToNot(HaveOccurred())
+						} else {
+							Expect(err).To(MatchError(ContainSubstring(
+								"filters must contain an is_set filter for the key gen_ai.operation.name without a value")))
+						}
+					},
+					Entry(
+						"accepts the required filter after other filters",
+						[]dash0dashv1alpha1.Dash0GenerativeAiEvaluationAttributeFilter{
+							{Key: "service.name", Operator: "is", Value: ptr.To("checkout")},
+							{Key: "gen_ai.operation.name", Operator: "is_set"},
+						},
+						true,
+					),
+					Entry(
+						"rejects filters without the required filter",
+						[]dash0dashv1alpha1.Dash0GenerativeAiEvaluationAttributeFilter{
+							{Key: "service.name", Operator: "is_set"},
+						},
+						false,
+					),
+					Entry(
+						"rejects another operator on gen_ai.operation.name",
+						[]dash0dashv1alpha1.Dash0GenerativeAiEvaluationAttributeFilter{
+							{Key: "gen_ai.operation.name", Operator: "is", Value: ptr.To("chat")},
+						},
+						false,
+					),
+					Entry(
+						"rejects the is_set filter with a value",
+						[]dash0dashv1alpha1.Dash0GenerativeAiEvaluationAttributeFilter{
+							{Key: "gen_ai.operation.name", Operator: "is_set", Value: ptr.To("chat")},
+						},
+						false,
+					),
+					Entry(
+						"rejects the is_set filter with values",
+						[]dash0dashv1alpha1.Dash0GenerativeAiEvaluationAttributeFilter{
+							{Key: "gen_ai.operation.name", Operator: "is_set", Values: []string{"chat"}},
+						},
+						false,
+					),
+				)
+
 				It("rejects a change of the output kind, but accepts other changes", func() {
-					resource := createGenerativeAiEvaluationResource(TestNamespaceName, generativeAiEvaluationName)
+					resource := createGenerativeAiEvaluationResource()
 					Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
 					resource.Spec.Judge.Output.Spec.Threshold = ptr.To(0.9)
@@ -298,15 +349,15 @@ spec:
 	},
 )
 
-func createGenerativeAiEvaluationResource(namespace string, name string) *dash0dashv1alpha1.Dash0GenerativeAiEvaluation {
+func createGenerativeAiEvaluationResource() *dash0dashv1alpha1.Dash0GenerativeAiEvaluation {
 	return &dash0dashv1alpha1.Dash0GenerativeAiEvaluation{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "operator.dash0.com/v1alpha1",
 			Kind:       "Dash0GenerativeAiEvaluation",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
+			Name:      generativeAiEvaluationName,
+			Namespace: TestNamespaceName,
 		},
 		Spec: dash0dashv1alpha1.Dash0GenerativeAiEvaluationSpec{
 			Enabled: true,
