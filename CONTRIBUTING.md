@@ -694,6 +694,12 @@ Release builds do not publish a catalog image yet.
   `test-olm-catalog.sh` then installs with `CATALOG_IMAGE`.
 - In CI, [olm/bin/resolve-catalog-bundles.sh](olm/bin/resolve-catalog-bundles.sh) determines the bundle images of the
   catalog and resolves them to digests.
+- For every commit on `main`, CI installs the catalog `main-dev` on MicroShift, which runs in a container started by
+  [minc](https://github.com/minc-org/minc) (workflow `.github/workflows/microshift-olm-catalog-check.yaml`). The check
+  [.github/workflows/scripts/microshift-olm-catalog-check.sh](.github/workflows/scripts/microshift-olm-catalog-check.sh)
+  runs `test-olm-catalog.sh` and waits until the collectors are ready. It also works with a local minc cluster: run
+  `minc create`, add its kube context `microshift` to `ALLOWED_KUBECTXS` (in `test-resources/.env`, if it sets the
+  variable), then run the script.
 
 ## Testing with Kyverno
 
