@@ -7,12 +7,24 @@ name: MicroShift OLM Catalog Check
 # jactionlint ignore=concurrency-limits
 on:
   workflow_call:
+    inputs:
+      upgrade_from_csv:
+        description: "the CSV of the release in the catalog main-dev from which to test the upgrade, empty to skip"
+        type: string
+        required: false
+        default: ''
     secrets:
       SLACK_BOT_TOKEN:
         required: true
       SLACK_CHANNEL_ID:
         required: true
   workflow_dispatch:
+    inputs:
+      upgrade_from_csv:
+        description: "the CSV of the release in the catalog main-dev from which to test the upgrade, empty to skip"
+        type: string
+        required: false
+        default: ''
 
 env:
   MINC_VERSION: v0.2.0
@@ -25,12 +37,18 @@ env:
 
 jobs:
   check_olm_catalog_on_microshift:
-    name: Install the OLM Catalog on MicroShift
+    name: Check the OLM Catalog on MicroShift (${{ matrix.scenario }})
     # minc runs MicroShift in a privileged container via "sudo podman", the runner image provides Podman.
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # install: a fresh installation of the channel head; upgrade: the upgrade from upgrade_from_csv to the channel
+        # head, each on its own cluster.
+        scenario: ${{ fromJSON(inputs.upgrade_from_csv != '' && '["install", "upgrade"]' || '["install"]') }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -55,6 +73,8 @@ jobs:
           minc status
 
       - name: run check
+        env:
+          UPGRADE_FROM_CSV: ${{ matrix.scenario == 'upgrade' && inputs.upgrade_from_csv || '' }}
         run: |
           .github/workflows/scripts/microshift-olm-catalog-check.sh
 
@@ -71,7 +91,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: microshift-olm-catalog-check-diagnostics
+          name: microshift-olm-catalog-check-diagnostics-${{ matrix.scenario }}
           path: microshift-olm-catalog-check-diagnostics
           if-no-files-found: ignore
 
@@ -80,7 +100,7 @@ jobs:
         uses: ./.github/actions/slack-notification
         with:
           status: success
-          subject: MicroShift OLM catalog check
+          subject: MicroShift OLM catalog check (${{ matrix.scenario }})
           botToken: ${{ secrets.SLACK_BOT_TOKEN }}
           channelId: ${{ secrets.SLACK_CHANNEL_ID }}
 
@@ -89,6 +109,6 @@ jobs:
         uses: ./.github/actions/slack-notification
         with:
           status: failure
-          subject: MicroShift OLM catalog check
+          subject: MicroShift OLM catalog check (${{ matrix.scenario }})
           botToken: ${{ secrets.SLACK_BOT_TOKEN }}
           channelId: ${{ secrets.SLACK_CHANNEL_ID }}

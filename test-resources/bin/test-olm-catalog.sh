@@ -9,8 +9,10 @@
 # (ghcr.io/dash0hq/dash0-operator-catalog:main-dev). Set CATALOG_IMAGE to install another catalog image, e.g. one built
 # with "make olm-catalog olm-catalog-image push-olm-catalog-image", and CATALOG_CHANNEL (default: stable-v0) to
 # subscribe to another channel. Set CATALOG_POLL_INTERVAL (e.g. 5m, default: no polling) to let OLM poll the catalog
-# image for updates, e.g. to test the upgrade to a newer image under a moving tag such as latest. The script does not
-# build any images. Like the test scenarios, the script reads test-resources/.env, see test-resources/.env.template for
+# image for updates, e.g. to test the upgrade to a newer image under a moving tag such as latest. Set
+# CATALOG_STARTING_CSV (e.g. dash0-operator.v0.162.0) to install that version instead of the channel head; the
+# Subscription then requires a manual approval of each upgrade InstallPlan (spec.approved). The script does not build
+# any images. Like the test scenarios, the script reads test-resources/.env, see test-resources/.env.template for
 # DASH0_INGRESS_ENDPOINT, DASH0_API_ENDPOINT, DASH0_AUTHORIZATION_TOKEN and the other settings.
 # Usage: test-resources/bin/test-olm-catalog.sh [cleanup]
 
@@ -33,6 +35,7 @@ verify_kubectx
 catalog_image="${CATALOG_IMAGE:-ghcr.io/dash0hq/dash0-operator-catalog:main-dev}"
 catalog_channel="${CATALOG_CHANNEL:-stable-v0}"
 catalog_poll_interval="${CATALOG_POLL_INTERVAL:-}"
+catalog_starting_csv="${CATALOG_STARTING_CSV:-}"
 operator_ns="${OPERATOR_NAMESPACE:-$default_operator_ns}"
 monitored_ns="$default_target_ns"
 # test-olm-bundle.sh treats a catalog source named dash0-operator-catalog as a leftover of its own runs.
@@ -134,6 +137,13 @@ wait_for_value "catalogsources.operators.coreos.com/$catalog_source" \
   '{.status.connectionState.lastObservedState}' READY > /dev/null
 
 echo "subscribing to the channel $catalog_channel"
+install_plan_approval=Automatic
+starting_csv=""
+if [[ -n "$catalog_starting_csv" ]]; then
+  # With automatic approval, OLM would upgrade to the channel head right after installing the starting CSV.
+  install_plan_approval=Manual
+  starting_csv="  startingCSV: $catalog_starting_csv"
+fi
 kubectl apply -f - <<EOF
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
@@ -145,11 +155,31 @@ spec:
   name: dash0-operator
   source: $catalog_source
   sourceNamespace: $operator_ns
-  installPlanApproval: Automatic
+  installPlanApproval: $install_plan_approval
+$starting_csv
 EOF
 
+if [[ -n "$catalog_starting_csv" ]]; then
+  echo "approving the install plan of $catalog_starting_csv"
+  if ! install_plan=$(wait_for_value "subscriptions.operators.coreos.com/$subscription" \
+    '{.status.installPlanRef.name}'); then
+    kubectl get subscriptions.operators.coreos.com "$subscription" --namespace "$operator_ns" \
+      -o jsonpath='{.status.conditions}{"\n"}'
+    exit 1
+  fi
+  install_plan_csvs=$(kubectl get installplans.operators.coreos.com "$install_plan" --namespace "$operator_ns" \
+    -o jsonpath='{.spec.clusterServiceVersionNames[*]}')
+  if [[ " $install_plan_csvs " != *" $catalog_starting_csv "* ]]; then
+    echo "error: the install plan $install_plan installs \"$install_plan_csvs\" instead of $catalog_starting_csv"
+    exit 1
+  fi
+  kubectl patch installplans.operators.coreos.com "$install_plan" --namespace "$operator_ns" --type merge \
+    --patch '{"spec":{"approved":true}}'
+fi
+
 echo "waiting for OLM to install the operator"
-if ! installed_csv=$(wait_for_value "subscriptions.operators.coreos.com/$subscription" '{.status.installedCSV}'); then
+if ! installed_csv=$(wait_for_value "subscriptions.operators.coreos.com/$subscription" '{.status.installedCSV}' \
+  "$catalog_starting_csv"); then
   kubectl get subscriptions.operators.coreos.com "$subscription" --namespace "$operator_ns" \
     -o jsonpath='{.status.conditions}{"\n"}'
   exit 1
