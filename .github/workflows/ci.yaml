@@ -329,8 +329,9 @@ jobs:
 
   # Builds the image of an OLM bundle that references the images build_and_push_images has just built, i.e. the images
   # tagged with sha-<short sha> on main and with x.y.z for tags. Like the other images, the bundle image is pushed for
-  # the main branch, but not yet for tags: version tags of the bundle image are only published once the OLM support is
-  # complete.
+  # the main branch and for tags. The bundle images of release tags are the input for the release catalog of
+  # build_and_push_olm_catalog_image, so a release without a bundle image makes the catalog build of every later release
+  # fail.
   #
   # Intentionally without "permissions:", for the same reason as build_and_push_images.
   # jactionlint ignore=missing-permissions
@@ -402,13 +403,13 @@ jobs:
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/olm
           context: olm/build/release-bundle
           file: olm/build/release-bundle/bundle.Dockerfile
-          pushOnTags: 'false'
 
   # Builds the image of the self-hosted OLM catalog. On main, the catalog holds the bundle that
   # build_and_push_olm_bundle_image has just pushed for this commit and is published as
   # dash0-operator-catalog:main-dev. Pull requests, merge groups and other branches build it from the bundle image
   # main-dev without pushing it. For tags, the catalog holds the bundles of all releases from OLM_CATALOG_FIRST_VERSION
-  # on; it is only built for the highest release tag, and not at all while OLM_CATALOG_FIRST_VERSION is empty.
+  # on and is published with the version tags of the release and the tag latest. It is only built for the highest
+  # release tag, and the job fails on purpose for a new major version (see olm/bin/resolve-catalog-bundles.sh).
   #
   # Intentionally without "permissions:", for the same reason as build_and_push_images.
   # jactionlint ignore=missing-permissions
@@ -420,8 +421,9 @@ jobs:
       - build_and_push_olm_bundle_image
     if: ${{ always() && needs.build_and_push_olm_bundle_image.result == 'success' }}
     env:
-      # Empty until the self-hosted catalog is published, then the first release whose bundle image is pushed.
-      OLM_CATALOG_FIRST_VERSION: ''
+      # The first release with a bundle image. Release tags on commits before this setting have none, so a value at or
+      # below such a tag makes every release catalog fail on the missing bundle image; a re-run does not fix that.
+      OLM_CATALOG_FIRST_VERSION: '0.162.0'
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

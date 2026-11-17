@@ -14,7 +14,8 @@
 #     Resolves the bundle images of all release tags (x.y.z) from OLM_CATALOG_FIRST_VERSION up to <version>. Prints no
 #     image and only the reason on stderr, with exit code 0, if no release catalog is built for <version>: when
 #     OLM_CATALOG_FIRST_VERSION is empty, when <version> is not a release version (e.g. a release candidate), when
-#     <version> is not the highest release tag, or when it is lower than OLM_CATALOG_FIRST_VERSION.
+#     <version> is not the highest release tag, or when it is lower than OLM_CATALOG_FIRST_VERSION. Fails if the major
+#     version of <version> differs from that of OLM_CATALOG_FIRST_VERSION.
 
 set -euo pipefail
 
@@ -107,6 +108,13 @@ case "${1:-}" in
     fi
     if version_lower "$version" "$first_version"; then
       skip "$version is lower than OLM_CATALOG_FIRST_VERSION $first_version"
+    fi
+    if [[ "${version%%.*}" != "${first_version%%.*}" ]]; then
+      echo "error: the major version of $version differs from that of OLM_CATALOG_FIRST_VERSION $first_version. The" \
+        "olm.semver template puts it into the channel stable-v${version%%.*} without an upgrade edge from the" \
+        "previous channel. Add that edge (e.g. skipRange: '<${version%%.*}.0.0' on the stable-v${version%%.*} entries) and" \
+        "adjust this check." >&2
+      exit 1
     fi
 
     for tag in "${release_tags[@]}"; do
