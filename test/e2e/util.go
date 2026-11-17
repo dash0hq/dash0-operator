@@ -25,10 +25,9 @@ import (
 )
 
 var (
-	verboseHttp           bool
-	includeProfilingTests bool
-	e2eKubernetesContext  string
-	testAppBaseUrl        string
+	verboseHttp          bool
+	e2eKubernetesContext string
+	testAppBaseUrl       string
 )
 
 func determineTestAppBaseUrl(port string) {

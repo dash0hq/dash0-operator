@@ -86,7 +86,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 
 		e2eKubernetesContext = os.Getenv("E2E_KUBECTX")
 		verboseHttp = strings.ToLower(os.Getenv("E2E_VERBOSE_HTTP")) == "true"
-		includeProfilingTests = strings.ToLower(os.Getenv("E2E_INCLUDE_PROFILING_TESTS")) == "true"
 		if e2eKubernetesContext == "" {
 			Fail(
 				fmt.Sprintf(
@@ -6130,11 +6129,7 @@ spec:
 
 	Context("with an existing operator deployment and profiling enabled", func() {
 		BeforeAll(func() {
-			if !includeProfilingTests {
-				Skip("profiling e2e tests are excluded by default because the eBPF profiler does not work in kind; " +
-					"set E2E_INCLUDE_PROFILING_TESTS=true to include them")
-			}
-			By("deploying the Dash0 operator with profiling enabled")
+			By("deploying the Dash0 operator with the eBPF profiler enabled")
 			deployOperatorWithDefaultAutoOperationConfiguration(
 				operatorNamespace,
 				operatorHelmChart,
@@ -6143,7 +6138,9 @@ spec:
 				&images,
 				false,
 				map[string]string{
-					"operator.profilingEnabled": "true",
+					"operator.ebpfProfilerEnabled": "true",
+					// kind nodes run in their own PID namespace, see helm-chart/dash0-operator/docs/profiling.md.
+					"operator.ebpfProfiler.pidNamespaceTranslationMode": "auto",
 				},
 			)
 			deployDash0MonitoringResourceWithRetry(
@@ -6152,16 +6149,12 @@ spec:
 				operatorNamespace,
 			)
 			Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
-			deployEbpfProfiler(operatorNamespace, applicationUnderTestNamespace)
+			waitForEbpfProfilerToStart(operatorNamespace)
 		})
 
 		AfterAll(func() {
-			if !includeProfilingTests {
-				return
-			}
 			removeAllTestApplications(applicationUnderTestNamespace)
 			undeployDash0MonitoringResource(applicationUnderTestNamespace)
-			teardownEbpfProfiler(operatorNamespace)
 			undeployOperator(operatorNamespace)
 		})
 
@@ -6172,6 +6165,8 @@ spec:
 				By("waiting for profiles to be captured")
 				timestampLowerBound := time.Now()
 				Eventually(func(g Gomega) {
+					// The profiler only samples processes that are on CPU, the requests keep the idle test app busy.
+					sendRequest(g, runtimeTypeNodeJs, workloadTypeDeployment, "/dash0-k8s-operator-test", "")
 					verifyProfiles(g, timestampLowerBound, applicationUnderTestNamespace)
 				}, 120*time.Second, 5*time.Second).Should(Succeed())
 				By("matching profiles have been received")

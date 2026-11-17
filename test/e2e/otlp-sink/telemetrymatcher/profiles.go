@@ -132,8 +132,7 @@ func profilesResourceMatcher(expectedNamespace string) func(
 			matchResult,
 		)
 
-		// Added by the resource processor in the eBPF profiler config (hardcoded because the k8sattributes processor
-		// cannot resolve pod metadata from connection on kind, due to the missing container.id association).
+		// Added by the k8s_attributes processor.
 		verifyResourceAttributeEquals[pprofile.ResourceProfiles](
 			resourceAttributes,
 			"k8s.namespace.name",
