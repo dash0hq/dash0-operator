@@ -369,8 +369,9 @@ operator:
 > statically — whenever you raise or lower its memory limit, adjust its `gomemlimit` as well (about 80% of the limit).
 > Note that `gomemlimit` uses different units than Kubernetes resource settings (`MiB`/`GiB` rather than `Mi`/`Gi`).
 
-Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or
-similar to take effect.
+Changing Helm settings while the operator is already running requires a
+`helm upgrade`/`helm upgrade --reset-then-reuse-values`, or a sync of the changed values in ArgoCD or Flux, to take
+effect.
 
 ## Controlling On Which Nodes the Operator's Collector Pods Are Scheduled
 
@@ -404,7 +405,7 @@ In the same fashion, tolerations can also be configured for the Dash0 operator m
 (Helm value `operator.targetAllocator.tolerations`) and the agent0-connector deployment (Helm value
 `operator.agent0Connector.tolerations`).
 
-Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or similar to take effect.
+Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reset-then-reuse-values`, or a sync of the changed values in ArgoCD or Flux, to take effect.
 
 ### Preventing Operator Scheduling on Specific Nodes
 
@@ -572,7 +573,7 @@ This setting is opt-in for two reasons:
 * The `net.ipv4.tcp_keepalive_*` sysctls are only considered _safe_ sysctls on Kubernetes 1.29 and later. On older clusters, or on clusters where the kubelet's `forbiddenSysctls` / a strict Pod Security Admission policy disallows them, the kubelet rejects these sysctls and the collector pods will fail to be scheduled.
 * It changes the collector pod spec, which triggers a rollout of the collector pods.
 
-Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or similar to take effect.
+Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reset-then-reuse-values`, or a sync of the changed values in ArgoCD or Flux, to take effect.
 
 ## Configuring SELinux Options for the Collector DaemonSet
 
@@ -590,8 +591,9 @@ operator:
       type: <selinux-type>
 ```
 
-Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or
-similar to take effect.
+Changing Helm settings while the operator is already running requires a
+`helm upgrade`/`helm upgrade --reset-then-reuse-values`, or a sync of the changed values in ArgoCD or Flux, to take
+effect.
 
 ## Disable Self-Monitoring
 
