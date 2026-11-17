@@ -2773,7 +2773,7 @@ tests:
           path: spec.template.spec.containers[0].args
           content: "--operator-configuration-instrumentation-delivery=auto"
 
-  - it: operator.instrumentation.delivery should default to "init-container"
+  - it: operator.instrumentation.delivery should default to "auto"
     documentSelector:
       path: metadata.name
       value: dash0-operator-controller
@@ -2786,7 +2786,7 @@ tests:
     asserts:
       - contains:
           path: spec.template.spec.containers[0].args
-          content: "--operator-configuration-instrumentation-delivery=init-container"
+          content: "--operator-configuration-instrumentation-delivery=auto"
 
   - it: should reject an invalid operator.instrumentation.delivery value
     set:
@@ -3070,7 +3070,7 @@ tests:
           content: --operator-configuration-self-monitoring-enabled=true
       - contains:
           path: spec.template.spec.containers[0].args
-          content: --operator-configuration-instrumentation-delivery=init-container
+          content: --operator-configuration-instrumentation-delivery=auto
       - notContains:
           path: spec.template.spec.containers[0].args
           content: --operator-configuration-endpoint=
