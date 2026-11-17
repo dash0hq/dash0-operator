@@ -1850,6 +1850,16 @@ operator:
       top: true
       version: true
 
+  # Settings for the eBPF profiler DaemonSet managed by the operator. All settings in operator.ebpfProfiler will be
+  # ignored if operator.ebpfProfilerEnabled is false. See docs/profiling.md.
+  ebpfProfiler:
+
+    # The PID namespace translation mode of the eBPF profiler, one of "none", "auto", "exact" or "recursive". Set this
+    # to "auto" for nodes with nested PID namespaces, such as kind nodes. When not set, the profiler uses "none". This
+    # setting only has an effect if the operator configuration resource is created via Helm (operator.dash0Export or
+    # operator.exports). See docs/profiling.md for details on the modes.
+    pidNamespaceTranslationMode:
+
   # Settings related to the synthetics-worker, the private-location runner that dials outbound to Dash0 and executes
   # synthetic checks assigned to this cluster's private location (experimental).
   syntheticsWorker:

@@ -47,6 +47,7 @@ type OperatorConfigurationValues struct {
 	PrometheusCrdSupportEnabled                      bool
 	ProfilingEnabled                                 bool
 	EbpfProfilerEnabled                              bool
+	EbpfProfilerPIDNamespaceTranslationMode          string
 	TelemetryCollectionEnabled                       bool
 	ClusterName                                      string
 	AutoMonitorNamespacesEnabled                     bool
@@ -540,7 +541,10 @@ func convertValuesToResource(
 		},
 	}
 	if operatorConfigurationValues.EbpfProfilerEnabled {
-		spec.Profiling.EbpfProfiler = &dash0v1alpha1.EbpfProfiler{Enabled: new(true)}
+		spec.Profiling.EbpfProfiler = &dash0v1alpha1.EbpfProfiler{
+			Enabled:                     new(true),
+			PIDNamespaceTranslationMode: operatorConfigurationValues.EbpfProfilerPIDNamespaceTranslationMode,
+		}
 	}
 	if operatorConfigurationValues.InstrumentationDelivery != "" {
 		spec.InstrumentWorkloads = dash0v1alpha1.InstrumentWorkloads{

@@ -100,6 +100,27 @@ var _ = Describe(
 			Entry("ignores disabled profiling without telemetry collection", false, false, true),
 		)
 
+		DescribeTable("should apply the Helm eBPF profiler PID namespace translation mode", func(mode string) {
+			handler := NewAutoOperatorConfigurationResourceHandler(k8sClient, readyCheckExecuter,
+				OperatorConfigurationValues{
+					Endpoint: EndpointDash0Test, Token: AuthorizationTokenTest,
+					TelemetryCollectionEnabled: true, ProfilingEnabled: true, EbpfProfilerEnabled: true,
+					EbpfProfilerPIDNamespaceTranslationMode: mode,
+				}, util.ExtraConfig{})
+			handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+			_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				var configuration v1alpha1.Dash0OperatorConfiguration
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName}, &configuration)).To(Succeed())
+				g.Expect(configuration.Spec.Profiling.EbpfProfiler).NotTo(BeNil())
+				g.Expect(configuration.Spec.Profiling.EbpfProfiler.PIDNamespaceTranslationMode).To(Equal(mode))
+			}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
+		},
+			Entry("sets the mode", "auto"),
+			Entry("leaves the mode unset", ""),
+		)
+
 		It(
 			"should fail validation if the eBPF profiler is enabled with profiling disabled", func() {
 				handler := NewAutoOperatorConfigurationResourceHandler(

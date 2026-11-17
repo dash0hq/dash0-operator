@@ -173,6 +173,12 @@ spec:
 {{- end }}
 {{- if .Values.operator.ebpfProfilerEnabled }}
         - --operator-configuration-ebpf-profiler-enabled=true
+{{- with .Values.operator.ebpfProfiler.pidNamespaceTranslationMode }}
+{{- if not (has . (list "none" "auto" "exact" "recursive")) }}
+{{- fail (printf "Error: operator.ebpfProfiler.pidNamespaceTranslationMode must be one of \"none\", \"auto\", \"exact\" or \"recursive\", but was %q." .) -}}
+{{- end }}
+        - --operator-configuration-ebpf-profiler-pid-namespace-translation-mode={{ . }}
+{{- end }}
 {{- end }}
 {{- if .Values.operator.clusterName }}
         - --operator-configuration-cluster-name={{ .Values.operator.clusterName }}

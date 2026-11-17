@@ -169,6 +169,7 @@ type commandLineArguments struct {
 	operatorConfigurationPrometheusCrdSupportEnabled                      bool
 	operatorConfigurationProfilingEnabled                                 bool
 	operatorConfigurationEbpfProfilerEnabled                              bool
+	operatorConfigurationEbpfProfilerPIDNamespaceTranslationMode          string
 	operatorConfigurationClusterName                                      string
 	operatorConfigurationAutoMonitorNamespacesEnabled                     bool
 	operatorConfigurationAutoMonitorNamespacesLabelSelector               string
@@ -508,6 +509,7 @@ func Start() {
 			PrometheusCrdSupportEnabled:                      cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
 			ProfilingEnabled:                                 cliArgs.operatorConfigurationProfilingEnabled,
 			EbpfProfilerEnabled:                              cliArgs.operatorConfigurationEbpfProfilerEnabled,
+			EbpfProfilerPIDNamespaceTranslationMode:          cliArgs.operatorConfigurationEbpfProfilerPIDNamespaceTranslationMode,
 			TelemetryCollectionEnabled:                       cliArgs.telemetryCollectionEnabled,
 			ClusterName:                                      cliArgs.operatorConfigurationClusterName,
 			AutoMonitorNamespacesEnabled:                     cliArgs.operatorConfigurationAutoMonitorNamespacesEnabled,
@@ -723,6 +725,13 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 		"operator-configuration-ebpf-profiler-enabled",
 		false,
 		"The value for profiling.ebpfProfiler.enabled on the operator configuration resource.",
+	)
+	fs.StringVar(
+		&cliArgs.operatorConfigurationEbpfProfilerPIDNamespaceTranslationMode,
+		"operator-configuration-ebpf-profiler-pid-namespace-translation-mode",
+		"",
+		"The value for profiling.ebpfProfiler.pidNamespaceTranslationMode on the operator configuration resource; "+
+			"will be ignored if operator-configuration-ebpf-profiler-enabled is not set.",
 	)
 	fs.BoolVar(
 		&cliArgs.telemetryCollectionEnabled,
