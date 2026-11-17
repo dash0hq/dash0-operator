@@ -1,0 +1,11 @@
+apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
+metadata:
+  name: operator-test-dataset-minimal
+spec:
+  slug: operator-test-minimal
+  display:
+    name: Operator Test Dataset
+  retention:
+    logs: 30d
+    traces: 30d

@@ -510,6 +510,7 @@ tests:
             apiGroups:
               - dash0.com
             resources:
+              - dash0datasets
               - dash0teams
             verbs:
               - get

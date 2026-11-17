@@ -1352,6 +1352,28 @@ func setupTeamReconciler(
 	return teamReconciler, nil
 }
 
+// setupDatasetReconciler constructs and wires the dataset reconciler with the manager and the leader-election-aware
+// runnable. Companion to setupSpamFilterReconciler; see its godoc for the rationale.
+func setupDatasetReconciler(
+	mgr manager.Manager,
+	k8sClient client.Client,
+	clusterUid types.UID,
+	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
+	apiClientPool *controller.ApiClientPool,
+) (*controller.DatasetReconciler, error) {
+	datasetReconciler := controller.NewDatasetReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		apiClientPool,
+	)
+	if err := datasetReconciler.SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("unable to set up the dataset reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(datasetReconciler)
+	return datasetReconciler, nil
+}
+
 // setupTimeSeriesAggregationReconciler constructs and wires the time-series-aggregation reconciler with the manager and
 // the leader-election-aware runnable. Companion to setupSpamFilterReconciler; see its godoc for the rationale.
 func setupTimeSeriesAggregationReconciler(
@@ -1385,6 +1407,7 @@ func allOwnedIacResourceSynchronizationControllers(
 	spamFilterReconciler *controller.SpamFilterReconciler,
 	syntheticCheckReconciler *controller.SyntheticCheckReconciler,
 	teamReconciler *controller.TeamReconciler,
+	datasetReconciler *controller.DatasetReconciler,
 	timeSeriesAggregationReconciler *controller.TimeSeriesAggregationReconciler,
 	viewReconciler *controller.ViewReconciler,
 	samplingRuleReconciler *controller.SamplingRuleReconciler,
@@ -1396,6 +1419,7 @@ func allOwnedIacResourceSynchronizationControllers(
 		spamFilterReconciler,
 		syntheticCheckReconciler,
 		teamReconciler,
+		datasetReconciler,
 		timeSeriesAggregationReconciler,
 		viewReconciler,
 	}
@@ -1885,6 +1909,17 @@ func startDash0Controllers(
 		dash0ApiTransport,
 		util.RenderUserAgent(images.GetOperatorVersion()),
 	)
+	// Concurrent writes to one dataset fail with 409 until the dataset version settles. Other resource types do not
+	// have that guarantee for a 409, so only dataset requests retry it.
+	datasetApiClientPool := controller.NewApiClientPool(
+		dash0apiclient.NewTransport(
+			dash0apiclient.WithTransportMaxRetries(2),
+			dash0apiclient.WithTransportRetryWaitMin(1*time.Second),
+			dash0apiclient.WithTransportRetryWaitMax(3*time.Second),
+			dash0apiclient.WithTransportRetryOnConflict(),
+		),
+		util.RenderUserAgent(images.GetOperatorVersion()),
+	)
 
 	isIPv6Cluster := util.IsIPv6Address(envVars.podIp)
 	possibleCollectorUrls := collectors.RenderCollectorBaseUrls(
@@ -2198,6 +2233,17 @@ func startDash0Controllers(
 		return err
 	}
 
+	datasetReconciler, err := setupDatasetReconciler(
+		mgr,
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		datasetApiClientPool,
+	)
+	if err != nil {
+		return err
+	}
+
 	timeSeriesAggregationReconciler, err := setupTimeSeriesAggregationReconciler(
 		mgr,
 		k8sClient,
@@ -2295,6 +2341,7 @@ func startDash0Controllers(
 			spamFilterReconciler,
 			syntheticCheckReconciler,
 			teamReconciler,
+			datasetReconciler,
 			timeSeriesAggregationReconciler,
 			viewReconciler,
 			samplingRuleReconciler,
@@ -2314,6 +2361,7 @@ func startDash0Controllers(
 		notificationChannelReconciler,
 		spamFilterReconciler,
 		teamReconciler,
+		datasetReconciler,
 		timeSeriesAggregationReconciler,
 		signalToMetricsReconciler,
 		persesDashboardCrdReconciler,
@@ -2357,6 +2405,7 @@ func startDash0Controllers(
 			notificationChannelReconciler,
 			spamFilterReconciler,
 			teamReconciler,
+			datasetReconciler,
 			timeSeriesAggregationReconciler,
 			signalToMetricsReconciler,
 			persesDashboardCrdReconciler,
@@ -2432,6 +2481,7 @@ func startDash0Controllers(
 		notificationChannelReconciler,
 		syntheticCheckReconciler,
 		teamReconciler,
+		datasetReconciler,
 		sloReconciler,
 		viewReconciler,
 		spamFilterReconciler,

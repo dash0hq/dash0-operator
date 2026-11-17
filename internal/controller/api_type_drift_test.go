@@ -236,6 +236,19 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 		Expect(failures).To(HaveLen(1))
 	})
 
+	It("finds no unexpected drift between Dash0Dataset and the API client's dataset type", func() {
+		expectNoUnexpectedApiTypeDrift(
+			reflect.TypeFor[dash0dashv1alpha1.Dash0DatasetSpec](),
+			reflect.TypeFor[dash0apiclient.DatasetSpec](),
+			map[string]string{
+				"display": "sent as metadata.name, like spec.display.name of Dash0Team",
+			},
+			map[string]string{
+				"permittedActions": "read-only, the Dash0 API ignores it on writes",
+			},
+		)
+	})
+
 	It("finds no unexpected drift between Dash0View and the API client's view type", func() {
 		expectNoUnexpectedApiTypeDrift(
 			reflect.TypeFor[dash0v1alpha1.Dash0ViewSpec](),

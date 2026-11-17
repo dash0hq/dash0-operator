@@ -1065,6 +1065,103 @@ Status:
   Synchronized At:        2026-07-16T12:00:00Z
 ```
 
+### Managing Dash0 Datasets
+
+You can manage your Dash0 datasets via the Dash0 operator.
+Datasets are an organization-scoped resource in Dash0.
+
+> [!WARNING]
+> Deleting a Dash0Dataset resource deletes the dataset in Dash0.
+> This also happens when the resource is deleted together with its namespace, for example via
+> `kubectl delete namespace`, or when the label `dash0.com/enable: false` is added to the resource.
+> See [Deleting a dataset](#deleting-a-dataset) for what is kept and how to restore it.
+
+Pre-requisites for this feature:
+
+* A Dash0 operator configuration resource has to be installed in the cluster.
+* The operator configuration resource must have the `apiEndpoint` property.
+* The operator configuration resource must have at least one Dash0 export configured with authorization
+  (either `token` or `secret-ref`).
+* The operator will only pick up dataset resources in namespaces that have a Dash0 monitoring resource deployed.
+* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
+  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
+  monitoring resource.
+
+With the prerequisites in place, the operator synchronizes dataset resources with the Dash0 backend:
+
+* When a dataset resource is created or changed, the operator creates the dataset in Dash0 if there is no dataset with
+  that slug yet, and updates it otherwise.
+* When a dataset resource is deleted, the operator deletes the dataset in Dash0.
+
+The custom resource definition for Dash0 datasets can be found
+[here](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/templates/operator/custom-resource-definition-datasets.yaml).
+
+Here is an example of a dataset resource:
+
+```yaml
+apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
+metadata:
+  name: staging
+spec:
+  slug: staging
+  display:
+    name: Staging
+  retention:
+    logs: 60d
+    traces: 30d
+  permissions:
+    - role: basic_member
+      actions:
+        - dataset:read
+```
+
+`spec.slug` is the identifier that telemetry and queries use for the dataset.
+It is required and cannot be changed after the resource has been created.
+`spec.display.name` is the name shown in the Dash0 UI.
+All other fields are optional.
+A field you omit takes the Dash0 default when the dataset is created, and keeps its current value in Dash0 when the
+dataset is updated.
+
+If a dataset with the same slug already exists in Dash0, for example because it was created in the Dash0 UI, the
+operator takes it over and from then on manages it from the resource.
+Do not manage the same slug from two resources, or from the operator and another tool at the same time.
+
+Because datasets are organization-scoped, the `dataset` setting of the Dash0 operator configuration resource does not
+apply.
+
+The operator does not check periodically whether the dataset still exists in Dash0.
+If the dataset is deleted in Dash0 while the resource still exists, the operator creates it again the next time it
+synchronizes the resource, that is, when the resource changes or when the operator restarts.
+
+#### Deleting a dataset
+
+Deleting a dataset in Dash0 is a soft delete:
+
+* Dashboards, views, check rules, synthetic checks, recording rules, SLOs, time series aggregations and
+  signal-to-metrics rules of the dataset are kept for 30 days.
+* Applying a dataset resource with the same slug within those 30 days restores the dataset together with these
+  resources.
+* Spam filters are not restored.
+* Telemetry of the dataset is removed as its retention expires.
+
+When a namespace is deleted, the operator deletes the datasets of the dataset resources in that namespace only while
+the Dash0 monitoring resource of the namespace still exists.
+If the monitoring resource is removed first, the dataset stays in Dash0 and is no longer managed by any resource.
+
+When a dataset resource has been synchronized to Dash0, the operator writes a summary of that synchronization
+operation to the status of the resource.
+The status also shows whether an error occurred during synchronization, in
+`status.synchronizationResults[i].synchronizationError`.
+
+```yaml
+Kind: Dash0Dataset
+...
+Status:
+  Synchronization Status: successful
+  Synchronized At:        2026-11-17T12:00:00Z
+```
+
 ### Managing SLOs
 
 You can manage your Dash0 service level objectives (SLOs) via the Dash0 operator.

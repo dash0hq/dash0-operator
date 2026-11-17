@@ -358,7 +358,7 @@ metadata:
     capabilities: Seamless Upgrades
     categories: Monitoring,Logging & Tracing
     containerImage: ghcr.io/dash0hq/operator-controller:0.0.0
-    createdAt: "2026-11-05T07:51:02Z"
+    createdAt: "2026-11-17T20:25:53Z"
     description: Collect traces, metrics and logs from your Kubernetes workloads and
       infrastructure with OpenTelemetry and send them to Dash0.
     operators.operatorframework.io/builder: operator-sdk-v1.42.3
@@ -370,6 +370,9 @@ spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
     owned:
+    - kind: Dash0Dataset
+      name: dash0datasets.dash0.com
+      version: v1alpha1
     - description: A destination for Dash0 alert notifications, for example a Slack
         channel, email recipients or a webhook.
       displayName: Dash0 Notification Channel
@@ -857,6 +860,22 @@ spec:
           - dash0.com
           resources:
           - dash0teams/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - dash0.com
+          resources:
+          - dash0datasets
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - dash0.com
+          resources:
+          - dash0datasets/status
           verbs:
           - get
           - patch
@@ -1364,6 +1383,7 @@ spec:
         - apiGroups:
           - dash0.com
           resources:
+          - dash0datasets
           - dash0teams
           verbs:
           - get

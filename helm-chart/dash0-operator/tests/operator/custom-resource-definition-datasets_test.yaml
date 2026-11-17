@@ -1,0 +1,7 @@
+suite: test dataset CRD
+templates:
+  - operator/custom-resource-definition-datasets.yaml
+tests:
+  - it: custom resource definition for datasets should match snapshot
+    asserts:
+      - matchSnapshot: {}

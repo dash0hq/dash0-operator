@@ -342,7 +342,7 @@ var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 	{
 		// Dash0 CRDs
 		APIGroups: []string{"dash0.com"},
-		Resources: []string{"dash0teams"},
+		Resources: []string{"dash0datasets", "dash0teams"},
 		Verbs:     allowedVerbs,
 	},
 	{

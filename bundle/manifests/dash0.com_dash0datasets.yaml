@@ -1,0 +1,330 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  creationTimestamp: null
+  name: dash0datasets.dash0.com
+spec:
+  group: dash0.com
+  names:
+    kind: Dash0Dataset
+    listKind: Dash0DatasetList
+    plural: dash0datasets
+    singular: dash0dataset
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Dash0Dataset is the Schema for the Dash0Dataset API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              Dash0DatasetSpec defines the desired state of Dash0Dataset. Every field except slug and display is optional. A field
+              that is omitted takes the server default when the dataset is created, and keeps its stored value when the dataset is
+              updated.
+            properties:
+              display:
+                description: Display configuration for the dataset.
+                properties:
+                  name:
+                    description: The human-facing name of the dataset, as shown in
+                      the Dash0 UI.
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                type: object
+              permissions:
+                description: |-
+                  Who may do what with this dataset. The list replaces the stored grants; an omitted or empty list keeps them
+                  unchanged.
+                items:
+                  description: Dash0DatasetPermission grants actions on the dataset
+                    to exactly one user, team or role.
+                  properties:
+                    actions:
+                      description: The actions granted.
+                      items:
+                        description: Dash0DatasetAction is an action that can be granted
+                          on a dataset.
+                        enum:
+                        - dataset:read
+                        - dataset:write
+                        - dataset:delete
+                        - dataset:createCheckRule
+                        - dataset:createRecordingRuleGroup
+                        - dataset:createSLO
+                        - dataset:createSyntheticCheck
+                        - dataset:createAgent0Automation
+                        type: string
+                      minItems: 1
+                      type: array
+                    role:
+                      description: The role the grant applies to. The only role that
+                        can be granted is basic_member.
+                      enum:
+                      - basic_member
+                      type: string
+                    teamId:
+                      description: The ID of the team the grant applies to.
+                      minLength: 1
+                      type: string
+                    userId:
+                      description: The ID of the user the grant applies to.
+                      minLength: 1
+                      type: string
+                  required:
+                  - actions
+                  type: object
+                  x-kubernetes-validations:
+                  - message: exactly one of userId, teamId or role must be set
+                    rule: '(has(self.userId) ? 1 : 0) + (has(self.teamId) ? 1 : 0)
+                      + (has(self.role) ? 1 : 0) == 1'
+                type: array
+              preferred:
+                description: |-
+                  Whether this dataset is the organization's preferred dataset, which the Dash0 UI opens by default. At most one
+                  dataset per organization is preferred; setting it clears the flag on the previous one.
+                type: boolean
+              privacy:
+                description: What Dash0 derives, stores and redacts for this dataset.
+                properties:
+                  geoLocation:
+                    description: Dash0DatasetGeoLocationPrivacy defines how geolocation
+                      derived from end-user IP addresses is handled.
+                    properties:
+                      endUser:
+                        description: Dash0DatasetGeoLocationStorage defines how much
+                          geolocation derived from end-user IP addresses is stored.
+                        properties:
+                          storage:
+                            enum:
+                            - do_not_store
+                            - up_to_city
+                            - up_to_country
+                            type: string
+                        type: object
+                    type: object
+                  ipAddresses:
+                    description: Dash0DatasetIpAddressPrivacy defines how end-user
+                      IP addresses are handled.
+                    properties:
+                      endUser:
+                        description: |-
+                          Dash0DatasetIpAddressStorage defines how end-user IP addresses derived from the X-FORWARDED-FOR and X-REAL-IP HTTP
+                          headers are stored.
+                        properties:
+                          storage:
+                            enum:
+                            - anonymize
+                            - do_not_store
+                            type: string
+                        type: object
+                    type: object
+                  redaction:
+                    description: Dash0DatasetRedaction defines which sensitive data
+                      Dash0 redacts before it persists a signal.
+                    properties:
+                      cardholderData:
+                        description: Detection and redaction of payment card numbers
+                          and related sensitive data.
+                        properties:
+                          enabled:
+                            type: boolean
+                        required:
+                        - enabled
+                        type: object
+                      genAi:
+                        description: Redaction policies for GenAI attributes.
+                        properties:
+                          conversation:
+                            description: Redaction of gen_ai.input.messages, gen_ai.output.messages
+                              and gen_ai.system_instructions.
+                            enum:
+                            - disabled
+                            - redact
+                            type: string
+                          errors:
+                            description: Redaction of tool-call error messages.
+                            enum:
+                            - disabled
+                            - redact
+                            type: string
+                          toolCalls:
+                            description: Redaction of gen_ai.tool.call.arguments and
+                              gen_ai.tool.call.result.
+                            enum:
+                            - disabled
+                            - redact
+                            type: string
+                        type: object
+                    type: object
+                type: object
+              processing:
+                description: Transformations Dash0 applies to ingested telemetry.
+                properties:
+                  darkplane:
+                    description: Dash0DatasetDarkplane defines Darkplane-specific
+                      opt-ins for a dataset.
+                    properties:
+                      respectNativeCodingAgentTelemetry:
+                        description: Darkplane processing of OpenTelemetry telemetry
+                          natively emitted by coding agents.
+                        enum:
+                        - disabled
+                        - enabled
+                        type: string
+                    type: object
+                  semanticConventionUpgrades:
+                    description: |-
+                      Whether semantic convention upgrades are executed: disabled, latest, or a version vX.Y.Z up to which (inclusive)
+                      upgrades are executed.
+                    pattern: ^(disabled|latest|v[0-9]+\.[0-9]+\.[0-9]+)$
+                    type: string
+                  spanEventsToLogs:
+                    description: Convert span events to log records correlated with
+                      the parent span.
+                    type: boolean
+                type: object
+              retention:
+                description: How long each signal is kept.
+                properties:
+                  logs:
+                    enum:
+                    - 30d
+                    - 60d
+                    - 90d
+                    - 120d
+                    - 210d
+                    - 390d
+                    type: string
+                  metrics:
+                    description: Metrics retention is not selectable and is always
+                      30 days.
+                    enum:
+                    - 30d
+                    type: string
+                  profiles:
+                    description: Profile retention is not selectable and is always
+                      30 days.
+                    enum:
+                    - 30d
+                    type: string
+                  traces:
+                    enum:
+                    - 30d
+                    - 60d
+                    - 90d
+                    - 120d
+                    - 210d
+                    - 390d
+                    type: string
+                  webEvents:
+                    enum:
+                    - 30d
+                    - 60d
+                    - 90d
+                    - 120d
+                    - 210d
+                    - 390d
+                    type: string
+                type: object
+              slug:
+                description: The identifier that telemetry and queries use for this
+                  dataset. It cannot be changed after creation.
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: slug is immutable
+                  rule: self == oldSelf
+            required:
+            - display
+            - slug
+            type: object
+          status:
+            description: Dash0DatasetStatus defines the observed state of Dash0Dataset
+            properties:
+              synchronizationResults:
+                items:
+                  description: Dash0DatasetSynchronizationResultPerEndpoint defines
+                    the synchronization result per endpoint.
+                  properties:
+                    dash0ApiEndpoint:
+                      type: string
+                    dash0Id:
+                      description: The slug of the dataset in Dash0.
+                      type: string
+                    dash0Origin:
+                      type: string
+                    httpStatusCode:
+                      description: |-
+                        HttpStatusCode is the HTTP status code that the Dash0 API returned for the failed synchronization attempt, if the
+                        failure was caused by an unexpected HTTP response. It is 0 (absent) for successful synchronizations and for
+                        transport-level errors. It is used to decide whether a failed synchronization should be retried.
+                      type: integer
+                    synchronizationError:
+                      type: string
+                    synchronizationStatus:
+                      description: |-
+                        Dash0ApiResourceSynchronizationStatus describes the result of synchronizing a (non-third-party) Kubernetes resource
+                        (e.g. synthetic checks) to the Dash0 API.
+                      enum:
+                      - successful
+                      - partially-successful
+                      - failed
+                      type: string
+                  required:
+                  - synchronizationStatus
+                  type: object
+                type: array
+              synchronizationStatus:
+                description: |-
+                  Dash0ApiResourceSynchronizationStatus describes the result of synchronizing a (non-third-party) Kubernetes resource
+                  (e.g. synthetic checks) to the Dash0 API.
+                enum:
+                - successful
+                - partially-successful
+                - failed
+                type: string
+              synchronizedAt:
+                format: date-time
+                type: string
+              validationIssues:
+                items:
+                  type: string
+                type: array
+            required:
+            - synchronizationResults
+            - synchronizationStatus
+            - synchronizedAt
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: null
+  storedVersions: null

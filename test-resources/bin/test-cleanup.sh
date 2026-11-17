@@ -75,6 +75,11 @@ for team_file in test-resources/customresources/dash0team/*.yaml; do
     wait_for_third_party_resource_deletion="true"
   fi
 done
+for dataset_file in test-resources/customresources/dash0dataset/*.yaml; do
+  if kubectl delete -n "$target_namespace" -f "$dataset_file"; then
+    wait_for_third_party_resource_deletion="true"
+  fi
+done
 for signal_to_metrics_file in test-resources/customresources/dash0signaltometrics/*.yaml; do
   if kubectl delete -n "$target_namespace" -f "$signal_to_metrics_file"; then
     wait_for_third_party_resource_deletion="true"

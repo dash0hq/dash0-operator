@@ -369,6 +369,27 @@ rules:
   - patch
   - update
 
+# Permissions required to watch Dash0 dataset resources. Like dash0teams, dash0datasets live in the dash0.com Kubernetes
+# API group.
+- apiGroups:
+  - dash0.com
+  resources:
+  - dash0datasets
+  verbs:
+  - get
+  - list
+  - watch
+
+# Permissions required to write to Dash0 dataset resource status:
+- apiGroups:
+  - dash0.com
+  resources:
+  - dash0datasets/status
+  verbs:
+  - get
+  - patch
+  - update
+
 # Permissions required to read Dash0 spam filter resources:
 - apiGroups:
   - operator.dash0.com
