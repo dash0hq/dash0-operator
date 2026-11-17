@@ -120,11 +120,12 @@ var _ = Describe(
 			})
 		})
 
-		DescribeTable("should apply the Helm eBPF profiler opt-in", func(telemetryEnabled, profilerEnabled bool) {
+		DescribeTable("should apply the Helm eBPF profiler opt-in", func(telemetryEnabled, profilingEnabled, profilerEnabled bool) {
 			handler := NewAutoOperatorConfigurationResourceHandler(k8sClient, readyCheckExecuter,
 				OperatorConfigurationValues{
 					Endpoint: EndpointDash0Test, Token: AuthorizationTokenTest,
-					TelemetryCollectionEnabled: telemetryEnabled, EbpfProfilerEnabled: profilerEnabled,
+					TelemetryCollectionEnabled: telemetryEnabled, ProfilingEnabled: profilingEnabled,
+					EbpfProfilerEnabled: profilerEnabled,
 				}, util.ExtraConfig{})
 			handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 			_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -132,7 +133,7 @@ var _ = Describe(
 			Eventually(func(g Gomega) {
 				var configuration v1alpha1.Dash0OperatorConfiguration
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName}, &configuration)).To(Succeed())
-				g.Expect(configuration.Spec.Profiling.Enabled).To(HaveValue(Equal(telemetryEnabled && profilerEnabled)))
+				g.Expect(configuration.Spec.Profiling.Enabled).To(HaveValue(Equal(telemetryEnabled && profilingEnabled)))
 				if telemetryEnabled && profilerEnabled {
 					g.Expect(configuration.Spec.Profiling.EbpfProfiler).NotTo(BeNil())
 					g.Expect(configuration.Spec.Profiling.EbpfProfiler.Enabled).To(HaveValue(BeTrue()))
@@ -141,9 +142,37 @@ var _ = Describe(
 				}
 			}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 		},
-			Entry("implicitly enables profile collection", true, true),
-			Entry("remains opt-in", true, false),
-			Entry("does not enable sampling without telemetry collection", false, true),
+			Entry("enables the profiler", true, true, true),
+			Entry("remains opt-in", true, true, false),
+			Entry("does not enable profiling or the profiler without telemetry collection", false, true, true),
+			Entry("ignores disabled profiling without telemetry collection", false, false, true),
+		)
+
+		It(
+			"should fail validation if the eBPF profiler is enabled with profiling disabled", func() {
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{
+						Endpoint:                   EndpointDash0Test,
+						Token:                      AuthorizationTokenTest,
+						TelemetryCollectionEnabled: true,
+						ProfilingEnabled:           false,
+						EbpfProfilerEnabled:        true,
+					},
+					util.ExtraConfig{},
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).To(
+					MatchError(
+						ContainSubstring(
+							"--operator-configuration-ebpf-profiler-enabled (Helm value operator.ebpfProfilerEnabled) " +
+								"cannot be combined with --operator-configuration-profiling-enabled=false",
+						),
+					),
+				)
+			},
 		)
 
 		It(

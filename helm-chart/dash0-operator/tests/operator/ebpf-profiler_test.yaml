@@ -31,6 +31,22 @@ tests:
       - failedTemplate:
           errorMessage: "Error: operator.ebpfProfilerEnabled requires operator.telemetryCollectionEnabled=true."
 
+  - it: should reject enabling the profiler with profiling pipelines disabled
+    set:
+      operator.ebpfProfilerEnabled: true
+      operator.profilingEnabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.ebpfProfilerEnabled cannot be combined with operator.profilingEnabled=false. Set operator.profilingEnabled to true or leave it unset."
+
+  - it: should reject enabling the profiler with profiling pipelines disabled via a string value
+    set:
+      operator.ebpfProfilerEnabled: true
+      operator.profilingEnabled: "false"
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.ebpfProfilerEnabled cannot be combined with operator.profilingEnabled=false. Set operator.profilingEnabled to true or leave it unset."
+
   - it: should default to agent v0.51.5 independently of appVersion
     chart:
       appVersion: 99.100.101
@@ -56,7 +72,25 @@ tests:
       - failedTemplate:
           errorMessage: "Error: operator.ebpfProfilerImage.tag or digest must be non-empty when operator.ebpfProfilerEnabled=true."
 
-  - it: should enable both profiling flags for a Helm-managed operator configuration
+  - it: should enable both profiling flags for a Helm-managed operator configuration with profiling enabled explicitly
+    set:
+      operator.ebpfProfilerEnabled: true
+      operator.profilingEnabled: true
+      operator.exports:
+        - grpc:
+            endpoint: collector.example.com:4317
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-profiling-enabled=true
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-ebpf-profiler-enabled=true
+
+  - it: should let the profiling pipelines follow the profiler for a Helm-managed operator configuration
     chart:
       appVersion: 99.100.101
     set:
@@ -68,9 +102,12 @@ tests:
       path: kind
       value: Deployment
     asserts:
-      - contains:
+      - notContains:
           path: spec.template.spec.containers[0].args
           content: --operator-configuration-profiling-enabled=true
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-profiling-enabled=false
       - contains:
           path: spec.template.spec.containers[0].args
           content: --operator-configuration-ebpf-profiler-enabled=true
@@ -162,7 +199,7 @@ tests:
             name: DASH0_DEBUGINFO_PROXY_IMAGE
             value: ghcr.io/dash0hq/debuginfo-proxy@sha256:proxy-test-digest
 
-  - it: should prefer the agent digest over its default tag and enable profiling for a Dash0 export
+  - it: should prefer the agent digest over its default tag and enable the profiler for a Dash0 export
     set:
       operator.ebpfProfilerEnabled: true
       operator.ebpfProfilerImage.digest: sha256:agent-test-digest
@@ -179,9 +216,6 @@ tests:
           content:
             name: DASH0_EBPF_PROFILER_IMAGE
             value: ghcr.io/parca-dev/parca-agent@sha256:agent-test-digest
-      - contains:
-          path: spec.template.spec.containers[0].args
-          content: --operator-configuration-profiling-enabled=true
       - contains:
           path: spec.template.spec.containers[0].args
           content: --operator-configuration-ebpf-profiler-enabled=true

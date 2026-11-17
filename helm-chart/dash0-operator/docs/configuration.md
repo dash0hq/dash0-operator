@@ -214,6 +214,13 @@ Here is a list of configuration options for this resource:
   OpenTelemetry target-allocator and update the `prometheusreceiver` in the OpenTelemetry collectors, so they query the
   allocator for targets to be scraped.
 
+* <a href="#operatorconfigurationresource.spec.profiling.enabled"><span id="operatorconfigurationresource.spec.profiling.enabled">**`spec.profiling.enabled`**</span></a>:
+  If enabled, the OpenTelemetry collectors accept, process and export profiling data via OTLP.
+  This setting does not deploy a profiler, see [Profiling](profiling.md).
+  This setting is optional. If it is not set, profiling is enabled together with `profiling.ebpfProfiler.enabled`.
+  It is a validation error to set `telemetryCollection.enabled=false` and `profiling.enabled=true` at the same time, or
+  to set `profiling.enabled=false` together with `profiling.ebpfProfiler.enabled=true`.
+
 * <a href="#operatorconfigurationresource.spec.instrumentWorkloads.instrumentationDelivery"><span id="operatorconfigurationresource.spec.instrumentWorkloads.instrumentationDelivery">**`spec.instrumentWorkloads.instrumentationDelivery`**</span></a>:
   Whether to use an image volume or an init container plus an emptyDir volume to provide instrumentation files to
   workloads when applying auto-instrumentation.

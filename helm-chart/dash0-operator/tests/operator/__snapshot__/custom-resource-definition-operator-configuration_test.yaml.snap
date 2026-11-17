@@ -3995,8 +3995,8 @@ custom resource definition for operator configuration should match snapshot:
                       properties:
                         ebpfProfiler:
                           description: |-
-                            Settings for the node-level eBPF profiler. Enabling it requires profiling and telemetry collection to be enabled,
-                            and the eBPF profiler to be enabled via Helm.
+                            Settings for the node-level eBPF profiler. Enabling it requires telemetry collection to be enabled, and the eBPF
+                            profiler to be enabled via Helm. It cannot be combined with `enabled: false`.
                           properties:
                             cpuSamplingFrequency:
                               default: 19
@@ -4114,7 +4114,7 @@ custom resource definition for operator configuration should match snapshot:
                         enabled:
                           description: |-
                             If enabled, the operator will set up the pipelines to receive, process and forward profiling data over OTLP.
-                            This setting is optional, it defaults to `false`.
+                            This setting is optional. If it is not set, profiling is enabled together with `ebpfProfiler.enabled`.
                           type: boolean
                       type: object
                     prometheusCrdSupport:

@@ -30,9 +30,22 @@ duplicated, that is, they would appear multiple times in Dash0.
 
 For that purpose, the filelog receiver stores the log file offsets in persistent storage.
 By default, the offsets are stored in a config map in the operator's namespace.
-For small clusters, this is usually sufficient, and it requires no additional configuration by users.
-For production clusters, larger staging clusters, or clusters with many short-lived pods, we recommend providing a
-persistent volume for storing offsets.
+This requires no additional configuration by users and is intended for small clusters, for example local development or
+test clusters.
+For production clusters, larger staging clusters, or clusters with many short-lived pods, we strongly recommend
+providing a persistent volume for storing offsets.
+
+> **Warning:** The default config map storage puts a significant write load on the Kubernetes API server and on etcd.
+> All collector pods share one config map, with one entry per node, and each collector pod updates its entry every few
+> seconds while log files are being written.
+> etcd stores a complete copy of the config map for every update and keeps these copies until the next compaction, so
+> the disk space used by etcd grows with the square of the number of nodes.
+> In larger clusters, this can exhaust the etcd storage quota.
+> etcd then rejects all writes, which makes the cluster unusable.
+> This risk is highest in clusters with a self-managed control plane (for example on-premises clusters), where etcd
+> often runs with the default storage quota of 2 GiB and without regular defragmentation.
+> Managed Kubernetes services usually provide more headroom, but the write load still applies.
+> Use a volume for filelog offsets in these clusters, as described below.
 
 Any persistent volume that is accessible from the collector pods can be used for this purpose.
 
@@ -356,8 +369,9 @@ operator:
 > statically — whenever you raise or lower its memory limit, adjust its `gomemlimit` as well (about 80% of the limit).
 > Note that `gomemlimit` uses different units than Kubernetes resource settings (`MiB`/`GiB` rather than `Mi`/`Gi`).
 
-Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or
-similar to take effect.
+Changing Helm settings while the operator is already running requires a
+`helm upgrade`/`helm upgrade --reset-then-reuse-values`, or a sync of the changed values in ArgoCD or Flux, to take
+effect.
 
 ## Controlling On Which Nodes the Operator's Collector Pods Are Scheduled
 
@@ -391,7 +405,7 @@ In the same fashion, tolerations can also be configured for the Dash0 operator m
 (Helm value `operator.targetAllocator.tolerations`) and the agent0-connector deployment (Helm value
 `operator.agent0Connector.tolerations`).
 
-Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or similar to take effect.
+Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reset-then-reuse-values`, or a sync of the changed values in ArgoCD or Flux, to take effect.
 
 ### Preventing Operator Scheduling on Specific Nodes
 
@@ -559,7 +573,7 @@ This setting is opt-in for two reasons:
 * The `net.ipv4.tcp_keepalive_*` sysctls are only considered _safe_ sysctls on Kubernetes 1.29 and later. On older clusters, or on clusters where the kubelet's `forbiddenSysctls` / a strict Pod Security Admission policy disallows them, the kubelet rejects these sysctls and the collector pods will fail to be scheduled.
 * It changes the collector pod spec, which triggers a rollout of the collector pods.
 
-Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or similar to take effect.
+Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reset-then-reuse-values`, or a sync of the changed values in ArgoCD or Flux, to take effect.
 
 ## Configuring SELinux Options for the Collector DaemonSet
 
@@ -577,8 +591,9 @@ operator:
       type: <selinux-type>
 ```
 
-Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or
-similar to take effect.
+Changing Helm settings while the operator is already running requires a
+`helm upgrade`/`helm upgrade --reset-then-reuse-values`, or a sync of the changed values in ArgoCD or Flux, to take
+effect.
 
 ## Disable Self-Monitoring
 

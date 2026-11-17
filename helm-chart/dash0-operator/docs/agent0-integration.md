@@ -258,7 +258,7 @@ The integration needs to be enabled via the Helm chart.
 ```console
 helm upgrade --install \
   --namespace dash0-system \
-  --reuse-values \
+  --reset-then-reuse-values \
   --set operator.agent0Connector.enabled=true \
   --set operator.agent0Connector.serverAddress=REPLACE THIS WITH THE OUTBOUND-CONNECTOR ENDPOINT, SEE BELOW \
   --set operator.agent0Connector.token=REPLACE THIS WITH YOUR DASH0 AUTH TOKEN \
