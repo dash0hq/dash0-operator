@@ -906,7 +906,7 @@ You can use the short names `dash0eval` and `dash0evals` with `kubectl`, e.g. `k
 Here is an example of an eval that scores how well an answer addresses the question:
 
 ```yaml
-apiVersion: operator.dash0.com/v1alpha1
+apiVersion: dash0.com/v1alpha1
 kind: Dash0GenerativeAiEvaluation
 metadata:
   name: answer-relevance
@@ -952,7 +952,10 @@ spec:
   (no `spec`) or `categorical` (a list of labels in `spec.options`, each with an optional `intent` of `positive`,
   `neutral` or `negative`).
   The output kind cannot change after the eval has been created: Kubernetes rejects such a change.
-  To use a different output kind, delete the resource and create it again.
+  To use a different output kind, create a new resource with a different name (and delete the old one, if it is no
+  longer needed).
+  Deleting the resource and creating it again with the same name does not work: Dash0 keeps the deleted eval under
+  the same identifier, and rejects the new output kind.
 * Do not put secrets into the prompts.
 
 If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the eval in

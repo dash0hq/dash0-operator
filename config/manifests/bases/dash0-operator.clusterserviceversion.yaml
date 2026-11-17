@@ -189,7 +189,7 @@ spec:
     - description: An eval, an LLM judge that scores a sample of the generative AI spans that match its filters.
       displayName: Dash0 Generative AI Evaluation
       kind: Dash0GenerativeAiEvaluation
-      name: dash0generativeaievaluations.operator.dash0.com
+      name: dash0generativeaievaluations.dash0.com
       specDescriptors:
       - description: Whether the eval judges spans.
         displayName: Enabled

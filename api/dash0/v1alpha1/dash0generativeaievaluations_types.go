@@ -15,7 +15,7 @@ import (
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:shortName=dash0eval;dash0evals
-// +groupName=operator.dash0.com
+// +groupName=dash0.com
 // +kubebuilder:subresource:status
 type Dash0GenerativeAiEvaluation struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -128,7 +128,7 @@ type Dash0GenerativeAiEvaluationJudge struct {
 
 // Dash0GenerativeAiEvaluationJudgeOutput defines the kind of result the judge produces.
 //
-// +kubebuilder:validation:XValidation:rule="self.kind == oldSelf.kind",message="kind cannot change after the eval has been created; delete the resource and create it again"
+// +kubebuilder:validation:XValidation:rule="self.kind == oldSelf.kind",message="kind cannot change after the eval has been created; to use a different kind, create a new resource with a different name"
 // +kubebuilder:validation:XValidation:rule="self.kind != 'boolean' || !has(self.spec)",message="spec must not be set when kind is 'boolean'"
 // +kubebuilder:validation:XValidation:rule="self.kind != 'numeric' || !has(self.spec) || !has(self.spec.options)",message="spec.options must not be set when kind is 'numeric'"
 // +kubebuilder:validation:XValidation:rule="self.kind != 'categorical' || (has(self.spec) && has(self.spec.options) && !has(self.spec.threshold))",message="spec.options must be set and spec.threshold must not be set when kind is 'categorical'"

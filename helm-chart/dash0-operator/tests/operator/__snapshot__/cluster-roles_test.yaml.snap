@@ -326,7 +326,7 @@ cluster roles should match snapshot:
           - patch
           - update
       - apiGroups:
-          - operator.dash0.com
+          - dash0.com
         resources:
           - dash0generativeaievaluations
         verbs:
@@ -334,7 +334,7 @@ cluster roles should match snapshot:
           - list
           - watch
       - apiGroups:
-          - operator.dash0.com
+          - dash0.com
         resources:
           - dash0generativeaievaluations/status
         verbs:
@@ -986,7 +986,7 @@ cluster roles should match snapshot with agent0-connector enabled:
           - patch
           - update
       - apiGroups:
-          - operator.dash0.com
+          - dash0.com
         resources:
           - dash0generativeaievaluations
         verbs:
@@ -994,7 +994,7 @@ cluster roles should match snapshot with agent0-connector enabled:
           - list
           - watch
       - apiGroups:
-          - operator.dash0.com
+          - dash0.com
         resources:
           - dash0generativeaievaluations/status
         verbs:
@@ -1514,6 +1514,7 @@ cluster roles should match snapshot with agent0-connector enabled:
       - apiGroups:
           - dash0.com
         resources:
+          - dash0generativeaievaluations
           - dash0teams
         verbs:
           - get
@@ -1521,7 +1522,6 @@ cluster roles should match snapshot with agent0-connector enabled:
       - apiGroups:
           - operator.dash0.com
         resources:
-          - dash0generativeaievaluations
           - dash0monitorings
           - dash0notificationchannels
           - dash0operatorconfigurations

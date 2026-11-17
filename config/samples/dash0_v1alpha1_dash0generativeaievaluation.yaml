@@ -1,4 +1,4 @@
-apiVersion: operator.dash0.com/v1alpha1
+apiVersion: dash0.com/v1alpha1
 kind: Dash0GenerativeAiEvaluation
 metadata:
   name: answer-relevance

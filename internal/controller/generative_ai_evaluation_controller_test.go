@@ -17,8 +17,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/yaml"
 
+	dash0dashv1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
@@ -110,7 +110,7 @@ var _ = Describe(
 
 				Eventually(
 					func(g Gomega) {
-						generativeAiEvaluation := &dash0v1alpha1.Dash0GenerativeAiEvaluation{}
+						generativeAiEvaluation := &dash0dashv1alpha1.Dash0GenerativeAiEvaluation{}
 						g.Expect(k8sClient.Get(
 							ctx,
 							types.NamespacedName{Namespace: TestNamespaceName, Name: generativeAiEvaluationName},
@@ -182,7 +182,7 @@ spec:
 			"the CRD schema", func() {
 				DescribeTable(
 					"validates the judge output",
-					func(output dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutput, expectedError string) {
+					func(output dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutput, expectedError string) {
 						resource := createGenerativeAiEvaluationResource(TestNamespaceName, generativeAiEvaluationName)
 						resource.Spec.Judge.Output = output
 						err := k8sClient.Create(ctx, resource)
@@ -194,20 +194,20 @@ spec:
 					},
 					Entry(
 						"accepts a numeric output without a threshold",
-						dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{Kind: "numeric"},
+						dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{Kind: "numeric"},
 						"",
 					),
 					Entry(
 						"accepts a boolean output",
-						dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{Kind: "boolean"},
+						dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{Kind: "boolean"},
 						"",
 					),
 					Entry(
 						"accepts a categorical output with options",
-						dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{
+						dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{
 							Kind: "categorical",
-							Spec: &dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutputSpec{
-								Options: []dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutputCategoricalOption{
+							Spec: &dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutputSpec{
+								Options: []dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutputCategoricalOption{
 									{Label: "relevant", Intent: ptr.To("positive")},
 									{Label: "unclear"},
 								},
@@ -217,23 +217,23 @@ spec:
 					),
 					Entry(
 						"rejects an unknown kind",
-						dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{Kind: "score"},
+						dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{Kind: "score"},
 						"spec.judge.output.kind: Unsupported value",
 					),
 					Entry(
 						"rejects a spec on a boolean output",
-						dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{
+						dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{
 							Kind: "boolean",
-							Spec: &dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutputSpec{Threshold: ptr.To(0.5)},
+							Spec: &dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutputSpec{Threshold: ptr.To(0.5)},
 						},
 						"spec must not be set when kind is 'boolean'",
 					),
 					Entry(
 						"rejects options on a numeric output",
-						dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{
+						dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{
 							Kind: "numeric",
-							Spec: &dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutputSpec{
-								Options: []dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutputCategoricalOption{
+							Spec: &dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutputSpec{
+								Options: []dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutputCategoricalOption{
 									{Label: "relevant"},
 								},
 							},
@@ -242,16 +242,16 @@ spec:
 					),
 					Entry(
 						"rejects a categorical output without options",
-						dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{Kind: "categorical"},
+						dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{Kind: "categorical"},
 						"spec.options must be set and spec.threshold must not be set when kind is 'categorical'",
 					),
 					Entry(
 						"rejects a threshold on a categorical output",
-						dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{
+						dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{
 							Kind: "categorical",
-							Spec: &dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutputSpec{
+							Spec: &dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutputSpec{
 								Threshold: ptr.To(0.5),
-								Options: []dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutputCategoricalOption{
+								Options: []dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutputCategoricalOption{
 									{Label: "relevant"},
 								},
 							},
@@ -260,10 +260,10 @@ spec:
 					),
 					Entry(
 						"rejects a duplicate label",
-						dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{
+						dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{
 							Kind: "categorical",
-							Spec: &dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutputSpec{
-								Options: []dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutputCategoricalOption{
+							Spec: &dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutputSpec{
+								Options: []dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutputCategoricalOption{
 									{Label: "relevant"},
 									{Label: "relevant", Intent: ptr.To("negative")},
 								},
@@ -273,9 +273,9 @@ spec:
 					),
 					Entry(
 						"rejects a threshold above 1",
-						dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{
+						dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{
 							Kind: "numeric",
-							Spec: &dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutputSpec{Threshold: ptr.To(1.5)},
+							Spec: &dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutputSpec{Threshold: ptr.To(1.5)},
 						},
 						"spec.judge.output.spec.threshold: Invalid value",
 					),
@@ -289,7 +289,7 @@ spec:
 					resource.Spec.Sample.Rate = 0.5
 					Expect(k8sClient.Update(ctx, resource)).To(Succeed())
 
-					resource.Spec.Judge.Output = dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{Kind: "boolean"}
+					resource.Spec.Judge.Output = dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{Kind: "boolean"}
 					Expect(k8sClient.Update(ctx, resource)).To(
 						MatchError(ContainSubstring("kind cannot change after the eval has been created")))
 				})
@@ -298,8 +298,8 @@ spec:
 	},
 )
 
-func createGenerativeAiEvaluationResource(namespace string, name string) *dash0v1alpha1.Dash0GenerativeAiEvaluation {
-	return &dash0v1alpha1.Dash0GenerativeAiEvaluation{
+func createGenerativeAiEvaluationResource(namespace string, name string) *dash0dashv1alpha1.Dash0GenerativeAiEvaluation {
+	return &dash0dashv1alpha1.Dash0GenerativeAiEvaluation{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "operator.dash0.com/v1alpha1",
 			Kind:       "Dash0GenerativeAiEvaluation",
@@ -308,26 +308,26 @@ func createGenerativeAiEvaluationResource(namespace string, name string) *dash0v
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: dash0v1alpha1.Dash0GenerativeAiEvaluationSpec{
+		Spec: dash0dashv1alpha1.Dash0GenerativeAiEvaluationSpec{
 			Enabled: true,
-			Display: dash0v1alpha1.Dash0GenerativeAiEvaluationDisplay{
+			Display: dash0dashv1alpha1.Dash0GenerativeAiEvaluationDisplay{
 				Name: "Answer relevance",
 			},
-			Match: dash0v1alpha1.Dash0GenerativeAiEvaluationMatch{
-				Filters: []dash0v1alpha1.Dash0GenerativeAiEvaluationAttributeFilter{
+			Match: dash0dashv1alpha1.Dash0GenerativeAiEvaluationMatch{
+				Filters: []dash0dashv1alpha1.Dash0GenerativeAiEvaluationAttributeFilter{
 					{Key: "gen_ai.operation.name", Operator: "is_set"},
 				},
 			},
-			Sample: dash0v1alpha1.Dash0GenerativeAiEvaluationSampling{
+			Sample: dash0dashv1alpha1.Dash0GenerativeAiEvaluationSampling{
 				Rate: 0.1,
 			},
-			Judge: dash0v1alpha1.Dash0GenerativeAiEvaluationJudge{
+			Judge: dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudge{
 				Model:        "light",
 				SystemPrompt: "You review the answers of an AI assistant.",
 				UserPrompt:   "Answer: {{ gen_ai.output.messages }}",
-				Output: dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{
+				Output: dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutput{
 					Kind: "numeric",
-					Spec: &dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutputSpec{Threshold: ptr.To(0.7)},
+					Spec: &dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutputSpec{Threshold: ptr.To(0.7)},
 				},
 			},
 		},
@@ -337,7 +337,7 @@ func createGenerativeAiEvaluationResource(namespace string, name string) *dash0v
 func deleteGenerativeAiEvaluationResourceIfItExists(ctx context.Context, namespace string, name string) {
 	err := k8sClient.Delete(
 		ctx,
-		&dash0v1alpha1.Dash0GenerativeAiEvaluation{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace}},
+		&dash0dashv1alpha1.Dash0GenerativeAiEvaluation{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace}},
 		&client.DeleteOptions{GracePeriodSeconds: new(int64)},
 	)
 	if err != nil && !apierrors.IsNotFound(err) {

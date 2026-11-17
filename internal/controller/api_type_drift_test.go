@@ -465,7 +465,7 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 	It("finds no unexpected drift between Dash0GenerativeAiEvaluation and the API client's generative AI evaluation type",
 		func() {
 			expectNoUnexpectedApiTypeDrift(
-				reflect.TypeFor[dash0v1alpha1.Dash0GenerativeAiEvaluationSpec](),
+				reflect.TypeFor[dash0dashv1alpha1.Dash0GenerativeAiEvaluationSpec](),
 				reflect.TypeFor[dash0apiclient.GenerativeAiEvaluationSpec](),
 				map[string]string{
 					"judge.output.kind": generativeAiEvaluationUnionReason,
@@ -478,7 +478,7 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 	DescribeTable("finds no unexpected drift between the judge output and the API client's judge output types",
 		func(clientType reflect.Type, allowedOnlyInCrd map[string]string) {
 			expectNoUnexpectedApiTypeDrift(
-				reflect.TypeFor[dash0v1alpha1.Dash0GenerativeAiEvaluationJudgeOutput](),
+				reflect.TypeFor[dash0dashv1alpha1.Dash0GenerativeAiEvaluationJudgeOutput](),
 				clientType,
 				allowedOnlyInCrd,
 				nil,

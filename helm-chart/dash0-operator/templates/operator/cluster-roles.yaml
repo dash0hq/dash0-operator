@@ -409,9 +409,10 @@ rules:
   - patch
   - update
 
-# Permissions required to watch Dash0 generative AI evaluation resources:
+# Permissions required to watch Dash0 generative AI evaluation resources. Like dash0teams, they live in the dash0.com
+# Kubernetes API group.
 - apiGroups:
-  - operator.dash0.com
+  - dash0.com
   resources:
   - dash0generativeaievaluations
   verbs:
@@ -421,7 +422,7 @@ rules:
 
 # Permissions required to write to Dash0 generative AI evaluation resource status:
 - apiGroups:
-  - operator.dash0.com
+  - dash0.com
   resources:
   - dash0generativeaievaluations/status
   verbs:

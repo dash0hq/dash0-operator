@@ -25,8 +25,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	dash0dashv1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -69,7 +69,7 @@ func NewGenerativeAiEvaluationReconciler(
 
 func (r *GenerativeAiEvaluationReconciler) SetupWithManager(mgr manager.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&dash0v1alpha1.Dash0GenerativeAiEvaluation{}).
+		For(&dash0dashv1alpha1.Dash0GenerativeAiEvaluation{}).
 		// ignore changes in the status subresource, but react on changes to spec, labels and dash0.com/ annotations
 		WithEventFilter(generationLabelOrDash0AnnotationChangePredicate).
 		Complete(r)
@@ -210,7 +210,7 @@ func (r *GenerativeAiEvaluationReconciler) maybeDoInitialSynchronizationOfAllRes
 	go func() {
 		defer r.initialSyncInProgress.Store(false)
 
-		allResources := dash0v1alpha1.Dash0GenerativeAiEvaluationList{}
+		allResources := dash0dashv1alpha1.Dash0GenerativeAiEvaluationList{}
 		if err := r.List(
 			ctx,
 			&allResources,
@@ -261,7 +261,7 @@ func (r *GenerativeAiEvaluationReconciler) synchronizeNamespacedResources(
 	go func() {
 		defer r.namespacedSyncMutex.Unlock(namespace)
 
-		allResources := dash0v1alpha1.Dash0GenerativeAiEvaluationList{}
+		allResources := dash0dashv1alpha1.Dash0GenerativeAiEvaluationList{}
 		if err := r.List(
 			ctx,
 			&allResources,
@@ -303,12 +303,12 @@ func (r *GenerativeAiEvaluationReconciler) Reconcile(ctx context.Context, req re
 	logger.Info("processing reconcile request for a generative AI evaluation resource", "name", qualifiedName)
 
 	action := upsertAction
-	generativeAiEvaluationResource := &dash0v1alpha1.Dash0GenerativeAiEvaluation{}
+	generativeAiEvaluationResource := &dash0dashv1alpha1.Dash0GenerativeAiEvaluation{}
 	if err := r.Get(ctx, req.NamespacedName, generativeAiEvaluationResource); err != nil {
 		if apierrors.IsNotFound(err) {
 			action = deleteAction
 			logger.Info("reconciling the deletion of the generative AI evaluation resource", "name", qualifiedName)
-			generativeAiEvaluationResource = &dash0v1alpha1.Dash0GenerativeAiEvaluation{
+			generativeAiEvaluationResource = &dash0dashv1alpha1.Dash0GenerativeAiEvaluation{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: req.Namespace,
 					Name:      req.Name,
@@ -465,7 +465,7 @@ func (r *GenerativeAiEvaluationReconciler) WriteSynchronizationResultToSynchroni
 	syncResults synchronizationResults,
 	logger logd.Logger,
 ) {
-	generativeAiEvaluation := synchronizedResource.(*dash0v1alpha1.Dash0GenerativeAiEvaluation)
+	generativeAiEvaluation := synchronizedResource.(*dash0dashv1alpha1.Dash0GenerativeAiEvaluation)
 
 	// common result
 	generativeAiEvaluation.Status.SynchronizationStatus = syncResults.resourceSyncStatus()
@@ -474,7 +474,7 @@ func (r *GenerativeAiEvaluationReconciler) WriteSynchronizationResultToSynchroni
 
 	// result(s) per apiConfig
 	generativeAiEvaluationSyncResults :=
-		make([]dash0v1alpha1.Dash0GenerativeAiEvaluationSynchronizationResultPerEndpointAndDataset, 0,
+		make([]dash0dashv1alpha1.Dash0GenerativeAiEvaluationSynchronizationResultPerEndpointAndDataset, 0,
 			len(syncResults.resultsPerApiConfig))
 	for _, res := range syncResults.resultsPerApiConfig {
 		synchronizationStatus := dash0common.Dash0ApiResourceSynchronizationStatusFailed
@@ -485,7 +485,7 @@ func (r *GenerativeAiEvaluationReconciler) WriteSynchronizationResultToSynchroni
 			synchronizationStatus = dash0common.Dash0ApiResourceSynchronizationStatusSuccessful
 		}
 		syncResultPerEndpointAndDataset :=
-			dash0v1alpha1.Dash0GenerativeAiEvaluationSynchronizationResultPerEndpointAndDataset{
+			dash0dashv1alpha1.Dash0GenerativeAiEvaluationSynchronizationResultPerEndpointAndDataset{
 				SynchronizationStatus: synchronizationStatus,
 				Dash0ApiEndpoint:      res.apiConfig.Endpoint,
 				Dash0Dataset:          res.apiConfig.Dataset,
@@ -514,7 +514,7 @@ func (r *GenerativeAiEvaluationReconciler) WriteSynchronizationResultToSynchroni
 func (r *GenerativeAiEvaluationReconciler) CreateReconcileRequestsForRetryableSyncErrors(
 	ctx context.Context,
 ) ([]reconcile.Request, error) {
-	allResources := &dash0v1alpha1.Dash0GenerativeAiEvaluationList{}
+	allResources := &dash0dashv1alpha1.Dash0GenerativeAiEvaluationList{}
 	if err := r.List(ctx, allResources); err != nil {
 		return nil, err
 	}

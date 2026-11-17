@@ -6,6 +6,41 @@ metadata:
       [
         {
           "apiVersion": "dash0.com/v1alpha1",
+          "kind": "Dash0GenerativeAiEvaluation",
+          "metadata": {
+            "name": "answer-relevance"
+          },
+          "spec": {
+            "display": {
+              "name": "Answer relevance"
+            },
+            "enabled": true,
+            "judge": {
+              "model": "light",
+              "output": {
+                "kind": "numeric",
+                "spec": {
+                  "threshold": 0.7
+                }
+              },
+              "systemPrompt": "You review the answers of an AI assistant.",
+              "userPrompt": "Score from 0 to 1 how well the answer addresses the question.\nQuestion: {{ gen_ai.input.messages }}\nAnswer: {{ gen_ai.output.messages }}\n"
+            },
+            "match": {
+              "filters": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "operator": "is_set"
+                }
+              ]
+            },
+            "sample": {
+              "rate": 0.1
+            }
+          }
+        },
+        {
+          "apiVersion": "dash0.com/v1alpha1",
           "kind": "Dash0Team",
           "metadata": {
             "name": "backend-team"
@@ -75,41 +110,6 @@ metadata:
                 "isRolling": true
               }
             ]
-          }
-        },
-        {
-          "apiVersion": "operator.dash0.com/v1alpha1",
-          "kind": "Dash0GenerativeAiEvaluation",
-          "metadata": {
-            "name": "answer-relevance"
-          },
-          "spec": {
-            "display": {
-              "name": "Answer relevance"
-            },
-            "enabled": true,
-            "judge": {
-              "model": "light",
-              "output": {
-                "kind": "numeric",
-                "spec": {
-                  "threshold": 0.7
-                }
-              },
-              "systemPrompt": "You review the answers of an AI assistant.",
-              "userPrompt": "Score from 0 to 1 how well the answer addresses the question.\nQuestion: {{ gen_ai.input.messages }}\nAnswer: {{ gen_ai.output.messages }}\n"
-            },
-            "match": {
-              "filters": [
-                {
-                  "key": "gen_ai.operation.name",
-                  "operator": "is_set"
-                }
-              ]
-            },
-            "sample": {
-              "rate": 0.1
-            }
           }
         },
         {
@@ -409,7 +409,7 @@ spec:
         spans that match its filters.
       displayName: Dash0 Generative AI Evaluation
       kind: Dash0GenerativeAiEvaluation
-      name: dash0generativeaievaluations.operator.dash0.com
+      name: dash0generativeaievaluations.dash0.com
       specDescriptors:
       - description: Whether the eval judges spans.
         displayName: Enabled
@@ -952,7 +952,7 @@ spec:
           - patch
           - update
         - apiGroups:
-          - operator.dash0.com
+          - dash0.com
           resources:
           - dash0generativeaievaluations
           verbs:
@@ -960,7 +960,7 @@ spec:
           - list
           - watch
         - apiGroups:
-          - operator.dash0.com
+          - dash0.com
           resources:
           - dash0generativeaievaluations/status
           verbs:
@@ -1438,6 +1438,7 @@ spec:
         - apiGroups:
           - dash0.com
           resources:
+          - dash0generativeaievaluations
           - dash0teams
           verbs:
           - get
@@ -1445,7 +1446,6 @@ spec:
         - apiGroups:
           - operator.dash0.com
           resources:
-          - dash0generativeaievaluations
           - dash0monitorings
           - dash0notificationchannels
           - dash0operatorconfigurations

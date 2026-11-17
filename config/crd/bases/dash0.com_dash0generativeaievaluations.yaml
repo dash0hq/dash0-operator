@@ -1,12 +1,12 @@
+---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  creationTimestamp: null
-  name: dash0generativeaievaluations.operator.dash0.com
+  name: dash0generativeaievaluations.dash0.com
 spec:
-  group: operator.dash0.com
+  group: dash0.com
   names:
     kind: Dash0GenerativeAiEvaluation
     listKind: Dash0GenerativeAiEvaluationList
@@ -137,7 +137,8 @@ spec:
                     type: object
                     x-kubernetes-validations:
                     - message: kind cannot change after the eval has been created;
-                        delete the resource and create it again
+                        to use a different kind, create a new resource with a different
+                        name
                       rule: self.kind == oldSelf.kind
                     - message: spec must not be set when kind is 'boolean'
                       rule: self.kind != 'boolean' || !has(self.spec)
@@ -306,9 +307,3 @@ spec:
     storage: true
     subresources:
       status: {}
-status:
-  acceptedNames:
-    kind: ""
-    plural: ""
-  conditions: null
-  storedVersions: null
