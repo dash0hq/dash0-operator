@@ -33,8 +33,8 @@ Metrics and log collection are independent of the runtime of workloads.
 ### Prerequisites
 
 * [Kubernetes](https://kubernetes.io/) 1.25.16 or later.
-* [Helm](https://helm.sh) >= 3.x, please refer to [Helm's documentation](https://helm.sh/docs/) for more information on
-  installing Helm.
+* [Helm](https://helm.sh) 3.14 or later, please refer to [Helm's documentation](https://helm.sh/docs/) for more information
+  on installing Helm.
 
 You will need:
 * **`endpoint`**: The OTLP/gRPC endpoint of your Dash0 organization (from
