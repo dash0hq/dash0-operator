@@ -996,7 +996,7 @@ spec:
 					routeRegex := "/api/generative-ai-evaluations/dash0-operator_.*_default_e2e-test-ns_generative-ai-evaluation-e2e-test\\?dataset=default"
 
 					By("verifying the generative AI evaluation has been synchronized to the Dash0 API via PUT")
-					req := fetchCapturedApiRequest(0)
+					req := fetchCapturedApiRequest(routeRegex, 0)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
@@ -1006,14 +1006,14 @@ spec:
 					setOptOutLabelInGenerativeAiEvaluation(applicationUnderTestNamespace, "false")
 					//nolint:lll
 					By("verifying the generative AI evaluation has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
-					req = fetchCapturedApiRequest(1)
+					req = fetchCapturedApiRequest(routeRegex, 1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
 					setOptOutLabelInGenerativeAiEvaluation(applicationUnderTestNamespace, "true")
 					//nolint:lll
 					By("verifying the generative AI evaluation has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					req = fetchCapturedApiRequest(2)
+					req = fetchCapturedApiRequest(routeRegex, 2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("Was the answer polite?"))
@@ -1022,7 +1022,7 @@ spec:
 					removeGenerativeAiEvaluationResource(applicationUnderTestNamespace)
 					//nolint:lll
 					By("verifying the generative AI evaluation has been deleted via the Dash0 API (after removing the resource)")
-					req = fetchCapturedApiRequest(3)
+					req = fetchCapturedApiRequest(routeRegex, 3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
