@@ -49,8 +49,9 @@ const ErrorMessageEbpfProfilerDisabledViaHelm = "The eBPF profiler has been disa
 	"(operator.ebpfProfilerEnabled: false). Set operator.ebpfProfilerEnabled: true via Helm before enabling " +
 	"spec.profiling.ebpfProfiler.enabled."
 
-const ErrorMessageEbpfProfilerRequiresProfiling = "The eBPF profiler requires spec.profiling.enabled=true. " +
-	"Enable profiling or set spec.profiling.ebpfProfiler.enabled=false."
+const ErrorMessageEbpfProfilerRequiresProfiling = "The eBPF profiler cannot be combined with " +
+	"spec.profiling.enabled=false. Set spec.profiling.enabled to true, remove it, or set " +
+	"spec.profiling.ebpfProfiler.enabled=false."
 
 const ErrorMessageEbpfProfilerRequiresTelemetry = "The eBPF profiler requires telemetry collection to be enabled " +
 	"both via Helm and spec.telemetryCollection.enabled. Enable telemetry collection or set " +
@@ -371,7 +372,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) validateEbpfProfiler(
 		}
 		return admission.Response{}, false
 	}
-	if !pointers.ReadBoolPointerWithDefault(spec.Profiling.Enabled, false) {
+	if !pointers.ReadBoolPointerWithDefault(spec.Profiling.Enabled, true) {
 		logger.Warn(ErrorMessageEbpfProfilerRequiresProfiling)
 		return admission.Denied(ErrorMessageEbpfProfilerRequiresProfiling), true
 	}

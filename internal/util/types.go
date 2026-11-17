@@ -73,13 +73,11 @@ var AllInstrumentationEvents = []Reason{
 type CollectorConfig struct {
 	Images            Images
 	OperatorNamespace string
-	// OTelCollectorNamePrefix is used as a prefix for OTel collector Kubernetes resources created by the operator, set
-	// to value of the environment variable OTEL_COLLECTOR_NAME_PREFIX, which is set to the Helm release name by the
-	// operator Helm chart.
-	OTelCollectorNamePrefix string
-	// The collector needs to know about the target-allocator name prefix, so it can build the service name needed for the
-	// config of the prometheus_receiver
-	TargetAllocatorNamePrefix              string
+	// NamePrefix is used as a prefix for all Kubernetes resources created by the operator (the collectors, the
+	// target-allocator, the eBPF profiler, the agent0-connector and the synthetics workers), set to the value of
+	// the environment variable DASH0_MANAGED_RESOURCE_NAME_PREFIX, which the operator Helm chart sets to
+	// operator.managedResourceNamePrefix, or to the Helm release name if that is not set.
+	NamePrefix                             string
 	Agent0ConnectorEnabledViaHelm          bool
 	SyntheticsWorkerEnabledViaHelm         bool
 	EbpfProfilerEnabledViaHelm             bool
@@ -142,10 +140,11 @@ type KubeletStatsReceiverConfig struct {
 type TargetAllocatorConfig struct {
 	Images            Images
 	OperatorNamespace string
-	// TargetAllocatorNamePrefix is used as a prefix for OTel target-allocator Kubernetes resources created by the operator, set
-	// to value of the environment variable OTEL_TARGET_ALLOCATOR_NAME_PREFIX, which is set to the Helm release name by the
-	// operator Helm chart.
-	TargetAllocatorNamePrefix string
+	// NamePrefix is used as a prefix for all Kubernetes resources created by the operator, including the OTel
+	// target-allocator resources, set to the value of the environment variable DASH0_MANAGED_RESOURCE_NAME_PREFIX,
+	// which the operator Helm chart sets to operator.managedResourceNamePrefix, or to the Helm release name if that is
+	// not set.
+	NamePrefix string
 	// CollectorComponent is used as a label matcher, so scrape targets are only assigned to Dash0 daemonset collectors.
 	CollectorComponent string
 	IsGkeAutopilot     bool
@@ -156,8 +155,9 @@ type TargetAllocatorConfig struct {
 type Agent0ConnectorConfig struct {
 	Images            Images
 	OperatorNamespace string
-	// NamePrefix is used as a prefix for the agent0-connector Kubernetes resources created by the operator. It is the
-	// same prefix that is used for the collector workloads and the target-allocator, that is, the Helm release name.
+	// NamePrefix is used as a prefix for the agent0-connector Kubernetes resources created by the operator, set to the
+	// value of the environment variable DASH0_MANAGED_RESOURCE_NAME_PREFIX, which the operator Helm chart sets to
+	// operator.managedResourceNamePrefix, or to the Helm release name if that is not set.
 	NamePrefix string
 	// PseudoClusterUid is the UID of the kube-system namespace (equal to the k8s.cluster.uid resource attribute). The
 	// agent0-connector workload uses it as its client ID when connecting to the Dash0 backend.
@@ -188,8 +188,9 @@ type Agent0ConnectorConfig struct {
 type SyntheticsWorkerConfig struct {
 	Images            Images
 	OperatorNamespace string
-	// NamePrefix is used as a prefix for the synthetics-worker Kubernetes resources created by the operator. It is the
-	// same prefix that is used for the collector workloads and the target-allocator, that is, the Helm release name.
+	// NamePrefix is used as a prefix for the synthetics-worker Kubernetes resources created by the operator, set to the
+	// value of the environment variable DASH0_MANAGED_RESOURCE_NAME_PREFIX, which the operator Helm chart sets to
+	// operator.managedResourceNamePrefix, or to the Helm release name if that is not set.
 	NamePrefix string
 	// ServerAddress is the address of the Dash0 backend service the synthetics-worker workload connects to. It is set
 	// from the Helm value operator.syntheticsWorker.serverAddress and passed to the workload via the
@@ -343,14 +344,15 @@ func (c *ClusterInstrumentationConfig) SetKubernetesVersions(
 // mechanism changes later. It gives up waiting after the given timeout and then returns the mechanism that is effective
 // at that point.
 //
-// If the requested delivery is not "auto", the method will not wait.
+// If the requested delivery is neither "auto" nor empty, the method will not wait.
 func (c *ClusterInstrumentationConfig) WaitForInstrumentationDeliveryAutoToBeResolved(
 	ctx context.Context,
 	timeout time.Duration,
 ) cluster.ResolvedInstrumentationDelivery {
 	requestedInstrumentationDelivery := c.requestedInstrumentationDelivery.Load()
 	if requestedInstrumentationDelivery != nil &&
-		*requestedInstrumentationDelivery == dash0v1alpha1.InstrumentationDeliveryAuto {
+		cluster.RequestedInstrumentationDeliveryOrDefault(*requestedInstrumentationDelivery) ==
+			dash0v1alpha1.InstrumentationDeliveryAuto {
 		c.minimumKubeletVersionDetector.WaitForDetection(ctx, timeout)
 	}
 	return c.ResolveInstrumentationDelivery()
@@ -361,12 +363,11 @@ func (c *ClusterInstrumentationConfig) WaitForInstrumentationDeliveryAutoToBeRes
 // effective before the update and the new resolved mechanism that is effective now, after updating it.
 func (c *ClusterInstrumentationConfig) UpdateRequestedInstrumentationDelivery(
 	requestedInstrumentationDelivery dash0v1alpha1.InstrumentationDelivery,
-	logWarningForEmptyValue bool,
 	logger logd.Logger,
 ) (cluster.ResolvedInstrumentationDelivery, cluster.ResolvedInstrumentationDelivery) {
 	previous := c.ResolveInstrumentationDelivery()
 	c.requestedInstrumentationDelivery.Store(&requestedInstrumentationDelivery)
-	return previous, c.resolveInstrumentationDelivery(logWarningForEmptyValue, logger)
+	return previous, c.resolveInstrumentationDelivery(logger)
 }
 
 // UpdateInstrumentationInitContainerResources stores the init container resources from spec.components, nil if they are
@@ -398,11 +399,10 @@ func (c *ClusterInstrumentationConfig) InstrumentationInitContainerResources() c
 // has started. The mode "auto" resolves to init-container until all nodes have been inspected, and potentially to
 // image-volumes afterwards (if all kubelets are recent enough).
 func (c *ClusterInstrumentationConfig) ResolveInstrumentationDelivery() cluster.ResolvedInstrumentationDelivery {
-	return c.resolveInstrumentationDelivery(false, logd.Discard())
+	return c.resolveInstrumentationDelivery(logd.Discard())
 }
 
 func (c *ClusterInstrumentationConfig) resolveInstrumentationDelivery(
-	logWarningForEmptyValue bool,
 	logger logd.Logger,
 ) cluster.ResolvedInstrumentationDelivery {
 	requestedInstrumentationDelivery := c.requestedInstrumentationDelivery.Load()
@@ -413,7 +413,6 @@ func (c *ClusterInstrumentationConfig) resolveInstrumentationDelivery(
 		*requestedInstrumentationDelivery,
 		c.kubernetesApiServerVersion,
 		c.minimumKubeletVersionDetector.Get(),
-		logWarningForEmptyValue,
 		logger,
 	)
 }

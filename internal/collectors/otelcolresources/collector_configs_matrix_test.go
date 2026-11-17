@@ -109,7 +109,6 @@ func maximalMatrixBaseline() collectorConfigMatrixEntry {
 			K8sAttributesWaitForMetadataTimeout:              "10s",
 			K8sAttributesShareProcessor:                      true,
 			PrometheusCrdSupportEnabled:                      true,
-			TargetAllocatorNamePrefix:                        namePrefix,
 			Agent0ConnectorEnabled:                           true,
 			Agent0ConnectorDeploymentName:                    "dash0-operator-agent0-connector",
 			SyntheticsWorkerDeploymentNames:                  []string{"dash0-operator-synthetics-worker-location-a"},
@@ -316,18 +315,12 @@ func matrixSettings() []matrixSetting {
 			name: "prometheus-crd-support",
 			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
 				e.config.PrometheusCrdSupportEnabled = enabled
-				if enabled {
-					e.config.TargetAllocatorNamePrefix = namePrefix
-				} else {
-					e.config.TargetAllocatorNamePrefix = ""
-				}
 			},
 		},
 		{
 			name: "target-allocator-mtls",
 			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
 				e.config.PrometheusCrdSupportEnabled = true
-				e.config.TargetAllocatorNamePrefix = namePrefix
 				e.targetAllocatorMtlsConfig = TargetAllocatorMtlsConfig{Enabled: enabled}
 				if enabled {
 					e.targetAllocatorMtlsConfig.ClientCertSecretName = "target-allocator-client-certs"

@@ -59,6 +59,11 @@ type AutoOperatorConfigurationResourceHandler struct {
 	hasBecomeLeaderChan         chan struct{}
 	operatorConfigurationValues OperatorConfigurationValues
 	extraConfigValues           atomic.Pointer[operatorConfigurationExtraConfigValues]
+
+	// firstCreateOrUpdateHasStarted and firstCreateOrUpdateDoneChan track the first call of
+	// CreateOrUpdateOperatorConfigurationResource, see WaitForFirstCreateOrUpdate.
+	firstCreateOrUpdateHasStarted atomic.Bool
+	firstCreateOrUpdateDoneChan   chan struct{}
 }
 
 // operatorConfigurationExtraConfigValues are the parts of the extra config map that end up in the automatically created
@@ -88,6 +93,7 @@ func NewAutoOperatorConfigurationResourceHandler(
 		readyCheckExecuter:          readyCheckExecuter,
 		hasBecomeLeaderChan:         make(chan struct{}),
 		operatorConfigurationValues: operatorConfigurationValues,
+		firstCreateOrUpdateDoneChan: make(chan struct{}),
 	}
 	r.extraConfigValues.Store(newOperatorConfigurationExtraConfigValues(extraConfig))
 	return r
@@ -175,28 +181,21 @@ func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigu
 	ctx context.Context,
 	logger logd.Logger,
 ) (*dash0v1alpha1.Dash0OperatorConfiguration, error) {
-	logger.Info("running validations and checks for creating/updating the Dash0 operator configuration resource")
-	exports := r.loadExports()
-	if err := r.validateOperatorConfiguration(exports); err != nil {
-		return nil, err
+	isFirstCreateOrUpdate := r.firstCreateOrUpdateHasStarted.CompareAndSwap(false, true)
+	markAsDone := func() {
+		if isFirstCreateOrUpdate {
+			close(r.firstCreateOrUpdateDoneChan)
+		}
 	}
-	extraConfigValues := r.extraConfigValues.Load()
-	monitoringTemplate, err := parseMonitoringTemplate(extraConfigValues)
+
+	operatorConfigurationResource, err := r.validateAndConvertToResource(logger)
 	if err != nil {
-		return nil, err
-	}
-	filter, err := parseFilter(extraConfigValues)
-	if err != nil {
-		return nil, err
-	}
-	transform, err := parseTransform(extraConfigValues)
-	if err != nil {
+		markAsDone()
 		return nil, err
 	}
 
-	operatorConfigurationResource :=
-		convertValuesToResource(r.operatorConfigurationValues, monitoringTemplate, exports, filter, transform)
 	go func() {
+		defer markAsDone()
 		// If multiple replicas are active, only the leader should attempt to create or update the operator
 		// configuration resource.
 		logger.Info(
@@ -248,6 +247,52 @@ func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigu
 	return operatorConfigurationResource, nil
 }
 
+func (r *AutoOperatorConfigurationResourceHandler) validateAndConvertToResource(
+	logger logd.Logger,
+) (*dash0v1alpha1.Dash0OperatorConfiguration, error) {
+	logger.Info("running validations and checks for creating/updating the Dash0 operator configuration resource")
+	exports := r.loadExports()
+	if err := r.validateOperatorConfiguration(exports); err != nil {
+		return nil, err
+	}
+	extraConfigValues := r.extraConfigValues.Load()
+	monitoringTemplate, err := parseMonitoringTemplate(extraConfigValues)
+	if err != nil {
+		return nil, err
+	}
+	filter, err := parseFilter(extraConfigValues)
+	if err != nil {
+		return nil, err
+	}
+	transform, err := parseTransform(extraConfigValues)
+	if err != nil {
+		return nil, err
+	}
+	return convertValuesToResource(r.operatorConfigurationValues, monitoringTemplate, exports, filter, transform), nil
+}
+
+// WaitForFirstCreateOrUpdate blocks until the first call of CreateOrUpdateOperatorConfigurationResource has finished,
+// that is, until it has created or updated the operator configuration resource, or until it has given up because of an
+// error. It returns false if the given timeout expires or the context is cancelled before that.
+//
+// Operator manager startup tasks that read the operator configuration resource can use this to avoid acting on the
+// resource from before a Helm upgrade, which is only replaced once this replica has become leader.
+func (r *AutoOperatorConfigurationResourceHandler) WaitForFirstCreateOrUpdate(
+	ctx context.Context,
+	timeout time.Duration,
+) bool {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-r.firstCreateOrUpdateDoneChan:
+		return true
+	case <-timer.C:
+		return false
+	case <-ctx.Done():
+		return false
+	}
+}
+
 func (r *AutoOperatorConfigurationResourceHandler) loadExports() []dash0common.Export {
 	extraConfigValues := r.extraConfigValues.Load()
 	if extraConfigValues == nil {
@@ -279,6 +324,15 @@ func (r *AutoOperatorConfigurationResourceHandler) validateOperatorConfiguration
 					"--operator-configuration-token nor --operator-configuration-secret-ref-key have been provided",
 			)
 		}
+	}
+	if r.operatorConfigurationValues.TelemetryCollectionEnabled &&
+		r.operatorConfigurationValues.EbpfProfilerEnabled &&
+		!r.operatorConfigurationValues.ProfilingEnabled {
+		return fmt.Errorf(
+			"invalid operator configuration: --operator-configuration-ebpf-profiler-enabled (Helm value " +
+				"operator.ebpfProfilerEnabled) cannot be combined with --operator-configuration-profiling-enabled=false " +
+				"(Helm value operator.profilingEnabled); set it to true or leave it unset",
+		)
 	}
 	for i, export := range exports {
 		if err := validateExportFromHelm(i, export); err != nil {
@@ -520,7 +574,7 @@ func convertValuesToResource(
 		Transform:          transform,
 		MonitoringTemplate: monitoringTemplate,
 		Profiling: &dash0v1alpha1.Profiling{
-			Enabled: new(operatorConfigurationValues.ProfilingEnabled || operatorConfigurationValues.EbpfProfilerEnabled),
+			Enabled: new(operatorConfigurationValues.ProfilingEnabled),
 		},
 		TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 			Enabled: new(operatorConfigurationValues.TelemetryCollectionEnabled),

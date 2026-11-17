@@ -132,6 +132,29 @@ operator:
   #               key: token
   exports: []
 
+  # The name prefix for the Kubernetes resources the operator creates and manages: the OpenTelemetry collectors, the
+  # target allocator, the eBPF profiler, the agent0-connector and the synthetics workers. For example
+  # <prefix>-opentelemetry-collector-service. Defaults to the Helm release name.
+  #
+  # Set this if the Helm release name is too long (for example when the chart is deployed with Argo CD, which uses the
+  # name of the Argo CD application as the release name). Kubernetes limits service names to 63 characters, so the
+  # prefix (this value, or the release name if this value is not set) plus the longest service name suffix must not be
+  # longer than that.
+  # The chart limits the resource prefix to the following values, depending on the features that are enabled:
+  # - 24 characters if operator.prometheusCrdSupportEnabled is true (the target allocator service),
+  # - 30 characters if operator.signalControl.enabled is true (the Signal Control collector service),
+  # - 31 characters otherwise (the OpenTelemetry collector service).
+  #
+  # Rendering the chart fails if the prefix is too long for the enabled features. If you enable Prometheus CRD support
+  # via a Dash0OperatorConfiguration resource that is not managed by this chart, make sure the prefix is not longer
+  # than 24 characters.
+  #
+  # Set this value when installing the operator. Do not change the managedResourceNamePrefix value for an existing
+  # installation: the operator will not remove the resources it has created with the previous prefix, so the collectors
+  # with the old names would keep running next to the new ones. To change the prefix of an existing installation,
+  # uninstall and reinstall the operator.
+  managedResourceNamePrefix: ""
+
   # An opt-out for operator self-monitoring. If set to false, self monitoring for the operator will be disabled, that
   # is, the operator will not send self-monitoring telemetry to the configured Dash0 backend. This setting is optional,
   # it defaults to true.
@@ -214,16 +237,17 @@ operator:
   prometheusCrdSupportEnabled: false
 
   # An opt-in for enabling profiling data pipelines. If set to true, the operator will configure its OpenTelemetry
-  # collectors to accept, process and export profiling data over OTLP.
+  # collectors to accept, process and export profiling data over OTLP. If this is not set, the profiling pipelines are
+  # enabled together with operator.ebpfProfilerEnabled, and disabled otherwise.
   #
   # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
   # resource will be created by the Helm chart then.
   # This setting has no effect if operator.telemetryCollectionEnabled is set to false, profiling pipelines will be
   # disabled implicitly.
-  profilingEnabled: false
+  profilingEnabled:
 
-  # Deploy a privileged node-local eBPF profiler. Requires telemetryCollectionEnabled=true.
-  # Also enables profiling pipelines in the Helm-managed operator configuration.
+  # Deploy a privileged node-local eBPF profiler. Requires telemetryCollectionEnabled=true. Also enables the profiling
+  # pipelines, unless operator.profilingEnabled is set to false, which is rejected.
   # The namespace's Pod Security Admission policy must allow privileged pods; the chart never changes namespace labels.
   # See docs/profiling.md for agent release compatibility, security requirements and workload customization.
   ebpfProfilerEnabled: false
@@ -596,7 +620,7 @@ operator:
     repository: "ghcr.io/dash0hq/signal-control-collector"
     # The Signal Control collector is versioned independently of the operator, so this tag is pinned to that component
     # version; it does not track the chart appVersion.
-    tag: "1.6.0"
+    tag: "1.6.1"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -607,7 +631,7 @@ operator:
     repository: "ghcr.io/dash0hq/edge-proxy"
     # The Edge Proxy is versioned independently of the operator, so this tag is pinned to that component version; it
     # does not track the chart appVersion.
-    tag: "1.6.0"
+    tag: "1.6.1"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -627,7 +651,7 @@ operator:
   ebpfProfilerImage:
     repository: "ghcr.io/parca-dev/parca-agent"
     # Never defaults to the operator appVersion.
-    tag: "v0.51.2"
+    tag: "v0.51.5"
     # Pull by digest instead of tag; takes precedence over tag.
     digest:
     pullPolicy:
@@ -686,14 +710,13 @@ operator:
     #
     # Allowed values:
     # - "auto": use image volumes if the Kubernetes version is 1.36 or later, otherwise use the init container
-    #   approach.
+    #   approach. This is the default.
     # - "image-volume": always use image volumes, also on Kubernetes versions older than 1.36. If the Kubernetes
     #   version is older than 1.31, the operator manager will log a warning and fall back to the init container
     #   approach, since image volumes are not supported in that version. Note that if you are using
     #   Kubernetes 1.34 or earlier, and you want to use this setting, you need to enable image volumes when configuring
     #   your cluster, since image volumes are disabled by default in versions older than 1.35.
     # - "init-container": always use the init container approach, regardless of the Kubernetes version.
-    #   This is the default.
     #
     # Note: Changing the instrumentation delivery setting for an existing operator installation will not trigger a
     # bulk re-instrumentation of all existing workloads, even for namespaces that are set to
@@ -703,13 +726,13 @@ operator:
     #
     # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
     # resource will be created by the Helm chart then.
-    delivery: init-container
+    delivery: auto
 
-    # If set to true, it enables Python auto-instrumentation (beta).
-    enablePythonAutoInstrumentation: false
+    # Python auto-instrumentation is enabled by default. Set this to false to disable it.
+    enablePythonAutoInstrumentation: true
 
-    # If set to true, it enables Ruby auto-instrumentation (beta).
-    enableRubyAutoInstrumentation: false
+    # Ruby auto-instrumentation is enabled by default. Set this to false to disable it.
+    enableRubyAutoInstrumentation: true
 
     # An optional delay to stagger access to the Kubernetes API server to instrument existing workloads at operator
     # startup or when enabling instrumentation for a new namespace via the Dash0Monitoring resource. This delay will be
@@ -790,10 +813,14 @@ operator:
     # resources contain a lot of filters or transforms, this limit might be smaller.
     compressConfigMaps: false
 
-    # A reference to a persistent volume to use for the filelog offset sync. Specify this is you have a cluster
-    # with more than pods 100 pods active at the same time. By default, the filelog offset sync will use a config map
-    # for its peristent storage, but ConfigMaps are limited to 1 MB in size. If you have around 100 pods running in
-    # your cluster, the recommendation is to provide volume.
+    # A reference to a persistent volume to use for the filelog offset sync. We strongly recommend providing a volume
+    # for all clusters except small development or test clusters. By default, the filelog offset sync uses a single
+    # config map for its persistent storage, which every collector pod updates every few seconds. This has two
+    # consequences: ConfigMaps are limited to 1 MB in size, which clusters with around 100 pods or more can exceed. And
+    # etcd stores a complete copy of the config map for every update until the next compaction, so the disk space used
+    # by etcd grows with the square of the number of nodes. In larger clusters, this can exhaust the etcd storage quota,
+    # which makes the cluster unusable. This risk is highest for self-managed control planes (e.g. on-premises
+    # clusters). See docs/advanced-configuration.md#providing-a-filelog-offset-volume for details.
     #
     # Here is an example with a hostPath volume (see also https://kubernetes.io/docs/concepts/storage/volumes/#hostpath
     # for considerations around using hostPath volumes):

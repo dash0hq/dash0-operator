@@ -2,7 +2,7 @@
 apiVersion: security.openshift.io/v1
 kind: SecurityContextConstraints
 metadata:
-  name: {{ .Release.Name }}-ebpf-profiler
+  name: {{ include "dash0-operator.managedResourceNamePrefix" . }}-ebpf-profiler
   labels:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: ebpf-profiler
@@ -44,7 +44,7 @@ groups: []
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ .Release.Name }}-ebpf-profiler-scc-use
+  name: {{ include "dash0-operator.managedResourceNamePrefix" . }}-ebpf-profiler-scc-use
   labels:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: ebpf-profiler
@@ -55,14 +55,14 @@ rules:
     resources:
       - securitycontextconstraints
     resourceNames:
-      - {{ .Release.Name }}-ebpf-profiler
+      - {{ include "dash0-operator.managedResourceNamePrefix" . }}-ebpf-profiler
     verbs:
       - use
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: {{ .Release.Name }}-ebpf-profiler-scc-use
+  name: {{ include "dash0-operator.managedResourceNamePrefix" . }}-ebpf-profiler-scc-use
   namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: dash0-operator
@@ -71,9 +71,9 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ .Release.Name }}-ebpf-profiler-scc-use
+  name: {{ include "dash0-operator.managedResourceNamePrefix" . }}-ebpf-profiler-scc-use
 subjects:
   - kind: ServiceAccount
-    name: {{ .Release.Name }}-ebpf-profiler
+    name: {{ include "dash0-operator.managedResourceNamePrefix" . }}-ebpf-profiler
     namespace: {{ .Release.Namespace }}
 {{- end }}

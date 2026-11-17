@@ -557,7 +557,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		// Pruning and the removal of obsolete resources match by name only.
 		It("should not share its name with a resource the operator deletes in an OLM installation", func() {
-			// the OLM bundle sets OTEL_COLLECTOR_NAME_PREFIX to dash0-operator
+			// the OLM bundle sets DASH0_MANAGED_RESOURCE_NAME_PREFIX to dash0-operator
 			config := configWithServiceAccount(OlmDaemonSetServiceAccountName)
 			config.NamePrefix = "dash0-operator"
 			desiredState, err := assembleDesiredStateForDelete(config, util.ExtraConfigDefaults)

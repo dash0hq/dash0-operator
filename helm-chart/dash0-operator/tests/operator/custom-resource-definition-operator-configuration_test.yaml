@@ -1,6 +1,8 @@
 suite: test operator configuration CRD
 templates:
   - operator/custom-resource-definition-operator-configuration.yaml
+release:
+  name: test-release
 tests:
   - it: custom resource definition for operator configuration should match snapshot
     asserts:

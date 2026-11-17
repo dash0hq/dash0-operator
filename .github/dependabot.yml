@@ -182,8 +182,9 @@ updates:
     cooldown:
       default-days: 4
     groups:
-      development-dependencies:
-        dependency-type: "development"
+      all:
+        patterns:
+          - "*"
     commit-message:
       prefix: "test"
     ignore:
@@ -205,8 +206,9 @@ updates:
         # cooldown, it proposes such a tag as the update.
         - "otel/opentelemetry-collector-contrib"
     groups:
-      development-dependencies:
-        dependency-type: "development"
+      all:
+        patterns:
+          - "*"
     commit-message:
       prefix: "test"
 
@@ -300,3 +302,20 @@ updates:
           - "*"
     commit-message:
       prefix: "test"
+
+  # The requirements.txt in this directory deliberately pins a version of opentelemetry-api that conflicts with the Dash0
+  # OpenTelemetry Python distro. Without this block, Dependabot would still raise security updates for it. Since all
+  # dependencies are ignored, this block defines no security-updates group.
+  - package-ecosystem: "pip"
+    directory: "/images/instrumentation/test/python-dependency-conflict/test-cases/dependency-conflict"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:40"
+      timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 4
+    commit-message:
+      prefix: "test"
+    ignore:
+      - dependency-name: "*"

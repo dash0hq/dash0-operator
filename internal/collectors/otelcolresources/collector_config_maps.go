@@ -86,7 +86,7 @@ func (ct *customTransforms) HasProfileTransforms() bool {
 
 type collectorConfigurationTemplateValues struct {
 	OperatorNamespace                                string
-	OperatorResourcesNamePrefix                      string
+	NamePrefix                                       string
 	Exporters                                        otlpExporters
 	SendBatchSize                                    *uint32
 	SendBatchMaxSize                                 *uint32
@@ -400,7 +400,7 @@ func newCollectorConfigurationTemplateValues(
 			config.SelfMonitoringConfiguration,
 		)
 
-	targetAllocatorServiceName := taresources.ServiceName(config.TargetAllocatorNamePrefix)
+	targetAllocatorServiceName := taresources.ServiceName(config.NamePrefix)
 
 	memoryLimiterLimitMiB := 0
 	memoryLimiterSpikeMiB := 0
@@ -416,11 +416,11 @@ func newCollectorConfigurationTemplateValues(
 	}
 
 	return &collectorConfigurationTemplateValues{
-		OperatorNamespace:           config.OperatorNamespace,
-		OperatorResourcesNamePrefix: config.NamePrefix,
-		Exporters:                   config.Exporters,
-		SendBatchSize:               config.SendBatchSize,
-		SendBatchMaxSize:            config.SendBatchMaxSize,
+		OperatorNamespace: config.OperatorNamespace,
+		NamePrefix:        config.NamePrefix,
+		Exporters:         config.Exporters,
+		SendBatchSize:     config.SendBatchSize,
+		SendBatchMaxSize:  config.SendBatchMaxSize,
 		KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
 		CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
 		CollectNamespaceLabelsAndAnnotationsEnabled:      config.CollectNamespaceLabelsAndAnnotationsEnabled,
@@ -511,7 +511,7 @@ func renderOttlNamespaceFilter(
 	// config (and prometheusCrdSupportEnabled) from the Dash0OperatorConfiguration.
 	taExclusion := ""
 	if selfMonitoringEnabled && config.PrometheusCrdSupportEnabled {
-		taDeploymentName := taresources.DeploymentName(config.TargetAllocatorNamePrefix)
+		taDeploymentName := taresources.DeploymentName(config.NamePrefix)
 		taExclusion = fmt.Sprintf("(resource.attributes[\"k8s.deployment.name\"] != \"%s\" or "+
 			"resource.attributes[\"k8s.namespace.name\"] != \"%s\") and\n          ",
 			taDeploymentName,

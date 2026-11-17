@@ -243,8 +243,9 @@ decision to every connected collector.
 In SCE-only mode, the operator deploys only the SignalControl collector and the Edge Proxy. It does not deploy the
 per-node collector daemonset, the cluster metrics collector deployment or the target allocator, and it does not
 instrument workloads. Applications send OTLP directly to the SignalControl collector service
-`<release-name>-signal-control-collector-service.<operator-namespace>.svc.cluster.local`, port 4317 (OTLP/gRPC) or 4318
+`<name-prefix>-signal-control-collector-service.<operator-namespace>.svc.cluster.local`, port 4317 (OTLP/gRPC) or 4318
 (OTLP/HTTP).
+`<name-prefix>` is the value of `operator.managedResourceNamePrefix`, or the Helm release name if that is not set.
 
 Synchronizing Dash0 resources (dashboards, check rules, synthetic checks, views, sampling rules etc.) keeps working as
 usual, see [Managing Dash0 Resources](managing-dash0-resources.md).

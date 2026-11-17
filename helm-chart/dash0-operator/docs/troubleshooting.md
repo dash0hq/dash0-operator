@@ -42,7 +42,8 @@ To get a heap profile from a OpenTelemetry collector daemonset container:
 2. Take note of the namespace the operator is deployed in (default: `dash0-system`).
 3. Run `kubectl top pod -n <operator-namespace> -l app.kubernetes.io/component=agent-collector` to get the name of a
    collector pod that has high memory usage (usually something like
-   `dash0-operator-opentelemetry-collector-agent-daemonset-xxxxx`, but the name depends on the Helm release name).
+   `dash0-operator-opentelemetry-collector-agent-daemonset-xxxxx`, but the name depends on
+   `operator.managedResourceNamePrefix`, or on the Helm release name if that is not set).
 4. Using the information from the previous two steps, run
    `kubectl port-forward -n <operator-namespace> <collector-daemonset-pod-name> 1777`.
 5. In a separate shell, while the `kubectl port-forward` command from the previous step is still running, run

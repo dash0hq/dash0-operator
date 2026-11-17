@@ -1,6 +1,8 @@
 suite: test extra config map
 templates:
   - operator/extra-config-map.yaml
+release:
+  name: test-release
 tests:
   - it: extra config map should match snapshot
     asserts:

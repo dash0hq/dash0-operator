@@ -47,61 +47,43 @@ var AllInstrumentWorkloadsModes = []InstrumentWorkloadsMode{
 }
 
 type LogCollection struct {
-	// Opt-out for log collection for the target namespace. If set to `false`, the operator will not collect pod logs
-	// in the target namespace and send the resulting log records to Dash0.
-	//
-	// This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
-	// and the operator will collect pod logs in the target namespace; unless there is an operator configuration
-	// resource with `telemetryCollection.enabled=false`, then log collection is off by default. It is a validation error
-	// to set `telemetryCollection.enabled=false` in the operator configuration resource and
-	// `logCollection.enabled=true` in any monitoring resource at the same time.
+	// Opt-out for collecting pod logs in the target namespace. Defaults to `true`, or to `false` if the operator
+	// configuration resource has `telemetryCollection.enabled=false`, in which case setting it to `true` is a
+	// validation error.
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type EventCollection struct {
-	// Opt-out for Kubernetes event collection for the target namespace. If set to `false`, the operator will not
-	// collect Kubernetes events in the target namespace.
-	//
-	// This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
-	// and the operator will collect Kubernetes events in the target namespace; unless there is an operator
-	// configuration resource with `telemetryCollection.enabled=false`, then event collection is off by default. It is a
-	// validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
-	// `eventCollection.enabled=true` in any monitoring resource at the same time.
+	// Opt-out for collecting Kubernetes events in the target namespace. Defaults to `true`, or to `false` if the
+	// operator configuration resource has `telemetryCollection.enabled=false`, in which case setting it to `true` is a
+	// validation error.
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type KubernetesObjectCollection struct {
-	// Opt-in for Kubernetes object collection for the target namespace. If set to `true`, the operator will collect the
-	// manifests of pods, deployments, replica sets, stateful sets and daemon sets in the target namespace and send them
-	// to Dash0 as log records. Values of environment variables as well as the annotations in which well-known deploy
-	// tools (kubectl, kapp, Rancher) store a serialized copy of the whole manifest are removed from the manifests
-	// before they leave the cluster.
-	//
-	// This setting is optional, it defaults to `false`, that is, if this setting is omitted, the operator will not
-	// collect Kubernetes object manifests in the target namespace.
+	// Opt-in for sending the manifests of pods, deployments, replica sets, stateful sets and daemon sets in the target
+	// namespace to Dash0 as log records. Defaults to `false`. Values of environment variables and the annotations in
+	// which deploy tools (kubectl, kapp, Rancher) store a copy of the whole manifest are removed before the manifests
+	// leave the cluster.
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type PrometheusScraping struct {
-	// If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
-	// of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry
-	// Prometheus receiver. This setting is optional, it defaults to `true`; unless there is an operator configuration
-	// resource with `telemetryCollection.enabled=false`, then Prometheus scraping is off by default. It is a validation
-	// error to set `telemetryCollection.enabled=false` in the operator configuration resource and
-	// `prometheusScraping.enabled=true` in any monitoring resource at the same time.
+	// Whether to scrape metrics from pods in the target namespace according to their prometheus.io/scrape annotations.
+	// Defaults to `true`, or to `false` if the operator configuration resource has `telemetryCollection.enabled=false`,
+	// in which case setting it to `true` is a validation error.
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
 }
 
-// FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
-// processing a condition.
+// FilterTransformErrorMode determines how the filter or the transform processor reacts to errors.
 //
 // +kubebuilder:validation:Enum=ignore;silent;propagate
 type FilterTransformErrorMode string
@@ -121,20 +103,12 @@ const (
 )
 
 type Filter struct {
-	// An optional field which will determine how the filter processor reacts to errors that occur while processing a
-	// condition. Possible values:
-	// - ignore: ignore errors returned by conditions, log them, continue with to the next condition.
-	//           This is the recommended mode and also the default mode if this property is omitted.
-	// - silent: ignore errors returned by conditions, do not log them, continue with to the next condition.
-	// - propagate: return the error up the processing pipeline. This will result in the payload being dropped from the
-	//           collector. Not recommended.
-	//
-	// This is optional, default to "ignore", there is usually no reason to change this.
-	//
-	// Note that although this can be specified per namespace and cluster-wide, the filter conditions will be aggregated
-	// into one single filter processor in the resulting OpenTelemetry collector configuration; if different error modes
-	// are specified in different namespaces, or cluster-wide in the operator configuration resource, the "most severe"
-	// error mode will be used (propagate > ignore > silent).
+	// How the filter processor reacts to errors returned by conditions:
+	// - ignore (default, recommended): log the error and continue with the next condition.
+	// - silent: continue with the next condition without logging the error.
+	// - propagate: return the error up the pipeline, which drops the payload. Not recommended.
+	// All filters of the cluster end up in a single filter processor, which uses the most severe of the configured error
+	// modes (propagate > ignore > silent).
 	//
 	// +kubebuilder:default=ignore
 	ErrorMode FilterTransformErrorMode `json:"error_mode,omitempty"`
@@ -181,22 +155,15 @@ func (f *Filter) HasAnyFilters() bool {
 }
 
 type TraceFilter struct {
-	// A list of conditions for filtering spans.
-	// This is a list of OTTL conditions.
-	// All spans where at least one condition evaluates to true will be dropped.
-	// (That is, the conditions are implicitly connected by a logical OR.)
-	// Example:
+	// OTTL conditions for dropping spans. A span is dropped if at least one condition is true. Example:
 	// - 'attributes["http.route"] == "/ready"'
 	// - 'attributes["http.route"] == "/metrics"'
 	//
 	// +kubebuilder:validation:Optional
 	SpanFilter []string `json:"span,omitempty"`
 
-	// A list of conditions for filtering span events.
-	// This is a list of OTTL conditions.
-	// All span events where at least one condition evaluates to true will be dropped.
-	// (That is, the conditions are implicitly connected by a logical OR.)
-	// If all span events for a span are dropped, the span will be left intact.
+	// OTTL conditions for dropping span events. A span event is dropped if at least one condition is true. The span
+	// itself is kept, even if all of its span events are dropped.
 	//
 	// +kubebuilder:validation:Optional
 	SpanEventFilter []string `json:"spanevent,omitempty"`
@@ -207,26 +174,17 @@ func (f *TraceFilter) HasAnyFilters() bool {
 }
 
 type MetricFilter struct {
-	// A list of conditions for filtering metrics.
-	// This is a list of OTTL conditions.
-	// All metrics where at least one condition evaluates to true will be dropped.
-	// (That is, the conditions are implicitly connected by a logical OR.)
-	// Example:
+	// OTTL conditions for dropping metrics. A metric is dropped if at least one condition is true. Example:
 	// - 'name == "k8s.replicaset.available"'
-	// - 'name == "k8s.replicaset.desired"'
 	// - 'type == METRIC_DATA_TYPE_HISTOGRAM'
 	//
 	// +kubebuilder:validation:Optional
 	MetricFilter []string `json:"metric,omitempty"`
 
-	// A list of conditions for filtering metrics data points.
-	// This is a list of OTTL conditions.
-	// All data points where at least one condition evaluates to true will be dropped.
-	// (That is, the conditions are implicitly connected by a logical OR.)
-	// Note: If all datapoints for a metric are dropped, the metric will also be dropped.
-	// Example:
-	// - 'metric.name == "a.noisy.metric.with.many.datapoints" and value_int == 0' # filter metrics by value
-	// - 'resource.attributes["service.name"] == "my_service_name"' # filter data points by resource attributes
+	// OTTL conditions for dropping metric data points. A data point is dropped if at least one condition is true. A
+	// metric whose data points are all dropped is dropped as well. Example:
+	// - 'metric.name == "a.noisy.metric" and value_int == 0'
+	// - 'resource.attributes["service.name"] == "my_service_name"'
 	//
 	// +kubebuilder:validation:Optional
 	DataPointFilter []string `json:"datapoint,omitempty"`
@@ -237,11 +195,7 @@ func (f *MetricFilter) HasAnyFilters() bool {
 }
 
 type LogFilter struct {
-	// A list of conditions for filtering log records.
-	// This is a list of OTTL conditions.
-	// All log records where at least one condition evaluates to true will be dropped.
-	// (That is, the conditions are implicitly connected by a logical OR.)
-	// Example:
+	// OTTL conditions for dropping log records. A log record is dropped if at least one condition is true. Example:
 	// - 'IsMatch(body, ".*password.*")'
 	// - 'severity_number < SEVERITY_NUMBER_WARN'
 	//
@@ -254,10 +208,7 @@ func (f *LogFilter) HasAnyFilters() bool {
 }
 
 type ProfileFilter struct {
-	// A list of conditions for filtering profiles.
-	// This is a list of OTTL conditions.
-	// All profiles where at least one condition evaluates to true will be dropped.
-	// (That is, the conditions are implicitly connected by a logical OR.)
+	// OTTL conditions for dropping profiles. A profile is dropped if at least one condition is true.
 	//
 	// +kubebuilder:validation:Optional
 	ProfileFilter []string `json:"profile,omitempty"`
@@ -268,19 +219,12 @@ func (f *ProfileFilter) HasAnyFilters() bool {
 }
 
 type Transform struct {
-	// An optional field which will determine how the transform processor reacts to errors that occur while processing a
-	// statement. Possible values:
-	// - ignore: ignore errors returned by statements, log them, continue with to the next statement.
-	// - silent: ignore errors returned by statements, do not log them, continue with to the next statement.
-	// - propagate: return the error up the processing pipeline. This will result in the payload being dropped from the
-	//   collector.
-	//
-	// This is optional, default to "ignore".
-	//
-	// Note that although this can be specified per namespace and cluster-wide, the transform statements will be
-	// aggregated into one single transform processor in the resulting OpenTelemetry collector configuration; if
-	// different error modes are specified in different namespaces, or cluster-wide in the operator configuration
-	// resource, the "most severe" error mode will be used (propagate > ignore > silent).
+	// How the transform processor reacts to errors returned by statements:
+	// - ignore (default): log the error and continue with the next statement.
+	// - silent: continue with the next statement without logging the error.
+	// - propagate: return the error up the pipeline, which drops the payload.
+	// All transforms of the cluster end up in a single transform processor, which uses the most severe of the
+	// configured error modes (propagate > ignore > silent).
 	//
 	// +kubebuilder:default=ignore
 	ErrorMode *FilterTransformErrorMode `json:"error_mode,omitempty"`

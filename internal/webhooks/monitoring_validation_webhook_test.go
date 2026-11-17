@@ -7,11 +7,14 @@ import (
 	"encoding/json"
 	"fmt"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
@@ -141,6 +144,117 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				instrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeNone,
 				expectRejection:         false,
 			}),
+		)
+
+		type updateWithoutFinalizerTestConfig struct {
+			namespace               string
+			hadFinalizer            bool
+			instrumentWorkloadsMode dash0common.InstrumentWorkloadsMode
+			expectRejection         bool
+		}
+
+		DescribeTable("should reject updates without finalizer that set instrumentWorkloads.mode in restricted namespaces", func(testConfig updateWithoutFinalizerTestConfig) {
+			monitoringResourceName := types.NamespacedName{Namespace: testConfig.namespace, Name: MonitoringResourceName}
+			monitoringResource := DefaultMonitoringResourceWithName(monitoringResourceName)
+			monitoringResource.Spec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeNone
+			if testConfig.hadFinalizer {
+				monitoringResource.Finalizers = []string{dash0common.MonitoringFinalizerId}
+			}
+			CreateMonitoringResource(ctx, k8sClient, monitoringResource)
+			DeferCleanup(func() {
+				DeleteMonitoringResourceByName(ctx, k8sClient, monitoringResourceName, false)
+			})
+
+			monitoringResource.Finalizers = nil
+			monitoringResource.Spec.InstrumentWorkloads.Mode = testConfig.instrumentWorkloadsMode
+			err := k8sClient.Update(ctx, monitoringResource)
+
+			if testConfig.expectRejection {
+				Expect(err).To(MatchError(ContainSubstring(fmt.Sprintf(
+					"namespace \"%s\" with instrumentWorkloads.mode=%s, use instrumentWorkloads.mode=none instead.",
+					testConfig.namespace,
+					testConfig.instrumentWorkloadsMode,
+				))))
+			} else {
+				Expect(err).ToNot(HaveOccurred())
+			}
+		},
+			Entry("reject removing the finalizer and setting instrumentWorkloads.mode=all in kube-system", updateWithoutFinalizerTestConfig{
+				namespace:               "kube-system",
+				hadFinalizer:            true,
+				instrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
+				expectRejection:         true,
+			}),
+			Entry("reject removing the finalizer and setting instrumentWorkloads.mode=pods in kube-public", updateWithoutFinalizerTestConfig{
+				namespace:               "kube-public",
+				hadFinalizer:            true,
+				instrumentWorkloadsMode: dash0common.InstrumentWorkloadsModePods,
+				expectRejection:         true,
+			}),
+			Entry("reject removing the finalizer and setting instrumentWorkloads.mode=all in kube-node-lease", updateWithoutFinalizerTestConfig{
+				namespace:               "kube-node-lease",
+				hadFinalizer:            true,
+				instrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
+				expectRejection:         true,
+			}),
+			Entry("reject removing the finalizer and setting instrumentWorkloads.mode=all in the operator namespace", updateWithoutFinalizerTestConfig{
+				namespace:               OperatorNamespace,
+				hadFinalizer:            true,
+				instrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
+				expectRejection:         true,
+			}),
+			Entry("reject setting instrumentWorkloads.mode=created-and-updated in kube-system before the finalizer has been added", updateWithoutFinalizerTestConfig{
+				namespace:               "kube-system",
+				hadFinalizer:            false,
+				instrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+				expectRejection:         true,
+			}),
+			Entry("allow removing the finalizer and keeping instrumentWorkloads.mode=none in kube-system", updateWithoutFinalizerTestConfig{
+				namespace:               "kube-system",
+				hadFinalizer:            true,
+				instrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeNone,
+				expectRejection:         false,
+			}),
+			Entry("allow removing the finalizer and setting instrumentWorkloads.mode=all in a regular namespace", updateWithoutFinalizerTestConfig{
+				namespace:               TestNamespaceName,
+				hadFinalizer:            true,
+				instrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
+				expectRejection:         false,
+			}),
+		)
+
+		DescribeTable("should allow removing the finalizer from a monitoring resource that already has instrumentWorkloads.mode=all in a restricted namespace", func(
+			namespace string,
+			oldInstrumentWorkloadsMode dash0common.InstrumentWorkloadsMode,
+		) {
+			oldMonitoringResource := DefaultMonitoringResourceWithName(
+				types.NamespacedName{Namespace: namespace, Name: MonitoringResourceName},
+			)
+			oldMonitoringResource.Spec.InstrumentWorkloads.Mode = oldInstrumentWorkloadsMode
+			oldMonitoringResource.Finalizers = []string{dash0common.MonitoringFinalizerId}
+			newMonitoringResource := oldMonitoringResource.DeepCopy()
+			newMonitoringResource.Spec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeAll
+			newMonitoringResource.Finalizers = nil
+			rawOld, err := json.Marshal(oldMonitoringResource)
+			Expect(err).ToNot(HaveOccurred())
+			rawNew, err := json.Marshal(newMonitoringResource)
+			Expect(err).ToNot(HaveOccurred())
+
+			response := NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace).Handle(ctx, admission.Request{
+				AdmissionRequest: admissionv1.AdmissionRequest{
+					Operation: admissionv1.Update,
+					Namespace: namespace,
+					Name:      MonitoringResourceName,
+					Object:    runtime.RawExtension{Raw: rawNew},
+					OldObject: runtime.RawExtension{Raw: rawOld},
+				},
+			})
+
+			Expect(response.Allowed).To(BeTrue())
+		},
+			Entry("kube-system", "kube-system", dash0common.InstrumentWorkloadsModeAll),
+			Entry("kube-system, the mutating webhook sets an empty mode to all", "kube-system", dash0common.InstrumentWorkloadsMode("")),
+			Entry("operator namespace", OperatorNamespace, dash0common.InstrumentWorkloadsModeAll),
 		)
 
 		It("should reject monitoring resources without export if no operator configuration resource exists", func() {

@@ -1,6 +1,8 @@
 suite: test Signal Control CRD
 templates:
   - operator/custom-resource-definition-signal-control.yaml
+release:
+  name: test-release
 tests:
   - it: should not render the Signal Control CRD by default
     asserts:

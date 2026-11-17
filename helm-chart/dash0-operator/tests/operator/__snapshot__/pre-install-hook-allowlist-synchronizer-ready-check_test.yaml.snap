@@ -76,7 +76,7 @@ should install the GKE Autopilot AllowlistSynchronizer ready check if operator.g
             app.kubernetes.io/managed-by: Helm
             app.kubernetes.io/name: dash0-operator
             helm.sh/chart: dash0-operator-0.0.0
-          name: RELEASE-NAME-pre-install-job-allowlist-synchronizer-ready-check
+          name: test-release-pre-install-job-allowlist-synchronizer-ready-check
         spec:
           affinity:
             nodeAffinity:

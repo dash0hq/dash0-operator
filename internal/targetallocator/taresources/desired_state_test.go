@@ -26,7 +26,7 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 	It("should render custom resource requirements, tolerations, and node affinity", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
 			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        TargetAllocatorPrefixTest,
+			NamePrefix:        ManagedResourceNamePrefixTest,
 			Images:            TestImages,
 		}, nil, util.ExtraConfig{
 			TargetAllocatorContainerResources: util.ResourceRequirementsWithGoMemLimit{
@@ -129,7 +129,7 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 	It("derives GOMEMLIMIT from the memory limit when none is configured", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
 			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        TargetAllocatorPrefixTest,
+			NamePrefix:        ManagedResourceNamePrefixTest,
 			Images:            TestImages,
 		}, nil, util.ExtraConfig{
 			TargetAllocatorContainerResources: util.ResourceRequirementsWithGoMemLimit{
@@ -148,7 +148,7 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 	It("should render additional labels and annotations on the workload and the pods", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
 			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        TargetAllocatorPrefixTest,
+			NamePrefix:        ManagedResourceNamePrefixTest,
 			Images:            TestImages,
 		}, nil, util.ExtraConfig{
 			TargetAllocatorLabels:         map[string]string{"ta-label": "ta-label-value"},
@@ -173,7 +173,7 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 	It("should not let additional labels override operator-managed labels", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
 			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        TargetAllocatorPrefixTest,
+			NamePrefix:        ManagedResourceNamePrefixTest,
 			Images:            TestImages,
 		}, nil, util.ExtraConfig{
 			TargetAllocatorPodLabels: map[string]string{util.AppKubernetesIoNameLabel: "custom-value"},
@@ -188,7 +188,7 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 	It("should add GKE Autopilot allowlist match labels", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
 			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        TargetAllocatorPrefixTest,
+			NamePrefix:        ManagedResourceNamePrefixTest,
 			Images:            TestImages,
 			IsGkeAutopilot:    true,
 		}, nil, util.ExtraConfig{})
@@ -203,7 +203,7 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 	It("pins the pod-level runAsUser/runAsGroup when not on OpenShift", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
 			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        TargetAllocatorPrefixTest,
+			NamePrefix:        ManagedResourceNamePrefixTest,
 			Images:            TestImages,
 		}, nil, util.ExtraConfig{})
 		Expect(err).ToNot(HaveOccurred())
@@ -216,7 +216,7 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 	It("runs the target-allocator with a read-only root file system", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
 			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        TargetAllocatorPrefixTest,
+			NamePrefix:        ManagedResourceNamePrefixTest,
 			Images:            TestImages,
 		}, nil, util.ExtraConfig{})
 		Expect(err).ToNot(HaveOccurred())
@@ -229,7 +229,7 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 	It("omits the pod-level runAsUser on OpenShift so the SCC can assign an in-range UID, but pins runAsGroup", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
 			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        TargetAllocatorPrefixTest,
+			NamePrefix:        ManagedResourceNamePrefixTest,
 			Images:            TestImages,
 			IsOpenShift:       true,
 		}, nil, util.ExtraConfig{})
@@ -250,7 +250,7 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 			var err error
 			desiredState, err = assembleDesiredStateForUpsert(&targetAllocatorConfig{
 				OperatorNamespace: OperatorNamespace,
-				NamePrefix:        TargetAllocatorPrefixTest,
+				NamePrefix:        ManagedResourceNamePrefixTest,
 				Images:            TestImages,
 			}, nil, util.ExtraConfig{
 				TargetAllocatorMtlsEnabled:              true,
@@ -297,7 +297,7 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 	It("should not allow insecure auth secrets by default", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
 			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        TargetAllocatorPrefixTest,
+			NamePrefix:        ManagedResourceNamePrefixTest,
 			Images:            TestImages,
 		}, nil, util.ExtraConfig{})
 		Expect(err).ToNot(HaveOccurred())
@@ -309,7 +309,7 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 	It("should add config for allowing insecure auth secrets to the ConfigMap", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
 			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        TargetAllocatorPrefixTest,
+			NamePrefix:        ManagedResourceNamePrefixTest,
 			Images:            TestImages,
 		}, nil, util.ExtraConfig{
 			TargetAllocatorAllowInsecureAuthSecrets: true,
@@ -323,7 +323,7 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 	It("should add config for both mTLS and allowing insecure auth secrets to the ConfigMap", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
 			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        TargetAllocatorPrefixTest,
+			NamePrefix:        ManagedResourceNamePrefixTest,
 			Images:            TestImages,
 		}, nil, util.ExtraConfig{
 			TargetAllocatorMtlsEnabled:              true,
@@ -340,7 +340,7 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 	It("should grant cluster-wide access to secrets if allowSecretAccessInNamespaces is not set", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
 			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        TargetAllocatorPrefixTest,
+			NamePrefix:        ManagedResourceNamePrefixTest,
 			Images:            TestImages,
 		}, []string{"namespace-a"}, util.ExtraConfig{})
 		Expect(err).ToNot(HaveOccurred())
@@ -353,7 +353,7 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 	It("should restrict access to secrets to the namespaces in allowSecretAccessInNamespaces", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
 			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        TargetAllocatorPrefixTest,
+			NamePrefix:        ManagedResourceNamePrefixTest,
 			Images:            TestImages,
 		}, []string{"namespace-a", "namespace-c"}, util.ExtraConfig{
 			TargetAllocatorAllowSecretAccessInNamespaces: []string{"namespace-b", "namespace-a", "namespace-b"},

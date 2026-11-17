@@ -23,8 +23,8 @@ Supported runtimes for automatic workload instrumentation:
 * Java 8+
 * Node.js 16+
 * .NET 6+
-* Python ([opt-in](https://github.com/dash0hq/dash0-operator/blob/0.100.0/helm-chart/dash0-operator/values.yaml#L408-L409))
-* Ruby 3.3+ ([opt-in](docs/configuration.md#ruby-auto-instrumentation))
+* Python 3.10+
+* Ruby 3.3+
 
 Metrics and log collection are independent of the runtime of workloads.
 
@@ -33,8 +33,8 @@ Metrics and log collection are independent of the runtime of workloads.
 ### Prerequisites
 
 * [Kubernetes](https://kubernetes.io/) 1.25.16 or later.
-* [Helm](https://helm.sh) >= 3.x, please refer to [Helm's documentation](https://helm.sh/docs/) for more information on
-  installing Helm.
+* [Helm](https://helm.sh) 3.14 or later, please refer to [Helm's documentation](https://helm.sh/docs/) for more information
+  on installing Helm.
 
 You will need:
 * **`endpoint`**: The OTLP/gRPC endpoint of your Dash0 organization (from

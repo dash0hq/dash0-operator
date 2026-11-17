@@ -62,10 +62,9 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			k8sClient.Scheme(),
 			OperatorManagerDeployment,
 			util.CollectorConfig{
-				Images:                    TestImages,
-				OperatorNamespace:         OperatorNamespace,
-				OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
-				TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
+				Images:            TestImages,
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        ManagedResourceNamePrefixTest,
 			},
 			NewLeaderElectionAwareMock(true),
 		)
@@ -84,10 +83,10 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			k8sClient.Scheme(),
 			OperatorManagerDeployment,
 			util.TargetAllocatorConfig{
-				Images:                    TestImages,
-				OperatorNamespace:         OperatorNamespace,
-				TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
-				CollectorComponent:        otelcolresources.CollectorDaemonSetServiceComponent(),
+				Images:             TestImages,
+				OperatorNamespace:  OperatorNamespace,
+				NamePrefix:         ManagedResourceNamePrefixTest,
+				CollectorComponent: otelcolresources.CollectorDaemonSetServiceComponent(),
 			},
 		)
 		targetAllocatorManager := targetallocator.NewTargetAllocatorManager(

@@ -162,11 +162,16 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			operatorConfigurationResource.Spec.PrometheusCrdSupport.Enabled,
 			false,
 		)
+	ebpfProfilerEnabled := m.collectorConfig.EbpfProfilerEnabledViaHelm &&
+		operatorConfigurationResource.Spec.Profiling != nil &&
+		operatorConfigurationResource.Spec.Profiling.EbpfProfiler != nil &&
+		pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.Profiling.EbpfProfiler.Enabled, false)
+	// An unset profiling.enabled follows the eBPF profiler.
 	profilingEnabled :=
 		operatorConfigurationResource.Spec.Profiling != nil &&
 			pointers.ReadBoolPointerWithDefault(
 				operatorConfigurationResource.Spec.Profiling.Enabled,
-				false,
+				ebpfProfilerEnabled,
 			)
 	agent0ConnectorEnabled :=
 		operatorConfigurationResource.Spec.Agent0Connector.IsEnabled(m.collectorConfig.Agent0ConnectorEnabledViaHelm)
@@ -175,7 +180,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		for _, instance := range operatorConfigurationResource.Spec.SyntheticsWorker.Instances {
 			syntheticsWorkerDeploymentNames = append(
 				syntheticsWorkerDeploymentNames,
-				swresources.DeploymentName(m.collectorConfig.OTelCollectorNamePrefix, instance.LocationID),
+				swresources.DeploymentName(m.collectorConfig.NamePrefix, instance.LocationID),
 			)
 		}
 	}
@@ -204,7 +209,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	config := &oTelColConfig{
 		OperatorNamespace:             m.collectorConfig.OperatorNamespace,
 		OperatorManagerDeploymentName: m.operatorManagerDeployment.Name,
-		NamePrefix:                    m.collectorConfig.OTelCollectorNamePrefix,
+		NamePrefix:                    m.collectorConfig.NamePrefix,
 		Exporters:                     otlpExporters,
 		AllMonitoringResources:        allMonitoringResources,
 		SendBatchSize:                 m.collectorConfig.SendBatchSize,
@@ -221,9 +226,8 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		K8sAttributesWaitForMetadataTimeout:              m.collectorConfig.K8sAttributesWaitForMetadataTimeout,
 		K8sAttributesShareProcessor:                      m.collectorConfig.K8sAttributesShareProcessor,
 		PrometheusCrdSupportEnabled:                      prometheusCrdSupportEnabled,
-		TargetAllocatorNamePrefix:                        m.collectorConfig.TargetAllocatorNamePrefix,
 		Agent0ConnectorEnabled:                           agent0ConnectorEnabled,
-		Agent0ConnectorDeploymentName:                    a0cresources.DeploymentName(m.collectorConfig.OTelCollectorNamePrefix),
+		Agent0ConnectorDeploymentName:                    a0cresources.DeploymentName(m.collectorConfig.NamePrefix),
 		SyntheticsWorkerDeploymentNames:                  syntheticsWorkerDeploymentNames,
 		KubeletStatsReceiverConfig:                       kubeletStatsReceiverConfig,
 		AutoNamespaceMonitoringEnabled:                   operatorConfigurationResource.Spec.AutoMonitorNamespaces.IsEnabled(),
@@ -251,16 +255,14 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		),
 		GlobalFilter:              globalFilter(operatorConfigurationResource),
 		GlobalNormalizedTransform: globalNormalizedTransform(operatorConfigurationResource),
-		SignalControl:             signalControlConfigFromResource(signalControlResource, operatorConfigurationResource, m.collectorConfig.OperatorNamespace, m.collectorConfig.OTelCollectorNamePrefix, logger),
+		SignalControl:             signalControlConfigFromResource(signalControlResource, operatorConfigurationResource, m.collectorConfig.OperatorNamespace, m.collectorConfig.NamePrefix, logger),
 		DevelopmentMode:           m.collectorConfig.DevelopmentMode,
 		DebugVerbosityDetailed:    m.collectorConfig.DebugVerbosityDetailed,
 		EnableProfExtension:       m.collectorConfig.EnableProfExtension,
 		ProfilingEnabled:          profilingEnabled,
-		EbpfProfilerEnabled: m.collectorConfig.EbpfProfilerEnabledViaHelm && profilingEnabled &&
-			operatorConfigurationResource.Spec.Profiling.EbpfProfiler != nil &&
-			pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.Profiling.EbpfProfiler.Enabled, false),
-		CompressConfigMap:        m.collectorConfig.CompressConfigMap,
-		SignalControlSceOnlyMode: m.collectorConfig.SignalControlSceOnlyMode,
+		EbpfProfilerEnabled:       ebpfProfilerEnabled && profilingEnabled,
+		CompressConfigMap:         m.collectorConfig.CompressConfigMap,
+		SignalControlSceOnlyMode:  m.collectorConfig.SignalControlSceOnlyMode,
 	}
 	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
 		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume
@@ -356,7 +358,7 @@ func (m *OTelColResourceManager) targetAllocatorMtlsCaSha(
 	existingDaemonSet := &appsv1.DaemonSet{}
 	if err = m.Get(ctx, client.ObjectKey{
 		Namespace: m.collectorConfig.OperatorNamespace,
-		Name:      DaemonSetName(m.collectorConfig.OTelCollectorNamePrefix),
+		Name:      DaemonSetName(m.collectorConfig.NamePrefix),
 	}, existingDaemonSet); err != nil {
 		return ""
 	}
@@ -514,11 +516,11 @@ func (m *OTelColResourceManager) amendDeploymentAndDaemonSetWithSelfReferenceUID
 ) {
 	name := desiredResource.GetName()
 	uid := existingResource.GetUID()
-	if name == DaemonSetName(m.collectorConfig.OTelCollectorNamePrefix) {
+	if name == DaemonSetName(m.collectorConfig.NamePrefix) {
 		daemonset := desiredResource.(*appsv1.DaemonSet)
 		addSelfReferenceUidToAllContainers(&daemonset.Spec.Template.Spec.Containers, "K8S_DAEMONSET_UID", uid)
-	} else if name == DeploymentName(m.collectorConfig.OTelCollectorNamePrefix) ||
-		name == SignalControlCollectorDeploymentName(m.collectorConfig.OTelCollectorNamePrefix) {
+	} else if name == DeploymentName(m.collectorConfig.NamePrefix) ||
+		name == SignalControlCollectorDeploymentName(m.collectorConfig.NamePrefix) {
 		deployment := desiredResource.(*appsv1.Deployment)
 		addSelfReferenceUidToAllContainers(&deployment.Spec.Template.Spec.Containers, "K8S_DEPLOYMENT_UID", uid)
 	}
@@ -559,7 +561,7 @@ func (m *OTelColResourceManager) DeleteResources(
 
 	config := &oTelColConfig{
 		OperatorNamespace: m.collectorConfig.OperatorNamespace,
-		NamePrefix:        m.collectorConfig.OTelCollectorNamePrefix,
+		NamePrefix:        m.collectorConfig.NamePrefix,
 		// For deleting the resources, we do not need the actual export settings; we only use assembleDesiredState to
 		// collect the kinds and names of all resources that need to be deleted.
 		SendBatchSize:               m.collectorConfig.SendBatchSize,
@@ -682,7 +684,7 @@ func (m *OTelColResourceManager) deleteObsoleteResourcesFromPreviousOperatorVers
 	}
 	obsoleteResources := compileObsoleteResources(
 		namespace,
-		m.collectorConfig.OTelCollectorNamePrefix,
+		m.collectorConfig.NamePrefix,
 	)
 	var allErrors []error
 	for _, obsoleteResource := range obsoleteResources {
