@@ -2018,6 +2018,7 @@ func startDash0Controllers(
 		envVars.instrumentationDebug,
 		envVars.enablePythonAutoInstrumentation,
 		envVars.enableRubyAutoInstrumentation,
+		cliArgs.instrumentationEnabled,
 	)
 	clusterInstrumentationConfig.IsOpenShift = cliArgs.isOpenShift
 	if err = watchOperatorConfigurationInstrumentationSettings(
@@ -2054,7 +2055,6 @@ func startDash0Controllers(
 				k8sClient,
 				clientset,
 				clusterInstrumentationConfig,
-				cliArgs.instrumentationEnabled,
 				newWaitForHelmManagedInstrumentationSettings(
 					autoOperatorConfigurationResourceHandler,
 					startupTasksK8sClient,
@@ -2524,7 +2524,6 @@ func startDash0Controllers(
 			mgr,
 			k8sClient,
 			clusterInstrumentationConfig,
-			cliArgs.instrumentationEnabled,
 		); err != nil {
 			return err
 		}
@@ -2708,9 +2707,8 @@ func setupInstrumentationWebhook(
 	mgr ctrl.Manager,
 	k8sClient client.Client,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
-	instrumentationEnabled bool,
 ) error {
-	if !instrumentationEnabled {
+	if !clusterInstrumentationConfig.InstrumentationEnabled {
 		return nil
 	}
 	instrumentationWebhookHandler := webhooks.NewInstrumentationWebhookHandler(
@@ -2738,7 +2736,6 @@ func setupInstrumenters(
 	k8sClient client.Client,
 	clientset *kubernetes.Clientset,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
-	instrumentationEnabled bool,
 	waitForOperatorConfigurationResource func(context.Context, logd.Logger),
 ) (*instrumentation.Instrumenter, error) {
 	instrumenter := instrumentation.NewInstrumenter(
@@ -2755,10 +2752,9 @@ func setupInstrumenters(
 	// is useless.
 	extraConfigMapWatcher.AddClient(instrumenter)
 
-	if !instrumentationEnabled {
+	if !clusterInstrumentationConfig.InstrumentationEnabled {
 		// The instrumenter is still needed to remove the instrumentation from workloads, when the instrumentWorkloads.mode
 		// of a monitoring resource is changed to none, or when a monitoring resource is deleted.
-		instrumenter.InstrumentationDisabled = true
 		return instrumenter, nil
 	}
 
