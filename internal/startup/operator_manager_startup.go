@@ -2512,6 +2512,7 @@ func startDash0Controllers(
 			k8sClient,
 			envVars.operatorNamespace,
 			operatorDeploymentSelfReference.CreationTimestamp.Time,
+			cliArgs.instrumentationEnabled,
 		)
 		setupLog.Info("Starting the auto-namespace-monitoring reconciler.")
 		if err := autoNamespaceMonitoringReconciler.SetupWithManager(mgr); err != nil {

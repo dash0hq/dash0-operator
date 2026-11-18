@@ -225,7 +225,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		}
 	}
 
-	if response, denied := h.validateMonitoringTemplate(spec.MonitoringTemplate, logger); denied {
+	if response, denied := h.validateMonitoringTemplate(spec.MonitoringTemplate, request, logger); denied {
 		return response
 	}
 
@@ -272,8 +272,13 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	return h.validateComponentSettings(request, spec, logger).WithWarnings(warnings...)
 }
 
+// validateMonitoringTemplate rejects a monitoring template with an export, and, while workload instrumentation is
+// disabled, a request that sets the instrumentWorkloads.mode of the monitoring template to a value other than none. An
+// update that keeps a mode the stored resource already has is allowed, so that an operator configuration resource
+// stored while instrumentation was enabled can still be updated.
 func (h *OperatorConfigurationValidationWebhookHandler) validateMonitoringTemplate(
 	monitoringTemplate *dash0v1alpha1.MonitoringTemplate,
+	request admission.Request,
 	logger logd.Logger,
 ) (admission.Response, bool) {
 	if monitoringTemplate == nil {
@@ -294,14 +299,24 @@ func (h *OperatorConfigurationValidationWebhookHandler) validateMonitoringTempla
 	}
 
 	templateMode := monitoringTemplate.Spec.InstrumentWorkloads.Mode
-	if !h.instrumentationEnabledViaHelm &&
-		templateMode != "" &&
-		templateMode != dash0common.InstrumentWorkloadsModeNone {
-		msg := fmt.Sprintf(ErrorMessageOperatorConfigurationMonitoringTemplateInstrumentationDisabled, templateMode)
-		logger.Warn(msg)
-		return admission.Denied(msg), true
+	if h.instrumentationEnabledViaHelm ||
+		templateMode == "" ||
+		templateMode == dash0common.InstrumentWorkloadsModeNone {
+		return admission.Response{}, false
 	}
-	return admission.Response{}, false
+	newlySet, errorResponse := isFeatureNewlyEnabled(request, logger, "monitoring template instrumentWorkloads.mode",
+		func(r *dash0v1alpha1.Dash0OperatorConfiguration) bool {
+			return r.Spec.MonitoringTemplate != nil && r.Spec.MonitoringTemplate.Spec.InstrumentWorkloads.Mode == templateMode
+		})
+	if errorResponse != nil {
+		return *errorResponse, true
+	}
+	if !newlySet {
+		return admission.Response{}, false
+	}
+	msg := fmt.Sprintf(ErrorMessageOperatorConfigurationMonitoringTemplateInstrumentationDisabled, templateMode)
+	logger.Warn(msg)
+	return admission.Denied(msg), true
 }
 
 // validateComponentSettings checks spec.components, unless an UPDATE leaves it unchanged.
