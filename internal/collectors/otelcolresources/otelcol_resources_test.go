@@ -407,6 +407,44 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			}
 		})
 
+		DescribeTable("should enable profiling pipelines when enabled explicitly or together with the eBPF profiler",
+			func(profiling *dash0v1alpha1.Profiling, ebpfProfilerEnabledViaHelm bool, wantProfiling bool, wantEbpf bool) {
+				oTelColResourceManager.collectorConfig.EbpfProfilerEnabledViaHelm = ebpfProfilerEnabledViaHelm
+				operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
+				operatorConfiguration.Spec.Profiling = profiling
+				_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+					ctx, util.ExtraConfigDefaults, operatorConfiguration, nil, nil, logger)
+				Expect(err).ToNot(HaveOccurred())
+				collectorConfig := parseConfigMapContent(GetOTelColDaemonSetConfigMap(ctx, k8sClient, OperatorNamespace))
+				daemonSet := &appsv1.DaemonSet{}
+				Expect(k8sClient.Get(ctx, client.ObjectKey{
+					Namespace: OperatorNamespace, Name: ExpectedDaemonSetName,
+				}, daemonSet)).To(Succeed())
+				featureGatesArg := ContainElement(ContainSubstring(profilesSupportFeatureGate))
+				if wantProfiling {
+					Expect(readPipelines(collectorConfig)).To(HaveKey("profiles/export/default"))
+					Expect(daemonSet.Spec.Template.Spec.Containers[0].Args).To(featureGatesArg)
+				} else {
+					Expect(readPipelines(collectorConfig)).ToNot(HaveKey("profiles/export/default"))
+					Expect(daemonSet.Spec.Template.Spec.Containers[0].Args).ToNot(featureGatesArg)
+				}
+				connectors := collectorConfig["connectors"].(map[string]any)
+				if wantEbpf {
+					Expect(connectors).To(HaveKey("routing/traces-source"))
+				} else {
+					Expect(connectors).ToNot(HaveKey("routing/traces-source"))
+				}
+			},
+			Entry("profiling omitted", nil, true, false, false),
+			Entry("profiling.enabled omitted without the eBPF profiler", &dash0v1alpha1.Profiling{}, true, false, false),
+			Entry("profiling.enabled omitted with the eBPF profiler",
+				&dash0v1alpha1.Profiling{EbpfProfiler: &dash0v1alpha1.EbpfProfiler{Enabled: ptr.To(true)}}, true, true, true),
+			Entry("profiling.enabled omitted with the eBPF profiler disabled via Helm",
+				&dash0v1alpha1.Profiling{EbpfProfiler: &dash0v1alpha1.EbpfProfiler{Enabled: ptr.To(true)}}, false, false, false),
+			Entry("profiling enabled explicitly", &dash0v1alpha1.Profiling{Enabled: ptr.To(true)}, false, true, false),
+			Entry("profiling disabled explicitly", &dash0v1alpha1.Profiling{Enabled: ptr.To(false)}, false, false, false),
+		)
+
 		It("should make the operator configuration resource the owner of cluster-scoped resources", func() {
 			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 			_, _, err :=

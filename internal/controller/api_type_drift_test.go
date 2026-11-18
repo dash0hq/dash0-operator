@@ -245,6 +245,7 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 			},
 			map[string]string{
 				"frameFilters":         "not supported by Dash0View yet",
+				"invertCallStack":      "not supported by Dash0View yet",
 				"profileType":          "not supported by Dash0View yet",
 				"query":                "not supported by Dash0View yet",
 				"serviceMapProperties": "not supported by Dash0View yet",

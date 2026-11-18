@@ -65,10 +65,8 @@ The Helm value `operator.collectors.filelogOffsetStorageMode` controls where the
   host directory with the SELinux type `container_file_t` on all nodes.
 * `configMap`: The offsets are always stored in a config map.
   A sidecar container in each collector pod synchronizes the offsets to the config map every few seconds.
-  This is not recommended for clusters with more than around 100 pods per node (the config map is limited to 1 MB),
-  for clusters with admission webhooks that process every config map update (see
-  [below](#when-to-avoid-the-config-map-for-filelog-offsets)), or for self-hosted clusters, where the frequent config
-  map updates can exhaust the disk space of etcd.
+  This is only intended for small clusters, for example local development or test clusters, see
+  [When to Avoid the Config Map for Filelog Offsets](#when-to-avoid-the-config-map-for-filelog-offsets).
 
 ### The hostPath Volume for Filelog Offsets
 
@@ -161,9 +159,25 @@ Dash0OperatorConfiguration resource.
 
 ### When to Avoid the Config Map for Filelog Offsets
 
-The config map for the filelog offsets is updated very frequently.
-Admission webhooks that process every config map update can consume a lot of CPU and memory resources because of
-that, potentially even leading to OOMKills of the admission controller.
+The config map storage is only intended for small clusters, for example local development or test clusters.
+For production clusters, larger staging clusters, or clusters with many short-lived pods, we strongly recommend storing
+the offsets in the `hostPath` volume or in a [volume you provide](#providing-a-filelog-offset-volume).
+
+All collector pods share one config map, with one entry per node.
+Config maps are limited to 1 MB in size, which clusters with around 100 pods or more can exceed.
+
+> **Warning:** The config map storage puts a significant write load on the Kubernetes API server and on etcd.
+> Each collector pod updates its entry every few seconds while log files are being written.
+> etcd stores a complete copy of the config map for every update and keeps these copies until the next compaction, so
+> the disk space used by etcd grows with the square of the number of nodes.
+> In larger clusters, this can exhaust the etcd storage quota.
+> etcd then rejects all writes, which makes the cluster unusable.
+> This risk is highest in clusters with a self-managed control plane (for example on-premises clusters), where etcd
+> often runs with the default storage quota of 2 GiB and without regular defragmentation.
+> Managed Kubernetes services usually provide more headroom, but the write load still applies.
+
+Because of the frequent updates, admission webhooks that process every config map update can consume a lot of CPU and
+memory resources, potentially even leading to OOMKills of the admission controller.
 Known examples are:
 
 * The [Open Policy Agent](https://www.openpolicyagent.org/), in particular the
@@ -176,10 +190,7 @@ Known examples are:
   Alternatively, [exclude](https://kyverno.io/docs/installation/customization/#resource-filters) ConfigMaps (or all
   resource types) in the Dash0 operator's namespace from Kyverno's processing.
 
-In self-hosted clusters, the frequent config map updates can additionally fill up the disk of the etcd cluster,
-if etcd is not compacted and defragmented regularly.
-
-In these clusters, make sure that the offsets are stored in the `hostPath` volume or in a volume you provide.
+In all of these clusters, make sure that the offsets are stored in the `hostPath` volume or in a volume you provide.
 With the default `operator.collectors.filelogOffsetStorageMode=auto`, check the operator's log for the storage it
 has chosen; if the admission policies of the cluster reject the `hostPath` volume, add a policy exception for the
 collector DaemonSet (see
@@ -372,6 +383,8 @@ The following Helm values control the resource settings, all nested under the to
 | `collectors.signalControlCollectorConfigurationReloaderContainerResources` | SignalControl collector configuration reloader | `memory: 12Mi` | `memory: 26Mi` |
 | `targetAllocator.containerResources` | target-allocator container | `cpu: 200m`, `memory: 128Mi` | `cpu: 200m`, `memory: 500Mi` |
 | `agent0Connector.containerResources` | agent0-connector container | `memory: 64Mi` | `memory: 256Mi` |
+| `ebpfProfiler.containerResources` | eBPF profiler container | `cpu: 100m`, `memory: 128Mi` | `memory: 512Mi` |
+| `debuginfoProxy.containerResources` | debuginfo proxy container | `cpu: 10m`, `memory: 32Mi` | `memory: 128Mi` |
 
 For every container above except the operator manager, `gomemlimit` is left empty by default and the operator derives it
 from the container's memory limit (about 80%, or about 60% for the agent0-connector, which also runs `kubectl` as a
@@ -437,13 +450,15 @@ operator:
 > ([the environment variable](https://pkg.go.dev/runtime#hdr-Environment_Variables), a soft memory limit for the Go
 > runtime's garbage collector) is derived automatically from the container's memory limit when `gomemlimit` is left
 > empty: the three collectors (which also derive their `memory_limiter` thresholds), the target-allocator, edge-proxy,
-> agent0-connector, configuration reloaders and filelog offset sync container. For these you normally adjust only the
-> memory limit. The one exception is the operator manager (`managerContainerResources`), whose `gomemlimit` is set
-> statically — whenever you raise or lower its memory limit, adjust its `gomemlimit` as well (about 80% of the limit).
+> agent0-connector, eBPF profiler, debuginfo proxy, configuration reloaders and filelog offset sync container. For
+> these you normally adjust only the memory limit. The one exception is the operator manager
+> (`managerContainerResources`), whose `gomemlimit` is set statically — whenever you raise or lower its memory limit,
+> adjust its `gomemlimit` as well (about 80% of the limit).
 > Note that `gomemlimit` uses different units than Kubernetes resource settings (`MiB`/`GiB` rather than `Mi`/`Gi`).
 
-Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or
-similar to take effect.
+Changing Helm settings while the operator is already running requires a
+`helm upgrade`/`helm upgrade --reset-then-reuse-values`, or a sync of the changed values in ArgoCD or Flux, to take
+effect.
 
 ## Controlling On Which Nodes the Operator's Collector Pods Are Scheduled
 
@@ -474,10 +489,11 @@ In the same fashion, tolerations can also be configured for the Dash0 operator m
 `operator.tolerations`), the OpenTelemetry collector deployment for collecting cluster metrics
 (Helm value `operator.collectors.deploymentTolerations`), the SignalControl collector deployment
 (Helm value `operator.collectors.signalControlCollectorTolerations`), the OpenTelemetry target-allocator deployment
-(Helm value `operator.targetAllocator.tolerations`) and the agent0-connector deployment (Helm value
-`operator.agent0Connector.tolerations`).
+(Helm value `operator.targetAllocator.tolerations`), the agent0-connector deployment (Helm value
+`operator.agent0Connector.tolerations`), the eBPF profiler daemonset (Helm value `operator.ebpfProfiler.tolerations`)
+and the debuginfo proxy daemonset (Helm value `operator.debuginfoProxy.tolerations`).
 
-Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or similar to take effect.
+Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reset-then-reuse-values`, or a sync of the changed values in ArgoCD or Flux, to take effect.
 
 ### Preventing Operator Scheduling on Specific Nodes
 
@@ -529,11 +545,17 @@ operator:
 
   agent0Connector:
     nodeAffinity: <custom_node_affinity>
+
+  ebpfProfiler:
+    nodeAffinity: <custom_node_affinity>
+
+  debuginfoProxy:
+    nodeAffinity: <custom_node_affinity>
 ```
 
 ### Adding Custom Labels and Annotations to the Collector Resources
 
-Additional labels and annotations can be added to the collector resources, the target-allocator resource, and the agent0-connector resource managed by the operator, both to the workload objects (the daemonset and the deployments) and to their pods.
+Additional labels and annotations can be added to the collector resources, the target-allocator resource, the agent0-connector resource, and the eBPF profiler and debuginfo proxy resources managed by the operator, both to the workload objects (the daemonsets and the deployments) and to their pods.
 These are merged with the labels and annotations the operator sets itself; the operator-managed entries always take precedence, so they cannot be overridden.
 
 ```yaml
@@ -583,6 +605,26 @@ operator:
   agent0Connector:
     enabled: true
     # [... other settings like serverAddress etc.]
+    labels:
+      my-label: my-value
+    annotations:
+      my-annotation: my-value
+    podLabels:
+      my-pod-label: my-value
+    podAnnotations:
+      my-pod-annotation: my-value
+
+  ebpfProfiler:
+    labels:
+      my-label: my-value
+    annotations:
+      my-annotation: my-value
+    podLabels:
+      my-pod-label: my-value
+    podAnnotations:
+      my-pod-annotation: my-value
+
+  debuginfoProxy:
     labels:
       my-label: my-value
     annotations:
@@ -645,7 +687,7 @@ This setting is opt-in for two reasons:
 * The `net.ipv4.tcp_keepalive_*` sysctls are only considered _safe_ sysctls on Kubernetes 1.29 and later. On older clusters, or on clusters where the kubelet's `forbiddenSysctls` / a strict Pod Security Admission policy disallows them, the kubelet rejects these sysctls and the collector pods will fail to be scheduled.
 * It changes the collector pod spec, which triggers a rollout of the collector pods.
 
-Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or similar to take effect.
+Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reset-then-reuse-values`, or a sync of the changed values in ArgoCD or Flux, to take effect.
 
 ## Configuring SELinux Options for the Collector DaemonSet
 
@@ -663,8 +705,9 @@ operator:
       type: <selinux-type>
 ```
 
-Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or
-similar to take effect.
+Changing Helm settings while the operator is already running requires a
+`helm upgrade`/`helm upgrade --reset-then-reuse-values`, or a sync of the changed values in ArgoCD or Flux, to take
+effect.
 
 ## Disable Self-Monitoring
 

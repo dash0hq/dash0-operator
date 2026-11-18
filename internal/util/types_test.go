@@ -84,7 +84,6 @@ var _ = Describe("the cluster instrumentation config", func() {
 			)
 			previous, current := config.UpdateRequestedInstrumentationDelivery(
 				dash0v1alpha1.InstrumentationDeliveryImageVolume,
-				true,
 				logd.Discard(),
 			)
 			Expect(previous).To(Equal(cluster.ResolvedInstrumentationDeliveryInitContainer))
@@ -99,6 +98,17 @@ var _ = Describe("the cluster instrumentation config", func() {
 		It("should wait for the minimum kubelet version detection when auto is requested", func() {
 			config := newTestClusterInstrumentationConfig(
 				dash0v1alpha1.InstrumentationDeliveryAuto,
+				cluster.KubernetesVersion{Major: 1, Minor: 36},
+				startDetection("v1.36.0", "v1.37.1"),
+			)
+
+			Expect(config.WaitForInstrumentationDeliveryAutoToBeResolved(context.Background(), time.Minute)).
+				To(Equal(cluster.ResolvedInstrumentationDeliveryImageVolume))
+		})
+
+		It("should wait for the minimum kubelet version detection when no delivery has been requested", func() {
+			config := newTestClusterInstrumentationConfig(
+				"",
 				cluster.KubernetesVersion{Major: 1, Minor: 36},
 				startDetection("v1.36.0", "v1.37.1"),
 			)

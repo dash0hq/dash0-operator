@@ -1075,6 +1075,8 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		Expect(response.Allowed).To(BeTrue())
 		if expectInstrumentation {
 			Expect(response.Patches).ToNot(BeEmpty())
+			// The event is recorded asynchronously, wait for it so it does not leak past the event cleanup in AfterEach.
+			VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, deployment.Name, testActor)
 		} else {
 			Expect(response.Patches).To(BeEmpty())
 		}

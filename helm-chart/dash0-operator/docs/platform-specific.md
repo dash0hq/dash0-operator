@@ -484,9 +484,9 @@ When running a single-architecture `amd64` image (as opposed to a single-archite
 
 The reason for this is the interaction between Rosetta emulation and how the operator works:
 
-1. The Dash0 instrumentation image (which is added as an init container and contains the OpenTelemetry injector) is a multi-platform image, supporting both `amd64` and `arm64`.
+1. The Dash0 instrumentation image (which contains the OpenTelemetry injector and is added to the pod either as an image volume or as an init container) is a multi-platform image, supporting both `amd64` and `arm64`.
 2. When this image is pulled from an Apple Silicon machine, it automatically pulls the `arm64` variant.
-3. That is, the injector binary that is added via the init container is compiled for `arm64`.
+3. That is, the injector binary that is provided to the application container is compiled for `arm64`.
 4. Now, when the application from your `amd64` application image is started, the injector and the application will be incompatible, as they have been built for two different CPU architectures.
 
 Under normal circumstances, an `amd64` image would not work on an `arm64` Kubernetes node anyway, but in the case of Docker Desktop on MacOS, this combination is enabled due to Docker Desktop automatically running `amd64` images via Rosetta2 emulation.

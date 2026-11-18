@@ -72,11 +72,60 @@ var _ = Describe(
 			},
 		)
 
-		DescribeTable("should apply the Helm eBPF profiler opt-in", func(telemetryEnabled, profilerEnabled bool) {
+		Describe("waiting for the first create/update", func() {
+			It("should report the first create/update as done once the resource has been created", func() {
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithToken,
+					util.ExtraConfig{},
+				)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				// The resource is only created once this replica has become leader.
+				Expect(handler.WaitForFirstCreateOrUpdate(ctx, 500*time.Millisecond)).To(BeFalse())
+
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				Expect(handler.WaitForFirstCreateOrUpdate(ctx, 10*time.Second)).To(BeTrue())
+				LoadOperatorConfigurationResourceByNameOrFail(ctx, k8sClient, Default, util.OperatorConfigurationAutoResourceName)
+			})
+
+			It("should report the first create/update as done if the validation fails", func() {
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{
+						Token: AuthorizationTokenTest,
+					},
+					util.ExtraConfig{},
+				)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).To(HaveOccurred())
+				Expect(handler.WaitForFirstCreateOrUpdate(ctx, time.Second)).To(BeTrue())
+			})
+
+			It("should report the first create/update as done if a manually created resource prevents it", func() {
+				CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithToken,
+					util.ExtraConfig{},
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(handler.WaitForFirstCreateOrUpdate(ctx, 10*time.Second)).To(BeTrue())
+			})
+		})
+
+		DescribeTable("should apply the Helm eBPF profiler opt-in", func(telemetryEnabled, profilingEnabled, profilerEnabled bool) {
 			handler := NewAutoOperatorConfigurationResourceHandler(k8sClient, readyCheckExecuter,
 				OperatorConfigurationValues{
 					Endpoint: EndpointDash0Test, Token: AuthorizationTokenTest,
-					TelemetryCollectionEnabled: telemetryEnabled, EbpfProfilerEnabled: profilerEnabled,
+					TelemetryCollectionEnabled: telemetryEnabled, ProfilingEnabled: profilingEnabled,
+					EbpfProfilerEnabled: profilerEnabled,
 				}, util.ExtraConfig{})
 			handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 			_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -84,7 +133,7 @@ var _ = Describe(
 			Eventually(func(g Gomega) {
 				var configuration v1alpha1.Dash0OperatorConfiguration
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName}, &configuration)).To(Succeed())
-				g.Expect(configuration.Spec.Profiling.Enabled).To(HaveValue(Equal(telemetryEnabled && profilerEnabled)))
+				g.Expect(configuration.Spec.Profiling.Enabled).To(HaveValue(Equal(telemetryEnabled && profilingEnabled)))
 				if telemetryEnabled && profilerEnabled {
 					g.Expect(configuration.Spec.Profiling.EbpfProfiler).NotTo(BeNil())
 					g.Expect(configuration.Spec.Profiling.EbpfProfiler.Enabled).To(HaveValue(BeTrue()))
@@ -93,9 +142,37 @@ var _ = Describe(
 				}
 			}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 		},
-			Entry("implicitly enables profile collection", true, true),
-			Entry("remains opt-in", true, false),
-			Entry("does not enable sampling without telemetry collection", false, true),
+			Entry("enables the profiler", true, true, true),
+			Entry("remains opt-in", true, true, false),
+			Entry("does not enable profiling or the profiler without telemetry collection", false, true, true),
+			Entry("ignores disabled profiling without telemetry collection", false, false, true),
+		)
+
+		It(
+			"should fail validation if the eBPF profiler is enabled with profiling disabled", func() {
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{
+						Endpoint:                   EndpointDash0Test,
+						Token:                      AuthorizationTokenTest,
+						TelemetryCollectionEnabled: true,
+						ProfilingEnabled:           false,
+						EbpfProfilerEnabled:        true,
+					},
+					util.ExtraConfig{},
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).To(
+					MatchError(
+						ContainSubstring(
+							"--operator-configuration-ebpf-profiler-enabled (Helm value operator.ebpfProfilerEnabled) " +
+								"cannot be combined with --operator-configuration-profiling-enabled=false",
+						),
+					),
+				)
+			},
 		)
 
 		It(
@@ -314,6 +391,9 @@ var _ = Describe(
 		It(
 			"should wait for the webhook service endpoint ready check", func() {
 				readyCheckExecuter.bypassWebhookCheck = false
+				// The handler never stops waiting for the webhook service on its own, so it needs to be stopped explicitly.
+				handlerCtx, stopHandler := context.WithCancel(ctx)
+				DeferCleanup(stopHandler)
 				handler := NewAutoOperatorConfigurationResourceHandler(
 					k8sClient,
 					readyCheckExecuter,
@@ -321,7 +401,7 @@ var _ = Describe(
 					util.ExtraConfig{},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
-				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(handlerCtx, logger)
 				Expect(err).ToNot(HaveOccurred())
 
 				// The handler should not be able to proceed if we do not skip the webhook

@@ -126,7 +126,7 @@ type Dash0OperatorConfigurationSpec struct {
 	// Cluster-wide settings for the instrumentation of workloads. Per-namespace settings are in the monitoring
 	// resources.
 	//
-	// +kubebuilder:default={instrumentationDelivery: init-container}
+	// +kubebuilder:default={instrumentationDelivery: auto}
 	InstrumentWorkloads InstrumentWorkloads `json:"instrumentWorkloads,omitempty"`
 
 	// An opt-out switch for all telemetry collection, including the deployment of OpenTelemetry collectors.
@@ -315,19 +315,19 @@ const (
 // InstrumentWorkloads contains cluster-wide settings that govern how the operator instruments workloads.
 type InstrumentWorkloads struct {
 	// How the Dash0 instrumentation files are made available to instrumented workload containers:
-	//   - "auto": use image volumes if the Kubernetes API server and the kubelets of all nodes are 1.36 or later,
-	//     otherwise use an init container. The operator inspects the nodes once at startup and uses an init container
-	//     until then. Nodes joining the cluster later are not taken into account.
+	//   - "auto" (default): use image volumes if the Kubernetes API server and the kubelets of all nodes are 1.36 or
+	//     later, otherwise use an init container. The operator inspects the nodes once at startup and uses an init
+	//     container until then. Nodes joining the cluster later are not taken into account.
 	//   - "image-volume": always use an image volume sourced from the Dash0 instrumentation image. If the operator has
 	//     detected that the API server or the kubelet of a node is older than 1.31, it logs a warning and falls back to
 	//     an init container. That fallback does not cover workloads instrumented before the nodes have been inspected,
 	//     nor nodes that join later. Kubernetes 1.34 and earlier need the image volume feature gate enabled at cluster
 	//     creation time.
-	//   - "init-container" (default): always use an init container plus emptyDir volume.
+	//   - "init-container": always use an init container plus emptyDir volume.
 	// Changing this setting does not re-instrument existing workloads. It applies to workloads that are deployed or
 	// updated afterwards.
 	//
-	// +kubebuilder:default=init-container
+	// +kubebuilder:default=auto
 	InstrumentationDelivery InstrumentationDelivery `json:"instrumentationDelivery,omitempty"`
 }
 
@@ -420,12 +420,12 @@ type MonitoringTemplate struct {
 // pipeline definitions for the profiles signal type.
 type Profiling struct {
 	// If enabled, the operator will set up the pipelines to receive, process and forward profiling data over OTLP.
-	// This setting is optional, it defaults to `false`.
+	// This setting is optional. If it is not set, profiling is enabled together with `ebpfProfiler.enabled`.
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
 
-	// Settings for the node-level eBPF profiler. Enabling it requires profiling and telemetry collection to be enabled,
-	// and the eBPF profiler to be enabled via Helm.
+	// Settings for the node-level eBPF profiler. Enabling it requires telemetry collection to be enabled, and the eBPF
+	// profiler to be enabled via Helm. It cannot be combined with `enabled: false`.
 	//
 	// +kubebuilder:validation:Optional
 	EbpfProfiler *EbpfProfiler `json:"ebpfProfiler,omitempty"`

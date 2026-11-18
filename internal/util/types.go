@@ -347,14 +347,15 @@ func (c *ClusterInstrumentationConfig) SetKubernetesVersions(
 // mechanism changes later. It gives up waiting after the given timeout and then returns the mechanism that is effective
 // at that point.
 //
-// If the requested delivery is not "auto", the method will not wait.
+// If the requested delivery is neither "auto" nor empty, the method will not wait.
 func (c *ClusterInstrumentationConfig) WaitForInstrumentationDeliveryAutoToBeResolved(
 	ctx context.Context,
 	timeout time.Duration,
 ) cluster.ResolvedInstrumentationDelivery {
 	requestedInstrumentationDelivery := c.requestedInstrumentationDelivery.Load()
 	if requestedInstrumentationDelivery != nil &&
-		*requestedInstrumentationDelivery == dash0v1alpha1.InstrumentationDeliveryAuto {
+		cluster.RequestedInstrumentationDeliveryOrDefault(*requestedInstrumentationDelivery) ==
+			dash0v1alpha1.InstrumentationDeliveryAuto {
 		c.minimumKubeletVersionDetector.WaitForDetection(ctx, timeout)
 	}
 	return c.ResolveInstrumentationDelivery()
@@ -365,12 +366,11 @@ func (c *ClusterInstrumentationConfig) WaitForInstrumentationDeliveryAutoToBeRes
 // effective before the update and the new resolved mechanism that is effective now, after updating it.
 func (c *ClusterInstrumentationConfig) UpdateRequestedInstrumentationDelivery(
 	requestedInstrumentationDelivery dash0v1alpha1.InstrumentationDelivery,
-	logWarningForEmptyValue bool,
 	logger logd.Logger,
 ) (cluster.ResolvedInstrumentationDelivery, cluster.ResolvedInstrumentationDelivery) {
 	previous := c.ResolveInstrumentationDelivery()
 	c.requestedInstrumentationDelivery.Store(&requestedInstrumentationDelivery)
-	return previous, c.resolveInstrumentationDelivery(logWarningForEmptyValue, logger)
+	return previous, c.resolveInstrumentationDelivery(logger)
 }
 
 // UpdateInstrumentationInitContainerResources stores the init container resources from spec.components, nil if they are
@@ -402,11 +402,10 @@ func (c *ClusterInstrumentationConfig) InstrumentationInitContainerResources() c
 // has started. The mode "auto" resolves to init-container until all nodes have been inspected, and potentially to
 // image-volumes afterwards (if all kubelets are recent enough).
 func (c *ClusterInstrumentationConfig) ResolveInstrumentationDelivery() cluster.ResolvedInstrumentationDelivery {
-	return c.resolveInstrumentationDelivery(false, logd.Discard())
+	return c.resolveInstrumentationDelivery(logd.Discard())
 }
 
 func (c *ClusterInstrumentationConfig) resolveInstrumentationDelivery(
-	logWarningForEmptyValue bool,
 	logger logd.Logger,
 ) cluster.ResolvedInstrumentationDelivery {
 	requestedInstrumentationDelivery := c.requestedInstrumentationDelivery.Load()
@@ -417,7 +416,6 @@ func (c *ClusterInstrumentationConfig) resolveInstrumentationDelivery(
 		*requestedInstrumentationDelivery,
 		c.kubernetesApiServerVersion,
 		c.minimumKubeletVersionDetector.Get(),
-		logWarningForEmptyValue,
 		logger,
 	)
 }

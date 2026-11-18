@@ -1431,9 +1431,6 @@ tests:
           value: --operator-configuration-prometheus-crd-support-enabled=false
       - equal:
           path: spec.template.spec.containers[0].args[15]
-          value: --operator-configuration-profiling-enabled=false
-      - equal:
-          path: spec.template.spec.containers[0].args[16]
           value: --operator-configuration-dataset=test-dataset
 
   - it: should add args for creating an operator configuration resource with keepalive settings to the deployment
@@ -1456,13 +1453,13 @@ tests:
           path: spec.template.spec.containers[0].args[3]
           value: --operator-configuration-managed-via-helm=true
       - equal:
-          path: spec.template.spec.containers[0].args[16]
+          path: spec.template.spec.containers[0].args[15]
           value: --operator-configuration-keepalive-time=30s
       - equal:
-          path: spec.template.spec.containers[0].args[17]
+          path: spec.template.spec.containers[0].args[16]
           value: --operator-configuration-keepalive-timeout=10s
       - equal:
-          path: spec.template.spec.containers[0].args[18]
+          path: spec.template.spec.containers[0].args[17]
           value: --operator-configuration-keepalive-permit-without-stream=true
 
   - it: should not add keepalive args when keepalive is not configured
@@ -1477,12 +1474,12 @@ tests:
           token: "very-secret-dash0-auth-token"
           apiEndpoint: https://api.dash0.com
     asserts:
-      # Without keepalive, auto-monitor args should be at index 13 (where keepalive-time would otherwise be).
+      # Without keepalive, auto-monitor args should be at index 15 (where keepalive-time would otherwise be).
       - equal:
           path: spec.template.spec.containers[0].args[3]
           value: --operator-configuration-managed-via-helm=true
       - equal:
-          path: spec.template.spec.containers[0].args[16]
+          path: spec.template.spec.containers[0].args[15]
           value: --operator-configuration-auto-monitor-namespaces-enabled=false
 
   - it: should add args for creating an operator configuration resource with a cluster name to the deployment
@@ -1527,9 +1524,6 @@ tests:
           value: --operator-configuration-prometheus-crd-support-enabled=false
       - equal:
           path: spec.template.spec.containers[0].args[15]
-          value: --operator-configuration-profiling-enabled=false
-      - equal:
-          path: spec.template.spec.containers[0].args[16]
           value: --operator-configuration-cluster-name=cluster-name
 
   - it: should add args for creating an operator configuration resource with a secretRef to the deployment
@@ -1749,6 +1743,66 @@ tests:
           path: spec.template.spec.containers[0].args[14]
           value: --operator-configuration-prometheus-crd-support-enabled=true
 
+  - it: should not render the profiling pipelines arg by default
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-profiling-enabled=true
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-profiling-enabled=false
+
+  - it: should enable profiling pipelines
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+        profilingEnabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[3]
+          value: --operator-configuration-managed-via-helm=true
+      - equal:
+          path: spec.template.spec.containers[0].args[15]
+          value: --operator-configuration-profiling-enabled=true
+
+  - it: should disable profiling pipelines
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+        selfMonitoringEnabled: false
+        profilingEnabled: false
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[3]
+          value: --operator-configuration-managed-via-helm=true
+      - equal:
+          path: spec.template.spec.containers[0].args[15]
+          value: --operator-configuration-profiling-enabled=false
+
   - it: should enable support for automatic namespace monitoring
     documentSelector:
       path: metadata.name
@@ -1768,10 +1822,10 @@ tests:
           path: spec.template.spec.containers[0].args[3]
           value: --operator-configuration-managed-via-helm=true
       - equal:
-          path: spec.template.spec.containers[0].args[16]
+          path: spec.template.spec.containers[0].args[15]
           value: --operator-configuration-auto-monitor-namespaces-enabled=true
       - equal:
-          path: spec.template.spec.containers[0].args[17]
+          path: spec.template.spec.containers[0].args[16]
           value: --operator-configuration-auto-monitor-namespaces-label-selector=dash0.com/custom==false
 
   - it: should disable telemetry collection via Helm
@@ -2719,7 +2773,7 @@ tests:
           path: spec.template.spec.containers[0].args
           content: "--operator-configuration-instrumentation-delivery=auto"
 
-  - it: operator.instrumentation.delivery should default to "init-container"
+  - it: operator.instrumentation.delivery should default to "auto"
     documentSelector:
       path: metadata.name
       value: dash0-operator-controller
@@ -2732,7 +2786,7 @@ tests:
     asserts:
       - contains:
           path: spec.template.spec.containers[0].args
-          content: "--operator-configuration-instrumentation-delivery=init-container"
+          content: "--operator-configuration-instrumentation-delivery=auto"
 
   - it: should reject an invalid operator.instrumentation.delivery value
     set:
@@ -3016,7 +3070,7 @@ tests:
           content: --operator-configuration-self-monitoring-enabled=true
       - contains:
           path: spec.template.spec.containers[0].args
-          content: --operator-configuration-instrumentation-delivery=init-container
+          content: --operator-configuration-instrumentation-delivery=auto
       - notContains:
           path: spec.template.spec.containers[0].args
           content: --operator-configuration-endpoint=

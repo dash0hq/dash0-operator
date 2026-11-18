@@ -6,6 +6,7 @@ package startup
 import (
 	"context"
 	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	toolscache "k8s.io/client-go/tools/cache"
@@ -89,6 +90,51 @@ func updateOperatorConfigurationInstrumentationSettings(
 	return nil
 }
 
+// operatorConfigurationResourceSettleTimeout bounds how long the startup instrumentation waits for the operator
+// manager to create or update the operator configuration resource from the Helm values. That covers the first round of
+// attempts, which includes waiting for the webhook service (up to 60 seconds, see ReadyCheckExecuter) and retrying the
+// create/update request (about 40 seconds). If that round fails, the operator manager keeps retrying in the background,
+// but the startup instrumentation does not wait for that.
+const operatorConfigurationResourceSettleTimeout = 2 * time.Minute
+
+// newWaitForHelmManagedInstrumentationSettings returns a function for the startup instrumentation that blocks until the
+// operator manager has created or updated the operator configuration resource from the Helm values, and then applies
+// the instrumentation settings of that resource. It returns nil if the operator configuration resource is not managed
+// via Helm.
+//
+// Without that, the startup instrumentation would race against the update of the resource after a Helm upgrade: Until
+// this replica has become leader and has updated the resource, the settings are still the ones written by the previous
+// operator version. Workloads instrumented with these settings are not re-instrumented once the update arrives. The
+// settings are read via the given (uncached) client, since the informer might not have delivered the update yet.
+func newWaitForHelmManagedInstrumentationSettings(
+	autoOperatorConfigurationResourceHandler *AutoOperatorConfigurationResourceHandler,
+	k8sClient client.Client,
+	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
+	extraConfigDefaults util.ExtraConfig,
+) func(context.Context, logd.Logger) {
+	if autoOperatorConfigurationResourceHandler == nil {
+		return nil
+	}
+	return func(ctx context.Context, logger logd.Logger) {
+		logger.Info("waiting for the operator configuration resource to be created or updated from the Helm values " +
+			"before instrumenting workloads at startup")
+		if !autoOperatorConfigurationResourceHandler.WaitForFirstCreateOrUpdate(
+			ctx,
+			operatorConfigurationResourceSettleTimeout,
+		) {
+			logger.Info("the operator configuration resource has not been created or updated in time, instrumenting " +
+				"workloads at startup with the current instrumentation settings")
+			return
+		}
+		if err := updateOperatorConfigurationInstrumentationSettings(
+			ctx, k8sClient, clusterInstrumentationConfig, extraConfigDefaults, true, logger,
+		); err != nil {
+			logger.Error(err, "cannot read the instrumentation settings of the operator configuration resource before "+
+				"instrumenting workloads at startup, instrumenting them with the current instrumentation settings")
+		}
+	}
+}
+
 // updateRequestedInstrumentationDelivery resolves spec.instrumentWorkloads.instrumentationDelivery against the detected
 // Kubernetes version knowledge (the Kubernetes API server version and the minimum kubelet version) and stores the
 // result into the clusterInstrumentationConfig. Subsequent workload instrumentation actions then use the new resolved
@@ -100,7 +146,7 @@ func updateRequestedInstrumentationDelivery(
 ) {
 	originalDeliverySetting := operatorConfigurationResource.Spec.InstrumentWorkloads.InstrumentationDelivery
 	previousResolvedDelivery, newResolvedDelivery :=
-		clusterInstrumentationConfig.UpdateRequestedInstrumentationDelivery(originalDeliverySetting, true, logger)
+		clusterInstrumentationConfig.UpdateRequestedInstrumentationDelivery(originalDeliverySetting, logger)
 	if previousResolvedDelivery != newResolvedDelivery {
 		logger.Info(
 			"The instrumentation delivery mechanism resolved from spec.instrumentWorkloads.instrumentationDelivery has "+

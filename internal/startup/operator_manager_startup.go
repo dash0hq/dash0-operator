@@ -212,6 +212,8 @@ func (l pprofLogger) Error(msg string, args ...any) {
 }
 
 const (
+	operatorConfigurationProfilingEnabledFlagName = "operator-configuration-profiling-enabled"
+
 	operatorNamespaceEnvVarName                           = "DASH0_OPERATOR_NAMESPACE"
 	deploymentNameEnvVarName                              = "DASH0_DEPLOYMENT_NAME"
 	webhookServiceNameEnvVarName                          = "DASH0_WEBHOOK_SERVICE_NAME"
@@ -444,6 +446,11 @@ func Start() {
 		os.Exit(1)
 	}
 	cliArgs.isOpenShift = resolveOpenShiftMode(flag.CommandLine, cliArgs.isOpenShift, setupLog)
+	cliArgs.operatorConfigurationProfilingEnabled = resolveOperatorConfigurationProfilingEnabled(
+		flag.CommandLine,
+		cliArgs.operatorConfigurationProfilingEnabled,
+		cliArgs.operatorConfigurationEbpfProfilerEnabled,
+	)
 	extraConfigDefaults = util.ExtraConfigDefaultsFor(cliArgs.isGkeAutopilot, cliArgs.isOpenShift)
 	if err = readExtraConfigMap(extraConfigDefaults); err != nil {
 		setupLog.Error(err, "cannot read extra config map file at startup")
@@ -705,10 +712,11 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 	)
 	fs.BoolVar(
 		&cliArgs.operatorConfigurationProfilingEnabled,
-		"operator-configuration-profiling-enabled",
+		operatorConfigurationProfilingEnabledFlagName,
 		false,
-		"The value for profiling.enabled on the operator configuration resource; "+
-			"will be ignored if operator-configuration-endpoint is not set.",
+		"The value for profiling.enabled on the operator configuration resource; if not set, it follows "+
+			"operator-configuration-ebpf-profiler-enabled; will be ignored if operator-configuration-endpoint is not "+
+			"set.",
 	)
 	fs.BoolVar(
 		&cliArgs.operatorConfigurationEbpfProfilerEnabled,
@@ -1217,6 +1225,22 @@ func readKubeletStatsReceiverConfigFromEnv() (bool, *util.KubeletStatsReceiverCo
 		AuthType:           authType,
 		InsecureSkipVerify: insecureSkipVerify,
 	}
+}
+
+// resolveOperatorConfigurationProfilingEnabled returns the value of --operator-configuration-profiling-enabled if the
+// flag has been set explicitly, either as a command-line argument or via its environment variable. Otherwise, profiling
+// is enabled together with the eBPF profiler (--operator-configuration-ebpf-profiler-enabled).
+func resolveOperatorConfigurationProfilingEnabled(fs *flag.FlagSet, flagValue bool, ebpfProfilerEnabled bool) bool {
+	explicit := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == operatorConfigurationProfilingEnabledFlagName {
+			explicit = true
+		}
+	})
+	if explicit {
+		return flagValue
+	}
+	return ebpfProfilerEnabled
 }
 
 // readExtraConfigMap reads the config map content, which is basically a container for structured configuration data
@@ -1923,12 +1947,13 @@ func startDash0Controllers(
 		return err
 	}
 
-	operatorConfigurationResource := createOrUpdateAutoOperatorConfigurationResource(
-		ctx,
-		readyCheckExecuter,
-		operatorConfigurationValues,
-		setupLog,
-	)
+	operatorConfigurationResource, autoOperatorConfigurationResourceHandler :=
+		createOrUpdateAutoOperatorConfigurationResource(
+			ctx,
+			readyCheckExecuter,
+			operatorConfigurationValues,
+			setupLog,
+		)
 
 	k8sClient := mgr.GetClient()
 
@@ -1977,7 +2002,18 @@ func startDash0Controllers(
 				return fmt.Errorf("unable to add the task for checking for instrumented pods: %w", err)
 			}
 		} else {
-			if instrumenter, err = setupInstrumenters(mgr, k8sClient, clientset, clusterInstrumentationConfig); err != nil {
+			if instrumenter, err = setupInstrumenters(
+				mgr,
+				k8sClient,
+				clientset,
+				clusterInstrumentationConfig,
+				newWaitForHelmManagedInstrumentationSettings(
+					autoOperatorConfigurationResourceHandler,
+					startupTasksK8sClient,
+					clusterInstrumentationConfig,
+					extraConfigDefaults,
+				),
+			); err != nil {
 				return err
 			}
 		}
@@ -2103,7 +2139,10 @@ func startDash0Controllers(
 			ServiceAccountName: cliArgs.ebpfProfilerServiceAccountName, IsOpenShift: cliArgs.isOpenShift,
 		},
 	)
-	profilerManager := profiling.NewManager(profilerResourceManager)
+	profilerManager := profiling.NewManager(profilerResourceManager, extraConfig, extraConfigDefaults)
+	// Update the extra config in the profiling manager when the extra config map changes, and also trigger a
+	// reconciliation of the profiler and debuginfo proxy resources.
+	extraConfigMapWatcher.AddClient(profilerManager)
 	profilerReconciler := profiling.NewReconciler(k8sClient, profilerManager)
 	if err := profilerReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the eBPF profiler reconciler: %w", err)
@@ -2551,9 +2590,9 @@ func createOrUpdateAutoOperatorConfigurationResource(
 	readyCheckExecuter *ReadyCheckExecuter,
 	operatorConfigurationValues *OperatorConfigurationValues,
 	logger logd.Logger,
-) *dash0v1alpha1.Dash0OperatorConfiguration {
+) (*dash0v1alpha1.Dash0OperatorConfiguration, *AutoOperatorConfigurationResourceHandler) {
 	if operatorConfigurationValues == nil {
-		return nil
+		return nil, nil
 	}
 	autoOperatorConfigurationResourceHandler := NewAutoOperatorConfigurationResourceHandler(
 		startupTasksK8sClient,
@@ -2568,10 +2607,10 @@ func createOrUpdateAutoOperatorConfigurationResource(
 			logger,
 		); err != nil {
 		logger.Error(err, "Failed to create the requested Dash0 operator configuration resource.")
-		return nil
+		return nil, autoOperatorConfigurationResourceHandler
 	} else {
 		extraConfigMapWatcher.AddClient(autoOperatorConfigurationResourceHandler)
-		return operatorConfigurationResource
+		return operatorConfigurationResource, autoOperatorConfigurationResourceHandler
 	}
 }
 
@@ -2611,6 +2650,7 @@ func setupInstrumenters(
 	k8sClient client.Client,
 	clientset *kubernetes.Clientset,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
+	waitForOperatorConfigurationResource func(context.Context, logd.Logger),
 ) (*instrumentation.Instrumenter, error) {
 	startupInstrumenter := instrumentation.NewInstrumenter(
 		// The k8s client will be added later, in internal/startup/instrument_at_startup.go#Start.
@@ -2624,7 +2664,9 @@ func setupInstrumenters(
 	// this instrumenter only runs once at startup, this has no effect whatsoever.
 	extraConfigMapWatcher.AddClient(startupInstrumenter)
 	// register the instrument-at-startup task to run once this operator manager becomes leader
-	if err := mgr.Add(NewInstrumentAtStartupRunnable(mgr, startupInstrumenter)); err != nil {
+	if err := mgr.Add(
+		NewInstrumentAtStartupRunnable(mgr, startupInstrumenter, waitForOperatorConfigurationResource),
+	); err != nil {
 		return nil, fmt.Errorf("unable to add instrument-at-startup task: %w", err)
 	}
 
@@ -2958,14 +3000,7 @@ func waitForWebhookEndpointReadiness(ctx context.Context, logger logd.Logger) er
 	}
 
 	readyCheckExecuter := NewReadyCheckExecuter(k8sClient, operatorNamespace, webhookServiceName)
-	webhookServiceIsAvailable, err := readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(ctx, logger)
-	if err != nil {
-		return err
-	}
-	if !webhookServiceIsAvailable {
-		return fmt.Errorf("the Dash0 operator webhook service endpoint did not become ready")
-	}
-	return nil
+	return readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(ctx, logger)
 }
 
 // waitForWebhookReachability waits until the rollout of the operator manager deployment is complete and the API server

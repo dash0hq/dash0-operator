@@ -73,11 +73,8 @@ func (c *ReadyCheckExecuter) isReady(_ *http.Request) error {
 
 // waitForWebhookServiceEndpointToBecomeReady blocks until the webhook service endpoint has become ready, or until the
 // polling routine for the webhook service gives up.
-func (c *ReadyCheckExecuter) waitForWebhookServiceEndpointToBecomeReady(ctx context.Context, logger logd.Logger) (bool, error) {
-	if err := c.pollWebhookServiceEndpoint(ctx, logger, true); err != nil {
-		return false, err
-	}
-	return c.webhookEndpointHasPortAssigned.Load(), nil
+func (c *ReadyCheckExecuter) waitForWebhookServiceEndpointToBecomeReady(ctx context.Context, logger logd.Logger) error {
+	return c.pollWebhookServiceEndpoint(ctx, logger, true)
 }
 
 // pollWebhookServiceEndpoint polls the webhook service endpoint and only returns when the webhook service endpoint has
@@ -104,6 +101,9 @@ func (c *ReadyCheckExecuter) pollWebhookServiceEndpoint(ctx context.Context, log
 	if err := retry.Retry(
 		"waiting for webhook service endpoint",
 		func() error {
+			if err := ctx.Err(); err != nil {
+				return retry.NewRetryableError(err, false)
+			}
 			return c.checkWebhookServiceEndpoint(ctx, waitForReadyCondition)
 		},
 		c.retryBackoff,

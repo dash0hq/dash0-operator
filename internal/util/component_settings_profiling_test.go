@@ -132,9 +132,10 @@ var _ = Describe("profiling component settings", func() {
 		Entry("debug information proxy", false, "debuginfoProxy", "128Mi", "32Mi", "10m"),
 	)
 
-	It("should not report Helm conflicts for profiling settings without Helm values", func() {
+	It("should report conflicts with the profiling Helm values", func() {
 		fileConfig := ExtraConfigDefaults
 		fileConfig.EbpfProfilerLabels = map[string]string{"source": "file"}
+		fileConfig.EbpfProfilerPriorityClassName = "file-priority"
 		fileConfig.DebuginfoProxyPodLabels = map[string]string{"source": "file"}
 		fileConfig.EbpfProfilerContainerResources = ResourceRequirementsWithGoMemLimit{}
 		fileConfig.DebuginfoProxyContainerResources = ResourceRequirementsWithGoMemLimit{}
@@ -144,6 +145,7 @@ var _ = Describe("profiling component settings", func() {
 				WorkloadSettings: dash0v1alpha1.WorkloadSettings{
 					Labels: map[string]string{"source": "resource"},
 				},
+				PriorityClassName: "resource-priority",
 			},
 			DebuginfoProxy: &dash0v1alpha1.DebuginfoProxySettings{
 				ContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{},
@@ -153,7 +155,17 @@ var _ = Describe("profiling component settings", func() {
 			},
 		}
 		check := CheckComponentSettings(fileConfig, ExtraConfigDefaults, components, nil)
-		Expect(check.Conflicts).To(BeEmpty())
 		Expect(check.Invalid).To(BeEmpty())
+		helmValuesPerPath := map[string]string{}
+		for _, conflict := range check.Conflicts {
+			helmValuesPerPath[conflict.Path] = conflict.HelmValue
+		}
+		Expect(helmValuesPerPath).To(Equal(map[string]string{
+			"spec.components.ebpfProfiler.containerResources":   "operator.ebpfProfiler.containerResources",
+			"spec.components.ebpfProfiler.labels":               "operator.ebpfProfiler.labels",
+			"spec.components.ebpfProfiler.priorityClassName":    "operator.ebpfProfiler.priorityClassName",
+			"spec.components.debuginfoProxy.containerResources": "operator.debuginfoProxy.containerResources",
+			"spec.components.debuginfoProxy.podLabels":          "operator.debuginfoProxy.podLabels",
+		}))
 	})
 })
