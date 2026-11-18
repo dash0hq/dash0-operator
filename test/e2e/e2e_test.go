@@ -3784,6 +3784,123 @@ spec:
 			})
 		})
 
+		Describe("when switching an instrumented cluster to operator.instrumentation.enabled=false", func() {
+
+			BeforeAll(func() {
+				By("deploying the Dash0 operator with workload instrumentation enabled")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					true,
+					nil,
+				)
+			})
+
+			AfterAll(func() {
+				removeAllTestApplications(applicationUnderTestNamespace)
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should keep existing instrumentations until the mode is set to none, and then remove them", func() {
+				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+
+				By("installing the Node.js deployment")
+				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+				By("verifying that the Node.js deployment has been instrumented by the webhook")
+				verifyThatWorkloadHasBeenInstrumented(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					testId,
+					images,
+					"webhook",
+				)
+
+				By("upgrading the operator with operator.instrumentation.enabled=false")
+				Expect(upgradeOperator(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					defaultAutoOperatorConfigurationValues(true),
+					map[string]string{
+						"operator.instrumentation.enabled": "false",
+					},
+				)).To(Succeed())
+				verifyInstrumentationWebhookIsNotRegistered()
+
+				By("verifying that the operator reports the monitoring resource with instrumentWorkloads.mode=all")
+				Eventually(func(g Gomega) {
+					output, err := run(exec.Command(
+						"kubectl",
+						"get",
+						"events",
+						"--namespace",
+						applicationUnderTestNamespace,
+						"--field-selector",
+						"involvedObject.kind=Dash0Monitoring,reason="+
+							string(util.ReasonInstrumentationDisabledButModeIsNotNone),
+						"-o",
+						"name",
+					), false)
+					g.Expect(err).ToNot(HaveOccurred())
+					g.Expect(strings.TrimSpace(output)).ToNot(BeEmpty())
+				}, 60*time.Second, pollingInterval).Should(Succeed())
+
+				By("verifying that the Node.js deployment keeps its instrumentation")
+				Consistently(func(g Gomega) {
+					verifyLabels(
+						g,
+						applicationUnderTestNamespace,
+						runtimeTypeNodeJs,
+						workloadTypeDeployment,
+						true,
+						images,
+						"webhook",
+					)
+				}, 10*time.Second, pollingInterval).Should(Succeed())
+
+				By("verifying that an update that keeps instrumentWorkloads.mode=all is accepted")
+				Eventually(func(g Gomega) {
+					g.Expect(runAndIgnoreOutput(exec.Command(
+						"kubectl",
+						"patch",
+						"--namespace",
+						applicationUnderTestNamespace,
+						"Dash0Monitoring",
+						dash0MonitoringResourceName,
+						"--type",
+						"merge",
+						"-p",
+						fmt.Sprintf(`{"metadata":{"annotations":{"e2e.dash0.com/updated-at":"%d"}}}`, time.Now().UnixNano()),
+					))).To(Succeed())
+				}, 30*time.Second, time.Second).Should(Succeed())
+
+				By("updating the Dash0Monitoring resource to instrumentWorkloads.mode=none")
+				updateInstrumentWorkloadsModeOfDash0MonitoringResource(
+					applicationUnderTestNamespace,
+					dash0common.InstrumentWorkloadsModeNone,
+				)
+				verifyThatInstrumentationHasBeenReverted(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					testId,
+					"controller",
+				)
+			})
+		})
+
 		Describe("when using cert-manager instead of auto-generated certs", func() {
 
 			BeforeAll(func() {
