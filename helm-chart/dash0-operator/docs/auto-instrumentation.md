@@ -356,6 +356,10 @@ In addition:
   rejected.
   Setting `operator.monitoringTemplate.spec.instrumentWorkloads.mode` to a value other than `none` makes the Helm
   installation fail.
+  A Dash0 operator configuration resource that already has a monitoring template with a mode other than `none` can
+  still be updated, as long as the update does not change that mode to another value other than `none`.
+* Automatic namespace monitoring creates and updates Dash0 monitoring resources with
+  `spec.instrumentWorkloads.mode: none`, regardless of the mode in the monitoring template.
 
 Disabling workload instrumentation does not remove the instrumentation from workloads that have been instrumented
 before.

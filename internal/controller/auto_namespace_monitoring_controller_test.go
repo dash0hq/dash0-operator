@@ -43,7 +43,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			autoNamespaceMonitoringReconciler = &AutoNamespaceMonitoringReconciler{
 				Client:           k8sClient,
 				manager:          mgr,
-				namespaceWatcher: NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace, time.Time{}),
+				namespaceWatcher: NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace, time.Time{}, true),
 			}
 		})
 
@@ -176,7 +176,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 		})
 
 		BeforeEach(func() {
-			namespaceWatcher = NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace, time.Time{})
+			namespaceWatcher = NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace, time.Time{}, true)
 		})
 
 		AfterEach(func() {
@@ -381,7 +381,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 		})
 
 		It("ignores a pre-delete hook job that has been created before the operator", func() {
-			namespaceWatcher = NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace, time.Now().Add(time.Hour))
+			namespaceWatcher = NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace, time.Now().Add(time.Hour), true)
 			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
 			preDeleteHookJob := createPreDeleteHookJob(ctx)
 			defer deletePreDeleteHookJob(ctx, preDeleteHookJob)
@@ -410,6 +410,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 				fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).Build(),
 				OperatorNamespace,
 				time.Time{},
+				true,
 			)
 
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
@@ -427,6 +428,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 				fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(disabledOperatorConfiguration).Build(),
 				OperatorNamespace,
 				time.Time{},
+				true,
 			)
 
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
@@ -444,6 +446,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 				fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(unavailableOperatorConfiguration).Build(),
 				OperatorNamespace,
 				time.Time{},
+				true,
 			)
 
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
@@ -587,6 +590,46 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			Expect(*monitoringResource.Spec.PrometheusScraping.Enabled).To(BeFalse())
 		})
 
+		Describe("when workload instrumentation is disabled", func() {
+			templateWithModeAll := func() *dash0v1alpha1.MonitoringTemplate {
+				return &dash0v1alpha1.MonitoringTemplate{
+					Spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+							Mode: dash0common.InstrumentWorkloadsModeAll,
+						},
+					},
+				}
+			}
+
+			It("creates the auto-monitoring resource with instrumentWorkloads.mode=none", func() {
+				createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", templateWithModeAll())
+				namespaceWatcher = NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace, time.Time{}, false)
+				triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+
+				monitoringResources := listMonitoringResources(ctx, Default, testAutoNamespace1)
+				Expect(monitoringResources).To(HaveLen(1))
+				Expect(monitoringResources[0].Spec.InstrumentWorkloads.Mode).To(
+					Equal(dash0common.InstrumentWorkloadsModeNone))
+			})
+
+			It("updates an existing auto-monitoring resource to instrumentWorkloads.mode=none", func() {
+				createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", templateWithModeAll())
+				triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+				monitoringResources := listMonitoringResources(ctx, Default, testAutoNamespace1)
+				Expect(monitoringResources).To(HaveLen(1))
+				Expect(monitoringResources[0].Spec.InstrumentWorkloads.Mode).To(
+					Equal(dash0common.InstrumentWorkloadsModeAll))
+
+				namespaceWatcher = NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace, time.Time{}, false)
+				triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+
+				monitoringResources = listMonitoringResources(ctx, Default, testAutoNamespace1)
+				Expect(monitoringResources).To(HaveLen(1))
+				Expect(monitoringResources[0].Spec.InstrumentWorkloads.Mode).To(
+					Equal(dash0common.InstrumentWorkloadsModeNone))
+			})
+		})
+
 		It("falls back to MonitoringAutoResourceName when MonitoringTemplate has no name", func() {
 			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
@@ -632,7 +675,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 		})
 
 		BeforeEach(func() {
-			namespaceWatcher = NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace, time.Time{})
+			namespaceWatcher = NewNamespaceWatcher(k8sClient, k8sClient, OperatorNamespace, time.Time{}, true)
 			autoNamespaceMonitoringReconciler = &AutoNamespaceMonitoringReconciler{
 				Client:           k8sClient,
 				manager:          mgr,

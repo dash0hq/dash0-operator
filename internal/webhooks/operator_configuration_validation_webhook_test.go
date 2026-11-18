@@ -1157,6 +1157,70 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			Expect(response.Allowed).To(BeTrue())
 		})
 
+		updateRequest := func(
+			oldSpec dash0v1alpha1.Dash0OperatorConfigurationSpec,
+			spec dash0v1alpha1.Dash0OperatorConfigurationSpec,
+		) admission.Request {
+			request := operatorConfigurationAdmissionRequest(spec)
+			request.Operation = admissionv1.Update
+			request.OldObject = operatorConfigurationAdmissionRequest(oldSpec).Object
+			return request
+		}
+
+		It("should allow an update that keeps the stored template mode other than none", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			oldSpec := specWithTemplateMode(dash0common.InstrumentWorkloadsModeCreatedAndUpdated)
+			spec := specWithTemplateMode(dash0common.InstrumentWorkloadsModeCreatedAndUpdated)
+			spec.Exports = []dash0common.Export{*Dash0ExportWithEndpointAndToken(), *GrpcExportTest()}
+			response := handler.Handle(ctx, updateRequest(oldSpec, spec))
+			Expect(response.Allowed).To(BeTrue())
+		})
+
+		DescribeTable("should reject an update that changes the template mode to a value other than none", func(
+			oldMode dash0common.InstrumentWorkloadsMode,
+			mode dash0common.InstrumentWorkloadsMode,
+		) {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			response := handler.Handle(ctx, updateRequest(specWithTemplateMode(oldMode), specWithTemplateMode(mode)))
+			Expect(response.Allowed).To(BeFalse())
+			Expect(response.Result.Message).To(Equal(
+				fmt.Sprintf(ErrorMessageOperatorConfigurationMonitoringTemplateInstrumentationDisabled, mode)))
+		},
+			Entry("none -> all", dash0common.InstrumentWorkloadsModeNone, dash0common.InstrumentWorkloadsModeAll),
+			Entry(
+				"created-and-updated -> all",
+				dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+				dash0common.InstrumentWorkloadsModeAll,
+			),
+		)
+
+		It("should reject an update that adds a template with a mode other than none", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			oldSpec := specWithTemplateMode(dash0common.InstrumentWorkloadsModeAll)
+			oldSpec.MonitoringTemplate = nil
+			response := handler.Handle(
+				ctx,
+				updateRequest(oldSpec, specWithTemplateMode(dash0common.InstrumentWorkloadsModeAll)),
+			)
+			Expect(response.Allowed).To(BeFalse())
+		})
+
+		It("should allow an update that changes the template mode to none", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			response := handler.Handle(
+				ctx,
+				updateRequest(
+					specWithTemplateMode(dash0common.InstrumentWorkloadsModeAll),
+					specWithTemplateMode(dash0common.InstrumentWorkloadsModeNone),
+				),
+			)
+			Expect(response.Allowed).To(BeTrue())
+		})
+
 		It("should allow a monitoring template with a mode other than none if instrumentation is enabled", func() {
 			handler := NewOperatorConfigurationValidationWebhookHandler(
 				k8sClient, true, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
