@@ -203,6 +203,8 @@ func (m *ResourceToRequestsResult) TotalProcessed() int {
 type ApiSyncReconciler interface {
 	KindDisplayName() string
 	ShortName() string
+	// Kind returns the Kubernetes kind of the synchronized resource type, for example PrometheusRule or Dash0View.
+	Kind() string
 	GetDefaultApiConfigs() []ApiConfig
 	GetNamespacedApiConfigs(string) ([]ApiConfig, bool)
 	ControllerName() string
@@ -440,7 +442,13 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 		dash0ApiResource,
 		logger,
 	)
+	syncKey := apiSyncResourceKey{
+		kind:      apiSyncReconciler.Kind(),
+		namespace: dash0ApiResource.GetNamespace(),
+		name:      dash0ApiResource.GetName(),
+	}
 	if !preconditionChecksResult.synchronizeResource {
+		apiSyncFailures.delete(syncKey)
 		return
 	}
 
@@ -456,6 +464,7 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 	}
 
 	var synchronizationResultsPerApiConfig []synchronizationResultPerApiConfig
+	var syncFailures []apiSyncFailure
 
 	for _, validatedApiConfig := range preconditionChecksResult.validatedApiConfigs {
 		existingOriginsFromApi, existingOriginsAreKnown, err := fetchExistingOriginsForResource(
@@ -479,6 +488,11 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 			requestResult := NewResourceToRequestsResultPreconditionError(validatedApiConfig.ApiConfig, err.Error())
 			requestResult.SynchronizationErrorStatusCodes = map[string]int{
 				preconditionErrorItemName: httpStatusCodeFromError(err),
+			}
+			if syncFailure := recordApiSyncResult(
+				ctx, syncKey, validatedApiConfig.ApiConfig, action, requestResult, 0,
+			); syncFailure != nil {
+				syncFailures = append(syncFailures, *syncFailure)
 			}
 			synchronizationResultsPerApiConfig = append(
 				synchronizationResultsPerApiConfig, synchronizationResultPerApiConfig{
@@ -566,6 +580,15 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 			maps.Copy(resourceToRequestsResult.SynchronizationErrorStatusCodes, httpErrorStatusCodes)
 		}
 
+		if syncFailure := recordApiSyncResult(
+			ctx, syncKey, validatedApiConfig.ApiConfig, action, resourceToRequestsResult, len(successfullySynchronized),
+		); syncFailure != nil {
+			syncFailures = append(syncFailures, *syncFailure)
+		}
+		logAttributes := apiSyncLogAttributes(
+			syncKey, validatedApiConfig.ApiConfig, action, resourceToRequestsResult, len(successfullySynchronized),
+		)
+
 		totalProcessed := resourceToRequestsResult.TotalProcessed()
 		if resourceToRequestsResult.HasNoErrorsAndNoIssues() {
 			logger.Info(
@@ -580,6 +603,7 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 					validatedApiConfig.Endpoint,
 					validatedApiConfig.Dataset,
 				),
+				logAttributes...,
 			)
 		} else {
 			logger.Warn(
@@ -596,6 +620,7 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 					resourceToRequestsResult.ValidationIssues,
 					resourceToRequestsResult.SynchronizationErrors,
 				),
+				logAttributes...,
 			)
 		}
 
@@ -606,6 +631,12 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 		}
 
 		synchronizationResultsPerApiConfig = append(synchronizationResultsPerApiConfig, result)
+	}
+
+	if resourceHasBeenDeleted {
+		apiSyncFailures.delete(syncKey)
+	} else {
+		apiSyncFailures.set(syncKey, syncFailures)
 	}
 
 	var syncResults synchronizationResults

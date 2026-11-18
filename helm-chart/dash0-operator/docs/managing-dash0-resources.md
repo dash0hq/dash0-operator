@@ -1175,6 +1175,58 @@ Status:
   Synchronized At:        2026-01-15T10:00:00Z
 ```
 
+### Alerting on Synchronization Failures
+
+Besides writing synchronization results to the status of Kubernetes resources, the operator reports them in its
+[self-monitoring](configuration.md#operatorconfigurationresource.spec.selfMonitoring.enabled) telemetry, so you can
+alert on resources that cannot be synchronized:
+
+* `dash0.operator.manager.api_sync.unsynchronized_resources` is a gauge with one time series per resource (and dataset)
+  whose most recent synchronization was not successful. A resource is reported until it has been synchronized
+  successfully, has been deleted, or is no longer subject to synchronization. This is the recommended metric for
+  alerting, since it reflects the current state, also for errors that the operator does not retry (like an invalid
+  resource rejected by the Dash0 API).
+* `dash0.operator.manager.api_sync.synchronizations` is a counter for all synchronization attempts, by outcome.
+
+Both metrics have the following attributes:
+
+| Attribute                                | Description                                                                          |
+|------------------------------------------|--------------------------------------------------------------------------------------|
+| `dash0.operator.sync.resource.kind`      | The Kubernetes kind of the resource, for example `PrometheusRule` or `Dash0View`.    |
+| `dash0.operator.sync.resource.namespace` | The namespace of the resource (empty for cluster-scoped resources).                  |
+| `dash0.operator.sync.resource.name`      | The name of the resource (gauge only).                                               |
+| `dash0.operator.sync.dataset`            | The Dash0 dataset the resource is synchronized to.                                   |
+| `dash0.operator.sync.status`             | `successful` (counter only), `partially-successful` or `failed`.                     |
+| `dash0.operator.sync.action`             | `upsert` or `delete` (counter only).                                                 |
+| `http.response.status_code`              | The highest HTTP status code returned by the Dash0 API, if any (gauge only).          |
+
+The log record the operator writes for each synchronization carries the same attributes.
+
+Here is an example of a check rule that fires for every resource that cannot be synchronized, with the namespace and
+the name of the resource available as template variables:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: dash0-operator-sync-failures
+spec:
+  groups:
+    - name: dash0-operator
+      rules:
+        - alert: Dash0OperatorSynchronizationFailed
+          expr: |
+            max by (k8s_cluster_name, dash0_operator_sync_resource_kind, dash0_operator_sync_resource_namespace, dash0_operator_sync_resource_name) (
+              {otel_metric_name="dash0.operator.manager.api_sync.unsynchronized_resources"}
+            ) > 0
+          for: 5m
+          annotations:
+            summary: >-
+              {{ $labels.dash0_operator_sync_resource_kind }}
+              {{ $labels.dash0_operator_sync_resource_namespace }}/{{ $labels.dash0_operator_sync_resource_name }}
+              cannot be synchronized to Dash0 in cluster {{ $labels.k8s_cluster_name }}
+```
+
 ### Infrastructure-as-Code Only Mode (Disable Telemetry Collection)
 
 If you use the Dash0 operator only for infrastructure-as-code purposes, and not to collect telemetry in the cluster,
