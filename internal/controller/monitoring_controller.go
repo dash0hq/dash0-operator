@@ -66,6 +66,12 @@ const (
 		"instrumentWorkloads.mode=%s. No new workloads will be instrumented in this namespace, workloads that have " +
 		"been instrumented before keep their instrumentation. Set instrumentWorkloads.mode=none to remove the " +
 		"instrumentation from the workloads in this namespace."
+	logMsgInstrumentationDisabledButModeIsPods = "Workload instrumentation is disabled via the Helm value " +
+		"operator.instrumentation.enabled=false, but the Dash0 monitoring resource %s/%s has " +
+		"instrumentWorkloads.mode=pods. Pods created in this namespace from now on will not be instrumented, pods that " +
+		"have been instrumented when they were created keep their instrumentation until they are recreated. Set " +
+		"instrumentWorkloads.mode=none to also remove the instrumentation from the workload pod templates that " +
+		"still have it from before the namespace was switched to mode pods (if any)."
 )
 
 var (
@@ -311,6 +317,15 @@ func (r *MonitoringReconciler) warnIfInstrumentationIsDisabled(
 	}
 	instrumentWorkloadsMode := monitoringResource.ReadInstrumentWorkloadsMode()
 	if instrumentWorkloadsMode == dash0common.InstrumentWorkloadsModeNone {
+		return
+	}
+	if instrumentWorkloadsMode == dash0common.InstrumentWorkloadsModePods {
+		logger.Warn(
+			fmt.Sprintf(
+				logMsgInstrumentationDisabledButModeIsPods,
+				monitoringResource.Namespace,
+				monitoringResource.Name,
+			))
 		return
 	}
 	logger.Warn(
