@@ -382,8 +382,11 @@ instrumentation.
 With `spec.instrumentWorkloads.mode: pods`, pods are only instrumented when they are created, so pods that are created
 after workload instrumentation has been disabled are not instrumented, and existing pods lose their instrumentation
 when they are recreated.
-The resource can only be updated if the update also changes `spec.instrumentWorkloads.mode` to `none`; this
-also removes the instrumentation from its workloads.
+Adding the opt-out label `dash0.com/enable: "false"` to such a workload, or changing
+`spec.instrumentWorkloads.labelSelector`, does not remove the instrumentation from the workload either; set
+`spec.instrumentWorkloads.mode: none` to remove it.
+The resource can still be updated, but `spec.instrumentWorkloads.mode` can only be changed to `none`, which also
+removes the instrumentation from its workloads.
 Deleting the resource is always possible.
 
 Re-enabling workload instrumentation with `operator.instrumentation.enabled=true` does not change resources that have

@@ -725,8 +725,8 @@ operator:
     # Before switching this to false, set instrumentWorkloads.mode=none in all Dash0Monitoring resources (and in
     # operator.monitoringTemplate, if you use automatic namespace monitoring), and wait until the operator has removed
     # the instrumentation. A Dash0Monitoring resource that still has a mode other than none after switching this to
-    # false is reported in the operator manager's log. It can only be updated if its mode is changed to none in the same
-    # update, which also removes the instrumentation from its workloads.
+    # false is reported in the operator manager's log. It can still be updated, but its mode can only be changed to
+    # none, which also removes the instrumentation from its workloads.
     #
     # In namespaces with instrumentWorkloads.mode=pods, pods that are created after switching this to false are not
     # instrumented, and existing pods lose their instrumentation when they are recreated.
