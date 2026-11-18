@@ -718,10 +718,10 @@ operator:
     #
     # Switching this to false does not remove the instrumentation from workloads that are already instrumented. Before
     # switching it to false, set instrumentWorkloads.mode=none in all Dash0Monitoring resources (and in
-    # operator.monitoringTemplate, if you use automatic namespace monitoring with a custom template), and wait until the
-    # operator has removed the instrumentation. A Dash0Monitoring resource that still has a mode other than none after
-    # switching this to false is reported in the operator manager's log; it can only be updated if its mode is changed
-    # to none in the same update, which also removes the instrumentation from its workloads.
+    # operator.monitoringTemplate, if you use automatic namespace monitoring), and wait until the operator has removed
+    # the instrumentation. A Dash0Monitoring resource that still has a mode other than none after switching this to
+    # false is reported in the operator manager's log; it can only be updated if its mode is changed  to none in the
+    # same update, which also removes the instrumentation from its workloads.
     #
     # The setting has no effect when telemetry collection is disabled via operator.telemetryCollectionEnabled=false
     # (operator.telemetryCollectionEnabled=false effectively implies operator.instrumentation.enabled=false).
