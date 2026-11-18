@@ -127,6 +127,60 @@ tests:
             name: DASH0_DEBUGINFO_PROXY_IMAGE
             value: ghcr.io/dash0hq/debuginfo-proxy:99.100.101
 
+  - it: should pass the PID namespace translation mode for a Helm-managed operator configuration
+    set:
+      operator.ebpfProfilerEnabled: true
+      operator.ebpfProfiler.pidNamespaceTranslationMode: auto
+      operator.exports:
+        - grpc:
+            endpoint: collector.example.com:4317
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-ebpf-profiler-pid-namespace-translation-mode=auto
+
+  - it: should reject an invalid PID namespace translation mode
+    set:
+      operator.ebpfProfilerEnabled: true
+      operator.ebpfProfiler.pidNamespaceTranslationMode: invalid
+      operator.exports:
+        - grpc:
+            endpoint: collector.example.com:4317
+    asserts:
+      - failedTemplate:
+          errorMessage: 'Error: operator.ebpfProfiler.pidNamespaceTranslationMode must be one of "none", "auto", "exact" or "recursive", but was "invalid".'
+
+  - it: should ignore the PID namespace translation mode if the profiler is disabled
+    set:
+      operator.ebpfProfiler.pidNamespaceTranslationMode: invalid
+      operator.exports:
+        - grpc:
+            endpoint: collector.example.com:4317
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-ebpf-profiler-pid-namespace-translation-mode=invalid
+      - notFailedTemplate: {}
+
+  - it: should ignore the PID namespace translation mode if the operator does not manage the operator configuration resource
+    set:
+      operator.ebpfProfilerEnabled: true
+      operator.ebpfProfiler.pidNamespaceTranslationMode: invalid
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-ebpf-profiler-pid-namespace-translation-mode=invalid
+      - notFailedTemplate: {}
+
   - it: should preserve manual operator configuration ownership
     set:
       operator.ebpfProfilerEnabled: true

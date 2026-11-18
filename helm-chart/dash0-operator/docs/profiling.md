@@ -116,10 +116,10 @@ The agent runs as root in a privileged container with `hostPID: true` and read-o
 Use a Linux kernel supported by the selected agent release. This gives the agent access to processes visible from the
 node's PID namespace, not only to Kubernetes namespaces monitored by Dash0.
 
-For nested PID namespaces, such as kind nodes inside Docker Desktop, set
-`spec.profiling.ebpfProfiler.pidNamespaceTranslationMode: auto`. The operator passes this as
-`--pid-namespace-translation-mode=auto`; an image upgrade alone does not enable translation. When the setting is omitted,
-the operator leaves the flag unset and the agent retains its `none` default.
+For nested PID namespaces, such as kind nodes, set the Helm value `operator.ebpfProfiler.pidNamespaceTranslationMode` to
+`auto` (`spec.profiling.ebpfProfiler.pidNamespaceTranslationMode` if you manage the operator configuration resource
+yourself). The operator passes this as `--pid-namespace-translation-mode=auto`; an image upgrade alone does not enable
+translation. When the setting is omitted, the operator leaves the flag unset and the agent retains its `none` default.
 
 The allowed modes are `none`, `auto`, `exact`, and `recursive`. `exact` collects processes in the agent's PID namespace;
 `recursive` also includes descendant PID namespaces and requires kernel BTF. `auto` chooses recursive when supported,

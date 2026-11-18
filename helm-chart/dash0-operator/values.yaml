@@ -1896,6 +1896,12 @@ operator:
   # ignored if operator.ebpfProfilerEnabled is false. See docs/profiling.md.
   ebpfProfiler:
 
+    # The PID namespace translation mode of the eBPF profiler, one of "none", "auto", "exact" or "recursive". Set this
+    # to "auto" for nodes with nested PID namespaces, such as kind nodes. When not set, the profiler uses "none". This
+    # setting only has an effect if the operator configuration resource is created via Helm (operator.dash0Export or
+    # operator.exports). See docs/profiling.md for details on the modes.
+    pidNamespaceTranslationMode:
+
     # Resource settings for the profiler container of the eBPF profiler DaemonSet managed by the operator.
     containerResources:
       limits:
