@@ -2903,6 +2903,22 @@ var _ = Describe("warnIfInstrumentationIsDisabled", func() {
 		)
 	})
 
+	It("should log a pods-specific warning when instrumentation is disabled and the mode is pods", func() {
+		logger, capturingLogSink := NewCapturingLogger()
+		reconcilerWithInstrumenter(true).warnIfInstrumentationIsDisabled(
+			monitoringResourceWithMode(dash0common.InstrumentWorkloadsModePods),
+			logger,
+		)
+		capturingLogSink.HasLogMessage(
+			Default,
+			fmt.Sprintf(
+				logMsgInstrumentationDisabledButModeIsPods,
+				TestNamespaceName,
+				MonitoringResourceName,
+			),
+		)
+	})
+
 	It("should not log anything when instrumentation is disabled and the mode is none", func() {
 		logger, capturingLogSink := NewCapturingLogger()
 		reconcilerWithInstrumenter(true).warnIfInstrumentationIsDisabled(

@@ -716,12 +716,20 @@ operator:
     # - Setting operator.monitoringTemplate.spec.instrumentWorkloads.mode to a value other than none fails the
     #   installation.
     #
-    # Switching this to false does not remove the instrumentation from workloads that are already instrumented. Before
-    # switching it to false, set instrumentWorkloads.mode=none in all Dash0Monitoring resources (and in
+    # Switching this from true to false removes the instrumentation from workloads in namespaces that are monitored via
+    # automatic namespace monitoring: the operator sets instrumentWorkloads.mode=none in the Dash0Monitoring resources
+    # it manages for these namespaces, regardless of the mode in the monitoring template. Dash0Monitoring resources that
+    # have not been created by automatic namespace monitoring are not changed, and the instrumentation of their
+    # workloads is not actively removed.
+    #
+    # Before switching this to false, set instrumentWorkloads.mode=none in all Dash0Monitoring resources (and in
     # operator.monitoringTemplate, if you use automatic namespace monitoring), and wait until the operator has removed
     # the instrumentation. A Dash0Monitoring resource that still has a mode other than none after switching this to
-    # false is reported in the operator manager's log; it can only be updated if its mode is changed  to none in the
-    # same update, which also removes the instrumentation from its workloads.
+    # false is reported in the operator manager's log. It can only be updated if its mode is changed to none in the same
+    # update, which also removes the instrumentation from its workloads.
+    #
+    # In namespaces with instrumentWorkloads.mode=pods, pods that are created after switching this to false are not
+    # instrumented, and existing pods lose their instrumentation when they are recreated.
     #
     # The setting has no effect when telemetry collection is disabled via operator.telemetryCollectionEnabled=false
     # (operator.telemetryCollectionEnabled=false effectively implies operator.instrumentation.enabled=false).

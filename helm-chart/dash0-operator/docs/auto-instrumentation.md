@@ -361,12 +361,17 @@ In addition:
 * Automatic namespace monitoring creates and updates Dash0 monitoring resources with
   `spec.instrumentWorkloads.mode: none`, regardless of the mode in the monitoring template.
 
-Disabling workload instrumentation does not remove the instrumentation from workloads that have been instrumented
-before.
+In namespaces that are monitored via automatic namespace monitoring, disabling workload instrumentation removes the
+instrumentation from the workloads:
+The operator sets `spec.instrumentWorkloads.mode: none` in the Dash0 monitoring resources it has created for these
+namespaces, regardless of the mode in the monitoring template, which has the same effect as setting
+`spec.instrumentWorkloads.mode: none` manually.
+Dash0 monitoring resources that have not been created by automatic namespace monitoring are not changed, and the
+instrumentation of their workloads is not removed.
 If workloads in your cluster are already instrumented, proceed as follows:
 
 1. Set `spec.instrumentWorkloads.mode: none` in all Dash0 monitoring resources, and in `operator.monitoringTemplate`
-   if you use automatic namespace monitoring with a custom monitoring template.
+   if you use automatic namespace monitoring.
    The operator removes the instrumentation from the workloads in these namespaces.
 2. Run `helm upgrade` with `--set operator.instrumentation.enabled=false`.
 
@@ -374,6 +379,9 @@ If a Dash0 monitoring resource still has `spec.instrumentWorkloads.mode` other t
 instrumentation has been disabled, the operator logs a warning for it.
 No new workloads are instrumented in that namespace, and workloads that have been instrumented before keep their
 instrumentation.
+With `spec.instrumentWorkloads.mode: pods`, pods are only instrumented when they are created, so pods that are created
+after workload instrumentation has been disabled are not instrumented, and existing pods lose their instrumentation
+when they are recreated.
 The resource can only be updated if the update also changes `spec.instrumentWorkloads.mode` to `none`; this
 also removes the instrumentation from its workloads.
 Deleting the resource is always possible.
