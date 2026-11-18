@@ -119,10 +119,8 @@ true
 {{- end }}
 
 {{/*
-Renders the string "true" unless workload instrumentation has been disabled via operator.instrumentation.enabled=false,
-and the empty string otherwise. A missing value counts as true: "helm upgrade --reuse-values" reuses the values of the
-previous release instead of the defaults of the new chart, so the value is missing when upgrading from a chart version
-that did not have it yet.
+Renders "true" unless workload instrumentation has been disabled via operator.instrumentation.enabled=false, and the
+empty string otherwise.
 */}}
 {{- define "dash0-operator.instrumentationEnabled" -}}
 {{- if ne (toString .Values.operator.instrumentation.enabled) "false" -}}
