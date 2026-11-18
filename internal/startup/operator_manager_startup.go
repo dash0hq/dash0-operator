@@ -2995,14 +2995,7 @@ func waitForWebhookEndpointReadiness(ctx context.Context, logger logd.Logger) er
 	}
 
 	readyCheckExecuter := NewReadyCheckExecuter(k8sClient, operatorNamespace, webhookServiceName)
-	webhookServiceIsAvailable, err := readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(ctx, logger)
-	if err != nil {
-		return err
-	}
-	if !webhookServiceIsAvailable {
-		return fmt.Errorf("the Dash0 operator webhook service endpoint did not become ready")
-	}
-	return nil
+	return readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(ctx, logger)
 }
 
 // waitForWebhookReachability waits until the rollout of the operator manager deployment is complete and the API server

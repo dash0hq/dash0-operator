@@ -391,6 +391,9 @@ var _ = Describe(
 		It(
 			"should wait for the webhook service endpoint ready check", func() {
 				readyCheckExecuter.bypassWebhookCheck = false
+				// The handler never stops waiting for the webhook service on its own, so it needs to be stopped explicitly.
+				handlerCtx, stopHandler := context.WithCancel(ctx)
+				DeferCleanup(stopHandler)
 				handler := NewAutoOperatorConfigurationResourceHandler(
 					k8sClient,
 					readyCheckExecuter,
@@ -398,7 +401,7 @@ var _ = Describe(
 					util.ExtraConfig{},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
-				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(handlerCtx, logger)
 				Expect(err).ToNot(HaveOccurred())
 
 				// The handler should not be able to proceed if we do not skip the webhook

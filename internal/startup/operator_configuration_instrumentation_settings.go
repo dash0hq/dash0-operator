@@ -91,9 +91,10 @@ func updateOperatorConfigurationInstrumentationSettings(
 }
 
 // operatorConfigurationResourceSettleTimeout bounds how long the startup instrumentation waits for the operator
-// manager to create or update the operator configuration resource from the Helm values. That includes waiting for the
-// webhook service (up to 60 seconds, see ReadyCheckExecuter) and retrying the create/update request (about 40
-// seconds).
+// manager to create or update the operator configuration resource from the Helm values. That covers the first round of
+// attempts, which includes waiting for the webhook service (up to 60 seconds, see ReadyCheckExecuter) and retrying the
+// create/update request (about 40 seconds). If that round fails, the operator manager keeps retrying in the background,
+// but the startup instrumentation does not wait for that.
 const operatorConfigurationResourceSettleTimeout = 2 * time.Minute
 
 // newWaitForHelmManagedInstrumentationSettings returns a function for the startup instrumentation that blocks until the
