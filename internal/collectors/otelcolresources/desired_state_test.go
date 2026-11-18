@@ -2721,6 +2721,103 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(offsetVolumeMount.SubPathExpr).To(Equal("$(K8S_NODE_NAME)"))
 	})
 
+	It("should add the migrate init container and keep the filelog offsets config map while the migration is pending", func() {
+		config := &oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			Images:                                           TestImages,
+			OffsetStorageVolume: filelogOffsetHostPathVolume(
+				"/var/lib/dash0-operator/filelog-offsets", OperatorNamespace),
+			MigrateFilelogOffsetsFromConfigMap: true,
+			KeepFilelogOffsetsConfigMap:        true,
+		}
+		desiredState, err := assembleDesiredStateForUpsert(config, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(desiredState).To(HaveLen(numberOfResourcesWithKubernetesInfrastructureMetricsCollectionEnabled))
+		Expect(getConfigMap(desiredState, ExpectedDaemonSetFilelogOffsetSyncConfigMapName)).ToNot(BeNil())
+
+		daemonSetPodSpec := getDaemonSet(desiredState).Spec.Template.Spec
+		Expect(daemonSetPodSpec.InitContainers).To(HaveLen(2))
+		Expect(daemonSetPodSpec.InitContainers[0].Name).To(Equal("filelog-offset-volume-ownership"))
+		migrateInitContainer := daemonSetPodSpec.InitContainers[1]
+		Expect(migrateInitContainer.Name).To(Equal("filelog-offset-migrate"))
+		Expect(migrateInitContainer.Image).To(Equal(TestImages.FilelogOffsetSyncImage))
+		Expect(migrateInitContainer.Args).To(Equal([]string{"--mode=migrate"}))
+		Expect(*migrateInitContainer.SecurityContext.RunAsNonRoot).To(BeTrue())
+		Expect(migrateInitContainer.Env).To(ContainElement(MatchEnvVar("K8S_CONFIGMAP_NAME", ExpectedDaemonSetFilelogOffsetSyncConfigMapName)))
+		Expect(migrateInitContainer.VolumeMounts).To(HaveLen(1))
+		Expect(migrateInitContainer.VolumeMounts[0].Name).To(Equal("filelogreceiver-offsets"))
+		Expect(migrateInitContainer.VolumeMounts[0].MountPath).To(Equal("/var/otelcol/filelogreceiver_offsets"))
+		Expect(migrateInitContainer.VolumeMounts[0].SubPathExpr).To(Equal("$(K8S_NODE_NAME)"))
+
+		Expect(daemonSetPodSpec.Containers).To(HaveLen(2))
+		offsetVolume := FindVolumeByName(daemonSetPodSpec.Volumes, "filelogreceiver-offsets")
+		Expect(offsetVolume).ToNot(BeNil())
+		Expect(offsetVolume.HostPath).ToNot(BeNil())
+		Expect(offsetVolume.HostPath.Path).To(Equal("/var/lib/dash0-operator/filelog-offsets/" + OperatorNamespace))
+		Expect(*offsetVolume.HostPath.Type).To(Equal(corev1.HostPathDirectoryOrCreate))
+		offsetVolumeMount := FindVolumeMountByName(daemonSetPodSpec.Containers[0].VolumeMounts, "filelogreceiver-offsets")
+		Expect(offsetVolumeMount).ToNot(BeNil())
+		Expect(offsetVolumeMount.SubPathExpr).To(Equal("$(K8S_NODE_NAME)"))
+	})
+
+	It("should keep the migrate init container without the filelog offsets config map after the migration", func() {
+		offsetStorageVolume := corev1.Volume{
+			Name: "custom-offset-volume",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: "offset-storage-claim",
+				},
+			},
+		}
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			Images:                                           TestImages,
+			OffsetStorageVolume:                              &offsetStorageVolume,
+			MigrateFilelogOffsetsFromConfigMap:               true,
+		}, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(desiredState).To(HaveLen(numberOfResourcesWithKubernetesInfrastructureMetricsCollectionEnabled - 1))
+		Expect(getConfigMap(desiredState, ExpectedDaemonSetFilelogOffsetSyncConfigMapName)).To(BeNil())
+
+		daemonSetPodSpec := getDaemonSet(desiredState).Spec.Template.Spec
+		Expect(daemonSetPodSpec.InitContainers).To(HaveLen(2))
+		Expect(daemonSetPodSpec.InitContainers[0].Name).To(Equal("filelog-offset-volume-ownership"))
+		migrateInitContainer := daemonSetPodSpec.InitContainers[1]
+		Expect(migrateInitContainer.Name).To(Equal("filelog-offset-migrate"))
+		Expect(migrateInitContainer.VolumeMounts).To(HaveLen(1))
+		Expect(migrateInitContainer.VolumeMounts[0].Name).To(Equal("custom-offset-volume"))
+		Expect(migrateInitContainer.VolumeMounts[0].MountPath).To(Equal("/var/otelcol/filelogreceiver_offsets"))
+		Expect(migrateInitContainer.VolumeMounts[0].SubPathExpr).To(Equal("$(K8S_NODE_NAME)"))
+		Expect(daemonSetPodSpec.Containers).To(HaveLen(2))
+	})
+
+	It("should include the filelog offsets config map in the desired state for deletion also with a user-provided volume", func() {
+		desiredState, err := assembleDesiredStateForDelete(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Images:            TestImages,
+			OffsetStorageVolume: &corev1.Volume{
+				Name: "filelogreceiver-offsets",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{},
+				},
+			},
+		}, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(getConfigMap(desiredState, ExpectedDaemonSetFilelogOffsetSyncConfigMapName)).ToNot(BeNil())
+	})
+
 	It("should create config with multiple default Dash0 exports (two Dash0 endpoints)", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,

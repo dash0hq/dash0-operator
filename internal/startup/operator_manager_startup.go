@@ -2018,6 +2018,10 @@ func startDash0Controllers(
 			}
 		}
 
+		var nodeSELinuxIndication cluster.NodeSELinuxIndication
+		if !cliArgs.signalControlSceOnlyMode {
+			nodeSELinuxIndication = cluster.DetectNodeSELinuxIndication(ctx, clientset, setupLog)
+		}
 		collectorConfig := util.CollectorConfig{
 			Images:                                 images,
 			OperatorNamespace:                      envVars.operatorNamespace,
@@ -2045,6 +2049,7 @@ func startDash0Controllers(
 			DaemonSetServiceAccountName:            cliArgs.otelCollectorDaemonSetServiceAccountName,
 			IsGkeAutopilot:                         cliArgs.isGkeAutopilot,
 			IsOpenShift:                            cliArgs.isOpenShift,
+			NodeSELinuxIndication:                  nodeSELinuxIndication,
 			DevelopmentMode:                        developmentMode,
 			DebugVerbosityDetailed:                 envVars.debugVerbosityDetailed,
 			EnableProfExtension:                    envVars.enablePprofExtension,

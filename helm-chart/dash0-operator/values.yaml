@@ -813,17 +813,49 @@ operator:
     # resources contain a lot of filters or transforms, this limit might be smaller.
     compressConfigMaps: false
 
-    # A reference to a persistent volume to use for the filelog offset sync. We strongly recommend providing a volume
-    # for all clusters except small development or test clusters. By default, the filelog offset sync uses a single
-    # config map for its persistent storage, which every collector pod updates every few seconds. This has two
-    # consequences: ConfigMaps are limited to 1 MB in size, which clusters with around 100 pods or more can exceed. And
-    # etcd stores a complete copy of the config map for every update until the next compaction, so the disk space used
-    # by etcd grows with the square of the number of nodes. In larger clusters, this can exhaust the etcd storage quota,
-    # which makes the cluster unusable. This risk is highest for self-managed control planes (e.g. on-premises
-    # clusters). See docs/advanced-configuration.md#providing-a-filelog-offset-volume for details.
+    # Where the filelog receiver of the collector DaemonSet persists the offsets of the pod log files it reads, so that
+    # log records are neither lost nor sent twice when a collector pod restarts. One of:
+    # - auto (the default): store the offsets in a hostPath volume on each node (see filelogOffsetHostPath), if the
+    #   cluster admits a collector pod with a writable hostPath volume; otherwise in a config map. On GKE Autopilot,
+    #   the config map is always used, since GKE Autopilot does not admit writable hostPath volumes. Unless the
+    #   collector DaemonSet pods run with the SELinux type spc_t (see daemonSetSeLinuxOptions), the config map is also
+    #   used on OpenShift and on clusters whose nodes likely enforce SELinux (nodes with the container runtime CRI-O,
+    #   RKE2, K3s, k0s), since the default container type cannot write to hostPath directories. Otherwise, the operator
+    #   checks via a server-side dry run of a collector pod whether the pod security admission, the validating
+    #   admission policies and the admission webhooks (e.g. OPA gatekeeper, Kyverno) of the cluster admit the hostPath
+    #   volume. If the dry run fails for another reason than an admission denial, the collector DaemonSet keeps the
+    #   storage it currently uses (a new installation starts with the config map) and the check is repeated on the
+    #   next reconciliation.
+    # - hostPath: always store the offsets in the hostPath volume, without any of these checks.
+    # - configMap: always store the offsets in a single config map, which a sidecar container in each collector pod
+    #   updates every few seconds. Only recommended for small clusters, for example local development or test clusters.
+    #   ConfigMaps are limited to 1 MB in size, which clusters with around 100 pods or more can exceed. Admission
+    #   webhooks that process every config map update (e.g. OPA gatekeeper, Kyverno) can consume a lot of resources.
+    #   And etcd stores a complete copy of the config map for every update until the next compaction, so the disk space
+    #   used by etcd grows with the square of the number of nodes. In larger clusters, this can exhaust the etcd
+    #   storage quota, which makes the cluster unusable. This risk is highest for self-managed control planes (e.g.
+    #   on-premises clusters).
+    # When switching from the config map to a volume, the offsets are migrated from the config map (except into a
+    # user-provided volume on GKE Autopilot), which is deleted afterwards. Switching from a volume back to the config
+    # map does not carry the offsets over, so log records may be lost or sent twice during that switch.
+    # Must be left at auto when filelogOffsetSyncStorageVolume is set, which always takes precedence.
+    # See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/advanced-configuration.md#filelog-offset-storage.
+    filelogOffsetStorageMode: auto
+
+    # The directory on the nodes in which the filelog receiver offsets are stored when filelogOffsetStorageMode
+    # resolves to hostPath. The offsets of each node are stored in <filelogOffsetHostPath>/<operator namespace>/<node
+    # name>. The directory is created and handed over to the collector's user via an init container that runs as root
+    # with the CHOWN capability. Uninstalling the operator does not remove the directory
+    # <filelogOffsetHostPath>/<operator namespace> from the nodes.
+    filelogOffsetHostPath: /var/lib/dash0-operator/filelog-offsets
+
+    # A user-provided volume to use for the filelog receiver offsets instead of the operator-managed hostPath volume or
+    # config map selected via filelogOffsetStorageMode. Any volume that is accessible from the collector pods can be
+    # used, for example a hostPath volume with a custom path or a ReadWriteMany persistent volume claim. The volume
+    # ownership init container that runs as root with the CHOWN capability is added in this case as well.
     #
-    # Here is an example with a hostPath volume (see also https://kubernetes.io/docs/concepts/storage/volumes/#hostpath
-    # for considerations around using hostPath volumes):
+    # Here is an example with a user-provided hostPath volume (see also
+    # https://kubernetes.io/docs/concepts/storage/volumes/#hostpath for considerations around using hostPath volumes):
     # operator:
     #   collectors:
     #    filelogOffsetSyncStorageVolume:

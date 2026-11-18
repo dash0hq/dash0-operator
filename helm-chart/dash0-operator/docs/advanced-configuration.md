@@ -4,7 +4,11 @@ This guide covers advanced configuration topics for the Dash0 operator, includin
 
 ## Table of Contents
 
-- [Providing a Filelog Offset Volume](#providing-a-filelog-offset-volume)
+- [Filelog Offset Storage](#filelog-offset-storage)
+  - [The hostPath Volume for Filelog Offsets](#the-hostpath-volume-for-filelog-offsets)
+  - [Switching Between the Config Map and a Volume](#switching-between-the-config-map-and-a-volume)
+  - [Providing a Filelog Offset Volume](#providing-a-filelog-offset-volume)
+  - [When to Avoid the Config Map for Filelog Offsets](#when-to-avoid-the-config-map-for-filelog-offsets)
 - [Webhook Certificates](#webhook-certificates)
 - [Using cert-manager](#using-cert-manager)
 - [Tuning Resource Requests and Limits](#tuning-resource-requests-and-limits)
@@ -20,37 +24,105 @@ This guide covers advanced configuration topics for the Dash0 operator, includin
 - [Exporting Data to Other Observability Backends](#exporting-data-to-other-observability-backends)
   - [Note regarding TLS when using arbitrary OTLP-compatible backends](#note-regarding-tls-when-using-arbitrary-otlp-compatible-backends)
 
-## Providing a Filelog Offset Volume
+## Filelog Offset Storage
 
 The operator's collector uses the filelog receiver to read pod log files for monitored workloads.
 When the collector is restarted (which can happen for various reasons, for example to apply configuration changes), it
 is important that the filelog receiver can continue reading the log files from where it left off.
-If the filelog receiver started to read all log files from the beginning again after a restart, log records would be
-duplicated, that is, they would appear multiple times in Dash0.
-
 For that purpose, the filelog receiver stores the log file offsets in persistent storage.
-By default, the offsets are stored in a config map in the operator's namespace.
-This requires no additional configuration by users and is intended for small clusters, for example local development or
-test clusters.
-For production clusters, larger staging clusters, or clusters with many short-lived pods, we strongly recommend
-providing a persistent volume for storing offsets.
+Without stored offsets, a restarted collector starts reading each log file at its end, so log records written while
+the collector was not running are lost; with outdated offsets, log records are sent twice.
 
-> **Warning:** The default config map storage puts a significant write load on the Kubernetes API server and on etcd.
-> All collector pods share one config map, with one entry per node, and each collector pod updates its entry every few
-> seconds while log files are being written.
-> etcd stores a complete copy of the config map for every update and keeps these copies until the next compaction, so
-> the disk space used by etcd grows with the square of the number of nodes.
-> In larger clusters, this can exhaust the etcd storage quota.
-> etcd then rejects all writes, which makes the cluster unusable.
-> This risk is highest in clusters with a self-managed control plane (for example on-premises clusters), where etcd
-> often runs with the default storage quota of 2 GiB and without regular defragmentation.
-> Managed Kubernetes services usually provide more headroom, but the write load still applies.
-> Use a volume for filelog offsets in these clusters, as described below.
+The Helm value `operator.collectors.filelogOffsetStorageMode` controls where the offsets are stored:
 
-Any persistent volume that is accessible from the collector pods can be used for this purpose.
+* `auto` (the default): In a [`hostPath` volume](#the-hostpath-volume-for-filelog-offsets) on each node, if the
+  cluster admits a collector pod with a writable `hostPath` volume, otherwise in a config map in the operator's
+  namespace.
+  The operator decides as follows:
+  * On GKE Autopilot, it uses the config map, since GKE Autopilot does not admit writable `hostPath` volumes.
+  * Unless the collector DaemonSet pods run with the SELinux type `spc_t`, it uses the config map on OpenShift and on
+    clusters whose nodes likely confine containers with SELinux.
+    The default container type `container_t` cannot write to `hostPath` directories, since the kubelet does not
+    relabel them.
+    On OpenShift, the operator sets `spc_t` by default (see [Notes on OpenShift](platform-specific.md#notes-on-openshift)).
+    Outside of OpenShift, the operator treats nodes with the container runtime CRI-O and nodes of the Kubernetes
+    distributions RKE2, K3s and k0s as likely SELinux-enforcing, see
+    [Notes on SELinux-Enforcing Clusters](platform-specific.md#notes-on-selinux-enforcing-clusters).
+  * Otherwise, it checks via a server-side dry run of a collector pod with the `hostPath` volume whether the cluster
+    admits it.
+    The dry run goes through the cluster's pod security admission, validating admission policies and admission
+    webhooks (for example the OPA gatekeeper or Kyverno), without creating a pod.
+    If one of them denies the pod, the operator uses the config map.
+    The operator keeps the outcome of the dry run until it is restarted.
+  * If the dry run fails for another reason, for example because of an API server timeout, an exceeded resource quota
+    or an admission webhook that does not support dry runs, the collector DaemonSet keeps the storage it currently
+    uses; a new installation starts with the config map.
+    The operator repeats the dry run on the next reconciliation of the collector resources.
 
-Here is an example with a `hostPath` volume (see also https://kubernetes.io/docs/concepts/storage/volumes/#hostpath for
-considerations around using `hostPath` volumes):
+  The operator logs which storage it has chosen, and why, when it creates or updates the collector resources.
+* `hostPath`: The offsets are always stored in the `hostPath` volume, without any of these checks.
+  Use this for example on RKE2, K3s or k0s clusters without SELinux, or with a custom SELinux type after labelling the
+  host directory with the SELinux type `container_file_t` on all nodes.
+* `configMap`: The offsets are always stored in a config map.
+  A sidecar container in each collector pod synchronizes the offsets to the config map every few seconds.
+  This is only intended for small clusters, for example local development or test clusters, see
+  [When to Avoid the Config Map for Filelog Offsets](#when-to-avoid-the-config-map-for-filelog-offsets).
+
+### The hostPath Volume for Filelog Offsets
+
+With the `hostPath` volume, each collector pod stores its offsets on its node in the directory
+`<filelogOffsetHostPath>/<operator namespace>/<node name>`, for example
+`/var/lib/dash0-operator/filelog-offsets/dash0-system/node-1` for the default
+`operator.collectors.filelogOffsetHostPath=/var/lib/dash0-operator/filelog-offsets` and an operator installed into the
+namespace `dash0-system`.
+
+The collector DaemonSet gets an init container that runs as root with the `CHOWN` capability, to create the directory
+on the node and hand it over to the user the collector runs as.
+Restrictive admission policies reject that, see
+[Kyverno Policies and the Collector DaemonSet](platform-specific.md#kyverno-policies-and-the-collector-daemonset).
+In `auto` mode, the operator then falls back to the config map; after adding a policy exception for the collector
+DaemonSet, restart the operator to let it check again.
+
+Uninstalling the operator does not remove the offsets from the nodes.
+To clean up, delete the directory `<filelogOffsetHostPath>/<operator namespace>` (by default
+`/var/lib/dash0-operator/filelog-offsets/<operator namespace>`) on each node after uninstalling the operator.
+
+### Switching Between the Config Map and a Volume
+
+When the collector DaemonSet switches from the config map to a volume (the `hostPath` volume or a
+[volume you provide](#providing-a-filelog-offset-volume)), for example when upgrading from an operator version that only
+had the config map based storage, an init container in each collector pod copies the offsets from the config map into
+the volume, unless the volume already holds offsets that are at least as recent as the ones in the config map.
+Outdated offsets in the volume, for example from a time before the collector DaemonSet was switched from the volume to
+the config map, are replaced.
+On GKE Autopilot, the offsets are not copied into a [volume you provide](#providing-a-filelog-offset-volume), since
+the GKE Autopilot workload allowlist does not permit the init container, so log records may be lost or sent twice
+while the collector pods are replaced.
+The config map is kept until the DaemonSet has been rolled out completely with the volume, so that collector pods that
+still use the config map keep updating it until they are replaced.
+The operator deletes the config map on the next reconciliation of the collector resources after the rollout has
+finished.
+A rollout itself does not trigger that reconciliation; other changes do, for example to the operator configuration
+resource, to a monitoring resource, to the Helm values, or a restart of the operator.
+The init container remains in the DaemonSet and does nothing once the config map is gone.
+
+The offsets are not carried over in the other direction.
+When the collector DaemonSet switches from a volume back to the config map (via
+`operator.collectors.filelogOffsetStorageMode=configMap`, by removing a volume you provided, or in `auto` mode when an
+admission policy rejects the `hostPath` volume after the operator has been restarted), and when rolling back to an
+older operator version that only has the config map based storage, the collector pods start with an empty or outdated
+config map, so log records may be lost or sent twice while the collector pods are replaced.
+
+### Providing a Filelog Offset Volume
+
+Instead of the operator-managed `hostPath` volume or the config map selected via
+`operator.collectors.filelogOffsetStorageMode`, any persistent volume that is accessible from the collector pods can be
+used via `operator.collectors.filelogOffsetSyncStorageVolume`.
+This setting takes precedence over `operator.collectors.filelogOffsetStorageMode`, which must be left at `auto` when
+using it.
+
+Here is an example with a user-provided `hostPath` volume (see also
+https://kubernetes.io/docs/concepts/storage/volumes/#hostpath for considerations around using `hostPath` volumes):
 
 ```yaml
 operator:
@@ -82,36 +154,48 @@ operator:
 > **Important:** Since this volume is needed by a Daemonset run by the Dash0 operator, the PersistentVolumeClaim needs
 > to be set with the `ReadWriteMany` access mode.
 
-### When to Use a Volume for Filelog Offsets
+The volume can also be configured via `spec.components.daemonSetCollector.filelogOffsetStorageVolume` of the
+Dash0OperatorConfiguration resource.
 
-Using a volume instead of the default config map approach is also helpful if you have webhooks in your cluster which
-process every config map update.
+### When to Avoid the Config Map for Filelog Offsets
 
-Known examples for this are:
+The config map storage is only intended for small clusters, for example local development or test clusters.
+For production clusters, larger staging clusters, or clusters with many short-lived pods, we strongly recommend storing
+the offsets in the `hostPath` volume or in a [volume you provide](#providing-a-filelog-offset-volume).
 
-* The [Open Police Agent](https://www.openpolicyagent.org/), in particular the
+All collector pods share one config map, with one entry per node.
+Config maps are limited to 1 MB in size, which clusters with around 100 pods or more can exceed.
+
+> **Warning:** The config map storage puts a significant write load on the Kubernetes API server and on etcd.
+> Each collector pod updates its entry every few seconds while log files are being written.
+> etcd stores a complete copy of the config map for every update and keeps these copies until the next compaction, so
+> the disk space used by etcd grows with the square of the number of nodes.
+> In larger clusters, this can exhaust the etcd storage quota.
+> etcd then rejects all writes, which makes the cluster unusable.
+> This risk is highest in clusters with a self-managed control plane (for example on-premises clusters), where etcd
+> often runs with the default storage quota of 2 GiB and without regular defragmentation.
+> Managed Kubernetes services usually provide more headroom, but the write load still applies.
+
+Because of the frequent updates, admission webhooks that process every config map update can consume a lot of CPU and
+memory resources, potentially even leading to OOMKills of the admission controller.
+Known examples are:
+
+* The [Open Policy Agent](https://www.openpolicyagent.org/), in particular the
   [OPA gatekeeeper](https://github.com/open-policy-agent/gatekeeper).
-  When operating the OPA gatekeeper in the same cluster as the Dash0 operator, it is highly recommended to use a volume
-  for filelog offsets.
-  Using the default config map filelog offset storage in clusters with the OPA gatekeeper can lead to severe performance
-  issues, since the default config map for filelog offsets is updated very frequently. This can cause the OPA gatekeeper
-  to consume a lot of CPU and memory resources, potentially even leading to OOMKills of the OPA gatekeeper.
 * [AKS](https://azure.microsoft.com/products/kubernetes-service) clusters with the
-  [Azure Policy add-on](https://learn.microsoft.com/azure/aks/use-azure-policy): A managed instance of the OPA
-  gatekeeper (see above) is installed by the Azure Policy add-on for AKS, i.e. the OPA gatekeeper is active in AKS
-  cluster that have enabled the Azure Policy add-on. It is highly recommended to use a volume for filelog offsets for
-  AKS clusters with the Azure Policy add-on.
+  [Azure Policy add-on](https://learn.microsoft.com/azure/aks/use-azure-policy), which installs a managed instance of
+  the OPA gatekeeper.
 * The
   [Kyverno admission controller](https://kyverno.io/docs/introduction/how-kyverno-works/#kubernetes-admission-controls).
-  When operating Kyverno in the same cluster as the Dash0 operator, it is highly recommended to either
-  [exclude](https://kyverno.io/docs/installation/customization/#resource-filters) ConfigMaps (or all resource types) in
-  the Dash0 operator's namespace from Kyverno's processing, or to use a volume for filelog offsets.
-  Leaving Kyverno processing in place and using the config map filelog offset storage can lead to severe performance
-  issues, since the default config map for filelog offsets is updated very frequently.
-  This can cause Kyverno to consume a lot of CPU and memory resources, potentially even leading to OOMKills of the
-  Kyverno admission controller.
-  Note that a filelog offset volume adds an init container that runs as root, which restrictive Kyverno policies
-  reject, see [Kyverno Policies and the Collector DaemonSet](platform-specific.md#kyverno-policies-and-the-collector-daemonset).
+  Alternatively, [exclude](https://kyverno.io/docs/installation/customization/#resource-filters) ConfigMaps (or all
+  resource types) in the Dash0 operator's namespace from Kyverno's processing.
+
+In all of these clusters, make sure that the offsets are stored in the `hostPath` volume or in a volume you provide.
+With the default `operator.collectors.filelogOffsetStorageMode=auto`, check the operator's log for the storage it
+has chosen; if the admission policies of the cluster reject the `hostPath` volume, add a policy exception for the
+collector DaemonSet (see
+[Kyverno Policies and the Collector DaemonSet](platform-specific.md#kyverno-policies-and-the-collector-daemonset))
+or [provide a volume](#providing-a-filelog-offset-volume).
 
 For more details on OPA, Kyverno, and other platform-specific considerations, see [Platform Specific](platform-specific.md).
 

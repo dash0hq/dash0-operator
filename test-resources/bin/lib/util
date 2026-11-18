@@ -675,6 +675,8 @@ run_helm() {
     helm_install_command+=" --values test-resources/filelog-offset-storage/volume-values-pvc.yaml"
   elif [[ "${FILELOG_OFFSETS_HOST_PATH_VOLUME:-}" = "true" ]]; then
     helm_install_command+=" --values test-resources/filelog-offset-storage/volume-value-hostpath.yaml"
+  elif [[ -n "${FILELOG_OFFSETS_STORAGE_MODE:-}" ]]; then
+    helm_install_command+=" --set operator.collectors.filelogOffsetStorageMode=$FILELOG_OFFSETS_STORAGE_MODE"
   fi
   helm_install_command+=" --set operator.collectNamespaceLabelsAndAnnotationsEnabled=true"
   helm_install_command+=" --set operator.collectNodeLabelsAndAnnotationsEnabled=true"

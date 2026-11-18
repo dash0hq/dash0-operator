@@ -37,6 +37,19 @@ data:
     collectorFilelogOffsetStorageVolume:
       {{- .Values.operator.collectors.filelogOffsetSyncStorageVolume | toYaml | nindent 6 }}
 {{- end }}
+{{- $filelogOffsetStorageMode := .Values.operator.collectors.filelogOffsetStorageMode | default "auto" }}
+{{- if not (has $filelogOffsetStorageMode (list "auto" "configMap" "hostPath")) }}
+{{- fail (printf "Error: operator.collectors.filelogOffsetStorageMode must be one of auto, configMap or hostPath, but was %v." $filelogOffsetStorageMode) }}
+{{- end }}
+{{- if and .Values.operator.collectors.filelogOffsetSyncStorageVolume (ne $filelogOffsetStorageMode "auto") }}
+{{- fail "Error: operator.collectors.filelogOffsetStorageMode cannot be combined with operator.collectors.filelogOffsetSyncStorageVolume, the volume always takes precedence. Please remove one of the two settings." }}
+{{- end }}
+{{- $filelogOffsetHostPath := .Values.operator.collectors.filelogOffsetHostPath | default "/var/lib/dash0-operator/filelog-offsets" }}
+{{- if not (and (kindIs "string" $filelogOffsetHostPath) (hasPrefix "/" $filelogOffsetHostPath) (not (has ".." (splitList "/" $filelogOffsetHostPath)))) }}
+{{- fail (printf "Error: operator.collectors.filelogOffsetHostPath must be an absolute path without \"..\" segments, but was %v." $filelogOffsetHostPath) }}
+{{- end }}
+    collectorFilelogOffsetStorageMode: {{ $filelogOffsetStorageMode }}
+    collectorFilelogOffsetHostPath: {{ $filelogOffsetHostPath | quote }}
     collectorDaemonSetCollectorContainerResources:
       {{- toYaml (
             default

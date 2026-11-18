@@ -118,10 +118,13 @@ type CollectorConfig struct {
 	DaemonSetServiceAccountName string
 	IsGkeAutopilot              bool
 	IsOpenShift                 bool
-	DevelopmentMode             bool
-	DebugVerbosityDetailed      bool
-	EnableProfExtension         bool
-	CompressConfigMap           bool
+	// NodeSELinuxIndication tells whether the container runtime of the nodes likely confines containers with SELinux,
+	// detected at operator manager startup, see cluster.DetectNodeSELinuxIndication.
+	NodeSELinuxIndication  cluster.NodeSELinuxIndication
+	DevelopmentMode        bool
+	DebugVerbosityDetailed bool
+	EnableProfExtension    bool
+	CompressConfigMap      bool
 	// SignalControlSceOnlyMode is true if Signal Control is enabled and telemetry collection is disabled via Helm. If
 	// true, neither the collector DaemonSet nor the cluster metrics collector Deployment is deployed.
 	SignalControlSceOnlyMode bool
