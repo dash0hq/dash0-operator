@@ -61,8 +61,13 @@ user-provided volume) while the offsets config map of the config map based stora
 upgrading from an operator version that only had the config map based storage), the collector pods get a
 `filelog-offset-migrate` init container (`--mode=migrate`).
 It runs after the volume ownership init container and restores the offsets of its node from the config map into the
-volume, like `--mode=init`, but only if the offset directory on the volume is still empty, so it never overwrites
-offsets that a collector has already written to the volume.
+volume, like `--mode=init`, but only if the offset directory on the volume holds no offset files that are at least as
+recent as the ones in the config map, so it never overwrites offsets that a collector has written to the volume after
+the config map was last updated for this node.
+Offset files that are older than the ones in the config map, which a collector left behind on the volume before the
+daemonset was switched from the volume to the config map, are replaced.
+The comparison uses the most recent modification time on each side; both stem from collectors on the same node, and
+restored files keep the modification time from the archive, so a repeated migration finds the volume up to date.
 This way, the collector continues where it left off, instead of losing or re-sending log records after the switch.
 The operator deletes the config map once the daemonset has been rolled out completely with the volume.
 From then on, the migrate container finds no config map and does nothing.
@@ -73,20 +78,22 @@ collector with a partially written offset file:
   directory and synced to disk.
   The volume is mounted with a per-node `subPath`, so the offset directory is the only directory on that file system
   the container can access.
+- Outdated offset files in the offset directory are removed.
 - The staging directory is then renamed to `.filelogoffsetsync-migrate-committed`.
 - Only after that are the files moved to their final paths in the offset directory, each with a single rename, and
   the committed directory is removed.
 
 On start, the migrate container discards a staging directory left over by an earlier attempt and finishes moving the
 files of a leftover committed directory.
-It ignores both directories when checking whether the offset directory is empty, so an attempt that failed before
-committing is simply repeated.
+It ignores both directories when inspecting the offset directory, so an attempt that failed before committing is
+simply repeated.
 
 Errors reading the config map from the Kubernetes API and errors writing to the volume (for example a full disk or
-missing permissions) make the migrate container fail, so that it is retried.
+missing permissions) make the migrate container fail, so that it is retried, unless the volume already holds offset
+files: then the migrate container logs a warning and keeps them.
 Offset files in the config map that cannot be restored, because the node's archive is corrupt or contains no offset
 files, would fail on every retry and keep the collector from starting on that node.
 Instead, the migrate container logs an error naming the config map and the node, discards what it has restored so far,
 and exits successfully.
-The collector then starts without these offsets, as it would on a new node, so log records written while switching to
-the volume may be missed or emitted again.
+The collector then starts without these offsets (or with the offset files already in the volume), as it would on a new
+node, so log records written while switching to the volume may be missed or emitted again.

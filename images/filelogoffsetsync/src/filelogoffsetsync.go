@@ -90,8 +90,9 @@ func main() {
 
 	mode := flag.String("mode", "sync",
 		"if set to 'init', it will fetch the offset files from the configmap and store it to the "+
-			"path stored at ${FILELOG_OFFSET_DIRECTORY_PATH}; 'migrate' does the same, but only if that directory is "+
-			"still empty, and tolerates a missing configmap; sync mode instead will persist the offset "+
+			"path stored at ${FILELOG_OFFSET_DIRECTORY_PATH}; 'migrate' does the same, but only if that directory "+
+			"holds no offset files that are at least as recent, and tolerates a missing configmap; sync mode instead "+
+			"will persist the offset "+
 			"files at regular intervals")
 
 	flag.Parse()
@@ -322,6 +323,10 @@ func restoreFile(tr *tar.Reader, targetPath entryPathMapper) (IsArchiveOver, Has
 
 		if err := file.Close(); err != nil {
 			return false, false, fmt.Errorf("cannot close file '%v': %w", path, err)
+		}
+
+		if err := os.Chtimes(path, time.Time{}, nextHeader.ModTime); err != nil {
+			return false, false, fmt.Errorf("cannot set the modification time of file '%v': %w", path, err)
 		}
 
 		logger.Info("restored file", "name", path, "bytes", nextHeader.Size)

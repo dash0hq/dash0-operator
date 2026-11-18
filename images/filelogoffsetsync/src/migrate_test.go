@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -55,17 +56,90 @@ func TestMigrateRestoresOffsetsIntoEmptyDirectory(t *testing.T) {
 	requireOffsetFiles(t, settings.FileLogOffsetDirectoryPath, defaultOffsetFiles())
 }
 
-func TestMigrateSkipsNonEmptyDirectory(t *testing.T) {
+func TestMigrateSkipsMoreRecentOffsetsInTheDirectory(t *testing.T) {
 	settings := newTestSettings(t)
 	storeOffsetsInConfigMap(t, settings, defaultOffsetFiles())
 	collectorFiles := map[string][]byte{offsetFileName: []byte("offsets written by the collector")}
 	writeOffsetFiles(t, settings.FileLogOffsetDirectoryPath, collectorFiles)
+	setModTimes(t, settings.FileLogOffsetDirectoryPath, collectorFiles, time.Now().Add(time.Hour))
 
 	restoredFiles, err := migrateOffsets(context.Background(), settings)
 
 	requireNoError(t, err)
 	requireRestoredFiles(t, restoredFiles, 0)
 	requireOffsetFiles(t, settings.FileLogOffsetDirectoryPath, collectorFiles)
+}
+
+func TestMigrateReplacesOutdatedOffsetsInTheDirectory(t *testing.T) {
+	settings := newTestSettings(t)
+	storeOffsetsInConfigMap(t, settings, defaultOffsetFiles())
+	outdatedFiles := map[string][]byte{
+		offsetFileName:              []byte("outdated offsets left behind in the volume"),
+		"receiver_filelog_obsolete": []byte("outdated offsets of a receiver that no longer exists"),
+	}
+	writeOffsetFiles(t, settings.FileLogOffsetDirectoryPath, outdatedFiles)
+	setModTimes(t, settings.FileLogOffsetDirectoryPath, outdatedFiles, time.Now().Add(-time.Hour))
+
+	restoredFiles, err := migrateOffsets(context.Background(), settings)
+
+	requireNoError(t, err)
+	requireRestoredFiles(t, restoredFiles, 2)
+	requireOffsetFiles(t, settings.FileLogOffsetDirectoryPath, defaultOffsetFiles())
+}
+
+func TestMigrateDoesNotRepeatACompletedMigration(t *testing.T) {
+	settings := newTestSettings(t)
+	storeOffsetsInConfigMap(t, settings, defaultOffsetFiles())
+
+	restoredFiles, err := migrateOffsets(context.Background(), settings)
+	requireNoError(t, err)
+	requireRestoredFiles(t, restoredFiles, 2)
+
+	restoredFiles, err = migrateOffsets(context.Background(), settings)
+	requireNoError(t, err)
+	requireRestoredFiles(t, restoredFiles, 0)
+	requireOffsetFiles(t, settings.FileLogOffsetDirectoryPath, defaultOffsetFiles())
+}
+
+func TestMigrateKeepsOffsetsInTheDirectoryWhenTheConfigMapCannotBeUsed(t *testing.T) {
+	for _, testCase := range []struct {
+		name           string
+		breakConfigMap func(t *testing.T, settings *Settings)
+	}{
+		{
+			name: "the API server is unavailable",
+			breakConfigMap: func(_ *testing.T, settings *Settings) {
+				settings.Clientset.(*fake.Clientset).PrependReactor(
+					"get",
+					"configmaps",
+					func(k8stesting.Action) (bool, runtime.Object, error) {
+						return true, nil, apierrors.NewServiceUnavailable("the API server is unavailable")
+					},
+				)
+			},
+		},
+		{
+			name: "the archive is corrupt",
+			breakConfigMap: func(t *testing.T, settings *Settings) {
+				updateConfigMap(t, settings, []byte("not an archive"))
+			},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			settings := newTestSettings(t)
+			storeOffsetsInConfigMap(t, settings, defaultOffsetFiles())
+			outdatedFiles := map[string][]byte{offsetFileName: []byte("outdated offsets left behind in the volume")}
+			writeOffsetFiles(t, settings.FileLogOffsetDirectoryPath, outdatedFiles)
+			setModTimes(t, settings.FileLogOffsetDirectoryPath, outdatedFiles, time.Now().Add(-time.Hour))
+			testCase.breakConfigMap(t, settings)
+
+			restoredFiles, err := migrateOffsets(context.Background(), settings)
+
+			requireNoError(t, err)
+			requireRestoredFiles(t, restoredFiles, 0)
+			requireOffsetFiles(t, settings.FileLogOffsetDirectoryPath, outdatedFiles)
+		})
+	}
 }
 
 func TestMigrateWithoutConfigMap(t *testing.T) {
@@ -231,6 +305,38 @@ func TestInitRestoresOffsetsToTheArchivedPaths(t *testing.T) {
 	requireOffsetFiles(t, settings.FileLogOffsetDirectoryPath, defaultOffsetFiles())
 }
 
+func TestRestoreKeepsTheModificationTimesFromTheArchive(t *testing.T) {
+	settings := newTestSettings(t)
+	offsetDir := settings.FileLogOffsetDirectoryPath
+	createConfigMap(t, settings, nil)
+	writeOffsetFiles(t, offsetDir, defaultOffsetFiles())
+	archivedModTime := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	setModTimes(t, offsetDir, defaultOffsetFiles(), archivedModTime)
+	currentValue = ""
+	if _, _, err := doSyncOffsets(settings); err != nil {
+		t.Fatal(err)
+	}
+	for name := range defaultOffsetFiles() {
+		if err := os.Remove(filepath.Join(offsetDir, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	restoredFiles, err := initOffsets(context.Background(), settings)
+
+	requireNoError(t, err)
+	requireRestoredFiles(t, restoredFiles, 2)
+	for name := range defaultOffsetFiles() {
+		info, err := os.Stat(filepath.Join(offsetDir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !info.ModTime().Equal(archivedModTime) {
+			t.Fatalf("expected %v to have the modification time %v, got %v", name, archivedModTime, info.ModTime())
+		}
+	}
+}
+
 func newTestSettings(t *testing.T) *Settings {
 	return &Settings{
 		Clientset:                  fake.NewClientset(),
@@ -353,6 +459,15 @@ func writeOffsetFiles(t *testing.T, dir string, files map[string][]byte) {
 	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), content, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func setModTimes(t *testing.T, dir string, files map[string][]byte, modTime time.Time) {
+	t.Helper()
+	for name := range files {
+		if err := os.Chtimes(filepath.Join(dir, name), time.Time{}, modTime); err != nil {
 			t.Fatal(err)
 		}
 	}

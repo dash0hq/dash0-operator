@@ -148,9 +148,9 @@ type oTelColConfig struct {
 	// volume and synchronized to a config map by a sidecar container.
 	OffsetStorageVolume *corev1.Volume
 	// MigrateFilelogOffsetsFromConfigMap adds an init container to a collector daemonset with OffsetStorageVolume that
-	// restores the offsets from the config map of the config map based storage into the volume, if the volume is still
-	// empty, so that switching to the volume keeps the offsets. The init container tolerates a missing config map.
-	// See planFilelogOffsetsMigration.
+	// restores the offsets from the config map of the config map based storage into the volume, unless the volume holds
+	// offsets that are at least as recent, so that switching to the volume keeps the offsets. The init container
+	// tolerates a missing config map. See planFilelogOffsetsMigration.
 	MigrateFilelogOffsetsFromConfigMap bool
 	// KeepFilelogOffsetsConfigMap keeps the config map of the config map based storage in the desired state although
 	// the offsets are stored in OffsetStorageVolume, so that pods which have not been rolled over to the volume yet can
@@ -1601,8 +1601,8 @@ func assembleFileLogOffsetSyncInitContainer(
 }
 
 // assembleFileLogOffsetMigrateInitContainer restores the offsets from the config map into the offset storage volume,
-// if the volume is still empty. It must run after the volume ownership init container, which makes the volume
-// writable for the collector's user. See images/filelogoffsetsync/README.md.
+// unless the volume holds offsets that are at least as recent. It must run after the volume ownership init container,
+// which makes the volume writable for the collector's user. See images/filelogoffsetsync/README.md.
 func assembleFileLogOffsetMigrateInitContainer(
 	config *oTelColConfig,
 	workloadNameEnvVar corev1.EnvVar,

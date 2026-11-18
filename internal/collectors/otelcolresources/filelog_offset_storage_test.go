@@ -652,6 +652,22 @@ var _ = Describe("The filelog offset storage resolution", Ordered, func() {
 			Expect(config.OffsetStorageVolume).To(Equal(userVolume))
 			expectMigration(config, true, true)
 		})
+
+		It("should not add the migrate init container on GKE Autopilot, since the allowlist does not permit it",
+			func() {
+				createFilelogOffsetsConfigMap()
+				daemonSet := createLiveDaemonSet(nil, false)
+				markRollout(daemonSet, true)
+				extraConfig := util.ExtraConfigDefaults
+				extraConfig.CollectorFilelogOffsetStorageVolume = userVolume
+				config := newConfig()
+				config.IsGkeAutopilot = true
+
+				resolve(newManager(k8sClient), config, extraConfig)
+
+				Expect(config.OffsetStorageVolume).To(Equal(userVolume))
+				expectMigration(config, true, false)
+			})
 	})
 
 	DescribeTable("should classify the outcome of the dry run",

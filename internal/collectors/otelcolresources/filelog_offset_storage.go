@@ -435,7 +435,8 @@ pods that still run with the config map based storage keep updating it until the
 migrate the offsets. Once the rollout is complete, the config map is no longer desired, and is deleted. A fresh
 installation with a volume neither creates the config map nor adds the init container. The init container stays as
 long as the daemonset has it: it tolerates a missing config map, and removing it would restart all collector pods once
-more.
+more. On GKE Autopilot, the init container is never added, since the allowlist of the collector daemonset does not
+permit it; the offsets are not carried over to the volume there.
 */
 func (m *OTelColResourceManager) planFilelogOffsetsMigration(
 	ctx context.Context,
@@ -448,7 +449,8 @@ func (m *OTelColResourceManager) planFilelogOffsetsMigration(
 	}
 	migrationPending := configMapExists && (!live.usesVolume() || !live.rolloutComplete)
 	config.KeepFilelogOffsetsConfigMap = migrationPending
-	config.MigrateFilelogOffsetsFromConfigMap = migrationPending || live.hasMigrateInitContainer
+	config.MigrateFilelogOffsetsFromConfigMap = !config.IsGkeAutopilot &&
+		(migrationPending || live.hasMigrateInitContainer)
 	return nil
 }
 

@@ -94,7 +94,12 @@ To clean up, delete the directory `<filelogOffsetHostPath>/<operator namespace>`
 When the collector DaemonSet switches from the config map to a volume (the `hostPath` volume or a
 [volume you provide](#providing-a-filelog-offset-volume)), for example when upgrading from an operator version that only
 had the config map based storage, an init container in each collector pod copies the offsets from the config map into
-the volume, if the volume is still empty.
+the volume, unless the volume already holds offsets that are at least as recent as the ones in the config map.
+Outdated offsets in the volume, for example from a time before the collector DaemonSet was switched from the volume to
+the config map, are replaced.
+On GKE Autopilot, the offsets are not copied into a [volume you provide](#providing-a-filelog-offset-volume), since
+the GKE Autopilot workload allowlist does not permit the init container, so log records may be lost or sent twice
+while the collector pods are replaced.
 The config map is kept until the DaemonSet has been rolled out completely with the volume, so that collector pods that
 still use the config map keep updating it until they are replaced.
 The operator deletes the config map on the next reconciliation of the collector resources after the rollout has
@@ -112,13 +117,14 @@ config map, so log records may be lost or sent twice while the collector pods ar
 
 ### Providing a Filelog Offset Volume
 
-Instead of the `hostPath` volume or the config map selected via `operator.collectors.filelogOffsetStorageMode`, any
-persistent volume that is accessible from the collector pods can be used via
-`operator.collectors.filelogOffsetSyncStorageVolume`.
-This setting takes precedence over `operator.collectors.filelogOffsetStorageMode`.
+Instead of the operator-managed `hostPath` volume or the config map selected via
+`operator.collectors.filelogOffsetStorageMode`, any persistent volume that is accessible from the collector pods can be
+used via `operator.collectors.filelogOffsetSyncStorageVolume`.
+This setting takes precedence over `operator.collectors.filelogOffsetStorageMode`, which must be left at `auto` when
+using it.
 
-Here is an example with a `hostPath` volume (see also https://kubernetes.io/docs/concepts/storage/volumes/#hostpath for
-considerations around using `hostPath` volumes):
+Here is an example with a user-provided `hostPath` volume (see also
+https://kubernetes.io/docs/concepts/storage/volumes/#hostpath for considerations around using `hostPath` volumes):
 
 ```yaml
 operator:

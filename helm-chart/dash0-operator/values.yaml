@@ -831,10 +831,10 @@ operator:
     #   Not recommended for clusters with more than around 100 pods per node (the config map is limited to 1 MB), for
     #   clusters with admission webhooks that process every config map update (e.g. OPA gatekeeper, Kyverno), or for
     #   self-hosted clusters where the frequent config map updates can exhaust the disk space of etcd.
-    # When switching from the config map to a volume, the offsets are migrated from the config map, which is deleted
-    # afterwards. Switching from a volume back to the config map does not carry the offsets over, so log records may be
-    # lost or sent twice during that switch.
-    # This setting is ignored when filelogOffsetSyncStorageVolume is set.
+    # When switching from the config map to a volume, the offsets are migrated from the config map (except into a
+    # user-provided volume on GKE Autopilot), which is deleted afterwards. Switching from a volume back to the config
+    # map does not carry the offsets over, so log records may be lost or sent twice during that switch.
+    # Must be left at auto when filelogOffsetSyncStorageVolume is set, which always takes precedence.
     # See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/advanced-configuration.md#filelog-offset-storage.
     filelogOffsetStorageMode: auto
 
@@ -845,13 +845,13 @@ operator:
     # <filelogOffsetHostPath>/<operator namespace> from the nodes.
     filelogOffsetHostPath: /var/lib/dash0-operator/filelog-offsets
 
-    # A volume to use for the filelog receiver offsets instead of the hostPath volume or config map selected via
-    # filelogOffsetStorageMode. Any volume that is accessible from the collector pods can be used, for example a
-    # hostPath volume with a custom path or a ReadWriteMany persistent volume claim. The volume ownership init container
-    # that runs as root with the CHOWN capability is added in this case as well.
+    # A user-provided volume to use for the filelog receiver offsets instead of the operator-managed hostPath volume or
+    # config map selected via filelogOffsetStorageMode. Any volume that is accessible from the collector pods can be
+    # used, for example a hostPath volume with a custom path or a ReadWriteMany persistent volume claim. The volume
+    # ownership init container that runs as root with the CHOWN capability is added in this case as well.
     #
-    # Here is an example with a hostPath volume (see also https://kubernetes.io/docs/concepts/storage/volumes/#hostpath
-    # for considerations around using hostPath volumes):
+    # Here is an example with a user-provided hostPath volume (see also
+    # https://kubernetes.io/docs/concepts/storage/volumes/#hostpath for considerations around using hostPath volumes):
     # operator:
     #   collectors:
     #    filelogOffsetSyncStorageVolume:

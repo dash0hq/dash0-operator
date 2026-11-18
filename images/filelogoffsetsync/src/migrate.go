@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
@@ -21,19 +22,24 @@ const (
 )
 
 // migrateOffsets restores the offset files from the config map, like initOffsets, but only when the offset directory
-// is still empty: it migrates the offsets of a collector that was running with config map based storage into a
-// volume, once, and must not overwrite the offsets that the collector has written to the volume since. A config map
-// that does not exist means there is nothing to migrate.
+// holds no offset files that are at least as recent as the ones in the config map: it migrates the offsets of a
+// collector that was running with config map based storage into a volume, and must not overwrite the offsets that the
+// collector has written to the volume since. Offset files in the volume that are older than the ones in the config
+// map, which a collector left behind before the daemonset was switched from the volume to the config map, are
+// replaced. The modification times of both sides stem from the collectors on this node, and the restored files keep
+// the modification times from the archive, so a repeated migration finds the volume up to date. A config map that
+// does not exist means there is nothing to migrate.
 //
 // Content of the config map that cannot be restored (a corrupt archive, or one without offset files) is logged and
 // skipped, so that it does not keep the collector from starting on this node. Errors accessing the Kubernetes API or
-// the file system are returned, so that the init container is retried.
+// the file system are returned, so that the init container is retried, unless the volume already holds offset files,
+// which are then kept.
 //
-// The files are restored into a staging directory inside the offset directory and synced to disk. The staging
-// directory is then renamed to the committed directory, and only after that are the files moved to their final paths.
-// A file is therefore never visible at its final path before it has been written completely. On start, a staging
-// directory left over by an interrupted attempt is discarded, and the files in a leftover committed directory are
-// moved into place.
+// The files are restored into a staging directory inside the offset directory and synced to disk. Outdated offset
+// files are removed, the staging directory is renamed to the committed directory, and only after that are the files
+// moved to their final paths. A file is therefore never visible at its final path before it has been written
+// completely. On start, a staging directory left over by an interrupted attempt is discarded, and the files in a
+// leftover committed directory are moved into place.
 func migrateOffsets(ctx context.Context, settings *Settings) (int, error) {
 	offsetDir := settings.FileLogOffsetDirectoryPath
 	stagingDir := filepath.Join(offsetDir, migrateStagingDirName)
@@ -53,25 +59,54 @@ func migrateOffsets(ctx context.Context, settings *Settings) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if existingEntries > 0 {
-		logger.Info(
-			"the offset directory is not empty, not migrating offset files from the config map",
-			"directory", offsetDir,
-			"entries", existingEntries,
-		)
-		return 0, nil
-	}
 
 	restoredFiles, err := restoreOffsetsIntoStagingDir(ctx, settings, stagingDir)
 	if err != nil || restoredFiles == 0 {
 		if removeErr := os.RemoveAll(stagingDir); removeErr != nil {
 			return 0, errors.Join(err, fmt.Errorf("cannot remove the staging directory %v: %w", stagingDir, removeErr))
 		}
+		if existingEntries > 0 && err != nil && !apierrors.IsNotFound(err) {
+			logger.Warn(
+				"cannot restore the offset files of this node from the config map, keeping the offset files in "+
+					"the offset directory",
+				"configmap", fmt.Sprintf("%v/%v", settings.ConfigMapNamespace, settings.ConfigMapName),
+				"directory", offsetDir,
+				errorLabel, err,
+			)
+			return 0, nil
+		}
 		return 0, skipUnusableConfigMapContent(settings, err)
+	}
+
+	if existingEntries > 0 {
+		upToDate, err := offsetDirectoryIsUpToDate(offsetDir, stagingDir)
+		if err != nil {
+			return 0, err
+		}
+		if upToDate {
+			logger.Info(
+				"the offset files in the offset directory are at least as recent as the ones in the config map, "+
+					"not migrating offset files from the config map",
+				"directory", offsetDir,
+			)
+			if err := os.RemoveAll(stagingDir); err != nil {
+				return 0, fmt.Errorf("cannot remove the staging directory %v: %w", stagingDir, err)
+			}
+			return 0, nil
+		}
 	}
 
 	if err := syncDir(stagingDir); err != nil {
 		return 0, err
+	}
+	if existingEntries > 0 {
+		logger.Info(
+			"the offset files in the config map are more recent than the ones in the offset directory, replacing them",
+			"directory", offsetDir,
+		)
+		if err := removeOffsetDirectoryEntries(offsetDir); err != nil {
+			return 0, err
+		}
 	}
 	if err := os.Rename(stagingDir, committedDir); err != nil {
 		return 0, fmt.Errorf("cannot rename %v to %v: %w", stagingDir, committedDir, err)
@@ -118,6 +153,65 @@ func countOffsetDirectoryEntries(offsetDir string) (int, error) {
 		}
 	}
 	return count, nil
+}
+
+// offsetDirectoryIsUpToDate reports whether the most recently modified offset file in the offset directory is at least
+// as recent as the most recently modified offset file restored from the config map into the staging directory.
+func offsetDirectoryIsUpToDate(offsetDir string, stagingDir string) (bool, error) {
+	newestInOffsetDir, err := newestModTime(offsetDir)
+	if err != nil {
+		return false, err
+	}
+	newestInConfigMap, err := newestModTime(stagingDir)
+	if err != nil {
+		return false, err
+	}
+	return !newestInConfigMap.After(newestInOffsetDir), nil
+}
+
+func newestModTime(dir string) (time.Time, error) {
+	var newest time.Time
+	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			if path != dir && (entry.Name() == migrateStagingDirName || entry.Name() == migrateCommittedDirName) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.ModTime().After(newest) {
+			newest = info.ModTime()
+		}
+		return nil
+	})
+	if err != nil {
+		return time.Time{}, fmt.Errorf("cannot determine the modification times of the files in %v: %w", dir, err)
+	}
+	return newest, nil
+}
+
+func removeOffsetDirectoryEntries(offsetDir string) error {
+	entries, err := os.ReadDir(offsetDir)
+	if err != nil {
+		return fmt.Errorf("cannot read the offset directory %v: %w", offsetDir, err)
+	}
+	for _, entry := range entries {
+		if entry.Name() == migrateStagingDirName || entry.Name() == migrateCommittedDirName {
+			continue
+		}
+		path := filepath.Join(offsetDir, entry.Name())
+		if err := os.RemoveAll(path); err != nil {
+			return fmt.Errorf("cannot remove the outdated offset file %v: %w", path, err)
+		}
+		logger.Info("removed outdated offset file", "name", path)
+	}
+	return syncDir(offsetDir)
 }
 
 func restoreOffsetsIntoStagingDir(ctx context.Context, settings *Settings, stagingDir string) (int, error) {
