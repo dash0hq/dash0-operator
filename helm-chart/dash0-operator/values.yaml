@@ -722,6 +722,9 @@ operator:
     # operator has removed the instrumentation. A Dash0Monitoring resource that still has a mode other than none after
     # switching this to false is reported in the operator manager's log; it can only be updated if its mode is changed
     # to none in the same update, which also removes the instrumentation from its workloads.
+    #
+    # The setting has no effect when telemetry collection is disabled via operator.telemetryCollectionEnabled=false
+    # (operator.telemetryCollectionEnabled=false effectively implies operator.instrumentation.enabled=false).
     enabled: true
 
     # Controls how the Dash0 instrumentation files (the OpenTelemetry injector and the auto-instrumentation agents)
