@@ -96,6 +96,7 @@ var _ = Describe(
 						false,
 						false,
 						false,
+						true,
 					),
 				)
 				oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
@@ -805,7 +806,7 @@ var _ = Describe(
 					"workload instrumentation disabled via operator.instrumentation.enabled=false", func() {
 						AfterEach(
 							func() {
-								monitoringReconciler.instrumenter.InstrumentationDisabled = false
+								monitoringReconciler.instrumenter.ClusterInstrumentationConfig.InstrumentationEnabled = true
 							},
 						)
 
@@ -831,7 +832,7 @@ var _ = Describe(
 						}
 
 						It("should not instrument existing workloads", func() {
-							monitoringReconciler.instrumenter.InstrumentationDisabled = true
+							monitoringReconciler.instrumenter.ClusterInstrumentationConfig.InstrumentationEnabled = false
 							EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(
 								ctx,
 								k8sClient,
@@ -850,7 +851,7 @@ var _ = Describe(
 						It(
 							"should remove the instrumentation from an instrumented workload without adding the webhook "+
 								"ignore-once label when switching to instrumentWorkloads.mode=none", func() {
-								monitoringReconciler.instrumenter.InstrumentationDisabled = true
+								monitoringReconciler.instrumenter.ClusterInstrumentationConfig.InstrumentationEnabled = false
 								EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(
 									ctx,
 									k8sClient,
@@ -2902,15 +2903,17 @@ var _ = Describe("warnIfInstrumentationIsDisabled", func() {
 		}
 	}
 
-	reconcilerWithInstrumenter := func(instrumentationDisabled bool) *MonitoringReconciler {
+	reconcilerWithInstrumenter := func(instrumentationEnabled bool) *MonitoringReconciler {
 		return &MonitoringReconciler{
-			instrumenter: &instrumentation.Instrumenter{InstrumentationDisabled: instrumentationDisabled},
+			instrumenter: &instrumentation.Instrumenter{
+				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{InstrumentationEnabled: instrumentationEnabled},
+			},
 		}
 	}
 
 	It("should log a warning when instrumentation is disabled and the mode is not none", func() {
 		logger, capturingLogSink := NewCapturingLogger()
-		reconcilerWithInstrumenter(true).warnIfInstrumentationIsDisabled(
+		reconcilerWithInstrumenter(false).warnIfInstrumentationIsDisabled(
 			monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeAll),
 			logger,
 		)
@@ -2927,7 +2930,7 @@ var _ = Describe("warnIfInstrumentationIsDisabled", func() {
 
 	It("should log a pods-specific warning when instrumentation is disabled and the mode is pods", func() {
 		logger, capturingLogSink := NewCapturingLogger()
-		reconcilerWithInstrumenter(true).warnIfInstrumentationIsDisabled(
+		reconcilerWithInstrumenter(false).warnIfInstrumentationIsDisabled(
 			monitoringResourceWithMode(dash0common.InstrumentWorkloadsModePods),
 			logger,
 		)
@@ -2945,7 +2948,10 @@ var _ = Describe("warnIfInstrumentationIsDisabled", func() {
 		logger, _ := NewCapturingLogger()
 		recorder := events.NewFakeRecorder(10)
 		reconciler := &MonitoringReconciler{
-			instrumenter: &instrumentation.Instrumenter{InstrumentationDisabled: true, Recorder: recorder},
+			instrumenter: &instrumentation.Instrumenter{
+				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{InstrumentationEnabled: false},
+				Recorder:                     recorder,
+			},
 		}
 		reconciler.warnIfInstrumentationIsDisabled(
 			monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeCreatedAndUpdated),
@@ -2968,7 +2974,10 @@ var _ = Describe("warnIfInstrumentationIsDisabled", func() {
 		logger, _ := NewCapturingLogger()
 		recorder := events.NewFakeRecorder(10)
 		reconciler := &MonitoringReconciler{
-			instrumenter: &instrumentation.Instrumenter{InstrumentationDisabled: true, Recorder: recorder},
+			instrumenter: &instrumentation.Instrumenter{
+				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{InstrumentationEnabled: false},
+				Recorder:                     recorder,
+			},
 		}
 		reconciler.warnIfInstrumentationIsDisabled(
 			monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeNone),
@@ -2979,7 +2988,7 @@ var _ = Describe("warnIfInstrumentationIsDisabled", func() {
 
 	It("should not log anything when instrumentation is disabled and the mode is none", func() {
 		logger, capturingLogSink := NewCapturingLogger()
-		reconcilerWithInstrumenter(true).warnIfInstrumentationIsDisabled(
+		reconcilerWithInstrumenter(false).warnIfInstrumentationIsDisabled(
 			monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeNone),
 			logger,
 		)
@@ -2988,7 +2997,7 @@ var _ = Describe("warnIfInstrumentationIsDisabled", func() {
 
 	It("should not log anything when instrumentation is enabled", func() {
 		logger, capturingLogSink := NewCapturingLogger()
-		reconcilerWithInstrumenter(false).warnIfInstrumentationIsDisabled(
+		reconcilerWithInstrumenter(true).warnIfInstrumentationIsDisabled(
 			monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeAll),
 			logger,
 		)

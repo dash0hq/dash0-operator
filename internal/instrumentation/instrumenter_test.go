@@ -69,6 +69,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				false,
 				false,
 				false,
+				true,
 			),
 		)
 	})
@@ -980,6 +981,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 					true,
 					false,
 					false,
+					true,
 				),
 			)
 

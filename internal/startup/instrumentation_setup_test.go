@@ -36,7 +36,7 @@ func (m *runnableRecordingManager) Add(runnable manager.Runnable) error {
 var _ = Describe("instrumentation setup", func() {
 	var mgr *runnableRecordingManager
 
-	clusterInstrumentationConfig := func() *util.ClusterInstrumentationConfig {
+	clusterInstrumentationConfig := func(instrumentationEnabled bool) *util.ClusterInstrumentationConfig {
 		return util.NewClusterInstrumentationConfig(
 			TestImages,
 			PossibleCollectorUrlsTest,
@@ -47,6 +47,7 @@ var _ = Describe("instrumentation setup", func() {
 			false,
 			false,
 			false,
+			instrumentationEnabled,
 		)
 	}
 
@@ -62,13 +63,11 @@ var _ = Describe("instrumentation setup", func() {
 				mgr,
 				k8sClient,
 				nil,
-				clusterInstrumentationConfig(),
-				true,
+				clusterInstrumentationConfig(true),
 				func(context.Context, logd.Logger) {},
 			)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(instrumenter).NotTo(BeNil())
-			Expect(instrumenter.InstrumentationDisabled).To(BeFalse())
 			Expect(mgr.addedRunnables).To(HaveLen(1))
 			Expect(mgr.addedRunnables[0]).To(BeAssignableToTypeOf(&InstrumentAtStartupRunnable{}))
 		})
@@ -78,13 +77,11 @@ var _ = Describe("instrumentation setup", func() {
 				mgr,
 				k8sClient,
 				nil,
-				clusterInstrumentationConfig(),
-				false,
+				clusterInstrumentationConfig(false),
 				func(context.Context, logd.Logger) {},
 			)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(instrumenter).NotTo(BeNil())
-			Expect(instrumenter.InstrumentationDisabled).To(BeTrue())
 			Expect(mgr.addedRunnables).To(BeEmpty())
 		})
 	})
@@ -103,12 +100,12 @@ var _ = Describe("instrumentation setup", func() {
 		}
 
 		It("registers the instrumentation webhook handler if workload instrumentation is enabled", func() {
-			Expect(setupInstrumentationWebhook(mgr, k8sClient, clusterInstrumentationConfig(), true)).To(Succeed())
+			Expect(setupInstrumentationWebhook(mgr, k8sClient, clusterInstrumentationConfig(true))).To(Succeed())
 			Expect(registeredPattern()).To(Equal("/workloads/inject"))
 		})
 
 		It("does not register the instrumentation webhook handler if workload instrumentation is disabled", func() {
-			Expect(setupInstrumentationWebhook(mgr, k8sClient, clusterInstrumentationConfig(), false)).To(Succeed())
+			Expect(setupInstrumentationWebhook(mgr, k8sClient, clusterInstrumentationConfig(false))).To(Succeed())
 			Expect(registeredPattern()).To(BeEmpty())
 		})
 	})

@@ -313,7 +313,7 @@ func (r *MonitoringReconciler) warnIfInstrumentationIsDisabled(
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger logd.Logger,
 ) {
-	if r.instrumenter == nil || !r.instrumenter.InstrumentationDisabled {
+	if r.instrumenter == nil || r.instrumenter.ClusterInstrumentationConfig.InstrumentationEnabled {
 		return
 	}
 	instrumentWorkloadsMode := monitoringResource.ReadInstrumentWorkloadsMode()

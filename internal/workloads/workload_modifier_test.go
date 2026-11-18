@@ -46,6 +46,7 @@ var (
 		false,
 		false,
 		false,
+		true,
 	)
 
 	clusterInstrumentationConfigWithImageVolumes = util.NewClusterInstrumentationConfig(
@@ -58,6 +59,7 @@ var (
 		false,
 		false,
 		false,
+		true,
 	)
 
 	clusterInstrumentationConfigWithServiceUrl = util.NewClusterInstrumentationConfig(
@@ -70,6 +72,7 @@ var (
 		false,
 		false,
 		false,
+		true,
 	)
 )
 
@@ -89,6 +92,7 @@ func clusterInstrumentationConfigWithOptIns(
 		false,
 		enablePythonAutoInstrumentation,
 		enableRubyAutoInstrumentation,
+		true,
 	)
 }
 
@@ -161,6 +165,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						false,
 						false,
 						false,
+						true,
 					),
 					DefaultNamespaceInstrumentationConfig,
 					testActor,
@@ -480,6 +485,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				false,
 				false,
 				false,
+				true,
 			)
 			namespaceConfig := DefaultNamespaceInstrumentationConfig
 			namespaceConfig.InstrumentPods = true
@@ -966,6 +972,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				false,
 				false,
 				false,
+				true,
 			)
 			osConfig.IsOpenShift = true
 			modifier := NewResourceModifier(osConfig, DefaultNamespaceInstrumentationConfig, testActor, logger)
@@ -995,6 +1002,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				false,
 				false,
 				false,
+				true,
 			)
 			modifier := NewResourceModifier(config, DefaultNamespaceInstrumentationConfig, testActor, logger)
 

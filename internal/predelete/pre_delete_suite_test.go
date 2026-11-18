@@ -115,6 +115,7 @@ var _ = BeforeSuite(func() {
 			false,
 			false,
 			false,
+			true,
 		),
 	)
 	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(

@@ -66,6 +66,7 @@ var _ = Describe("Watching the instrumentation settings of the operator configur
 		config := util.NewClusterInstrumentationConfig(
 			util.Images{}, util.PossibleCollectorUrls{}, "", extraConfig, dash0v1alpha1.InstrumentationDeliveryAuto,
 			nil, false, false, false,
+			true,
 		)
 		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 			Scheme:  scheme.Scheme,
@@ -108,6 +109,7 @@ var _ = Describe("Watching the instrumentation settings of the operator configur
 		config := util.NewClusterInstrumentationConfig(
 			util.Images{}, util.PossibleCollectorUrls{}, "", util.ExtraConfigDefaults,
 			dash0v1alpha1.InstrumentationDeliveryInitContainer, nil, false, false, false,
+			true,
 		)
 		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 			Scheme:  scheme.Scheme,
@@ -144,6 +146,7 @@ var _ = Describe("Watching the instrumentation settings of the operator configur
 		It("should not wait if the operator configuration resource is not managed via Helm", func() {
 			config := util.NewClusterInstrumentationConfig(
 				util.Images{}, util.PossibleCollectorUrls{}, "", util.ExtraConfigDefaults, "", nil, false, false, false,
+				true,
 			)
 			Expect(newWaitForHelmManagedInstrumentationSettings(nil, k8sClient, config, util.ExtraConfigDefaults)).
 				To(BeNil())
@@ -162,6 +165,7 @@ var _ = Describe("Watching the instrumentation settings of the operator configur
 			config := util.NewClusterInstrumentationConfig(
 				util.Images{}, util.PossibleCollectorUrls{}, "", util.ExtraConfigDefaults,
 				dash0v1alpha1.InstrumentationDeliveryImageVolume, nil, false, false, false,
+				true,
 			)
 			Expect(updateOperatorConfigurationInstrumentationSettings(
 				ctx, k8sClient, config, util.ExtraConfigDefaults, true, logd.Discard(),
