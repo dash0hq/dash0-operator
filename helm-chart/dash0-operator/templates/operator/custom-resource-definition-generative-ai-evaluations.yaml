@@ -150,6 +150,7 @@ spec:
                         && !has(self.spec.threshold))
                   systemPrompt:
                     description: The system prompt of the judge.
+                    minLength: 1
                     type: string
                   userPrompt:
                     description: |-

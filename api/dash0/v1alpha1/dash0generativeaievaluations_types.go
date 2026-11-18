@@ -110,6 +110,7 @@ type Dash0GenerativeAiEvaluationJudge struct {
 
 	// The system prompt of the judge.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	SystemPrompt string `json:"systemPrompt"`
 
 	// The prompt sent to the judge for each evaluated span. An attribute key in double curly braces is replaced with

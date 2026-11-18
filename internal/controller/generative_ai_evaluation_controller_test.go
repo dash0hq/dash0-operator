@@ -332,6 +332,12 @@ spec:
 					),
 				)
 
+				It("rejects an empty system prompt", func() {
+					resource := createGenerativeAiEvaluationResource()
+					resource.Spec.Judge.SystemPrompt = ""
+					Expect(k8sClient.Create(ctx, resource)).To(MatchError(ContainSubstring("spec.judge.systemPrompt")))
+				})
+
 				It("rejects a change of the output kind, but accepts other changes", func() {
 					resource := createGenerativeAiEvaluationResource()
 					Expect(k8sClient.Create(ctx, resource)).To(Succeed())
