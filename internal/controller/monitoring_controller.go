@@ -12,6 +12,7 @@ import (
 	"time"
 
 	otelmetric "go.opentelemetry.io/otel/metric"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -319,22 +320,33 @@ func (r *MonitoringReconciler) warnIfInstrumentationIsDisabled(
 	if instrumentWorkloadsMode == dash0common.InstrumentWorkloadsModeNone {
 		return
 	}
+	var message string
 	if instrumentWorkloadsMode == dash0common.InstrumentWorkloadsModePods {
-		logger.Warn(
-			fmt.Sprintf(
-				logMsgInstrumentationDisabledButModeIsPods,
-				monitoringResource.Namespace,
-				monitoringResource.Name,
-			))
-		return
-	}
-	logger.Warn(
-		fmt.Sprintf(
+		message = fmt.Sprintf(
+			logMsgInstrumentationDisabledButModeIsPods,
+			monitoringResource.Namespace,
+			monitoringResource.Name,
+		)
+	} else {
+		message = fmt.Sprintf(
 			logMsgInstrumentationDisabledButModeIsNotNone,
 			monitoringResource.Namespace,
 			monitoringResource.Name,
 			instrumentWorkloadsMode,
-		))
+		)
+	}
+	logger.WarnTelemetryCollectionIssue(message)
+	if r.instrumenter.Recorder != nil {
+		r.instrumenter.Recorder.Eventf(
+			monitoringResource,
+			nil,
+			corev1.EventTypeWarning,
+			string(util.ReasonInstrumentationDisabledButModeIsNotNone),
+			string(util.ActionInstrumentation),
+			"%s",
+			message,
+		)
+	}
 }
 
 func (r *MonitoringReconciler) applyApiAccessSettings(

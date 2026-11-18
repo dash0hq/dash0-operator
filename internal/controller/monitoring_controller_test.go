@@ -21,6 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -808,6 +809,27 @@ var _ = Describe(
 							},
 						)
 
+						verifyOnlyInstrumentationDisabledWarningEvent := func() {
+							VerifyEvent(
+								ctx,
+								clientset,
+								TestNamespaceName,
+								MonitoringResourceName,
+								corev1.EventTypeWarning,
+								util.ReasonInstrumentationDisabledButModeIsNotNone,
+								util.ActionInstrumentation,
+								fmt.Sprintf(
+									logMsgInstrumentationDisabledButModeIsNotNone,
+									TestNamespaceName,
+									MonitoringResourceName,
+									dash0common.InstrumentWorkloadsModeAll,
+								),
+							)
+							allEvents, err := clientset.EventsV1().Events(TestNamespaceName).List(ctx, metav1.ListOptions{})
+							Expect(err).NotTo(HaveOccurred())
+							Expect(allEvents.Items).To(HaveLen(1))
+						}
+
 						It("should not instrument existing workloads", func() {
 							monitoringReconciler.instrumenter.InstrumentationDisabled = true
 							EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(
@@ -821,7 +843,7 @@ var _ = Describe(
 
 							triggerReconcileRequest(ctx, monitoringReconciler)
 
-							VerifyNoEvents(ctx, clientset, TestNamespaceName)
+							verifyOnlyInstrumentationDisabledWarningEvent()
 							VerifyUnmodifiedDeployment(GetDeployment(ctx, k8sClient, TestNamespaceName, name))
 						})
 
@@ -838,7 +860,7 @@ var _ = Describe(
 								deployment := CreateInstrumentedDeployment(ctx, k8sClient, TestNamespaceName, name)
 								createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, deployment)
 								triggerReconcileRequest(ctx, monitoringReconciler)
-								VerifyNoEvents(ctx, clientset, TestNamespaceName)
+								verifyOnlyInstrumentationDisabledWarningEvent()
 
 								UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeNone)
 								triggerReconcileRequest(ctx, monitoringReconciler)
@@ -2917,6 +2939,42 @@ var _ = Describe("warnIfInstrumentationIsDisabled", func() {
 				MonitoringResourceName,
 			),
 		)
+	})
+
+	It("should queue a warning event when instrumentation is disabled and the mode is not none", func() {
+		logger, _ := NewCapturingLogger()
+		recorder := events.NewFakeRecorder(10)
+		reconciler := &MonitoringReconciler{
+			instrumenter: &instrumentation.Instrumenter{InstrumentationDisabled: true, Recorder: recorder},
+		}
+		reconciler.warnIfInstrumentationIsDisabled(
+			monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeCreatedAndUpdated),
+			logger,
+		)
+		Expect(recorder.Events).To(Receive(Equal(fmt.Sprintf(
+			"%s %s %s",
+			corev1.EventTypeWarning,
+			util.ReasonInstrumentationDisabledButModeIsNotNone,
+			fmt.Sprintf(
+				logMsgInstrumentationDisabledButModeIsNotNone,
+				TestNamespaceName,
+				MonitoringResourceName,
+				dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+			),
+		))))
+	})
+
+	It("should not queue an event when instrumentation is disabled and the mode is none", func() {
+		logger, _ := NewCapturingLogger()
+		recorder := events.NewFakeRecorder(10)
+		reconciler := &MonitoringReconciler{
+			instrumenter: &instrumentation.Instrumenter{InstrumentationDisabled: true, Recorder: recorder},
+		}
+		reconciler.warnIfInstrumentationIsDisabled(
+			monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeNone),
+			logger,
+		)
+		Expect(recorder.Events).ToNot(Receive())
 	})
 
 	It("should not log anything when instrumentation is disabled and the mode is none", func() {

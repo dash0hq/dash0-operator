@@ -2520,21 +2520,13 @@ func startDash0Controllers(
 		}
 		setupLog.Info("The auto-namespace-monitoring reconciler has been started.")
 
-		if cliArgs.instrumentationEnabled {
-			instrumentationWebhookHandler := webhooks.NewInstrumentationWebhookHandler(
-				k8sClient,
-				mgr.GetAPIReader(),
-				mgr.GetCache(),
-				mgr.GetEventRecorder("dash0-instrumentation-webhook"),
-				clusterInstrumentationConfig,
-			)
-			if err := instrumentationWebhookHandler.SetupWebhookWithManager(mgr); err != nil {
-				return fmt.Errorf("unable to create the instrumentation webhook: %w", err)
-			}
-			// For consistency, we update the extra config map in the instrumentation webhook handler as well.
-			// In case instrumentation-related settings have been changed (e.g., operator.initContainerResources),
-			// workloads that are created or updated afterwards will be instrumented with the updated settings.
-			extraConfigMapWatcher.AddClient(instrumentationWebhookHandler)
+		if err := setupInstrumentationWebhook(
+			mgr,
+			k8sClient,
+			clusterInstrumentationConfig,
+			cliArgs.instrumentationEnabled,
+		); err != nil {
+			return err
 		}
 	}
 
@@ -2708,6 +2700,34 @@ func startMinimumKubeletVersionDetection(
 		},
 		setupLog,
 	)
+}
+
+// setupInstrumentationWebhook registers the handler for the instrumentation webhook, unless workload instrumentation
+// is disabled. The Helm chart does not register the webhook configuration for the instrumentation webhook in that case.
+func setupInstrumentationWebhook(
+	mgr ctrl.Manager,
+	k8sClient client.Client,
+	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
+	instrumentationEnabled bool,
+) error {
+	if !instrumentationEnabled {
+		return nil
+	}
+	instrumentationWebhookHandler := webhooks.NewInstrumentationWebhookHandler(
+		k8sClient,
+		mgr.GetAPIReader(),
+		mgr.GetCache(),
+		mgr.GetEventRecorder("dash0-instrumentation-webhook"),
+		clusterInstrumentationConfig,
+	)
+	if err := instrumentationWebhookHandler.SetupWebhookWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to create the instrumentation webhook: %w", err)
+	}
+	// For consistency, we update the extra config map in the instrumentation webhook handler as well.
+	// In case instrumentation-related settings have been changed (e.g., operator.initContainerResources),
+	// workloads that are created or updated afterwards will be instrumented with the updated settings.
+	extraConfigMapWatcher.AddClient(instrumentationWebhookHandler)
+	return nil
 }
 
 // setupInstrumenters creates the instrumenter used by the controllers and webhooks, and registers the
