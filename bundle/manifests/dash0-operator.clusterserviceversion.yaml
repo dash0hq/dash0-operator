@@ -393,7 +393,7 @@ metadata:
     capabilities: Seamless Upgrades
     categories: Monitoring,Logging & Tracing
     containerImage: ghcr.io/dash0hq/operator-controller:0.0.0
-    createdAt: "2026-11-18T11:14:47Z"
+    createdAt: "2026-11-19T17:30:06Z"
     description: Collect traces, metrics and logs from your Kubernetes workloads and
       infrastructure with OpenTelemetry and send them to Dash0.
     operators.operatorframework.io/builder: operator-sdk-v1.42.3
@@ -1649,6 +1649,8 @@ spec:
                 - name: DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION
                   value: "true"
                 - name: DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION
+                  value: "true"
+                - name: OTEL_COLLECTOR_K8SATTRIBUTES_SHARE_PROCESSOR_BETWEEN_PIPELINES
                   value: "true"
                 - name: K8S_POD_UID
                   valueFrom:

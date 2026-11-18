@@ -100,6 +100,8 @@ deployment should match snapshot (default values):
                   value: "true"
                 - name: DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION
                   value: "true"
+                - name: OTEL_COLLECTOR_K8SATTRIBUTES_SHARE_PROCESSOR_BETWEEN_PIPELINES
+                  value: "true"
                 - name: K8S_POD_UID
                   valueFrom:
                     fieldRef:
@@ -284,6 +286,8 @@ deployment should match snapshot when using cert-manager:
                 - name: DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION
                   value: "true"
                 - name: DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION
+                  value: "true"
+                - name: OTEL_COLLECTOR_K8SATTRIBUTES_SHARE_PROCESSOR_BETWEEN_PIPELINES
                   value: "true"
                 - name: K8S_POD_UID
                   valueFrom:
