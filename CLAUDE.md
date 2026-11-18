@@ -85,8 +85,8 @@ OLM users configure it:
 * a value that switches on an optional feature: additionally a bullet in "Optional Features"
 * a value without an OLM equivalent: the list in "Settings That Are Only Available with Helm"
 
-Fields of the Dash0 custom resources need no entry in the OLM doc, since the Helm docs that describe them apply to OLM
-installations as well.
+Other fields of the Dash0 custom resources need no entry in the OLM doc, since the Helm docs that describe them apply to
+OLM installations as well.
 
 ### Changing the Kubernetes Custom Resource Definitions
 

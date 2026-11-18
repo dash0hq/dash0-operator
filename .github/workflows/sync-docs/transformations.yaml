@@ -1,4 +1,4 @@
-# Transformations applied to the helm-chart/dash0-operator and olm/docs docs before they are copied to the Dash0
+# Transformations applied to the docs in helm-chart/dash0-operator and olm/docs before they are copied to the Dash0
 # documentation repository (see .github/workflows/sync-docs-to-website.yaml).
 #
 # This file is the source of truth for how the operator's docs are adapted into the docs pages.
@@ -7,7 +7,8 @@
 # The documentation is a set of files: the top-level README.md (which becomes the operator overview page
 # dash0-operator/overview.md) and the topic files in helm-chart/dash0-operator/docs/*.md (which keep their names but
 # move into the same dash0-operator/ directory in the target repository, i.e. the docs/ directory is renamed to
-# dash0-operator/). The OLM docs in olm/docs/*.md are synced into the same directory, with an olm- prefix.
+# dash0-operator/). The OLM docs in olm/docs/*.md are synced into the same directory, under target names that do not
+# collide with the Helm docs.
 # All synced pages therefore end up as siblings in the dash0-operator/ directory.
 # Relative links between the topic files are sibling links and are preserved as-is (only the .md suffix is dropped).
 # Two kinds of links are rewritten automatically (see below): links from the topic files back to the renamed README.md

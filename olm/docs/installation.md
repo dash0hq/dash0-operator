@@ -44,7 +44,7 @@ The installation consists of the following steps:
 
 1. Create a namespace for the operator.
 2. Add the Dash0 catalog to that namespace.
-3. Subscribe to the operator package in that namespace, OLM then installs the operator.
+3. Subscribe to the operator package in that namespace. OLM then installs the operator.
 
 Once the operator is installed, configure the Dash0 backend connection and enable Dash0 monitoring, see
 [Initial Configuration](#initial-configuration).
@@ -55,7 +55,7 @@ On OpenShift, `oc` can be used in the same way.
 ### Creating the Operator Namespace
 
 OLM does not create the namespace for the operator.
-Create it before subscribing to the operator, this guide uses `dash0-system`:
+Create it before subscribing to the operator. This guide uses `dash0-system`:
 
 ```console
 kubectl create namespace dash0-system
@@ -104,8 +104,8 @@ kubectl apply -f dash0-operator-catalog.yaml
 
 Notes on the settings:
 
-* `metadata.namespace`: A catalog in the operator namespace is only available to subscriptions in that namespace,
-  other namespaces do not see the Dash0 catalog.
+* `metadata.namespace`: A catalog in the operator namespace is only available to subscriptions in that namespace.
+  Other namespaces do not see the Dash0 catalog.
 * `spec.image`: The tag `latest` always points to the catalog with the newest operator release.
   OLM reads the catalog image again every `registryPoll.interval` and finds new releases this way, see
   [Upgrading](#upgrading).
@@ -176,7 +176,8 @@ operator is not running.
 ### Configuring the Dash0 Backend Connection
 
 With Helm, the backend connection can be provided as Helm values when installing the operator.
-With OLM, configure it by creating a `Dash0OperatorConfiguration` resource, as described in [Configuring the Dash0 Backend Connection](../../helm-chart/dash0-operator/docs/configuration.md#configuring-the-dash0-backend-connection).
+With OLM, configure it by creating a `Dash0OperatorConfiguration` resource, as described in
+[Configuring the Dash0 Backend Connection](../../helm-chart/dash0-operator/docs/configuration.md#configuring-the-dash0-backend-connection).
 If you reference the Dash0 authorization token via a Kubernetes secret, create the secret in the operator namespace
 `dash0-system`, see
 [Using a Kubernetes Secret for the Dash0 Authorization Token](../../helm-chart/dash0-operator/docs/configuration.md#using-a-kubernetes-secret-for-the-dash0-authorization-token).
@@ -279,7 +280,7 @@ In particular:
 
 Set the resource requests and limits of the operator manager container in `spec.config.resources` of the `Subscription`.
 They replace the resources of the operator's deployment as a whole, so specify all requests and limits you want to keep.
-Set the environment variable `GOMEMLIMIT` as well, the default value `205MiB` matches the default memory limit of
+Set the environment variable `GOMEMLIMIT` as well. The default value `205MiB` matches the default memory limit of
 `256Mi`.
 A value of about 80% of the memory limit is recommended:
 
@@ -302,7 +303,6 @@ spec:
 
 `spec.config` also supports `tolerations`, `nodeSelector` and `affinity` for the operator manager pod, the equivalents
 of the Helm values `operator.tolerations` and `operator.nodeAffinity`.
-The Helm values `operator.managerPriorityClassName` and `operator.imagePullSecrets` have no equivalent under OLM.
 
 ### Settings of the Managed Workloads
 
@@ -311,17 +311,17 @@ Resources, scheduling settings, labels and annotations of the workloads the oper
 Signal Control workloads.
 Fields that are not set keep their defaults.
 
-| Workload                        | Resource and field                                                    | Fields                                                                                                                                                                                                                                                                 | Helm values (for comparison)                                                                       |
-|---------------------------------|-----------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------|
-| Instrumentation init container  | `Dash0OperatorConfiguration` `spec.components.instrumentationInitContainer` | `resources`                                                                                                                                                                                                                                                      | `operator.initContainerResources`                                                                  |
-| Collector DaemonSet             | `Dash0OperatorConfiguration` `spec.components.daemonSetCollector`     | `collectorContainerResources`, `configurationReloaderContainerResources`, `filelogOffsetSyncContainerResources`, `filelogOffsetStorageVolume`, `seLinuxOptions`, `sysctls`, `probes`, `priorityClassName`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity` | `operator.collectors.daemonSet*`, `operator.collectors.filelogOffsetSyncStorageVolume`             |
-| Collector Deployment            | `Dash0OperatorConfiguration` `spec.components.deploymentCollector`    | `collectorContainerResources`, `configurationReloaderContainerResources`, `sysctls`, `probes`, `priorityClassName`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                            | `operator.collectors.deployment*`                                                                  |
-| Target-allocator                | `Dash0OperatorConfiguration` `spec.components.targetAllocator`        | `containerResources`, `mTls`, `allowInsecureAuthSecrets`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                                                                                       | `operator.targetAllocator.*`                                                                       |
-| Agent0-connector                | `Dash0OperatorConfiguration` `spec.components.agent0Connector`        | `containerResources`, `maxConcurrentCommands`, `allowedKubectlCommands`, `enablePprof`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                                                         | `operator.agent0Connector.*`                                                                       |
-| eBPF profiler                   | `Dash0OperatorConfiguration` `spec.components.ebpfProfiler`           | `containerResources`, `priorityClassName`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                                                                                                      | `operator.ebpfProfiler.*`                                                                          |
-| Debuginfo proxy                 | `Dash0OperatorConfiguration` `spec.components.debuginfoProxy`         | `containerResources`, `priorityClassName`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                                                                                                      | `operator.debuginfoProxy.*`                                                                        |
-| Signal Control collector        | `Dash0SignalControl` `spec.components.collector`                      | `replicas`, `collectorContainerResources`, `configurationReloaderContainerResources`, `sysctls`, `probes`, `priorityClassName`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                | `operator.collectors.signalControlCollector*`                                                      |
-| Edge proxy                      | `Dash0SignalControl` `spec.components.edgeProxy`                      | `replicas`, `containerResources`, `enablePprof`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                                                                                                | `operator.signalControl.edgeProxy.*`                                                               |
+| Workload                       | Resource and field                                                          | Fields                                                                                                                                                                                                                                                                                           | Helm values (for comparison)                                                           |
+|--------------------------------|-----------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------|
+| Instrumentation init container | `Dash0OperatorConfiguration` `spec.components.instrumentationInitContainer` | `resources`                                                                                                                                                                                                                                                                                      | `operator.initContainerResources`                                                      |
+| Collector DaemonSet            | `Dash0OperatorConfiguration` `spec.components.daemonSetCollector`           | `collectorContainerResources`, `configurationReloaderContainerResources`, `filelogOffsetSyncContainerResources`, `filelogOffsetStorageVolume`, `seLinuxOptions`, `sysctls`, `probes`, `priorityClassName`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity` | `operator.collectors.daemonSet*`, `operator.collectors.filelogOffsetSyncStorageVolume` |
+| Collector Deployment           | `Dash0OperatorConfiguration` `spec.components.deploymentCollector`          | `collectorContainerResources`, `configurationReloaderContainerResources`, `sysctls`, `probes`, `priorityClassName`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                                                        | `operator.collectors.deployment*`                                                      |
+| Target-allocator               | `Dash0OperatorConfiguration` `spec.components.targetAllocator`              | `containerResources`, `mTls`, `allowInsecureAuthSecrets`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                                                                                                                  | `operator.targetAllocator.*`                                                           |
+| Agent0-connector               | `Dash0OperatorConfiguration` `spec.components.agent0Connector`              | `containerResources`, `maxConcurrentCommands`, `allowedKubectlCommands`, `enablePprof`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                                                                                    | `operator.agent0Connector.*`                                                           |
+| eBPF profiler                  | `Dash0OperatorConfiguration` `spec.components.ebpfProfiler`                 | `containerResources`, `priorityClassName`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                                                                                                                                 | `operator.ebpfProfiler.*`                                                              |
+| Debuginfo proxy                | `Dash0OperatorConfiguration` `spec.components.debuginfoProxy`               | `containerResources`, `priorityClassName`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                                                                                                                                 | `operator.debuginfoProxy.*`                                                            |
+| Signal Control collector       | `Dash0SignalControl` `spec.components.collector`                            | `replicas`, `collectorContainerResources`, `configurationReloaderContainerResources`, `sysctls`, `probes`, `priorityClassName`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                                            | `operator.collectors.signalControlCollector*`                                          |
+| Edge Proxy                     | `Dash0SignalControl` `spec.components.edgeProxy`                            | `replicas`, `containerResources`, `enablePprof`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                                                                                                                           | `operator.signalControl.edgeProxy.*`                                                   |
 
 The structure of each field is shown by `kubectl explain`, for example:
 
@@ -399,7 +399,7 @@ in the `Subscription`, see
 [Python Auto-Instrumentation](../../helm-chart/dash0-operator/docs/configuration.md#python-auto-instrumentation) and
 [Ruby Auto-Instrumentation](../../helm-chart/dash0-operator/docs/configuration.md#ruby-auto-instrumentation).
 
-Signal Control needs no setting in the `Subscription`, it is switched on by creating a `Dash0SignalControl` resource,
+Signal Control needs no setting in the `Subscription`. It is switched on by creating a `Dash0SignalControl` resource,
 see [Signal Control](../../helm-chart/dash0-operator/docs/signal-control-edge.md).
 
 ### Settings That Are Only Available with Helm
@@ -426,7 +426,9 @@ The following Helm values have no equivalent under OLM:
   To store the filelog offsets elsewhere, provide a volume via
   `spec.components.daemonSetCollector.filelogOffsetStorageVolume`, see
   [Settings of the Managed Workloads](#settings-of-the-managed-workloads).
-* `operator.replicaCount`, `operator.managerPriorityClassName` and `operator.imagePullSecrets`.
+* `operator.replicaCount`: The operator manager always runs with one replica.
+* `operator.managerPriorityClassName`: The `Subscription` cannot set a priority class for the operator manager.
+* `operator.imagePullSecrets`: The `Subscription` cannot set image pull secrets for the operator manager.
 
 ## Notes on OpenShift
 
@@ -435,7 +437,7 @@ The installation on Red Hat OpenShift uses the same steps and resources as on ot
 * The operator detects OpenShift automatically.
   The Helm value `operator.openShift.enabled` and its environment variable `DASH0_OPENSHIFT` are not needed.
 * The operator package includes service accounts for the collector DaemonSet and the eBPF profiler that may use the
-  `privileged` SecurityContextConstraints (SCC), OLM creates them together with the operator.
+  `privileged` SecurityContextConstraints (SCC). OLM creates them together with the operator.
   Unlike the Helm chart, no custom SCC is created.
   All other workloads that the operator creates in its namespace run with the default SCC `restricted-v2`.
 * When uninstalling the operator in the web console, follow the steps in [Uninstallation](#uninstallation) first.
@@ -493,7 +495,7 @@ Follow these steps in this order, so that the operator reverts them while it sti
    kubectl delete dash0monitorings --all --all-namespaces
    ```
 3. Delete the `Subscription` and the `ClusterServiceVersion`.
-   During an upgrade, the `Subscription` references two `ClusterServiceVersion`s, the commands delete both:
+   During an upgrade, the `Subscription` references two `ClusterServiceVersion`s. The commands delete both:
    ```console
    current_csv=$(kubectl get subscription dash0-operator --namespace dash0-system -o jsonpath='{.status.currentCSV}')
    installed_csv=$(kubectl get subscription dash0-operator --namespace dash0-system -o jsonpath='{.status.installedCSV}')
@@ -541,3 +543,11 @@ If the operator has been removed before the monitoring resources were deleted, t
 namespaces with a Dash0 monitoring resource cannot be deleted, since the finalizer of the monitoring resource is no
 longer handled.
 To recover, install the operator again via OLM and follow the steps above.
+
+## Related Documentation
+
+- [Configuration](../../helm-chart/dash0-operator/docs/configuration.md) - Configuration options
+- [Auto-Instrumentation](../../helm-chart/dash0-operator/docs/auto-instrumentation.md) - Workload instrumentation
+  details
+- [Managing Dash0 Resources](../../helm-chart/dash0-operator/docs/managing-dash0-resources.md) - Dash0 resources via
+  Kubernetes custom resources
