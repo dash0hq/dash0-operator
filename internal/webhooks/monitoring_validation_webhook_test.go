@@ -326,7 +326,12 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				newMonitoringResource.Spec.LogCollection.Enabled = new(false)
 				response := handle(admissionv1.Update, oldMonitoringResource, newMonitoringResource)
 				Expect(response.Allowed).To(BeFalse())
-				Expect(response.Result.Message).To(ContainSubstring("operator.instrumentation.enabled=false"))
+				Expect(response.Result.Message).To(Equal(fmt.Sprintf(
+					ErrorMessageMonitoringInstrumentationDisabledUpdate,
+					MonitoringResourceName,
+					TestNamespaceName,
+					dash0common.InstrumentWorkloadsModeAll,
+				)))
 			})
 
 			It("should allow an update that changes the mode to none", func() {

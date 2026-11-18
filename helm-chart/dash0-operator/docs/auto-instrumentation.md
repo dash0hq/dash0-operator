@@ -386,6 +386,16 @@ The resource can only be updated if the update also changes `spec.instrumentWork
 also removes the instrumentation from its workloads.
 Deleting the resource is always possible.
 
+Re-enabling workload instrumentation with `operator.instrumentation.enabled=true` does not change resources that have
+been created or updated while it was disabled:
+Dash0 monitoring resources and monitoring templates of Dash0 operator configuration resources that have received
+`spec.instrumentWorkloads.mode: none` as the default value keep that mode, although it has not been set explicitly.
+To instrument the workloads in these namespaces again, set `spec.instrumentWorkloads.mode` explicitly in these
+resources, for example to `all` for Dash0 monitoring resources and to `created-and-updated` for monitoring templates,
+which are the default values when workload instrumentation is enabled.
+The monitoring template that the Helm chart manages via `operator.monitoringTemplate` is not affected; it gets the
+default mode again when the operator starts with workload instrumentation enabled.
+
 ## Using a Custom Label Selector to Control Auto-Instrumentation
 
 By providing a custom Kubernetes [label selector](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors) in `spec.instrumentWorkloads.labelSelector` in a Dash0 monitoring resource, you can control which workloads in this namespace will be instrumented by the Dash0 operator.

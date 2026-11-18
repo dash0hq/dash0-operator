@@ -40,6 +40,14 @@ const ErrorMessageMonitoringInstrumentationDisabled = "Rejecting the Dash0 monit
 	"namespace \"%s\" with instrumentWorkloads.mode=%s, since workload instrumentation is disabled via the Helm " +
 	"value operator.instrumentation.enabled=false. Use instrumentWorkloads.mode=none instead."
 
+// ErrorMessageMonitoringInstrumentationDisabledUpdate is the message for rejecting an update of a monitoring resource
+// that keeps or sets instrumentWorkloads.mode other than none while workload instrumentation is disabled.
+const ErrorMessageMonitoringInstrumentationDisabledUpdate = "Rejecting the update of the Dash0 monitoring resource " +
+	"\"%s\" in the namespace \"%s\" with instrumentWorkloads.mode=%s, since workload instrumentation is disabled via " +
+	"the Helm value operator.instrumentation.enabled=false. While workload instrumentation is disabled, this resource " +
+	"can only be updated if the update also sets instrumentWorkloads.mode=none, which removes the instrumentation " +
+	"from the workloads in this namespace. Deleting the resource is always possible."
+
 const ErrorMessageMonitoringExportAndExportsAreMutuallyExclusive = "The provided Dash0 monitoring resource has both the " +
 	"deprecated `export` and the `exports` field set. These fields are mutually exclusive. Please use only the " +
 	"`exports` field and remove the `export` field."
@@ -155,8 +163,12 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 		return admission.Denied(msg)
 	}
 	if !h.instrumentationEnabled && instrumentWorkloadsMode != dash0common.InstrumentWorkloadsModeNone {
+		messageTemplate := ErrorMessageMonitoringInstrumentationDisabled
+		if request.Operation == admissionv1.Update {
+			messageTemplate = ErrorMessageMonitoringInstrumentationDisabledUpdate
+		}
 		msg := fmt.Sprintf(
-			ErrorMessageMonitoringInstrumentationDisabled,
+			messageTemplate,
 			request.Name,
 			request.Namespace,
 			instrumentWorkloadsMode,

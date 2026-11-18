@@ -54,6 +54,8 @@ const (
 	ReasonSyntheticsWorkerDisabled    Reason = "SyntheticsWorkerDisabled"
 
 	ReasonDeprecatedFieldUsed Reason = "DeprecatedFieldUsed"
+
+	ReasonInstrumentationDisabledButModeIsNotNone Reason = "InstrumentationDisabledButModeIsNotNone"
 )
 
 // AllInstrumentationEvents lists the events the instrumentation webhook queues for a workload. The webhook cannot set
