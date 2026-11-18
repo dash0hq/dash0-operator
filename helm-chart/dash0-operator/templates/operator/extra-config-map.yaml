@@ -284,6 +284,58 @@ data:
     agent0ConnectorNodeAffinity:
       {{- toYaml .Values.operator.agent0Connector.nodeAffinity | nindent 6 }}
 {{- end }}
+{{- if .Values.operator.ebpfProfilerEnabled }}
+    ebpfProfilerContainerResources:
+      {{- toYaml .Values.operator.ebpfProfiler.containerResources | nindent 6 }}
+{{- if .Values.operator.ebpfProfiler.labels }}
+    ebpfProfilerLabels:
+      {{- toYaml .Values.operator.ebpfProfiler.labels | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.ebpfProfiler.annotations }}
+    ebpfProfilerAnnotations:
+      {{- toYaml .Values.operator.ebpfProfiler.annotations | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.ebpfProfiler.podLabels }}
+    ebpfProfilerPodLabels:
+      {{- toYaml .Values.operator.ebpfProfiler.podLabels | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.ebpfProfiler.podAnnotations }}
+    ebpfProfilerPodAnnotations:
+      {{- toYaml .Values.operator.ebpfProfiler.podAnnotations | nindent 6 }}
+{{- end }}
+    ebpfProfilerTolerations:
+      {{- toYaml .Values.operator.ebpfProfiler.tolerations | nindent 6 }}
+    ebpfProfilerNodeAffinity:
+      {{- toYaml .Values.operator.ebpfProfiler.nodeAffinity | nindent 6 }}
+{{- if .Values.operator.ebpfProfiler.priorityClassName }}
+    ebpfProfilerPriorityClassName: {{ .Values.operator.ebpfProfiler.priorityClassName | quote }}
+{{- end }}
+    debuginfoProxyContainerResources:
+      {{- toYaml .Values.operator.debuginfoProxy.containerResources | nindent 6 }}
+{{- if .Values.operator.debuginfoProxy.labels }}
+    debuginfoProxyLabels:
+      {{- toYaml .Values.operator.debuginfoProxy.labels | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.debuginfoProxy.annotations }}
+    debuginfoProxyAnnotations:
+      {{- toYaml .Values.operator.debuginfoProxy.annotations | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.debuginfoProxy.podLabels }}
+    debuginfoProxyPodLabels:
+      {{- toYaml .Values.operator.debuginfoProxy.podLabels | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.debuginfoProxy.podAnnotations }}
+    debuginfoProxyPodAnnotations:
+      {{- toYaml .Values.operator.debuginfoProxy.podAnnotations | nindent 6 }}
+{{- end }}
+    debuginfoProxyTolerations:
+      {{- toYaml .Values.operator.debuginfoProxy.tolerations | nindent 6 }}
+    debuginfoProxyNodeAffinity:
+      {{- toYaml .Values.operator.debuginfoProxy.nodeAffinity | nindent 6 }}
+{{- if .Values.operator.debuginfoProxy.priorityClassName }}
+    debuginfoProxyPriorityClassName: {{ .Values.operator.debuginfoProxy.priorityClassName | quote }}
+{{- end }}
+{{- end }}
 
     {{- if .Values.operator.autoMonitorNamespaces.monitoringTemplate }}
     {{- fail "Error: operator.autoMonitorNamespaces.monitoringTemplate is not a valid setting. The monitoring template is a top-level operator setting; please use operator.monitoringTemplate instead." -}}

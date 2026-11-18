@@ -72,6 +72,54 @@ var _ = Describe(
 			},
 		)
 
+		Describe("waiting for the first create/update", func() {
+			It("should report the first create/update as done once the resource has been created", func() {
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithToken,
+					util.ExtraConfig{},
+				)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				// The resource is only created once this replica has become leader.
+				Expect(handler.WaitForFirstCreateOrUpdate(ctx, 500*time.Millisecond)).To(BeFalse())
+
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				Expect(handler.WaitForFirstCreateOrUpdate(ctx, 10*time.Second)).To(BeTrue())
+				LoadOperatorConfigurationResourceByNameOrFail(ctx, k8sClient, Default, util.OperatorConfigurationAutoResourceName)
+			})
+
+			It("should report the first create/update as done if the validation fails", func() {
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{
+						Token: AuthorizationTokenTest,
+					},
+					util.ExtraConfig{},
+				)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).To(HaveOccurred())
+				Expect(handler.WaitForFirstCreateOrUpdate(ctx, time.Second)).To(BeTrue())
+			})
+
+			It("should report the first create/update as done if a manually created resource prevents it", func() {
+				CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithToken,
+					util.ExtraConfig{},
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(handler.WaitForFirstCreateOrUpdate(ctx, 10*time.Second)).To(BeTrue())
+			})
+		})
+
 		DescribeTable("should apply the Helm eBPF profiler opt-in", func(telemetryEnabled, profilingEnabled, profilerEnabled bool) {
 			handler := NewAutoOperatorConfigurationResourceHandler(k8sClient, readyCheckExecuter,
 				OperatorConfigurationValues{

@@ -33,7 +33,6 @@ var _ = Describe("ResolveInstrumentationDelivery", func() {
 					Version:  testConfig.minimumKubeletVersion,
 					Detected: testConfig.minimumKubeletVersionDetected,
 				},
-				true,
 				logd.Discard(),
 			)
 			Expect(result).To(Equal(testConfig.expectedDelivery))
@@ -164,9 +163,27 @@ var _ = Describe("ResolveInstrumentationDelivery", func() {
 			minimumKubeletVersionDetected: true,
 			expectedDelivery:              ResolvedInstrumentationDeliveryInitContainer,
 		}),
-		Entry("empty delivery value falls back to init container", resolveDeliveryTest{
+
+		// empty: treated as auto
+		Entry("empty delivery value with undetected versions resolves to init container", resolveDeliveryTest{
 			delivery:         "",
 			expectedDelivery: ResolvedInstrumentationDeliveryInitContainer,
+		}),
+		Entry("empty delivery value on K8s 1.35 resolves to init container", resolveDeliveryTest{
+			delivery:                      "",
+			apiServerVersion:              KubernetesVersion{Major: 1, Minor: 35},
+			apiServerVersionDetected:      true,
+			minimumKubeletVersion:         KubernetesVersion{Major: 1, Minor: 35},
+			minimumKubeletVersionDetected: true,
+			expectedDelivery:              ResolvedInstrumentationDeliveryInitContainer,
+		}),
+		Entry("empty delivery value on K8s 1.36 resolves to image volume", resolveDeliveryTest{
+			delivery:                      "",
+			apiServerVersion:              KubernetesVersion{Major: 1, Minor: 36},
+			apiServerVersionDetected:      true,
+			minimumKubeletVersion:         KubernetesVersion{Major: 1, Minor: 36},
+			minimumKubeletVersionDetected: true,
+			expectedDelivery:              ResolvedInstrumentationDeliveryImageVolume,
 		}),
 	)
 })
