@@ -319,20 +319,49 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				Expect(response.Allowed).To(BeTrue())
 			})
 
-			It("should reject an update that keeps a mode other than none", func() {
+			It("should allow an update that keeps a mode other than none", func() {
 				finalizers := []string{dash0common.MonitoringFinalizerId}
 				oldMonitoringResource := monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeAll, finalizers)
 				newMonitoringResource := oldMonitoringResource.DeepCopy()
 				newMonitoringResource.Spec.LogCollection.Enabled = new(false)
+				response := handle(admissionv1.Update, oldMonitoringResource, newMonitoringResource)
+				Expect(response.Allowed).To(BeTrue())
+			})
+
+			It("should allow adding the finalizer to a monitoring resource that keeps a mode other than none", func() {
+				oldMonitoringResource := monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeAll, nil)
+				newMonitoringResource := monitoringResourceWithMode(
+					dash0common.InstrumentWorkloadsModeAll,
+					[]string{dash0common.MonitoringFinalizerId},
+				)
+				response := handle(admissionv1.Update, oldMonitoringResource, newMonitoringResource)
+				Expect(response.Allowed).To(BeTrue())
+			})
+
+			DescribeTable("should reject an update that changes the mode to a value other than none", func(
+				oldMode dash0common.InstrumentWorkloadsMode,
+				newMode dash0common.InstrumentWorkloadsMode,
+			) {
+				finalizers := []string{dash0common.MonitoringFinalizerId}
+				oldMonitoringResource := monitoringResourceWithMode(oldMode, finalizers)
+				newMonitoringResource := monitoringResourceWithMode(newMode, finalizers)
 				response := handle(admissionv1.Update, oldMonitoringResource, newMonitoringResource)
 				Expect(response.Allowed).To(BeFalse())
 				Expect(response.Result.Message).To(Equal(fmt.Sprintf(
 					ErrorMessageMonitoringInstrumentationDisabledUpdate,
 					MonitoringResourceName,
 					TestNamespaceName,
-					dash0common.InstrumentWorkloadsModeAll,
+					newMode,
 				)))
-			})
+			},
+				Entry("none -> all", dash0common.InstrumentWorkloadsModeNone, dash0common.InstrumentWorkloadsModeAll),
+				Entry("all -> pods", dash0common.InstrumentWorkloadsModeAll, dash0common.InstrumentWorkloadsModePods),
+				Entry(
+					"pods -> created-and-updated",
+					dash0common.InstrumentWorkloadsModePods,
+					dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+				),
+			)
 
 			It("should allow an update that changes the mode to none", func() {
 				finalizers := []string{dash0common.MonitoringFinalizerId}
@@ -584,26 +613,44 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 		)
 
 		Describe("when telemetry collection is disabled via Helm", func() {
-			handle := func(spec dash0v1beta1.Dash0MonitoringSpec) admission.Response {
+			marshalMonitoringResourceWithSpec := func(spec dash0v1beta1.Dash0MonitoringSpec) []byte {
 				monitoringResource := DefaultMonitoringResourceWithName(
 					types.NamespacedName{Namespace: TestNamespaceName, Name: MonitoringResourceName},
 				)
 				spec.Exports = monitoringResource.Spec.Exports
 				spec.InstrumentWorkloads.LabelSelector = monitoringResource.Spec.InstrumentWorkloads.LabelSelector
 				monitoringResource.Spec = spec
-				rawNew, err := json.Marshal(monitoringResource)
+				monitoringResource.Finalizers = []string{dash0common.MonitoringFinalizerId}
+				raw, err := json.Marshal(monitoringResource)
 				Expect(err).ToNot(HaveOccurred())
-				return NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace, false, true).Handle(
-					ctx,
-					admission.Request{
-						AdmissionRequest: admissionv1.AdmissionRequest{
-							Operation: admissionv1.Create,
-							Namespace: TestNamespaceName,
-							Name:      MonitoringResourceName,
-							Object:    runtime.RawExtension{Raw: rawNew},
-						},
+				return raw
+			}
+
+			handleRequest := func(request admission.Request) admission.Response {
+				return NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace, false, true).Handle(ctx, request)
+			}
+
+			handle := func(spec dash0v1beta1.Dash0MonitoringSpec) admission.Response {
+				return handleRequest(admission.Request{
+					AdmissionRequest: admissionv1.AdmissionRequest{
+						Operation: admissionv1.Create,
+						Namespace: TestNamespaceName,
+						Name:      MonitoringResourceName,
+						Object:    runtime.RawExtension{Raw: marshalMonitoringResourceWithSpec(spec)},
 					},
-				)
+				})
+			}
+
+			handleUpdate := func(oldSpec dash0v1beta1.Dash0MonitoringSpec, newSpec dash0v1beta1.Dash0MonitoringSpec) admission.Response {
+				return handleRequest(admission.Request{
+					AdmissionRequest: admissionv1.AdmissionRequest{
+						Operation: admissionv1.Update,
+						Namespace: TestNamespaceName,
+						Name:      MonitoringResourceName,
+						Object:    runtime.RawExtension{Raw: marshalMonitoringResourceWithSpec(newSpec)},
+						OldObject: runtime.RawExtension{Raw: marshalMonitoringResourceWithSpec(oldSpec)},
+					},
+				})
 			}
 
 			allDisabled := func() dash0v1beta1.Dash0MonitoringSpec {
@@ -652,6 +699,37 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 			It("should allow a monitoring resource with instrumentation and telemetry collection disabled", func() {
 				response := handle(allDisabled())
 				Expect(response.Allowed).To(BeTrue())
+			})
+
+			It("should allow an update that keeps settings that the stored resource already has", func() {
+				oldSpec := allDisabled()
+				oldSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeAll
+				oldSpec.LogCollection.Enabled = new(true)
+				oldSpec.PrometheusScraping.Enabled = new(true)
+				newSpec := oldSpec
+				newSpec.PrometheusScraping.Enabled = new(false)
+				response := handleUpdate(oldSpec, newSpec)
+				Expect(response.Allowed).To(BeTrue())
+			})
+
+			It("should reject an update that turns on a setting", func() {
+				oldSpec := allDisabled()
+				oldSpec.LogCollection.Enabled = new(true)
+				newSpec := oldSpec
+				newSpec.EventCollection.Enabled = new(true)
+				response := handleUpdate(oldSpec, newSpec)
+				Expect(response.Allowed).To(BeFalse())
+				Expect(response.Result.Message).To(ContainSubstring("operator.telemetryCollectionEnabled=false"))
+				Expect(response.Result.Message).To(ContainSubstring("eventCollection.enabled=true"))
+			})
+
+			It("should reject an update that changes instrumentWorkloads.mode from none to another value", func() {
+				oldSpec := allDisabled()
+				newSpec := oldSpec
+				newSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModePods
+				response := handleUpdate(oldSpec, newSpec)
+				Expect(response.Allowed).To(BeFalse())
+				Expect(response.Result.Message).To(ContainSubstring("instrumentWorkloads.mode=pods"))
 			})
 		})
 
