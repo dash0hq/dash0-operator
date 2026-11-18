@@ -1230,6 +1230,33 @@ tests:
           path: spec.template.spec.containers[0].env[20].value
           value: "true"
 
+  - it: should not render the k8s_attributes disable job informer env var by default
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_JOB_INFORMER
+            value: "true"
+
+  - it: should render the k8s_attributes disable job informer env var when enabled
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        collectors:
+          k8s_attributes:
+            disableJobInformer: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_JOB_INFORMER
+            value: "true"
+
   - it: should not render the k8s_attributes share processor env var by default
     documentSelector:
       path: metadata.name

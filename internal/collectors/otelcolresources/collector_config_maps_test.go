@@ -4374,6 +4374,76 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}),
 	)
 
+	type jobInformerTest struct {
+		cmTypeDef                       configMapTypeDefinition
+		k8sAttributesDisableJobInformer bool
+		profilingEnabled                bool
+		k8sAttributesProcessorName      string
+	}
+
+	DescribeTable("should enable/disable the job informer", func(testConfig jobInformerTest) {
+		configMap, err := testConfig.cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+			OperatorNamespace:               OperatorNamespace,
+			NamePrefix:                      namePrefix,
+			Exporters:                       cmTestSingleDefaultOtlpExporter(),
+			K8sAttributesDisableJobInformer: testConfig.k8sAttributesDisableJobInformer,
+			ProfilingEnabled:                testConfig.profilingEnabled,
+		}, monitoredNamespaces, nil, nil, false)
+		Expect(err).ToNot(HaveOccurred())
+		collectorConfig := parseConfigMapContent(configMap)
+		metadataListRaw := ReadFromMap(
+			collectorConfig,
+			[]string{"processors", testConfig.k8sAttributesProcessorName, "extract", "metadata"},
+		)
+		Expect(metadataListRaw).ToNot(BeNil())
+		metadataList := metadataListRaw.([]any)
+
+		// The K8sAttributesDisableJobInformer flag informs whether k8s.cronjob.uid is extracted; this implicitly makes
+		// the k8s_attributes processor start the job informer. k8s.cronjob.name is derived from the job name if the job
+		// informer is not running, so it is always extracted.
+		Expect(metadataList).To(ContainElement("k8s.cronjob.name"))
+		if testConfig.k8sAttributesDisableJobInformer {
+			Expect(metadataList).ToNot(ContainElement("k8s.cronjob.uid"))
+		} else {
+			Expect(metadataList).To(ContainElement("k8s.cronjob.uid"))
+		}
+	},
+		Entry("daemonset/job informer disabled/k8s_attributes", jobInformerTest{
+			cmTypeDef:                       cmTypeDefDaemonSet,
+			k8sAttributesDisableJobInformer: true,
+			k8sAttributesProcessorName:      "k8s_attributes",
+		}),
+		Entry("deployment/job informer disabled/k8s_attributes", jobInformerTest{
+			cmTypeDef:                       cmTypeDefDeployment,
+			k8sAttributesDisableJobInformer: true,
+			k8sAttributesProcessorName:      "k8s_attributes",
+		}),
+		Entry("daemonset/job informer enabled/k8s_attributes", jobInformerTest{
+			cmTypeDef:                       cmTypeDefDaemonSet,
+			k8sAttributesDisableJobInformer: false,
+			k8sAttributesProcessorName:      "k8s_attributes",
+		}),
+		Entry("deployment/job informer enabled/k8s_attributes", jobInformerTest{
+			cmTypeDef:                       cmTypeDefDeployment,
+			k8sAttributesDisableJobInformer: false,
+			k8sAttributesProcessorName:      "k8s_attributes",
+		}),
+
+		// k8s_attributes/profiles is a separate configuration of the k8s_attributes, hence it gets its own dedicated tests
+		Entry("daemonset/job informer disabled/k8s_attributes/profiling", jobInformerTest{
+			cmTypeDef:                       cmTypeDefDaemonSet,
+			k8sAttributesDisableJobInformer: true,
+			profilingEnabled:                true,
+			k8sAttributesProcessorName:      "k8s_attributes/profiles",
+		}),
+		Entry("daemonset/job informer enabled/k8s_attributes/profiling", jobInformerTest{
+			cmTypeDef:                       cmTypeDefDaemonSet,
+			k8sAttributesDisableJobInformer: false,
+			profilingEnabled:                true,
+			k8sAttributesProcessorName:      "k8s_attributes/profiles",
+		}),
+	)
+
 	type containerImageTagTest struct {
 		cmTypeDef                  configMapTypeDefinition
 		profilingEnabled           bool
