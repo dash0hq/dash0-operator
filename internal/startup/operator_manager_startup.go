@@ -2054,13 +2054,13 @@ func startDash0Controllers(
 				k8sClient,
 				clientset,
 				clusterInstrumentationConfig,
+				cliArgs.instrumentationEnabled,
 				newWaitForHelmManagedInstrumentationSettings(
 					autoOperatorConfigurationResourceHandler,
 					startupTasksK8sClient,
 					clusterInstrumentationConfig,
 					extraConfigDefaults,
 				),
-				cliArgs.instrumentationEnabled,
 			); err != nil {
 				return err
 			}
@@ -2717,8 +2717,8 @@ func setupInstrumenters(
 	k8sClient client.Client,
 	clientset *kubernetes.Clientset,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
-	waitForOperatorConfigurationResource func(context.Context, logd.Logger),
 	instrumentationEnabled bool,
+	waitForOperatorConfigurationResource func(context.Context, logd.Logger),
 ) (*instrumentation.Instrumenter, error) {
 	instrumenter := instrumentation.NewInstrumenter(
 		k8sClient,
