@@ -180,7 +180,7 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 				request.Name,
 				request.Namespace,
 				instrumentWorkloadsMode,
-				instrumentationDisabledHelmValue(h.telemetryCollectionEnabledViaHelm),
+				util.InstrumentationDisabledHelmValue(h.telemetryCollectionEnabledViaHelm),
 			)
 			logger.Warn(msg)
 			return admission.Denied(msg)
@@ -235,15 +235,6 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 
 	return admission.Allowed("").
 		WithWarnings(deprecatedLogRecordsFilterWarnings(monitoringResource.Spec.Filter, "spec.filter")...)
-}
-
-// instrumentationDisabledHelmValue returns the Helm value that has disabled workload instrumentation, for use in
-// messages. Disabling telemetry collection via Helm also disables workload instrumentation.
-func instrumentationDisabledHelmValue(telemetryCollectionEnabledViaHelm bool) string {
-	if !telemetryCollectionEnabledViaHelm {
-		return "operator.telemetryCollectionEnabled=false"
-	}
-	return "operator.instrumentation.enabled=false"
 }
 
 // changesInstrumentWorkloadsModeWhereOnlyNoneIsAllowed checks whether an update request changes the effective

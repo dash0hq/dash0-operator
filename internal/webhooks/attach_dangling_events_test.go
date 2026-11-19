@@ -56,6 +56,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 				false,
 				false,
 				true,
+				true,
 			),
 		)
 		oTelColResourceManager := otelcolresources.NewOTelColResourceManager(

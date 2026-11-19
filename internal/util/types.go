@@ -306,11 +306,27 @@ type ClusterInstrumentationConfig struct {
 	EnableRubyAutoInstrumentation   bool
 	IsOpenShift                     bool
 
-	// InstrumentationEnabledViaHelm is false if workload instrumentation has been disabled via the Helm value
-	// operator.instrumentation.enabled=false. Workloads are then never instrumented, but the instrumentation is still
-	// removed from workloads, for example when the instrumentWorkloads.mode of a monitoring resource is changed to none.
+	// TelemetryCollectionEnabledViaHelm is false if telemetry collection has been disabled via the Helm value
+	// operator.telemetryCollectionEnabled=false. This also disables workload instrumentation, that is,
+	// InstrumentationEnabledViaHelm is false as well. The flag is used to tell which Helm value has disabled workload
+	// instrumentation, see InstrumentationDisabledHelmValue.
+	TelemetryCollectionEnabledViaHelm bool
+
+	// InstrumentationEnabledViaHelm is false if workload instrumentation has been disabled, either explicitly via the
+	// Helm value operator.instrumentation.enabled=false, or implicitly via operator.telemetryCollectionEnabled=false
+	// (see TelemetryCollectionEnabledViaHelm). Workloads are then never instrumented. Instrumentation is still removed
+	// from workloads, for example when the instrumentWorkloads.mode of a monitoring resource is changed to none.
 	// The mutating webhook that instruments workloads is not registered in that case.
 	InstrumentationEnabledViaHelm bool
+}
+
+// InstrumentationDisabledHelmValue returns the Helm value that has disabled workload instrumentation, for use in
+// messages. Disabling telemetry collection via Helm also disables workload instrumentation.
+func InstrumentationDisabledHelmValue(telemetryCollectionEnabledViaHelm bool) string {
+	if !telemetryCollectionEnabledViaHelm {
+		return "operator.telemetryCollectionEnabled=false"
+	}
+	return "operator.instrumentation.enabled=false"
 }
 
 // NewClusterInstrumentationConfig creates the cluster-wide configuration for instrumenting workloads.
@@ -324,17 +340,19 @@ func NewClusterInstrumentationConfig(
 	instrumentationDebug bool,
 	enablePythonAutoInstrumentation bool,
 	enableRubyAutoInstrumentation bool,
+	telemetryCollectionEnabledViaHelm bool,
 	instrumentationEnabledViaHelm bool,
 ) *ClusterInstrumentationConfig {
 	c := &ClusterInstrumentationConfig{
-		Images:                          images,
-		PossibleCollectorUrls:           possibleCollectorUrls,
-		OTelCollectorBaseUrl:            oTelCollectorBaseUrl,
-		InstrumentationDelays:           instrumentationDelays,
-		InstrumentationDebug:            instrumentationDebug,
-		EnablePythonAutoInstrumentation: enablePythonAutoInstrumentation,
-		EnableRubyAutoInstrumentation:   enableRubyAutoInstrumentation,
-		InstrumentationEnabledViaHelm:   instrumentationEnabledViaHelm,
+		Images:                            images,
+		PossibleCollectorUrls:             possibleCollectorUrls,
+		OTelCollectorBaseUrl:              oTelCollectorBaseUrl,
+		InstrumentationDelays:             instrumentationDelays,
+		InstrumentationDebug:              instrumentationDebug,
+		EnablePythonAutoInstrumentation:   enablePythonAutoInstrumentation,
+		EnableRubyAutoInstrumentation:     enableRubyAutoInstrumentation,
+		TelemetryCollectionEnabledViaHelm: telemetryCollectionEnabledViaHelm,
+		InstrumentationEnabledViaHelm:     instrumentationEnabledViaHelm,
 	}
 	c.ExtraConfig.Store(&extraConfig)
 	c.requestedInstrumentationDelivery.Store(&requestedInstrumentationDelivery)

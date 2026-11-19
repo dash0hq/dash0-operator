@@ -47,6 +47,7 @@ var _ = Describe("instrumentation setup", func() {
 			false,
 			false,
 			false,
+			true,
 			instrumentationEnabledViaHelm,
 		)
 	}

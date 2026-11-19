@@ -140,6 +140,7 @@ var _ = BeforeSuite(func() {
 		false,
 		false,
 		true,
+		true,
 	)
 	Expect(NewInstrumentationWebhookHandler(
 		k8sClient,
