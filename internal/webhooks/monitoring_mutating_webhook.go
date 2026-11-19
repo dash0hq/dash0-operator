@@ -27,23 +27,23 @@ type MonitoringMutatingWebhookHandler struct {
 	Client                            client.Client
 	operatorNamespace                 string
 	telemetryCollectionEnabledViaHelm bool
-	instrumentationEnabled            bool
+	instrumentationEnabledViaHelm     bool
 }
 
 // NewMonitoringMutatingWebhookHandler creates the mutating webhook handler for monitoring resources, which sets
 // defaults for unset fields. If telemetryCollectionEnabledViaHelm is false, instrumentation and telemetry collection
-// default to disabled. If instrumentationEnabled is false, instrumentWorkloads.mode defaults to none.
+// default to disabled. If instrumentationEnabledViaHelm is false, instrumentWorkloads.mode defaults to none.
 func NewMonitoringMutatingWebhookHandler(
 	k8sClient client.Client,
 	OperatorNamespace string,
 	telemetryCollectionEnabledViaHelm bool,
-	instrumentationEnabled bool,
+	instrumentationEnabledViaHelm bool,
 ) *MonitoringMutatingWebhookHandler {
 	return &MonitoringMutatingWebhookHandler{
 		Client:                            k8sClient,
 		operatorNamespace:                 OperatorNamespace,
 		telemetryCollectionEnabledViaHelm: telemetryCollectionEnabledViaHelm,
-		instrumentationEnabled:            instrumentationEnabled,
+		instrumentationEnabledViaHelm:     instrumentationEnabledViaHelm,
 	}
 }
 
@@ -176,7 +176,7 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 	}
 
 	if monitoringSpec.InstrumentWorkloads.Mode == "" {
-		if request.Namespace == h.operatorNamespace || !h.instrumentationEnabled {
+		if request.Namespace == h.operatorNamespace || !h.instrumentationEnabledViaHelm {
 			monitoringSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeNone
 		} else if telemetryCollectionEnabled {
 			monitoringSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeAll

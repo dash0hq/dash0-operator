@@ -217,7 +217,7 @@ var _ = Describe("operator manager startup", func() {
 		)
 	})
 
-	Context("applyImpliedCommandLineArguments", func() {
+	Context("deriveImpliedCommandLineArguments", func() {
 		DescribeTable("derives whether workload instrumentation is enabled", func(
 			telemetryCollectionEnabled bool,
 			instrumentationEnabled bool,
@@ -227,7 +227,7 @@ var _ = Describe("operator manager startup", func() {
 				telemetryCollectionEnabled: telemetryCollectionEnabled,
 				instrumentationEnabled:     instrumentationEnabled,
 			}
-			applyImpliedCommandLineArguments(cliArgs)
+			deriveImpliedCommandLineArguments(cliArgs)
 			Expect(cliArgs.instrumentationEnabled).To(Equal(expectedInstrumentationEnabled))
 		},
 			Entry("telemetry collection and instrumentation enabled", true, true, true),

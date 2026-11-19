@@ -121,6 +121,9 @@ true
 {{/*
 Renders "true" unless workload instrumentation has been disabled via operator.instrumentation.enabled=false, and the
 empty string otherwise.
+
+The true/empty pattern is used so that call sites can refernce this via include (which treats every non-empty string as
+true).
 */}}
 {{- define "dash0-operator.instrumentationEnabled" -}}
 {{- if ne (toString .Values.operator.instrumentation.enabled) "false" -}}
@@ -129,10 +132,13 @@ true
 {{- end }}
 
 {{/*
-Renders the string "true" if the mutating webhook that instruments workloads is registered, and the empty string
-otherwise. It is not registered if workload instrumentation is disabled via operator.instrumentation.enabled, or if
-telemetry collection is disabled via operator.telemetryCollectionEnabled (which includes SCE-only mode), since the
-operator manager does not serve the webhook then.
+Renders the string "true" if the mutating webhook that instruments workloads should be registered, and the empty string
+otherwise. The webhook is not registered if telemetry collection is disabled via operator.telemetryCollectionEnabled, or
+if workload instrumentation is disabled via operator.instrumentation.enabled. The operator manager also does not serve
+the webhook then.
+
+The true/empty pattern is used so that call sites can refernce this via include (which treats every non-empty string as
+true).
 */}}
 {{- define "dash0-operator.instrumentationWebhookEnabled" -}}
 {{- if and (include "dash0-operator.instrumentationEnabled" .) .Values.operator.telemetryCollectionEnabled -}}

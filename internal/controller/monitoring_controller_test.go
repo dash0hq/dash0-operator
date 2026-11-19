@@ -806,7 +806,7 @@ var _ = Describe(
 					"workload instrumentation disabled via operator.instrumentation.enabled=false", func() {
 						AfterEach(
 							func() {
-								monitoringReconciler.instrumenter.ClusterInstrumentationConfig.InstrumentationEnabled = true
+								monitoringReconciler.instrumenter.ClusterInstrumentationConfig.InstrumentationEnabledViaHelm = true
 							},
 						)
 
@@ -832,7 +832,7 @@ var _ = Describe(
 						}
 
 						It("should not instrument existing workloads", func() {
-							monitoringReconciler.instrumenter.ClusterInstrumentationConfig.InstrumentationEnabled = false
+							monitoringReconciler.instrumenter.ClusterInstrumentationConfig.InstrumentationEnabledViaHelm = false
 							EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(
 								ctx,
 								k8sClient,
@@ -851,7 +851,7 @@ var _ = Describe(
 						It(
 							"should remove the instrumentation from an instrumented workload without adding the webhook "+
 								"ignore-once label when switching to instrumentWorkloads.mode=none", func() {
-								monitoringReconciler.instrumenter.ClusterInstrumentationConfig.InstrumentationEnabled = false
+								monitoringReconciler.instrumenter.ClusterInstrumentationConfig.InstrumentationEnabledViaHelm = false
 								EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(
 									ctx,
 									k8sClient,
@@ -2903,10 +2903,10 @@ var _ = Describe("warnIfInstrumentationIsDisabled", func() {
 		}
 	}
 
-	reconcilerWithInstrumenter := func(instrumentationEnabled bool) *MonitoringReconciler {
+	reconcilerWithInstrumenter := func(instrumentationEnabledViaHelm bool) *MonitoringReconciler {
 		return &MonitoringReconciler{
 			instrumenter: &instrumentation.Instrumenter{
-				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{InstrumentationEnabled: instrumentationEnabled},
+				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{InstrumentationEnabledViaHelm: instrumentationEnabledViaHelm},
 			},
 		}
 	}
@@ -2949,7 +2949,7 @@ var _ = Describe("warnIfInstrumentationIsDisabled", func() {
 		recorder := events.NewFakeRecorder(10)
 		reconciler := &MonitoringReconciler{
 			instrumenter: &instrumentation.Instrumenter{
-				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{InstrumentationEnabled: false},
+				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{InstrumentationEnabledViaHelm: false},
 				Recorder:                     recorder,
 			},
 		}
@@ -2975,7 +2975,7 @@ var _ = Describe("warnIfInstrumentationIsDisabled", func() {
 		recorder := events.NewFakeRecorder(10)
 		reconciler := &MonitoringReconciler{
 			instrumenter: &instrumentation.Instrumenter{
-				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{InstrumentationEnabled: false},
+				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{InstrumentationEnabledViaHelm: false},
 				Recorder:                     recorder,
 			},
 		}

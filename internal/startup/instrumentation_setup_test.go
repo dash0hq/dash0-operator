@@ -36,7 +36,7 @@ func (m *runnableRecordingManager) Add(runnable manager.Runnable) error {
 var _ = Describe("instrumentation setup", func() {
 	var mgr *runnableRecordingManager
 
-	clusterInstrumentationConfig := func(instrumentationEnabled bool) *util.ClusterInstrumentationConfig {
+	clusterInstrumentationConfig := func(instrumentationEnabledViaHelm bool) *util.ClusterInstrumentationConfig {
 		return util.NewClusterInstrumentationConfig(
 			TestImages,
 			PossibleCollectorUrlsTest,
@@ -47,7 +47,7 @@ var _ = Describe("instrumentation setup", func() {
 			false,
 			false,
 			false,
-			instrumentationEnabled,
+			instrumentationEnabledViaHelm,
 		)
 	}
 

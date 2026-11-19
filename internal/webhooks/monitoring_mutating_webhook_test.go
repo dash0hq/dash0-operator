@@ -304,7 +304,7 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 				}),
 		)
 
-		DescribeTable("should normalize the resource spec if telemetry collection is disabled via Helm (e.g. in SCE-only mode)", func(testConfig normalizeTelemetryRelatedSettingsTestConfig) {
+		DescribeTable("should normalize the resource spec if telemetry collection is disabled via Helm", func(testConfig normalizeTelemetryRelatedSettingsTestConfig) {
 			handler := NewMonitoringMutatingWebhookHandler(k8sClient, OperatorNamespace, false, true)
 			spec := testConfig.spec
 			// no operator configuration resource exists yet

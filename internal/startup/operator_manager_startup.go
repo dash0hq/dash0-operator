@@ -929,20 +929,22 @@ func parseCommandLineOptions(cliArgs *commandLineArguments, developmentMode bool
 		opts.Level = &lvl
 	}
 
-	applyImpliedCommandLineArguments(cliArgs)
+	deriveImpliedCommandLineArguments(cliArgs)
 	return opts, appliedEnvVars, nil
 }
 
-// applyImpliedCommandLineArguments derives the values of command line arguments that are implied by other command line
+// deriveImpliedCommandLineArguments derives the values of command line arguments that are implied by other command line
 // arguments.
-func applyImpliedCommandLineArguments(cliArgs *commandLineArguments) {
+func deriveImpliedCommandLineArguments(cliArgs *commandLineArguments) {
 	if cliArgs.disableOpenTelemetryCollectorHostPorts {
 		// disableOpenTelemetryCollectorHostPorts implies forceUseOpenTelemetryCollectorServiceUrl
 		cliArgs.forceUseOpenTelemetryCollectorServiceUrl = true
 	}
-	cliArgs.signalControlSceOnlyMode = cliArgs.featureSignalControlEnabled && !cliArgs.telemetryCollectionEnabled
-	// Workloads are never instrumented while telemetry collection is disabled via Helm.
+
+	// Workload instrumentation is implicitly disabled when telemetry collection is disabled via Helm.
 	cliArgs.instrumentationEnabled = cliArgs.instrumentationEnabled && cliArgs.telemetryCollectionEnabled
+
+	cliArgs.signalControlSceOnlyMode = cliArgs.featureSignalControlEnabled && !cliArgs.telemetryCollectionEnabled
 }
 
 func setUpLogging(crZapOpts crzap.Opts) *zaputil.DelegatingZapCoreWrapper {
@@ -2717,7 +2719,7 @@ func setupInstrumentationWebhook(
 	k8sClient client.Client,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
 ) error {
-	if !clusterInstrumentationConfig.InstrumentationEnabled {
+	if !clusterInstrumentationConfig.InstrumentationEnabledViaHelm {
 		return nil
 	}
 	instrumentationWebhookHandler := webhooks.NewInstrumentationWebhookHandler(
@@ -2761,7 +2763,7 @@ func setupInstrumenters(
 	// is useless.
 	extraConfigMapWatcher.AddClient(instrumenter)
 
-	if !clusterInstrumentationConfig.InstrumentationEnabled {
+	if !clusterInstrumentationConfig.InstrumentationEnabledViaHelm {
 		// The instrumenter is still needed to remove the instrumentation from workloads, when the instrumentWorkloads.mode
 		// of a monitoring resource is changed to none, or when a monitoring resource is deleted.
 		return instrumenter, nil
