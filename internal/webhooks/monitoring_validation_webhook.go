@@ -38,14 +38,14 @@ const ErrorMessageMonitoringGrpcExportInvalidInsecure = "The provided Dash0 moni
 // instrumentWorkloads.mode other than none while workload instrumentation is disabled.
 const ErrorMessageMonitoringInstrumentationDisabled = "Rejecting the Dash0 monitoring resource \"%s\" in the " +
 	"namespace \"%s\" with instrumentWorkloads.mode=%s, since workload instrumentation is disabled via the Helm " +
-	"value operator.instrumentation.enabled=false. Use instrumentWorkloads.mode=none instead."
+	"value %s. Use instrumentWorkloads.mode=none instead."
 
 // ErrorMessageMonitoringInstrumentationDisabledUpdate is the message for rejecting an update of a monitoring resource
 // that changes instrumentWorkloads.mode to a value other than none while workload instrumentation is disabled.
 const ErrorMessageMonitoringInstrumentationDisabledUpdate = "Rejecting the update of the Dash0 monitoring resource " +
 	"\"%s\" in the namespace \"%s\", which changes instrumentWorkloads.mode to %s, since workload instrumentation is " +
-	"disabled via the Helm value operator.instrumentation.enabled=false. While workload instrumentation is disabled, " +
-	"instrumentWorkloads.mode can only be changed to none."
+	"disabled via the Helm value %s. While workload instrumentation is disabled, instrumentWorkloads.mode can only " +
+	"be changed to none."
 
 const ErrorMessageMonitoringExportAndExportsAreMutuallyExclusive = "The provided Dash0 monitoring resource has both the " +
 	"deprecated `export` and the `exports` field set. These fields are mutually exclusive. Please use only the " +
@@ -180,6 +180,7 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 				request.Name,
 				request.Namespace,
 				instrumentWorkloadsMode,
+				instrumentationDisabledHelmValue(h.telemetryCollectionEnabledViaHelm),
 			)
 			logger.Warn(msg)
 			return admission.Denied(msg)
@@ -233,6 +234,15 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 	}
 
 	return admission.Allowed("")
+}
+
+// instrumentationDisabledHelmValue returns the Helm value that has disabled workload instrumentation, for use in
+// messages. Disabling telemetry collection via Helm also disables workload instrumentation.
+func instrumentationDisabledHelmValue(telemetryCollectionEnabledViaHelm bool) string {
+	if !telemetryCollectionEnabledViaHelm {
+		return "operator.telemetryCollectionEnabled=false"
+	}
+	return "operator.instrumentation.enabled=false"
 }
 
 // changesInstrumentWorkloadsModeWhereOnlyNoneIsAllowed checks whether an update request changes the effective

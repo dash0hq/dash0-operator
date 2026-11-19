@@ -81,7 +81,7 @@ const ErrorMessageOperatorConfigurationMonitoringTemplateWithExports = "The prov
 // template with instrumentWorkloads.mode other than none while workload instrumentation is disabled.
 const ErrorMessageOperatorConfigurationMonitoringTemplateInstrumentationDisabled = "The provided Dash0 operator " +
 	"configuration resource has a monitoring template with instrumentWorkloads.mode=%s, but workload instrumentation " +
-	"is disabled via the Helm value operator.instrumentation.enabled=false. Please set " +
+	"is disabled via the Helm value %s. Please set " +
 	"monitoringTemplate.spec.instrumentWorkloads.mode to none."
 
 const ErrorMessageOperatorConfigurationMonitoringTemplateWithExport = "The provided Dash0 operator configuration resource has a monitoring template with `export`. Please use the " +
@@ -307,7 +307,11 @@ func (h *OperatorConfigurationValidationWebhookHandler) validateMonitoringTempla
 	if !newlySet {
 		return admission.Response{}, false
 	}
-	msg := fmt.Sprintf(ErrorMessageOperatorConfigurationMonitoringTemplateInstrumentationDisabled, templateMode)
+	msg := fmt.Sprintf(
+		ErrorMessageOperatorConfigurationMonitoringTemplateInstrumentationDisabled,
+		templateMode,
+		instrumentationDisabledHelmValue(h.telemetryCollectionEnabledViaHelm),
+	)
 	logger.Warn(msg)
 	return admission.Denied(msg), true
 }

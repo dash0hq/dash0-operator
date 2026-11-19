@@ -1139,13 +1139,38 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				response := handler.Handle(ctx, request)
 				Expect(response.Allowed).To(BeFalse())
 				Expect(response.Result.Message).To(Equal(
-					fmt.Sprintf(ErrorMessageOperatorConfigurationMonitoringTemplateInstrumentationDisabled, mode)))
+					fmt.Sprintf(
+						ErrorMessageOperatorConfigurationMonitoringTemplateInstrumentationDisabled,
+						mode,
+						"operator.instrumentation.enabled=false",
+					)))
 			}
 		},
 			Entry("all", dash0common.InstrumentWorkloadsModeAll),
 			Entry("created-and-updated", dash0common.InstrumentWorkloadsModeCreatedAndUpdated),
 			Entry("pods", dash0common.InstrumentWorkloadsModePods),
 		)
+
+		It("should name operator.telemetryCollectionEnabled=false when telemetry collection is disabled via Helm", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, false, false, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			spec := specWithTemplateMode(dash0common.InstrumentWorkloadsModeAll)
+			spec.AutoMonitorNamespaces.Enabled = new(false)
+			spec.TelemetryCollection.Enabled = new(false)
+			spec.KubernetesInfrastructureMetricsCollection.Enabled = new(false)
+			spec.KubernetesInfrastructureMetricsCollectionEnabled = new(false)
+			spec.CollectPodLabelsAndAnnotations.Enabled = new(false)
+			spec.CollectNamespaceLabelsAndAnnotations.Enabled = new(false)
+			spec.CollectNodeLabelsAndAnnotations.Enabled = new(false)
+			spec.PrometheusCrdSupport.Enabled = new(false)
+			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(spec))
+			Expect(response.Allowed).To(BeFalse())
+			Expect(response.Result.Message).To(Equal(fmt.Sprintf(
+				ErrorMessageOperatorConfigurationMonitoringTemplateInstrumentationDisabled,
+				dash0common.InstrumentWorkloadsModeAll,
+				"operator.telemetryCollectionEnabled=false",
+			)))
+		})
 
 		It("should allow a monitoring template with mode none", func() {
 			handler := NewOperatorConfigurationValidationWebhookHandler(
@@ -1186,7 +1211,11 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			response := handler.Handle(ctx, updateRequest(specWithTemplateMode(oldMode), specWithTemplateMode(mode)))
 			Expect(response.Allowed).To(BeFalse())
 			Expect(response.Result.Message).To(Equal(
-				fmt.Sprintf(ErrorMessageOperatorConfigurationMonitoringTemplateInstrumentationDisabled, mode)))
+				fmt.Sprintf(
+					ErrorMessageOperatorConfigurationMonitoringTemplateInstrumentationDisabled,
+					mode,
+					"operator.instrumentation.enabled=false",
+				)))
 		},
 			Entry("none -> all", dash0common.InstrumentWorkloadsModeNone, dash0common.InstrumentWorkloadsModeAll),
 			Entry(
