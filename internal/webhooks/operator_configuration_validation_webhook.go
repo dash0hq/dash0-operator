@@ -310,7 +310,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) validateMonitoringTempla
 	msg := fmt.Sprintf(
 		ErrorMessageOperatorConfigurationMonitoringTemplateInstrumentationDisabled,
 		templateMode,
-		instrumentationDisabledHelmValue(h.telemetryCollectionEnabledViaHelm),
+		util.InstrumentationDisabledHelmValue(h.telemetryCollectionEnabledViaHelm),
 	)
 	logger.Warn(msg)
 	return admission.Denied(msg), true

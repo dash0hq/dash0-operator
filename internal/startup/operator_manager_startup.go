@@ -2029,6 +2029,7 @@ func startDash0Controllers(
 		envVars.instrumentationDebug,
 		envVars.enablePythonAutoInstrumentation,
 		envVars.enableRubyAutoInstrumentation,
+		cliArgs.telemetryCollectionEnabled,
 		cliArgs.instrumentationEnabled,
 	)
 	clusterInstrumentationConfig.IsOpenShift = cliArgs.isOpenShift

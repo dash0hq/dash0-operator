@@ -97,6 +97,7 @@ var _ = Describe(
 						false,
 						false,
 						true,
+						true,
 					),
 				)
 				oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
@@ -821,6 +822,7 @@ var _ = Describe(
 								util.ActionInstrumentation,
 								fmt.Sprintf(
 									logMsgInstrumentationDisabledButModeIsNotNone,
+									"operator.instrumentation.enabled=false",
 									TestNamespaceName,
 									MonitoringResourceName,
 									dash0common.InstrumentWorkloadsModeAll,
@@ -2906,7 +2908,10 @@ var _ = Describe("warnIfInstrumentationIsDisabled", func() {
 	reconcilerWithInstrumenter := func(instrumentationEnabledViaHelm bool) *MonitoringReconciler {
 		return &MonitoringReconciler{
 			instrumenter: &instrumentation.Instrumenter{
-				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{InstrumentationEnabledViaHelm: instrumentationEnabledViaHelm},
+				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{
+					InstrumentationEnabledViaHelm:     instrumentationEnabledViaHelm,
+					TelemetryCollectionEnabledViaHelm: true,
+				},
 			},
 		}
 	}
@@ -2921,6 +2926,7 @@ var _ = Describe("warnIfInstrumentationIsDisabled", func() {
 			Default,
 			fmt.Sprintf(
 				logMsgInstrumentationDisabledButModeIsNotNone,
+				"operator.instrumentation.enabled=false",
 				TestNamespaceName,
 				MonitoringResourceName,
 				dash0common.InstrumentWorkloadsModeAll,
@@ -2938,8 +2944,35 @@ var _ = Describe("warnIfInstrumentationIsDisabled", func() {
 			Default,
 			fmt.Sprintf(
 				logMsgInstrumentationDisabledButModeIsPods,
+				"operator.instrumentation.enabled=false",
 				TestNamespaceName,
 				MonitoringResourceName,
+			),
+		)
+	})
+
+	It("should name operator.telemetryCollectionEnabled=false in the warning when telemetry collection is disabled", func() {
+		logger, capturingLogSink := NewCapturingLogger()
+		reconciler := &MonitoringReconciler{
+			instrumenter: &instrumentation.Instrumenter{
+				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{
+					InstrumentationEnabledViaHelm:     false,
+					TelemetryCollectionEnabledViaHelm: false,
+				},
+			},
+		}
+		reconciler.warnIfInstrumentationIsDisabled(
+			monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeAll),
+			logger,
+		)
+		capturingLogSink.HasLogMessage(
+			Default,
+			fmt.Sprintf(
+				logMsgInstrumentationDisabledButModeIsNotNone,
+				"operator.telemetryCollectionEnabled=false",
+				TestNamespaceName,
+				MonitoringResourceName,
+				dash0common.InstrumentWorkloadsModeAll,
 			),
 		)
 	})
@@ -2949,8 +2982,11 @@ var _ = Describe("warnIfInstrumentationIsDisabled", func() {
 		recorder := events.NewFakeRecorder(10)
 		reconciler := &MonitoringReconciler{
 			instrumenter: &instrumentation.Instrumenter{
-				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{InstrumentationEnabledViaHelm: false},
-				Recorder:                     recorder,
+				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{
+					InstrumentationEnabledViaHelm:     false,
+					TelemetryCollectionEnabledViaHelm: true,
+				},
+				Recorder: recorder,
 			},
 		}
 		reconciler.warnIfInstrumentationIsDisabled(
@@ -2963,6 +2999,7 @@ var _ = Describe("warnIfInstrumentationIsDisabled", func() {
 			util.ReasonInstrumentationDisabledButModeIsNotNone,
 			fmt.Sprintf(
 				logMsgInstrumentationDisabledButModeIsNotNone,
+				"operator.instrumentation.enabled=false",
 				TestNamespaceName,
 				MonitoringResourceName,
 				dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
@@ -2975,8 +3012,11 @@ var _ = Describe("warnIfInstrumentationIsDisabled", func() {
 		recorder := events.NewFakeRecorder(10)
 		reconciler := &MonitoringReconciler{
 			instrumenter: &instrumentation.Instrumenter{
-				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{InstrumentationEnabledViaHelm: false},
-				Recorder:                     recorder,
+				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{
+					InstrumentationEnabledViaHelm:     false,
+					TelemetryCollectionEnabledViaHelm: true,
+				},
+				Recorder: recorder,
 			},
 		}
 		reconciler.warnIfInstrumentationIsDisabled(
