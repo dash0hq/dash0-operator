@@ -55,24 +55,24 @@ type MonitoringValidationWebhookHandler struct {
 	Client                            client.Client
 	operatorNamespace                 string
 	telemetryCollectionEnabledViaHelm bool
-	instrumentationEnabled            bool
+	instrumentationEnabledViaHelm     bool
 }
 
 // NewMonitoringValidationWebhookHandler creates the validation webhook handler for monitoring resources. If
 // telemetryCollectionEnabledViaHelm is false, monitoring resources that enable instrumentation or telemetry collection
-// are rejected. If instrumentationEnabled is false, monitoring resources with instrumentWorkloads.mode other than none
-// are rejected.
+// are rejected. If instrumentationEnabledViaHelm is false, monitoring resources with instrumentWorkloads.mode other
+// than none are rejected.
 func NewMonitoringValidationWebhookHandler(
 	k8sClient client.Client,
 	operatorNamespace string,
 	telemetryCollectionEnabledViaHelm bool,
-	instrumentationEnabled bool,
+	instrumentationEnabledViaHelm bool,
 ) *MonitoringValidationWebhookHandler {
 	return &MonitoringValidationWebhookHandler{
 		Client:                            k8sClient,
 		operatorNamespace:                 operatorNamespace,
 		telemetryCollectionEnabledViaHelm: telemetryCollectionEnabledViaHelm,
-		instrumentationEnabled:            instrumentationEnabled,
+		instrumentationEnabledViaHelm:     instrumentationEnabledViaHelm,
 	}
 }
 
@@ -161,12 +161,12 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 		logger.Warn(msg)
 		return admission.Denied(msg)
 	}
-	if !h.instrumentationEnabled && instrumentWorkloadsMode != dash0common.InstrumentWorkloadsModeNone {
+	if !h.instrumentationEnabledViaHelm && instrumentWorkloadsMode != dash0common.InstrumentWorkloadsModeNone {
 		rejectMode := true
 		messageTemplate := ErrorMessageMonitoringInstrumentationDisabled
 		if request.Operation == admissionv1.Update {
-			// A resource that has a mode other than none from before workload instrumentation has been disabled can still
-			// be updated, as long as the update keeps the mode as it is.
+			// Unrelated settings in a monitoring resource that has a mode other than none (from before workload
+			// instrumentation had been disabled) can still be updated, as long as the update keeps the mode as it is.
 			modeChanged, errorResponse := instrumentWorkloadsModeChanged(request, monitoringResource)
 			if errorResponse != nil {
 				return *errorResponse
@@ -252,7 +252,7 @@ func (h *MonitoringValidationWebhookHandler) changesInstrumentWorkloadsModeWhere
 	request admission.Request,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 ) (bool, *admission.Response) {
-	if h.instrumentationEnabled &&
+	if h.instrumentationEnabledViaHelm &&
 		!slices.Contains(util.RestrictedNamespaces, request.Namespace) &&
 		request.Namespace != h.operatorNamespace {
 		return false, nil

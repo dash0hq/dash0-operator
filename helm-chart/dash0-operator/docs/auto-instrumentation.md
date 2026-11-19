@@ -328,7 +328,8 @@ spec:
 ## Disabling Workload Instrumentation for the Whole Cluster
 
 If you do not use automatic workload instrumentation in any namespace, for example because you only collect logs,
-metrics and Kubernetes events with the Dash0 operator, you can disable it for the whole cluster:
+metrics and Kubernetes events with the Dash0 operator, or you use manual instrumentation, you can disable it for
+the whole cluster:
 
 ```console
 helm upgrade --install \
@@ -356,27 +357,31 @@ In addition:
   rejected.
   Setting `operator.monitoringTemplate.spec.instrumentWorkloads.mode` to a value other than `none` makes the Helm
   installation fail.
-  A Dash0 operator configuration resource that already has a monitoring template with a mode other than `none` can
-  still be updated, as long as the update does not change that mode to another value other than `none`.
+  Validation for Dash0 operator configuration resources will allow updates for operator configuration resources which
+  have a monitoring template with a mode other than `none`, as long as the update does not change that mode to another
+  value other than `none`.
 * Automatic namespace monitoring creates and updates Dash0 monitoring resources with
   `spec.instrumentWorkloads.mode: none`, regardless of the mode in the monitoring template.
 
-In namespaces that are monitored via automatic namespace monitoring, disabling workload instrumentation removes the
-instrumentation from the workloads:
+In namespaces that are monitored via automatic namespace monitoring, disabling workload instrumentation for the whole
+cluster removes the instrumentation from the workloads:
 The operator sets `spec.instrumentWorkloads.mode: none` in the Dash0 monitoring resources it has created for these
 namespaces, regardless of the mode in the monitoring template, which has the same effect as setting
 `spec.instrumentWorkloads.mode: none` manually.
+
 Dash0 monitoring resources that have not been created by automatic namespace monitoring are not changed, and the
-instrumentation of their workloads is not removed.
+instrumentation of their workloads is not automatically removed.
+
 If workloads in your cluster are already instrumented, proceed as follows:
 
 1. Set `spec.instrumentWorkloads.mode: none` in all Dash0 monitoring resources, and in `operator.monitoringTemplate`
    if you use automatic namespace monitoring.
    The operator removes the instrumentation from the workloads in these namespaces.
-2. Run `helm upgrade` with `--set operator.instrumentation.enabled=false`.
+2. Change `operator.instrumentation.enabled=false` via Helm (e.g. run
+   `helm upgrade` with `--set operator.instrumentation.enabled=false`).
 
 If a Dash0 monitoring resource still has `spec.instrumentWorkloads.mode` other than `none` after workload
-instrumentation has been disabled, the operator logs a warning for it.
+instrumentation has been disabled, the operator logs a warning for it, and effectively ignores that setting.
 No new workloads are instrumented in that namespace, and workloads that have been instrumented before keep their
 instrumentation.
 With `spec.instrumentWorkloads.mode: pods`, pods are only instrumented when they are created, so pods that are created
@@ -385,7 +390,8 @@ when they are recreated.
 Adding the opt-out label `dash0.com/enable: "false"` to such a workload, or changing
 `spec.instrumentWorkloads.labelSelector`, does not remove the instrumentation from the workload either; set
 `spec.instrumentWorkloads.mode: none` to remove it.
-The resource can still be updated, but `spec.instrumentWorkloads.mode` can only be changed to `none`, which also
+The validation for Dash0 monitoring resources will still allow updates for resources with an invalid workload
+instrumentation mode, but `spec.instrumentWorkloads.mode` can only be changed to `none`, which also
 removes the instrumentation from its workloads.
 Deleting the resource is always possible.
 
