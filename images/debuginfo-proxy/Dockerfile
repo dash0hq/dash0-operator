@@ -15,6 +15,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
     go build -ldflags '-s -w -extldflags "-static"' -trimpath -o /app/debuginfo-proxy .
 
 FROM scratch
+LABEL org.opencontainers.image.source="https://github.com/dash0hq/dash0-operator"
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /app/debuginfo-proxy /app/debuginfo-proxy
 USER 65532:65532

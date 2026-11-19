@@ -11,3 +11,4 @@
 # Retagging the image this way also enables automatic dependency updates via dependabot.
 
 FROM ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:v0.163.0
+LABEL org.opencontainers.image.source="https://github.com/dash0hq/dash0-operator"

@@ -35,6 +35,7 @@ RUN CGO_ENABLED=0 \
     agent0-connector
 
 FROM scratch
+LABEL org.opencontainers.image.source="https://github.com/dash0hq/dash0-operator"
 COPY --from=kubectl /bin/kubectl /usr/local/bin/kubectl
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /usr/local/go/src/agent0-connector/agent0-connector /app/agent0-connector

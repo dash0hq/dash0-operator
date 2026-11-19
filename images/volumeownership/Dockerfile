@@ -11,6 +11,7 @@
 # in particular for host path volumes, the path inside the volume is owned by root by default.
 
 FROM busybox:1.38.0-glibc
+LABEL org.opencontainers.image.source="https://github.com/dash0hq/dash0-operator"
 
 COPY volumeownership/entrypoint.sh /
 

@@ -41,6 +41,7 @@ RUN CGO_ENABLED=0 \
     cmd/main.go
 
 FROM gcr.io/distroless/static:nonroot
+LABEL org.opencontainers.image.source="https://github.com/dash0hq/dash0-operator"
 WORKDIR /
 COPY --from=builder /workspace/manager .
 USER 65532:65532

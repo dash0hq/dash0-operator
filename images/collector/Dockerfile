@@ -29,6 +29,7 @@ RUN CGO_ENABLED=0 \
     chmod u+x /src/dist/dash0-operator-collector
 
 FROM alpine:3.24.4
+LABEL org.opencontainers.image.source="https://github.com/dash0hq/dash0-operator"
 COPY collector/src/image/entrypoint.sh /entrypoint.sh
 COPY --from=builder /src/dist/dash0-operator-collector otelcol
 USER 65532:65532

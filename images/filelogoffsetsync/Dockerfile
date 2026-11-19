@@ -33,6 +33,7 @@ FROM --platform=${BUILDPLATFORM} alpine:3.24.4 AS certs
 RUN apk --update add ca-certificates && apk cache clean
 
 FROM scratch
+LABEL org.opencontainers.image.source="https://github.com/dash0hq/dash0-operator"
 COPY --from=builder /usr/local/go/src/filelogoffsetsync/filelogoffsetsync /app/filelogoffsetsync
 COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 USER 65532:65532

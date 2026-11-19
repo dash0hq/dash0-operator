@@ -16,3 +16,4 @@ CMD ["serve", "/configs", "--cache-dir=/tmp/cache"]
 COPY --from=builder /configs /configs
 COPY --from=builder /tmp/cache /tmp/cache
 LABEL operators.operatorframework.io.index.configs.v1=/configs
+LABEL org.opencontainers.image.source="https://github.com/dash0hq/dash0-operator"

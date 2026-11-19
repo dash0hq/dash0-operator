@@ -157,6 +157,7 @@ RUN /tmp/install-bundle.sh /tmp/dash0-ruby-distribution /dash0-instrumentation/r
 
 # build the final instrumentation image
 FROM alpine:3.24.4
+LABEL org.opencontainers.image.source="https://github.com/dash0hq/dash0-operator"
 COPY copy-instrumentation.sh /
 
 # copy artifacts (distros, injector binary) from the build stages to the final image
