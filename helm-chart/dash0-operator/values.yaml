@@ -731,8 +731,13 @@ operator:
     # In namespaces with instrumentWorkloads.mode=pods, pods that are created after switching this to false are not
     # instrumented, and existing pods lose their instrumentation when they are recreated.
     #
-    # The setting has no effect when telemetry collection is disabled via operator.telemetryCollectionEnabled=false
-    # (operator.telemetryCollectionEnabled=false effectively implies operator.instrumentation.enabled=false).
+    # Setting operator.telemetryCollectionEnabled=false implies operator.instrumentation.enabled=false, regardless of
+    # the value of this setting, and the rules for Dash0Monitoring resources above apply. However, since the operator
+    # does not modify workloads at all while telemetry collection is disabled, it also does not remove the
+    # instrumentation from workloads when the instrumentWorkloads.mode of a Dash0Monitoring resource is changed to none,
+    # and it does not report Dash0Monitoring resources with a mode other than none in its log. A mode other than none in
+    # operator.monitoringTemplate does not fail the installation, the operator uses instrumentWorkloads.mode=none for
+    # the monitoring template instead.
     enabled: true
 
     # Controls how the Dash0 instrumentation files (the OpenTelemetry injector and the auto-instrumentation agents)

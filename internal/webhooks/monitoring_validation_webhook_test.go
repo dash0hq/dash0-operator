@@ -303,6 +303,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 					MonitoringResourceName,
 					TestNamespaceName,
 					mode,
+					"operator.instrumentation.enabled=false",
 				)))
 			},
 				Entry("all", dash0common.InstrumentWorkloadsModeAll),
@@ -352,6 +353,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 					MonitoringResourceName,
 					TestNamespaceName,
 					newMode,
+					"operator.instrumentation.enabled=false",
 				)))
 			},
 				Entry("none -> all", dash0common.InstrumentWorkloadsModeNone, dash0common.InstrumentWorkloadsModeAll),
@@ -627,7 +629,8 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 			}
 
 			handleRequest := func(request admission.Request) admission.Response {
-				return NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace, false, true).Handle(ctx, request)
+				// Disabling telemetry collection via Helm implies operator.instrumentation.enabled=false.
+				return NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace, false, false).Handle(ctx, request)
 			}
 
 			handle := func(spec dash0v1beta1.Dash0MonitoringSpec) admission.Response {
@@ -669,12 +672,13 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				spec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeAll
 				response := handle(spec)
 				Expect(response.Allowed).To(BeFalse())
-				Expect(response.Result.Message).To(Equal(
-					"Telemetry collection is disabled via the Helm value operator.telemetryCollectionEnabled=false, " +
-						"and yet the monitoring resource has the setting instrumentWorkloads.mode=all. This is an " +
-						"invalid combination. Please either set operator.telemetryCollectionEnabled=true via Helm or " +
-						"set instrumentWorkloads.mode=none in the monitoring resource (or leave it unspecified).",
-				))
+				Expect(response.Result.Message).To(Equal(fmt.Sprintf(
+					ErrorMessageMonitoringInstrumentationDisabled,
+					MonitoringResourceName,
+					TestNamespaceName,
+					dash0common.InstrumentWorkloadsModeAll,
+					"operator.telemetryCollectionEnabled=false",
+				)))
 			})
 
 			It("should reject logCollection.enabled=true even if the operator configuration resource enables telemetry collection", func() {
@@ -729,7 +733,32 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				newSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModePods
 				response := handleUpdate(oldSpec, newSpec)
 				Expect(response.Allowed).To(BeFalse())
-				Expect(response.Result.Message).To(ContainSubstring("instrumentWorkloads.mode=pods"))
+				Expect(response.Result.Message).To(ContainSubstring("instrumentWorkloads.mode to pods"))
+				Expect(response.Result.Message).To(ContainSubstring("operator.telemetryCollectionEnabled=false"))
+			})
+
+			It("should reject an update that changes instrumentWorkloads.mode from all to pods", func() {
+				oldSpec := allDisabled()
+				oldSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeAll
+				newSpec := oldSpec
+				newSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModePods
+				response := handleUpdate(oldSpec, newSpec)
+				Expect(response.Allowed).To(BeFalse())
+				Expect(response.Result.Message).To(Equal(fmt.Sprintf(
+					ErrorMessageMonitoringInstrumentationDisabledUpdate,
+					MonitoringResourceName,
+					TestNamespaceName,
+					dash0common.InstrumentWorkloadsModePods,
+					"operator.telemetryCollectionEnabled=false",
+				)))
+			})
+
+			It("should allow an update that changes instrumentWorkloads.mode from all to none", func() {
+				oldSpec := allDisabled()
+				oldSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeAll
+				newSpec := allDisabled()
+				response := handleUpdate(oldSpec, newSpec)
+				Expect(response.Allowed).To(BeTrue())
 			})
 		})
 

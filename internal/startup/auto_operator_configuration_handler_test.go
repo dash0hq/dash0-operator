@@ -677,6 +677,7 @@ var _ = Describe(
 
 		It(
 			"should set telemetry-dependent settings to false when telemetryCollectionEnabled is false", func() {
+				monitoringTemplateJSON := json.RawMessage(`{"spec":{"instrumentWorkloads":{"mode":"all"}}}`)
 				handler := NewAutoOperatorConfigurationResourceHandler(
 					k8sClient,
 					readyCheckExecuter,
@@ -695,7 +696,7 @@ var _ = Describe(
 						AutoMonitorNamespacesEnabled:                     true,
 						TelemetryCollectionEnabled:                       false,
 					},
-					util.ExtraConfig{},
+					util.ExtraConfig{MonitoringTemplateRaw: &monitoringTemplateJSON},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -736,6 +737,9 @@ var _ = Describe(
 						g.Expect(spec.AutoMonitorNamespaces.IsEnabled()).To(BeFalse())
 						g.Expect(spec.TelemetryCollection.Enabled).ToNot(BeNil())
 						g.Expect(*spec.TelemetryCollection.Enabled).To(BeFalse())
+						g.Expect(spec.MonitoringTemplate).ToNot(BeNil())
+						g.Expect(spec.MonitoringTemplate.Spec.InstrumentWorkloads.Mode).To(
+							Equal(dash0common.InstrumentWorkloadsModeNone))
 					}, 5*time.Second, 100*time.Millisecond,
 				).Should(Succeed())
 			},
@@ -884,7 +888,7 @@ var _ = Describe(
 				handler := NewAutoOperatorConfigurationResourceHandler(
 					k8sClient,
 					readyCheckExecuter,
-					operatorConfigurationValuesWithToken,
+					operatorConfigurationValuesWithTokenAndTelemetryCollection,
 					util.ExtraConfig{MonitoringTemplateRaw: &monitoringTemplateJSON},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)

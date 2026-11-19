@@ -747,7 +747,8 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 		"dash0-instrumentation-enabled",
 		true,
 		"Whether workloads are instrumented. If false, the operator does not instrument workloads and rejects "+
-			"Dash0 monitoring resources and monitoring templates with instrumentWorkloads.mode other than none.",
+			"Dash0 monitoring resources and monitoring templates with instrumentWorkloads.mode other than none. "+
+			"Setting --dash0-telemetry-collection-enabled=false implies --dash0-instrumentation-enabled=false.",
 	)
 	fs.StringVar(
 		&cliArgs.logLevel,
@@ -928,12 +929,20 @@ func parseCommandLineOptions(cliArgs *commandLineArguments, developmentMode bool
 		opts.Level = &lvl
 	}
 
+	applyImpliedCommandLineArguments(cliArgs)
+	return opts, appliedEnvVars, nil
+}
+
+// applyImpliedCommandLineArguments derives the values of command line arguments that are implied by other command line
+// arguments.
+func applyImpliedCommandLineArguments(cliArgs *commandLineArguments) {
 	if cliArgs.disableOpenTelemetryCollectorHostPorts {
 		// disableOpenTelemetryCollectorHostPorts implies forceUseOpenTelemetryCollectorServiceUrl
 		cliArgs.forceUseOpenTelemetryCollectorServiceUrl = true
 	}
 	cliArgs.signalControlSceOnlyMode = cliArgs.featureSignalControlEnabled && !cliArgs.telemetryCollectionEnabled
-	return opts, appliedEnvVars, nil
+	// Workloads are never instrumented while telemetry collection is disabled via Helm.
+	cliArgs.instrumentationEnabled = cliArgs.instrumentationEnabled && cliArgs.telemetryCollectionEnabled
 }
 
 func setUpLogging(crZapOpts crzap.Opts) *zaputil.DelegatingZapCoreWrapper {
