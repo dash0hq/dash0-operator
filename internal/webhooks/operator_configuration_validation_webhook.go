@@ -262,7 +262,14 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		}
 	}
 
-	return h.validateComponentSettings(request, spec, logger)
+	warnings := deprecatedLogRecordsFilterWarnings(spec.Filter, "spec.filter")
+	if spec.MonitoringTemplate != nil {
+		warnings = append(
+			warnings,
+			deprecatedLogRecordsFilterWarnings(spec.MonitoringTemplate.Spec.Filter, "spec.monitoringTemplate.spec.filter")...,
+		)
+	}
+	return h.validateComponentSettings(request, spec, logger).WithWarnings(warnings...)
 }
 
 // validateComponentSettings checks spec.components, unless an UPDATE leaves it unchanged.

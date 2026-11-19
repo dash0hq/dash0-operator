@@ -5,6 +5,7 @@ package common
 
 import (
 	"encoding/json"
+	"slices"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -200,11 +201,22 @@ type LogFilter struct {
 	// - 'severity_number < SEVERITY_NUMBER_WARN'
 	//
 	// +kubebuilder:validation:Optional
-	LogRecordFilter []string `json:"log_records,omitempty"`
+	LogRecordFilter []string `json:"log_record,omitempty"`
+
+	// Deprecated: Use `log_record` instead. If both `log_record` and `log_records` are specified, the conditions of
+	// both lists are applied.
+	//
+	// +kubebuilder:validation:Optional
+	DeprecatedLogRecordFilter []string `json:"log_records,omitempty"`
 }
 
 func (f *LogFilter) HasAnyFilters() bool {
-	return len(f.LogRecordFilter) > 0
+	return len(f.EffectiveLogRecordFilter()) > 0
+}
+
+// EffectiveLogRecordFilter returns the log record conditions from both log_record and the deprecated log_records.
+func (f *LogFilter) EffectiveLogRecordFilter() []string {
+	return slices.Concat(f.LogRecordFilter, f.DeprecatedLogRecordFilter)
 }
 
 type ProfileFilter struct {

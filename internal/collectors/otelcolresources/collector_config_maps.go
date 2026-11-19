@@ -636,11 +636,9 @@ func aggregateCustomFilters(
 			}
 		}
 		if filterSpecForNamespace.Logs != nil && filterSpecForNamespace.Logs.HasAnyFilters() {
-			if len(filterSpecForNamespace.Logs.LogRecordFilter) > 0 {
-				for _, condition := range filterSpecForNamespace.Logs.LogRecordFilter {
-					allLogRecordFilters =
-						append(allLogRecordFilters, prependNamespaceCheckToOttlCondition(namespace, condition))
-				}
+			for _, condition := range filterSpecForNamespace.Logs.EffectiveLogRecordFilter() {
+				allLogRecordFilters =
+					append(allLogRecordFilters, prependNamespaceCheckToOttlCondition(namespace, condition))
 			}
 		}
 		if filterSpecForNamespace.Profiles != nil && filterSpecForNamespace.Profiles.HasAnyFilters() {
@@ -670,7 +668,7 @@ func aggregateCustomFilters(
 			allDataPointFilters = slices.Concat(allDataPointFilters, globalFilter.Metrics.DataPointFilter)
 		}
 		if globalFilter.Logs != nil {
-			allLogRecordFilters = slices.Concat(allLogRecordFilters, globalFilter.Logs.LogRecordFilter)
+			allLogRecordFilters = slices.Concat(allLogRecordFilters, globalFilter.Logs.EffectiveLogRecordFilter())
 		}
 		if globalFilter.Profiles != nil {
 			allProfileFilters = slices.Concat(allProfileFilters, globalFilter.Profiles.ProfileFilter)

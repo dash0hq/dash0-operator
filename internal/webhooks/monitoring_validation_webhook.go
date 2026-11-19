@@ -181,7 +181,8 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 		return admissionResponse
 	}
 
-	return admission.Allowed("")
+	return admission.Allowed("").
+		WithWarnings(deprecatedLogRecordsFilterWarnings(monitoringResource.Spec.Filter, "spec.filter")...)
 }
 
 // changesInstrumentWorkloadsModeInRestrictedNamespace checks whether an update request changes the effective
@@ -463,6 +464,17 @@ func validateFilter(filter *dash0common.Filter) error {
 	)
 }
 
+// deprecatedLogRecordsFilterWarnings returns an admission warning if the given filter uses the deprecated key
+// logs.log_records instead of logs.log_record. The path is the location of the filter in the resource, e.g.
+// "spec.filter".
+func deprecatedLogRecordsFilterWarnings(filter *dash0common.Filter, path string) []string {
+	//nolint:staticcheck
+	if filter == nil || filter.Logs == nil || len(filter.Logs.DeprecatedLogRecordFilter) == 0 {
+		return nil
+	}
+	return []string{fmt.Sprintf("%[1]s.logs.log_records is deprecated, use %[1]s.logs.log_record instead.", path)}
+}
+
 // validateTransform checks the transform statements of a monitoring resource by rendering them into the configuration
 // of the collector's transform processor and running that processor's own validation.
 func validateTransform(transform *dash0common.NormalizedTransformSpec) error {
@@ -509,7 +521,7 @@ func renderFilterProcessorConfig(filter *dash0common.Filter) map[string]any {
 	}
 	if filter.Logs != nil {
 		logs := map[string]any{}
-		addConditions(logs, "log_record", filter.Logs.LogRecordFilter)
+		addConditions(logs, "log_record", filter.Logs.EffectiveLogRecordFilter())
 		if len(logs) > 0 {
 			rawConfig["logs"] = logs
 		}
