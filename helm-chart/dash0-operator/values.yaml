@@ -703,7 +703,7 @@ operator:
 
     # Whether the operator instruments workloads automatically. Set this to false if you do not want to use automatic
     # workload instrumentation at all, for example if you only collect logs, metrics and Kubernetes events.
-    # If set to true, no namespace can be configured with an instrumentWorkloads.mode other than none.
+    # If set to false, no namespace can be configured with an instrumentWorkloads.mode other than none.
     #
     # If this is false, the chart does not register the mutating webhook that instruments workloads. The Kubernetes API
     # server then no longer sends an admission request to the operator for every workload and pod that is created or
