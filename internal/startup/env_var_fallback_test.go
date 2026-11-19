@@ -252,6 +252,7 @@ func reservedEnvVarNames() map[string]bool {
 		debugVerbosityDetailedEnvVarName,
 		sendBatchSizeEnvVarName,
 		sendBatchMaxSizeEnvVarName,
+		sendingQueueSizeMiBEnvVarName,
 		k8sAttributesDisableReplicasetInformerEnvVarName,
 		k8sAttributesWaitForMetadataEnvVarName,
 		k8sAttributesWaitForMetadataTimeoutEnvVarName,

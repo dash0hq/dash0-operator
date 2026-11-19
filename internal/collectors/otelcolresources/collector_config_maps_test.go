@@ -3994,6 +3994,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 	DescribeTable("should batch in the exporters", func(
 		sendBatchSize *uint32,
 		sendBatchMaxSize *uint32,
+		sendingQueueSizeMiB *uint32,
 		expectedSendingQueue map[string]any,
 	) {
 		for _, cmTypeDef := range configMapTypeDefinitions {
@@ -4002,8 +4003,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestMultipleNamespacedOtlpExporters(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-				SendBatchSize:    sendBatchSize,
-				SendBatchMaxSize: sendBatchMaxSize,
+				SendBatchSize:       sendBatchSize,
+				SendBatchMaxSize:    sendBatchMaxSize,
+				SendingQueueSizeMiB: sendingQueueSizeMiB,
 				SignalControl: SignalControlConfig{
 					Enabled:     true,
 					Endpoint:    "decision-maker.example.com:443",
@@ -4026,41 +4028,148 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}
 		}
 	},
-		Entry("with defaults if no batch size settings are provided", nil, nil, map[string]any{
-			"sizer":      "items",
-			"queue_size": 8192000,
+		Entry("with defaults if no batch size settings are provided", nil, nil, nil, map[string]any{
+			"sizer":      "bytes",
+			"queue_size": 67108864,
 			"batch": map[string]any{
+				"sizer":         "items",
 				"flush_timeout": "200ms",
 				"min_size":      8192,
 			},
 		}),
-		Entry("with max_size if sendBatchMaxSize is set", nil, ptr.To(uint32(16384)), map[string]any{
-			"sizer":      "items",
-			"queue_size": 16384000,
+		Entry("with max_size if sendBatchMaxSize is set", nil, ptr.To(uint32(16384)), nil, map[string]any{
+			"sizer":      "bytes",
+			"queue_size": 67108864,
 			"batch": map[string]any{
+				"sizer":         "items",
 				"flush_timeout": "200ms",
 				"min_size":      8192,
 				"max_size":      16384,
 			},
 		}),
-		Entry("with min_size if sendBatchSize is set", ptr.To(uint32(4096)), nil, map[string]any{
-			"sizer":      "items",
-			"queue_size": 4096000,
+		Entry("with min_size if sendBatchSize is set", ptr.To(uint32(4096)), nil, nil, map[string]any{
+			"sizer":      "bytes",
+			"queue_size": 67108864,
 			"batch": map[string]any{
+				"sizer":         "items",
 				"flush_timeout": "200ms",
 				"min_size":      4096,
 			},
 		}),
-		Entry("with min_size and max_size if both are set", ptr.To(uint32(4096)), ptr.To(uint32(16384)), map[string]any{
-			"sizer":      "items",
-			"queue_size": 16384000,
+		Entry("with min_size and max_size if both are set", ptr.To(uint32(4096)), ptr.To(uint32(16384)), nil, map[string]any{
+			"sizer":      "bytes",
+			"queue_size": 67108864,
 			"batch": map[string]any{
+				"sizer":         "items",
 				"flush_timeout": "200ms",
 				"min_size":      4096,
 				"max_size":      16384,
+			},
+		}),
+		Entry("with the configured queue size if sendingQueueSizeMiB is set", nil, nil, ptr.To(uint32(100)), map[string]any{
+			"sizer":      "bytes",
+			"queue_size": 104857600,
+			"batch": map[string]any{
+				"sizer":         "items",
+				"flush_timeout": "200ms",
+				"min_size":      8192,
 			},
 		}),
 	)
+
+	DescribeTable("should size the sending queue", func(
+		sendingQueueSizeMiB *uint32,
+		memorySoftLimitMiB int,
+		expectedQueueSizeMiB uint64,
+	) {
+		Expect(newExporterBatching(nil, nil, sendingQueueSizeMiB, memorySoftLimitMiB).QueueSizeBytes).
+			To(Equal(expectedQueueSizeMiB * 1024 * 1024))
+	},
+		Entry("with the default if the collector has no memory limit", nil, 0, uint64(64)),
+		Entry("with a share of the memory_limiter soft limit", nil, 372, uint64(74)),
+		Entry("with at least one MiB if the memory_limiter soft limit is very small", nil, 3, uint64(1)),
+		Entry("with the configured size, which takes precedence", ptr.To(uint32(100)), 372, uint64(100)),
+		Entry("with a share of the memory_limiter soft limit if the configured size is zero", ptr.To(uint32(0)), 372, uint64(74)),
+	)
+
+	It("should derive the sending queue capacity from the collector's memory limit", func() {
+		config := &oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         cmTestSingleDefaultOtlpExporter(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			DaemonSetCollectorMemoryLimit:                    resource.MustParse("500Mi"),
+			DeploymentCollectorMemoryLimit:                   resource.MustParse("1Gi"),
+		}
+		expectedQueueSizePerCollector := map[configMapType]int{
+			// 500Mi: memory_limiter soft limit 372 MiB, 20% of it is 74 MiB
+			configMapTypeDaemonSet: 74 * 1024 * 1024,
+			// 1Gi: memory_limiter soft limit 871 MiB, 20% of it is 174 MiB
+			configMapTypeDeployment: 174 * 1024 * 1024,
+		}
+		for _, cmTypeDef := range configMapTypeDefinitions {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(config, monitoredNamespaces, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			exporters := ReadFromMap(parseConfigMapContent(configMap), []string{"exporters"}).(map[string]any)
+			for name, exporter := range exporters {
+				Expect(ReadFromMap(exporter.(map[string]any), []string{"sending_queue", "queue_size"})).
+					To(Equal(expectedQueueSizePerCollector[cmTypeDef.cmType]), fmt.Sprintf("%s: %s", cmTypeDef.cmType, name))
+			}
+		}
+	})
+
+	DescribeTable("should turn off retries for exporters to other backends than Dash0", func(
+		exportersUnderTest func() otlpExporters,
+	) {
+		exps := exportersUnderTest()
+		allExporters := slices.Clone(exps.Default)
+		for _, ns := range exps.AllNamespaceKeys() {
+			allExporters = append(allExporters, exps.Namespaced[ns]...)
+		}
+		for _, cmTypeDef := range configMapTypeDefinitions {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         exps,
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			renderedExporters := ReadFromMap(parseConfigMapContent(configMap), []string{"exporters"}).(map[string]any)
+			for _, exporter := range allExporters {
+				description := fmt.Sprintf("%s: %s", cmTypeDef.cmType, exporter.Name)
+				Expect(renderedExporters).To(HaveKey(exporter.Name), description)
+				retryOnFailure := ReadFromMap(renderedExporters[exporter.Name].(map[string]any), []string{"retry_on_failure"})
+				if exporter.IsDash0() {
+					Expect(retryOnFailure).To(BeNil(), description)
+				} else {
+					Expect(retryOnFailure).To(Equal(map[string]any{"enabled": false}), description)
+				}
+			}
+		}
+	},
+		Entry("for default exporters", cmTestDash0GrpcAndHttpExporters),
+		Entry("for namespaced exporters", cmTestNamespacedExportersWithBalancerName),
+	)
+
+	It("should resend rejected batches from the file_log receivers instead of dropping them [DaemonSet]", func() {
+		configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+			OperatorNamespace:           OperatorNamespace,
+			NamePrefix:                  namePrefix,
+			Exporters:                   cmTestSingleDefaultOtlpExporter(),
+			PrometheusCrdSupportEnabled: true,
+			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+				SelfMonitoringEnabled: true,
+			},
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+		}, monitoredNamespaces, monitoredNamespaces, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+		Expect(err).ToNot(HaveOccurred())
+		receivers := ReadFromMap(parseConfigMapContent(configMap), []string{"receivers"}).(map[string]any)
+		for _, receiver := range []string{"file_log", "file_log/selfmonitoring"} {
+			Expect(receivers).To(HaveKey(receiver))
+			Expect(ReadFromMap(receivers[receiver].(map[string]any), []string{"retry_on_failure"})).
+				To(Equal(map[string]any{"enabled": true}), receiver)
+		}
+	})
 
 	It("should not use the batch processor in any collector", func() {
 		for _, sceOnlyMode := range []bool{false, true} {

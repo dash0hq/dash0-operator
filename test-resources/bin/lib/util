@@ -671,6 +671,9 @@ run_helm() {
   if [[ -n "${OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE:-}" ]]; then
     helm_install_command+=" --set operator.collectors.sendBatchMaxSize=$OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
   fi
+  if [[ -n "${OTEL_COLLECTOR_SENDING_QUEUE_SIZE_MIB:-}" ]]; then
+    helm_install_command+=" --set operator.collectors.sendingQueueSizeMiB=$OTEL_COLLECTOR_SENDING_QUEUE_SIZE_MIB"
+  fi
   if [[ -n "${FILELOG_OFFSETS_PVC:-}" ]]; then
     helm_install_command+=" --values test-resources/filelog-offset-storage/volume-values-pvc.yaml"
   elif [[ "${FILELOG_OFFSETS_HOST_PATH_VOLUME:-}" = "true" ]]; then

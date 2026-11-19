@@ -777,6 +777,16 @@ operator:
     # to use a smaller number, make sure to set both sendBatchSize and sendBatchMaxSize.
     sendBatchMaxSize: 0
 
+    # Each exporter of the collectors managed by the operator buffers telemetry in a sending queue while its export
+    # destination is slow or unavailable. When the queue is full, the exporter rejects new data: receivers that support
+    # it (OTLP clients, the filelog receiver) retry later, others drop it. The queue capacity is measured in MiB of
+    # protobuf-encoded telemetry; the in-memory representation is about 1.5 to 3.5 times larger. If set to a value > 0,
+    # sendingQueueSizeMiB sets the capacity of every sending queue (one per exporter and signal), otherwise the operator
+    # derives it from the memory limit of the respective collector container (20% of the memory_limiter soft limit, for
+    # example 74 MiB for the default memory limit of 500Mi). When increasing this value, make sure to increase the
+    # memory limit of the collector containers accordingly. There is usually no need to configure this.
+    sendingQueueSizeMiB: 0
+
     # If set to true, instrumented workloads will be instructed to use the service URL of the OpenTelemetry collector
     # DaemonSet, instead of sending telemetry via a node-local route to the node's IP address and the collector's host
     # port. This can be useful if you employ mechanisms that block host ports, like certain Istio configurations.

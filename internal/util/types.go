@@ -83,6 +83,7 @@ type CollectorConfig struct {
 	EbpfProfilerEnabledViaHelm             bool
 	SendBatchSize                          *uint32
 	SendBatchMaxSize                       *uint32
+	SendingQueueSizeMiB                    *uint32
 	K8sAttributesDisableReplicasetInformer bool
 	K8sAttributesWaitForMetadata           bool
 	K8sAttributesWaitForMetadataTimeout    string

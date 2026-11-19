@@ -408,6 +408,14 @@ spec:
         - name: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
           value: {{ .Values.operator.collectors.sendBatchMaxSize | quote }}
         {{- end }}
+        {{- $sendingQueueSizeMiB := int (.Values.operator.collectors.sendingQueueSizeMiB | default 0) }}
+        {{- if lt $sendingQueueSizeMiB 0 }}
+        {{- fail "Error: operator.collectors.sendingQueueSizeMiB must not be negative." -}}
+        {{- end }}
+        {{- if gt $sendingQueueSizeMiB 0 }}
+        - name: OTEL_COLLECTOR_SENDING_QUEUE_SIZE_MIB
+          value: {{ .Values.operator.collectors.sendingQueueSizeMiB | quote }}
+        {{- end }}
         {{- if or .Values.operator.collectors.k8s_attributes.disableReplicasetInformer .Values.operator.collectors.disableReplicasetInformer }}
         - name: OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER
           value: {{ or .Values.operator.collectors.k8s_attributes.disableReplicasetInformer .Values.operator.collectors.disableReplicasetInformer | toString | quote }}

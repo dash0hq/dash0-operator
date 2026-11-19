@@ -219,6 +219,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		AllMonitoringResources:        allMonitoringResources,
 		SendBatchSize:                 m.collectorConfig.SendBatchSize,
 		SendBatchMaxSize:              m.collectorConfig.SendBatchMaxSize,
+		SendingQueueSizeMiB:           m.collectorConfig.SendingQueueSizeMiB,
 		SelfMonitoringConfiguration:   selfMonitoringConfiguration,
 		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
 		CollectPodLabelsAndAnnotationsEnabled:            collectPodLabelsAndAnnotationsEnabled,
@@ -571,6 +572,7 @@ func (m *OTelColResourceManager) DeleteResources(
 		// collect the kinds and names of all resources that need to be deleted.
 		SendBatchSize:               m.collectorConfig.SendBatchSize,
 		SendBatchMaxSize:            m.collectorConfig.SendBatchMaxSize,
+		SendingQueueSizeMiB:         m.collectorConfig.SendingQueueSizeMiB,
 		SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{SelfMonitoringEnabled: false},
 		// KubernetesInfrastructureMetricsCollectionEnabled=false would lead to not deleting the collector-deployment-
 		// related resources, we always try to delete all collector resources (daemonset & deployment), no matter
