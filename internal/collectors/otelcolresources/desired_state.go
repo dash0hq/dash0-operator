@@ -9,6 +9,7 @@ import (
 	"math"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -1570,6 +1571,18 @@ func assembleConfigurationReloaderContainer(
 			workloadNameEnvVar,
 			k8sPodUidEnvVar,
 			k8sPodNameEnvVar,
+			{
+				Name: "DASH0_POD_IP",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: "status.podIP",
+					},
+				},
+			},
+			{
+				Name:  "DASH0_COLLECTOR_HEALTH_CHECK_PORT",
+				Value: strconv.Itoa(probesHttpPort),
+			},
 		},
 		Resources:    resourceRequirements.ToResourceRequirements(),
 		VolumeMounts: reloaderVolumeMounts,
