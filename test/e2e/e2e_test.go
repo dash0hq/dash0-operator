@@ -1317,6 +1317,19 @@ spec:
 						), false, false, false)).ToNot(Succeed())
 				})
 
+			It("should share the k8s_attributes processor between pipelines by default", func() {
+				verifyCollectorContainerArgsContainString(
+					operatorNamespace,
+					collectorDaemonSetNameQualified,
+					k8sAttributesShareProcessorFeatureGate,
+				)
+				verifyCollectorContainerArgsContainString(
+					operatorNamespace,
+					collectorDeploymentNameQualified,
+					k8sAttributesShareProcessorFeatureGate,
+				)
+			})
+
 		}) // end of suite "with an existing operator deployment and operation configuration resource::with a deployed
 		// Dash0 monitoring resource"
 
@@ -4742,9 +4755,9 @@ spec:
 			})
 		})
 
-		Describe("with shared k8s_attributes processor", func() {
+		Describe("with the shared k8s_attributes processor disabled", func() {
 			BeforeAll(func() {
-				By("deploying the Dash0 operator with the shared k8s_attributes processor enabled")
+				By("deploying the Dash0 operator with the shared k8s_attributes processor disabled")
 				deployOperatorWithDefaultAutoOperationConfiguration(
 					operatorNamespace,
 					operatorHelmChart,
@@ -4753,71 +4766,26 @@ spec:
 					&images,
 					true,
 					map[string]string{
-						"operator.collectors.k8s_attributes.shareProcessorBetweenPipelines": "true",
+						"operator.collectors.k8s_attributes.shareProcessorBetweenPipelines": "false",
 					},
-				)
-				deployDash0MonitoringResourceWithRetry(
-					applicationUnderTestNamespace,
-					dash0MonitoringValuesDefault,
-					operatorNamespace,
 				)
 			})
 
 			AfterAll(func() {
-				undeployDash0MonitoringResource(applicationUnderTestNamespace)
 				undeployOperator(operatorNamespace)
 			})
 
-			It("should enable the feature gate for the daemonset and deployment collectors", func() {
-				featureGateArg := "--feature-gates=processor.k8sattributes.ShareProcessorBetweenPipelines"
-				verifyCollectorContainerArgsContainString(operatorNamespace, collectorDaemonSetNameQualified, featureGateArg)
-				verifyCollectorContainerArgsContainString(
+			It("should not enable the feature gate for the daemonset and deployment collectors", func() {
+				verifyCollectorContainerArgsDoNotContainString(
+					operatorNamespace,
+					collectorDaemonSetNameQualified,
+					k8sAttributesShareProcessorFeatureGate,
+				)
+				verifyCollectorContainerArgsDoNotContainString(
 					operatorNamespace,
 					collectorDeploymentNameQualified,
-					featureGateArg,
+					k8sAttributesShareProcessorFeatureGate,
 				)
-			})
-
-			It("should enrich spans, logs and metrics with Kubernetes metadata", func() {
-				timestampLowerBound := time.Now()
-				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
-
-				By("installing the Node.js deployment")
-				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
-
-				By("verifying that spans carry Kubernetes metadata")
-				verifyThatWorkloadHasBeenInstrumented(
-					applicationUnderTestNamespace,
-					runtimeTypeNodeJs,
-					workloadTypeDeployment,
-					testId,
-					images,
-					"webhook",
-				)
-
-				By("verifying that log records carry Kubernetes metadata")
-				// The collector only starts collecting logs from the test namespace once kubelet has synced the updated
-				// collector config map to the node and the collector has reloaded it, which can take up to a minute.
-				Eventually(func(g Gomega) {
-					verifyWorkloadLogRecords(
-						g,
-						runtimeTypeNodeJs,
-						workloadTypeDeployment,
-						testEndpoint,
-						fmt.Sprintf("id=%s", testId),
-						timestampLowerBound,
-						"",
-						fmt.Sprintf("processing request %s", testId),
-					)
-				}, 120*time.Second, time.Second).Should(Succeed())
-
-				By("verifying that metrics carry Kubernetes metadata")
-				Eventually(func(g Gomega) {
-					verifyKubeletStatsMetrics(g, timestampLowerBound)
-				}, 120*time.Second, time.Second).Should(Succeed())
-				Eventually(func(g Gomega) {
-					verifyK8skClusterReceiverMetrics(g, timestampLowerBound)
-				}, 120*time.Second, time.Second).Should(Succeed())
 			})
 		})
 
