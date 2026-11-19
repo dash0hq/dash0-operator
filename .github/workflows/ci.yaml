@@ -652,3 +652,43 @@ jobs:
           links: |
             GitHub release=${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
             CI run=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  # Sends a Slack notification when a release build has not published all of its artifacts. This has to be a separate
+  # job with always(): a job that is skipped because a job it needs has not succeeded runs no steps at all.
+  notify_release_failure:
+    name: Notify About Failed Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    needs:
+      - build_and_push_images
+      - build_and_push_olm_bundle_image
+      - build_and_push_olm_catalog_image
+      - publish_helm_chart
+    if: |
+      always() &&
+      contains(github.ref, 'refs/tags/') &&
+      (needs.build_and_push_images.result != 'success' ||
+      needs.build_and_push_olm_bundle_image.result != 'success' ||
+      needs.build_and_push_olm_catalog_image.result != 'success' ||
+      needs.publish_helm_chart.result != 'success')
+
+    steps:
+      # the Slack notification is a local action
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: send Slack notification
+        uses: ./.github/actions/slack-notification
+        with:
+          status: failure
+          subject: Dash0 Operator release ${{ github.ref_name }}
+          botToken: ${{ secrets.SLACK_BOT_TOKEN }}
+          channelId: ${{ secrets.SLACK_CHANNEL_ID }}
+          extraContext: |
+            Build Images: `${{ needs.build_and_push_images.result }}`
+            Build OLM Bundle Image: `${{ needs.build_and_push_olm_bundle_image.result }}`
+            Build OLM Catalog Image: `${{ needs.build_and_push_olm_catalog_image.result }}`
+            Publish Helm Chart: `${{ needs.publish_helm_chart.result }}`
