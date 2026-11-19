@@ -27,19 +27,27 @@ const (
 	commonExportErrorPrefix = "cannot assemble the exporters for the configuration:"
 
 	defaultExporterBatchMinSize = 8192
-	// exporterQueueBatchCapacity is the number of maximum-size batches the exporter queue can hold. It is deliberately
-	// large: the memory_limiter, not the queue, is supposed to bound how much telemetry is buffered while an export
-	// destination is unavailable. A full queue rejects data with a retryable error, which makes OTLP clients resend the
-	// rejected data to every exporter of the pipeline. The in-memory queue does not preallocate its capacity.
-	exporterQueueBatchCapacity = 1000
+	// exporterQueueSoftLimitPercent is the share of the memory_limiter soft limit that the sending queue of each
+	// exporter may hold, measured in protobuf-encoded bytes. Decoded telemetry takes up roughly 1.5 to 3.5 times its
+	// encoded size on the heap, so a single full queue stays below the soft limit, and one slow or unavailable export
+	// destination of one signal cannot take up all the collector's memory. The collector creates one queue per exporter
+	// and signal, though: while Dash0 is unavailable, the queues of all signals fill at the same time, and the
+	// memory_limiter, not the queue capacity, bounds how much telemetry is buffered. The in-memory queue does not
+	// preallocate its capacity.
+	exporterQueueSoftLimitPercent = 20
+	// defaultExporterQueueSizeMiB is the sending queue capacity of each exporter if the collector container has no
+	// memory limit to derive it from.
+	defaultExporterQueueSizeMiB = 64
+	mebibyte                    = 1024 * 1024
 )
 
 // exporterBatching holds the sending_queue settings that are rendered for every exporter, see the sendingQueue
-// template in exporters.partial.yaml.template. All sizes are measured in items. MaxSize zero means no upper bound.
+// template in exporters.partial.yaml.template. The queue is sized in bytes, the batches are sized in items. MaxSize
+// zero means no upper bound.
 type exporterBatching struct {
-	QueueSize uint64
-	MinSize   uint32
-	MaxSize   uint32
+	QueueSizeBytes uint64
+	MinSize        uint32
+	MaxSize        uint32
 }
 
 type customFilters struct {
@@ -385,10 +393,18 @@ func assembleCollectorConfigMap(
 	return &configMap, nil
 }
 
-// newExporterBatching derives the sending_queue settings of all exporters from the optional sendBatchSize and
-// sendBatchMaxSize settings (Helm values operator.collectors.sendBatchSize/sendBatchMaxSize), which map to the batch's
-// min_size and max_size. The queue has room for exporterQueueBatchCapacity batches of the largest configured size.
-func newExporterBatching(sendBatchSize *uint32, sendBatchMaxSize *uint32) exporterBatching {
+// newExporterBatching derives the sending_queue settings of all exporters of one collector. The optional
+// sendBatchSize and sendBatchMaxSize settings (Helm values operator.collectors.sendBatchSize/sendBatchMaxSize) map to
+// the batch's min_size and max_size. The queue capacity is sendingQueueSizeMiB (Helm value
+// operator.collectors.sendingQueueSizeMiB) if set, otherwise exporterQueueSoftLimitPercent of the collector's
+// memory_limiter soft limit, or defaultExporterQueueSizeMiB if the collector has no memory limit (memorySoftLimitMiB
+// is zero).
+func newExporterBatching(
+	sendBatchSize *uint32,
+	sendBatchMaxSize *uint32,
+	sendingQueueSizeMiB *uint32,
+	memorySoftLimitMiB int,
+) exporterBatching {
 	minSize := uint32(defaultExporterBatchMinSize)
 	if sendBatchSize != nil && *sendBatchSize > 0 {
 		minSize = *sendBatchSize
@@ -397,10 +413,16 @@ func newExporterBatching(sendBatchSize *uint32, sendBatchMaxSize *uint32) export
 	if sendBatchMaxSize != nil {
 		maxSize = *sendBatchMaxSize
 	}
+	queueSizeMiB := uint64(defaultExporterQueueSizeMiB)
+	if sendingQueueSizeMiB != nil && *sendingQueueSizeMiB > 0 {
+		queueSizeMiB = uint64(*sendingQueueSizeMiB)
+	} else if memorySoftLimitMiB > 0 {
+		queueSizeMiB = uint64(max(1, memorySoftLimitMiB*exporterQueueSoftLimitPercent/100))
+	}
 	return exporterBatching{
-		QueueSize: uint64(max(minSize, maxSize)) * exporterQueueBatchCapacity,
-		MinSize:   minSize,
-		MaxSize:   maxSize,
+		QueueSizeBytes: queueSizeMiB * mebibyte,
+		MinSize:        minSize,
+		MaxSize:        maxSize,
 	}
 }
 
@@ -442,9 +464,11 @@ func newCollectorConfigurationTemplateValues(
 
 	memoryLimiterLimitMiB := 0
 	memoryLimiterSpikeMiB := 0
+	memoryLimiterSoftMiB := 0
 	if settings, ok := util.DeriveCollectorMemorySettings(collectorMemoryLimit); ok {
 		memoryLimiterLimitMiB = settings.LimitMiB
 		memoryLimiterSpikeMiB = settings.SpikeMiB
+		memoryLimiterSoftMiB = settings.SoftMiB
 	}
 	podAssociationPipelines := map[string]string{
 		"common-processors": "k8s_attributes",
@@ -457,7 +481,12 @@ func newCollectorConfigurationTemplateValues(
 		OperatorNamespace: config.OperatorNamespace,
 		NamePrefix:        config.NamePrefix,
 		Exporters:         config.Exporters,
-		ExporterBatching:  newExporterBatching(config.SendBatchSize, config.SendBatchMaxSize),
+		ExporterBatching: newExporterBatching(
+			config.SendBatchSize,
+			config.SendBatchMaxSize,
+			config.SendingQueueSizeMiB,
+			memoryLimiterSoftMiB,
+		),
 		KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
 		CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
 		CollectNamespaceLabelsAndAnnotationsEnabled:      config.CollectNamespaceLabelsAndAnnotationsEnabled,
