@@ -3184,6 +3184,37 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(FindVolumeMountByName(deploymentConfigReloaderContainer.VolumeMounts, "opentelemetry-collector-configmap-decompressed")).NotTo(BeNil())
 	})
 
+	It("should pass the collector health check endpoint to the configuration reloader of every collector pod", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			Images:            TestImages,
+			SignalControl: SignalControlConfig{
+				Enabled:     true,
+				Endpoint:    "decision-maker.example.com:443",
+				ApiEndpoint: "https://control-plane-api.dash0.com",
+				Dataset:     "default",
+			},
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		for _, podSpec := range []corev1.PodSpec{
+			getDaemonSet(desiredState).Spec.Template.Spec,
+			getDeployment(desiredState).Spec.Template.Spec,
+			getSignalControlCollector(desiredState).Spec.Template.Spec,
+		} {
+			configReloaderContainer := FindContainerByName(podSpec.Containers, "configuration-reloader")
+			Expect(configReloaderContainer).NotTo(BeNil())
+			podIpEnvVar := FindEnvVarByName(configReloaderContainer.Env, "DASH0_POD_IP")
+			Expect(podIpEnvVar).NotTo(BeNil())
+			Expect(podIpEnvVar.ValueFrom.FieldRef.FieldPath).To(Equal("status.podIP"))
+			Expect(configReloaderContainer.Env).To(
+				ContainElement(MatchEnvVar("DASH0_COLLECTOR_HEALTH_CHECK_PORT", "13133")))
+		}
+	})
+
 	Context("pprof in the auxiliary containers of the collector pods", func() {
 		assemblePodSpecs := func(enableProfExtension bool) []corev1.PodSpec {
 			desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
