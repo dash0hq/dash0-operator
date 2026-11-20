@@ -17,6 +17,7 @@ This guide covers advanced configuration topics for the Dash0 operator, includin
   - [Preventing Operator Scheduling on Specific Nodes](#preventing-operator-scheduling-on-specific-nodes)
   - [Custom Node Affinity](#custom-node-affinity)
   - [Adding Custom Labels and Annotations to the Collector Resources](#adding-custom-labels-and-annotations-to-the-collector-resources)
+- [Running the Cluster Metrics Collector With Multiple Replicas](#running-the-cluster-metrics-collector-with-multiple-replicas)
 - [Configuring Collector Host Ports](#configuring-collector-host-ports)
 - [Configuring Pod-Level sysctls for the Collector Pods (TCP Keepalive)](#configuring-pod-level-sysctls-for-the-collector-pods-tcp-keepalive)
 - [Configuring SELinux Options for the Collector DaemonSet](#configuring-selinux-options-for-the-collector-daemonset)
@@ -634,6 +635,44 @@ operator:
     podAnnotations:
       my-pod-annotation: my-value
 ```
+
+## Running the Cluster Metrics Collector With Multiple Replicas
+
+The cluster-metrics-collector Deployment collects cluster-wide telemetry: Kubernetes infrastructure metrics, Kubernetes
+events and Kubernetes objects. This telemetry must only be collected once per cluster, which is why the Deployment runs
+a single replica by default. While that replica is unavailable, for example because its node is drained or removed by
+the cluster autoscaler and no other node has capacity for it yet, no cluster-wide telemetry is collected.
+
+To keep collecting while a replica is unavailable, run more than one replica:
+
+```yaml
+operator:
+  collectors:
+    deploymentReplicas: 2
+```
+
+The same setting is available as `spec.components.deploymentCollector.replicas` in the `Dash0OperatorConfiguration`
+resource.
+
+With more than one replica, the replicas elect a leader via a
+[Kubernetes lease](https://kubernetes.io/docs/concepts/architecture/leases/) in the operator namespace. Only the leader
+collects, the other replicas are on standby and take over the lease when the leader becomes unavailable. The operator
+also creates
+
+- a role that allows the cluster-metrics-collector to manage its lease,
+- a pod disruption budget that allows at most one replica to be unavailable at a time due to voluntary disruptions, like
+  node drains, and
+- topology spread constraints that prefer spreading the replicas across zones and nodes.
+
+Things to consider before running more than one replica:
+
+- Every replica, including the replicas on standby, requests the resources configured in
+  `operator.collectors.deploymentCollectorContainerResources`.
+- Taking over the lease takes up to 15 seconds after the leader has stopped. The leader also gives up its lease when it
+  reloads its configuration, for example when monitoring is enabled for another namespace. No cluster-wide telemetry is
+  collected while no replica holds the lease.
+- A replica that takes over the lease sends the Kubernetes events that occurred since that replica has been started and
+  that are still stored in the cluster, including events the previous leader has already sent.
 
 ## Configuring Collector Host Ports
 

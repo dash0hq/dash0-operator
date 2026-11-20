@@ -95,6 +95,7 @@ data:
         initialDelaySeconds: 0
         periodSeconds: 2
         timeoutSeconds: 1
+    collectorDeploymentReplicas: 1
     signalControlCollectorReplicas: 2
     signalControlCollectorContainerResources:
       gomemlimit: ""

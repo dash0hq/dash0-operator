@@ -103,6 +103,8 @@ type ExtraConfig struct {
 
 	CollectorDeploymentPriorityClassName string `json:"collectorDeploymentPriorityClassName,omitempty"`
 
+	CollectorDeploymentReplicas int32 `json:"collectorDeploymentReplicas,omitempty"`
+
 	DeploymentProbes CollectorProbes `json:"deploymentProbes"`
 
 	SignalControlCollectorReplicas                                int32                              `json:"signalControlCollectorReplicas,omitempty"`
@@ -286,6 +288,7 @@ var (
 		DaemonSetProbes:                       defaultCollectorProbes,
 		DeploymentNodeAffinity:                defaultNodeAffinity(),
 		DeploymentProbes:                      defaultCollectorProbes,
+		CollectorDeploymentReplicas:           1,
 		SignalControlCollectorReplicas:        2,
 		SignalControlCollectorNodeAffinity:    defaultNodeAffinity(),
 		SignalControlCollectorProbes:          defaultCollectorProbes,
@@ -530,6 +533,9 @@ func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig
 	}
 	if missing("deploymentProbes") {
 		extraConfig.DeploymentProbes = defaults.DeploymentProbes.DeepCopy()
+	}
+	if missingOrNull("collectorDeploymentReplicas") {
+		extraConfig.CollectorDeploymentReplicas = defaults.CollectorDeploymentReplicas
 	}
 	if missingOrNull("signalControlCollectorReplicas") {
 		extraConfig.SignalControlCollectorReplicas = defaults.SignalControlCollectorReplicas

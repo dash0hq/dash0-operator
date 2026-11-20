@@ -437,6 +437,33 @@ func getCollectorPodNames(g Gomega, collectorNameQualified string) []string {
 	return strings.Fields(strings.TrimSpace(output))
 }
 
+// findClusterMetricsCollectorLeader returns the name of the cluster metrics collector pod that holds the leader
+// election lease. The lease holder identity is a random UUID that the k8s_leader_elector extension logs on startup, so
+// the leader is the pod whose collector container log contains that UUID.
+func findClusterMetricsCollectorLeader(g Gomega) string {
+	holderIdentity, err := run(exec.Command(
+		"kubectl",
+		"get",
+		"lease",
+		"--namespace", operatorNamespace,
+		fmt.Sprintf("%s-cluster-metrics-collector-lease", operatorHelmReleaseName),
+		"-o", "jsonpath={.spec.holderIdentity}",
+	), false)
+	g.Expect(err).NotTo(HaveOccurred())
+	holderIdentity = strings.TrimSpace(holderIdentity)
+	g.Expect(holderIdentity).NotTo(BeEmpty())
+
+	var leaders []string
+	for _, podName := range getCollectorPodNames(g, collectorDeploymentNameQualified) {
+		if len(getMatchingLogLinesFomCollectorContainerLog(
+			g, operatorNamespace, podName, "opentelemetry-collector", holderIdentity)) > 0 {
+			leaders = append(leaders, podName)
+		}
+	}
+	g.Expect(leaders).To(HaveLen(1), "expected exactly one pod to hold the lease %s", holderIdentity)
+	return leaders[0]
+}
+
 func labelSelectorForCollector(collectorNameQualified string) string {
 	switch collectorNameQualified {
 	case collectorDaemonSetNameQualified:

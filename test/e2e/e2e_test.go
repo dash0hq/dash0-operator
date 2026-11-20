@@ -3941,6 +3941,79 @@ spec:
 			})
 		})
 
+		Describe("with two cluster metrics collector replicas", func() {
+			BeforeAll(func() {
+				By("deploying the Dash0 operator")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					true,
+					map[string]string{
+						"operator.collectors.deploymentReplicas": "2",
+					},
+				)
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+			})
+
+			AfterAll(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should keep collecting cluster metrics when the replica holding the lease is deleted", func() {
+				timestampLowerBound := time.Now()
+				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+
+				By("waiting for both cluster metrics collector replicas to become ready")
+				Expect(runAndIgnoreOutput(exec.Command(
+					"kubectl",
+					"-n", operatorNamespace,
+					"rollout", "status", collectorDeploymentNameQualified,
+					"--timeout=120s",
+				))).To(Succeed())
+				Eventually(func(g Gomega) {
+					g.Expect(getCollectorPodNames(g, collectorDeploymentNameQualified)).To(HaveLen(2))
+				}, 60*time.Second, time.Second).Should(Succeed())
+
+				By("waiting for k8s_cluster receiver metrics")
+				Eventually(func(g Gomega) {
+					verifyK8skClusterReceiverMetrics(g, timestampLowerBound)
+				}, 120*time.Second, time.Second).Should(Succeed())
+
+				By("finding the replica that holds the lease")
+				var leader string
+				Eventually(func(g Gomega) {
+					leader = findClusterMetricsCollectorLeader(g)
+				}, 60*time.Second, time.Second).Should(Succeed())
+
+				By(fmt.Sprintf("deleting the replica %s that holds the lease", leader))
+				leaderDeletedAt := time.Now()
+				Expect(runAndIgnoreOutput(exec.Command(
+					"kubectl",
+					"-n", operatorNamespace,
+					"delete", "pod", leader,
+					"--wait=false",
+				))).To(Succeed())
+
+				By("waiting for another replica to take over the lease")
+				Eventually(func(g Gomega) {
+					g.Expect(findClusterMetricsCollectorLeader(g)).ToNot(Equal(leader))
+				}, 90*time.Second, time.Second).Should(Succeed())
+
+				By("waiting for k8s_cluster receiver metrics collected by the new leader")
+				Eventually(func(g Gomega) {
+					verifyK8skClusterReceiverMetrics(g, leaderDeletedAt)
+				}, 120*time.Second, time.Second).Should(Succeed())
+			})
+		})
+
 		//nolint:dupl
 		Describe("with Ruby auto-instrumentation disabled", func() {
 			BeforeAll(func() {
