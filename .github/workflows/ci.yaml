@@ -603,7 +603,7 @@ jobs:
       contents: read
     uses: ./.github/workflows/sync-docs-to-website.yaml
     secrets:
-      DASH0_DOCS_REPO_GITHUB_PAT: ${{ secrets.DASH0_DOCS_REPO_GITHUB_PAT }}
+      DOCS_SYNC_APP_PRIVATE_KEY: ${{ secrets.DOCS_SYNC_APP_PRIVATE_KEY }}
       SYNC_DOCUMENTATION_TARGET_REPOSITORY: ${{ secrets.SYNC_DOCUMENTATION_TARGET_REPOSITORY }}
       SYNC_DOCUMENTATION_TARGET_DIRECTORY: ${{ secrets.SYNC_DOCUMENTATION_TARGET_DIRECTORY }}
 
