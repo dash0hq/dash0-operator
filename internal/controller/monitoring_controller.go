@@ -493,6 +493,7 @@ func (r *MonitoringReconciler) runCleanupActions(
 	for _, apiClient := range r.namespacedApiClients {
 		apiClient.RemoveSynchronizationEnabled(monitoringResource.Namespace)
 	}
+	apiSyncFailures.deleteNamespace(monitoringResource.Namespace)
 
 	// The Dash0 monitoring resource will be deleted after this reconcile finished. We still need to update its status,
 	// to make sure that when we run r.reconcileOpenTelemetryCollector in the next and final reconcile cycle triggered

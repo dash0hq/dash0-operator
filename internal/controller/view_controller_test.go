@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -719,6 +720,51 @@ var _ = Describe(
 								"dash0-operator_"+clusterId+
 								"_test-dataset_test-namespace_test-view?dataset=test-dataset, response body is {}",
 						)
+						Expect(gock.IsDone()).To(BeTrue())
+					},
+				)
+
+				It(
+					"reports a failed view in the self-monitoring metrics until it is synchronized successfully", func() {
+						reader := initApiSyncMetricsForTest(logger)
+						defer resetApiSyncMetricsForTest()
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						gock.New(ApiEndpointTest).
+							Put(defaultExpectedPathView).
+							MatchParam("dataset", DatasetCustomTest).
+							Times(3).
+							Reply(503).
+							JSON(map[string]string{})
+						defer gock.Off()
+
+						viewResource := createViewResource(TestNamespaceName, viewName)
+						Expect(k8sClient.Create(ctx, viewResource)).To(Succeed())
+						request := reconcile.Request{
+							NamespacedName: types.NamespacedName{Namespace: TestNamespaceName, Name: viewName},
+						}
+
+						_, err := viewReconciler.Reconcile(ctx, request)
+						Expect(err).NotTo(HaveOccurred())
+
+						unsynchronized := collectApiSyncUnsynchronizedResources(ctx, reader)
+						Expect(unsynchronized).To(HaveLen(1))
+						attributes := unsynchronized[0].Attributes
+						Expect(apiSyncAttributeValue(attributes, apiSyncAttributeResourceKind)).To(
+							Equal(attribute.StringValue("Dash0View")))
+						Expect(apiSyncAttributeValue(attributes, apiSyncAttributeResourceNamespace)).To(
+							Equal(attribute.StringValue(TestNamespaceName)))
+						Expect(apiSyncAttributeValue(attributes, apiSyncAttributeResourceName)).To(
+							Equal(attribute.StringValue(viewName)))
+						Expect(apiSyncAttributeValue(attributes, apiSyncAttributeStatus)).To(Equal(attribute.StringValue("failed")))
+						Expect(apiSyncAttributeValue(attributes, apiSyncAttributeHttpStatusCode)).To(Equal(attribute.IntValue(503)))
+						Expect(gock.IsDone()).To(BeTrue())
+
+						expectViewPutRequest(clusterId, defaultExpectedPathView)
+						_, err = viewReconciler.Reconcile(ctx, request)
+						Expect(err).NotTo(HaveOccurred())
+
+						Expect(collectApiSyncUnsynchronizedResources(ctx, reader)).To(BeEmpty())
 						Expect(gock.IsDone()).To(BeTrue())
 					},
 				)
