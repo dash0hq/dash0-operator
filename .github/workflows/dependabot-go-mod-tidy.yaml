@@ -43,13 +43,13 @@ jobs:
             images/pkg/common/go.sum
 
       # Commits created with GITHUB_TOKEN do not trigger workflow runs, hence the GitHub app token. Workflow runs
-      # triggered by Dependabot only have access to Dependabot secrets, so the app's client ID and private key need to
-      # be stored as Dependabot secrets as well.
+      # triggered by Dependabot only have access to Dependabot secrets, so the app's private key needs to be stored as a
+      # Dependabot secret as well.
       - name: create GitHub app token
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          client-id: ${{ secrets.DASH0_OPERATOR_CI_APP_CLIENT_ID }}
+          client-id: ${{ vars.DASH0_OPERATOR_CI_APP_CLIENT_ID }}
           private-key: ${{ secrets.DASH0_OPERATOR_CI_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
