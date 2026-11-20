@@ -245,17 +245,27 @@ jobs:
     if: inputs.pr_number != '' && (inputs.on_success == 'review' || inputs.on_success == 'merge')
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      contents: write
-      pull-requests: write
+    # All API calls use the GitHub app token: a merge queue entry for which auto-merge has been enabled with
+    # GITHUB_TOKEN does not trigger the merge_group workflows.
+    permissions: {}
 
     steps:
+      - name: Create GitHub app token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.DASH0_OPERATOR_CI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DASH0_OPERATOR_CI_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Mark PR as ready for review or enable auto-merge
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
           PR_NUMBER: ${{ inputs.pr_number }}
           ON_SUCCESS: ${{ inputs.on_success }}
         with:
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const { owner, repo } = context.repo;
             const prNumber = Number(process.env.PR_NUMBER);

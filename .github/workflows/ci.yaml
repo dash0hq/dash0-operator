@@ -489,10 +489,8 @@ jobs:
     needs:
       - build_and_push_images
     if: ${{ always() && github.ref == 'refs/heads/main' && needs.build_and_push_images.result == 'success' }}
-    # contents: write is only needed for the follow-up-action job of e2e.yaml, which never runs when called from here
-    # (it requires the pr_number input), but the caller has to grant the maximum permissions of all nested jobs.
     permissions:
-      contents: write
+      contents: read
       packages: read
       pull-requests: write
     uses: ./.github/workflows/e2e.yaml

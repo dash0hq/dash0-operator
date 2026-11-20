@@ -132,20 +132,28 @@ jobs:
               ].join('\n'),
             });
 
-      - name: Dispatch e2e workflow
-        id: dispatch
+      # GITHUB_TOKEN cannot trigger workflow_dispatch events on the same repository, hence the GitHub app token.
+      - name: Create GitHub app token
+        id: app-token
         if: |
           steps.check-permissions.outputs.result == 'true' &&
           !(steps.parse-comment.outputs.on_success == 'merge' && steps.pr-info.outputs.draft == 'true')
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.DASH0_OPERATOR_CI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DASH0_OPERATOR_CI_APP_PRIVATE_KEY }}
+          permission-actions: write
+
+      - name: Dispatch e2e workflow
+        id: dispatch
+        if: steps.app-token.outcome == 'success'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
           PR_REF: ${{ steps.pr-info.outputs.ref }}
           FOCUS: ${{ steps.parse-comment.outputs.focus }}
           ON_SUCCESS: ${{ steps.parse-comment.outputs.on_success }}
         with:
-          # E2E_DISPATCH_PAT is required because GITHUB_TOKEN cannot trigger workflow_dispatch
-          # events on the same repository.
-          github-token: ${{ secrets.E2E_DISPATCH_PAT }}
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const inputs = {
               pr_number: String(context.issue.number),
@@ -198,7 +206,7 @@ jobs:
             });
 
       - name: Post comment if the dispatch failed
-        if: failure() && steps.dispatch.outcome == 'failure'
+        if: failure() && (steps.app-token.outcome == 'failure' || steps.dispatch.outcome == 'failure')
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         with:
           script: |
