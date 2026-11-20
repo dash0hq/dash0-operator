@@ -122,6 +122,13 @@ const (
 )
 
 var (
+	// expectedProfilerServiceAttributeStatements are the statements with which the transform processors for profiles and
+	// for the traces, metrics and logs of the eBPF profiler derive service attributes from Kubernetes labels.
+	expectedProfilerServiceAttributeStatements = []string{
+		`set(attributes["service.version"], attributes["k8s.pod.label.app.kubernetes.io/version"])   where attributes["service.name"] == nil and attributes["service.version"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil and attributes["k8s.pod.label.app.kubernetes.io/version"] != nil`,
+		`set(attributes["service.namespace"], attributes["k8s.pod.label.app.kubernetes.io/part-of"]) where attributes["service.name"] == nil and attributes["service.namespace"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil and attributes["k8s.pod.label.app.kubernetes.io/part-of"] != nil`,
+		`set(attributes["service.name"], attributes["k8s.pod.label.app.kubernetes.io/name"])         where attributes["service.name"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil`,
+	}
 	bearerWithAuthToken                             = fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefaultIndexed(0))
 	monitoredNamespaces                             = []string{namespace1, namespace2}
 	emptyTargetAllocatorMtlsConfig                  = TargetAllocatorMtlsConfig{}
@@ -1683,6 +1690,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(connectors).ToNot(HaveKey("forward/profiles-processors"))
 			Expect(connectors).ToNot(HaveKey("forward/profiles-default-exporter"))
 
+			Expect(ReadFromMap(collectorConfig, []string{"processors", "transform/profiles/service_attributes"})).To(BeNil())
+
 			pipelines := readPipelines(collectorConfig)
 			for pipelineName := range pipelines {
 				Expect(pipelineName).ToNot(HavePrefix("profiles"))
@@ -1718,7 +1727,18 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(commonProcessors).To(ContainElement("resource_detection"))
 			Expect(commonProcessors).To(ContainElement("k8s_attributes/profiles"))
 			Expect(commonProcessors).ToNot(ContainElement("k8s_attributes"))
+			Expect(commonProcessors).To(ContainElement("transform/profiles/service_attributes"))
 			Expect(commonProcessors).To(ContainElement("transform/resources"))
+			Expect(slices.Index(commonProcessors, "transform/profiles/service_attributes")).To(
+				BeNumerically(">", slices.Index(commonProcessors, "k8s_attributes/profiles")))
+
+			serviceAttributesProcessor :=
+				ReadFromMap(collectorConfig, []string{"processors", "transform/profiles/service_attributes"})
+			Expect(serviceAttributesProcessor).ToNot(BeNil())
+			statementGroups := ReadFromMap(serviceAttributesProcessor, []string{"profile_statements"}).([]any)
+			Expect(statementGroups).To(HaveLen(1))
+			Expect(statementGroups[0].(map[string]any)["context"]).To(Equal("resource"))
+			Expect(statementGroups[0].(map[string]any)["statements"]).To(ConsistOf(expectedProfilerServiceAttributeStatements))
 			commonExporters := readPipelineExporters(pipelines, "profiles/common-processors")
 			Expect(commonExporters).To(ContainElement("forward/profiles-default-exporter"))
 
@@ -1761,7 +1781,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					processor := collectorConfig["processors"].(map[string]any)["filter/profiler-source"]
 					Expect(ReadFromMap(processor.(map[string]any), []string{signal, "resource"})).To(
 						ConsistOf(`attributes["parca.agent"] == "true"`))
+					serviceAttributesProcessor := collectorConfig["processors"].(map[string]any)["transform/ebpf_profiler/service_attributes"]
+					Expect(readPipelineProcessors(pipelines, commonPipeline)).ToNot(
+						ContainElement("transform/ebpf_profiler/service_attributes"))
 					if !entry.config.EbpfProfilerEnabled {
+						Expect(serviceAttributesProcessor).To(BeNil())
 						Expect(connectors).ToNot(HaveKey(sourceRouter))
 						Expect(pipelines).ToNot(HaveKey(signal + "/route-source"))
 						Expect(pipelines).ToNot(HaveKey(agentPipeline))
@@ -1785,10 +1809,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Expect(processors).To(ContainElement("k8s_attributes/profiles"))
 					Expect(processors).ToNot(ContainElement("k8s_attributes"))
 					Expect(processors).ToNot(ContainElement("filter/profiler-source"))
+					Expect(slices.Index(processors, any("transform/ebpf_profiler/service_attributes"))).To(
+						Equal(slices.Index(processors, any("k8s_attributes/profiles")) + 1))
+					statementGroups := ReadFromMap(serviceAttributesProcessor, []string{signal[:len(signal)-1] + "_statements"})
+					Expect(statementGroups).To(HaveLen(1))
+					Expect(statementGroups.([]any)[0].(map[string]any)["context"]).To(Equal("resource"))
+					Expect(statementGroups.([]any)[0].(map[string]any)["statements"]).To(ConsistOf(expectedProfilerServiceAttributeStatements))
 					remaining := func(processors []any) []any {
 						return slices.DeleteFunc(slices.Clone(processors), func(processor any) bool {
 							return processor == "memory_limiter" || processor == "k8s_attributes" ||
-								processor == "k8s_attributes/profiles" || processor == "filter/profiler-source"
+								processor == "k8s_attributes/profiles" || processor == "filter/profiler-source" ||
+								processor == "transform/ebpf_profiler/service_attributes"
 						})
 					}
 					Expect(remaining(processors)).To(Equal(remaining(readPipelineProcessors(pipelines, commonPipeline))))
