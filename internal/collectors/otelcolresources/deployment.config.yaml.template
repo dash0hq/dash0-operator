@@ -20,6 +20,12 @@ extensions:
   {{- if .EnableProfExtension }}
   pprof: {}
   {{- end }}
+  {{- if .DeploymentCollectorLeaderElection }}
+  k8s_leader_elector:
+    auth_type: serviceAccount
+    lease_name: {{ .DeploymentCollectorLeaseName }}
+    lease_namespace: {{ .OperatorNamespace }}
+  {{- end }}
 
 connectors:
   forward/metrics-default-exporter: {}
@@ -90,6 +96,9 @@ receivers:
   {{- if .KubernetesInfrastructureMetricsCollectionEnabled }}
   k8s_cluster:
     collection_interval: 30s
+    {{- if .DeploymentCollectorLeaderElection }}
+    k8s_leader_elector: k8s_leader_elector
+    {{- end }}
     metrics:
       k8s.container.status.reason:
         enabled: true
@@ -101,6 +110,9 @@ receivers:
 
   {{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}
   k8s_events:
+    {{- if .DeploymentCollectorLeaderElection }}
+    k8s_leader_elector: k8s_leader_elector
+    {{- end }}
     namespaces:
     {{- range $i, $namespace := .NamespacesWithEventCollection }}
     - '{{ $namespace }}'
@@ -114,6 +126,9 @@ receivers:
   # via watch events only.
   k8s_objects/default:
     include_initial_state: true
+    {{- if .DeploymentCollectorLeaderElection }}
+    k8s_leader_elector: k8s_leader_elector
+    {{- end }}
     objects:
     - name: deployments
       mode: watch
@@ -141,6 +156,9 @@ receivers:
     {{- end }}
   k8s_objects/highcardinality:
     include_initial_state: false
+    {{- if .DeploymentCollectorLeaderElection }}
+    k8s_leader_elector: k8s_leader_elector
+    {{- end }}
     objects:
     - name: pods
       mode: watch
@@ -752,6 +770,9 @@ service:
   - health_check
   {{- if .EnableProfExtension }}
   - pprof
+  {{- end }}
+  {{- if .DeploymentCollectorLeaderElection }}
+  - k8s_leader_elector
   {{- end }}
 
   pipelines:

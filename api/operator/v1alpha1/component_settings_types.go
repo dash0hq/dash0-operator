@@ -332,6 +332,15 @@ type FilelogOffsetStoragePersistentVolumeClaim struct {
 
 // DeploymentCollectorSettings are the settings for the OpenTelemetry collector Deployment (cluster-metrics-collector).
 type DeploymentCollectorSettings struct {
+	// The number of replicas of the cluster metrics collector Deployment (Helm value operator.collectors.deploymentReplicas,
+	// default 1). With more than one replica, the replicas use Kubernetes leader election, so that only one of them
+	// collects cluster metrics, Kubernetes events and Kubernetes objects at any time. The other replicas are on standby
+	// and take over when the leader becomes unavailable.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum=1
+	Replicas *int32 `json:"replicas,omitempty"`
+
 	// The resources of the OpenTelemetry collector container (Helm value
 	// operator.collectors.deploymentCollectorContainerResources).
 	//

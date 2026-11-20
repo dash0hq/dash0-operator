@@ -2022,6 +2022,15 @@ spec:
                         - message: readiness.terminationGracePeriodSeconds must not
                             be set
                           rule: '!has(self.readiness) || !has(self.readiness.terminationGracePeriodSeconds)'
+                      replicas:
+                        description: |-
+                          The number of replicas of the cluster metrics collector Deployment (Helm value operator.collectors.deploymentReplicas,
+                          default 1). With more than one replica, the replicas use Kubernetes leader election, so that only one of them
+                          collects cluster metrics, Kubernetes events and Kubernetes objects at any time. The other replicas are on standby
+                          and take over when the leader becomes unavailable.
+                        format: int32
+                        minimum: 1
+                        type: integer
                       sysctls:
                         description: |-
                           Pod-level sysctls (spec.securityContext.sysctls). They replace the sysctls provided via the Helm chart, empty
