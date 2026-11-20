@@ -26,9 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      # Workflow runs triggered by Dependabot get a read-only GITHUB_TOKEN by default, the permissions key raises that.
-      contents: write
-      pull-requests: write
+      contents: read
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -44,9 +42,21 @@ jobs:
             images/agent0-connector/src/go.sum
             images/pkg/common/go.sum
 
+      # Commits created with GITHUB_TOKEN do not trigger workflow runs, hence the GitHub app token. Workflow runs
+      # triggered by Dependabot only have access to Dependabot secrets, so the app's client ID and private key need to
+      # be stored as Dependabot secrets as well.
+      - name: create GitHub app token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.DASH0_OPERATOR_CI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DASH0_OPERATOR_CI_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: run go mod tidy and commit the result
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
