@@ -375,6 +375,41 @@ tests:
       - failedTemplate:
           errorMessage: "Error: operator.collectors.sendBatchMaxSize must not be negative."
 
+  - it: should reject negative sendingQueueSizeMiB
+    set:
+      operator:
+        collectors:
+          sendingQueueSizeMiB: -1
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.sendingQueueSizeMiB must not be negative."
+
+  - it: should not set the sending queue size env var by default
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: OTEL_COLLECTOR_SENDING_QUEUE_SIZE_MIB
+
+  - it: should set the sending queue size env var if sendingQueueSizeMiB is set
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        collectors:
+          sendingQueueSizeMiB: 128
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_SENDING_QUEUE_SIZE_MIB
+            value: "128"
+
   - it: should reject operator.replicaCount 0
     set:
       operator:

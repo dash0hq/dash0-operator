@@ -46,6 +46,9 @@ exporters:
     {{- if $exporter.BalancerName }}
     balancer_name: "{{ $exporter.BalancerName }}"
     {{- end }}
+    {{- if not $exporter.IsDash0 }}
+    {{- template "nonDash0RetryOnFailure" }}
+    {{- end }}
     {{- template "sendingQueue" $ }}
   {{- end }}
 
@@ -85,6 +88,9 @@ exporters:
     {{- if $exporter.BalancerName }}
     balancer_name: "{{ $exporter.BalancerName }}"
     {{- end }}
+    {{- if not $exporter.IsDash0 }}
+    {{- template "nonDash0RetryOnFailure" }}
+    {{- end }}
     {{- template "sendingQueue" $ }}
   {{- end }}
   {{- end }}
@@ -104,16 +110,32 @@ hints possible. A client-side balancer would resolve pod IPs directly and bypass
     {{- template "sendingQueue" . }}
 {{- end -}}
 {{- /*
+nonDash0RetryOnFailure turns off retries for exporters to other backends than Dash0. A pipeline hands its data to all
+of its exporters, and when one of them rejects the data because its queue is full, the receiver reports the whole
+request as failed, although the other exporters have already accepted it. OTLP clients and the file_log receivers then
+resend the data: the export to Dash0 is held up, and the exporters that had accepted the data receive it again. Without
+retries, the queue of an exporter to an unavailable backend keeps draining by dropping that exporter's data, so it does
+not fill up and the export to Dash0 is not affected by the outage of the other backend. The reverse still applies:
+while Dash0 is unavailable and the queues of the Dash0 exporters are full, other backends can receive resent data more
+than once.
+*/ -}}
+{{- define "nonDash0RetryOnFailure" }}
+    retry_on_failure:
+      enabled: false
+{{- end -}}
+{{- /*
 sendingQueue renders the sending_queue of an exporter. This is where all telemetry gets batched, the pipelines do not
-batch. The queue is sized in items rather than requests, since requests that are waiting to be merged into a batch
-occupy the queue; see newExporterBatching in collector_config_maps.go for its capacity. Setting the batch section
-explicitly keeps the configuration independent of upstream's default for exporter batching.
+batch. The queue is sized in (protobuf-encoded) bytes, which bounds the memory a queue can occupy independently of the
+size of the individual items; see newExporterBatching in collector_config_maps.go for its capacity. The batch is sized
+in items; its sizer needs to be set explicitly, since it would otherwise inherit the queue's sizer. Setting the batch
+section explicitly also keeps the configuration independent of upstream's default for exporter batching.
 */ -}}
 {{- define "sendingQueue" }}
     sending_queue:
-      sizer: items
-      queue_size: {{ .ExporterBatching.QueueSize }}
+      sizer: bytes
+      queue_size: {{ .ExporterBatching.QueueSizeBytes }}
       batch:
+        sizer: items
         flush_timeout: 200ms
         min_size: {{ .ExporterBatching.MinSize }}
         {{- if .ExporterBatching.MaxSize }}

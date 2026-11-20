@@ -12,6 +12,7 @@ This guide covers advanced configuration topics for the Dash0 operator, includin
 - [Webhook Certificates](#webhook-certificates)
 - [Using cert-manager](#using-cert-manager)
 - [Tuning Resource Requests and Limits](#tuning-resource-requests-and-limits)
+  - [Exporter Sending Queues](#exporter-sending-queues)
 - [Controlling On Which Nodes the Operator's Collector Pods Are Scheduled](#controlling-on-which-nodes-the-operators-collector-pods-are-scheduled)
   - [Allow Scheduling on Tainted Nodes](#allow-scheduling-on-tainted-nodes)
   - [Preventing Operator Scheduling on Specific Nodes](#preventing-operator-scheduling-on-specific-nodes)
@@ -460,6 +461,33 @@ Changing Helm settings while the operator is already running requires a
 `helm upgrade`/`helm upgrade --reset-then-reuse-values`, or a sync of the changed values in ArgoCD or Flux, to take
 effect.
 
+### Exporter Sending Queues
+
+Every exporter of the collectors buffers telemetry in a sending queue while its export destination is slow or
+unavailable, and retries failed exports for up to five minutes. By default, the capacity of each queue is 20% of the
+collector's `memory_limiter` soft limit, measured in protobuf-encoded bytes (for example 74 MiB for the default memory
+limit of `500Mi`). When the queue of an exporter is full, the exporter rejects new data: OTLP clients receive a
+retryable error (`Unavailable: sending queue is full`) and resend the data later as far as their retry settings and
+buffers allow, the filelog receiver pauses reading log files and resends the data later, and other receivers (for
+example Prometheus scraping) drop it.
+
+Each exporter has a separate queue per signal (traces, metrics, logs and profiles). While Dash0 is unavailable, the
+queues of all signals fill at the same time, so the collector can reach its `memory_limiter` soft limit before the
+queues are full. The `memory_limiter` then refuses incoming data for all exporters, and the receivers react to that in
+the same way as to a full queue.
+
+To buffer longer outages, raise the memory limit of the collector containers; the queue capacity grows with it. To set
+the queue capacity explicitly, use `operator.collectors.sendingQueueSizeMiB`, and make sure the memory limit leaves room
+for it: the in-memory representation of the queued telemetry is about 1.5 to 3.5 times larger than its encoded size.
+
+Exporters to backends other than Dash0 (`grpc` and `http` exports) do not retry failed exports, see
+[Exporting to Multiple Backends](#exporting-to-multiple-backends).
+
+The collectors report the state of their queues in their self-monitoring metrics: `otelcol_exporter_queue_size` and
+`otelcol_exporter_queue_capacity` (the fill level of the queue), `otelcol_exporter_enqueue_failed_*` (data rejected
+because the queue was full), `otelcol_exporter_send_failed_*` (data dropped after the retries were exhausted) and
+`otelcol_receiver_refused_*` (data that receivers could not hand over to the pipeline).
+
 ## Controlling On Which Nodes the Operator's Collector Pods Are Scheduled
 
 ### Allow Scheduling on Tainted Nodes
@@ -894,6 +922,16 @@ spec:
 ```
 
 For more details on configuring exports, see [Configuring the Dash0 Backend Connection](configuration.md#configuring-the-dash0-backend-connection).
+
+The collectors hand the same telemetry to all exporters at once. If one exporter rejects data because its queue is full,
+the collector reports the data as failed to its sender, although the other exporters have already accepted it. OTLP
+clients and the filelog receiver then resend the data, so the export to Dash0 is held up and the other exporters
+receive the data again. For that reason, exporters to backends other than Dash0 (`grpc` and `http` exports) do not
+retry failed exports: while such a backend is unavailable, the telemetry for it is dropped, and the export to Dash0 and
+to other backends continues unaffected. This also applies when no Dash0 export is configured.
+
+While Dash0 is unavailable and the queues of the Dash0 exporters are full, the resent data can reach other backends
+more than once.
 
 ### Note regarding TLS when using arbitrary OTLP-compatible backends
 

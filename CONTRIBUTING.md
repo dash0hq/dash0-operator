@@ -353,6 +353,9 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE`: Set the `sending_queue::batch::max_size` parameter of the exporters of the
       collectors managed by the operator. There is usually no need to configure this. The value must be greater than or
       equal to 8192, which is the default value for `min_size`.
+    * `OTEL_COLLECTOR_SENDING_QUEUE_SIZE_MIB`: Set the capacity (in MiB of protobuf-encoded telemetry) of the
+      `sending_queue` of the exporters of the collectors managed by the operator. By default, the operator derives it
+      from the memory limit of the respective collector container.
     * `PROFILING_ENABLED`: Set this to "true" to enable profiling data pipelines in the operator's OpenTelemetry
       collectors. When enabled, the daemonset collector will accept, process, and export OTLP profiles data.
       See [PROFILING](helm-chart/dash0-operator/docs/profiling.md) for more details.
