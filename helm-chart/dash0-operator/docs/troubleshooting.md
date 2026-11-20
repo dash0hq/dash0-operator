@@ -120,8 +120,6 @@ For additional help:
 - Review the operator logs: `kubectl logs -n dash0-system -l app.kubernetes.io/component=controller`
 - Contact Dash0 support at support@dash0.com
 
-This is a dummy documentation change for testing purposes.
-
 ## Related Documentation
 
 - [Platform Specific](platform-specific.md) - Platform-specific notes that may help troubleshoot issues
