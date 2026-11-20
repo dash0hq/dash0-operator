@@ -115,10 +115,6 @@ Pushed ${commit_oid}, which runs \`go mod tidy\` for \`${module_dir}\`.
 \`images/pkg/common\` without updating \`${module_dir}\`, which makes it fail to build with
 \`go: updates to go.mod needed\`.
 
-**CI has not run for ${commit_oid}**: the commit has been created with the workflow's \`GITHUB_TOKEN\`, and commits
-created with the \`GITHUB_TOKEN\` do not trigger workflow runs. To run CI, amend the commit and force-push it, for
-example with \`git commit --amend --no-edit && git push --force-with-lease\`.
-
 Dependabot does not rebase pull requests that contain commits from someone else. \`@dependabot recreate\` discards this
 commit, and this workflow then runs again for the recreated pull request.
 EOF

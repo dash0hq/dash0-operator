@@ -12,8 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
+      pull-requests: read
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -27,9 +27,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: .github/workflows/scripts/update-sce-images-check-if-pr-exists.sh
 
+      # Branches, commits and PRs created with GITHUB_TOKEN do not trigger workflow runs, hence the GitHub app token.
+      - name: create GitHub app token
+        id: app-token
+        if: steps.open_pr_exists.outputs.pr_exists != 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.DASH0_OPERATOR_CI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DASH0_OPERATOR_CI_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: update image tags and create PR
         if: steps.open_pr_exists.outputs.pr_exists != 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         shell: bash
         run: .github/workflows/scripts/update-sce-images-create-pr.sh
