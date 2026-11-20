@@ -289,7 +289,7 @@ metadata:
 spec:
   filter:
     logs:
-      log_records:
+      log_record:
       - 'IsMatch(resource.attributes["k8s.pod.name"], "my-workload-name-*")'
 ```
 

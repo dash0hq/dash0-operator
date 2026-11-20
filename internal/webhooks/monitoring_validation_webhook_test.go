@@ -684,6 +684,37 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 			}),
 		)
 
+		DescribeTable("should warn about the deprecated log_records filter key", func(
+			logFilter *dash0common.LogFilter,
+			expectedWarnings []string,
+		) {
+			monitoringResource := DefaultMonitoringResource()
+			monitoringResource.Spec.Filter = &dash0common.Filter{Logs: logFilter}
+			raw, err := json.Marshal(monitoringResource)
+			Expect(err).ToNot(HaveOccurred())
+
+			response := NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace).Handle(ctx, admission.Request{
+				AdmissionRequest: admissionv1.AdmissionRequest{
+					Operation: admissionv1.Create,
+					Namespace: monitoringResource.Namespace,
+					Name:      monitoringResource.Name,
+					Object:    runtime.RawExtension{Raw: raw},
+				},
+			})
+
+			Expect(response.Allowed).To(BeTrue())
+			Expect(response.Warnings).To(Equal(expectedWarnings))
+		},
+			Entry("no warning for log_record",
+				&dash0common.LogFilter{LogRecordFilter: []string{`IsMatch(body, ".*password.*")`}},
+				nil,
+			),
+			Entry("warning for log_records",
+				&dash0common.LogFilter{DeprecatedLogRecordFilter: []string{`IsMatch(body, ".*password.*")`}},
+				[]string{"spec.filter.logs.log_records is deprecated, use spec.filter.logs.log_record instead."},
+			),
+		)
+
 		type ottlValidationTestConfig struct {
 			filter                *dash0common.Filter
 			transform             *dash0common.Transform
@@ -786,6 +817,27 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
 					"unable to parse OTTL condition \"invalid_syntax(...\": 1:15: condition has invalid syntax near `(...`: (expected <opcomparison> Value)",
+				},
+			}),
+			Entry("should reject monitoring resource with invalid syntax in deprecated log_records filter", ottlValidationTestConfig{
+				filter: &dash0common.Filter{
+					Logs: &dash0common.LogFilter{
+						DeprecatedLogRecordFilter: []string{
+							"invalid_syntax(...",
+						},
+					},
+				},
+				expectErrorSubstrings: []string{
+					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
+					"unable to parse OTTL condition \"invalid_syntax(...\": 1:15: condition has invalid syntax near `(...`: (expected <opcomparison> Value)",
+				},
+			}),
+			Entry("should allow monitoring resource with log_record and deprecated log_records filter", ottlValidationTestConfig{
+				filter: &dash0common.Filter{
+					Logs: &dash0common.LogFilter{
+						LogRecordFilter:           []string{`IsMatch(body, ".*password.*")`},
+						DeprecatedLogRecordFilter: []string{`severity_number < SEVERITY_NUMBER_WARN`},
+					},
 				},
 			}),
 			Entry("should reject monitoring resource with invalid syntax in profile filter", ottlValidationTestConfig{

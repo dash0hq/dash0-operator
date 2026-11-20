@@ -1053,6 +1053,42 @@ var _ = Describe(
 		)
 
 		It(
+			"should keep log filters specified via log_record and the deprecated log_records",
+			func() {
+				filterJSON := json.RawMessage(
+					`{"logs":{"log_record":["severity_number < SEVERITY_NUMBER_WARN"],` +
+						`"log_records":["IsMatch(body, \".*password.*\")"]}}`)
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithTokenAndTelemetryCollection,
+					util.ExtraConfig{FilterRaw: &filterJSON},
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+							&operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+						filter := operatorConfiguration.Spec.Filter
+						g.Expect(filter).ToNot(BeNil())
+						g.Expect(filter.Logs).ToNot(BeNil())
+						g.Expect(filter.Logs.LogRecordFilter).To(
+							ConsistOf("severity_number < SEVERITY_NUMBER_WARN"))
+						g.Expect(filter.Logs.DeprecatedLogRecordFilter).To(
+							ConsistOf(`IsMatch(body, ".*password.*")`))
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		It(
 			"should drop cluster-wide filters and transformations if telemetry collection is disabled", func() {
 				filterJSON := json.RawMessage(
 					`{"traces":{"span":["attributes[\"http.route\"] == \"/ready\""]}}`)

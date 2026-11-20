@@ -1697,11 +1697,18 @@ spec:
                       Filters for the logs signal.
                       This can be used to drop _log records_.
                     properties:
-                      log_records:
+                      log_record:
                         description: |-
                           OTTL conditions for dropping log records. A log record is dropped if at least one condition is true. Example:
                           - 'IsMatch(body, ".*password.*")'
                           - 'severity_number < SEVERITY_NUMBER_WARN'
+                        items:
+                          type: string
+                        type: array
+                      log_records:
+                        description: |-
+                          Deprecated: Use `log_record` instead. If both `log_record` and `log_records` are specified, the conditions of
+                          both lists are applied.
                         items:
                           type: string
                         type: array
@@ -2791,11 +2798,18 @@ spec:
                       Filters for the logs signal.
                       This can be used to drop _log records_.
                     properties:
-                      log_records:
+                      log_record:
                         description: |-
                           OTTL conditions for dropping log records. A log record is dropped if at least one condition is true. Example:
                           - 'IsMatch(body, ".*password.*")'
                           - 'severity_number < SEVERITY_NUMBER_WARN'
+                        items:
+                          type: string
+                        type: array
+                      log_records:
+                        description: |-
+                          Deprecated: Use `log_record` instead. If both `log_record` and `log_records` are specified, the conditions of
+                          both lists are applied.
                         items:
                           type: string
                         type: array

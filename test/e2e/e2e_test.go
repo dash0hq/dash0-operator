@@ -1883,7 +1883,7 @@ traces:
 					filter :=
 						`
 logs:
-  log_records:
+  log_record:
   - 'NoSuchFunction(body)'
 `
 					deployDash0MonitoringResourceExpectingRejection(

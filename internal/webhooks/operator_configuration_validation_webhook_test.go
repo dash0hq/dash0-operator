@@ -912,6 +912,51 @@ var _ = Describe("The validation webhook for the operator configuration resource
 		})
 	})
 
+	Describe("deprecated log_records filter key", func() {
+		deprecatedLogFilter := func() *dash0common.Filter {
+			return &dash0common.Filter{
+				Logs: &dash0common.LogFilter{
+					DeprecatedLogRecordFilter: []string{`IsMatch(body, ".*password.*")`},
+				},
+			}
+		}
+
+		It("should not warn if log_record is used", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+				Filter: &dash0common.Filter{
+					Logs: &dash0common.LogFilter{
+						LogRecordFilter: []string{`IsMatch(body, ".*password.*")`},
+					},
+				},
+			}))
+			Expect(response.Allowed).To(BeTrue())
+			Expect(response.Warnings).To(BeEmpty())
+		})
+
+		It("should warn if log_records is used in the cluster-wide filter or in the monitoring template", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+				Filter:  deprecatedLogFilter(),
+				MonitoringTemplate: &dash0v1alpha1.MonitoringTemplate{
+					Spec: dash0v1beta1.Dash0MonitoringSpec{
+						Filter: deprecatedLogFilter(),
+					},
+				},
+			}))
+			Expect(response.Allowed).To(BeTrue())
+			Expect(response.Warnings).To(ConsistOf(
+				"spec.filter.logs.log_records is deprecated, use spec.filter.logs.log_record instead.",
+				"spec.monitoringTemplate.spec.filter.logs.log_records is deprecated, use "+
+					"spec.monitoringTemplate.spec.filter.logs.log_record instead.",
+			))
+		})
+	})
+
 	Describe("component settings", func() {
 		componentsSpec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
 			Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},

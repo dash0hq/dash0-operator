@@ -418,7 +418,7 @@ tests:
                   - datapoint filter 1
                   - datapoint filter 2
               logs:
-                log_records:
+                log_record:
                   - log record filter 1
                   - log record filter 2
             transform:
@@ -821,7 +821,7 @@ tests:
                 filter:
                   error_mode: propagate
                   logs:
-                    log_records:
+                    log_record:
                     - log record filter 1
                     - log record filter 2
                   metrics:
