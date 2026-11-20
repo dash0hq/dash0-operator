@@ -10,6 +10,7 @@ This guide covers automatic workload instrumentation, including Python and Ruby 
 - [Ruby Auto-Instrumentation](#ruby-auto-instrumentation)
 - [Instrumenting Pods Instead of Workloads](#instrumenting-pods-instead-of-workloads)
 - [Disabling Auto-Instrumentation for Specific Workloads](#disabling-auto-instrumentation-for-specific-workloads)
+- [Disabling Workload Instrumentation for the Whole Cluster](#disabling-workload-instrumentation-for-the-whole-cluster)
 - [Using a Custom Label Selector to Control Auto-Instrumentation](#using-a-custom-label-selector-to-control-auto-instrumentation)
 - [Specifying Additional Resource Attributes via Labels and Annotations](#specifying-additional-resource-attributes-via-labels-and-annotations)
 - [Sending Data to the OpenTelemetry Collectors Managed by the Dash0 Operator](#sending-data-to-the-opentelemetry-collectors-managed-by-the-dash0-operator)
@@ -323,6 +324,86 @@ spec:
             - name: OTEL_INJECTOR_AUTO_INSTRUMENTATION_DISABLED
               value: "nodejs"
 ```
+
+## Disabling Workload Instrumentation for the Whole Cluster
+
+If you do not use automatic workload instrumentation in any namespace, for example because you only collect logs,
+metrics and Kubernetes events with the Dash0 operator, or you use manual instrumentation, you can disable it for
+the whole cluster:
+
+```console
+helm upgrade --install \
+  --namespace dash0-system \
+  --set operator.instrumentation.enabled=false \
+  ...
+  dash0-operator \
+  dash0-operator/dash0-operator
+```
+
+With `operator.instrumentation.enabled=false`, the Helm chart does not register the mutating webhook that instruments
+workloads.
+Without that webhook, the Kubernetes API server no longer sends an admission request to the operator for every
+workload and pod that is created or updated in the cluster.
+In clusters with frequent workload changes, for example because of GitOps tools that apply the workloads regularly, or
+because of many pods being created on node churn, this noticeably reduces the network traffic between the operator
+and the Kubernetes API server.
+
+In addition:
+
+* Dash0 monitoring resources without `spec.instrumentWorkloads.mode` get `spec.instrumentWorkloads.mode: none`.
+  The same applies to `operator.monitoringTemplate` and to the monitoring template of a Dash0 operator configuration
+  resource, which are used for [automatic namespace monitoring](configuration.md#enable-dash0-monitoring-for-a-namespace).
+* Dash0 monitoring resources and monitoring templates with `spec.instrumentWorkloads.mode` other than `none` are
+  rejected.
+  Setting `operator.monitoringTemplate.spec.instrumentWorkloads.mode` to a value other than `none` makes the Helm
+  installation fail.
+  Validation for Dash0 operator configuration resources will allow updates for operator configuration resources which
+  have a monitoring template with a mode other than `none`, as long as the update does not change that mode to another
+  value other than `none`.
+* Automatic namespace monitoring creates and updates Dash0 monitoring resources with
+  `spec.instrumentWorkloads.mode: none`, regardless of the mode in the monitoring template.
+
+In namespaces that are monitored via automatic namespace monitoring, disabling workload instrumentation for the whole
+cluster removes the instrumentation from the workloads:
+The operator sets `spec.instrumentWorkloads.mode: none` in the Dash0 monitoring resources it has created for these
+namespaces, regardless of the mode in the monitoring template, which has the same effect as setting
+`spec.instrumentWorkloads.mode: none` manually.
+
+Dash0 monitoring resources that have not been created by automatic namespace monitoring are not changed, and the
+instrumentation of their workloads is not automatically removed.
+
+If workloads in your cluster are already instrumented, proceed as follows:
+
+1. Set `spec.instrumentWorkloads.mode: none` in all Dash0 monitoring resources, and in `operator.monitoringTemplate`
+   if you use automatic namespace monitoring.
+   The operator removes the instrumentation from the workloads in these namespaces.
+2. Change `operator.instrumentation.enabled=false` via Helm (e.g. run
+   `helm upgrade` with `--set operator.instrumentation.enabled=false`).
+
+If a Dash0 monitoring resource still has `spec.instrumentWorkloads.mode` other than `none` after workload
+instrumentation has been disabled, the operator logs a warning for it, and effectively ignores that setting.
+No new workloads are instrumented in that namespace, and workloads that have been instrumented before keep their
+instrumentation.
+With `spec.instrumentWorkloads.mode: pods`, pods are only instrumented when they are created, so pods that are created
+after workload instrumentation has been disabled are not instrumented, and existing pods lose their instrumentation
+when they are recreated.
+Adding the opt-out label `dash0.com/enable: "false"` to such a workload, or changing
+`spec.instrumentWorkloads.labelSelector`, does not remove the instrumentation from the workload either; set
+`spec.instrumentWorkloads.mode: none` to remove it.
+The validation for Dash0 monitoring resources will still allow updates for resources with an invalid workload
+instrumentation mode, but `spec.instrumentWorkloads.mode` can only be changed to `none`, which also
+removes the instrumentation from its workloads.
+Deleting the resource is always possible.
+
+Re-enabling workload instrumentation with `operator.instrumentation.enabled=true` does not change resources that have
+been created or updated while it was disabled:
+Dash0 monitoring resources and monitoring templates of Dash0 operator configuration resources that have received
+`spec.instrumentWorkloads.mode: none` as the default value keep that mode, although it has not been set explicitly.
+To instrument the workloads in these namespaces again, set `spec.instrumentWorkloads.mode` explicitly in these
+resources, for example to `all` for Dash0 monitoring resources and to `created-and-updated` for monitoring templates,
+which are the default values when workload instrumentation is enabled.
+The monitoring template that the Helm chart manages via `operator.monitoringTemplate` is not affected; it gets the
+default mode again when the operator starts with workload instrumentation enabled.
 
 ## Using a Custom Label Selector to Control Auto-Instrumentation
 
