@@ -25,7 +25,22 @@ import (
 
 const (
 	commonExportErrorPrefix = "cannot assemble the exporters for the configuration:"
+
+	defaultExporterBatchMinSize = 8192
+	// exporterQueueBatchCapacity is the number of maximum-size batches the exporter queue can hold. It is deliberately
+	// large: the memory_limiter, not the queue, is supposed to bound how much telemetry is buffered while an export
+	// destination is unavailable. A full queue rejects data with a retryable error, which makes OTLP clients resend the
+	// rejected data to every exporter of the pipeline. The in-memory queue does not preallocate its capacity.
+	exporterQueueBatchCapacity = 1000
 )
+
+// exporterBatching holds the sending_queue settings that are rendered for every exporter, see the sendingQueue
+// template in exporters.partial.yaml.template. All sizes are measured in items. MaxSize zero means no upper bound.
+type exporterBatching struct {
+	QueueSize uint64
+	MinSize   uint32
+	MaxSize   uint32
+}
 
 type customFilters struct {
 	ErrorMode           dash0common.FilterTransformErrorMode
@@ -88,8 +103,7 @@ type collectorConfigurationTemplateValues struct {
 	OperatorNamespace                                string
 	NamePrefix                                       string
 	Exporters                                        otlpExporters
-	SendBatchSize                                    *uint32
-	SendBatchMaxSize                                 *uint32
+	ExporterBatching                                 exporterBatching
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	CollectPodLabelsAndAnnotationsEnabled            bool
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
@@ -367,6 +381,25 @@ func assembleCollectorConfigMap(
 	return &configMap, nil
 }
 
+// newExporterBatching derives the sending_queue settings of all exporters from the optional sendBatchSize and
+// sendBatchMaxSize settings (Helm values operator.collectors.sendBatchSize/sendBatchMaxSize), which map to the batch's
+// min_size and max_size. The queue has room for exporterQueueBatchCapacity batches of the largest configured size.
+func newExporterBatching(sendBatchSize *uint32, sendBatchMaxSize *uint32) exporterBatching {
+	minSize := uint32(defaultExporterBatchMinSize)
+	if sendBatchSize != nil && *sendBatchSize > 0 {
+		minSize = *sendBatchSize
+	}
+	var maxSize uint32
+	if sendBatchMaxSize != nil {
+		maxSize = *sendBatchMaxSize
+	}
+	return exporterBatching{
+		QueueSize: uint64(max(minSize, maxSize)) * exporterQueueBatchCapacity,
+		MinSize:   minSize,
+		MaxSize:   maxSize,
+	}
+}
+
 // newCollectorConfigurationTemplateValues derives the values for one collector configuration template from the
 // operator's collector configuration. It is the single place where the template's view of the configuration is
 // assembled, which allows tests to inspect the exact values a template is rendered with.
@@ -420,8 +453,7 @@ func newCollectorConfigurationTemplateValues(
 		OperatorNamespace: config.OperatorNamespace,
 		NamePrefix:        config.NamePrefix,
 		Exporters:         config.Exporters,
-		SendBatchSize:     config.SendBatchSize,
-		SendBatchMaxSize:  config.SendBatchMaxSize,
+		ExporterBatching:  newExporterBatching(config.SendBatchSize, config.SendBatchMaxSize),
 		KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
 		CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
 		CollectNamespaceLabelsAndAnnotationsEnabled:      config.CollectNamespaceLabelsAndAnnotationsEnabled,

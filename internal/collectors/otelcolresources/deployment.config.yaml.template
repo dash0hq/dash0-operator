@@ -157,18 +157,6 @@ receivers:
   {{- end }}
 
 processors:
-{{- if or .SendBatchSize .SendBatchMaxSize }}
-  batch:
-    {{- if .SendBatchSize }}
-    send_batch_size: {{ .SendBatchSize }}
-    {{- end }}
-    {{- if .SendBatchMaxSize }}
-    send_batch_max_size: {{ .SendBatchMaxSize }}
-    {{- end }}
-{{- else }}
-  batch: {}
-{{- end }}
-
   {{- if or .KubernetesInfrastructureMetricsCollectionEnabled $hasK8sLogsPipeline }}
   # Enrich cluster-scoped telemetry cloud/account resource attributes (cloud.provider, cloud.platform, cloud.account.id,
   # cloud.region). Deliberately not adding node- or host-related attributes (k8s.node.*, host.*,
@@ -776,7 +764,6 @@ service:
         {{- if .CustomFilters.HasMetricFilters }}
         - filter/metrics/custom_telemetry_filter
         {{- end }}
-        - batch
         {{- if .CustomTransforms.HasMetricTransforms }}
         - transform/metrics/custom_telemetry_transform
         {{- end }}
@@ -896,7 +883,6 @@ service:
         {{- if and $hasEventCollectionEnabledForAtLeastOneNamespace .CustomFilters.HasLogFilters }}
         - filter/logs/custom_telemetry_filter
         {{- end }}
-        - batch
         {{- if and $hasEventCollectionEnabledForAtLeastOneNamespace .CustomTransforms.HasLogTransforms }}
         - transform/logs/custom_telemetry_transform
         {{- end }}

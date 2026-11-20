@@ -46,6 +46,7 @@ exporters:
     {{- if $exporter.BalancerName }}
     balancer_name: "{{ $exporter.BalancerName }}"
     {{- end }}
+    {{- template "sendingQueue" $ }}
   {{- end }}
 
   {{- range $ns := .Exporters.AllNamespaceKeys }}
@@ -84,6 +85,7 @@ exporters:
     {{- if $exporter.BalancerName }}
     balancer_name: "{{ $exporter.BalancerName }}"
     {{- end }}
+    {{- template "sendingQueue" $ }}
   {{- end }}
   {{- end }}
 {{- end -}}
@@ -99,4 +101,22 @@ hints possible. A client-side balancer would resolve pod IPs directly and bypass
     endpoint: "{{ .SignalControlCollectorServiceName }}.{{ .OperatorNamespace }}.svc.cluster.local:4317"
     tls:
       insecure: true
+    {{- template "sendingQueue" . }}
+{{- end -}}
+{{- /*
+sendingQueue renders the sending_queue of an exporter. This is where all telemetry gets batched, the pipelines do not
+batch. The queue is sized in items rather than requests, since requests that are waiting to be merged into a batch
+occupy the queue; see newExporterBatching in collector_config_maps.go for its capacity. Setting the batch section
+explicitly keeps the configuration independent of upstream's default for exporter batching.
+*/ -}}
+{{- define "sendingQueue" }}
+    sending_queue:
+      sizer: items
+      queue_size: {{ .ExporterBatching.QueueSize }}
+      batch:
+        flush_timeout: 200ms
+        min_size: {{ .ExporterBatching.MinSize }}
+        {{- if .ExporterBatching.MaxSize }}
+        max_size: {{ .ExporterBatching.MaxSize }}
+        {{- end }}
 {{- end -}}

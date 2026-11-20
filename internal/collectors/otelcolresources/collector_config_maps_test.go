@@ -2518,7 +2518,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(serviceExtensions).To(ContainElement("dash0settingsonedgeextension"))
 		})
 
-		DescribeTable("should batch received telemetry only in SCE-only mode [SignalControl]",
+		DescribeTable("should not batch received telemetry in the pipelines [SignalControl]",
 			func(exporters otlpExporters, sceOnlyMode bool, expectedProcessors []any) {
 				configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 					OperatorNamespace: OperatorNamespace,
@@ -2540,11 +2540,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				}
 			},
 			Entry("without routing, SCE-only mode", cmTestSingleDefaultOtlpExporter(), true,
-				[]any{"memory_limiter", "batch"}),
+				[]any{"memory_limiter"}),
 			Entry("without routing, regular mode", cmTestSingleDefaultOtlpExporter(), false,
 				[]any{"memory_limiter"}),
 			Entry("with routing, SCE-only mode", cmTestMultipleNamespacedOtlpExporters(), true,
-				[]any{"memory_limiter", "batch"}),
+				[]any{"memory_limiter"}),
 			Entry("with routing, regular mode", cmTestMultipleNamespacedOtlpExporters(), false,
 				[]any{"memory_limiter"}),
 		)
@@ -3991,83 +3991,124 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		})
 	})
 
-	DescribeTable("should render batch processor with defaults if no batch size settings are provided", func(cmTypeDef configMapTypeDefinition) {
-		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			Exporters:         cmTestSingleDefaultOtlpExporter(),
-			KubernetesInfrastructureMetricsCollectionEnabled: true,
-			SendBatchSize:    nil,
-			SendBatchMaxSize: nil,
-		}, monitoredNamespaces, nil, nil, false)
+	DescribeTable("should batch in the exporters", func(
+		sendBatchSize *uint32,
+		sendBatchMaxSize *uint32,
+		expectedSendingQueue map[string]any,
+	) {
+		for _, cmTypeDef := range configMapTypeDefinitions {
+			config := &oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestMultipleNamespacedOtlpExporters(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				SendBatchSize:    sendBatchSize,
+				SendBatchMaxSize: sendBatchMaxSize,
+				SignalControl: SignalControlConfig{
+					Enabled:     true,
+					Endpoint:    "decision-maker.example.com:443",
+					ApiEndpoint: "https://control-plane-api.dash0.com",
+					Dataset:     "default",
+				},
+				DevelopmentMode: true,
+			}
+			config.Images.SignalControlCollectorImage = "signal-control-collector:latest"
+			configMap, err := cmTypeDef.assembleConfigMapFunction(config, monitoredNamespaces, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			exporters := ReadFromMap(parseConfigMapContent(configMap), []string{"exporters"}).(map[string]any)
+			Expect(exporters).To(HaveKey("otlp/signal-control-collector"))
+			for name, exporter := range exporters {
+				if name == "debug" {
+					continue
+				}
+				Expect(ReadFromMap(exporter.(map[string]any), []string{"sending_queue"})).
+					To(Equal(expectedSendingQueue), fmt.Sprintf("%s: %s", cmTypeDef.cmType, name))
+			}
+		}
+	},
+		Entry("with defaults if no batch size settings are provided", nil, nil, map[string]any{
+			"sizer":      "items",
+			"queue_size": 8192000,
+			"batch": map[string]any{
+				"flush_timeout": "200ms",
+				"min_size":      8192,
+			},
+		}),
+		Entry("with max_size if sendBatchMaxSize is set", nil, ptr.To(uint32(16384)), map[string]any{
+			"sizer":      "items",
+			"queue_size": 16384000,
+			"batch": map[string]any{
+				"flush_timeout": "200ms",
+				"min_size":      8192,
+				"max_size":      16384,
+			},
+		}),
+		Entry("with min_size if sendBatchSize is set", ptr.To(uint32(4096)), nil, map[string]any{
+			"sizer":      "items",
+			"queue_size": 4096000,
+			"batch": map[string]any{
+				"flush_timeout": "200ms",
+				"min_size":      4096,
+			},
+		}),
+		Entry("with min_size and max_size if both are set", ptr.To(uint32(4096)), ptr.To(uint32(16384)), map[string]any{
+			"sizer":      "items",
+			"queue_size": 16384000,
+			"batch": map[string]any{
+				"flush_timeout": "200ms",
+				"min_size":      4096,
+				"max_size":      16384,
+			},
+		}),
+	)
 
-		Expect(err).ToNot(HaveOccurred())
-		collectorConfig := parseConfigMapContent(configMap)
-		batchProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "batch"})
-		Expect(batchProcessorRaw).ToNot(BeNil())
-		batchProcessor := batchProcessorRaw.(map[string]any)
-		Expect(batchProcessor).To(HaveLen(0))
-	}, daemonSetAndDeployment)
-
-	DescribeTable("should set send_batch_max_size on batch processor if requested", func(cmTypeDef configMapTypeDefinition) {
-		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			Exporters:         cmTestSingleDefaultOtlpExporter(),
-			KubernetesInfrastructureMetricsCollectionEnabled: true,
-			SendBatchMaxSize: ptr.To(uint32(16384)),
-		}, monitoredNamespaces, nil, nil, false)
-
-		Expect(err).ToNot(HaveOccurred())
-		collectorConfig := parseConfigMapContent(configMap)
-		batchProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "batch"})
-		Expect(batchProcessorRaw).ToNot(BeNil())
-		batchProcessor := batchProcessorRaw.(map[string]any)
-		Expect(batchProcessor).To(HaveLen(1))
-		sendBatchMaxSize := ReadFromMap(batchProcessor, []string{"send_batch_max_size"})
-		Expect(sendBatchMaxSize).To(Equal(16384))
-	}, daemonSetAndDeployment)
-
-	DescribeTable("should set send_batch_size on batch processor if requested", func(cmTypeDef configMapTypeDefinition) {
-		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			Exporters:         cmTestSingleDefaultOtlpExporter(),
-			KubernetesInfrastructureMetricsCollectionEnabled: true,
-			SendBatchSize: ptr.To(uint32(4096)),
-		}, monitoredNamespaces, nil, nil, false)
-
-		Expect(err).ToNot(HaveOccurred())
-		collectorConfig := parseConfigMapContent(configMap)
-		batchProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "batch"})
-		Expect(batchProcessorRaw).ToNot(BeNil())
-		batchProcessor := batchProcessorRaw.(map[string]any)
-		Expect(batchProcessor).To(HaveLen(1))
-		sendBatchSize := ReadFromMap(batchProcessor, []string{"send_batch_size"})
-		Expect(sendBatchSize).To(Equal(4096))
-	}, daemonSetAndDeployment)
-
-	DescribeTable("should set both send_batch_size and send_batch_max_size on batch processor if requested", func(cmTypeDef configMapTypeDefinition) {
-		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			Exporters:         cmTestSingleDefaultOtlpExporter(),
-			KubernetesInfrastructureMetricsCollectionEnabled: true,
-			SendBatchSize:    ptr.To(uint32(4096)),
-			SendBatchMaxSize: ptr.To(uint32(16384)),
-		}, monitoredNamespaces, nil, nil, false)
-
-		Expect(err).ToNot(HaveOccurred())
-		collectorConfig := parseConfigMapContent(configMap)
-		batchProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "batch"})
-		Expect(batchProcessorRaw).ToNot(BeNil())
-		batchProcessor := batchProcessorRaw.(map[string]any)
-		Expect(batchProcessor).To(HaveLen(2))
-		sendBatchSize := ReadFromMap(batchProcessor, []string{"send_batch_size"})
-		Expect(sendBatchSize).To(Equal(4096))
-		sendBatchMaxSize := ReadFromMap(batchProcessor, []string{"send_batch_max_size"})
-		Expect(sendBatchMaxSize).To(Equal(16384))
-	}, daemonSetAndDeployment)
+	It("should not use the batch processor in any collector", func() {
+		for _, sceOnlyMode := range []bool{false, true} {
+			config := &oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestMultipleNamespacedOtlpExporters(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				SendBatchSize:    ptr.To(uint32(4096)),
+				SendBatchMaxSize: ptr.To(uint32(16384)),
+				SignalControl: SignalControlConfig{
+					Enabled:                true,
+					SpamFilterEnabled:      true,
+					SignalToMetricsEnabled: true,
+					Endpoint:               "decision-maker.example.com:443",
+					ApiEndpoint:            "https://control-plane-api.dash0.com",
+					Dataset:                "default",
+				},
+				SignalControlSceOnlyMode: sceOnlyMode,
+				EbpfProfilerEnabled:      true,
+			}
+			config.Images.SignalControlCollectorImage = "signal-control-collector:latest"
+			configMaps := map[string]func() (*corev1.ConfigMap, error){
+				"daemonset": func() (*corev1.ConfigMap, error) {
+					return assembleDaemonSetCollectorConfigMapForTest(config, monitoredNamespaces, nil, nil, false)
+				},
+				"deployment": func() (*corev1.ConfigMap, error) {
+					return assembleDeploymentCollectorConfigMapForTest(config, monitoredNamespaces, nil, nil, false)
+				},
+				"signal-control": func() (*corev1.ConfigMap, error) {
+					return assembleSignalControlCollectorConfigMap(config, monitoredNamespaces, false)
+				},
+			}
+			for name, assemble := range configMaps {
+				desc := fmt.Sprintf("%s, SCE-only mode: %t", name, sceOnlyMode)
+				configMap, err := assemble()
+				Expect(err).ToNot(HaveOccurred(), desc)
+				collectorConfig := parseConfigMapContent(configMap)
+				Expect(ReadFromMap(collectorConfig, []string{"processors"})).ToNot(HaveKey("batch"), desc)
+				pipelines := readPipelines(collectorConfig)
+				Expect(pipelines).ToNot(BeEmpty(), desc)
+				for pipelineName := range pipelines {
+					Expect(readPipelineProcessors(pipelines, pipelineName)).
+						ToNot(ContainElement("batch"), fmt.Sprintf("%s: %s", desc, pipelineName))
+				}
+			}
+		}
+	})
 
 	DescribeTable("should not render resource processor if the cluster name has not been set", func(cmTypeDef configMapTypeDefinition) {
 		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
@@ -5991,7 +6032,6 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					"resource/cluster_uid",
 					"resource/dash0_operator_attributes",
 					"filter/logs/custom_telemetry_filter",
-					"batch",
 					"transform/logs/custom_telemetry_transform",
 					"transform/resources",
 				}))
