@@ -6,7 +6,8 @@ name: Trigger E2E tests via PR comment
 # Supported commands (as the first word of the comment, optionally followed by a Ginkgo focus on the same line):
 # - /run-e2e: run the e2e tests
 # - /run-e2e-then-review: run the e2e tests, and mark the PR as ready for review if they pass
-# - /run-e2e-then-merge: run the e2e tests, and enable auto-merge if they pass (refused for draft PRs)
+# - /run-e2e-then-merge: run the e2e tests, and enable auto-merge if they pass (refused for draft PRs, and when the PR
+#   head has moved since the tests started)
 
 # Every comment is a separate command, a newer comment never supersedes an older one.
 # jactionlint ignore=concurrency-limits

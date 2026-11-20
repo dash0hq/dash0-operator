@@ -281,17 +281,26 @@ jobs:
                   outcome = ':information_source: The pull request is already ready for review, nothing to do.';
                 }
               } else if (action === 'merge') {
+                const testedSha = process.env.GITHUB_SHA;
                 if (pr.draft) {
                   outcome = ':x: The pull request is a draft, not enabling auto-merge.';
                   failed = true;
+                } else if (pr.head.sha !== testedSha) {
+                  outcome =
+                    `:x: The pull request head has moved from \`${testedSha}\` (tested) to \`${pr.head.sha}\` ` +
+                    'since the tests ran, not enabling auto-merge.';
+                  failed = true;
                 } else {
+                  // expectedHeadOid makes GitHub reject the mutation if a push happened after the check above.
                   await github.graphql(
-                    `mutation($id: ID!) {
-                      enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: SQUASH }) {
+                    `mutation($id: ID!, $sha: GitObjectID!) {
+                      enablePullRequestAutoMerge(
+                        input: { pullRequestId: $id, mergeMethod: SQUASH, expectedHeadOid: $sha }
+                      ) {
                         pullRequest { number }
                       }
                     }`,
-                    { id: pr.node_id },
+                    { id: pr.node_id, sha: testedSha },
                   );
                   outcome =
                     ':rocket: Enabled auto-merge. The pull request will be added to the merge queue once all ' +
