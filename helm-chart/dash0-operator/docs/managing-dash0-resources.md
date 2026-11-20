@@ -192,6 +192,8 @@ Prometheus rules will be mapped to Dash0 check rules as follows:
 * If the rule has the annotation `dash0-enabled=false`, the check rule will be synchronized but disabled in Dash0.
   This Prometheus annotation is not to be confused with the Kubernetes label `dash0.com/enable: false`, which removes
   the entire PrometheusRule resource (and all its check rules) from synchronization to Dash0 (see below).
+* The annotation `dash0.com/on-no-data` sets what Dash0 does when the query of the check rule returns no data (see
+  [Alerting When a Check Rule Returns No Data](#alerting-when-a-check-rule-returns-no-data)).
 * The group attribute `limit` is not supported by Dash0 and will be ignored.
 * The group attribute `partial_response_strategy` is not supported by Dash0 and will be ignored.
 * All labels (except for the ones explicitly mentioned in the conversion table below) will be listed under "Additional
@@ -211,8 +213,42 @@ Prometheus rules will be mapped to Dash0 check rules as follows:
 | `annotations/dash0-enabled`            | Denotes whether the check rule is enabled and should be evaluated.                                                | default: "true"; must be either "true" or "false"                                                                                                          |
 | `annotations/dash0-threshold-degraded` | Will be used in place of the token `$__threshold` in the expression, to determine whether the check is degraded   | If present, it needs to be a string that can be parsed to a float value according to the syntax described in https://go.dev/ref/spec#Floating-point_literals.   |
 | `annotations/dash0-threshold-critical` | Will be used in place of the token `$__threshold` in the expression, to determine whether the check is critical   | If present, it needs to be a string that can be parsed to a float value according to the syntax described in https://go.dev/ref/spec#Floating-point_literals.   |
+| `annotations/dash0.com/on-no-data`     | "When no data"                                                                                                    | default: "ignored"; must be "ignored", "degraded" or "critical"                                                                                            |
 | `annotations/*`                        | "Annotations"                                                                                                     | |
 | `labels/*`                             | "Additional labels"                                                                                               | |
+
+#### Alerting When a Check Rule Returns No Data
+
+By default, a check rule whose query returns no data does not open an issue.
+Set the annotation `dash0.com/on-no-data` to `degraded` or `critical` to open an issue with that status when the query
+returns no data.
+Dash0 opens one issue for the whole check rule, not one per series.
+The issue honors `for`, and it closes when data comes back and `keep_firing_for` has passed.
+The expression must have a top-level comparison, for example `sum(rate(...)) > 10`.
+
+The annotation follows the merge rule described above.
+Put it in the PrometheusRule metadata to apply it to every rule, or on a single rule to apply it only there.
+In this example, `requests-too-high` opens a critical issue on no data, and `errors-too-high` opens no issue:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: checkout-rules
+  annotations:
+    dash0.com/on-no-data: critical
+spec:
+  groups:
+    - name: checkout
+      interval: 1m
+      rules:
+        - alert: requests-too-high
+          expr: sum(rate({otel_metric_name="http.server.request.duration", service_name="checkout"}[5m])) > 100
+        - alert: errors-too-high
+          expr: sum(rate({otel_metric_name="http.server.request.duration", service_name="checkout", otel_span_status_code="ERROR"}[5m])) > 5
+          annotations:
+            dash0.com/on-no-data: ignored
+```
 
 You can remove a PrometheusRule resource from synchronization with Dash0 by adding the Kubernetes label
 `dash0.com/enable: false` to it.
