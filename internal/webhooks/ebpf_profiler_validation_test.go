@@ -83,7 +83,7 @@ func TestEbpfProfilerAdmission(t *testing.T) {
 				tc.modify(&spec)
 			}
 			handler := NewOperatorConfigurationValidationWebhookHandler(
-				fake.NewClientBuilder().WithScheme(scheme).Build(), tc.telemetryHelm, false, false,
+				fake.NewClientBuilder().WithScheme(scheme).Build(), tc.telemetryHelm, true, false, false,
 				util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 			handler.EbpfProfilerEnabledViaHelm = tc.profilerHelm
 			request := ebpfProfilerAdmissionRequest(t, spec)
@@ -142,7 +142,7 @@ func TestEbpfProfilerAdmission(t *testing.T) {
 				spec.Exports = append(spec.Exports, dash0common.Export{Grpc: &dash0common.GrpcConfiguration{Endpoint: "ingress.example.com:4317"}})
 			}
 			handler := NewOperatorConfigurationValidationWebhookHandler(
-				fake.NewClientBuilder().WithScheme(scheme).Build(), true, false, false,
+				fake.NewClientBuilder().WithScheme(scheme).Build(), true, true, false, false,
 				util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 			handler.EbpfProfilerEnabledViaHelm = tc.profilerHelm
 			request := ebpfProfilerAdmissionRequest(t, spec)

@@ -622,6 +622,40 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 			}),
 	)
 
+	It("should default the instrumentWorkloads.mode of the monitoring template to none if workload instrumentation is disabled", func() {
+		spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
+			AutoMonitorNamespaces: dash0v1alpha1.AutoMonitorNamespaces{
+				Enabled: new(true),
+			},
+		}
+		_, errorResponse := NewOperatorConfigurationMutatingWebhookHandler(k8sClient, false).
+			normalizeOperatorConfigurationResourceSpec(admission.Request{}, &spec, logger)
+		Expect(errorResponse).To(BeNil())
+		Expect(spec.MonitoringTemplate).ToNot(BeNil())
+		Expect(spec.MonitoringTemplate.Spec.InstrumentWorkloads.Mode).To(Equal(dash0common.InstrumentWorkloadsModeNone))
+		Expect(spec.MonitoringTemplate.Spec.InstrumentWorkloads.LabelSelector).To(Equal("dash0.com/enable!=false"))
+		Expect(*spec.MonitoringTemplate.Spec.LogCollection.Enabled).To(BeTrue())
+	})
+
+	It("should keep an explicit instrumentWorkloads.mode of the monitoring template if workload instrumentation is disabled", func() {
+		spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
+			AutoMonitorNamespaces: dash0v1alpha1.AutoMonitorNamespaces{
+				Enabled: new(true),
+			},
+			MonitoringTemplate: &dash0v1alpha1.MonitoringTemplate{
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode: dash0common.InstrumentWorkloadsModeAll,
+					},
+				},
+			},
+		}
+		_, errorResponse := NewOperatorConfigurationMutatingWebhookHandler(k8sClient, false).
+			normalizeOperatorConfigurationResourceSpec(admission.Request{}, &spec, logger)
+		Expect(errorResponse).To(BeNil())
+		Expect(spec.MonitoringTemplate.Spec.InstrumentWorkloads.Mode).To(Equal(dash0common.InstrumentWorkloadsModeAll))
+	})
+
 	DescribeTable("should set monitoring template defaults", func(testConfig setMonitoringTemplateDefaultsTestConfig) {
 		spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
 			AutoMonitorNamespaces: dash0v1alpha1.AutoMonitorNamespaces{
