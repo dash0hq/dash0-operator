@@ -392,6 +392,9 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 								"OTEL_INJECTOR_CONFIG_FILE": {
 									Value: "/__otel_auto_instrumentation/injector/injector.conf",
 								},
+								"OTEL_JAVAAGENT_CONFIGURATION_FILE": {
+									Value: "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties",
+								},
 								"DASH0_OTEL_COLLECTOR_BASE_URL": {
 									Value: OTelCollectorNodeLocalBaseUrlTest,
 								},
@@ -455,6 +458,9 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 								},
 								"OTEL_INJECTOR_CONFIG_FILE": {
 									Value: "/__otel_auto_instrumentation/injector/injector.conf",
+								},
+								"OTEL_JAVAAGENT_CONFIGURATION_FILE": {
+									Value: "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties",
 								},
 								"DASH0_OTEL_COLLECTOR_BASE_URL": {
 									Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -544,6 +550,9 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 								"OTEL_INJECTOR_CONFIG_FILE": {
 									Value: "/__otel_auto_instrumentation/injector/injector.conf",
 								},
+								"OTEL_JAVAAGENT_CONFIGURATION_FILE": {
+									Value: "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties",
+								},
 								"DASH0_OTEL_COLLECTOR_BASE_URL": {
 									Value: OTelCollectorNodeLocalBaseUrlTest,
 								},
@@ -580,6 +589,9 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 								},
 								"OTEL_INJECTOR_CONFIG_FILE": {
 									Value: "/__otel_auto_instrumentation/injector/injector.conf",
+								},
+								"OTEL_JAVAAGENT_CONFIGURATION_FILE": {
+									Value: "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties",
 								},
 								"DASH0_NODE_IP": {
 									ValueFrom: "status.hostIP",

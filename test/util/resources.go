@@ -1094,6 +1094,10 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 			Value: "/__otel_auto_instrumentation/injector/injector.conf",
 		},
 		{
+			Name:  "OTEL_JAVAAGENT_CONFIGURATION_FILE",
+			Value: "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties",
+		},
+		{
 			Name: "OTEL_INJECTOR_K8S_NAMESPACE_NAME",
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{

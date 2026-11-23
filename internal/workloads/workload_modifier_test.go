@@ -213,6 +213,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							"OTEL_INJECTOR_CONFIG_FILE": {
 								Value: "/__otel_auto_instrumentation/injector/injector.conf",
 							},
+							"OTEL_JAVAAGENT_CONFIGURATION_FILE": {
+								Value: "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties",
+							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
 								Value: OTelCollectorNodeLocalBaseUrlTest,
 							},
@@ -276,6 +279,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							},
 							"OTEL_INJECTOR_CONFIG_FILE": {
 								Value: "/__otel_auto_instrumentation/injector/injector.conf",
+							},
+							"OTEL_JAVAAGENT_CONFIGURATION_FILE": {
+								Value: "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties",
 							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
 								Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -357,6 +363,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							"OTEL_INJECTOR_CONFIG_FILE": {
 								Value: "/__otel_auto_instrumentation/injector/injector.conf",
 							},
+							"OTEL_JAVAAGENT_CONFIGURATION_FILE": {
+								Value: "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties",
+							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
 								Value: OTelCollectorNodeLocalBaseUrlTest,
 							},
@@ -396,6 +405,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							},
 							"OTEL_INJECTOR_CONFIG_FILE": {
 								Value: "/__otel_auto_instrumentation/injector/injector.conf",
+							},
+							"OTEL_JAVAAGENT_CONFIGURATION_FILE": {
+								Value: "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties",
 							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
 								Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -3100,6 +3112,141 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					util.OtelPropagatorsEnvVarName: nil,
+				},
+			}),
+		)
+
+		type otelJavaagentConfigurationFileTest struct {
+			existingEnvVars                []corev1.EnvVar
+			namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig
+			expectedEnvVars                map[string]*EnvVarExpectation
+		}
+
+		const javaagentDefaultsFile = "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties"
+
+		DescribeTable("should point the OpenTelemetry Java agent at the defaults file",
+			func(testConfig otelJavaagentConfigurationFileTest) {
+				container := &corev1.Container{}
+				if testConfig.existingEnvVars != nil {
+					container.Env = testConfig.existingEnvVars
+				}
+
+				NewResourceModifier(
+					clusterInstrumentationConfigWithInitContainer,
+					testConfig.namespaceInstrumentationConfig,
+					testActor,
+					logger,
+				).addEnvironmentVariables(
+					container,
+					&metav1.ObjectMeta{},
+					&metav1.ObjectMeta{},
+				)
+
+				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, container.Env)
+			},
+			Entry("should set OTEL_JAVAAGENT_CONFIGURATION_FILE and no OTEL_PROPAGATORS when nothing is configured", otelJavaagentConfigurationFileTest{
+				namespaceInstrumentationConfig: DefaultNamespaceInstrumentationConfig,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelJavaagentConfigurationFileName: {Value: javaagentDefaultsFile},
+					util.OtelPropagatorsEnvVarName:           nil,
+				},
+			}),
+			Entry("should set OTEL_PROPAGATORS from traceContext.propagators, which overrides the defaults file", otelJavaagentConfigurationFileTest{
+				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
+					TraceContextPropagators: new("tracecontext,baggage"),
+				},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelJavaagentConfigurationFileName: {Value: javaagentDefaultsFile},
+					util.OtelPropagatorsEnvVarName:           {Value: "tracecontext,baggage"},
+				},
+			}),
+			Entry("should keep a user-set OTEL_PROPAGATORS, which overrides traceContext.propagators and the defaults file", otelJavaagentConfigurationFileTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  util.OtelPropagatorsEnvVarName,
+					Value: "b3multi",
+				}},
+				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
+					TraceContextPropagators: new("tracecontext,baggage"),
+				},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelJavaagentConfigurationFileName: {Value: javaagentDefaultsFile},
+					util.OtelPropagatorsEnvVarName:           {Value: "b3multi"},
+				},
+			}),
+			Entry("should keep a user-set OTEL_JAVAAGENT_CONFIGURATION_FILE", otelJavaagentConfigurationFileTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelJavaagentConfigurationFileName,
+					Value: "/app/otel.properties",
+				}},
+				namespaceInstrumentationConfig: DefaultNamespaceInstrumentationConfig,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelJavaagentConfigurationFileName: {Value: "/app/otel.properties"},
+				},
+			}),
+			Entry("should keep a user-set OTEL_JAVAAGENT_CONFIGURATION_FILE that uses ValueFrom", otelJavaagentConfigurationFileTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name: envVarOtelJavaagentConfigurationFileName,
+					ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{FieldPath: "field.path"},
+					},
+				}},
+				namespaceInstrumentationConfig: DefaultNamespaceInstrumentationConfig,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelJavaagentConfigurationFileName: {ValueFrom: "field.path"},
+				},
+			}),
+			Entry("should replace an empty OTEL_JAVAAGENT_CONFIGURATION_FILE", otelJavaagentConfigurationFileTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelJavaagentConfigurationFileName,
+					Value: " ",
+				}},
+				namespaceInstrumentationConfig: DefaultNamespaceInstrumentationConfig,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelJavaagentConfigurationFileName: {Value: javaagentDefaultsFile},
+				},
+			}),
+		)
+
+		DescribeTable("should remove OTEL_JAVAAGENT_CONFIGURATION_FILE when uninstrumenting workloads only when we set it",
+			func(testConfig otelJavaagentConfigurationFileTest) {
+				container := &corev1.Container{Env: testConfig.existingEnvVars}
+
+				NewResourceModifier(
+					clusterInstrumentationConfigWithInitContainer,
+					testConfig.namespaceInstrumentationConfig,
+					testActor,
+					logger,
+				).removeEnvironmentVariables(container)
+
+				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, container.Env)
+			},
+			Entry("should remove the value set by the operator", otelJavaagentConfigurationFileTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelJavaagentConfigurationFileName,
+					Value: javaagentDefaultsFile,
+				}},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelJavaagentConfigurationFileName: nil,
+				},
+			}),
+			Entry("should keep a user-set value", otelJavaagentConfigurationFileTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelJavaagentConfigurationFileName,
+					Value: "/app/otel.properties",
+				}},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelJavaagentConfigurationFileName: {Value: "/app/otel.properties"},
+				},
+			}),
+			Entry("should keep a user-set value that uses ValueFrom", otelJavaagentConfigurationFileTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name: envVarOtelJavaagentConfigurationFileName,
+					ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{FieldPath: "field.path"},
+					},
+				}},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelJavaagentConfigurationFileName: {ValueFrom: "field.path"},
 				},
 			}),
 		)

@@ -48,6 +48,8 @@ const (
 	envVarOtelInjectorConfigFilePythonEnabledValue                      = "/__otel_auto_instrumentation/injector/injector-with-python.conf"
 	envVarOtelInjectorConfigFileRubyEnabledValue                        = "/__otel_auto_instrumentation/injector/injector-with-ruby.conf"
 	envVarOtelInjectorConfigFilePythonAndRubyEnabledValue               = "/__otel_auto_instrumentation/injector/injector-with-python-and-ruby.conf"
+	envVarOtelJavaagentConfigurationFileName                            = "OTEL_JAVAAGENT_CONFIGURATION_FILE"
+	envVarOtelJavaagentConfigurationFileValue                           = "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties"
 	envVarOtelExporterOtlpEndpointName                                  = "OTEL_EXPORTER_OTLP_ENDPOINT"
 	envVarOtelExporterOtlpProtocolName                                  = "OTEL_EXPORTER_OTLP_PROTOCOL"
 	envVarOtelLogsExporterName                                          = "OTEL_LOGS_EXPORTER"
@@ -694,6 +696,7 @@ func (m *ResourceModifier) addEnvironmentVariables(
 	)
 
 	m.addOTelPropagatorsEnvVar(container)
+	m.addOtelJavaagentConfigurationFileEnvVar(container)
 
 	m.addCaptureSqlQueryParametersEnvVar(container)
 
@@ -1242,6 +1245,23 @@ func otelPropagatorsCanBeUpdatedForContainer(container *corev1.Container, namesp
 	}
 }
 
+// addOtelJavaagentConfigurationFileEnvVar points the OpenTelemetry Java agent at the defaults file shipped in the
+// instrumentation image, unless the container already sets OTEL_JAVAAGENT_CONFIGURATION_FILE. Only the Java agent reads
+// this variable, and it ranks the file below environment variables and system properties, so OTEL_PROPAGATORS and
+// -Dotel.* settings override the defaults.
+func (m *ResourceModifier) addOtelJavaagentConfigurationFileEnvVar(container *corev1.Container) {
+	if isSet, _ := envVarIsSetAndNotEmpty(container, envVarOtelJavaagentConfigurationFileName); isSet {
+		return
+	}
+	addOrReplaceEnvironmentVariable(
+		container,
+		corev1.EnvVar{
+			Name:  envVarOtelJavaagentConfigurationFileName,
+			Value: envVarOtelJavaagentConfigurationFileValue,
+		},
+	)
+}
+
 // addCaptureSqlQueryParametersEnvVar reconciles the SQL query parameter capture environment variables on the
 // container. When the monitoring resource enables capture, missing env vars in CaptureSqlQueryParametersEnvVarNames
 // are added with Value="true". When capture is disabled, env vars previously written by the operator (i.e. whose
@@ -1707,6 +1727,7 @@ func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Containe
 
 	m.removeOtelExporterOtlpEnvVarsIfSetByOperator(container)
 	m.removeOtelPropagatorsIfCurrentValueMatchesConfig(container)
+	m.removeOtelJavaagentConfigurationFileIfSetByOperator(container)
 	m.removeCaptureSqlQueryParametersIfCurrentValueMatchesConfig(container)
 	m.removeOtelLogsExporterEnvVar(container)
 
@@ -1799,6 +1820,14 @@ func (m *ResourceModifier) removeOtelPropagatorsIfCurrentValueMatchesConfig(cont
 			removeEnvironmentVariable(container, util.OtelPropagatorsEnvVarName)
 		}
 	}
+}
+
+func (m *ResourceModifier) removeOtelJavaagentConfigurationFileIfSetByOperator(container *corev1.Container) {
+	idx := findEnvVarIdx(container, envVarOtelJavaagentConfigurationFileName)
+	if idx < 0 || !envVarHasValue(container, idx, envVarOtelJavaagentConfigurationFileValue) {
+		return
+	}
+	removeEnvironmentVariable(container, envVarOtelJavaagentConfigurationFileName)
 }
 
 func (m *ResourceModifier) removeCaptureSqlQueryParametersIfCurrentValueMatchesConfig(container *corev1.Container) {

@@ -25,7 +25,8 @@ COPY jvm /dash0-instrumentation/jvm
 WORKDIR /dash0-instrumentation/jvm
 RUN ./mvnw dependency:copy-dependencies \
   && cp ./target/dependency/opentelemetry-javaagent-*.jar ./build/opentelemetry-javaagent.jar \
-  && cp pom.xml ./build/pom.xml
+  && cp pom.xml ./build/pom.xml \
+  && cp otel-javaagent-defaults.properties ./build/otel-javaagent-defaults.properties
 
 # build Node.js artifacts
 FROM node:26.3.0-alpine3.22 AS build-node-js
