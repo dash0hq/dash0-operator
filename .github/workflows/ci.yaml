@@ -518,6 +518,20 @@ jobs:
           context: olm/build/catalog
           file: olm/catalog/catalog.Dockerfile
 
+  # After the bundle image of a release has been pushed, pushes the branch that submits the release to the OpenShift
+  # community catalog to the fork dash0hq/community-operators-prod. A person opens the pull request from the compare link
+  # in the job summary.
+  push_community_operator_branch:
+    name: Push Community Catalog Submission Branch
+    needs:
+      - build_and_push_olm_bundle_image
+    if: ${{ always() && contains(github.ref, 'refs/tags/') && needs.build_and_push_olm_bundle_image.result == 'success' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/push-community-operator-branch.yaml
+    secrets:
+      COMMUNITY_OPERATORS_SYNC_APP_PRIVATE_KEY: ${{ secrets.COMMUNITY_OPERATORS_SYNC_APP_PRIVATE_KEY }}
+
   e2e_tests:
     name: End-to-end Tests
     needs:
