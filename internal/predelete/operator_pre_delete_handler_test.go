@@ -10,11 +10,14 @@ import (
 	"time"
 
 	appv1 "k8s.io/api/apps/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	dash0dashv1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/controller"
 
@@ -158,6 +161,35 @@ var _ = Describe("Uninstalling the Dash0 operator (pre-delete hook)", Ordered, f
 			VerifyMonitoringResourceByNameDoesNotExist(ctx, k8sClient, g, dash0MonitoringResourceName2)
 		}, testTimeout, pollingInterval).Should(Succeed())
 		Eventually(handlerHasFinished, testTimeout).Should(BeClosed())
+	})
+})
+
+var _ = Describe("Uninstalling the Dash0 operator (dataset finalizers)", func() {
+	ctx := context.Background()
+	datasetName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dataset"}
+
+	It("should remove the finalizer from every Dash0 dataset resource", func() {
+		EnsureTestNamespaceExists(ctx, k8sClient)
+		dataset := &dash0dashv1alpha1.Dash0Dataset{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       datasetName.Name,
+				Namespace:  datasetName.Namespace,
+				Finalizers: []string{dash0dashv1alpha1.DatasetFinalizerId},
+			},
+			Spec: dash0dashv1alpha1.Dash0DatasetSpec{
+				Slug:    "staging",
+				Display: dash0dashv1alpha1.Dash0DatasetDisplay{Name: "Staging"},
+			},
+		}
+		Expect(k8sClient.Create(ctx, dataset)).To(Succeed())
+		Expect(k8sClient.Delete(ctx, dataset)).To(Succeed())
+
+		Expect(preDeleteHandler.RemoveAllDatasetFinalizers()).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, datasetName, &dash0dashv1alpha1.Dash0Dataset{})
+			g.Expect(apierrors.IsNotFound(err)).To(BeTrue(), "expected the dataset resource to be gone, got %v", err)
+		}, testTimeout, pollingInterval).Should(Succeed())
 	})
 })
 

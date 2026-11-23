@@ -16,7 +16,9 @@ import (
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	dash0dashv1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -46,6 +48,9 @@ func NewOperatorPreDeleteHandlerFromConfig(config *rest.Config) (*OperatorPreDel
 		return nil, err
 	}
 	if err := dash0v1beta1.AddToScheme(s); err != nil {
+		return nil, err
+	}
+	if err := dash0dashv1alpha1.AddToScheme(s); err != nil {
 		return nil, err
 	}
 	k8sClient, err := client.New(config, client.Options{
@@ -92,6 +97,39 @@ func (h *OperatorPreDeleteHandler) DeleteAllMonitoringResources() error {
 	// predelete handler for the Dash0 monitoring resources is that the monitoring resource has a finalizer and needs
 	// to actually do work (uninstrumenting workloads, potentially remove the otel collector) before the resource can be
 	// deleted. The operator configuration resource does not have a finalizer and can be deleted without any cleanup.
+	return nil
+}
+
+// RemoveAllDatasetFinalizers removes the finalizer from every Dash0 dataset resource, so that the resources can be
+// deleted together with their CRD once the operator is gone. The datasets stay in Dash0, like the objects of all other
+// Dash0 resource types do on uninstall.
+func (h *OperatorPreDeleteHandler) RemoveAllDatasetFinalizers() error {
+	ctx := context.Background()
+
+	allDatasetResources := &dash0dashv1alpha1.Dash0DatasetList{}
+	if err := h.client.List(ctx, allDatasetResources); err != nil {
+		if meta.IsNoMatchError(err) || apierrors.IsNotFound(err) {
+			h.logger.Info("The Dash0 dataset resource definition has not been found, no finalizers to remove.")
+			return nil
+		}
+		return fmt.Errorf("failed to list all Dash0 dataset resources across all namespaces: %w", err)
+	}
+	for i := range allDatasetResources.Items {
+		datasetResource := &allDatasetResources.Items[i]
+		original := datasetResource.DeepCopy()
+		if !controllerutil.RemoveFinalizer(datasetResource, dash0dashv1alpha1.DatasetFinalizerId) {
+			continue
+		}
+		if err := h.client.Patch(ctx, datasetResource, client.MergeFrom(original)); err != nil &&
+			!apierrors.IsNotFound(err) {
+			return fmt.Errorf(
+				"failed to remove the finalizer from the Dash0 dataset resource %s/%s: %w",
+				datasetResource.Namespace,
+				datasetResource.Name,
+				err,
+			)
+		}
+	}
 	return nil
 }
 

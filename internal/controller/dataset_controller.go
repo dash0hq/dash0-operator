@@ -45,9 +45,17 @@ type DatasetReconciler struct {
 	initialSyncInProgress atomic.Bool
 	initialSyncHasHappend atomic.Bool
 	namespacedSyncMutex   selfmonitoringapiaccess.NamespaceMutex
+	startedAt             time.Time
 }
 
-const datasetFinalizerId = "operator.dash0.com/dash0-dataset-finalizer"
+const (
+	datasetDeleteRetryDelay = 30 * time.Second
+
+	// datasetApiConfigStartupGracePeriod is how long a delete waits for the default API config after the operator has
+	// started. The operator configuration resource is reconciled concurrently, so the config can arrive after the first
+	// delete request; when there is no config at all, the finalizer must not block the namespace forever.
+	datasetApiConfigStartupGracePeriod = 2 * time.Minute
+)
 
 var (
 	datasetReconcileRequestMetric otelmetric.Int64Counter
@@ -69,6 +77,7 @@ func NewDatasetReconciler(
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
 		namespacedSyncMutex:  *selfmonitoringapiaccess.NewNamespaceMutex(),
+		startedAt:            time.Now(),
 	}
 }
 
@@ -324,13 +333,6 @@ func (r *DatasetReconciler) Reconcile(
 		return r.deleteDatasetAndRemoveFinalizer(ctx, datasetResource, logger)
 	}
 
-	if controllerutil.AddFinalizer(datasetResource, datasetFinalizerId) {
-		if err := r.Update(ctx, datasetResource); err != nil {
-			logger.Error(err, "Failed to add the finalizer to the dataset resource, requeuing reconcile request.")
-			return ctrl.Result{}, err
-		}
-	}
-
 	unstructuredResource, err := structToMap(datasetResource)
 	if err != nil {
 		logger.Error(err, "cannot serialize the dataset resource")
@@ -343,7 +345,7 @@ func (r *DatasetReconciler) Reconcile(
 		return reconcile.Result{}, nil
 	}
 
-	synchronizeViaApiAndUpdateStatus(
+	syncResults, _ := synchronizeViaApiAndUpdateStatus(
 		ctx,
 		r,
 		unstructuredResource,
@@ -351,6 +353,15 @@ func (r *DatasetReconciler) Reconcile(
 		upsertAction,
 		logger,
 	)
+
+	// Without a sync there is nothing to delete in Dash0. Adding the finalizer only after a sync also keeps it from
+	// coming back after the operator's pre-delete hook has removed it and deleted the monitoring resources.
+	if syncResults != nil && controllerutil.AddFinalizer(datasetResource, dash0dashv1alpha1.DatasetFinalizerId) {
+		if err := r.Update(ctx, datasetResource); err != nil {
+			logger.Error(err, "Failed to add the finalizer to the dataset resource, requeuing reconcile request.")
+			return ctrl.Result{}, err
+		}
+	}
 
 	return reconcile.Result{}, nil
 }
@@ -362,7 +373,7 @@ func (r *DatasetReconciler) deleteDatasetAndRemoveFinalizer(
 	datasetResource *dash0dashv1alpha1.Dash0Dataset,
 	logger logd.Logger,
 ) (reconcile.Result, error) {
-	if !controllerutil.ContainsFinalizer(datasetResource, datasetFinalizerId) {
+	if !controllerutil.ContainsFinalizer(datasetResource, dash0dashv1alpha1.DatasetFinalizerId) {
 		return reconcile.Result{}, nil
 	}
 
@@ -372,7 +383,7 @@ func (r *DatasetReconciler) deleteDatasetAndRemoveFinalizer(
 		return reconcile.Result{}, err
 	}
 
-	syncResults := synchronizeViaApiAndUpdateStatus(
+	syncResults, preconditionsNotMetYet := synchronizeViaApiAndUpdateStatus(
 		ctx,
 		r,
 		unstructuredResource,
@@ -380,6 +391,13 @@ func (r *DatasetReconciler) deleteDatasetAndRemoveFinalizer(
 		deleteAction,
 		logger,
 	)
+	if preconditionsNotMetYet || (syncResults == nil && r.mightStillReceiveDefaultApiConfigs()) {
+		logger.Info(
+			"Cannot delete the dataset in Dash0 yet, keeping the finalizer and retrying.",
+			"name", client.ObjectKeyFromObject(datasetResource).String(),
+		)
+		return reconcile.Result{RequeueAfter: datasetDeleteRetryDelay}, nil
+	}
 	if syncResults == nil {
 		// Without an API config the dataset cannot be deleted, and keeping the finalizer would block the deletion of
 		// the namespace forever.
@@ -396,12 +414,18 @@ func (r *DatasetReconciler) deleteDatasetAndRemoveFinalizer(
 		}
 	}
 
-	controllerutil.RemoveFinalizer(datasetResource, datasetFinalizerId)
+	controllerutil.RemoveFinalizer(datasetResource, dash0dashv1alpha1.DatasetFinalizerId)
 	if err = r.Update(ctx, datasetResource); err != nil {
 		logger.Error(err, "Failed to remove the finalizer from the dataset resource, requeuing reconcile request.")
 		return reconcile.Result{}, err
 	}
 	return reconcile.Result{}, nil
+}
+
+// mightStillReceiveDefaultApiConfigs returns true when there is no default API config yet, but the operator has started
+// so recently that the operator configuration resource might not have been reconciled.
+func (r *DatasetReconciler) mightStillReceiveDefaultApiConfigs() bool {
+	return len(r.defaultApiConfigs.Get()) == 0 && time.Since(r.startedAt) < datasetApiConfigStartupGracePeriod
 }
 
 func (r *DatasetReconciler) MapResourceToApiCalls(
@@ -487,6 +511,10 @@ func upsertDataset(
 		result, err = apiClient.UpdateDataset(ctx, slug, datasetDefinition)
 	case dash0apiclient.IsNotFound(err):
 		result, err = apiClient.CreateDataset(ctx, datasetDefinition)
+		// The API ignores spec.permissions on create.
+		if err == nil && datasetDefinition.Spec.Permissions != nil && len(*datasetDefinition.Spec.Permissions) > 0 {
+			result, err = apiClient.UpdateDataset(ctx, slug, datasetDefinition)
+		}
 	}
 	if err != nil {
 		return "", err

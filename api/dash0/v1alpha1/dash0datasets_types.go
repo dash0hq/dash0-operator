@@ -9,6 +9,9 @@ import (
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 )
 
+// DatasetFinalizerId is the finalizer that keeps a Dash0Dataset resource until its dataset has been deleted in Dash0.
+const DatasetFinalizerId = "operator.dash0.com/dash0-dataset-finalizer"
+
 // Dash0Dataset is the Schema for the Dash0Dataset API
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status

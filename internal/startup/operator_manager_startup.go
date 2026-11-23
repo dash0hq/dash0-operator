@@ -2926,6 +2926,10 @@ func deleteMonitoringResourcesInAllNamespaces(logger logd.Logger) error {
 		logger.Error(err, "Failed to delete all monitoring resources.")
 		return err
 	}
+	if err = handler.RemoveAllDatasetFinalizers(); err != nil {
+		logger.Error(err, "Failed to remove the finalizers of all dataset resources.")
+		return err
+	}
 	return nil
 }
 

@@ -76,7 +76,7 @@ var _ = Describe(
 		createAndDeleteDatasetResourceWithFinalizer := func() {
 			GinkgoHelper()
 			dataset := createDatasetResource()
-			dataset.Finalizers = []string{datasetFinalizerId}
+			dataset.Finalizers = []string{dash0dashv1alpha1.DatasetFinalizerId}
 			Expect(k8sClient.Create(ctx, dataset)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, dataset)).To(Succeed())
 		}
@@ -124,7 +124,7 @@ var _ = Describe(
 		)
 
 		It(
-			"creates the dataset with POST when it does not exist", func() {
+			"creates the dataset with POST and sets its permissions with PUT when it does not exist", func() {
 				gock.New(ApiEndpointTest).Get(datasetSlugPath).Times(1).Reply(404)
 				gock.New(ApiEndpointTest).
 					Post(datasetCollection).
@@ -132,6 +132,13 @@ var _ = Describe(
 					AddMatcher(datasetRequestBodyMatcher(fmt.Sprintf(datasetOriginPattern, clusterId))).
 					Times(1).
 					Reply(201).
+					JSON(datasetResponse(clusterId))
+				gock.New(ApiEndpointTest).
+					Put(datasetSlugPath).
+					MatchHeader("Authorization", AuthorizationHeaderTest).
+					AddMatcher(datasetPermissionsMatcher("basic_member")).
+					Times(1).
+					Reply(200).
 					JSON(datasetResponse(clusterId))
 
 				Expect(k8sClient.Create(ctx, createDatasetResource())).To(Succeed())
@@ -145,7 +152,7 @@ var _ = Describe(
 					fmt.Sprintf(datasetOriginPattern, clusterId),
 					"",
 				)
-				Expect(getDatasetResource(ctx).Finalizers).To(ContainElement(datasetFinalizerId))
+				Expect(getDatasetResource(ctx).Finalizers).To(ContainElement(dash0dashv1alpha1.DatasetFinalizerId))
 				Expect(gock.IsDone()).To(BeTrue())
 			},
 		)
@@ -299,7 +306,7 @@ var _ = Describe(
 				createAndDeleteDatasetResourceWithFinalizer()
 				Expect(reconcileDatasetAndReturnError()).To(MatchError(ContainSubstring("unexpected status code 500")))
 
-				Expect(getDatasetResource(ctx).Finalizers).To(ContainElement(datasetFinalizerId))
+				Expect(getDatasetResource(ctx).Finalizers).To(ContainElement(dash0dashv1alpha1.DatasetFinalizerId))
 				Expect(gock.IsDone()).To(BeTrue())
 			},
 		)
@@ -308,6 +315,62 @@ var _ = Describe(
 			"removes the finalizer without deleting the dataset when there is no monitoring resource", func() {
 				createAndDeleteDatasetResourceWithFinalizer()
 				DeleteMonitoringResourceIfItExists(ctx, k8sClient)
+				reconcileDataset()
+
+				verifyDatasetResourceIsGone(ctx)
+			},
+		)
+
+		It(
+			"does not add the finalizer when the dataset is not synchronized", func() {
+				DeleteMonitoringResourceIfItExists(ctx, k8sClient)
+				Expect(k8sClient.Create(ctx, createDatasetResource())).To(Succeed())
+				reconcileDataset()
+
+				Expect(getDatasetResource(ctx).Finalizers).NotTo(ContainElement(dash0dashv1alpha1.DatasetFinalizerId))
+			},
+		)
+
+		It(
+			"keeps the finalizer and retries when the API config of the namespace has not been loaded yet", func() {
+				DeleteMonitoringResourceIfItExists(ctx, k8sClient)
+				EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+				createAndDeleteDatasetResourceWithFinalizer()
+
+				result, err := datasetReconciler.Reconcile(
+					ctx, reconcile.Request{
+						NamespacedName: types.NamespacedName{Namespace: TestNamespaceName, Name: datasetName},
+					},
+				)
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.RequeueAfter).To(Equal(datasetDeleteRetryDelay))
+				Expect(getDatasetResource(ctx).Finalizers).To(ContainElement(dash0dashv1alpha1.DatasetFinalizerId))
+			},
+		)
+
+		It(
+			"keeps the finalizer and retries when the operator has just started and has no API config yet", func() {
+				datasetReconciler.defaultApiConfigs.Clear()
+				createAndDeleteDatasetResourceWithFinalizer()
+
+				result, err := datasetReconciler.Reconcile(
+					ctx, reconcile.Request{
+						NamespacedName: types.NamespacedName{Namespace: TestNamespaceName, Name: datasetName},
+					},
+				)
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.RequeueAfter).To(Equal(datasetDeleteRetryDelay))
+				Expect(getDatasetResource(ctx).Finalizers).To(ContainElement(dash0dashv1alpha1.DatasetFinalizerId))
+			},
+		)
+
+		It(
+			"removes the finalizer when there is still no API config after the startup grace period", func() {
+				datasetReconciler.defaultApiConfigs.Clear()
+				datasetReconciler.startedAt = time.Now().Add(-datasetApiConfigStartupGracePeriod)
+				createAndDeleteDatasetResourceWithFinalizer()
 				reconcileDataset()
 
 				verifyDatasetResourceIsGone(ctx)
@@ -360,6 +423,18 @@ func datasetRequestBodyMatcher(expectedOrigin string) gock.MatchFunc {
 		return definition.Spec.Slug == datasetSlug &&
 			definition.Metadata.Name == datasetDisplayName &&
 			labels != nil && labels.Dash0Comorigin != nil && *labels.Dash0Comorigin == expectedOrigin, nil
+	}
+}
+
+func datasetPermissionsMatcher(expectedRole string) gock.MatchFunc {
+	return func(req *http.Request, _ *gock.Request) (bool, error) {
+		definition := dash0apiclient.DatasetDefinition{}
+		if err := json.NewDecoder(req.Body).Decode(&definition); err != nil {
+			return false, err
+		}
+		permissions := definition.Spec.Permissions
+		return permissions != nil && len(*permissions) == 1 &&
+			(*permissions)[0].Role != nil && *(*permissions)[0].Role == expectedRole, nil
 	}
 }
 

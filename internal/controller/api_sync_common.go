@@ -294,6 +294,10 @@ type preconditionValidationResult struct {
 	// precondition for synchronizing resources is not met (no API token etc.)
 	synchronizeResource bool
 
+	// preconditionsNotMetYet = true means that synchronizeResource is false for a reason that is likely to go away,
+	// for example because the API config of the namespace has not been loaded yet.
+	preconditionsNotMetYet bool
+
 	// syncDisabledViaLabel = false means that the resource has the label dash0.com/enable=false set; this will turn
 	// any create/update event for the object into a delete request (for most purposes it would be enough to ignore
 	// resources with that label, but when a resource has been synchronized earlier, and then the dash0.com/enable=false
@@ -382,8 +386,8 @@ func firstSynchronizationErrorAndStatusCode(result *ResourceToRequestsResult) (s
 
 // synchronizeViaApiAndUpdateStatus synchronizes the given dash0ApiResource to the Dash0 API. It either upserts or
 // deletes the corresponding Dash0 API object(s), depending on the action. For upserts it
-// then writes the synchronization result to the status of the resource. It returns nil when the preconditions for
-// synchronizing the resource are not met, for example when there is no Dash0 API config for its namespace.
+// then writes the synchronization result to the status of the resource. It returns nil results when the preconditions
+// are not met, and preconditionsNotMetYet = true when they are likely to be met later.
 //
 // The synchronization is executed for every validated API config (preconditionChecksResult.validatedApiConfigs).
 //
@@ -399,7 +403,7 @@ func synchronizeViaApiAndUpdateStatus(
 	ownedResource client.Object,
 	action apiAction,
 	logger logd.Logger,
-) *synchronizationResults {
+) (results *synchronizationResults, preconditionsNotMetYet bool) {
 	return synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 		ctx,
 		apiSyncReconciler,
@@ -434,7 +438,7 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 	action apiAction,
 	originsInNamespace *existingOriginsInNamespace,
 	logger logd.Logger,
-) *synchronizationResults {
+) (results *synchronizationResults, preconditionsNotMetYet bool) {
 	preconditionChecksResult := validatePreconditionsAndPreprocess(
 		ctx,
 		apiSyncReconciler,
@@ -442,7 +446,7 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 		logger,
 	)
 	if !preconditionChecksResult.synchronizeResource {
-		return nil
+		return nil, preconditionChecksResult.preconditionsNotMetYet
 	}
 
 	resourceHasBeenDeleted := action == deleteAction
@@ -634,7 +638,7 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 		resourceHasBeenDeleted,
 		logger,
 	)
-	return &syncResults
+	return &syncResults, false
 }
 
 // validatePreconditionsAndPreprocess checks whether a resource can be synchronized to the Dash0 API and applies common
@@ -686,7 +690,8 @@ func validatePreconditionsAndPreprocess(
 			),
 		)
 		return &preconditionValidationResult{
-			synchronizeResource: false,
+			synchronizeResource:    false,
+			preconditionsNotMetYet: true,
 		}
 	}
 	if monitoringRes == nil {
@@ -747,7 +752,8 @@ func validatePreconditionsAndPreprocess(
 			),
 		)
 		return &preconditionValidationResult{
-			synchronizeResource: false,
+			synchronizeResource:    false,
+			preconditionsNotMetYet: true,
 		}
 	}
 
