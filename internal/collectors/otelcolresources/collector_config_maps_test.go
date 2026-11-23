@@ -7687,6 +7687,43 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				expected:        dash0common.FilterTransformErrorModePropagate,
 			}),
 		)
+
+		It("should aggregate log record conditions from log_record and the deprecated log_records", func() {
+			result := aggregateCustomFilters(
+				[]NamespacedFilter{
+					{
+						Namespace: namespace1,
+						Filter: dash0common.Filter{
+							Logs: &dash0common.LogFilter{
+								LogRecordFilter:           []string{"condition 1"},
+								DeprecatedLogRecordFilter: []string{"condition 2"},
+							},
+						},
+					},
+					{
+						Namespace: namespace2,
+						Filter: dash0common.Filter{
+							Logs: &dash0common.LogFilter{
+								DeprecatedLogRecordFilter: []string{"condition 3"},
+							},
+						},
+					},
+				},
+				&dash0common.Filter{
+					Logs: &dash0common.LogFilter{
+						LogRecordFilter:           []string{"global condition 1"},
+						DeprecatedLogRecordFilter: []string{"global condition 2"},
+					},
+				},
+			)
+			Expect(result.LogRecordConditions).To(Equal([]string{
+				`resource.attributes["k8s.namespace.name"] == "namespace-1" and (condition 1)`,
+				`resource.attributes["k8s.namespace.name"] == "namespace-1" and (condition 2)`,
+				`resource.attributes["k8s.namespace.name"] == "namespace-2" and (condition 3)`,
+				"global condition 1",
+				"global condition 2",
+			}))
+		})
 	})
 
 	Describe("configurable transformation of telemetry per namespace", func() {

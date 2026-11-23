@@ -176,6 +176,7 @@ type commandLineArguments struct {
 	operatorConfigurationAutoMonitorNamespacesLabelSelector               string
 	operatorConfigurationInstrumentationDelivery                          dash0v1alpha1.InstrumentationDelivery
 	telemetryCollectionEnabled                                            bool
+	instrumentationEnabled                                                bool
 	featureSignalControlEnabled                                           bool
 	signalControlSceOnlyMode                                              bool
 	forceUseOpenTelemetryCollectorServiceUrl                              bool
@@ -741,6 +742,14 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 		true,
 		"The value for telemetryCollection.enabled on the operator configuration resource.",
 	)
+	fs.BoolVar(
+		&cliArgs.instrumentationEnabled,
+		"dash0-instrumentation-enabled",
+		true,
+		"Whether workloads are instrumented. If false, the operator does not instrument workloads and rejects "+
+			"Dash0 monitoring resources and monitoring templates with instrumentWorkloads.mode other than none. "+
+			"Setting --dash0-telemetry-collection-enabled=false implies --dash0-instrumentation-enabled=false.",
+	)
 	fs.StringVar(
 		&cliArgs.logLevel,
 		"dash0-log-level",
@@ -920,12 +929,22 @@ func parseCommandLineOptions(cliArgs *commandLineArguments, developmentMode bool
 		opts.Level = &lvl
 	}
 
+	deriveImpliedCommandLineArguments(cliArgs)
+	return opts, appliedEnvVars, nil
+}
+
+// deriveImpliedCommandLineArguments derives the values of command line arguments that are implied by other command line
+// arguments.
+func deriveImpliedCommandLineArguments(cliArgs *commandLineArguments) {
 	if cliArgs.disableOpenTelemetryCollectorHostPorts {
 		// disableOpenTelemetryCollectorHostPorts implies forceUseOpenTelemetryCollectorServiceUrl
 		cliArgs.forceUseOpenTelemetryCollectorServiceUrl = true
 	}
+
+	// Workload instrumentation is implicitly disabled when telemetry collection is disabled via Helm.
+	cliArgs.instrumentationEnabled = cliArgs.instrumentationEnabled && cliArgs.telemetryCollectionEnabled
+
 	cliArgs.signalControlSceOnlyMode = cliArgs.featureSignalControlEnabled && !cliArgs.telemetryCollectionEnabled
-	return opts, appliedEnvVars, nil
 }
 
 func setUpLogging(crZapOpts crzap.Opts) *zaputil.DelegatingZapCoreWrapper {
@@ -1807,6 +1826,8 @@ func startOperatorManager(
 
 		"telemetry collection enabled",
 		cliArgs.telemetryCollectionEnabled,
+		"instrumentation enabled",
+		cliArgs.instrumentationEnabled,
 		"feature Signal Control enabled",
 		cliArgs.featureSignalControlEnabled,
 		"Signal Control SCE-only mode",
@@ -2008,6 +2029,8 @@ func startDash0Controllers(
 		envVars.instrumentationDebug,
 		envVars.enablePythonAutoInstrumentation,
 		envVars.enableRubyAutoInstrumentation,
+		cliArgs.telemetryCollectionEnabled,
+		cliArgs.instrumentationEnabled,
 	)
 	clusterInstrumentationConfig.IsOpenShift = cliArgs.isOpenShift
 	if err = watchOperatorConfigurationInstrumentationSettings(
@@ -2501,6 +2524,7 @@ func startDash0Controllers(
 			k8sClient,
 			envVars.operatorNamespace,
 			operatorDeploymentSelfReference.CreationTimestamp.Time,
+			cliArgs.instrumentationEnabled,
 		)
 		setupLog.Info("Starting the auto-namespace-monitoring reconciler.")
 		if err := autoNamespaceMonitoringReconciler.SetupWithManager(mgr); err != nil {
@@ -2508,20 +2532,13 @@ func startDash0Controllers(
 		}
 		setupLog.Info("The auto-namespace-monitoring reconciler has been started.")
 
-		instrumentationWebhookHandler := webhooks.NewInstrumentationWebhookHandler(
+		if err := setupInstrumentationWebhook(
+			mgr,
 			k8sClient,
-			mgr.GetAPIReader(),
-			mgr.GetCache(),
-			mgr.GetEventRecorder("dash0-instrumentation-webhook"),
 			clusterInstrumentationConfig,
-		)
-		if err := instrumentationWebhookHandler.SetupWebhookWithManager(mgr); err != nil {
-			return fmt.Errorf("unable to create the instrumentation webhook: %w", err)
+		); err != nil {
+			return err
 		}
-		// For consistency, we update the extra config map in the instrumentation webhook handler as well.
-		// In case instrumentation-related settings have been changed (e.g., operator.initContainerResources), workloads
-		// that are created or updated afterwards will be instrumented with the updated settings.
-		extraConfigMapWatcher.AddClient(instrumentationWebhookHandler)
 	}
 
 	if err := setupResourceWebhooks(
@@ -2529,8 +2546,8 @@ func startDash0Controllers(
 		k8sClient,
 		envVars.operatorNamespace,
 		cliArgs.telemetryCollectionEnabled,
+		cliArgs.instrumentationEnabled,
 		cliArgs.featureSignalControlEnabled,
-		cliArgs.signalControlSceOnlyMode,
 		envVars.agent0ConnectorEnabled,
 		envVars.syntheticsWorkerEnabled,
 		envVars.ebpfProfilerEnabled,
@@ -2696,8 +2713,36 @@ func startMinimumKubeletVersionDetection(
 	)
 }
 
-// setupInstrumenters registers the instrument-at-startup task and creates the instrumenter used by the controllers and
-// webhooks.
+// setupInstrumentationWebhook registers the handler for the instrumentation webhook, unless workload instrumentation
+// is disabled. The Helm chart does not register the webhook configuration for the instrumentation webhook in that case.
+func setupInstrumentationWebhook(
+	mgr ctrl.Manager,
+	k8sClient client.Client,
+	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
+) error {
+	if !clusterInstrumentationConfig.InstrumentationEnabledViaHelm {
+		return nil
+	}
+	instrumentationWebhookHandler := webhooks.NewInstrumentationWebhookHandler(
+		k8sClient,
+		mgr.GetAPIReader(),
+		mgr.GetCache(),
+		mgr.GetEventRecorder("dash0-instrumentation-webhook"),
+		clusterInstrumentationConfig,
+	)
+	if err := instrumentationWebhookHandler.SetupWebhookWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to create the instrumentation webhook: %w", err)
+	}
+	// For consistency, we update the extra config map in the instrumentation webhook handler as well.
+	// In case instrumentation-related settings have been changed (e.g., operator.initContainerResources),
+	// workloads that are created or updated afterwards will be instrumented with the updated settings.
+	extraConfigMapWatcher.AddClient(instrumentationWebhookHandler)
+	return nil
+}
+
+// setupInstrumenters creates the instrumenter used by the controllers and webhooks, and registers the
+// instrument-at-startup task. If workload instrumentation is disabled, the instrument-at-startup task is not registered,
+// and the instrumenter only removes instrumentation from workloads.
 func setupInstrumenters(
 	mgr ctrl.Manager,
 	k8sClient client.Client,
@@ -2705,6 +2750,26 @@ func setupInstrumenters(
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
 	waitForOperatorConfigurationResource func(context.Context, logd.Logger),
 ) (*instrumentation.Instrumenter, error) {
+	instrumenter := instrumentation.NewInstrumenter(
+		k8sClient,
+		mgr.GetAPIReader(),
+		clientset,
+		mgr.GetEventRecorder("dash0-monitoring-controller"),
+		clusterInstrumentationConfig,
+	)
+	// For consistency, we update the extra config map in the instrumenter handler as well. However, even if
+	// instrumentation related settings have been changed (e.g. operator.initContainerResources), we will not
+	// re-instrument existing workloads to update the settings. It would make no sense, since the init container
+	// only runs once at pod startup of the workload, so changing resource settings for the init container afterwards
+	// is useless.
+	extraConfigMapWatcher.AddClient(instrumenter)
+
+	if !clusterInstrumentationConfig.InstrumentationEnabledViaHelm {
+		// The instrumenter is still needed to remove the instrumentation from workloads, when the instrumentWorkloads.mode
+		// of a monitoring resource is changed to none, or when a monitoring resource is deleted.
+		return instrumenter, nil
+	}
+
 	startupInstrumenter := instrumentation.NewInstrumenter(
 		// The k8s client will be added later, in internal/startup/instrument_at_startup.go#Start.
 		nil,
@@ -2722,20 +2787,6 @@ func setupInstrumenters(
 	); err != nil {
 		return nil, fmt.Errorf("unable to add instrument-at-startup task: %w", err)
 	}
-
-	instrumenter := instrumentation.NewInstrumenter(
-		k8sClient,
-		mgr.GetAPIReader(),
-		clientset,
-		mgr.GetEventRecorder("dash0-monitoring-controller"),
-		clusterInstrumentationConfig,
-	)
-	// For consistency, we update the extra config map in the instrumenter handler as well. However, even if
-	// instrumentation related settings have been changed (e.g. operator.initContainerResources), we will not
-	// re-instrument existing workloads to update the settings. It would make no sense, since the init container
-	// only runs once at pod startup of the workload, so changing resource settings for the init container afterwards
-	// is useless.
-	extraConfigMapWatcher.AddClient(instrumenter)
 	return instrumenter, nil
 }
 
@@ -3110,18 +3161,22 @@ func setupResourceWebhooks(
 	k8sClient client.Client,
 	operatorNamespace string,
 	telemetryCollectionEnabled bool,
+	instrumentationEnabled bool,
 	signalControlEnabled bool,
-	signalControlSceOnlyMode bool,
 	agent0ConnectorEnabled bool,
 	syntheticsWorkerEnabled bool,
 	ebpfProfilerEnabled bool,
 ) error {
-	if err := webhooks.NewOperatorConfigurationMutatingWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
+	if err := webhooks.NewOperatorConfigurationMutatingWebhookHandler(
+		k8sClient,
+		instrumentationEnabled,
+	).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration mutating webhook: %w", err)
 	}
 	operatorConfigurationValidationWebhookHandler := webhooks.NewOperatorConfigurationValidationWebhookHandler(
 		k8sClient,
 		telemetryCollectionEnabled,
+		instrumentationEnabled,
 		agent0ConnectorEnabled,
 		syntheticsWorkerEnabled,
 		extraConfig,
@@ -3146,11 +3201,17 @@ func setupResourceWebhooks(
 	if err := webhooks.NewMonitoringMutatingWebhookHandler(
 		k8sClient,
 		operatorNamespace,
-		signalControlSceOnlyMode,
+		telemetryCollectionEnabled,
+		instrumentationEnabled,
 	).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the monitoring mutating webhook: %w", err)
 	}
-	if err := webhooks.NewMonitoringValidationWebhookHandler(k8sClient, operatorNamespace).SetupWebhookWithManager(mgr); err != nil {
+	if err := webhooks.NewMonitoringValidationWebhookHandler(
+		k8sClient,
+		operatorNamespace,
+		telemetryCollectionEnabled,
+		instrumentationEnabled,
+	).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the monitoring validation webhook: %w", err)
 	}
 	if err := webhooks.SetupDash0MonitoringConversionWebhookWithManager(mgr); err != nil {

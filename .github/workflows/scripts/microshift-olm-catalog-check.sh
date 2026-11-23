@@ -9,6 +9,8 @@
 #
 # - MicroShift needs to run with its optional OLM package, like the MicroShift images of minc do.
 # - The catalog ghcr.io/dash0hq/dash0-operator-catalog:main-dev is installed unless CATALOG_IMAGE is set.
+# - If UPGRADE_FROM_CSV is set (e.g. dash0-operator.v0.162.0), the script installs that version from the catalog
+#   instead of the channel head, runs the checks, approves the upgrade to the channel head and runs the checks again.
 # - ALLOWED_KUBECTXS needs to contain the current kube context. Like the test scenarios, the script reads
 #   test-resources/.env, which takes precedence over the environment.
 # - The script does not remove the operator again, test-resources/bin/test-olm-catalog.sh cleanup does that.
@@ -36,6 +38,10 @@ monitored_namespace="$default_target_ns"
 olm_namespace=openshift-operator-lifecycle-manager
 olm_timeout=5m
 workload_timeout_seconds=300
+upgrade_from_csv="${UPGRADE_FROM_CSV:-}"
+upgrade_timeout_seconds=600
+# the Subscription that test-resources/bin/test-olm-catalog.sh creates
+subscription=dash0-operator
 
 # The path is relative to the repository root, which is also the working directory of the GitHub Actions job, so the
 # workflow can upload the directory as an artifact.
@@ -131,6 +137,120 @@ verify_scc() {
   log "the pod with the labels $selector has been admitted with the security context constraint $scc"
 }
 
+# Checks that the collectors are ready and admitted, that the monitoring resource is available and that no pod has been
+# rejected.
+verify_installation() {
+  deadline=$((SECONDS + workload_timeout_seconds))
+  local workload
+  for workload in "${collector_workloads[@]}"; do
+    wait_for_workload "$workload"
+  done
+  verify_scc app.kubernetes.io/name=dash0-operator,app.kubernetes.io/component=controller
+  verify_scc app.kubernetes.io/component=agent-collector
+
+  log "waiting for the monitoring resource to become available"
+  kubectl wait --namespace "$monitored_namespace" dash0monitorings.operator.dash0.com --all --for condition=Available \
+    --timeout 60s
+
+  # Security context constraints and pod security admission reject pods with the reason FailedCreate.
+  local failed_create_events
+  failed_create_events=$(kubectl get events --namespace "$operator_namespace" --field-selector reason=FailedCreate \
+    -o name)
+  if [[ -n "$failed_create_events" ]]; then
+    log "error: there are FailedCreate events in the namespace $operator_namespace:"
+    kubectl get events --namespace "$operator_namespace" --field-selector reason=FailedCreate
+    exit 1
+  fi
+}
+
+# Runs the command $2 with the arguments $3... every 5 seconds until it succeeds, $1 describes the awaited state. Fails
+# when the deadline (in SECONDS) passes.
+wait_until() {
+  local description=$1
+  shift
+  log "waiting until $description"
+  until "$@"; do
+    if ((SECONDS >= deadline)); then
+      log "error: timed out waiting until $description"
+      exit 1
+    fi
+    sleep 5
+  done
+}
+
+# Succeeds once OLM has resolved the upgrade from $upgrade_from_csv: the Subscription progresses to another CSV and
+# references the install plan for it. Sets upgrade_target_csv and upgrade_install_plan.
+upgrade_resolved() {
+  upgrade_target_csv=$(kubectl get subscriptions.operators.coreos.com "$subscription" \
+    --namespace "$operator_namespace" -o jsonpath='{.status.currentCSV}')
+  upgrade_install_plan=$(kubectl get subscriptions.operators.coreos.com "$subscription" \
+    --namespace "$operator_namespace" -o jsonpath='{.status.installPlanRef.name}')
+  if [[ -z "$upgrade_target_csv" || "$upgrade_target_csv" == "$upgrade_from_csv" || -z "$upgrade_install_plan" ]]; then
+    return 1
+  fi
+  local install_plan_csvs
+  install_plan_csvs=$(kubectl get installplans.operators.coreos.com "$upgrade_install_plan" \
+    --namespace "$operator_namespace" -o jsonpath='{.spec.clusterServiceVersionNames[*]}')
+  [[ " $install_plan_csvs " == *" $upgrade_target_csv "* ]]
+}
+
+# Succeeds once the Subscription has installed $upgrade_target_csv and the CSV has succeeded.
+upgrade_installed() {
+  local installed_csv
+  local phase
+  installed_csv=$(kubectl get subscriptions.operators.coreos.com "$subscription" \
+    --namespace "$operator_namespace" -o jsonpath='{.status.installedCSV}')
+  phase=$(kubectl get clusterserviceversions.operators.coreos.com "$upgrade_target_csv" \
+    --namespace "$operator_namespace" --ignore-not-found -o jsonpath='{.status.phase}')
+  [[ "$installed_csv" == "$upgrade_target_csv" && "$phase" == Succeeded ]]
+}
+
+# Succeeds once OLM has deleted the replaced CSV $upgrade_from_csv.
+replaced_csv_deleted() {
+  [[ -z "$(kubectl get clusterserviceversions.operators.coreos.com "$upgrade_from_csv" \
+    --namespace "$operator_namespace" --ignore-not-found -o name)" ]]
+}
+
+# Succeeds once the pod templates of all collector workloads use the image $1.
+collectors_use_image() {
+  local workload
+  local images
+  for workload in "${collector_workloads[@]}"; do
+    images=$(kubectl get --namespace "$operator_namespace" "$workload" \
+      -o jsonpath='{.spec.template.spec.containers[*].image}')
+    if [[ " $images " != *" $1 "* ]]; then
+      return 1
+    fi
+  done
+}
+
+# Approves the upgrade from $upgrade_from_csv to the channel head and waits until OLM has replaced the CSV and the new
+# operator version has updated the collector workloads.
+upgrade_operator() {
+  deadline=$((SECONDS + upgrade_timeout_seconds))
+  wait_until "OLM has resolved the upgrade from $upgrade_from_csv" upgrade_resolved
+  log "approving the install plan $upgrade_install_plan of the upgrade from $upgrade_from_csv to $upgrade_target_csv"
+  kubectl patch installplans.operators.coreos.com "$upgrade_install_plan" --namespace "$operator_namespace" \
+    --type merge --patch '{"spec":{"approved":true}}'
+  wait_until "$upgrade_target_csv has been installed" upgrade_installed
+  wait_until "the replaced CSV $upgrade_from_csv has been deleted" replaced_csv_deleted
+
+  local collector_image
+  collector_image=$(kubectl get deployment/dash0-operator-controller --namespace "$operator_namespace" \
+    -o jsonpath='{.spec.template.spec.containers[?(@.name=="manager")].env[?(@.name=="DASH0_COLLECTOR_IMAGE")].value}')
+  if [[ -z "$collector_image" ]]; then
+    log "error: the operator deployment has no DASH0_COLLECTOR_IMAGE environment variable"
+    exit 1
+  fi
+  wait_until "the collector workloads use the image $collector_image of $upgrade_target_csv" \
+    collectors_use_image "$collector_image"
+}
+
+collector_workloads=(
+  daemonset/dash0-operator-opentelemetry-collector-agent-daemonset
+  deployment/dash0-operator-cluster-metrics-collector-deployment
+)
+
 trap collect_diagnostics EXIT
 
 log "kubectl version:"
@@ -148,26 +268,18 @@ for deployment in olm-operator catalog-operator; do
   kubectl rollout status "deployment/$deployment" --namespace "$olm_namespace" --timeout="$olm_timeout"
 done
 
-log "installing the operator from the catalog ${CATALOG_IMAGE:-ghcr.io/dash0hq/dash0-operator-catalog:main-dev}"
-test-resources/bin/test-olm-catalog.sh
-
-deadline=$((SECONDS + workload_timeout_seconds))
-wait_for_workload daemonset/dash0-operator-opentelemetry-collector-agent-daemonset
-wait_for_workload deployment/dash0-operator-cluster-metrics-collector-deployment
-verify_scc app.kubernetes.io/name=dash0-operator,app.kubernetes.io/component=controller
-verify_scc app.kubernetes.io/component=agent-collector
-
-log "waiting for the monitoring resource to become available"
-kubectl wait --namespace "$monitored_namespace" dash0monitorings.operator.dash0.com --all --for condition=Available \
-  --timeout 60s
-
-# Security context constraints and pod security admission reject pods with the reason FailedCreate.
-failed_create_events=$(kubectl get events --namespace "$operator_namespace" --field-selector reason=FailedCreate \
-  -o name)
-if [[ -n "$failed_create_events" ]]; then
-  log "error: there are FailedCreate events in the namespace $operator_namespace:"
-  kubectl get events --namespace "$operator_namespace" --field-selector reason=FailedCreate
-  exit 1
+catalog_image="${CATALOG_IMAGE:-ghcr.io/dash0hq/dash0-operator-catalog:main-dev}"
+if [[ -z "$upgrade_from_csv" ]]; then
+  log "installing the operator from the catalog $catalog_image"
+  test-resources/bin/test-olm-catalog.sh
+  verify_installation
+else
+  log "installing $upgrade_from_csv from the catalog $catalog_image"
+  CATALOG_STARTING_CSV="$upgrade_from_csv" test-resources/bin/test-olm-catalog.sh
+  verify_installation
+  log "upgrading the operator from $upgrade_from_csv to the channel head"
+  upgrade_operator
+  verify_installation
 fi
 
 log "success: all checks have passed"

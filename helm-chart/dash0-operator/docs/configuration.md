@@ -153,7 +153,7 @@ Here is a list of configuration options for this resource:
   that monitoring resource, these filters apply to all telemetry collected in the cluster.
   That includes telemetry which is not associated with a namespace, like node metrics or cluster-level metrics.
   Log record filters also apply to Kubernetes events, see
-  [`spec.filter.logs.log_records`](#monitoringresource.spec.filter) for how to exclude them.
+  [`spec.filter.logs.log_record`](#monitoringresource.spec.filter) for how to exclude them.
   This setting is optional, by default, no filters are applied.
   It is a validation error to set `telemetryCollection.enabled=false` and set filters at the same time.
 
@@ -581,13 +581,15 @@ The Dash0 monitoring resource supports additional configuration settings:
       A list of OTTL conditions for filtering individual data points of metrics.
       All data points where at least one condition evaluates to true will be dropped.
       If all datapoints for a metric are dropped, the metric will also be dropped.
-    * **`spec.filter.logs.log_records`**:
+    * **`spec.filter.logs.log_record`**:
       A list of OTTL conditions for filtering log records.
       All log records where at least one condition evaluates to true will be dropped.
       The conditions also apply to the Kubernetes events collected in the namespace.
       To exclude Kubernetes events from a condition `C`, change it to `(C) and attributes["k8s.event.name"] == nil`,
       for example `(severity_number < SEVERITY_NUMBER_WARN) and attributes["k8s.event.name"] == nil`.
       Keep the parentheses, since `and` binds tighter than `or`.
+      The key `spec.filter.logs.log_records` (plural) is deprecated but still supported; if both keys are set, the
+      conditions of both lists are applied.
     * **`spec.filter.profiles.profile`**:
       A list of OTTL conditions for filtering profiles.
       All profiles where at least one condition evaluates to true will be dropped.
@@ -707,7 +709,7 @@ spec:
       - 'metric.type == METRIC_DATA_TYPE_SUMMARY'
       - 'resource.attributes["service.name"] == "my_service_name"'
     logs:
-      log_records:
+      log_record:
       - 'IsMatch(body, ".*password.*")'
       - 'severity_number < SEVERITY_NUMBER_WARN'
     profiles:
@@ -908,7 +910,7 @@ operator:
           - 'metric.type == METRIC_DATA_TYPE_SUMMARY'
           - 'resource.attributes["service.name"] == "my_service_name"'
         logs:
-          log_records:
+          log_record:
           - 'IsMatch(body, ".*password.*")'
           - 'severity_number < SEVERITY_NUMBER_WARN'
       transform:

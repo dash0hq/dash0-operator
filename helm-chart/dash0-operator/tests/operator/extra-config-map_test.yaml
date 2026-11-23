@@ -418,7 +418,7 @@ tests:
                   - datapoint filter 1
                   - datapoint filter 2
               logs:
-                log_records:
+                log_record:
                   - log record filter 1
                   - log record filter 2
             transform:
@@ -821,7 +821,7 @@ tests:
                 filter:
                   error_mode: propagate
                   logs:
-                    log_records:
+                    log_record:
                     - log record filter 1
                     - log record filter 2
                   metrics:
@@ -2084,6 +2084,55 @@ tests:
       - notMatchRegex:
           path: data['extra.yaml']
           pattern: "^transform:"
+
+  - it: should disallow an instrumentWorkloads.mode other than none in the monitoring template if workload instrumentation is disabled
+    set:
+      operator:
+        instrumentation:
+          enabled: false
+        monitoringTemplate:
+          spec:
+            instrumentWorkloads:
+              mode: created-and-updated
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.monitoringTemplate.spec.instrumentWorkloads.mode is \"created-and-updated\", but workload instrumentation is disabled via operator.instrumentation.enabled=false. Please set operator.monitoringTemplate.spec.instrumentWorkloads.mode to \"none\" or remove it."
+
+  - it: should allow instrumentWorkloads.mode=none in the monitoring template if workload instrumentation is disabled
+    set:
+      operator:
+        instrumentation:
+          enabled: false
+        monitoringTemplate:
+          spec:
+            instrumentWorkloads:
+              mode: none
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: should allow a monitoring template without instrumentWorkloads.mode if workload instrumentation is disabled
+    set:
+      operator:
+        instrumentation:
+          enabled: false
+        monitoringTemplate:
+          spec:
+            logCollection:
+              enabled: true
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: should allow instrumentWorkloads.mode other than none in the monitoring template if operator.instrumentation.enabled is missing
+    set:
+      operator:
+        instrumentation:
+          enabled: null
+        monitoringTemplate:
+          spec:
+            instrumentWorkloads:
+              mode: all
+    asserts:
+      - notFailedTemplate: {}
 
   - it: should disallow export in the monitoring template
     set:

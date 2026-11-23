@@ -1,13 +1,15 @@
-# Transformations applied to the helm-chart/dash0-operator docs before they are copied to the Dash0 documentation
-# repository (see .github/workflows/sync-docs-to-website.yaml).
+# Transformations applied to the docs in helm-chart/dash0-operator and olm/docs before they are copied to the Dash0
+# documentation repository (see .github/workflows/sync-docs-to-website.yaml).
 #
-# This file is the source of truth for how the operator's Helm chart docs are adapted into the docs pages.
+# This file is the source of truth for how the operator's docs are adapted into the docs pages.
 # Edit this file whenever the required modifications change, or whenever a documentation file is added or removed.
 #
 # The documentation is a set of files: the top-level README.md (which becomes the operator overview page
 # dash0-operator/overview.md) and the topic files in helm-chart/dash0-operator/docs/*.md (which keep their names but
 # move into the same dash0-operator/ directory in the target repository, i.e. the docs/ directory is renamed to
-# dash0-operator/). All synced pages therefore end up as siblings in the dash0-operator/ directory.
+# dash0-operator/). The OLM docs in olm/docs/*.md are synced into the same directory, under target names that do not
+# collide with the Helm docs.
+# All synced pages therefore end up as siblings in the dash0-operator/ directory.
 # Relative links between the topic files are sibling links and are preserved as-is (only the .md suffix is dropped).
 # Two kinds of links are rewritten automatically (see below): links from the topic files back to the renamed README.md
 # (../README.md -> overview), and links from README.md into the renamed directory (docs/configuration.md ->
@@ -17,7 +19,8 @@
 #
 # - common   A list of transformations applied to every synced file, in order, before the file-specific ones.
 # - files    A list of file entries. Each entry has:
-#              source           Path of the source file, relative to helm-chart/dash0-operator.
+#              source           Path of the source file, relative to helm-chart/dash0-operator (../../olm/docs/ for
+#                               the OLM docs).
 #              target           Path of the output file, relative to the target directory in the docs repository.
 #              title            The `title` rendered into the page's frontmatter.
 #              description      The `description` rendered into the page's frontmatter.
@@ -25,8 +28,8 @@
 #
 # `files` is the sole opt-in list. The `coverage` block below guards against forgetting to wire up a new page: every
 # file matching a `coverage.include` glob must either appear as a `files` entry or be listed under `coverage.ignore`,
-# otherwise the sync (including the dry run on every CI build) fails. When adding a new topic file under docs/, add a
-# matching `files` entry (or, to intentionally exclude it, add it to `coverage.ignore`).
+# otherwise the sync (including the dry run on every CI build) fails. When adding a new topic file under docs/ or
+# olm/docs/, add a matching `files` entry (or, to intentionally exclude it, add it to `coverage.ignore`).
 #
 # A frontmatter block is generated from each entry's `title`/`description` (plus a `lastUpdated` timestamp) and
 # prepended to the transformed file. Two kinds of relative links are rewritten automatically by the transformation
@@ -70,6 +73,7 @@ coverage:
   include:
     - README.md
     - docs/*.md
+    - ../../olm/docs/*.md
   ignore: []
 
 # Generates navigation definition in the target repository. The navigation entries follow the order of `files` below.
@@ -121,6 +125,20 @@ files:
     tags:
       - kubernetes
       - dash0-operator
+
+  - source: ../../olm/docs/installation.md
+    target: dash0-operator/olm-installation.md
+    title: Installation via the Operator Lifecycle Manager (OLM)
+    navTitle: Installation via OLM
+    description: Install the Dash0 operator via the Operator Lifecycle Manager (OLM) from the Dash0 operator catalog.
+    tags:
+      - kubernetes
+      - dash0-operator
+    transformations:
+      - description: rewrite links into the chart's docs/ directory, so the automatic docs/ link rewrite turns them into sibling links
+        type: replace-regex
+        find: '\]\(\.\./\.\./helm-chart/dash0-operator/docs/'
+        replace: '](docs/'
 
   - source: docs/configuration.md
     target: dash0-operator/configuration.md

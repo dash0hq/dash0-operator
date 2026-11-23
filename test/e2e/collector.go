@@ -16,6 +16,10 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+const (
+	k8sAttributesShareProcessorFeatureGate = "processor.k8sattributes.ShareProcessorBetweenPipelines"
+)
+
 var (
 	collectorDaemonSetName = fmt.Sprintf(
 		"%s-opentelemetry-collector-agent-daemonset",
@@ -279,6 +283,23 @@ func verifyCollectorContainerArgsContainString(operatorNamespace string, workloa
 			`jsonpath={.spec.template.spec.containers[?(@.name=="opentelemetry-collector")].args}`,
 		),
 		60*time.Second,
+		s,
+	)
+}
+
+func verifyCollectorContainerArgsDoNotContainString(operatorNamespace string, workloadNameQualified string, s string) {
+	// Guards against passing vacuously on empty output.
+	verifyCollectorContainerArgsContainString(operatorNamespace, workloadNameQualified, "--config=")
+	verifyCommandOutputDoesNotContainStrings(
+		exec.Command(
+			"kubectl",
+			"get",
+			"-n",
+			operatorNamespace,
+			workloadNameQualified,
+			"-o",
+			`jsonpath={.spec.template.spec.containers[?(@.name=="opentelemetry-collector")].args}`,
+		),
 		s,
 	)
 }
