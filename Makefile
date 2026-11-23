@@ -933,6 +933,16 @@ olm-catalog-image: ## Build the image of the OLM catalog in CATALOG_DIR locally,
 push-olm-catalog-image: ## Push the OLM catalog image.
 	@$(call push_container_image,$(CATALOG_IMAGE_REPOSITORY),$(CATALOG_IMAGE_TAG))
 
+# A clone of community-operators-prod (or of a fork of it) and the release to submit.
+COMMUNITY_OPERATORS_DIR ?=
+COMMUNITY_BUNDLE_VERSION ?=
+# Comma-separated GitHub user names for ci.yaml, only needed for the first submission.
+COMMUNITY_REVIEWERS ?=
+
+.PHONY: olm-community-bundle
+olm-community-bundle: operator-sdk ## Prepare the submission of the release COMMUNITY_BUNDLE_VERSION to the OpenShift community catalog in COMMUNITY_OPERATORS_DIR.
+	OPERATOR_SDK=$(OPERATOR_SDK) CONTAINER_TOOL=$(CONTAINER_TOOL) COMMUNITY_OPERATORS_DIR="$(COMMUNITY_OPERATORS_DIR)" COMMUNITY_BUNDLE_VERSION="$(COMMUNITY_BUNDLE_VERSION)" COMMUNITY_REVIEWERS="$(COMMUNITY_REVIEWERS)" olm/bin/prepare-community-bundle.sh
+
 ##@ Build Dependencies
 
 ## Location to install dependencies to
