@@ -169,15 +169,6 @@ jobs:
           path: gke-ap-allowlist-check-diagnostics
           if-no-files-found: ignore
 
-      - name: send Slack notification on success
-        if: ${{ success() && !inputs.use_branch_chart }}
-        uses: ./.github/actions/slack-notification
-        with:
-          status: success
-          subject: GKE Autopilot WorkloadAllowlist check
-          botToken: ${{ secrets.SLACK_BOT_TOKEN }}
-          channelId: ${{ secrets.SLACK_CHANNEL_ID }}
-
       - name: send Slack notification on failure
         if: ${{ failure() && !inputs.use_branch_chart }}
         uses: ./.github/actions/slack-notification

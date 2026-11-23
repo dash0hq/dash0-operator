@@ -95,15 +95,6 @@ jobs:
           path: microshift-olm-catalog-check-diagnostics
           if-no-files-found: ignore
 
-      - name: send Slack notification on success
-        if: success()
-        uses: ./.github/actions/slack-notification
-        with:
-          status: success
-          subject: MicroShift OLM catalog check (${{ matrix.scenario }})
-          botToken: ${{ secrets.SLACK_BOT_TOKEN }}
-          channelId: ${{ secrets.SLACK_CHANNEL_ID }}
-
       - name: send Slack notification on failure
         if: failure()
         uses: ./.github/actions/slack-notification
