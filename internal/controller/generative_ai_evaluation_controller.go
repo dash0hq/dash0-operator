@@ -99,6 +99,10 @@ func (r *GenerativeAiEvaluationReconciler) ShortName() string {
 	return "generative-ai-evaluation"
 }
 
+func (r *GenerativeAiEvaluationReconciler) Kind() string {
+	return "Dash0GenerativeAiEvaluation"
+}
+
 func (r *GenerativeAiEvaluationReconciler) GetDefaultApiConfigs() []ApiConfig {
 	return r.defaultApiConfigs.Get()
 }

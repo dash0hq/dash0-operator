@@ -335,6 +335,9 @@ func (r *PrometheusRuleCrdReconciler) SetSynchronizationEnabled(
 	logger logd.Logger,
 ) {
 	enabled := r.prometheusRuleReconciler.IsSynchronizationEnabled(monitoringResource)
+	if !enabled {
+		apiSyncFailures.deleteKindInNamespace(r.prometheusRuleReconciler.Kind(), namespace)
+	}
 	previous, hadPrevious := r.prometheusRuleReconciler.namespacedSyncEnabled.Swap(namespace, enabled)
 	if prev, ok := previous.(bool); hadPrevious && ok && !prev && enabled {
 		logger.Info(fmt.Sprintf(
@@ -371,6 +374,10 @@ func (r *PrometheusRuleReconciler) KindDisplayName() string {
 
 func (r *PrometheusRuleReconciler) ShortName() string {
 	return "rule"
+}
+
+func (r *PrometheusRuleReconciler) Kind() string {
+	return "PrometheusRule"
 }
 
 func (r *PrometheusRuleReconciler) ControllerStopFunctionLock() *sync.Mutex {

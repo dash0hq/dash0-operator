@@ -99,6 +99,10 @@ func (r *TeamReconciler) ShortName() string {
 	return "team"
 }
 
+func (r *TeamReconciler) Kind() string {
+	return "Dash0Team"
+}
+
 func (r *TeamReconciler) GetDefaultApiConfigs() []ApiConfig {
 	return r.defaultApiConfigs.Get()
 }

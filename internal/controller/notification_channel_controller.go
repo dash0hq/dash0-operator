@@ -97,6 +97,10 @@ func (r *NotificationChannelReconciler) ShortName() string {
 	return "notification-channel"
 }
 
+func (r *NotificationChannelReconciler) Kind() string {
+	return "Dash0NotificationChannel"
+}
+
 func (r *NotificationChannelReconciler) GetDefaultApiConfigs() []ApiConfig {
 	return r.defaultApiConfigs.Get()
 }

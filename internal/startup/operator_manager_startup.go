@@ -2572,6 +2572,7 @@ func startDash0Controllers(
 		signalToMetricsReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
+		&controller.ApiSyncMetrics{},
 	}
 	if autoNamespaceMonitoringReconciler != nil {
 		selfMonitoringClients = append(selfMonitoringClients, autoNamespaceMonitoringReconciler)

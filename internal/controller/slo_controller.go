@@ -243,6 +243,10 @@ func (r *SLOReconciler) ShortName() string {
 	return "SLO"
 }
 
+func (r *SLOReconciler) Kind() string {
+	return sloKind
+}
+
 func (r *SLOReconciler) GetDefaultApiConfigs() []ApiConfig {
 	return r.defaultApiConfigs.Get()
 }
