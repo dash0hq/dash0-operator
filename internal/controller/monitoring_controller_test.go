@@ -12,8 +12,8 @@ package controller
 
 import (
 	"context"
-	"net/http"
 	"fmt"
+	"net/http"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
