@@ -1,19 +1,21 @@
 # SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-name: Synchronize Helm chart docs to dash0.com/docs
+name: Synchronize operator docs to dash0.com/docs
 
-# Copies the docs from helm-chart/dash0-operator into the documentation on https://www.dash0.com/docs, applying the
-# modifications declared in sync-docs/transformations.yaml, and opens a pull request against the target repository.
+# Copies the docs from helm-chart/dash0-operator and olm/docs into the documentation on https://www.dash0.com/docs,
+# applying the modifications declared in sync-docs/transformations.yaml, and opens a pull request against the target
+# repository.
 #
 # The transformation logic and the PR flow live in the shared dash0hq/sync-docs-action composite action; this workflow
 # only supplies the operator-specific inputs (source root, transformations file, PR metadata) and the token.
 #
 # The documentation is a set of files: the top-level README.md (which becomes the operator overview page
 # dash0-operator/overview.md) and the topic files in helm-chart/dash0-operator/docs/*.md (which keep their names but
-# move into the same dash0-operator/ subdirectory, i.e. the docs/ directory is renamed to dash0-operator/). They are
-# transformed and written into the target directory. The section landing page about-kubernetes.md is hand-maintained
-# in the target repository and is not touched by this sync.
+# move into the same dash0-operator/ subdirectory, i.e. the docs/ directory is renamed to dash0-operator/), plus the
+# OLM docs in olm/docs/*.md (referenced relative to source-root via ../../). They are transformed and written into the
+# target directory. The section landing page about-kubernetes.md is hand-maintained in the target repository and is not
+# touched by this sync.
 #
 # This workflow can be run manually (workflow_dispatch) and is also invoked from ci.yaml (workflow_call) after a new
 # release has been published. Additionally, ci.yaml invokes it with dry-run: true on every CI build, to verify early

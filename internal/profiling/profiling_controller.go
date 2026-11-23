@@ -23,7 +23,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
 
-// Reconciler watches profiling configuration, operands and referenced authorization Secrets.
+// Reconciler watches profiling configuration, operands, referenced authorization Secrets and extra config map updates.
 type Reconciler struct {
 	client.Client
 	Manager *Manager
@@ -34,7 +34,8 @@ func NewReconciler(c client.Client, manager *Manager) *Reconciler {
 	return &Reconciler{Client: c, Manager: manager}
 }
 
-// SetupWithManager registers namespaced operand watches and a cluster-wide configuration watch.
+// SetupWithManager registers namespaced operand watches, a cluster-wide configuration watch and a channel watch for
+// extra config map updates.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	operandCache, err := cache.New(mgr.GetConfig(), cache.Options{
 		Scheme: mgr.GetScheme(), Mapper: mgr.GetRESTMapper(),
@@ -59,7 +60,12 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		controller = controller.WatchesRawSource(source.Kind(operandCache, object, &handler.EnqueueRequestForObject{}, managed))
 	}
 	return controller.WatchesRawSource(source.Kind(operandCache, client.Object(&corev1.Secret{}),
-		handler.EnqueueRequestsFromMapFunc(r.secretRequests))).Complete(r)
+		handler.EnqueueRequestsFromMapFunc(r.secretRequests))).
+		WatchesRawSource(source.Channel(r.Manager.extraConfigUpdates,
+			handler.TypedEnqueueRequestsFromMapFunc(func(context.Context, struct{}) []reconcile.Request {
+				return []reconcile.Request{{}}
+			}))).
+		Complete(r)
 }
 
 func (r *Reconciler) secretRequests(ctx context.Context, object client.Object) []reconcile.Request {

@@ -29,6 +29,7 @@ var (
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(GroupVersion,
 		&Dash0Team{}, &Dash0TeamList{},
+		&Dash0GenerativeAiEvaluation{}, &Dash0GenerativeAiEvaluationList{},
 	)
 	metav1.AddToGroupVersion(scheme, GroupVersion)
 	return nil

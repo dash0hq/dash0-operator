@@ -44,7 +44,7 @@ The instrumentation process is performed by modifying the Pod spec template (for
 
 ## Using Image Volumes for Auto-Instrumentation Files
 
-When using auto-instrumentation of workloads, by default the operator adds an [`emptyDir` volume](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) and an [init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) to provide the instrumentation files to the workload.
+When using auto-instrumentation of workloads, the operator needs to provide the instrumentation files to the workload. The traditional approach is to add an [`emptyDir` volume](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) and an [init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) that copies the instrumentation files to that volume.
 
 Image volumes are a new Kubernetes feature that provides a better way to do this. They provide the following advantages:
 * No additional ephemeral storage usage.
@@ -52,13 +52,15 @@ Image volumes are a new Kubernetes feature that provides a better way to do this
 
 They were introduced in Kubernetes 1.31 as an alpha feature behind a feature gate. In version 1.33 they graduated to beta, but were still disabled by default. Starting with version 1.35, the image volume feature gate is enabled by default, but they are still considered beta. Image volumes finally became a stable feature in version 1.36.
 
+By default, the operator uses image volumes if the Kubernetes API server and the kubelets of all nodes are on version 1.36 or later, and the init container approach otherwise.
+
 Set the `instrumentationDelivery` setting in the operator configuration resource to determine under which circumstances image volumes will be used instead of the init container approach. When using the operator manager to create and manage the operator configuration resource (i.e. with `operator.dash0Export.enabled=true`), set `operator.instrumentation.delivery` in Helm to configure image volumes.
 
 Allowed values for the instrumentation delivery setting:
 - `auto`: use image volumes if the Kubernetes API server version and the kubelet version of all nodes of the cluster is
    1.36 or later, otherwise use the init container approach. The operator manager determines the minimum kubelet version
    by inspecting all nodes of the cluster once, shortly after it has started; until that has finished, it uses the init
-   container approach. Nodes that join the cluster later on are not taken into account.
+   container approach. Nodes that join the cluster later on are not taken into account. This is the default.
 - `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the operator manager has
    already detected that the Kubernetes API server version or the kubelet version of a node is older than 1.31, it will
    log a warning and fall back to the init container approach, since image volumes are not supported in that version.
@@ -66,7 +68,7 @@ Allowed values for the instrumentation delivery setting:
    cluster's nodes, nor nodes that join the cluster later on. Note that if you are using Kubernetes 1.34 or earlier, and
    you want to use this setting, you need to enable image volumes when configuring your cluster, since image volumes are
    disabled by default in versions older than 1.35.
-- `init-container`: always use the init container approach, regardless of the Kubernetes version. This is the default.
+- `init-container`: always use the init container approach, regardless of the Kubernetes version.
 
 Note: Changing the instrumentation delivery setting for an existing operator installation will not trigger a bulk
 re-instrumentation of all existing workloads, even for namespaces that are set to `instrumentWorkloadsMode=all`.
@@ -233,7 +235,7 @@ Switching a namespace between `mode: pods` and the other modes behaves as follow
 
 ## Disabling Auto-Instrumentation for Specific Workloads
 
-In namespaces that are Dash0-monitoring enabled, all workloads are automatically instrumented for tracing and to improve OpenTelemetry resource attributes. This process will modify the Pod spec, e.g. by adding environment variables, Kubernetes labels and an init container. The modifications are described in detail in the section [How Automatic Workload Instrumentation Works](#how-automatic-workload-instrumentation-works).
+In namespaces that are Dash0-monitoring enabled, all workloads are automatically instrumented for tracing and to improve OpenTelemetry resource attributes. This process will modify the Pod spec, e.g. by adding environment variables, Kubernetes labels and a volume that provides the instrumentation files. The modifications are described in detail in the section [How Automatic Workload Instrumentation Works](#how-automatic-workload-instrumentation-works).
 
 You can disable these workload modifications for specific workloads by setting the label `dash0.com/enable: "false"` in the top level metadata section of the workload specification.
 
@@ -287,7 +289,7 @@ metadata:
 spec:
   filter:
     logs:
-      log_records:
+      log_record:
       - 'IsMatch(resource.attributes["k8s.pod.name"], "my-workload-name-*")'
 ```
 
@@ -478,8 +480,8 @@ Regardless of the instrumentation delivery:
 
 The remainder of this section provides a more detailed step-by-step description of how the Dash0 operator's workload instrumentation for tracing works internally, intended for the technically curious reader. You can safely skip this section if you are not interested in the technical details.
 
-1. The Dash0 operator adds the `dash0-instrumentation` init container with the [Dash0 instrumentation image](https://github.com/dash0hq/dash0-operator/tree/main/images/instrumentation) to the pod spec template of workloads. The instrumentation image contains OpenTelemetry SDKs and distributions for all supported runtimes and the [OpenTelemetry injector](https://github.com/open-telemetry/opentelemetry-injector) binary.
-2. When the init container starts, it copies the OpenTelemetry distributions and the OpenTelemetry injector binary to a dedicated shared volume mount that has been added by the operator, so they are available in the target container's file system. When it has copied all files, the init container exits.
+1. The Dash0 operator adds the `dash0-instrumentation` volume to the pod spec template of workloads and mounts it into all containers. This volume provides the files from the [Dash0 instrumentation image](https://github.com/dash0hq/dash0-operator/tree/main/images/instrumentation), which contains OpenTelemetry SDKs and distributions for all supported runtimes and the [OpenTelemetry injector](https://github.com/open-telemetry/opentelemetry-injector) binary.
+2. How the files get into the volume depends on the [instrumentation delivery](#using-image-volumes-for-auto-instrumentation-files). With image volumes, the kubelet mounts the instrumentation image directly as a read-only volume. With the init container approach, the volume is an `emptyDir` volume, and the operator also adds the `dash0-instrumentation` init container with the instrumentation image. When the init container starts, it copies the OpenTelemetry distributions and the OpenTelemetry injector binary to the volume. When it has copied all files, the init container exits. Either way, the files are available in the target container's file system.
 3. The operator also adds environment variables to the target container to ensure that the OpenTelemetry SDK has the correct configuration and will get activated at startup. The activation of the OpenTelemetry SDK happens via an `LD_PRELOAD` hook. For that purpose, the Dash0 operator adds the `LD_PRELOAD` environment variable to the pod spec template of the workload. `LD_PRELOAD` is an environment variable that is evaluated by the [dynamic linker/loader](https://man7.org/linux/man-pages/man8/ld.so.8.html) when a Linux executable starts. In general, it specifies a list of additional shared objects to be loaded before the actual code of the executable. In this specific case, the OpenTelemetry injector binary is added to the `LD_PRELOAD` list.
-4. At process startup, the OpenTelemetry injector adds additional environment variables to the running process by hooking into the application startup, finding the `dlsym` symbol and `setenv` symbols, and then calling `setenv` to add or modify environment variables (like `OTEL_RESOURCE_ATTRIBUTES`, `NODE_OPTIONS`, `JAVA_TOOL_OPTIONS` and others). The reason for doing that at process startup and not when modifying the pod spec (where environment variables can also be added and modified) is that the original environment variables are not necessarily fully known at that time. Workloads will sometimes set environment variables in their Dockerfile or in an entrypoint script; those environment variables are only available at process runtime. For example, the OpenTelemetry injector sets (or appends to) `NODE_OPTIONS` to activate the [Dash0 OpenTelemetry distribution for Node.js](https://github.com/dash0hq/opentelemetry-js-distribution) to collect tracing data from all Node.js workloads. For JVMs, the same is achieved by setting (or appending to) the `JAVA_TOOL_OPTIONS` environment variable, namely adding a `-javaagent`). For .NET or other CLR-based workloads, `DOTNET_STARTUP_HOOKS` and `CORECLR_PROFILER` are used to add the [Dash0 OpenTelemetry distribution for .NET](https://github.com/dash0hq/opentelemetry-dotnet-distribution). For Python auto-instrumentation, the OpenTelemetry SDK is prepended to `PYTHONPATH`. For Ruby auto-instrumentation, `RUBYOPT` is set (or prepended to) so that Ruby requires the [Dash0 OpenTelemetry distribution for Ruby](https://github.com/dash0hq/opentelemetry-ruby-distribution) at startup, and `OTEL_RUBY_ADDITIONAL_GEM_PATH` points at the distribution's gems. (Python and Ruby auto-instrumentation need to be [enabled](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml) explicitly via Helm.)
+4. At process startup, the OpenTelemetry injector adds additional environment variables to the running process by hooking into the application startup, finding the `dlsym` symbol and `setenv` symbols, and then calling `setenv` to add or modify environment variables (like `OTEL_RESOURCE_ATTRIBUTES`, `NODE_OPTIONS`, `JAVA_TOOL_OPTIONS` and others). The reason for doing that at process startup and not when modifying the pod spec (where environment variables can also be added and modified) is that the original environment variables are not necessarily fully known at that time. Workloads will sometimes set environment variables in their Dockerfile or in an entrypoint script; those environment variables are only available at process runtime. For example, the OpenTelemetry injector sets (or appends to) `NODE_OPTIONS` to activate the [Dash0 OpenTelemetry distribution for Node.js](https://github.com/dash0hq/opentelemetry-js-distribution) to collect tracing data from all Node.js workloads. For JVMs, the same is achieved by setting (or appending to) the `JAVA_TOOL_OPTIONS` environment variable, namely adding a `-javaagent`). For .NET or other CLR-based workloads, `DOTNET_STARTUP_HOOKS` and `CORECLR_PROFILER` are used to add the [Dash0 OpenTelemetry distribution for .NET](https://github.com/dash0hq/opentelemetry-dotnet-distribution). For Python auto-instrumentation, the OpenTelemetry SDK is prepended to `PYTHONPATH`. For Ruby auto-instrumentation, `RUBYOPT` is set (or prepended to) so that Ruby requires the [Dash0 OpenTelemetry distribution for Ruby](https://github.com/dash0hq/opentelemetry-ruby-distribution) at startup, and `OTEL_RUBY_ADDITIONAL_GEM_PATH` points at the distribution's gems. (Python and Ruby auto-instrumentation are enabled by default and can be disabled via Helm, see [Python Auto-Instrumentation](#python-auto-instrumentation) and [Ruby Auto-Instrumentation](#ruby-auto-instrumentation).)
 5. The OpenTelemetry injector also automatically improves Kubernetes-related resource attributes as follows: The operator sets the environment variables `OTEL_INJECTOR_K8S_NAMESPACE_NAME`, `OTEL_INJECTOR_K8S_POD_NAME`, `OTEL_INJECTOR_K8S_POD_UID` and `OTEL_INJECTOR_K8S_CONTAINER_NAME` on workloads. The OpenTelemetry injector binary picks these values up and uses them to populate the resource attributes `k8s.namespace.name`, `k8s.pod.name`, `k8s.pod.uid` and `k8s.container.name` via the `OTEL_RESOURCE_ATTRIBUTES` environment variable. If `OTEL_RESOURCE_ATTRIBUTES` is already set on the process, the key-value pairs for these attributes are appended to the existing value of `OTEL_RESOURCE_ATTRIBUTES`. If `OTEL_RESOURCE_ATTRIBUTES` was not set on the process, the OpenTelemetry injector will add `OTEL_RESOURCE_ATTRIBUTES` as a new environment variable.

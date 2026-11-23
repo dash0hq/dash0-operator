@@ -506,9 +506,9 @@ func (m *componentSettingsApplier) applyOperatorConfigurationComponents(
 
 	if profiler := components.EbpfProfiler; profiler != nil {
 		p := path + "." + componentEbpfProfiler
-		m.applyContainerResources(p+".containerResources", "", &effective.EbpfProfilerContainerResources,
-			defaults.EbpfProfilerContainerResources, profiler.ContainerResources)
-		m.applyWorkload(p, workloadHelmValues{}, workloadFields{
+		m.applyContainerResources(p+".containerResources", "operator.ebpfProfiler.containerResources",
+			&effective.EbpfProfilerContainerResources, defaults.EbpfProfilerContainerResources, profiler.ContainerResources)
+		m.applyWorkload(p, nestedHelmValues("operator.ebpfProfiler"), workloadFields{
 			labels:         &effective.EbpfProfilerLabels,
 			annotations:    &effective.EbpfProfilerAnnotations,
 			podLabels:      &effective.EbpfProfilerPodLabels,
@@ -517,15 +517,16 @@ func (m *componentSettingsApplier) applyOperatorConfigurationComponents(
 			nodeAffinity:   &effective.EbpfProfilerNodeAffinity,
 		}, defaults.EbpfProfilerNodeAffinity, profiler.WorkloadSettings)
 		if profiler.PriorityClassName != "" {
-			effective.EbpfProfilerPriorityClassName = profiler.PriorityClassName
+			replaceValue(m, p+".priorityClassName", "operator.ebpfProfiler.priorityClassName",
+				&effective.EbpfProfilerPriorityClassName, "", profiler.PriorityClassName)
 		}
 	}
 
 	if proxy := components.DebuginfoProxy; proxy != nil {
 		p := path + "." + componentDebuginfoProxy
-		m.applyContainerResources(p+".containerResources", "", &effective.DebuginfoProxyContainerResources,
-			defaults.DebuginfoProxyContainerResources, proxy.ContainerResources)
-		m.applyWorkload(p, workloadHelmValues{}, workloadFields{
+		m.applyContainerResources(p+".containerResources", "operator.debuginfoProxy.containerResources",
+			&effective.DebuginfoProxyContainerResources, defaults.DebuginfoProxyContainerResources, proxy.ContainerResources)
+		m.applyWorkload(p, nestedHelmValues("operator.debuginfoProxy"), workloadFields{
 			labels:         &effective.DebuginfoProxyLabels,
 			annotations:    &effective.DebuginfoProxyAnnotations,
 			podLabels:      &effective.DebuginfoProxyPodLabels,
@@ -534,7 +535,8 @@ func (m *componentSettingsApplier) applyOperatorConfigurationComponents(
 			nodeAffinity:   &effective.DebuginfoProxyNodeAffinity,
 		}, defaults.DebuginfoProxyNodeAffinity, proxy.WorkloadSettings)
 		if proxy.PriorityClassName != "" {
-			effective.DebuginfoProxyPriorityClassName = proxy.PriorityClassName
+			replaceValue(m, p+".priorityClassName", "operator.debuginfoProxy.priorityClassName",
+				&effective.DebuginfoProxyPriorityClassName, "", proxy.PriorityClassName)
 		}
 	}
 }
@@ -832,7 +834,7 @@ func replaceValue[T any](
 }
 
 func (m *componentSettingsApplier) conflict(path string, helmValue string, helmSetting any, resourceSetting any) {
-	if !m.report || helmValue == "" {
+	if !m.report {
 		return
 	}
 	m.conflicts = append(m.conflicts, ComponentSettingConflict{

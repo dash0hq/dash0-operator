@@ -60,6 +60,10 @@ var (
 		name:     ExpectedDaemonSetName,
 		receiver: &appsv1.DaemonSet{},
 	}
+	expectedResourceFilelogOffsetsConfigMap = expectedResource{
+		name:     ExpectedDaemonSetFilelogOffsetSyncConfigMapName,
+		receiver: &corev1.ConfigMap{},
+	}
 	expectedResourceDeploymentConfigMap = expectedResource{
 		name:     ExpectedDeploymentCollectorConfigMapName,
 		receiver: &corev1.ConfigMap{},
@@ -76,10 +80,11 @@ var (
 		expectedResourceDeploymentConfigMap,
 		expectedResourceDeployment,
 	}
+	// AllDaemonSetRelatedResources does not contain the filelog offsets config map: the test environment admits the
+	// hostPath volume for the filelog receiver offsets, so the config map is not created on a fresh installation.
 	AllDaemonSetRelatedResources = []expectedResource{
 		{name: ExpectedDaemonSetServiceAccountName, receiver: &corev1.ServiceAccount{}},
 		expectedResourceDaemonSetConfigMap,
-		{name: ExpectedDaemonSetFilelogOffsetSyncConfigMapName, receiver: &corev1.ConfigMap{}},
 		{name: ExpectedDaemonSetClusterRoleName, clusterScoped: true, receiver: &rbacv1.ClusterRole{}},
 		{name: ExpectedDaemonSetClusterRoleBinding, clusterScoped: true, receiver: &rbacv1.ClusterRoleBinding{}},
 		{name: ExpectedDaemonSetRoleName, receiver: &rbacv1.Role{}},
@@ -188,11 +193,14 @@ func VerifyCollectorDaemonSet(
 	)
 	ds := ds_.(*appsv1.DaemonSet)
 
-	// arbitrarily checking a couple of settings for the daemon set
+	// arbitrarily checking a couple of settings for the daemon set; the test environment admits the hostPath volume
+	// for the filelog receiver offsets, so on a fresh installation the pods have the volume ownership init container,
+	// but neither the migrate init container nor the filelog offset sync container
 	initContainers := ds.Spec.Template.Spec.InitContainers
 	Expect(initContainers).To(HaveLen(1))
+	Expect(initContainers[0].Name).To(Equal("filelog-offset-volume-ownership"))
 	containers := ds.Spec.Template.Spec.Containers
-	Expect(containers).To(HaveLen(3))
+	Expect(containers).To(HaveLen(2))
 
 	collectorContainerIdx := slices.IndexFunc(containers, func(c corev1.Container) bool {
 		return c.Name == "opentelemetry-collector"
@@ -343,7 +351,8 @@ func VerifyCollectorResourcesDoNotExist(
 	k8sClient client.Client,
 	operatorNamespace string,
 ) {
-	for _, expectedRes := range AllExpectedResources {
+	allResources := slices.Concat(AllExpectedResources, []expectedResource{expectedResourceFilelogOffsetsConfigMap})
+	for _, expectedRes := range allResources {
 		expectedNamespace := operatorNamespace
 		if expectedRes.clusterScoped {
 			expectedNamespace = ""

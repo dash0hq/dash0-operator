@@ -5,9 +5,11 @@ package startup
 
 import (
 	"context"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -15,6 +17,7 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/cluster"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -135,5 +138,70 @@ var _ = Describe("Watching the instrumentation settings of the operator configur
 		Eventually(func(g Gomega) {
 			g.Expect(config.ResolveInstrumentationDelivery()).To(Equal(cluster.ResolvedInstrumentationDeliveryInitContainer))
 		}).Should(Succeed())
+	})
+
+	Describe("waiting for the Helm managed operator configuration resource at startup", func() {
+		It("should not wait if the operator configuration resource is not managed via Helm", func() {
+			config := util.NewClusterInstrumentationConfig(
+				util.Images{}, util.PossibleCollectorUrls{}, "", util.ExtraConfigDefaults, "", nil, false, false, false,
+			)
+			Expect(newWaitForHelmManagedInstrumentationSettings(nil, k8sClient, config, util.ExtraConfigDefaults)).
+				To(BeNil())
+		})
+
+		It("should apply the settings that the leader has written, instead of the settings of a previous version", func() {
+			// The resource as written by the previous operator version, before the Helm upgrade.
+			previousSpec := withInitContainerMemoryLimit("256Mi")
+			previousSpec.InstrumentWorkloads.InstrumentationDelivery = dash0v1alpha1.InstrumentationDeliveryInitContainer
+			_, err := CreateOperatorConfigurationResource(ctx, k8sClient, &dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: metav1.ObjectMeta{Name: util.OperatorConfigurationAutoResourceName},
+				Spec:       previousSpec,
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			config := util.NewClusterInstrumentationConfig(
+				util.Images{}, util.PossibleCollectorUrls{}, "", util.ExtraConfigDefaults,
+				dash0v1alpha1.InstrumentationDeliveryImageVolume, nil, false, false, false,
+			)
+			Expect(updateOperatorConfigurationInstrumentationSettings(
+				ctx, k8sClient, config, util.ExtraConfigDefaults, true, logd.Discard(),
+			)).To(Succeed())
+			Expect(config.ResolveInstrumentationDelivery()).To(Equal(cluster.ResolvedInstrumentationDeliveryInitContainer))
+			Expect(memoryLimit(config)).To(Equal("256Mi"))
+
+			readyCheckExecuter := NewReadyCheckExecuter(k8sClient, OperatorNamespace, OperatorWebhookServiceName)
+			readyCheckExecuter.bypassWebhookCheck = true
+			handler := NewAutoOperatorConfigurationResourceHandler(
+				k8sClient,
+				readyCheckExecuter,
+				OperatorConfigurationValues{
+					Endpoint:                EndpointDash0Test,
+					Token:                   AuthorizationTokenTest,
+					InstrumentationDelivery: dash0v1alpha1.InstrumentationDeliveryImageVolume,
+				},
+				util.ExtraConfig{},
+			)
+			_, err = handler.CreateOrUpdateOperatorConfigurationResource(ctx, logd.Discard())
+			Expect(err).ToNot(HaveOccurred())
+
+			waitForOperatorConfigurationResource :=
+				newWaitForHelmManagedInstrumentationSettings(handler, k8sClient, config, util.ExtraConfigDefaults)
+			Expect(waitForOperatorConfigurationResource).ToNot(BeNil())
+			waitHasReturned := make(chan struct{})
+			go func() {
+				defer GinkgoRecover()
+				waitForOperatorConfigurationResource(ctx, logd.Discard())
+				close(waitHasReturned)
+			}()
+
+			// The resource is only updated once this replica has become leader.
+			Consistently(waitHasReturned, 500*time.Millisecond).ShouldNot(BeClosed())
+
+			handler.NotifyOperatorManagerJustBecameLeader(ctx, logd.Discard())
+			Eventually(waitHasReturned, 10*time.Second).Should(BeClosed())
+			// No Eventually: the settings need to be in effect as soon as the wait returns.
+			Expect(config.ResolveInstrumentationDelivery()).To(Equal(cluster.ResolvedInstrumentationDeliveryImageVolume))
+			Expect(memoryLimit(config)).ToNot(Equal("256Mi"))
+		})
 	})
 })

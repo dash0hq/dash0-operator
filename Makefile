@@ -189,7 +189,7 @@ go-fix: ## Run go fix against code.
 test: go-unit-tests helm-unit-tests ## Run all unit tests (Go, Helm chart unit tests).
 
 .PHONY: go-unit-tests
-go-unit-tests: common-package-unit-tests nodeuid-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests collector-telemetry-unit-tests debuginfo-proxy-unit-tests ## Run the Go unit tests for all packages.
+go-unit-tests: common-package-unit-tests nodeuid-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests collector-telemetry-unit-tests debuginfo-proxy-unit-tests filelog-offset-sync-unit-tests ## Run the Go unit tests for all packages.
 
 .PHONY: operator-manager-unit-tests
 operator-manager-unit-tests: manifests generate fmt vet envtest ## Run the Go unit tests for the operator code.
@@ -218,6 +218,10 @@ collector-telemetry-unit-tests: ## Run the Go unit tests for the collector image
 .PHONY: debuginfo-proxy-unit-tests
 debuginfo-proxy-unit-tests: ## Run the debuginfo upload proxy tests.
 	cd images/debuginfo-proxy/src && go test -race ./...
+
+.PHONY: filelog-offset-sync-unit-tests
+filelog-offset-sync-unit-tests: ## Run the Go unit tests for the filelog offset sync image Go app.
+	cd images/filelogoffsetsync/src && go test -race ./...
 
 .PHONY: helm-unit-tests
 helm-unit-tests: ## Run the Helm chart unit tests.
@@ -329,7 +333,6 @@ helm-chart-lint: ## Run static code analysis for the Helm chart templates.
 	@echo "-------------------------------- (linting Helm charts)"
 	@$(call lint_helm_chart,helm-chart/dash0-operator)
 	@$(call lint_helm_chart,test-resources/dotnet/helm-chart)
-	@$(call lint_helm_chart,test-resources/ebpf-profiler/helm-chart)
 	@$(call lint_helm_chart,test-resources/jvm/spring-boot/helm-chart)
 	@$(call lint_helm_chart,test-resources/node.js/express/helm-chart)
 	@$(call lint_helm_chart,test-resources/python/flask/helm-chart)
@@ -915,10 +918,12 @@ CATALOG_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)dash0-operator-catalog
 CATALOG_IMAGE_TAG ?= $(BUNDLE_IMAGE_TAG)
 # Space-separated bundle image references, preferably by digest.
 CATALOG_BUNDLE_IMAGES ?=
+# Optional: a bundle image from which the only bundle of CATALOG_BUNDLE_IMAGES is reachable via an upgrade edge.
+CATALOG_UPGRADE_FROM_BUNDLE_IMAGE ?=
 
 .PHONY: olm-catalog
 olm-catalog: opm ## Render and validate an FBC catalog with the bundle images of CATALOG_BUNDLE_IMAGES into CATALOG_DIR.
-	OPM=$(OPM) CATALOG_DIR="$(CATALOG_DIR)" CATALOG_BUNDLE_IMAGES="$(CATALOG_BUNDLE_IMAGES)" olm/bin/generate-catalog.sh
+	OPM=$(OPM) CATALOG_DIR="$(CATALOG_DIR)" CATALOG_BUNDLE_IMAGES="$(CATALOG_BUNDLE_IMAGES)" CATALOG_UPGRADE_FROM_BUNDLE_IMAGE="$(CATALOG_UPGRADE_FROM_BUNDLE_IMAGE)" olm/bin/generate-catalog.sh
 
 .PHONY: olm-catalog-image
 olm-catalog-image: ## Build the image of the OLM catalog in CATALOG_DIR locally, the image is not pushed.

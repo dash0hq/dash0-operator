@@ -153,7 +153,7 @@ Here is a list of configuration options for this resource:
   that monitoring resource, these filters apply to all telemetry collected in the cluster.
   That includes telemetry which is not associated with a namespace, like node metrics or cluster-level metrics.
   Log record filters also apply to Kubernetes events, see
-  [`spec.filter.logs.log_records`](#monitoringresource.spec.filter) for how to exclude them.
+  [`spec.filter.logs.log_record`](#monitoringresource.spec.filter) for how to exclude them.
   This setting is optional, by default, no filters are applied.
   It is a validation error to set `telemetryCollection.enabled=false` and set filters at the same time.
 
@@ -231,6 +231,7 @@ Here is a list of configuration options for this resource:
     The operator manager determines the minimum kubelet version by inspecting all nodes of the cluster once, shortly
     after it has started; until that has finished, it uses the init container approach.
     Nodes that join the cluster later on are not taken into account.
+    This is the default.
   - `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the operator manager has
     already detected that the Kubernetes API server version or the kubelet version of a node is older than 1.31, it
     will log a warning and fall back to the init container approach, since image volumes are not supported in that
@@ -239,7 +240,6 @@ Here is a list of configuration options for this resource:
     or earlier, and you want to use this setting, you need to enable image volumes when configuring your cluster, since
     image volumes are disabled by default in versions older than 1.35.
   - `init-container`: always use the init container approach, regardless of the Kubernetes version.
-    This is the default.
 
 * <a href="#operatorconfigurationresource.spec.autoMonitorNamespaces.enabled"><span id="operatorconfigurationresource.spec.autoMonitorNamespaces.enabled">**`spec.autoMonitorNamespaces.enabled`**</span></a>: Controls whether monitoring is set up for namespaces
   automatically.
@@ -581,13 +581,15 @@ The Dash0 monitoring resource supports additional configuration settings:
       A list of OTTL conditions for filtering individual data points of metrics.
       All data points where at least one condition evaluates to true will be dropped.
       If all datapoints for a metric are dropped, the metric will also be dropped.
-    * **`spec.filter.logs.log_records`**:
+    * **`spec.filter.logs.log_record`**:
       A list of OTTL conditions for filtering log records.
       All log records where at least one condition evaluates to true will be dropped.
       The conditions also apply to the Kubernetes events collected in the namespace.
       To exclude Kubernetes events from a condition `C`, change it to `(C) and attributes["k8s.event.name"] == nil`,
       for example `(severity_number < SEVERITY_NUMBER_WARN) and attributes["k8s.event.name"] == nil`.
       Keep the parentheses, since `and` binds tighter than `or`.
+      The key `spec.filter.logs.log_records` (plural) is deprecated but still supported; if both keys are set, the
+      conditions of both lists are applied.
     * **`spec.filter.profiles.profile`**:
       A list of OTTL conditions for filtering profiles.
       All profiles where at least one condition evaluates to true will be dropped.
@@ -707,7 +709,7 @@ spec:
       - 'metric.type == METRIC_DATA_TYPE_SUMMARY'
       - 'resource.attributes["service.name"] == "my_service_name"'
     logs:
-      log_records:
+      log_record:
       - 'IsMatch(body, ".*password.*")'
       - 'severity_number < SEVERITY_NUMBER_WARN'
     profiles:
@@ -908,7 +910,7 @@ operator:
           - 'metric.type == METRIC_DATA_TYPE_SUMMARY'
           - 'resource.attributes["service.name"] == "my_service_name"'
         logs:
-          log_records:
+          log_record:
           - 'IsMatch(body, ".*password.*")'
           - 'severity_number < SEVERITY_NUMBER_WARN'
       transform:
@@ -950,10 +952,11 @@ operator:
 
 ### Using Image Volumes for Auto-Instrumentation Files
 
-When using auto-instrumentation of workloads, by default the operator adds an
+When using auto-instrumentation of workloads, the operator needs to provide the instrumentation files to the workload.
+The traditional approach is to add an
 [`emptyDir` volume](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) and an
-[init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) to provide the instrumentation
-files to the workload.
+[init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) that copies the instrumentation
+files to that volume.
 
 Image volumes are a new Kubernetes feature that provides a better way to do this.
 They provide the following advantages:
@@ -963,7 +966,10 @@ They provide the following advantages:
 They were introduced in Kubernetes 1.31 as an alpha feature behind a feature gate.
 In version 1.33 they graduated to beta, but were still disabled by default.
 Starting with version 1.35, the image volume feature gate is enabled by default, but they are still considered beta.
-Image volumes finally became a stable feature in version 1.36
+Image volumes finally became a stable feature in version 1.36.
+
+By default, the operator uses image volumes if the Kubernetes API server and the kubelets of all nodes are on version
+1.36 or later, and the init container approach otherwise.
 
 Set the [`instrumentationDelivery` setting](#operatorconfigurationresource.spec.instrumentWorkloads.instrumentationDelivery)
 in the operator configuration resource to determine under which circumstances image volumes will be used instead of the
@@ -977,6 +983,7 @@ Allowed values for the instrumentation delivery setting:
   The operator manager determines the minimum kubelet version by inspecting all nodes of the cluster once, shortly after
   it has started; until that has finished, it uses the init container approach.
   Nodes that join the cluster later on are not taken into account.
+  This is the default.
 - `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the operator manager has
   already detected that the Kubernetes API server version or the kubelet version of a node is older than 1.31, it will
   log a warning and fall back to the init container approach, since image volumes are not supported in that version.
@@ -985,7 +992,6 @@ Allowed values for the instrumentation delivery setting:
   you want to use this setting, you need to enable image volumes when configuring your cluster, since image volumes are
   disabled by default in versions older than 1.35.
 - `init-container`: always use the init container approach, regardless of the Kubernetes version.
-  This is the default.
 
 Note: Changing the instrumentation delivery setting for an existing operator installation will not trigger a bulk
 re-instrumentation of all existing workloads, even for namespaces that are set to `instrumentWorkloadsMode=all`.

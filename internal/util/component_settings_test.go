@@ -1729,6 +1729,10 @@ func (s componentSetting) String() string {
 
 // helmOnlyExtraConfigKeys are the keys of the extra config map without a setting in spec.components, with the reason.
 var helmOnlyExtraConfigKeys = map[string]string{
+	"collectorFilelogOffsetStorageMode": "the storage mode is a cluster-level installation decision; spec.components " +
+		"offers filelogOffsetStorageVolume to provide an explicit volume instead",
+	"collectorFilelogOffsetHostPath": "spec.components.daemonSetCollector.filelogOffsetStorageVolume.hostPath.path " +
+		"provides an explicit hostPath volume instead",
 	"agent0ConnectorClusterRoleRules": "the Helm chart renders the same rules into the operator's own cluster role, " +
 		"the operator can only grant permissions it holds itself",
 	"targetAllocatorAllowSecretAccessInNamespaces": "the Helm chart grants the target-allocator access to secrets in " +

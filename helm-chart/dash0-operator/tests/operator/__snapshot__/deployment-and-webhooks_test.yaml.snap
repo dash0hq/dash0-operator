@@ -100,6 +100,8 @@ deployment should match snapshot (default values):
                   value: "true"
                 - name: DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION
                   value: "true"
+                - name: OTEL_COLLECTOR_K8SATTRIBUTES_SHARE_PROCESSOR_BETWEEN_PIPELINES
+                  value: "true"
                 - name: K8S_POD_UID
                   valueFrom:
                     fieldRef:
@@ -284,6 +286,8 @@ deployment should match snapshot when using cert-manager:
                 - name: DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION
                   value: "true"
                 - name: DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION
+                  value: "true"
+                - name: OTEL_COLLECTOR_K8SATTRIBUTES_SHARE_PROCESSOR_BETWEEN_PIPELINES
                   value: "true"
                 - name: K8S_POD_UID
                   valueFrom:
@@ -990,11 +994,18 @@ monitoring resource CRD should match snapshot:
                         Filters for the logs signal.
                         This can be used to drop _log records_.
                       properties:
-                        log_records:
+                        log_record:
                           description: |-
                             OTTL conditions for dropping log records. A log record is dropped if at least one condition is true. Example:
                             - 'IsMatch(body, ".*password.*")'
                             - 'severity_number < SEVERITY_NUMBER_WARN'
+                          items:
+                            type: string
+                          type: array
+                        log_records:
+                          description: |-
+                            Deprecated: Use `log_record` instead. If both `log_record` and `log_records` are specified, the conditions of
+                            both lists are applied.
                           items:
                             type: string
                           type: array
@@ -1998,11 +2009,18 @@ monitoring resource CRD should match snapshot:
                         Filters for the logs signal.
                         This can be used to drop _log records_.
                       properties:
-                        log_records:
+                        log_record:
                           description: |-
                             OTTL conditions for dropping log records. A log record is dropped if at least one condition is true. Example:
                             - 'IsMatch(body, ".*password.*")'
                             - 'severity_number < SEVERITY_NUMBER_WARN'
+                          items:
+                            type: string
+                          type: array
+                        log_records:
+                          description: |-
+                            Deprecated: Use `log_record` instead. If both `log_record` and `log_records` are specified, the conditions of
+                            both lists are applied.
                           items:
                             type: string
                           type: array

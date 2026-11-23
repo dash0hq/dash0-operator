@@ -3,6 +3,8 @@ data:
   extra.yaml: |-
     initContainerResources:
       {}
+    collectorFilelogOffsetStorageMode: auto
+    collectorFilelogOffsetHostPath: "/var/lib/dash0-operator/filelog-offsets"
     collectorDaemonSetCollectorContainerResources:
       gomemlimit: ""
       limits:
@@ -208,6 +210,48 @@ data:
     agent0ConnectorTolerations:
       []
     agent0ConnectorNodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: dash0.com/enable
+            operator: NotIn
+            values:
+            - "false"
+          - key: kubernetes.io/os
+            operator: In
+            values:
+            - linux
+    ebpfProfilerContainerResources:
+      gomemlimit: ""
+      limits:
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    ebpfProfilerTolerations:
+      []
+    ebpfProfilerNodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: dash0.com/enable
+            operator: NotIn
+            values:
+            - "false"
+          - key: kubernetes.io/os
+            operator: In
+            values:
+            - linux
+    debuginfoProxyContainerResources:
+      gomemlimit: ""
+      limits:
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 32Mi
+    debuginfoProxyTolerations:
+      []
+    debuginfoProxyNodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         nodeSelectorTerms:
         - matchExpressions:

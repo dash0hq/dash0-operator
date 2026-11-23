@@ -6,8 +6,10 @@ package startup
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -47,6 +49,7 @@ type OperatorConfigurationValues struct {
 	PrometheusCrdSupportEnabled                      bool
 	ProfilingEnabled                                 bool
 	EbpfProfilerEnabled                              bool
+	EbpfProfilerPIDNamespaceTranslationMode          string
 	TelemetryCollectionEnabled                       bool
 	ClusterName                                      string
 	AutoMonitorNamespacesEnabled                     bool
@@ -59,7 +62,49 @@ type AutoOperatorConfigurationResourceHandler struct {
 	hasBecomeLeaderChan         chan struct{}
 	operatorConfigurationValues OperatorConfigurationValues
 	extraConfigValues           atomic.Pointer[operatorConfigurationExtraConfigValues]
+
+	createOrUpdateBackoff wait.Backoff
+	retryDelays           retryDelays
+
+	pendingAttemptMutex  sync.Mutex
+	cancelPendingAttempt context.CancelCauseFunc
+
+	// firstCreateOrUpdateHasStarted, firstCreateOrUpdateDoneChan and firstCreateOrUpdateDoneOnce track the first
+	// create/update of the operator configuration resource, see WaitForFirstCreateOrUpdate.
+	firstCreateOrUpdateHasStarted atomic.Bool
+	firstCreateOrUpdateDoneChan   chan struct{}
+	firstCreateOrUpdateDoneOnce   sync.Once
 }
+
+// errAttemptSuperseded is the cancellation cause of an attempt to create or update the operator configuration resource
+// that has been replaced by a newer attempt.
+var errAttemptSuperseded = errors.New("superseded by a newer attempt")
+
+// retryDelays describes how long the handler waits before it starts another round of attempts to create or update the
+// operator configuration resource, after a round has failed. The delay starts at initial and is multiplied by factor
+// after each failed round, until it reaches max. There is no limit for the number of rounds.
+type retryDelays struct {
+	initial time.Duration
+	factor  float64
+	max     time.Duration
+}
+
+func (d retryDelays) next(current time.Duration) time.Duration {
+	return min(time.Duration(float64(current)*d.factor), d.max)
+}
+
+var (
+	defaultCreateOrUpdateBackoff = wait.Backoff{
+		Duration: 3 * time.Second,
+		Factor:   1.5,
+		Steps:    6,
+	}
+	defaultRetryDelays = retryDelays{
+		initial: 30 * time.Second,
+		factor:  2,
+		max:     5 * time.Minute,
+	}
+)
 
 // operatorConfigurationExtraConfigValues are the parts of the extra config map that end up in the automatically created
 // operator configuration resource. The monitoring template, filter and transform are kept as raw JSON, since using the
@@ -88,6 +133,9 @@ func NewAutoOperatorConfigurationResourceHandler(
 		readyCheckExecuter:          readyCheckExecuter,
 		hasBecomeLeaderChan:         make(chan struct{}),
 		operatorConfigurationValues: operatorConfigurationValues,
+		createOrUpdateBackoff:       defaultCreateOrUpdateBackoff,
+		retryDelays:                 defaultRetryDelays,
+		firstCreateOrUpdateDoneChan: make(chan struct{}),
 	}
 	r.extraConfigValues.Store(newOperatorConfigurationExtraConfigValues(extraConfig))
 	return r
@@ -170,9 +218,34 @@ func hasRawValueChanged(previousValue *json.RawMessage, newValue *json.RawMessag
 // the Dash0 operator configuration resource. The function will create/update the resource asynchronously, that is, when
 // the function returns the resource might not have been created/updated yet. The function will optimistically return
 // the resource that is going to be created/updated, without guarantees that the resource will be created/updated
-// successfully.
+// successfully. If creating/updating the resource fails with a retryable error (for example because the webhook
+// service is temporarily not available), the handler keeps retrying in the background with increasing delays, until it
+// succeeds, the context is cancelled, or a later call of this function supersedes the attempt.
 func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigurationResource(
 	ctx context.Context,
+	logger logd.Logger,
+) (*dash0v1alpha1.Dash0OperatorConfiguration, error) {
+	isFirstCreateOrUpdate := r.firstCreateOrUpdateHasStarted.CompareAndSwap(false, true)
+
+	operatorConfigurationResource, err := r.validateAndConvertToResource(logger)
+	if err != nil {
+		if isFirstCreateOrUpdate {
+			r.markFirstCreateOrUpdateAsDone()
+		}
+		return nil, err
+	}
+
+	go r.createOrUpdateOperatorConfigurationResourceUntilSuccessful(
+		r.supersedePendingAttempt(ctx),
+		operatorConfigurationResource,
+		logger,
+	)
+
+	// optimistically return the resource that we are going to create once the validation webhook becomes available
+	return operatorConfigurationResource, nil
+}
+
+func (r *AutoOperatorConfigurationResourceHandler) validateAndConvertToResource(
 	logger logd.Logger,
 ) (*dash0v1alpha1.Dash0OperatorConfiguration, error) {
 	logger.Info("running validations and checks for creating/updating the Dash0 operator configuration resource")
@@ -193,59 +266,37 @@ func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigu
 	if err != nil {
 		return nil, err
 	}
+	return convertValuesToResource(r.operatorConfigurationValues, monitoringTemplate, exports, filter, transform), nil
+}
 
-	operatorConfigurationResource :=
-		convertValuesToResource(r.operatorConfigurationValues, monitoringTemplate, exports, filter, transform)
-	go func() {
-		// If multiple replicas are active, only the leader should attempt to create or update the operator
-		// configuration resource.
-		logger.Info(
-			"waiting for this replica to become leader before creating or updating the Dash0 operator configuration " +
-				"resource",
-		)
-		// Block until NotifiyOperatorManagerJustBecameLeader has been called.
-		select {
-		case <-ctx.Done():
-			logger.Error(ctx.Err(), "context cancelled while waiting for this replica to become leader")
-			return
-		case <-r.hasBecomeLeaderChan:
-			logger.Info("this replica is leader, proceeding with creating/updating the operator configuration resource")
-		}
+// WaitForFirstCreateOrUpdate blocks until the first call of CreateOrUpdateOperatorConfigurationResource has finished,
+// that is, until it has created or updated the operator configuration resource, or until it has given up because of an
+// error that is not retried. If that call is superseded by a later call, it waits for the later call instead. Since
+// retryable errors are retried indefinitely, it returns false if the given timeout expires or the context is cancelled
+// before that.
+//
+// Operator manager startup tasks that read the operator configuration resource can use this to avoid acting on the
+// resource from before a Helm upgrade, which is only replaced once this replica has become leader.
+func (r *AutoOperatorConfigurationResourceHandler) WaitForFirstCreateOrUpdate(
+	ctx context.Context,
+	timeout time.Duration,
+) bool {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-r.firstCreateOrUpdateDoneChan:
+		return true
+	case <-timer.C:
+		return false
+	case <-ctx.Done():
+		return false
+	}
+}
 
-		// There is a validation webhook for operator configuration resources. Thus, before we can create or update an
-		// operator configuration resource, we need to wait for the webhook endpoint to become available.
-		logger.Info(
-			"waiting for the webhook service to become available before creating or updating the Dash0 " +
-				"operator configuration resource",
-		)
-		if webhookServiceIsAvailable, err := r.readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(
-			ctx,
-			setupLog,
-		); err != nil {
-			logger.Error(err, "failed to create or update the Dash0 operator configuration resource")
-			return
-		} else if !webhookServiceIsAvailable {
-			logger.Error(
-				fmt.Errorf("cannot create or update the Dash0 operator configuration resource because the webhook service did not become available"),
-				"failed to create or update the Dash0 operator configuration resource",
-			)
-			return
-		}
-		logger.Info("the webhook service is available now")
-
-		logger.Info("all validations and checks succeeded, creating/updating the Dash0 operator configuration resource now")
-		if err := r.createOrUpdateOperatorConfigurationResourceWithRetry(
-			ctx,
-			operatorConfigurationResource,
-			logger,
-		); err != nil {
-			logger.Error(err, "failed to create or update the Dash0 operator configuration resource")
-			return
-		}
-	}()
-
-	// optimistically return the resource that we are going to create once the validation webhook becomes available
-	return operatorConfigurationResource, nil
+func (r *AutoOperatorConfigurationResourceHandler) markFirstCreateOrUpdateAsDone() {
+	r.firstCreateOrUpdateDoneOnce.Do(func() {
+		close(r.firstCreateOrUpdateDoneChan)
+	})
 }
 
 func (r *AutoOperatorConfigurationResourceHandler) loadExports() []dash0common.Export {
@@ -352,6 +403,115 @@ func parseTransform(extraConfigValues *operatorConfigurationExtraConfigValues) (
 	return &transform, nil
 }
 
+// supersedePendingAttempt cancels the attempt that has been started by a previous call of
+// CreateOrUpdateOperatorConfigurationResource (it might still be retrying, with values that are outdated by now) and
+// returns the context for the new attempt.
+func (r *AutoOperatorConfigurationResourceHandler) supersedePendingAttempt(ctx context.Context) context.Context {
+	r.pendingAttemptMutex.Lock()
+	defer r.pendingAttemptMutex.Unlock()
+	if r.cancelPendingAttempt != nil {
+		r.cancelPendingAttempt(errAttemptSuperseded)
+	}
+	attemptCtx, cancel := context.WithCancelCause(ctx)
+	r.cancelPendingAttempt = cancel
+	return attemptCtx
+}
+
+func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigurationResourceUntilSuccessful(
+	ctx context.Context,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+	logger logd.Logger,
+) {
+	defer func() {
+		// A superseded attempt leaves signalling the first create/update as done to the attempt that superseded it.
+		if !errors.Is(context.Cause(ctx), errAttemptSuperseded) {
+			r.markFirstCreateOrUpdateAsDone()
+		}
+	}()
+
+	// If multiple replicas are active, only the leader should attempt to create or update the operator
+	// configuration resource.
+	logger.Info(
+		"waiting for this replica to become leader before creating or updating the Dash0 operator configuration " +
+			"resource",
+	)
+	// Block until NotifiyOperatorManagerJustBecameLeader has been called.
+	select {
+	case <-ctx.Done():
+		logger.Info(
+			"no longer waiting for this replica to become leader, the attempt to create or update the Dash0 operator " +
+				"configuration resource has been cancelled or superseded by a newer attempt",
+		)
+		return
+	case <-r.hasBecomeLeaderChan:
+		logger.Info("this replica is leader, proceeding with creating/updating the operator configuration resource")
+	}
+
+	delay := r.retryDelays.initial
+	for {
+		err := r.waitForWebhookServiceAndCreateOrUpdateOperatorConfigurationResource(
+			ctx,
+			operatorConfigurationResource,
+			logger,
+		)
+		if err == nil {
+			return
+		}
+		if ctx.Err() != nil {
+			logAttemptHasBeenCancelled(logger)
+			return
+		}
+		if !retry.IsRetryable(err) {
+			logger.Error(
+				err,
+				"failed to create or update the Dash0 operator configuration resource, this will not be retried",
+			)
+			return
+		}
+		logger.Error(
+			err,
+			fmt.Sprintf(
+				"failed to create or update the Dash0 operator configuration resource, trying again in %s",
+				delay,
+			),
+		)
+		select {
+		case <-ctx.Done():
+			logAttemptHasBeenCancelled(logger)
+			return
+		case <-time.After(delay):
+		}
+		delay = r.retryDelays.next(delay)
+	}
+}
+
+func logAttemptHasBeenCancelled(logger logd.Logger) {
+	logger.Info(
+		"the attempt to create or update the Dash0 operator configuration resource has been cancelled or " +
+			"superseded by a newer attempt",
+	)
+}
+
+func (r *AutoOperatorConfigurationResourceHandler) waitForWebhookServiceAndCreateOrUpdateOperatorConfigurationResource(
+	ctx context.Context,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+	logger logd.Logger,
+) error {
+	// There is a validation webhook for operator configuration resources. Thus, before we can create or update an
+	// operator configuration resource, we need to wait for the webhook endpoint to become available.
+	logger.Info(
+		"waiting for the webhook service to become available before creating or updating the Dash0 " +
+			"operator configuration resource",
+	)
+	if err := r.readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(ctx, logger); err != nil {
+		return err
+	}
+	logger.Info("the webhook service is available now")
+
+	logger.Info("all validations and checks succeeded, creating/updating the Dash0 operator configuration resource now")
+	return r.createOrUpdateOperatorConfigurationResourceWithRetry(ctx, operatorConfigurationResource, logger)
+}
+
 func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigurationResourceWithRetry(
 	ctx context.Context,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
@@ -362,11 +522,7 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 		func() error {
 			return r.createOrUpdateOperatorConfigurationResourceOnce(ctx, operatorConfigurationResource, logger)
 		},
-		wait.Backoff{
-			Duration: 3 * time.Second,
-			Factor:   1.5,
-			Steps:    6,
-		},
+		r.createOrUpdateBackoff,
 		&logger,
 	)
 }
@@ -376,6 +532,9 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	logger logd.Logger,
 ) error {
+	if err := ctx.Err(); err != nil {
+		return retry.NewRetryableError(err, false)
+	}
 	allOperatorConfigurationResources := &dash0v1alpha1.Dash0OperatorConfigurationList{}
 	if err := r.List(ctx, allOperatorConfigurationResources); err != nil {
 		return fmt.Errorf("failed to list all Dash0 operator configuration resources: %w", err)
@@ -540,7 +699,10 @@ func convertValuesToResource(
 		},
 	}
 	if operatorConfigurationValues.EbpfProfilerEnabled {
-		spec.Profiling.EbpfProfiler = &dash0v1alpha1.EbpfProfiler{Enabled: new(true)}
+		spec.Profiling.EbpfProfiler = &dash0v1alpha1.EbpfProfiler{
+			Enabled:                     new(true),
+			PIDNamespaceTranslationMode: operatorConfigurationValues.EbpfProfilerPIDNamespaceTranslationMode,
+		}
 	}
 	if operatorConfigurationValues.InstrumentationDelivery != "" {
 		spec.InstrumentWorkloads = dash0v1alpha1.InstrumentWorkloads{

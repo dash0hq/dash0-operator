@@ -96,6 +96,7 @@ type collectorConfigurationTemplateValues struct {
 	CollectNodeLabelsAndAnnotationsEnabled           bool
 	LabelAndAnnotationExclusionPatterns              []string
 	K8sAttributesDisableReplicasetInformer           bool
+	K8sAttributesDisableJobInformer                  bool
 	K8sAttributesWaitForMetadata                     bool
 	K8sAttributesWaitForMetadataTimeout              string
 	PrometheusCrdSupportEnabled                      bool
@@ -427,6 +428,7 @@ func newCollectorConfigurationTemplateValues(
 		CollectNodeLabelsAndAnnotationsEnabled:           config.CollectNodeLabelsAndAnnotationsEnabled,
 		LabelAndAnnotationExclusionPatterns:              labelAndAnnotationExclusionPatterns(),
 		K8sAttributesDisableReplicasetInformer:           config.K8sAttributesDisableReplicasetInformer,
+		K8sAttributesDisableJobInformer:                  config.K8sAttributesDisableJobInformer,
 		K8sAttributesWaitForMetadata:                     config.K8sAttributesWaitForMetadata,
 		K8sAttributesWaitForMetadataTimeout:              config.K8sAttributesWaitForMetadataTimeout,
 		PrometheusCrdSupportEnabled:                      config.PrometheusCrdSupportEnabled,
@@ -636,11 +638,9 @@ func aggregateCustomFilters(
 			}
 		}
 		if filterSpecForNamespace.Logs != nil && filterSpecForNamespace.Logs.HasAnyFilters() {
-			if len(filterSpecForNamespace.Logs.LogRecordFilter) > 0 {
-				for _, condition := range filterSpecForNamespace.Logs.LogRecordFilter {
-					allLogRecordFilters =
-						append(allLogRecordFilters, prependNamespaceCheckToOttlCondition(namespace, condition))
-				}
+			for _, condition := range filterSpecForNamespace.Logs.EffectiveLogRecordFilter() {
+				allLogRecordFilters =
+					append(allLogRecordFilters, prependNamespaceCheckToOttlCondition(namespace, condition))
 			}
 		}
 		if filterSpecForNamespace.Profiles != nil && filterSpecForNamespace.Profiles.HasAnyFilters() {
@@ -670,7 +670,7 @@ func aggregateCustomFilters(
 			allDataPointFilters = slices.Concat(allDataPointFilters, globalFilter.Metrics.DataPointFilter)
 		}
 		if globalFilter.Logs != nil {
-			allLogRecordFilters = slices.Concat(allLogRecordFilters, globalFilter.Logs.LogRecordFilter)
+			allLogRecordFilters = slices.Concat(allLogRecordFilters, globalFilter.Logs.EffectiveLogRecordFilter())
 		}
 		if globalFilter.Profiles != nil {
 			allProfileFilters = slices.Concat(allProfileFilters, globalFilter.Profiles.ProfileFilter)

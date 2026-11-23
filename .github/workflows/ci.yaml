@@ -329,8 +329,9 @@ jobs:
 
   # Builds the image of an OLM bundle that references the images build_and_push_images has just built, i.e. the images
   # tagged with sha-<short sha> on main and with x.y.z for tags. Like the other images, the bundle image is pushed for
-  # the main branch, but not yet for tags: version tags of the bundle image are only published once the OLM support is
-  # complete.
+  # the main branch and for tags. The bundle images of release tags are the input for the release catalog of
+  # build_and_push_olm_catalog_image, so a release without a bundle image makes the catalog build of every later release
+  # fail.
   #
   # Intentionally without "permissions:", for the same reason as build_and_push_images.
   # jactionlint ignore=missing-permissions
@@ -402,13 +403,15 @@ jobs:
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/olm
           context: olm/build/release-bundle
           file: olm/build/release-bundle/bundle.Dockerfile
-          pushOnTags: 'false'
 
   # Builds the image of the self-hosted OLM catalog. On main, the catalog holds the bundle that
   # build_and_push_olm_bundle_image has just pushed for this commit and is published as
   # dash0-operator-catalog:main-dev. Pull requests, merge groups and other branches build it from the bundle image
-  # main-dev without pushing it. For tags, the catalog holds the bundles of all releases from OLM_CATALOG_FIRST_VERSION
-  # on; it is only built for the highest release tag, and not at all while OLM_CATALOG_FIRST_VERSION is empty.
+  # main-dev without pushing it. Both also hold the bundle of the latest release in the history of the commit (from
+  # OLM_CATALOG_FIRST_VERSION on), with an upgrade edge to the dev bundle for microshift_olm_catalog_check. For tags,
+  # the catalog holds the bundles of all releases from OLM_CATALOG_FIRST_VERSION on and is published with the version
+  # tags of the release and the tag latest. It is only built for the highest release tag, and the job fails on purpose
+  # for a new major version (see olm/bin/resolve-catalog-bundles.sh).
   #
   # Intentionally without "permissions:", for the same reason as build_and_push_images.
   # jactionlint ignore=missing-permissions
@@ -419,9 +422,13 @@ jobs:
     needs:
       - build_and_push_olm_bundle_image
     if: ${{ always() && needs.build_and_push_olm_bundle_image.result == 'success' }}
+    outputs:
+      # the CSV of the release from which the catalog has an upgrade edge to the dev bundle, empty if there is none
+      upgrade_from_csv: ${{ steps.catalog.outputs.upgrade_from_csv }}
     env:
-      # Empty until the self-hosted catalog is published, then the first release whose bundle image is pushed.
-      OLM_CATALOG_FIRST_VERSION: ''
+      # The first release with a bundle image. Release tags on commits before this setting have none, so a value at or
+      # below such a tag makes every release catalog fail on the missing bundle image; a re-run does not fix that.
+      OLM_CATALOG_FIRST_VERSION: '0.162.0'
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -462,13 +469,42 @@ jobs:
             echo "build=false" >> "$GITHUB_OUTPUT"
           fi
 
+          upgrade_from_file="$RUNNER_TEMP/catalog-upgrade-from.txt"
+          : > "$upgrade_from_file"
+          if [[ $GITHUB_REF != refs/tags/* ]]; then
+            # The bundle image of a new release does not exist until the CI run of its tag has pushed it.
+            if ! olm/bin/resolve-catalog-bundles.sh latest-release > "$upgrade_from_file"; then
+              echo "::warning::The bundle image of the latest release could not be resolved, the catalog has no" \
+                "upgrade edge from it, and on main the MicroShift upgrade check is skipped."
+              : > "$upgrade_from_file"
+            fi
+            cat "$upgrade_from_file"
+          fi
+
       - name: generate and validate the OLM catalog
+        id: catalog
         if: ${{ steps.bundles.outputs.build == 'true' }}
         run: |
           # make variables must not contain line breaks
+          if [[ -s "$RUNNER_TEMP/catalog-upgrade-from.txt" ]]; then
+            # Only validated: the release catalog of tags is rendered from the olm.semver template, which the catalog
+            # with an upgrade edge does not use, and a broken render must not surface first in a release build.
+            make olm-catalog \
+              CATALOG_DIR=olm/build/catalog-semver \
+              CATALOG_BUNDLE_IMAGES="$(tr '\n' ' ' < "$RUNNER_TEMP/catalog-bundles.txt")"
+          fi
           make olm-catalog \
             CATALOG_DIR=olm/build/catalog \
-            CATALOG_BUNDLE_IMAGES="$(tr '\n' ' ' < "$RUNNER_TEMP/catalog-bundles.txt")"
+            CATALOG_BUNDLE_IMAGES="$(tr '\n' ' ' < "$RUNNER_TEMP/catalog-bundles.txt")" \
+            CATALOG_UPGRADE_FROM_BUNDLE_IMAGE="$(cat "$RUNNER_TEMP/catalog-upgrade-from.txt")"
+          upgrade_from_csv=""
+          # The release catalog of a tag has replaces edges as well, but none to a dev bundle.
+          if [[ -s "$RUNNER_TEMP/catalog-upgrade-from.txt" ]]; then
+            upgrade_from_csv="$(yq -r \
+              'select(.schema == "olm.channel") | .entries[] | select(has("replaces")) | .replaces' \
+              olm/build/catalog/catalog/dash0-operator/catalog.yaml)"
+          fi
+          echo "upgrade_from_csv=$upgrade_from_csv" >> "$GITHUB_OUTPUT"
 
       - name: build OLM catalog image
         if: ${{ steps.bundles.outputs.build == 'true' }}
@@ -515,6 +551,23 @@ jobs:
     secrets:
       GKE_SA_KEY: ${{ secrets.GKE_SA_KEY }}
       GKE_PROJECT: ${{ secrets.GKE_PROJECT }}
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+
+  # Installs the operator on MicroShift for every commit pushed to main, from the OLM catalog that
+  # build_and_push_olm_catalog_image just pushed with the "main-dev" tag. If the catalog has an upgrade edge from a
+  # release, a second run installs that release and upgrades it to this commit.
+  microshift_olm_catalog_check:
+    name: MicroShift OLM Catalog Check
+    needs:
+      - build_and_push_olm_catalog_image
+    if: ${{ always() && github.ref == 'refs/heads/main' && needs.build_and_push_olm_catalog_image.result == 'success' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/microshift-olm-catalog-check.yaml
+    with:
+      upgrade_from_csv: ${{ needs.build_and_push_olm_catalog_image.outputs.upgrade_from_csv }}
+    secrets:
       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
       SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
 
@@ -636,3 +689,43 @@ jobs:
           links: |
             GitHub release=${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
             CI run=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  # Sends a Slack notification when a release build has not published all of its artifacts. This has to be a separate
+  # job with always(): a job that is skipped because a job it needs has not succeeded runs no steps at all.
+  notify_release_failure:
+    name: Notify About Failed Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    needs:
+      - build_and_push_images
+      - build_and_push_olm_bundle_image
+      - build_and_push_olm_catalog_image
+      - publish_helm_chart
+    if: |
+      always() &&
+      contains(github.ref, 'refs/tags/') &&
+      (needs.build_and_push_images.result != 'success' ||
+      needs.build_and_push_olm_bundle_image.result != 'success' ||
+      needs.build_and_push_olm_catalog_image.result != 'success' ||
+      needs.publish_helm_chart.result != 'success')
+
+    steps:
+      # the Slack notification is a local action
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: send Slack notification
+        uses: ./.github/actions/slack-notification
+        with:
+          status: failure
+          subject: Dash0 Operator release ${{ github.ref_name }}
+          botToken: ${{ secrets.SLACK_BOT_TOKEN }}
+          channelId: ${{ secrets.SLACK_CHANNEL_ID }}
+          extraContext: |
+            Build Images: `${{ needs.build_and_push_images.result }}`
+            Build OLM Bundle Image: `${{ needs.build_and_push_olm_bundle_image.result }}`
+            Build OLM Catalog Image: `${{ needs.build_and_push_olm_catalog_image.result }}`
+            Publish Helm Chart: `${{ needs.publish_helm_chart.result }}`

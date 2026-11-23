@@ -106,7 +106,9 @@ When debuginfo uploads are enabled, the operator also deploys the proxy as a Dae
 same policy. There is no proxy replica count to tune as the cluster grows.
 
 The Services do not fall back to other nodes when a local endpoint is unavailable. Keep collector, profiler, and proxy
-scheduling settings aligned so every profiled node has both local receivers, including any required tolerations.
+scheduling settings aligned so every profiled node has both local receivers, including any required tolerations. The
+tolerations of the DaemonSet collector (`operator.collectors.daemonSetTolerations`) are not applied to the profiler and
+the proxy; set them in `operator.ebpfProfiler.tolerations` and `operator.debuginfoProxy.tolerations` as well.
 
 ### Security and namespace ownership
 
@@ -114,10 +116,10 @@ The agent runs as root in a privileged container with `hostPID: true` and read-o
 Use a Linux kernel supported by the selected agent release. This gives the agent access to processes visible from the
 node's PID namespace, not only to Kubernetes namespaces monitored by Dash0.
 
-For nested PID namespaces, such as kind nodes inside Docker Desktop, set
-`spec.profiling.ebpfProfiler.pidNamespaceTranslationMode: auto`. The operator passes this as
-`--pid-namespace-translation-mode=auto`; an image upgrade alone does not enable translation. When the setting is omitted,
-the operator leaves the flag unset and the agent retains its `none` default.
+For nested PID namespaces, such as kind nodes, set the Helm value `operator.ebpfProfiler.pidNamespaceTranslationMode` to
+`auto` (`spec.profiling.ebpfProfiler.pidNamespaceTranslationMode` if you manage the operator configuration resource
+yourself). The operator passes this as `--pid-namespace-translation-mode=auto`; an image upgrade alone does not enable
+translation. When the setting is omitted, the operator leaves the flag unset and the agent retains its `none` default.
 
 The allowed modes are `none`, `auto`, `exact`, and `recursive`. `exact` collects processes in the agent's PID namespace;
 `recursive` also includes descendant PID namespaces and requires kernel BTF. `auto` chooses recursive when supported,
@@ -178,9 +180,13 @@ GPU/NVTX collection with this deployment has not been validated on NVIDIA hardwa
 establish a supported NVIDIA runtime setup. To exclude CUDA tracing, configure a non-empty `tracers` list without
 `cuda` or `all`. When `offCPUThreshold` is unset or zero, the operator omits `--off-cpu-threshold` entirely.
 
-Configure these settings under `spec.profiling.ebpfProfiler` on the `Dash0OperatorConfiguration`. Customize resources
-and scheduling separately via `spec.components.ebpfProfiler` and `spec.components.debuginfoProxy`, rather than changing
-the operator manager's resources or scheduling settings.
+Configure these settings under `spec.profiling.ebpfProfiler` on the `Dash0OperatorConfiguration`. Customize resources,
+scheduling and metadata of the profiler and the proxy separately with the Helm values `operator.ebpfProfiler` and
+`operator.debuginfoProxy`, rather than changing the operator manager's resources or scheduling settings. Both accept
+`containerResources` (including `gomemlimit`), `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`,
+`nodeAffinity` and `priorityClassName`. A setting in `spec.components.ebpfProfiler` or `spec.components.debuginfoProxy`
+of the `Dash0OperatorConfiguration` replaces the respective Helm value as a whole. Empty labels, annotations,
+tolerations or priority class names keep the Helm value.
 
 ### Configuration example
 
@@ -197,6 +203,21 @@ operator:
     enabled: false
   exports: []
   # On OpenShift, also set openShift.enabled: true.
+
+  # Optional: resources and scheduling of the profiler and the proxy, for example for nodes with a taint.
+  ebpfProfiler:
+    containerResources:
+      limits:
+        memory: 1Gi
+    tolerations:
+      - key: dedicated
+        operator: Exists
+        effect: NoSchedule
+  debuginfoProxy:
+    tolerations:
+      - key: dedicated
+        operator: Exists
+        effect: NoSchedule
 ```
 
 Create this operator configuration and provision `dash0-authorization` in the operator namespace. Replace the Dash0
@@ -236,29 +257,13 @@ spec:
         uploadEnabled: true
         maxConcurrentUploads: 25
         queueSize: 4096
-  components:
-    ebpfProfiler:
-      containerResources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          memory: 512Mi
-    debuginfoProxy:
-      containerResources:
-        requests:
-          cpu: 10m
-          memory: 32Mi
-        limits:
-          memory: 128Mi
 ```
 
-Both components also accept the existing workload settings `labels`, `annotations`, `podLabels`, `podAnnotations`,
-`tolerations`, `nodeAffinity`, and `priorityClassName`. The integer `threshold` accepts values from 1 to 100 and passes
-directly to the agent's `--profiling-probabilistic-threshold` flag. At each interval, the profiler draws a random integer
-from 0 to 99 and samples when it is less than `threshold`. Setting `threshold: 25` enables CPU sampling in 25% of
-intervals on average; `threshold: 100` keeps it always active. This setting does not affect off-CPU sampling.
-`offCPUThreshold` is a separate fraction from 0 to 1; set it to 0 to disable off-CPU sampling.
+The integer `threshold` accepts values from 1 to 100 and passes directly to the agent's
+`--profiling-probabilistic-threshold` flag. At each interval, the profiler draws a random integer from 0 to 99 and
+samples when it is less than `threshold`. Setting `threshold: 25` enables CPU sampling in 25% of intervals on average;
+`threshold: 100` keeps it always active. This setting does not affect off-CPU sampling. `offCPUThreshold` is a separate
+fraction from 0 to 1; set it to 0 to disable off-CPU sampling.
 
 Disabling the Helm opt-in sets `DASH0_EBPF_PROFILER_ENABLED=false` explicitly so the operator can remove its managed
 profiler resources. Namespace-scoped management permissions remain available for cleanup, including NetworkPolicies.

@@ -119,6 +119,7 @@ type oTelColConfig struct {
 	KubernetesObjectCollectionEnabled                bool
 	CollectClusterScopedObjects                      bool
 	K8sAttributesDisableReplicasetInformer           bool
+	K8sAttributesDisableJobInformer                  bool
 	K8sAttributesWaitForMetadata                     bool
 	K8sAttributesWaitForMetadataTimeout              string
 	K8sAttributesShareProcessor                      bool
@@ -142,8 +143,20 @@ type oTelColConfig struct {
 	IsOpenShift                 bool
 	// ServiceTrafficDistribution is the value for spec.trafficDistribution on the operator's services, or nil when the
 	// Kubernetes version does not enable the field by default. See cluster.ResolveServiceTrafficDistribution.
-	ServiceTrafficDistribution     *string
-	OffsetStorageVolume            *corev1.Volume
+	ServiceTrafficDistribution *string
+	// OffsetStorageVolume is the volume for the filelog receiver offsets, either provided by the user or a hostPath
+	// volume chosen by the operator (see resolveFilelogOffsetStorage). When nil, the offsets are kept in an emptyDir
+	// volume and synchronized to a config map by a sidecar container.
+	OffsetStorageVolume *corev1.Volume
+	// MigrateFilelogOffsetsFromConfigMap adds an init container to a collector daemonset with OffsetStorageVolume that
+	// restores the offsets from the config map of the config map based storage into the volume, unless the volume holds
+	// offsets that are at least as recent, so that switching to the volume keeps the offsets. The init container
+	// tolerates a missing config map. See planFilelogOffsetsMigration.
+	MigrateFilelogOffsetsFromConfigMap bool
+	// KeepFilelogOffsetsConfigMap keeps the config map of the config map based storage in the desired state although
+	// the offsets are stored in OffsetStorageVolume, so that pods which have not been rolled over to the volume yet can
+	// still be migrated. See planFilelogOffsetsMigration.
+	KeepFilelogOffsetsConfigMap    bool
 	SignalControl                  SignalControlConfig
 	AutoNamespaceMonitoringEnabled bool
 	// GlobalFilter and GlobalNormalizedTransform are the cluster-wide filters and transformations from the operator
@@ -655,7 +668,7 @@ func assembleDesiredState(
 		return desiredState, err
 	}
 	desiredState = append(desiredState, addCommonMetadata(daemonSetCollectorConfigMap))
-	if !config.usesOffsetStorageVolume() {
+	if forDeletion || !config.usesOffsetStorageVolume() || config.KeepFilelogOffsetsConfigMap {
 		desiredState = append(desiredState, addCommonMetadata(assembleFilelogOffsetsConfigMap(config)))
 	}
 	desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleForDaemonSet(config)))
@@ -964,6 +977,17 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 		// process is running under.
 		podSpec.InitContainers = []corev1.Container{
 			assembleFileLogVolumeOwnershipInitContainer(config, filelogOffsetsVolume),
+		}
+		if config.MigrateFilelogOffsetsFromConfigMap {
+			podSpec.InitContainers = append(
+				podSpec.InitContainers,
+				assembleFileLogOffsetMigrateInitContainer(
+					config,
+					workloadNameEnvVar,
+					extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources,
+					filelogOffsetsVolume,
+				),
+			)
 		}
 	} else {
 		podSpec.InitContainers = []corev1.Container{
@@ -1567,9 +1591,46 @@ func assembleFileLogOffsetSyncInitContainer(
 	workloadNameEnvVar corev1.EnvVar,
 	resourceRequirements util.ResourceRequirementsWithGoMemLimit,
 ) corev1.Container {
+	return assembleFileLogOffsetInitContainer(
+		config,
+		workloadNameEnvVar,
+		resourceRequirements,
+		"filelog-offset-init",
+		"init",
+		defaultFilelogReceiverOffsetsVolumeMount,
+	)
+}
+
+// assembleFileLogOffsetMigrateInitContainer restores the offsets from the config map into the offset storage volume,
+// unless the volume holds offsets that are at least as recent. It must run after the volume ownership init container,
+// which makes the volume writable for the collector's user. See images/filelogoffsetsync/README.md.
+func assembleFileLogOffsetMigrateInitContainer(
+	config *oTelColConfig,
+	workloadNameEnvVar corev1.EnvVar,
+	resourceRequirements util.ResourceRequirementsWithGoMemLimit,
+	filelogOffsetsVolume corev1.Volume,
+) corev1.Container {
+	return assembleFileLogOffsetInitContainer(
+		config,
+		workloadNameEnvVar,
+		resourceRequirements,
+		fileLogOffsetMigrateInitContainerName,
+		"migrate",
+		createVolumeMountForUserProvidedFileLogOffsetVolume(filelogOffsetsVolume),
+	)
+}
+
+func assembleFileLogOffsetInitContainer(
+	config *oTelColConfig,
+	workloadNameEnvVar corev1.EnvVar,
+	resourceRequirements util.ResourceRequirementsWithGoMemLimit,
+	name string,
+	mode string,
+	volumeMount corev1.VolumeMount,
+) corev1.Container {
 	initFilelogOffsetSyncContainer := corev1.Container{
-		Name: "filelog-offset-init",
-		Args: []string{"--mode=init"},
+		Name: name,
+		Args: []string{"--mode=" + mode},
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: new(false),
 			ReadOnlyRootFilesystem:   new(true),
@@ -1614,7 +1675,7 @@ func assembleFileLogOffsetSyncInitContainer(
 			k8sPodNameEnvVar,
 		},
 		Resources:    resourceRequirements.ToResourceRequirements(),
-		VolumeMounts: []corev1.VolumeMount{defaultFilelogReceiverOffsetsVolumeMount},
+		VolumeMounts: []corev1.VolumeMount{volumeMount},
 	}
 	if config.Images.FilelogOffsetSyncImagePullPolicy != "" {
 		initFilelogOffsetSyncContainer.ImagePullPolicy = config.Images.FilelogOffsetSyncImagePullPolicy

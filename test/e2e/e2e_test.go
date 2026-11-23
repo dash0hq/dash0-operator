@@ -86,7 +86,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 
 		e2eKubernetesContext = os.Getenv("E2E_KUBECTX")
 		verboseHttp = strings.ToLower(os.Getenv("E2E_VERBOSE_HTTP")) == "true"
-		includeProfilingTests = strings.ToLower(os.Getenv("E2E_INCLUDE_PROFILING_TESTS")) == "true"
 		if e2eKubernetesContext == "" {
 			Fail(
 				fmt.Sprintf(
@@ -988,6 +987,45 @@ spec:
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
 
+				//nolint:dupl
+				It("should synchronize a generative AI evaluation to the Dash0 API", func() {
+					deployGenerativeAiEvaluationResource(applicationUnderTestNamespace)
+
+					//nolint:lll
+					routeRegex := "/api/generative-ai-evaluations/dash0-operator_.*_default_e2e-test-ns_generative-ai-evaluation-e2e-test\\?dataset=default"
+
+					By("verifying the generative AI evaluation has been synchronized to the Dash0 API via PUT")
+					req := fetchCapturedApiRequest(routeRegex, 0)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(req.Body).ToNot(BeNil())
+					Expect(*req.Body).To(ContainSubstring("Was the answer polite?"))
+					verifyApiSyncRequest(req)
+
+					setOptOutLabelInGenerativeAiEvaluation(applicationUnderTestNamespace, "false")
+					//nolint:lll
+					By("verifying the generative AI evaluation has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
+					req = fetchCapturedApiRequest(routeRegex, 1)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+
+					setOptOutLabelInGenerativeAiEvaluation(applicationUnderTestNamespace, "true")
+					//nolint:lll
+					By("verifying the generative AI evaluation has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
+					req = fetchCapturedApiRequest(routeRegex, 2)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(*req.Body).To(ContainSubstring("Was the answer polite?"))
+					verifyApiSyncRequest(req)
+
+					removeGenerativeAiEvaluationResource(applicationUnderTestNamespace)
+					//nolint:lll
+					By("verifying the generative AI evaluation has been deleted via the Dash0 API (after removing the resource)")
+					req = fetchCapturedApiRequest(routeRegex, 3)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+				})
+
 				runPersesDashboardSyncTest := func(persesDashboardCrdVersion string) {
 					verifyPersesDashboardCrdConversionWebhookConfigured(operatorNamespace)
 
@@ -1278,6 +1316,19 @@ spec:
 							syntheticsWorkerDeployment,
 						), false, false, false)).ToNot(Succeed())
 				})
+
+			It("should share the k8s_attributes processor between pipelines by default", func() {
+				verifyCollectorContainerArgsContainString(
+					operatorNamespace,
+					collectorDaemonSetNameQualified,
+					k8sAttributesShareProcessorFeatureGate,
+				)
+				verifyCollectorContainerArgsContainString(
+					operatorNamespace,
+					collectorDeploymentNameQualified,
+					k8sAttributesShareProcessorFeatureGate,
+				)
+			})
 
 		}) // end of suite "with an existing operator deployment and operation configuration resource::with a deployed
 		// Dash0 monitoring resource"
@@ -1832,7 +1883,7 @@ traces:
 					filter :=
 						`
 logs:
-  log_records:
+  log_record:
   - 'NoSuchFunction(body)'
 `
 					deployDash0MonitoringResourceExpectingRejection(
@@ -4704,9 +4755,9 @@ spec:
 			})
 		})
 
-		Describe("with shared k8s_attributes processor", func() {
+		Describe("with the shared k8s_attributes processor disabled", func() {
 			BeforeAll(func() {
-				By("deploying the Dash0 operator with the shared k8s_attributes processor enabled")
+				By("deploying the Dash0 operator with the shared k8s_attributes processor disabled")
 				deployOperatorWithDefaultAutoOperationConfiguration(
 					operatorNamespace,
 					operatorHelmChart,
@@ -4715,71 +4766,26 @@ spec:
 					&images,
 					true,
 					map[string]string{
-						"operator.collectors.k8s_attributes.shareProcessorBetweenPipelines": "true",
+						"operator.collectors.k8s_attributes.shareProcessorBetweenPipelines": "false",
 					},
-				)
-				deployDash0MonitoringResourceWithRetry(
-					applicationUnderTestNamespace,
-					dash0MonitoringValuesDefault,
-					operatorNamespace,
 				)
 			})
 
 			AfterAll(func() {
-				undeployDash0MonitoringResource(applicationUnderTestNamespace)
 				undeployOperator(operatorNamespace)
 			})
 
-			It("should enable the feature gate for the daemonset and deployment collectors", func() {
-				featureGateArg := "--feature-gates=processor.k8sattributes.ShareProcessorBetweenPipelines"
-				verifyCollectorContainerArgsContainString(operatorNamespace, collectorDaemonSetNameQualified, featureGateArg)
-				verifyCollectorContainerArgsContainString(
+			It("should not enable the feature gate for the daemonset and deployment collectors", func() {
+				verifyCollectorContainerArgsDoNotContainString(
+					operatorNamespace,
+					collectorDaemonSetNameQualified,
+					k8sAttributesShareProcessorFeatureGate,
+				)
+				verifyCollectorContainerArgsDoNotContainString(
 					operatorNamespace,
 					collectorDeploymentNameQualified,
-					featureGateArg,
+					k8sAttributesShareProcessorFeatureGate,
 				)
-			})
-
-			It("should enrich spans, logs and metrics with Kubernetes metadata", func() {
-				timestampLowerBound := time.Now()
-				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
-
-				By("installing the Node.js deployment")
-				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
-
-				By("verifying that spans carry Kubernetes metadata")
-				verifyThatWorkloadHasBeenInstrumented(
-					applicationUnderTestNamespace,
-					runtimeTypeNodeJs,
-					workloadTypeDeployment,
-					testId,
-					images,
-					"webhook",
-				)
-
-				By("verifying that log records carry Kubernetes metadata")
-				// The collector only starts collecting logs from the test namespace once kubelet has synced the updated
-				// collector config map to the node and the collector has reloaded it, which can take up to a minute.
-				Eventually(func(g Gomega) {
-					verifyWorkloadLogRecords(
-						g,
-						runtimeTypeNodeJs,
-						workloadTypeDeployment,
-						testEndpoint,
-						fmt.Sprintf("id=%s", testId),
-						timestampLowerBound,
-						"",
-						fmt.Sprintf("processing request %s", testId),
-					)
-				}, 120*time.Second, time.Second).Should(Succeed())
-
-				By("verifying that metrics carry Kubernetes metadata")
-				Eventually(func(g Gomega) {
-					verifyKubeletStatsMetrics(g, timestampLowerBound)
-				}, 120*time.Second, time.Second).Should(Succeed())
-				Eventually(func(g Gomega) {
-					verifyK8skClusterReceiverMetrics(g, timestampLowerBound)
-				}, 120*time.Second, time.Second).Should(Succeed())
 			})
 		})
 
@@ -5962,6 +5968,30 @@ spec:
 					)
 				}, 90*time.Second, 2*time.Second).Should(Succeed())
 			})
+
+			It("retries a Dash0 generative AI evaluation synchronization after a transient server error (HTTP 503)", func() {
+				By("configuring the API mock to fail the generative AI evaluation with HTTP 503 for the first sync attempt")
+				configureApiMockResponseOverrides(apiMockResponseOverride{
+					Method:         "PUT",
+					RouteSubstring: "generative-ai-evaluation-e2e-test",
+					StatusCode:     503,
+					Times:          apiMockFailTimesForOneSyncAttempt,
+				})
+
+				deployGenerativeAiEvaluationResource(applicationUnderTestNamespace)
+
+				//nolint:lll
+				generativeAiEvaluationPutRegex := "^/api/generative-ai-evaluations/dash0-operator_.*_default_e2e-test-ns_generative-ai-evaluation-e2e-test\\?dataset=default$"
+
+				//nolint:lll
+				By("verifying the operator performs a second synchronization attempt and the generative AI evaluation is synchronized")
+				Eventually(func(g Gomega) {
+					g.Expect(countCapturedApiRequests(g, "PUT", generativeAiEvaluationPutRegex)).To(
+						BeNumerically(">=", apiMockFailTimesForOneSyncAttempt+1),
+						"expected the generative AI evaluation to be re-synchronized by the periodic retry",
+					)
+				}, 90*time.Second, 2*time.Second).Should(Succeed())
+			})
 		})
 
 	}) // end of suite "without an existing operator deployment"
@@ -6130,11 +6160,7 @@ spec:
 
 	Context("with an existing operator deployment and profiling enabled", func() {
 		BeforeAll(func() {
-			if !includeProfilingTests {
-				Skip("profiling e2e tests are excluded by default because the eBPF profiler does not work in kind; " +
-					"set E2E_INCLUDE_PROFILING_TESTS=true to include them")
-			}
-			By("deploying the Dash0 operator with profiling enabled")
+			By("deploying the Dash0 operator with the eBPF profiler enabled")
 			deployOperatorWithDefaultAutoOperationConfiguration(
 				operatorNamespace,
 				operatorHelmChart,
@@ -6143,7 +6169,9 @@ spec:
 				&images,
 				false,
 				map[string]string{
-					"operator.profilingEnabled": "true",
+					"operator.ebpfProfilerEnabled": "true",
+					// kind nodes run in their own PID namespace, see helm-chart/dash0-operator/docs/profiling.md.
+					"operator.ebpfProfiler.pidNamespaceTranslationMode": "auto",
 				},
 			)
 			deployDash0MonitoringResourceWithRetry(
@@ -6152,16 +6180,12 @@ spec:
 				operatorNamespace,
 			)
 			Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
-			deployEbpfProfiler(operatorNamespace, applicationUnderTestNamespace)
+			waitForEbpfProfilerToStart(operatorNamespace)
 		})
 
 		AfterAll(func() {
-			if !includeProfilingTests {
-				return
-			}
 			removeAllTestApplications(applicationUnderTestNamespace)
 			undeployDash0MonitoringResource(applicationUnderTestNamespace)
-			teardownEbpfProfiler(operatorNamespace)
 			undeployOperator(operatorNamespace)
 		})
 
@@ -6172,6 +6196,11 @@ spec:
 				By("waiting for profiles to be captured")
 				timestampLowerBound := time.Now()
 				Eventually(func(g Gomega) {
+					// The profiler only samples processes that are on CPU. A single request per poll is too cheap to be
+					// sampled reliably, hence the burst.
+					for range 100 {
+						sendRequest(g, runtimeTypeNodeJs, workloadTypeDeployment, "/dash0-k8s-operator-test", "")
+					}
 					verifyProfiles(g, timestampLowerBound, applicationUnderTestNamespace)
 				}, 120*time.Second, 5*time.Second).Should(Succeed())
 				By("matching profiles have been received")

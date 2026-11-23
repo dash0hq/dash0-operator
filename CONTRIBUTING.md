@@ -300,8 +300,8 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       to "true".
     * `ENABLE_RUBY_AUTO_INSTRUMENTATION`: Set this to "false" to disable Ruby auto-instrumentation. This corresponds to
       the Helm setting `operator.instrumentation.enableRubyAutoInstrumentation=false`. This defaults to "true".
-    * `FILELOG_OFFSETS_PVC`: Use a persistent volume claim to store filelog offsets, instead of the default config map
-      based storage. Possible values:
+    * `FILELOG_OFFSETS_PVC`: Use a persistent volume claim to store filelog offsets, instead of letting the operator
+      choose the storage. Possible values:
         * `FILELOG_OFFSETS_PVC=kind`: deploy a PersistentVolume and PersistentVolumeClaim suitable for kind clusters
           created via test-resources/bin/create_cluster_and_registry.sh or based on `test-resources/kind-config.yaml`
           (i.e. clusters that have the `offset-storage` extra mounts), then use this for filelog offset storage
@@ -313,8 +313,14 @@ Moving beyond the quickstart instructions, here are more details on the test scr
           https://github.com/kubernetes-sigs/aws-efs-csi-driver/tree/master/examples/kubernetes/dynamic_provisioning)
       Take a look at the files in `test-resources/filelog-offset-storage` for details.
       Test scenario 12 configures the volume via `spec.components` instead of via Helm.
-    * `FILELOG_OFFSETS_HOST_PATH_VOLUME`: Use a `hostPath` volume to store filelog offsets, instead of the default
-      config map based storage.
+    * `FILELOG_OFFSETS_HOST_PATH_VOLUME`: Use a user-provided `hostPath` volume to store filelog offsets
+      (`operator.collectors.filelogOffsetSyncStorageVolume`), instead of letting the operator choose the storage.
+    * `FILELOG_OFFSETS_STORAGE_MODE`: Set `operator.collectors.filelogOffsetStorageMode` (`auto`, `configMap` or
+      `hostPath`). This defaults to being empty, which means the Helm chart default (`auto`) is used, that is, the
+      operator uses a `hostPath` volume (`/var/lib/dash0-operator/filelog-offsets/<operator namespace>` on each node)
+      if the cluster admits it, and the config map otherwise. To test the migration from the config map to the
+      `hostPath` volume, deploy with `FILELOG_OFFSETS_STORAGE_MODE=configMap` first, then run
+      `test-scenario-03-rebuild-update-operator-no-cleanup.sh` without it.
     * `INSTRUMENT_WORKLOADS_MODE`: Set this to "all", "created-and-updated" or "none" to control the
       `instrumentWorkloads.mode` setting of the monitoring resource that will be deployed.
       This defaults to "all", unless `$TELEMETRY_COLLECTION_ENABLED` is "false", then it defaults to "none".
@@ -672,6 +678,9 @@ It can be installed with `operator-sdk run bundle <bundle image> --namespace <na
 without building any images.
 CI generates this bundle via `make olm-release-bundle`, which tags all images of the chart that are built in this
 repository with `BUNDLE_OPERATOR_IMAGE_TAG`.
+Release builds publish the bundle as `ghcr.io/dash0hq/dash0-operator-bundle:<version>` (plus the other version tags of
+the release and `latest`), with the release version as bundle version and image tag. They also overwrite the tag
+`sha-<short commit sha>` of the tagged commit with the release bundle.
 
 ## OLM Catalog
 
@@ -679,21 +688,55 @@ CI also publishes an OLM catalog image (a file-based catalog with the package `d
 `stable-v0`) for every commit on `main`, which holds the bundle image of that commit:
 `ghcr.io/dash0hq/dash0-operator-catalog:main-dev`.
 Pull requests and other branches build the catalog image from the bundle image `main-dev` without pushing it.
-Release builds do not publish a catalog image yet.
+Both also hold the bundle of the latest release (from `OLM_CATALOG_FIRST_VERSION` on) in the history of the commit,
+which the dev bundle `replaces`, so the upgrade from that release can be tested. The channel head stays the dev bundle.
+The build for the highest release tag publishes the release catalog `ghcr.io/dash0hq/dash0-operator-catalog:<version>`,
+which holds the bundles of all releases from `OLM_CATALOG_FIRST_VERSION` (`.github/workflows/ci.yaml`) on. It is also
+tagged with the other version tags of the release, `latest` and `sha-<short commit sha>` (which overwrites the dev
+catalog of that commit). Users install the operator from this catalog and receive upgrades through it if their
+`CatalogSource` polls the image (`spec.updateStrategy.registryPoll`).
+
+- A release tag whose bundle image is missing (e.g. its CI run failed or was cancelled) makes the catalog build of
+  every later release fail. Re-run the CI workflow of that tag, then the catalog job of the highest release tag.
+  Re-running the image builds of an older tag can move the tags `latest`, `<major>` and `<major>.<minor>` of the
+  images back to that version, so re-run only the failed jobs where possible. A release tag on a commit from before
+  bundle images were pushed for tags never gets one, not even by a re-run; raise `OLM_CATALOG_FIRST_VERSION` above it
+  instead.
+- Never delete a release tag: the next catalog would no longer contain that release, and installations of it would
+  not be upgraded anymore.
+- A new major version (e.g. `1.0.0`) gets its own channel (`stable-v1`) without an upgrade edge from `stable-v0`.
+  The catalog build fails for it until such an edge (e.g. `skipRange: '<1.0.0'` on the `stable-v1` entries) has been
+  added and the check in `olm/bin/resolve-catalog-bundles.sh` has been adjusted. Users then have to switch their
+  `Subscription` to `stable-v1`.
+
+To test a catalog:
 
 - [test-resources/bin/test-olm-catalog.sh](test-resources/bin/test-olm-catalog.sh) installs the operator from a catalog
   image via a `CatalogSource`, an `OperatorGroup` and a `Subscription`, and creates a `Dash0OperatorConfiguration` and
   a `Dash0Monitoring` resource. It installs the catalog `main-dev` unless `CATALOG_IMAGE` is set, and does not build
-  any images. `test-resources/bin/test-olm-catalog.sh cleanup` removes the operator again; the CRDs remain, as after an
+  any images. With `CATALOG_POLL_INTERVAL` (e.g. `5m`), OLM polls the catalog image for updates, which is needed to
+  test the upgrade to the next release with `CATALOG_IMAGE=ghcr.io/dash0hq/dash0-operator-catalog:latest`.
+  `CATALOG_STARTING_CSV` (e.g. `dash0-operator.v0.162.0`) installs that version instead of the channel head, and
+  every upgrade then waits for the approval of its `InstallPlan`, e.g. to test the upgrade from the latest release to
+  `main-dev`. `test-resources/bin/test-olm-catalog.sh cleanup` removes the operator again; the CRDs remain, as after an
   uninstall via OLM.
 - `make olm-catalog CATALOG_BUNDLE_IMAGES="<bundle image> ..."` renders and validates a catalog with the given bundle
   images into `olm/build/catalog` (`CATALOG_DIR`). Reference the bundle images by digest, a tag can be overwritten.
-  With the local registry of the kind setup, also set `CATALOG_REGISTRY_USE_HTTP=true`.
+  With the local registry of the kind setup, also set `CATALOG_REGISTRY_USE_HTTP=true`. With
+  `CATALOG_UPGRADE_FROM_BUNDLE_IMAGE="<bundle image>"`, the only bundle of `CATALOG_BUNDLE_IMAGES` replaces that bundle.
   `make olm-catalog-image push-olm-catalog-image` builds and pushes the catalog image
   `${IMAGE_REPOSITORY_PREFIX}dash0-operator-catalog:v0.0.1` (`CATALOG_IMAGE_REPOSITORY`, `CATALOG_IMAGE_TAG`), which
   `test-olm-catalog.sh` then installs with `CATALOG_IMAGE`.
 - In CI, [olm/bin/resolve-catalog-bundles.sh](olm/bin/resolve-catalog-bundles.sh) determines the bundle images of the
   catalog and resolves them to digests.
+- For every commit on `main`, CI installs the catalog `main-dev` on MicroShift, which runs in a container started by
+  [minc](https://github.com/minc-org/minc) (workflow `.github/workflows/microshift-olm-catalog-check.yaml`). The check
+  [.github/workflows/scripts/microshift-olm-catalog-check.sh](.github/workflows/scripts/microshift-olm-catalog-check.sh)
+  runs `test-olm-catalog.sh` and waits until the collectors are ready. If the catalog has an upgrade edge from a
+  release, a second run on its own cluster installs that release (`UPGRADE_FROM_CSV`), approves the upgrade to the dev
+  bundle and runs the checks again. It also works with a local minc cluster: run
+  `minc create`, add its kube context `microshift` to `ALLOWED_KUBECTXS` (in `test-resources/.env`, if it sets the
+  variable), then run the script.
 
 ## Testing with Kyverno
 

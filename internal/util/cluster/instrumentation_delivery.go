@@ -25,18 +25,17 @@ const (
 // cluster's nodes (see MinimumKubeletVersionDetector) as well as on the Kubernetes API server version.
 //
 // If delivery is "image-volume", the function honors the explicit choice unless one of the two versions is known to be
-// older than 1.31; in that case it logs a warning and returns init container. For "auto", the function returns image
-// volume only if both the Kubernetes API server version and the minimum kubelet version are known to be at least 1.36;
-// in particular it returns init container while the minimum kubelet version detection is still running.
+// older than 1.31; in that case it logs a warning and returns init container. For "auto" (and for an empty value, see
+// RequestedInstrumentationDeliveryOrDefault), the function returns image volume only if both the Kubernetes API server
+// version and the minimum kubelet version are known to be at least 1.36; in particular it returns init container while
+// the minimum kubelet version detection is still running.
 func ResolveInstrumentationDelivery(
 	delivery dash0v1alpha1.InstrumentationDelivery,
 	apiServerVersionInfo KubernetesVersionInfo,
 	minimumKubeletVersionInfo KubernetesVersionInfo,
-	logWarningForEmptyValue bool,
 	logger logd.Logger,
 ) ResolvedInstrumentationDelivery {
-	// maintenance note: this switch statement needs to be updated once we move to the default being "auto"
-	switch delivery {
+	switch RequestedInstrumentationDeliveryOrDefault(delivery) {
 
 	case dash0v1alpha1.InstrumentationDeliveryImageVolume:
 		// Versions that have not been detected (yet) do not veto the explicit choice, only versions that are known to
@@ -94,17 +93,23 @@ func ResolveInstrumentationDelivery(
 		return ResolvedInstrumentationDeliveryInitContainer
 
 	default:
-		if delivery != "" || logWarningForEmptyValue {
-			logger.WarnTelemetryCollectionIssue(fmt.Sprintf(
-				"unknown instrumentation delivery: \"%s\". Falling back to the init container approach for instrumenting workloads.",
-				delivery,
-			))
-		} else {
-			logger.Debug(fmt.Sprintf(
-				"unknown instrumentation delivery: \"%s\". Falling back to the init container approach for instrumenting workloads.",
-				delivery,
-			))
-		}
+		logger.WarnTelemetryCollectionIssue(fmt.Sprintf(
+			"unknown instrumentation delivery: \"%s\". Falling back to the init container approach for instrumenting workloads.",
+			delivery,
+		))
 		return ResolvedInstrumentationDeliveryInitContainer
 	}
+}
+
+// RequestedInstrumentationDeliveryOrDefault returns the given requested instrumentation delivery, or "auto" if it is
+// empty. The value is empty if the --operator-configuration-instrumentation-delivery flag has not been set and no
+// operator configuration resource has been read (yet). "auto" is also the default of
+// spec.instrumentWorkloads.instrumentationDelivery in the operator configuration resource.
+func RequestedInstrumentationDeliveryOrDefault(
+	delivery dash0v1alpha1.InstrumentationDelivery,
+) dash0v1alpha1.InstrumentationDelivery {
+	if delivery == "" {
+		return dash0v1alpha1.InstrumentationDeliveryAuto
+	}
+	return delivery
 }

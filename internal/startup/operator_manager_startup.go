@@ -128,6 +128,7 @@ type environmentVariables struct {
 	sendBatchSize                               *uint32
 	sendBatchMaxSize                            *uint32
 	k8sAttributesDisableReplicasetInformer      bool
+	k8sAttributesDisableJobInformer             bool
 	k8sAttributesWaitForMetadata                bool
 	k8sAttributesWaitForMetadataTimeout         string
 	k8sAttributesShareProcessor                 bool
@@ -169,6 +170,7 @@ type commandLineArguments struct {
 	operatorConfigurationPrometheusCrdSupportEnabled                      bool
 	operatorConfigurationProfilingEnabled                                 bool
 	operatorConfigurationEbpfProfilerEnabled                              bool
+	operatorConfigurationEbpfProfilerPIDNamespaceTranslationMode          string
 	operatorConfigurationClusterName                                      string
 	operatorConfigurationAutoMonitorNamespacesEnabled                     bool
 	operatorConfigurationAutoMonitorNamespacesLabelSelector               string
@@ -274,6 +276,7 @@ const (
 	sendBatchSizeEnvVarName                          = "OTEL_COLLECTOR_SEND_BATCH_SIZE"
 	sendBatchMaxSizeEnvVarName                       = "OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
 	k8sAttributesDisableReplicasetInformerEnvVarName = "OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER"
+	k8sAttributesDisableJobInformerEnvVarName        = "OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_JOB_INFORMER"
 	k8sAttributesWaitForMetadataEnvVarName           = "OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA"
 	k8sAttributesWaitForMetadataTimeoutEnvVarName    = "OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA_TIMEOUT"
 	k8sAttributesShareProcessorEnvVarName            = "OTEL_COLLECTOR_K8SATTRIBUTES_SHARE_PROCESSOR_BETWEEN_PIPELINES"
@@ -508,6 +511,7 @@ func Start() {
 			PrometheusCrdSupportEnabled:                      cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
 			ProfilingEnabled:                                 cliArgs.operatorConfigurationProfilingEnabled,
 			EbpfProfilerEnabled:                              cliArgs.operatorConfigurationEbpfProfilerEnabled,
+			EbpfProfilerPIDNamespaceTranslationMode:          cliArgs.operatorConfigurationEbpfProfilerPIDNamespaceTranslationMode,
 			TelemetryCollectionEnabled:                       cliArgs.telemetryCollectionEnabled,
 			ClusterName:                                      cliArgs.operatorConfigurationClusterName,
 			AutoMonitorNamespacesEnabled:                     cliArgs.operatorConfigurationAutoMonitorNamespacesEnabled,
@@ -723,6 +727,13 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 		"operator-configuration-ebpf-profiler-enabled",
 		false,
 		"The value for profiling.ebpfProfiler.enabled on the operator configuration resource.",
+	)
+	fs.StringVar(
+		&cliArgs.operatorConfigurationEbpfProfilerPIDNamespaceTranslationMode,
+		"operator-configuration-ebpf-profiler-pid-namespace-translation-mode",
+		"",
+		"The value for profiling.ebpfProfiler.pidNamespaceTranslationMode on the operator configuration resource; "+
+			"will be ignored if operator-configuration-ebpf-profiler-enabled is not set.",
 	)
 	fs.BoolVar(
 		&cliArgs.telemetryCollectionEnabled,
@@ -1122,6 +1133,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	}
 
 	k8sAttributesDisableReplicasetInformer := readBooleanEnvVar(k8sAttributesDisableReplicasetInformerEnvVarName)
+	k8sAttributesDisableJobInformer := readBooleanEnvVar(k8sAttributesDisableJobInformerEnvVarName)
 
 	k8sAttributesWaitForMetadata := readBooleanEnvVar(k8sAttributesWaitForMetadataEnvVarName)
 	k8sAttributesWaitForMetadataTimeout, _ := os.LookupEnv(k8sAttributesWaitForMetadataTimeoutEnvVarName)
@@ -1188,6 +1200,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		sendBatchSize:                               sendBatchSize,
 		sendBatchMaxSize:                            sendBatchMaxSize,
 		k8sAttributesDisableReplicasetInformer:      k8sAttributesDisableReplicasetInformer,
+		k8sAttributesDisableJobInformer:             k8sAttributesDisableJobInformer,
 		k8sAttributesWaitForMetadata:                k8sAttributesWaitForMetadata,
 		k8sAttributesWaitForMetadataTimeout:         k8sAttributesWaitForMetadataTimeout,
 		k8sAttributesShareProcessor:                 k8sAttributesShareProcessor,
@@ -1381,6 +1394,28 @@ func setupTeamReconciler(
 	return teamReconciler, nil
 }
 
+// setupGenerativeAiEvaluationReconciler constructs and wires the generative AI evaluation reconciler with the manager
+// and the leader-election-aware runnable. Companion to setupSpamFilterReconciler; see its godoc for the rationale.
+func setupGenerativeAiEvaluationReconciler(
+	mgr manager.Manager,
+	k8sClient client.Client,
+	clusterUid types.UID,
+	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
+	apiClientPool *controller.ApiClientPool,
+) (*controller.GenerativeAiEvaluationReconciler, error) {
+	generativeAiEvaluationReconciler := controller.NewGenerativeAiEvaluationReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		apiClientPool,
+	)
+	if err := generativeAiEvaluationReconciler.SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("unable to set up the generative AI evaluation reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(generativeAiEvaluationReconciler)
+	return generativeAiEvaluationReconciler, nil
+}
+
 // setupTimeSeriesAggregationReconciler constructs and wires the time-series-aggregation reconciler with the manager and
 // the leader-election-aware runnable. Companion to setupSpamFilterReconciler; see its godoc for the rationale.
 func setupTimeSeriesAggregationReconciler(
@@ -1415,10 +1450,12 @@ func allOwnedIacResourceSynchronizationControllers(
 	syntheticCheckReconciler *controller.SyntheticCheckReconciler,
 	teamReconciler *controller.TeamReconciler,
 	timeSeriesAggregationReconciler *controller.TimeSeriesAggregationReconciler,
+	generativeAiEvaluationReconciler *controller.GenerativeAiEvaluationReconciler,
 	viewReconciler *controller.ViewReconciler,
 	samplingRuleReconciler *controller.SamplingRuleReconciler,
 ) []controller.OwnedIacResourceSynchronizationController {
 	controllers := []controller.OwnedIacResourceSynchronizationController{
+		generativeAiEvaluationReconciler,
 		notificationChannelReconciler,
 		signalToMetricsReconciler,
 		sloReconciler,
@@ -1947,12 +1984,13 @@ func startDash0Controllers(
 		return err
 	}
 
-	operatorConfigurationResource := createOrUpdateAutoOperatorConfigurationResource(
-		ctx,
-		readyCheckExecuter,
-		operatorConfigurationValues,
-		setupLog,
-	)
+	operatorConfigurationResource, autoOperatorConfigurationResourceHandler :=
+		createOrUpdateAutoOperatorConfigurationResource(
+			ctx,
+			readyCheckExecuter,
+			operatorConfigurationValues,
+			setupLog,
+		)
 
 	k8sClient := mgr.GetClient()
 
@@ -2001,11 +2039,26 @@ func startDash0Controllers(
 				return fmt.Errorf("unable to add the task for checking for instrumented pods: %w", err)
 			}
 		} else {
-			if instrumenter, err = setupInstrumenters(mgr, k8sClient, clientset, clusterInstrumentationConfig); err != nil {
+			if instrumenter, err = setupInstrumenters(
+				mgr,
+				k8sClient,
+				clientset,
+				clusterInstrumentationConfig,
+				newWaitForHelmManagedInstrumentationSettings(
+					autoOperatorConfigurationResourceHandler,
+					startupTasksK8sClient,
+					clusterInstrumentationConfig,
+					extraConfigDefaults,
+				),
+			); err != nil {
 				return err
 			}
 		}
 
+		var nodeSELinuxIndication cluster.NodeSELinuxIndication
+		if !cliArgs.signalControlSceOnlyMode {
+			nodeSELinuxIndication = cluster.DetectNodeSELinuxIndication(ctx, clientset, setupLog)
+		}
 		collectorConfig := util.CollectorConfig{
 			Images:                                 images,
 			OperatorNamespace:                      envVars.operatorNamespace,
@@ -2016,6 +2069,7 @@ func startDash0Controllers(
 			SendBatchSize:                          envVars.sendBatchSize,
 			SendBatchMaxSize:                       envVars.sendBatchMaxSize,
 			K8sAttributesDisableReplicasetInformer: envVars.k8sAttributesDisableReplicasetInformer,
+			K8sAttributesDisableJobInformer:        envVars.k8sAttributesDisableJobInformer,
 			K8sAttributesWaitForMetadata:           envVars.k8sAttributesWaitForMetadata,
 			K8sAttributesWaitForMetadataTimeout:    envVars.k8sAttributesWaitForMetadataTimeout,
 			K8sAttributesShareProcessor:            envVars.k8sAttributesShareProcessor,
@@ -2033,6 +2087,7 @@ func startDash0Controllers(
 			DaemonSetServiceAccountName:            cliArgs.otelCollectorDaemonSetServiceAccountName,
 			IsGkeAutopilot:                         cliArgs.isGkeAutopilot,
 			IsOpenShift:                            cliArgs.isOpenShift,
+			NodeSELinuxIndication:                  nodeSELinuxIndication,
 			DevelopmentMode:                        developmentMode,
 			DebugVerbosityDetailed:                 envVars.debugVerbosityDetailed,
 			EnableProfExtension:                    envVars.enablePprofExtension,
@@ -2122,7 +2177,10 @@ func startDash0Controllers(
 			ServiceAccountName: cliArgs.ebpfProfilerServiceAccountName, IsOpenShift: cliArgs.isOpenShift,
 		},
 	)
-	profilerManager := profiling.NewManager(profilerResourceManager)
+	profilerManager := profiling.NewManager(profilerResourceManager, extraConfig, extraConfigDefaults)
+	// Update the extra config in the profiling manager when the extra config map changes, and also trigger a
+	// reconciliation of the profiler and debuginfo proxy resources.
+	extraConfigMapWatcher.AddClient(profilerManager)
 	profilerReconciler := profiling.NewReconciler(k8sClient, profilerManager)
 	if err := profilerReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the eBPF profiler reconciler: %w", err)
@@ -2252,6 +2310,17 @@ func startDash0Controllers(
 		return err
 	}
 
+	generativeAiEvaluationReconciler, err := setupGenerativeAiEvaluationReconciler(
+		mgr,
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		apiClientPool,
+	)
+	if err != nil {
+		return err
+	}
+
 	var samplingRuleReconciler *controller.SamplingRuleReconciler
 	if cliArgs.featureSignalControlEnabled {
 		samplingRuleReconciler = controller.NewSamplingRuleReconciler(
@@ -2339,6 +2408,7 @@ func startDash0Controllers(
 			syntheticCheckReconciler,
 			teamReconciler,
 			timeSeriesAggregationReconciler,
+			generativeAiEvaluationReconciler,
 			viewReconciler,
 			samplingRuleReconciler,
 		),
@@ -2358,6 +2428,7 @@ func startDash0Controllers(
 		spamFilterReconciler,
 		teamReconciler,
 		timeSeriesAggregationReconciler,
+		generativeAiEvaluationReconciler,
 		signalToMetricsReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
@@ -2400,6 +2471,7 @@ func startDash0Controllers(
 			spamFilterReconciler,
 			teamReconciler,
 			timeSeriesAggregationReconciler,
+			generativeAiEvaluationReconciler,
 			signalToMetricsReconciler,
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
@@ -2479,6 +2551,7 @@ func startDash0Controllers(
 		viewReconciler,
 		spamFilterReconciler,
 		timeSeriesAggregationReconciler,
+		generativeAiEvaluationReconciler,
 		signalToMetricsReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
@@ -2571,9 +2644,9 @@ func createOrUpdateAutoOperatorConfigurationResource(
 	readyCheckExecuter *ReadyCheckExecuter,
 	operatorConfigurationValues *OperatorConfigurationValues,
 	logger logd.Logger,
-) *dash0v1alpha1.Dash0OperatorConfiguration {
+) (*dash0v1alpha1.Dash0OperatorConfiguration, *AutoOperatorConfigurationResourceHandler) {
 	if operatorConfigurationValues == nil {
-		return nil
+		return nil, nil
 	}
 	autoOperatorConfigurationResourceHandler := NewAutoOperatorConfigurationResourceHandler(
 		startupTasksK8sClient,
@@ -2588,10 +2661,10 @@ func createOrUpdateAutoOperatorConfigurationResource(
 			logger,
 		); err != nil {
 		logger.Error(err, "Failed to create the requested Dash0 operator configuration resource.")
-		return nil
+		return nil, autoOperatorConfigurationResourceHandler
 	} else {
 		extraConfigMapWatcher.AddClient(autoOperatorConfigurationResourceHandler)
-		return operatorConfigurationResource
+		return operatorConfigurationResource, autoOperatorConfigurationResourceHandler
 	}
 }
 
@@ -2631,6 +2704,7 @@ func setupInstrumenters(
 	k8sClient client.Client,
 	clientset *kubernetes.Clientset,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
+	waitForOperatorConfigurationResource func(context.Context, logd.Logger),
 ) (*instrumentation.Instrumenter, error) {
 	startupInstrumenter := instrumentation.NewInstrumenter(
 		// The k8s client will be added later, in internal/startup/instrument_at_startup.go#Start.
@@ -2644,7 +2718,9 @@ func setupInstrumenters(
 	// this instrumenter only runs once at startup, this has no effect whatsoever.
 	extraConfigMapWatcher.AddClient(startupInstrumenter)
 	// register the instrument-at-startup task to run once this operator manager becomes leader
-	if err := mgr.Add(NewInstrumentAtStartupRunnable(mgr, startupInstrumenter)); err != nil {
+	if err := mgr.Add(
+		NewInstrumentAtStartupRunnable(mgr, startupInstrumenter, waitForOperatorConfigurationResource),
+	); err != nil {
 		return nil, fmt.Errorf("unable to add instrument-at-startup task: %w", err)
 	}
 
@@ -2978,14 +3054,7 @@ func waitForWebhookEndpointReadiness(ctx context.Context, logger logd.Logger) er
 	}
 
 	readyCheckExecuter := NewReadyCheckExecuter(k8sClient, operatorNamespace, webhookServiceName)
-	webhookServiceIsAvailable, err := readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(ctx, logger)
-	if err != nil {
-		return err
-	}
-	if !webhookServiceIsAvailable {
-		return fmt.Errorf("the Dash0 operator webhook service endpoint did not become ready")
-	}
-	return nil
+	return readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(ctx, logger)
 }
 
 // waitForWebhookReachability waits until the rollout of the operator manager deployment is complete and the API server

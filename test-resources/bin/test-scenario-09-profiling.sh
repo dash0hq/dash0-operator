@@ -5,9 +5,9 @@
 
 set -euo pipefail
 
-# Important note: this scenario has only been verified to work properly on EKS and not when running in a docker-in-docker
-# cluster like kind. In kind, the profiles will likely have wrong resource attributes (from the profiler instead of the 
-# application). 
+# Deploys the operator with the operator-managed eBPF profiler (Parca agent). EBPF_PROFILER_PID_NAMESPACE_TRANSLATION_MODE
+# defaults to auto, which kind needs because of its nested PID namespaces (see helm-chart/dash0-operator/docs/profiling.md).
+# Set it to an empty value to keep the agent's default (none).
 
 project_root="$(dirname "${BASH_SOURCE[0]}")"/../..
 scripts_lib="test-resources/bin/lib"
@@ -32,6 +32,8 @@ verify_kubectx
 setup_test_environment "$target_namespace"
 
 export PROFILING_ENABLED=true
+export EBPF_PROFILER_ENABLED=true
+export EBPF_PROFILER_PID_NAMESPACE_TRANSLATION_MODE="${EBPF_PROFILER_PID_NAMESPACE_TRANSLATION_MODE-auto}"
 
 step_counter=1
 
@@ -78,6 +80,16 @@ if [[ "${DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM:-}" = "false" ]]; then
   echo "STEP $step_counter: deploy the Dash0 operator configuration resource"
   install_operator_configuration_resource
   finish_step
+
+  echo "STEP $step_counter: enable the eBPF profiler in the Dash0 operator configuration resource"
+  ebpf_profiler_spec='"enabled":true'
+  if [[ -n "$EBPF_PROFILER_PID_NAMESPACE_TRANSLATION_MODE" ]]; then
+    ebpf_profiler_spec+=",\"pidNamespaceTranslationMode\":\"$EBPF_PROFILER_PID_NAMESPACE_TRANSLATION_MODE\""
+  fi
+  kubectl patch dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-resource \
+    --type merge \
+    -p "{\"spec\":{\"profiling\":{\"ebpfProfiler\":{$ebpf_profiler_spec}}}}"
+  finish_step
 else
   echo "not deploying a Dash0 operator configuration resource (has been deployed with the helm chart already)"
   echo
@@ -91,7 +103,5 @@ else
   echo "not deploying a Dash0 monitoring resource"
   echo
 fi
-
-deploy_ebpf_profiler
 
 finish_scenario

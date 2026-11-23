@@ -710,14 +710,13 @@ operator:
     #
     # Allowed values:
     # - "auto": use image volumes if the Kubernetes version is 1.36 or later, otherwise use the init container
-    #   approach.
+    #   approach. This is the default.
     # - "image-volume": always use image volumes, also on Kubernetes versions older than 1.36. If the Kubernetes
     #   version is older than 1.31, the operator manager will log a warning and fall back to the init container
     #   approach, since image volumes are not supported in that version. Note that if you are using
     #   Kubernetes 1.34 or earlier, and you want to use this setting, you need to enable image volumes when configuring
     #   your cluster, since image volumes are disabled by default in versions older than 1.35.
     # - "init-container": always use the init container approach, regardless of the Kubernetes version.
-    #   This is the default.
     #
     # Note: Changing the instrumentation delivery setting for an existing operator installation will not trigger a
     # bulk re-instrumentation of all existing workloads, even for namespaces that are set to
@@ -727,7 +726,7 @@ operator:
     #
     # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
     # resource will be created by the Helm chart then.
-    delivery: init-container
+    delivery: auto
 
     # Python auto-instrumentation is enabled by default. Set this to false to disable it.
     enablePythonAutoInstrumentation: true
@@ -814,17 +813,49 @@ operator:
     # resources contain a lot of filters or transforms, this limit might be smaller.
     compressConfigMaps: false
 
-    # A reference to a persistent volume to use for the filelog offset sync. We strongly recommend providing a volume
-    # for all clusters except small development or test clusters. By default, the filelog offset sync uses a single
-    # config map for its persistent storage, which every collector pod updates every few seconds. This has two
-    # consequences: ConfigMaps are limited to 1 MB in size, which clusters with around 100 pods or more can exceed. And
-    # etcd stores a complete copy of the config map for every update until the next compaction, so the disk space used
-    # by etcd grows with the square of the number of nodes. In larger clusters, this can exhaust the etcd storage quota,
-    # which makes the cluster unusable. This risk is highest for self-managed control planes (e.g. on-premises
-    # clusters). See docs/advanced-configuration.md#providing-a-filelog-offset-volume for details.
+    # Where the filelog receiver of the collector DaemonSet persists the offsets of the pod log files it reads, so that
+    # log records are neither lost nor sent twice when a collector pod restarts. One of:
+    # - auto (the default): store the offsets in a hostPath volume on each node (see filelogOffsetHostPath), if the
+    #   cluster admits a collector pod with a writable hostPath volume; otherwise in a config map. On GKE Autopilot,
+    #   the config map is always used, since GKE Autopilot does not admit writable hostPath volumes. Unless the
+    #   collector DaemonSet pods run with the SELinux type spc_t (see daemonSetSeLinuxOptions), the config map is also
+    #   used on OpenShift and on clusters whose nodes likely enforce SELinux (nodes with the container runtime CRI-O,
+    #   RKE2, K3s, k0s), since the default container type cannot write to hostPath directories. Otherwise, the operator
+    #   checks via a server-side dry run of a collector pod whether the pod security admission, the validating
+    #   admission policies and the admission webhooks (e.g. OPA gatekeeper, Kyverno) of the cluster admit the hostPath
+    #   volume. If the dry run fails for another reason than an admission denial, the collector DaemonSet keeps the
+    #   storage it currently uses (a new installation starts with the config map) and the check is repeated on the
+    #   next reconciliation.
+    # - hostPath: always store the offsets in the hostPath volume, without any of these checks.
+    # - configMap: always store the offsets in a single config map, which a sidecar container in each collector pod
+    #   updates every few seconds. Only recommended for small clusters, for example local development or test clusters.
+    #   ConfigMaps are limited to 1 MB in size, which clusters with around 100 pods or more can exceed. Admission
+    #   webhooks that process every config map update (e.g. OPA gatekeeper, Kyverno) can consume a lot of resources.
+    #   And etcd stores a complete copy of the config map for every update until the next compaction, so the disk space
+    #   used by etcd grows with the square of the number of nodes. In larger clusters, this can exhaust the etcd
+    #   storage quota, which makes the cluster unusable. This risk is highest for self-managed control planes (e.g.
+    #   on-premises clusters).
+    # When switching from the config map to a volume, the offsets are migrated from the config map (except into a
+    # user-provided volume on GKE Autopilot), which is deleted afterwards. Switching from a volume back to the config
+    # map does not carry the offsets over, so log records may be lost or sent twice during that switch.
+    # Must be left at auto when filelogOffsetSyncStorageVolume is set, which always takes precedence.
+    # See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/advanced-configuration.md#filelog-offset-storage.
+    filelogOffsetStorageMode: auto
+
+    # The directory on the nodes in which the filelog receiver offsets are stored when filelogOffsetStorageMode
+    # resolves to hostPath. The offsets of each node are stored in <filelogOffsetHostPath>/<operator namespace>/<node
+    # name>. The directory is created and handed over to the collector's user via an init container that runs as root
+    # with the CHOWN capability. Uninstalling the operator does not remove the directory
+    # <filelogOffsetHostPath>/<operator namespace> from the nodes.
+    filelogOffsetHostPath: /var/lib/dash0-operator/filelog-offsets
+
+    # A user-provided volume to use for the filelog receiver offsets instead of the operator-managed hostPath volume or
+    # config map selected via filelogOffsetStorageMode. Any volume that is accessible from the collector pods can be
+    # used, for example a hostPath volume with a custom path or a ReadWriteMany persistent volume claim. The volume
+    # ownership init container that runs as root with the CHOWN capability is added in this case as well.
     #
-    # Here is an example with a hostPath volume (see also https://kubernetes.io/docs/concepts/storage/volumes/#hostpath
-    # for considerations around using hostPath volumes):
+    # Here is an example with a user-provided hostPath volume (see also
+    # https://kubernetes.io/docs/concepts/storage/volumes/#hostpath for considerations around using hostPath volumes):
     # operator:
     #   collectors:
     #    filelogOffsetSyncStorageVolume:
@@ -1232,10 +1263,21 @@ operator:
     # Settings for the k8s_attributes processor in the Dash0 operator collectors:
     k8s_attributes:
 
-      # Disables the replicaset informer for the k8s_attributes processor. This will lead to not collecting the resource
-      # attribute k8s.deployment.uid, and might lead to wrong values k8s.deployment.name in some edge cases.
-      # The default is false, do not override this unless explicitly instructed by Dash0 support.
+      # Omits k8s.deployment.uid from the k8s_attributes extract list, which keeps the processor from starting its
+      # ReplicaSet informer. This will lead to not collecting the resource attribute k8s.deployment.uid.
+      # This setting can be useful to reduce the memory usage of the collectors and the traffic between the collectors
+      # and the Kubernetes API server. (The replicaset informer watches and caches all ReplicaSets in the cluster,
+      # including the default 10 revision history ReplicaSets per deployment, and it does so in every collector pod on
+      # each node. The effect is most noticeable in large clusters.)
+      # The default is false.
       disableReplicasetInformer: false
+
+      # Omits k8s.cronjob.uid from the k8s_attributes extract list, which keeps the processor from starting its
+      # Job informer. This will lead to not collecting the resource attribute k8s.cronjob.uid.
+      # This setting can be useful to reduce the memory usage of the collectors and the traffic between the collectors
+      # and the Kubernetes API server in large clusters with many jobs.
+      # The default is false.
+      disableJobInformer: false
 
       # By default, the k8s_attributes processor will not wait until Kubernetes metadata has been fetched from the
       # Kubernetes API. Telemetry which is collected before the Kubernetes metadata has been synchronized will not be
@@ -1257,8 +1299,8 @@ operator:
       # instead of running one instance (with its own Kubernetes API watches and metadata cache) per pipeline. This can
       # reduce the memory usage of the collectors considerably, in particular in large clusters.
       # This enables the collector feature gate processor.k8sattributes.ShareProcessorBetweenPipelines, which is
-      # currently in alpha stage. The default is false.
-      shareProcessorBetweenPipelines: false
+      # currently in alpha stage. The default is true, set this to false to run one instance per pipeline.
+      shareProcessorBetweenPipelines: true
 
     # Settings for the kubeletstats receiver in the DaemonSet collector, which scrapes the local kubelet for Kubernetes
     # infrastructure metrics.
@@ -1849,6 +1891,131 @@ operator:
       logs: false
       top: true
       version: true
+
+  # Settings for the eBPF profiler DaemonSet managed by the operator. All settings in operator.ebpfProfiler will be
+  # ignored if operator.ebpfProfilerEnabled is false. See docs/profiling.md.
+  ebpfProfiler:
+
+    # The PID namespace translation mode of the eBPF profiler, one of "none", "auto", "exact" or "recursive". Set this
+    # to "auto" for nodes with nested PID namespaces, such as kind nodes. When not set, the profiler uses "none". This
+    # setting only has an effect if the operator configuration resource is created via Helm (operator.dash0Export or
+    # operator.exports). See docs/profiling.md for details on the modes.
+    pidNamespaceTranslationMode:
+
+    # Resource settings for the profiler container of the eBPF profiler DaemonSet managed by the operator.
+    containerResources:
+      limits:
+        memory: 512Mi
+      # The GOMEMLIMIT environment variable value for the profiler container. Leaving this empty is recommended; the
+      # operator then derives it from containerResources.limits.memory (about 80%). Set a value only to override it.
+      # Valid units differ from Kubernetes resource settings, use MiB or GiB (see
+      # https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+    # Additional labels to be set on the eBPF profiler DaemonSet managed by the operator.
+    labels: {}
+
+    # Additional annotations to be set on the eBPF profiler DaemonSet managed by the operator.
+    annotations: {}
+
+    # Additional labels to be set on the eBPF profiler pods managed by the operator.
+    podLabels: {}
+
+    # Additional annotations to be set on the eBPF profiler pods managed by the operator.
+    podAnnotations: {}
+
+    # An array of tolerations for the eBPF profiler DaemonSet managed by the operator. The tolerations of the DaemonSet
+    # collector (operator.collectors.daemonSetTolerations) are not applied to the profiler. To profile workloads on
+    # tainted nodes, set the same tolerations here and in operator.debuginfoProxy.tolerations.
+    # Example:
+    # tolerations:
+    #   - key: "key1"
+    #     operator: "Equal"
+    #     value: "value1"
+    #     effect: "NoSchedule"
+    tolerations: []
+
+    # The nodeAffinity for the eBPF profiler DaemonSet. This can be used to constrain which nodes the profiler pods will
+    # be scheduled on.
+    #
+    # See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: "dash0.com/enable"
+                operator: "NotIn"
+                values: ["false"]
+              - key: "kubernetes.io/os"
+                operator: "In"
+                values: ["linux"]
+
+    # The priority class name for the eBPF profiler pods. If set, these pods will be scheduled with the specified
+    # priority class. See https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/.
+    # priorityClassName:
+
+  # Settings for the debuginfo upload proxy DaemonSet managed by the operator, which runs whenever the eBPF profiler
+  # uploads debug information. All settings in operator.debuginfoProxy will be ignored if operator.ebpfProfilerEnabled
+  # is false. See docs/profiling.md.
+  debuginfoProxy:
+
+    # Resource settings for the proxy container of the debuginfo proxy DaemonSet managed by the operator.
+    containerResources:
+      limits:
+        memory: 128Mi
+      # The GOMEMLIMIT environment variable value for the debuginfo proxy container. Leaving this empty is recommended;
+      # the operator then derives it from containerResources.limits.memory (about 80%). Set a value only to override it.
+      # Valid units differ from Kubernetes resource settings, use MiB or GiB (see
+      # https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
+      requests:
+        cpu: 10m
+        memory: 32Mi
+
+    # Additional labels to be set on the debuginfo proxy DaemonSet managed by the operator.
+    labels: {}
+
+    # Additional annotations to be set on the debuginfo proxy DaemonSet managed by the operator.
+    annotations: {}
+
+    # Additional labels to be set on the debuginfo proxy pods managed by the operator.
+    podLabels: {}
+
+    # Additional annotations to be set on the debuginfo proxy pods managed by the operator.
+    podAnnotations: {}
+
+    # An array of tolerations for the debuginfo proxy DaemonSet managed by the operator. The profiler only uploads debug
+    # information to the proxy pod on its own node, so the proxy needs the same tolerations as the profiler
+    # (operator.ebpfProfiler.tolerations).
+    # Example:
+    # tolerations:
+    #   - key: "key1"
+    #     operator: "Equal"
+    #     value: "value1"
+    #     effect: "NoSchedule"
+    tolerations: []
+
+    # The nodeAffinity for the debuginfo proxy DaemonSet. This can be used to constrain which nodes the proxy pods will
+    # be scheduled on.
+    #
+    # See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: "dash0.com/enable"
+                operator: "NotIn"
+                values: ["false"]
+              - key: "kubernetes.io/os"
+                operator: "In"
+                values: ["linux"]
+
+    # The priority class name for the debuginfo proxy pods. If set, these pods will be scheduled with the specified
+    # priority class. See https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/.
+    # priorityClassName:
 
   # Settings related to the synthetics-worker, the private-location runner that dials outbound to Dash0 and executes
   # synthetic checks assigned to this cluster's private location (experimental).
