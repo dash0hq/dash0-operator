@@ -304,8 +304,8 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 				}),
 		)
 
-		DescribeTable("should normalize the resource spec in SCE-only mode", func(testConfig normalizeTelemetryRelatedSettingsTestConfig) {
-			handler := NewMonitoringMutatingWebhookHandler(k8sClient, OperatorNamespace, true)
+		DescribeTable("should normalize the resource spec if telemetry collection is disabled via Helm", func(testConfig normalizeTelemetryRelatedSettingsTestConfig) {
+			handler := NewMonitoringMutatingWebhookHandler(k8sClient, OperatorNamespace, false, true)
 			spec := testConfig.spec
 			// no operator configuration resource exists yet
 			handler.setTelemetryCollectionRelatedDefaults(toAdmissionRequest(TestNamespaceName, spec), nil, &spec)
@@ -326,6 +326,54 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 						},
 						PrometheusScraping: dash0common.PrometheusScraping{
 							Enabled: new(false),
+						},
+					},
+				}),
+		)
+
+		DescribeTable("should normalize the resource spec if workload instrumentation is disabled", func(testConfig normalizeTelemetryRelatedSettingsTestConfig) {
+			handler := NewMonitoringMutatingWebhookHandler(k8sClient, OperatorNamespace, true, false)
+			spec := testConfig.spec
+			handler.setTelemetryCollectionRelatedDefaults(toAdmissionRequest(TestNamespaceName, spec), nil, &spec)
+			Expect(spec).To(Equal(testConfig.wanted))
+		},
+			Entry("given an empty spec, disable instrumentation, but enable collection by default",
+				normalizeTelemetryRelatedSettingsTestConfig{
+					spec: dash0v1beta1.Dash0MonitoringSpec{},
+					wanted: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+							Mode: dash0common.InstrumentWorkloadsModeNone,
+						},
+						LogCollection: dash0common.LogCollection{
+							Enabled: new(true),
+						},
+						EventCollection: dash0common.EventCollection{
+							Enabled: new(true),
+						},
+						PrometheusScraping: dash0common.PrometheusScraping{
+							Enabled: new(true),
+						},
+					},
+				}),
+			Entry("given an explicit mode, keep it, the validation webhook rejects it",
+				normalizeTelemetryRelatedSettingsTestConfig{
+					spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+							Mode: dash0common.InstrumentWorkloadsModeAll,
+						},
+					},
+					wanted: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+							Mode: dash0common.InstrumentWorkloadsModeAll,
+						},
+						LogCollection: dash0common.LogCollection{
+							Enabled: new(true),
+						},
+						EventCollection: dash0common.EventCollection{
+							Enabled: new(true),
+						},
+						PrometheusScraping: dash0common.PrometheusScraping{
+							Enabled: new(true),
 						},
 					},
 				}),

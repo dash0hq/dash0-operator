@@ -149,7 +149,7 @@ var _ = Describe("the cluster instrumentation config", func() {
 			extraConfig.InstrumentationInitContainerResources = extraConfigResources
 			return NewClusterInstrumentationConfig(
 				Images{}, PossibleCollectorUrls{}, "", extraConfig, dash0v1alpha1.InstrumentationDeliveryAuto,
-				nil, false, false, false,
+				nil, false, false, false, true, true,
 			)
 		}
 
@@ -208,6 +208,8 @@ func newTestClusterInstrumentationConfig(
 		false,
 		false,
 		false,
+		true,
+		true,
 	)
 	config.SetKubernetesVersions(
 		cluster.KubernetesVersionInfo{Version: apiServerVersion, Detected: true},
