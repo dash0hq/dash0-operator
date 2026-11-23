@@ -366,6 +366,12 @@ func (r *MonitoringReconciler) applyApiAccessSettings(
 		for _, apiClient := range r.namespacedApiClients {
 			apiClient.RemoveNamespacedApiConfigs(ctx, monitoringResource.Namespace, logger)
 		}
+		// RemoveNamespacedApiConfigs only resynchronizes resources when the namespace had an API config, which is not
+		// the case for resources that have been reported because their API config was unavailable.
+		apiSyncFailures.deletePreconditionFailuresInNamespace(
+			monitoringResource.Namespace,
+			apiSyncPreconditionFailureApiConfigUnavailable,
+		)
 	}
 
 	for _, apiClient := range r.namespacedApiClients {

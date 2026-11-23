@@ -5,17 +5,25 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
 const (
@@ -125,6 +133,100 @@ var _ = Describe("API sync self-monitoring metrics", func() {
 		})
 	})
 
+	Describe("recordApiSyncPreconditionFailure", func() {
+		It("counts the failure and replaces the previous failures of the resource", func() {
+			apiSyncFailures.set(apiSyncTestKey, []apiSyncFailure{
+				{
+					dataset:        apiSyncTestDataset,
+					status:         dash0common.Dash0ApiResourceSynchronizationStatusFailed,
+					httpStatusCode: http.StatusBadRequest,
+				},
+			})
+
+			recordApiSyncPreconditionFailure(
+				ctx, apiSyncTestKey, upsertAction, apiSyncPreconditionFailureApiConfigUnavailable,
+			)
+
+			Expect(collectApiSyncSynchronizations(ctx, reader)).To(ConsistOf(
+				metricdata.DataPoint[int64]{
+					Attributes: attribute.NewSet(
+						attribute.String(apiSyncAttributeResourceKind, "PrometheusRule"),
+						attribute.String(apiSyncAttributeResourceNamespace, "test-namespace"),
+						attribute.String(apiSyncAttributeAction, apiSyncActionUpsert),
+						attribute.String(apiSyncAttributeStatus, "failed"),
+						attribute.String(apiSyncAttributeErrorType, "api_config_unavailable"),
+					),
+					Value: 1,
+				},
+			))
+			Expect(collectApiSyncUnsynchronizedResources(ctx, reader)).To(ConsistOf(
+				metricdata.DataPoint[int64]{
+					Attributes: attribute.NewSet(
+						attribute.String(apiSyncAttributeResourceKind, "PrometheusRule"),
+						attribute.String(apiSyncAttributeResourceNamespace, "test-namespace"),
+						attribute.String(apiSyncAttributeResourceName, "test-rule"),
+						attribute.String(apiSyncAttributeStatus, "failed"),
+						attribute.String(apiSyncAttributeErrorType, "api_config_unavailable"),
+					),
+					Value: 1,
+				},
+			))
+		})
+	})
+
+	Describe("synchronizing a resource when the lookup of the Dash0 monitoring resource fails", func() {
+		const lookupFailureViewName = "lookup-failure-view"
+		lookupFailureKey := apiSyncResourceKey{kind: "Dash0View", namespace: TestNamespaceName, name: lookupFailureViewName}
+		var viewReconciler *ViewReconciler
+		var viewResource *unstructured.Unstructured
+
+		BeforeEach(func() {
+			failingClient := fake.NewClientBuilder().
+				WithScheme(scheme.Scheme).
+				WithInterceptorFuncs(interceptor.Funcs{
+					List: func(context.Context, client.WithWatch, client.ObjectList, ...client.ListOption) error {
+						return errors.New("list failed")
+					},
+				}).
+				Build()
+			viewReconciler = NewViewReconciler(
+				failingClient,
+				"cluster-id",
+				NewLeaderElectionAwareMock(true),
+				recorder,
+				testApiClientPool(),
+			)
+			viewReconciler.defaultApiConfigs.Set([]ApiConfig{apiSyncTestApiConfig})
+			var err error
+			viewResource, err = structToMap(createViewResource(TestNamespaceName, lookupFailureViewName))
+			Expect(err).NotTo(HaveOccurred())
+			setApiSyncTestFailure(lookupFailureKey)
+		})
+
+		It("keeps reporting the resource, with the precondition failure", func() {
+			synchronizeViaApiAndUpdateStatus(ctx, viewReconciler, viewResource, nil, upsertAction, logger)
+
+			Expect(collectApiSyncUnsynchronizedResources(ctx, reader)).To(ConsistOf(
+				metricdata.DataPoint[int64]{
+					Attributes: attribute.NewSet(
+						attribute.String(apiSyncAttributeResourceKind, "Dash0View"),
+						attribute.String(apiSyncAttributeResourceNamespace, TestNamespaceName),
+						attribute.String(apiSyncAttributeResourceName, lookupFailureViewName),
+						attribute.String(apiSyncAttributeStatus, "failed"),
+						attribute.String(apiSyncAttributeErrorType, "monitoring_resource_lookup_failed"),
+					),
+					Value: 1,
+				},
+			))
+		})
+
+		It("stops reporting the resource when it has been deleted", func() {
+			synchronizeViaApiAndUpdateStatus(ctx, viewReconciler, viewResource, nil, deleteAction, logger)
+
+			Expect(collectApiSyncUnsynchronizedResources(ctx, reader)).To(BeEmpty())
+		})
+	})
+
 	Describe("the unsynchronized resources gauge", func() {
 		It("reports nothing when there are no failures", func() {
 			Expect(collectApiSyncUnsynchronizedResources(ctx, reader)).To(BeEmpty())
@@ -208,6 +310,21 @@ var _ = Describe("API sync self-monitoring metrics", func() {
 			Entry("by kind in namespace",
 				func() { apiSyncFailures.deleteKindInNamespace("PrometheusRule", "test-namespace") },
 				[]apiSyncResourceKey{otherNamespace, otherKind},
+			),
+			Entry("by precondition failure in namespace",
+				func() {
+					for _, key := range []apiSyncResourceKey{otherName, otherNamespace} {
+						apiSyncFailures.set(key, []apiSyncFailure{{
+							status:              dash0common.Dash0ApiResourceSynchronizationStatusFailed,
+							preconditionFailure: apiSyncPreconditionFailureApiConfigUnavailable,
+						}})
+					}
+					apiSyncFailures.deletePreconditionFailuresInNamespace(
+						"test-namespace",
+						apiSyncPreconditionFailureApiConfigUnavailable,
+					)
+				},
+				[]apiSyncResourceKey{apiSyncTestKey, otherNamespace, otherKind},
 			),
 		)
 	})

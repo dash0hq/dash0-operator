@@ -296,6 +296,10 @@ type preconditionValidationResult struct {
 	// precondition for synchronizing resources is not met (no API token etc.)
 	synchronizeResource bool
 
+	// preconditionFailure is set when synchronizeResource is false because a precondition failed, although the
+	// resource should be synchronized (as opposed to synchronization not being configured).
+	preconditionFailure apiSyncPreconditionFailure
+
 	// syncDisabledViaLabel = false means that the resource has the label dash0.com/enable=false set; this will turn
 	// any create/update event for the object into a delete request (for most purposes it would be enough to ignore
 	// resources with that label, but when a resource has been synchronized earlier, and then the dash0.com/enable=false
@@ -442,13 +446,13 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 		dash0ApiResource,
 		logger,
 	)
-	syncKey := apiSyncResourceKey{
-		kind:      apiSyncReconciler.Kind(),
-		namespace: dash0ApiResource.GetNamespace(),
-		name:      dash0ApiResource.GetName(),
-	}
+	syncKey := newApiSyncResourceKey(apiSyncReconciler, dash0ApiResource.GetNamespace(), dash0ApiResource.GetName())
 	if !preconditionChecksResult.synchronizeResource {
-		apiSyncFailures.delete(syncKey)
+		if preconditionChecksResult.preconditionFailure != "" && action != deleteAction {
+			recordApiSyncPreconditionFailure(ctx, syncKey, action, preconditionChecksResult.preconditionFailure)
+		} else {
+			apiSyncFailures.delete(syncKey)
+		}
 		return
 	}
 
@@ -713,9 +717,14 @@ func validatePreconditionsAndPreprocess(
 				apiSyncReconciler.KindDisplayName(),
 				name,
 			),
+			apiSyncPreconditionFailureLogAttributes(
+				newApiSyncResourceKey(apiSyncReconciler, namespace, name),
+				apiSyncPreconditionFailureMonitoringResourceLookup,
+			)...,
 		)
 		return &preconditionValidationResult{
 			synchronizeResource: false,
+			preconditionFailure: apiSyncPreconditionFailureMonitoringResourceLookup,
 		}
 	}
 	if monitoringRes == nil {
@@ -767,6 +776,18 @@ func validatePreconditionsAndPreprocess(
 	// but not the monitoring resource in this namespace. In that case we would incorrectly do an initial sync to the
 	// default backend even though the monitoring resource defines a custom API config.
 	if monitoringResource.HasDash0ExportConfigured() && !namespacedApiConfigExists {
+		// When the monitoring resource configures API access, the API config is missing because its token cannot be
+		// resolved or because the monitoring resource has not been reconciled yet. Otherwise, the Dash0 export of the
+		// namespace has no API endpoint, i.e. synchronization is not configured for this namespace.
+		var preconditionFailure apiSyncPreconditionFailure
+		var logAttributes []any
+		if monitoringResource.HasDash0ApiAccessConfigured() {
+			preconditionFailure = apiSyncPreconditionFailureApiConfigUnavailable
+			logAttributes = apiSyncPreconditionFailureLogAttributes(
+				newApiSyncResourceKey(apiSyncReconciler, namespace, name),
+				preconditionFailure,
+			)
+		}
 		logger.Warn(
 			fmt.Sprintf(
 				"The monitoring resource of namespace %s has a Dash0 export, but no API config "+
@@ -774,9 +795,11 @@ func validatePreconditionsAndPreprocess(
 					"be resolved once the resource is reconciled. Sync for the %s from %s will be disabled until then.",
 				namespace, apiSyncReconciler.ShortName(), name,
 			),
+			logAttributes...,
 		)
 		return &preconditionValidationResult{
 			synchronizeResource: false,
+			preconditionFailure: preconditionFailure,
 		}
 	}
 

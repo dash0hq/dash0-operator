@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -310,7 +311,6 @@ var _ = Describe(
 							DatasetCustomTestAlternative,
 							AuthorizationTokenTestAlternative,
 							viewOriginPatternAlternative,
-							1,
 						)
 						defer gock.Off()
 
@@ -358,7 +358,6 @@ var _ = Describe(
 							DatasetCustomTestAlternative,
 							AuthorizationTokenTestAlternative,
 							viewOriginPatternAlternative,
-							1,
 						)
 						defer gock.Off()
 
@@ -770,6 +769,104 @@ var _ = Describe(
 				)
 
 				It(
+					"reports a view in the self-monitoring metrics while the API config of its namespace is unavailable",
+					func() {
+						reader := initApiSyncMetricsForTest(logger)
+						defer resetApiSyncMetricsForTest()
+						monitoringResource := DefaultMonitoringResourceWithCustomApiConfigAndToken(
+							MonitoringResourceQualifiedName,
+							ApiEndpointTestAlternative,
+							DatasetCustomTestAlternative,
+							AuthorizationTokenTestAlternative,
+						)
+						EnsureMonitoringResourceWithSpecExistsAndIsAvailable(ctx, k8sClient, monitoringResource.Spec)
+
+						viewResource := createViewResource(TestNamespaceName, viewName)
+						Expect(k8sClient.Create(ctx, viewResource)).To(Succeed())
+						_, err := viewReconciler.Reconcile(ctx, reconcile.Request{
+							NamespacedName: types.NamespacedName{Namespace: TestNamespaceName, Name: viewName},
+						})
+						Expect(err).NotTo(HaveOccurred())
+
+						Expect(collectApiSyncUnsynchronizedResources(ctx, reader)).To(ConsistOf(
+							metricdata.DataPoint[int64]{
+								Attributes: attribute.NewSet(
+									attribute.String(apiSyncAttributeResourceKind, "Dash0View"),
+									attribute.String(apiSyncAttributeResourceNamespace, TestNamespaceName),
+									attribute.String(apiSyncAttributeResourceName, viewName),
+									attribute.String(apiSyncAttributeStatus, "failed"),
+									attribute.String(apiSyncAttributeErrorType, "api_config_unavailable"),
+								),
+								Value: 1,
+							},
+						))
+
+						expectViewPutRequestCustom(
+							clusterId,
+							expectedPathViewAlternative,
+							ApiEndpointTestAlternative,
+							DatasetCustomTestAlternative,
+							AuthorizationTokenTestAlternative,
+							viewOriginPatternAlternative,
+						)
+						defer gock.Off()
+
+						viewReconciler.SetNamespacedApiConfigs(
+							ctx, TestNamespaceName, []ApiConfig{
+								{
+									Endpoint: ApiEndpointTestAlternative,
+									Dataset:  DatasetCustomTestAlternative,
+									Token:    AuthorizationTokenTestAlternative,
+								},
+							}, logger,
+						)
+
+						verifyViewSynchronizationStatus(
+							ctx,
+							k8sClient,
+							TestNamespaceName,
+							viewName,
+							dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
+							testStartedAt,
+							viewId,
+							fmt.Sprintf(viewOriginPatternAlternative, clusterId),
+							ApiEndpointStandardizedTestAlternative,
+							DatasetCustomTestAlternative,
+							"",
+						)
+						Expect(collectApiSyncUnsynchronizedResources(ctx, reader)).To(BeEmpty())
+						Expect(gock.IsDone()).To(BeTrue())
+					},
+				)
+
+				It(
+					"does not report a view in the self-monitoring metrics when the Dash0 export of its namespace has no "+
+						"API endpoint", func() {
+						reader := initApiSyncMetricsForTest(logger)
+						defer resetApiSyncMetricsForTest()
+						monitoringResource := DefaultMonitoringResourceWithCustomApiConfigAndToken(
+							MonitoringResourceQualifiedName,
+							"",
+							DatasetCustomTestAlternative,
+							AuthorizationTokenTestAlternative,
+						)
+						EnsureMonitoringResourceWithSpecExistsAndIsAvailable(ctx, k8sClient, monitoringResource.Spec)
+						setApiSyncTestFailure(
+							apiSyncResourceKey{kind: "Dash0View", namespace: TestNamespaceName, name: viewName},
+						)
+
+						viewResource := createViewResource(TestNamespaceName, viewName)
+						Expect(k8sClient.Create(ctx, viewResource)).To(Succeed())
+						_, err := viewReconciler.Reconcile(ctx, reconcile.Request{
+							NamespacedName: types.NamespacedName{Namespace: TestNamespaceName, Name: viewName},
+						})
+						Expect(err).NotTo(HaveOccurred())
+
+						Expect(collectApiSyncUnsynchronizedResources(ctx, reader)).To(BeEmpty())
+					},
+				)
+
+				It(
 					"retries synchronization when synchronizing a view", func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
@@ -1147,13 +1244,12 @@ func expectViewPutRequestCustom(
 	dataset string,
 	token string,
 	originPattern string,
-	times int,
 ) {
 	gock.New(endpoint).
 		Put(expectedPath).
 		MatchHeader("Authorization", token).
 		MatchParam("dataset", dataset).
-		Times(times).
+		Times(1).
 		Reply(200).
 		JSON(viewPutResponse(clusterId, originPattern, dataset))
 }
@@ -1166,7 +1262,6 @@ func expectViewPutRequest(clusterId string, expectedPath string) {
 		DatasetCustomTest,
 		AuthorizationHeaderTest,
 		viewOriginPattern,
-		1,
 	)
 }
 
