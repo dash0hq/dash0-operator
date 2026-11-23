@@ -13,6 +13,7 @@ package controller
 import (
 	"context"
 	"net/http"
+	"fmt"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -21,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -95,6 +97,8 @@ var _ = Describe(
 						false,
 						false,
 						false,
+						true,
+						true,
 					),
 				)
 				oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
@@ -834,6 +838,80 @@ var _ = Describe(
 				AfterEach(
 					func() {
 						DeleteMonitoringResource(ctx, k8sClient)
+					},
+				)
+
+				Describe(
+					"workload instrumentation disabled via operator.instrumentation.enabled=false", func() {
+						AfterEach(
+							func() {
+								monitoringReconciler.instrumenter.ClusterInstrumentationConfig.InstrumentationEnabledViaHelm = true
+							},
+						)
+
+						verifyOnlyInstrumentationDisabledWarningEvent := func() {
+							VerifyEvent(
+								ctx,
+								clientset,
+								TestNamespaceName,
+								MonitoringResourceName,
+								corev1.EventTypeWarning,
+								util.ReasonInstrumentationDisabledButModeIsNotNone,
+								util.ActionInstrumentation,
+								fmt.Sprintf(
+									logMsgInstrumentationDisabledButModeIsNotNone,
+									"operator.instrumentation.enabled=false",
+									TestNamespaceName,
+									MonitoringResourceName,
+									dash0common.InstrumentWorkloadsModeAll,
+								),
+							)
+							allEvents, err := clientset.EventsV1().Events(TestNamespaceName).List(ctx, metav1.ListOptions{})
+							Expect(err).NotTo(HaveOccurred())
+							Expect(allEvents.Items).To(HaveLen(1))
+						}
+
+						It("should not instrument existing workloads", func() {
+							monitoringReconciler.instrumenter.ClusterInstrumentationConfig.InstrumentationEnabledViaHelm = false
+							EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(
+								ctx,
+								k8sClient,
+								dash0common.InstrumentWorkloadsModeAll,
+							)
+							name := UniqueName(DeploymentNamePrefix)
+							deployment := CreateBasicDeployment(ctx, k8sClient, TestNamespaceName, name)
+							createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, deployment)
+
+							triggerReconcileRequest(ctx, monitoringReconciler)
+
+							verifyOnlyInstrumentationDisabledWarningEvent()
+							VerifyUnmodifiedDeployment(GetDeployment(ctx, k8sClient, TestNamespaceName, name))
+						})
+
+						It(
+							"should remove the instrumentation from an instrumented workload without adding the webhook "+
+								"ignore-once label when switching to instrumentWorkloads.mode=none", func() {
+								monitoringReconciler.instrumenter.ClusterInstrumentationConfig.InstrumentationEnabledViaHelm = false
+								EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(
+									ctx,
+									k8sClient,
+									dash0common.InstrumentWorkloadsModeAll,
+								)
+								name := UniqueName(DeploymentNamePrefix)
+								deployment := CreateInstrumentedDeployment(ctx, k8sClient, TestNamespaceName, name)
+								createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, deployment)
+								triggerReconcileRequest(ctx, monitoringReconciler)
+								verifyOnlyInstrumentationDisabledWarningEvent()
+
+								UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeNone)
+								triggerReconcileRequest(ctx, monitoringReconciler)
+
+								VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, "controller")
+								uninstrumentedDeployment := GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+								VerifyUnmodifiedDeployment(uninstrumentedDeployment)
+								Expect(uninstrumentedDeployment.Labels).ToNot(HaveKey("dash0.com/webhook-ignore-once"))
+							},
+						)
 					},
 				)
 
@@ -2846,6 +2924,170 @@ var _ = Describe("warnIfInOperatorNamespace", func() {
 	It("should not log anything when the monitoring resource is in a different namespace", func() {
 		logger, capturingLogSink := NewCapturingLogger()
 		reconciler.warnIfInOperatorNamespace(monitoringResourceInNamespace(TestNamespaceName), logger)
+		capturingLogSink.HasNoLogMessages(Default)
+	})
+})
+
+var _ = Describe("warnIfInstrumentationIsDisabled", func() {
+	monitoringResourceWithMode := func(mode dash0common.InstrumentWorkloadsMode) *dash0v1beta1.Dash0Monitoring {
+		return &dash0v1beta1.Dash0Monitoring{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      MonitoringResourceName,
+				Namespace: TestNamespaceName,
+			},
+			Spec: dash0v1beta1.Dash0MonitoringSpec{
+				InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+					Mode: mode,
+				},
+			},
+		}
+	}
+
+	reconcilerWithInstrumenter := func(instrumentationEnabledViaHelm bool) *MonitoringReconciler {
+		return &MonitoringReconciler{
+			instrumenter: &instrumentation.Instrumenter{
+				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{
+					InstrumentationEnabledViaHelm:     instrumentationEnabledViaHelm,
+					TelemetryCollectionEnabledViaHelm: true,
+				},
+			},
+		}
+	}
+
+	It("should log a warning when instrumentation is disabled and the mode is not none", func() {
+		logger, capturingLogSink := NewCapturingLogger()
+		reconcilerWithInstrumenter(false).warnIfInstrumentationIsDisabled(
+			monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeAll),
+			logger,
+		)
+		capturingLogSink.HasLogMessage(
+			Default,
+			fmt.Sprintf(
+				logMsgInstrumentationDisabledButModeIsNotNone,
+				"operator.instrumentation.enabled=false",
+				TestNamespaceName,
+				MonitoringResourceName,
+				dash0common.InstrumentWorkloadsModeAll,
+			),
+		)
+	})
+
+	It("should log a pods-specific warning when instrumentation is disabled and the mode is pods", func() {
+		logger, capturingLogSink := NewCapturingLogger()
+		reconcilerWithInstrumenter(false).warnIfInstrumentationIsDisabled(
+			monitoringResourceWithMode(dash0common.InstrumentWorkloadsModePods),
+			logger,
+		)
+		capturingLogSink.HasLogMessage(
+			Default,
+			fmt.Sprintf(
+				logMsgInstrumentationDisabledButModeIsPods,
+				"operator.instrumentation.enabled=false",
+				TestNamespaceName,
+				MonitoringResourceName,
+			),
+		)
+	})
+
+	It("should name operator.telemetryCollectionEnabled=false in the warning when telemetry collection is disabled", func() {
+		logger, capturingLogSink := NewCapturingLogger()
+		reconciler := &MonitoringReconciler{
+			instrumenter: &instrumentation.Instrumenter{
+				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{
+					InstrumentationEnabledViaHelm:     false,
+					TelemetryCollectionEnabledViaHelm: false,
+				},
+			},
+		}
+		reconciler.warnIfInstrumentationIsDisabled(
+			monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeAll),
+			logger,
+		)
+		capturingLogSink.HasLogMessage(
+			Default,
+			fmt.Sprintf(
+				logMsgInstrumentationDisabledButModeIsNotNone,
+				"operator.telemetryCollectionEnabled=false",
+				TestNamespaceName,
+				MonitoringResourceName,
+				dash0common.InstrumentWorkloadsModeAll,
+			),
+		)
+	})
+
+	It("should queue a warning event when instrumentation is disabled and the mode is not none", func() {
+		logger, _ := NewCapturingLogger()
+		recorder := events.NewFakeRecorder(10)
+		reconciler := &MonitoringReconciler{
+			instrumenter: &instrumentation.Instrumenter{
+				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{
+					InstrumentationEnabledViaHelm:     false,
+					TelemetryCollectionEnabledViaHelm: true,
+				},
+				Recorder: recorder,
+			},
+		}
+		reconciler.warnIfInstrumentationIsDisabled(
+			monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeCreatedAndUpdated),
+			logger,
+		)
+		Expect(recorder.Events).To(Receive(Equal(fmt.Sprintf(
+			"%s %s %s",
+			corev1.EventTypeWarning,
+			util.ReasonInstrumentationDisabledButModeIsNotNone,
+			fmt.Sprintf(
+				logMsgInstrumentationDisabledButModeIsNotNone,
+				"operator.instrumentation.enabled=false",
+				TestNamespaceName,
+				MonitoringResourceName,
+				dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+			),
+		))))
+	})
+
+	It("should not queue an event when instrumentation is disabled and the mode is none", func() {
+		logger, _ := NewCapturingLogger()
+		recorder := events.NewFakeRecorder(10)
+		reconciler := &MonitoringReconciler{
+			instrumenter: &instrumentation.Instrumenter{
+				ClusterInstrumentationConfig: &util.ClusterInstrumentationConfig{
+					InstrumentationEnabledViaHelm:     false,
+					TelemetryCollectionEnabledViaHelm: true,
+				},
+				Recorder: recorder,
+			},
+		}
+		reconciler.warnIfInstrumentationIsDisabled(
+			monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeNone),
+			logger,
+		)
+		Expect(recorder.Events).ToNot(Receive())
+	})
+
+	It("should not log anything when instrumentation is disabled and the mode is none", func() {
+		logger, capturingLogSink := NewCapturingLogger()
+		reconcilerWithInstrumenter(false).warnIfInstrumentationIsDisabled(
+			monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeNone),
+			logger,
+		)
+		capturingLogSink.HasNoLogMessages(Default)
+	})
+
+	It("should not log anything when instrumentation is enabled", func() {
+		logger, capturingLogSink := NewCapturingLogger()
+		reconcilerWithInstrumenter(true).warnIfInstrumentationIsDisabled(
+			monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeAll),
+			logger,
+		)
+		capturingLogSink.HasNoLogMessages(Default)
+	})
+
+	It("should not log anything without an instrumenter", func() {
+		logger, capturingLogSink := NewCapturingLogger()
+		(&MonitoringReconciler{}).warnIfInstrumentationIsDisabled(
+			monitoringResourceWithMode(dash0common.InstrumentWorkloadsModeAll),
+			logger,
+		)
 		capturingLogSink.HasNoLogMessages(Default)
 	})
 })

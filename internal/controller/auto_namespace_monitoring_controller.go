@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/resources"
@@ -41,10 +42,11 @@ import (
 // namespaces.
 type AutoNamespaceMonitoringReconciler struct {
 	client.Client
-	manager           ctrl.Manager
-	operatorNamespace string
-	operatorCreatedAt time.Time
-	namespaceWatcher  *NamespaceWatcher
+	manager                       ctrl.Manager
+	operatorNamespace             string
+	operatorCreatedAt             time.Time
+	instrumentationEnabledViaHelm bool
+	namespaceWatcher              *NamespaceWatcher
 }
 
 var (
@@ -53,22 +55,31 @@ var (
 )
 
 // NewAutoNamespaceMonitoringReconciler creates an AutoNamespaceMonitoringReconciler. operatorCreatedAt is the creation
-// timestamp of the operator manager deployment, see NewNamespaceWatcher.
+// timestamp of the operator manager deployment, and instrumentationEnabledViaHelm reflects the Helm value
+// operator.instrumentation.enabled, see NewNamespaceWatcher.
 func NewAutoNamespaceMonitoringReconciler(
 	k8sClient client.Client,
 	operatorNamespace string,
 	operatorCreatedAt time.Time,
+	instrumentationEnabledViaHelm bool,
 ) *AutoNamespaceMonitoringReconciler {
 	return &AutoNamespaceMonitoringReconciler{
-		Client:            k8sClient,
-		operatorNamespace: operatorNamespace,
-		operatorCreatedAt: operatorCreatedAt,
+		Client:                        k8sClient,
+		operatorNamespace:             operatorNamespace,
+		operatorCreatedAt:             operatorCreatedAt,
+		instrumentationEnabledViaHelm: instrumentationEnabledViaHelm,
 	}
 }
 
 func (r *AutoNamespaceMonitoringReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.manager = mgr
-	r.namespaceWatcher = NewNamespaceWatcher(r.Client, mgr.GetAPIReader(), r.operatorNamespace, r.operatorCreatedAt)
+	r.namespaceWatcher = NewNamespaceWatcher(
+		r.Client,
+		mgr.GetAPIReader(),
+		r.operatorNamespace,
+		r.operatorCreatedAt,
+		r.instrumentationEnabledViaHelm,
+	)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dash0v1alpha1.Dash0OperatorConfiguration{}).
 		Named("autoNamespaceMonitoring").
@@ -535,27 +546,32 @@ func (r *AutoNamespaceMonitoringReconciler) updateOperatorConfigurationStatus(
 
 type NamespaceWatcher struct {
 	client.Client
-	apiReader                  client.Reader
-	operatorNamespace          string
-	operatorCreatedAt          time.Time
-	controllerStopFunctionLock sync.Mutex
-	controllerStopFunction     *context.CancelFunc
+	apiReader                     client.Reader
+	operatorNamespace             string
+	operatorCreatedAt             time.Time
+	instrumentationEnabledViaHelm bool
+	controllerStopFunctionLock    sync.Mutex
+	controllerStopFunction        *context.CancelFunc
 }
 
 // NewNamespaceWatcher creates a NamespaceWatcher. The apiReader must read from the API server, not from the informer
 // cache, so that a just-created pre-delete hook job and the deletion of the operator configuration resource are seen.
-// Hook jobs created before operatorCreatedAt are ignored. See isOperatorBeingUninstalled.
+// Hook jobs created before operatorCreatedAt are ignored. See isOperatorBeingUninstalled. If
+// instrumentationEnabledViaHelm is false, automatically created monitoring resources get
+// instrumentWorkloads.mode=none, regardless of the mode in the monitoring template.
 func NewNamespaceWatcher(
 	k8sClient client.Client,
 	apiReader client.Reader,
 	operatorNamespace string,
 	operatorCreatedAt time.Time,
+	instrumentationEnabledViaHelm bool,
 ) *NamespaceWatcher {
 	return &NamespaceWatcher{
-		Client:            k8sClient,
-		apiReader:         apiReader,
-		operatorNamespace: operatorNamespace,
-		operatorCreatedAt: operatorCreatedAt,
+		Client:                        k8sClient,
+		apiReader:                     apiReader,
+		operatorNamespace:             operatorNamespace,
+		operatorCreatedAt:             operatorCreatedAt,
+		instrumentationEnabledViaHelm: instrumentationEnabledViaHelm,
 	}
 }
 
@@ -743,6 +759,7 @@ func (w *NamespaceWatcher) createMonitoringResource(
 	template dash0v1alpha1.MonitoringTemplate,
 	logger logd.Logger,
 ) error {
+	template = w.applyInstrumentationEnabled(template)
 	name := template.Name
 	if name == "" {
 		name = util.MonitoringAutoResourceDefaultName
@@ -870,6 +887,19 @@ func indicatesUninstallation(preDeleteHookJob *batchv1.Job, operatorCreatedAt ti
 	return true
 }
 
+// applyInstrumentationEnabled returns the monitoring template with instrumentWorkloads.mode=none if workload
+// instrumentation is disabled. A manually managed operator configuration resource can still have a monitoring template
+// with a different mode, stored while instrumentation was enabled; the monitoring validation webhook would reject
+// monitoring resources created from it.
+func (w *NamespaceWatcher) applyInstrumentationEnabled(
+	monitoringTemplate dash0v1alpha1.MonitoringTemplate,
+) dash0v1alpha1.MonitoringTemplate {
+	if !w.instrumentationEnabledViaHelm {
+		monitoringTemplate.Spec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeNone
+	}
+	return monitoringTemplate
+}
+
 // reconcileResourceWithMonitoringTemplate makes sure the monitoring resource reflects the current monitoring template.
 func (w *NamespaceWatcher) reconcileResourceWithMonitoringTemplate(
 	ctx context.Context,
@@ -877,6 +907,7 @@ func (w *NamespaceWatcher) reconcileResourceWithMonitoringTemplate(
 	monitoringTemplate dash0v1alpha1.MonitoringTemplate,
 	logger logd.Logger,
 ) error {
+	monitoringTemplate = w.applyInstrumentationEnabled(monitoringTemplate)
 
 	// TODO: The current approach is to compare all relevant spec fields in the monitoring resource spec with the
 	// monitoring template, and update the monitoring resource spec if needed. This is probably not a good long term
