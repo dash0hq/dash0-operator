@@ -386,6 +386,9 @@ data:
     {{- if and .Values.operator.monitoringTemplate.spec .Values.operator.monitoringTemplate.spec.exports }}
     {{- fail "Error: operator.monitoringTemplate.spec.exports: Providing custom export settings in the monitoring template is not allowed, please remove the field." -}}
     {{- end }}
+    {{- if and (not (include "dash0-operator.instrumentationEnabled" .)) .Values.operator.monitoringTemplate.spec .Values.operator.monitoringTemplate.spec.instrumentWorkloads .Values.operator.monitoringTemplate.spec.instrumentWorkloads.mode (ne .Values.operator.monitoringTemplate.spec.instrumentWorkloads.mode "none") }}
+    {{- fail (printf "Error: operator.monitoringTemplate.spec.instrumentWorkloads.mode is %q, but workload instrumentation is disabled via operator.instrumentation.enabled=false. Please set operator.monitoringTemplate.spec.instrumentWorkloads.mode to \"none\" or remove it." .Values.operator.monitoringTemplate.spec.instrumentWorkloads.mode) -}}
+    {{- end }}
     monitoringTemplate:
       {{- toYaml .Values.operator.monitoringTemplate | nindent 6 }}
     {{- end }}

@@ -320,6 +320,9 @@ func testFilter() *dash0common.Filter {
 				`IsMatch(body, ".*password.*")`,
 				`severity_number < SEVERITY_NUMBER_WARN`,
 			},
+			DeprecatedLogRecordFilter: []string{
+				`IsMatch(body, ".*secret.*")`,
+			},
 		},
 	}
 }
