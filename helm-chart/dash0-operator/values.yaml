@@ -1024,7 +1024,7 @@ operator:
         initialDelaySeconds: 0
         periodSeconds: 2
         timeoutSeconds: 1
-        failureThreshold: 45
+        failureThreshold: 30
 
     # Resource settings for the collector container of the Deployment collector pod (cluster-metrics-collector) managed
     # by the operator. There should usually be no reason to override this.
@@ -1144,7 +1144,7 @@ operator:
         initialDelaySeconds: 0
         periodSeconds: 2
         timeoutSeconds: 1
-        failureThreshold: 45
+        failureThreshold: 30
 
     # The number of replicas of the Signal Control collector Deployment managed by the operator. This collector only
     # exists when Signal Control is enabled (see operator.signalControl.enabled); it receives the Dash0-bound telemetry
@@ -1258,7 +1258,7 @@ operator:
         initialDelaySeconds: 0
         periodSeconds: 2
         timeoutSeconds: 1
-        failureThreshold: 45
+        failureThreshold: 30
 
     # Settings for the k8s_attributes processor in the Dash0 operator collectors:
     k8s_attributes:
