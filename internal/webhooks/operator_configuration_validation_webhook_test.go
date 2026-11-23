@@ -924,7 +924,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 
 		It("should not warn if log_record is used", func() {
 			handler := NewOperatorConfigurationValidationWebhookHandler(
-				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+				k8sClient, true, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(dash0v1alpha1.Dash0OperatorConfigurationSpec{
 				Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 				Filter: &dash0common.Filter{
@@ -939,7 +939,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 
 		It("should warn if log_records is used in the cluster-wide filter or in the monitoring template", func() {
 			handler := NewOperatorConfigurationValidationWebhookHandler(
-				k8sClient, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+				k8sClient, true, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
 			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(dash0v1alpha1.Dash0OperatorConfigurationSpec{
 				Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 				Filter:  deprecatedLogFilter(),

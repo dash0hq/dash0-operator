@@ -979,7 +979,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 			raw, err := json.Marshal(monitoringResource)
 			Expect(err).ToNot(HaveOccurred())
 
-			response := NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace).Handle(ctx, admission.Request{
+			response := NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace, true, true).Handle(ctx, admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
 					Operation: admissionv1.Create,
 					Namespace: monitoringResource.Namespace,
