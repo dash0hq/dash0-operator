@@ -369,8 +369,8 @@ rules:
   - patch
   - update
 
-# Permissions required to watch Dash0 dataset resources. Like dash0teams, dash0datasets live in the dash0.com Kubernetes
-# API group.
+# Permissions required to watch Dash0 dataset resources and manage their finalizers. Like dash0teams, dash0datasets live
+# in the dash0.com Kubernetes API group.
 - apiGroups:
   - dash0.com
   resources:
@@ -378,7 +378,17 @@ rules:
   verbs:
   - get
   - list
+  - patch
+  - update
   - watch
+
+# Permissions required to manage the finalizers of Dash0 dataset resources:
+- apiGroups:
+  - dash0.com
+  resources:
+  - dash0datasets/finalizers
+  verbs:
+  - update
 
 # Permissions required to write to Dash0 dataset resource status:
 - apiGroups:

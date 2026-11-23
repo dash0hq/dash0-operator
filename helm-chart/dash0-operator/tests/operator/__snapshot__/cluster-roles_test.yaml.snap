@@ -300,7 +300,15 @@ cluster roles should match snapshot:
         verbs:
           - get
           - list
+          - patch
+          - update
           - watch
+      - apiGroups:
+          - dash0.com
+        resources:
+          - dash0datasets/finalizers
+        verbs:
+          - update
       - apiGroups:
           - dash0.com
         resources:
@@ -960,7 +968,15 @@ cluster roles should match snapshot with agent0-connector enabled:
         verbs:
           - get
           - list
+          - patch
+          - update
           - watch
+      - apiGroups:
+          - dash0.com
+        resources:
+          - dash0datasets/finalizers
+        verbs:
+          - update
       - apiGroups:
           - dash0.com
         resources:

@@ -358,7 +358,7 @@ metadata:
     capabilities: Seamless Upgrades
     categories: Monitoring,Logging & Tracing
     containerImage: ghcr.io/dash0hq/operator-controller:0.0.0
-    createdAt: "2026-11-17T20:25:53Z"
+    createdAt: "2026-11-20T07:34:18Z"
     description: Collect traces, metrics and logs from your Kubernetes workloads and
       infrastructure with OpenTelemetry and send them to Dash0.
     operators.operatorframework.io/builder: operator-sdk-v1.42.3
@@ -871,7 +871,15 @@ spec:
           verbs:
           - get
           - list
+          - patch
+          - update
           - watch
+        - apiGroups:
+          - dash0.com
+          resources:
+          - dash0datasets/finalizers
+          verbs:
+          - update
         - apiGroups:
           - dash0.com
           resources:

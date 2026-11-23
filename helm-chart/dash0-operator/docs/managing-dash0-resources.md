@@ -1091,6 +1091,9 @@ With the prerequisites in place, the operator synchronizes dataset resources wit
 
 * When a dataset resource is created or changed, the operator creates the dataset in Dash0 if there is no dataset with
   that slug yet, and updates it otherwise.
+* A dataset that already exists in Dash0 is only updated when it was created in the Dash0 UI or by this dataset
+  resource. A dataset managed by another dataset resource, another cluster or another tool (for example Terraform) is
+  left untouched, and the synchronization fails with an error in the status of the resource.
 * When a dataset resource is deleted, the operator deletes the dataset in Dash0.
 
 The custom resource definition for Dash0 datasets can be found
@@ -1145,9 +1148,16 @@ Deleting a dataset in Dash0 is a soft delete:
 * Spam filters are not restored.
 * Telemetry of the dataset is removed as its retention expires.
 
-When a namespace is deleted, the operator deletes the datasets of the dataset resources in that namespace only while
-the Dash0 monitoring resource of the namespace still exists.
-If the monitoring resource is removed first, the dataset stays in Dash0 and is no longer managed by any resource.
+The operator adds a finalizer to each dataset resource.
+Kubernetes removes a deleted dataset resource only after the operator has deleted the dataset in Dash0.
+If the delete fails, for example because the Dash0 API is not reachable, the operator retries it and the resource stays
+in the cluster until the delete succeeds.
+
+If there is no Dash0 API endpoint and token for the namespace when the resource is deleted, the operator cannot delete
+the dataset.
+It then removes the finalizer anyway, so the deletion of the resource or its namespace is not blocked, and the dataset
+stays in Dash0.
+This happens, for example, when the Dash0 monitoring resource of the namespace is removed before the dataset resource.
 
 When a dataset resource has been synchronized to Dash0, the operator writes a summary of that synchronization
 operation to the status of the resource.

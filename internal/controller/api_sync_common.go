@@ -382,7 +382,8 @@ func firstSynchronizationErrorAndStatusCode(result *ResourceToRequestsResult) (s
 
 // synchronizeViaApiAndUpdateStatus synchronizes the given dash0ApiResource to the Dash0 API. It either upserts or
 // deletes the corresponding Dash0 API object(s), depending on the action. For upserts it
-// then writes the synchronization result to the status of the resource.
+// then writes the synchronization result to the status of the resource. It returns nil when the preconditions for
+// synchronizing the resource are not met, for example when there is no Dash0 API config for its namespace.
 //
 // The synchronization is executed for every validated API config (preconditionChecksResult.validatedApiConfigs).
 //
@@ -398,8 +399,8 @@ func synchronizeViaApiAndUpdateStatus(
 	ownedResource client.Object,
 	action apiAction,
 	logger logd.Logger,
-) {
-	synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
+) *synchronizationResults {
+	return synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 		ctx,
 		apiSyncReconciler,
 		dash0ApiResource,
@@ -433,7 +434,7 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 	action apiAction,
 	originsInNamespace *existingOriginsInNamespace,
 	logger logd.Logger,
-) {
+) *synchronizationResults {
 	preconditionChecksResult := validatePreconditionsAndPreprocess(
 		ctx,
 		apiSyncReconciler,
@@ -441,7 +442,7 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 		logger,
 	)
 	if !preconditionChecksResult.synchronizeResource {
-		return
+		return nil
 	}
 
 	resourceHasBeenDeleted := action == deleteAction
@@ -633,6 +634,7 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 		resourceHasBeenDeleted,
 		logger,
 	)
+	return &syncResults
 }
 
 // validatePreconditionsAndPreprocess checks whether a resource can be synchronized to the Dash0 API and applies common
@@ -1265,8 +1267,12 @@ func executeApiClientCall(
 
 // convertApiClientError maps an error returned by the Dash0 API client to an apiSyncHttpError. It returns nil for a
 // 404 response to a delete request, since the object to delete is already gone. An invalid auth token is reported with
-// status code 401, so it is not retried.
+// status code 401, so it is not retried. An error that already is an apiSyncHttpError is returned unchanged.
 func convertApiClientError(err error, actionLabel string, isDelete bool) error {
+	var syncHttpErr *apiSyncHttpError
+	if errors.As(err, &syncHttpErr) {
+		return err
+	}
 	var invalidTokenErr *invalidAuthTokenError
 	if errors.As(err, &invalidTokenErr) {
 		return &apiSyncHttpError{

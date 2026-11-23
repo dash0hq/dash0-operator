@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -45,6 +46,8 @@ type DatasetReconciler struct {
 	initialSyncHasHappend atomic.Bool
 	namespacedSyncMutex   selfmonitoringapiaccess.NamespaceMutex
 }
+
+const datasetFinalizerId = "operator.dash0.com/dash0-dataset-finalizer"
 
 var (
 	datasetReconcileRequestMetric otelmetric.Int64Counter
@@ -301,42 +304,42 @@ func (r *DatasetReconciler) Reconcile(
 	logger := logd.FromContext(ctx)
 	logger.Info("processing reconcile request for a dataset resource", "name", qualifiedName)
 
-	action := upsertAction
 	datasetResource := &dash0dashv1alpha1.Dash0Dataset{}
 	if err := r.Get(ctx, req.NamespacedName, datasetResource); err != nil {
 		if apierrors.IsNotFound(err) {
-			action = deleteAction
-			logger.Info("reconciling the deletion of the dataset resource", "name", qualifiedName)
-			datasetResource = &dash0dashv1alpha1.Dash0Dataset{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: req.Namespace,
-					Name:      req.Name,
-				},
-			}
-		} else {
-			logger.Error(
-				err,
-				fmt.Sprintf(
-					"Failed to get the dataset \"%s\", requeuing reconcile request.",
-					qualifiedName,
-				),
-			)
+			logger.Info("the dataset resource has been deleted, nothing to do", "name", qualifiedName)
+			return reconcile.Result{}, nil
+		}
+		logger.Error(
+			err,
+			fmt.Sprintf(
+				"Failed to get the dataset \"%s\", requeuing reconcile request.",
+				qualifiedName,
+			),
+		)
+		return ctrl.Result{}, err
+	}
+
+	if !datasetResource.DeletionTimestamp.IsZero() {
+		return r.deleteDatasetAndRemoveFinalizer(ctx, datasetResource, logger)
+	}
+
+	if controllerutil.AddFinalizer(datasetResource, datasetFinalizerId) {
+		if err := r.Update(ctx, datasetResource); err != nil {
+			logger.Error(err, "Failed to add the finalizer to the dataset resource, requeuing reconcile request.")
 			return ctrl.Result{}, err
 		}
 	}
 
 	unstructuredResource, err := structToMap(datasetResource)
 	if err != nil {
-		msg := "cannot serialize the dataset resource"
-		logger.Error(err, msg)
-		if action != deleteAction {
-			r.WriteSynchronizationResultToSynchronizedResource(
-				ctx,
-				datasetResource,
-				synchronizationResults{},
-				logger,
-			)
-		}
+		logger.Error(err, "cannot serialize the dataset resource")
+		r.WriteSynchronizationResultToSynchronizedResource(
+			ctx,
+			datasetResource,
+			synchronizationResults{},
+			logger,
+		)
 		return reconcile.Result{}, nil
 	}
 
@@ -345,10 +348,59 @@ func (r *DatasetReconciler) Reconcile(
 		r,
 		unstructuredResource,
 		datasetResource,
-		action,
+		upsertAction,
 		logger,
 	)
 
+	return reconcile.Result{}, nil
+}
+
+// deleteDatasetAndRemoveFinalizer deletes the dataset in Dash0 and then removes the finalizer, so Kubernetes can delete
+// the resource. A failed delete keeps the finalizer and returns the error, so the reconcile request is retried.
+func (r *DatasetReconciler) deleteDatasetAndRemoveFinalizer(
+	ctx context.Context,
+	datasetResource *dash0dashv1alpha1.Dash0Dataset,
+	logger logd.Logger,
+) (reconcile.Result, error) {
+	if !controllerutil.ContainsFinalizer(datasetResource, datasetFinalizerId) {
+		return reconcile.Result{}, nil
+	}
+
+	unstructuredResource, err := structToMap(datasetResource)
+	if err != nil {
+		logger.Error(err, "cannot serialize the dataset resource")
+		return reconcile.Result{}, err
+	}
+
+	syncResults := synchronizeViaApiAndUpdateStatus(
+		ctx,
+		r,
+		unstructuredResource,
+		datasetResource,
+		deleteAction,
+		logger,
+	)
+	if syncResults == nil {
+		// Without an API config the dataset cannot be deleted, and keeping the finalizer would block the deletion of
+		// the namespace forever.
+		logger.Warn(
+			"Cannot delete the dataset in Dash0 because there is no Dash0 API config for its namespace, the dataset "+
+				"stays in Dash0. Removing the finalizer.",
+			"name", client.ObjectKeyFromObject(datasetResource).String(),
+		)
+	} else {
+		for _, syncErrors := range syncResults.allSynchronizationErrors() {
+			for _, syncError := range syncErrors {
+				return reconcile.Result{}, fmt.Errorf("failed to delete the dataset in Dash0: %s", syncError)
+			}
+		}
+	}
+
+	controllerutil.RemoveFinalizer(datasetResource, datasetFinalizerId)
+	if err = r.Update(ctx, datasetResource); err != nil {
+		logger.Error(err, "Failed to remove the finalizer from the dataset resource, requeuing reconcile request.")
+		return reconcile.Result{}, err
+	}
 	return reconcile.Result{}, nil
 }
 
@@ -378,11 +430,11 @@ func (r *DatasetReconciler) MapResourceToApiCalls(
 				if err != nil {
 					return "", err
 				}
-				return upsertDataset(ctx, apiClient, slug, datasetDefinition)
+				return upsertDataset(ctx, apiClient, slug, datasetOrigin, datasetDefinition)
 			},
 		}
 	case deleteAction:
-		// The resource is gone and its slug with it, so the dataset is addressed by the origin the operator set.
+		// The slug may have changed since the last sync, so the dataset is addressed by the origin the operator set.
 		apiClientCall = &ApiClientCall{
 			Method: http.MethodDelete,
 			Url:    renderDatasetUrl(apiConfig.Endpoint, datasetOrigin),
@@ -409,17 +461,29 @@ func (r *DatasetReconciler) MapResourceToApiCalls(
 }
 
 // upsertDataset updates the dataset with the given slug, or creates it when it does not exist. A soft-deleted dataset
-// also answers 404, and the create restores it.
+// also answers 404, and the create restores it. An existing dataset without an origin, for example one created in the
+// Dash0 UI, is adopted. An existing dataset with another origin is left untouched.
 func upsertDataset(
 	ctx context.Context,
 	apiClient dash0apiclient.Client,
 	slug string,
+	origin string,
 	datasetDefinition *dash0apiclient.DatasetDefinition,
 ) (string, error) {
 	var result *dash0apiclient.DatasetDefinition
-	_, err := apiClient.GetDataset(ctx, slug)
+	existing, err := apiClient.GetDataset(ctx, slug)
 	switch {
 	case err == nil:
+		if existingOrigin := datasetOriginLabel(existing); existingOrigin != "" && existingOrigin != origin {
+			return "", &apiSyncHttpError{
+				statusCode: http.StatusConflict,
+				err: fmt.Errorf(
+					"the dataset %s already exists in Dash0 and is managed by another origin (%s)",
+					slug,
+					existingOrigin,
+				),
+			}
+		}
 		result, err = apiClient.UpdateDataset(ctx, slug, datasetDefinition)
 	case dash0apiclient.IsNotFound(err):
 		result, err = apiClient.CreateDataset(ctx, datasetDefinition)
@@ -431,6 +495,13 @@ func upsertDataset(
 		return "", errors.New("unexpected nil/empty response body")
 	}
 	return dash0apiclient.GetDatasetID(result), nil
+}
+
+func datasetOriginLabel(dataset *dash0apiclient.DatasetDefinition) string {
+	if dataset == nil || dataset.Metadata.Labels == nil || dataset.Metadata.Labels.Dash0Comorigin == nil {
+		return ""
+	}
+	return *dataset.Metadata.Labels.Dash0Comorigin
 }
 
 // mapToDatasetDefinition converts the dataset resource to the dataset definition of the Dash0 API client. The display
@@ -445,7 +516,9 @@ func mapToDatasetDefinition(resource map[string]any, origin string) (*dash0apicl
 		return nil, fmt.Errorf("unable to convert the dataset to the Dash0 API format: %w", err)
 	}
 	if spec.Slug == "" || spec.Display.Name == "" {
-		return nil, errors.New("unable to convert the dataset to the Dash0 API format: spec.slug and spec.display.name are required")
+		return nil, errors.New(
+			"unable to convert the dataset to the Dash0 API format: spec.slug and spec.display.name are required",
+		)
 	}
 	serializedSpec, err = json.Marshal(spec)
 	if err != nil {

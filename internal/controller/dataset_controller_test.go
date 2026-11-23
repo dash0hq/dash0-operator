@@ -51,15 +51,34 @@ var _ = Describe(
 		ctx := context.Background()
 		logger := logd.FromContext(ctx)
 
-		reconcileDataset := func() {
+		reconcileDatasetAndReturnError := func() error {
 			GinkgoHelper()
 			result, err := datasetReconciler.Reconcile(
 				ctx, reconcile.Request{
 					NamespacedName: types.NamespacedName{Namespace: TestNamespaceName, Name: datasetName},
 				},
 			)
-			Expect(err).NotTo(HaveOccurred())
 			Expect(result).To(Equal(reconcile.Result{}))
+			return err
+		}
+
+		reconcileDataset := func() {
+			GinkgoHelper()
+			Expect(reconcileDatasetAndReturnError()).To(Succeed())
+		}
+
+		deleteDatasetDeleteEndpoint := func() *gock.Request {
+			return gock.New(ApiEndpointTest).
+				Delete(fmt.Sprintf("%s/%s", datasetCollection, fmt.Sprintf(datasetOriginPattern, clusterId))).
+				MatchHeader("Authorization", AuthorizationHeaderTest)
+		}
+
+		createAndDeleteDatasetResourceWithFinalizer := func() {
+			GinkgoHelper()
+			dataset := createDatasetResource()
+			dataset.Finalizers = []string{datasetFinalizerId}
+			Expect(k8sClient.Create(ctx, dataset)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, dataset)).To(Succeed())
 		}
 
 		BeforeAll(
@@ -126,6 +145,7 @@ var _ = Describe(
 					fmt.Sprintf(datasetOriginPattern, clusterId),
 					"",
 				)
+				Expect(getDatasetResource(ctx).Finalizers).To(ContainElement(datasetFinalizerId))
 				Expect(gock.IsDone()).To(BeTrue())
 			},
 		)
@@ -199,19 +219,98 @@ var _ = Describe(
 		)
 
 		It(
-			"deletes the dataset by its origin when the resource is deleted", func() {
+			"adopts an existing dataset that has no origin", func() {
+				existing := datasetResponse(clusterId)
+				delete(existing["metadata"].(map[string]any)["labels"].(map[string]any), "dash0.com/origin")
+				gock.New(ApiEndpointTest).Get(datasetSlugPath).Times(1).Reply(200).JSON(existing)
 				gock.New(ApiEndpointTest).
-					Delete(fmt.Sprintf("%s/%s", datasetCollection, fmt.Sprintf(datasetOriginPattern, clusterId))).
-					MatchHeader("Authorization", AuthorizationHeaderTest).
+					Put(datasetSlugPath).
+					AddMatcher(datasetRequestBodyMatcher(fmt.Sprintf(datasetOriginPattern, clusterId))).
 					Times(1).
-					Reply(200)
+					Reply(200).
+					JSON(datasetResponse(clusterId))
 
-				dataset := createDatasetResource()
-				Expect(k8sClient.Create(ctx, dataset)).To(Succeed())
-				Expect(k8sClient.Delete(ctx, dataset)).To(Succeed())
+				Expect(k8sClient.Create(ctx, createDatasetResource())).To(Succeed())
 				reconcileDataset()
 
+				verifyDatasetSynchronizationStatus(
+					ctx,
+					dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
+					testStartedAt,
+					datasetSlug,
+					fmt.Sprintf(datasetOriginPattern, clusterId),
+					"",
+				)
 				Expect(gock.IsDone()).To(BeTrue())
+			},
+		)
+
+		It(
+			"does not update an existing dataset that has another origin", func() {
+				existing := datasetResponse(clusterId)
+				existing["metadata"].(map[string]any)["labels"].(map[string]any)["dash0.com/origin"] = "terraform"
+				gock.New(ApiEndpointTest).Get(datasetSlugPath).Times(1).Reply(200).JSON(existing)
+
+				Expect(k8sClient.Create(ctx, createDatasetResource())).To(Succeed())
+				reconcileDataset()
+
+				verifyDatasetSynchronizationStatus(
+					ctx,
+					dash0common.Dash0ApiResourceSynchronizationStatusFailed,
+					testStartedAt,
+					"",
+					"",
+					"is managed by another origin (terraform)",
+				)
+				dataset := getDatasetResource(ctx)
+				Expect(dataset.Status.SynchronizationResults[0].HttpStatusCode).To(Equal(http.StatusConflict))
+				Expect(gock.IsDone()).To(BeTrue())
+			},
+		)
+
+		It(
+			"deletes the dataset by its origin and removes the finalizer when the resource is deleted", func() {
+				deleteDatasetDeleteEndpoint().Times(1).Reply(200)
+
+				createAndDeleteDatasetResourceWithFinalizer()
+				reconcileDataset()
+
+				verifyDatasetResourceIsGone(ctx)
+				Expect(gock.IsDone()).To(BeTrue())
+			},
+		)
+
+		It(
+			"removes the finalizer when the dataset does not exist in Dash0", func() {
+				deleteDatasetDeleteEndpoint().Times(1).Reply(404)
+
+				createAndDeleteDatasetResourceWithFinalizer()
+				reconcileDataset()
+
+				verifyDatasetResourceIsGone(ctx)
+				Expect(gock.IsDone()).To(BeTrue())
+			},
+		)
+
+		It(
+			"keeps the finalizer and returns an error when the delete fails", func() {
+				deleteDatasetDeleteEndpoint().Times(3).Reply(500)
+
+				createAndDeleteDatasetResourceWithFinalizer()
+				Expect(reconcileDatasetAndReturnError()).To(MatchError(ContainSubstring("unexpected status code 500")))
+
+				Expect(getDatasetResource(ctx).Finalizers).To(ContainElement(datasetFinalizerId))
+				Expect(gock.IsDone()).To(BeTrue())
+			},
+		)
+
+		It(
+			"removes the finalizer without deleting the dataset when there is no monitoring resource", func() {
+				createAndDeleteDatasetResourceWithFinalizer()
+				DeleteMonitoringResourceIfItExists(ctx, k8sClient)
+				reconcileDataset()
+
+				verifyDatasetResourceIsGone(ctx)
 			},
 		)
 
@@ -310,8 +409,26 @@ func getDatasetResource(ctx context.Context) *dash0dashv1alpha1.Dash0Dataset {
 	return dataset
 }
 
+func verifyDatasetResourceIsGone(ctx context.Context) {
+	GinkgoHelper()
+	err := k8sClient.Get(
+		ctx, types.NamespacedName{Namespace: TestNamespaceName, Name: datasetName}, &dash0dashv1alpha1.Dash0Dataset{},
+	)
+	Expect(apierrors.IsNotFound(err)).To(BeTrue(), "expected the dataset resource to be gone, got %v", err)
+}
+
 func deleteDatasetResourceIfItExists(ctx context.Context) {
-	err := k8sClient.Delete(
+	dataset := &dash0dashv1alpha1.Dash0Dataset{}
+	err := k8sClient.Get(ctx, types.NamespacedName{Namespace: TestNamespaceName, Name: datasetName}, dataset)
+	if apierrors.IsNotFound(err) {
+		return
+	}
+	Expect(err).NotTo(HaveOccurred())
+	if len(dataset.Finalizers) > 0 {
+		dataset.Finalizers = nil
+		Expect(k8sClient.Update(ctx, dataset)).To(Succeed())
+	}
+	err = k8sClient.Delete(
 		ctx,
 		&dash0dashv1alpha1.Dash0Dataset{ObjectMeta: metav1.ObjectMeta{Name: datasetName, Namespace: TestNamespaceName}},
 		&client.DeleteOptions{GracePeriodSeconds: new(int64)},
