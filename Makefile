@@ -918,10 +918,12 @@ CATALOG_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)dash0-operator-catalog
 CATALOG_IMAGE_TAG ?= $(BUNDLE_IMAGE_TAG)
 # Space-separated bundle image references, preferably by digest.
 CATALOG_BUNDLE_IMAGES ?=
+# Optional: a bundle image from which the only bundle of CATALOG_BUNDLE_IMAGES is reachable via an upgrade edge.
+CATALOG_UPGRADE_FROM_BUNDLE_IMAGE ?=
 
 .PHONY: olm-catalog
 olm-catalog: opm ## Render and validate an FBC catalog with the bundle images of CATALOG_BUNDLE_IMAGES into CATALOG_DIR.
-	OPM=$(OPM) CATALOG_DIR="$(CATALOG_DIR)" CATALOG_BUNDLE_IMAGES="$(CATALOG_BUNDLE_IMAGES)" olm/bin/generate-catalog.sh
+	OPM=$(OPM) CATALOG_DIR="$(CATALOG_DIR)" CATALOG_BUNDLE_IMAGES="$(CATALOG_BUNDLE_IMAGES)" CATALOG_UPGRADE_FROM_BUNDLE_IMAGE="$(CATALOG_UPGRADE_FROM_BUNDLE_IMAGE)" olm/bin/generate-catalog.sh
 
 .PHONY: olm-catalog-image
 olm-catalog-image: ## Build the image of the OLM catalog in CATALOG_DIR locally, the image is not pushed.
