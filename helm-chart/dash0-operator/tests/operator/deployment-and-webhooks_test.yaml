@@ -69,7 +69,7 @@ tests:
           value: DASH0_SYNTHETICS_WORKER_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[17].value
-          value: ghcr.io/dash0hq/dash0-synthetics-worker:0.2.0
+          value: ghcr.io/dash0hq/dash0-synthetics-worker:0.3.1
       - equal:
           path: spec.template.spec.containers[0].env[18].name
           value: DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION
@@ -1015,7 +1015,7 @@ tests:
           value: DASH0_SYNTHETICS_WORKER_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[24].value
-          value: ghcr.io/dash0hq/dash0-synthetics-worker:0.2.0
+          value: ghcr.io/dash0hq/dash0-synthetics-worker:0.3.1
       - equal:
           path: spec.template.spec.containers[0].env[25].name
           value: DASH0_DEVELOPMENT_MODE
