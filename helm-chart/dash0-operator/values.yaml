@@ -768,7 +768,8 @@ operator:
     # The collectors managed by the operator batch telemetry in their exporters (sending_queue::batch, see
     # https://github.com/open-telemetry/opentelemetry-collector/blob/main/exporter/exporterhelper/README.md).
     # If set to a value > 0, sendBatchSize sets the minimum number of items (spans, metric data points, log records,
-    # profiles) per batch (min_size), otherwise the default of 8192 is used. There is usually no need to configure this.
+    # profile samples) per batch (min_size), otherwise the default of 8192 is used. There is usually no need to
+    # configure this.
     sendBatchSize: 0
 
     # If set to a value > 0, sendBatchMaxSize sets the maximum number of items per batch (max_size) for the exporters
