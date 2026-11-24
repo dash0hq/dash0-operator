@@ -20,7 +20,7 @@
     "node": ">=26"
   },
   "devDependencies": {
-    "prettier": "^3.9.10",
+    "prettier": "^3.10.0",
     "typescript": "^7.0.2"
   }
 }
