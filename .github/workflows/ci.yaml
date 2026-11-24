@@ -60,7 +60,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -69,7 +69,7 @@ jobs:
         run: |
           go version
 
-      - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785
+      - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a
         with:
           mise_toml: |
             [tools]
@@ -159,7 +159,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -351,12 +351,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5
         with:
           go-version-file: 'go.mod'
           cache: true
 
-      - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785
+      - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a
         with:
           mise_toml: |
             [tools]
@@ -438,7 +438,7 @@ jobs:
           persist-credentials: false
 
       # make opm uses go env to determine the operating system and architecture of the opm binary
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5
         with:
           go-version-file: 'go.mod'
           cache: false
@@ -619,7 +619,7 @@ jobs:
 
   # Verify that docs sync (runs for each release build, see below) still works.
   sync_docs_to_website_dry_run:
-    name: Synchronize Helm chart docs to dash0.com/docs (dry run)
+    name: Synchronize operator docs to dash0.com/docs (dry run)
     needs: check_for_successful_builds_for_same_commit
     # The dry run is skipped on release builds (tags), where the actual docs sync (see the sync_docs_to_website job
     # below) runs after the Helm chart has been published.
@@ -632,7 +632,7 @@ jobs:
 
   # After publishing a release, sync the Helm chart docs to the documentation on https://www.dash0.com/docs.
   sync_docs_to_website:
-    name: Synchronize Helm chart docs to dash0.com/docs
+    name: Synchronize operator docs to dash0.com/docs
     needs:
       - publish_helm_chart
     if: ${{ always() && contains(github.ref, 'refs/tags/') && needs.publish_helm_chart.result == 'success' }}
@@ -640,7 +640,7 @@ jobs:
       contents: read
     uses: ./.github/workflows/sync-docs-to-website.yaml
     secrets:
-      DASH0_DOCS_REPO_GITHUB_PAT: ${{ secrets.DASH0_DOCS_REPO_GITHUB_PAT }}
+      DOCS_SYNC_APP_PRIVATE_KEY: ${{ secrets.DOCS_SYNC_APP_PRIVATE_KEY }}
       SYNC_DOCUMENTATION_TARGET_REPOSITORY: ${{ secrets.SYNC_DOCUMENTATION_TARGET_REPOSITORY }}
       SYNC_DOCUMENTATION_TARGET_DIRECTORY: ${{ secrets.SYNC_DOCUMENTATION_TARGET_DIRECTORY }}
 

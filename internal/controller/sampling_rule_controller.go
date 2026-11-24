@@ -99,6 +99,10 @@ func (r *SamplingRuleReconciler) ShortName() string {
 	return "sampling-rule"
 }
 
+func (r *SamplingRuleReconciler) Kind() string {
+	return "Dash0SamplingRule"
+}
+
 func (r *SamplingRuleReconciler) GetDefaultApiConfigs() []ApiConfig {
 	return r.defaultApiConfigs.Get()
 }

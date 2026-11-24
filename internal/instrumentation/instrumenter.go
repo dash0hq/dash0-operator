@@ -212,6 +212,15 @@ func (i *Instrumenter) CheckSettingsAndInstrumentExistingWorkloads(
 		)
 		return nil
 	}
+	if !i.ClusterInstrumentationConfig.InstrumentationEnabledViaHelm {
+		logger.Info(
+			fmt.Sprintf(
+				"Workload instrumentation is disabled via the Helm value operator.instrumentation.enabled=false, "+
+					"ignoring instrumentWorkloads.mode=%s.",
+				instrumentWorkloadsMode,
+			))
+		return nil
+	}
 	if instrumentWorkloadsMode == dash0common.InstrumentWorkloadsModeCreatedAndUpdated {
 		logger.Info(
 			"Instrumenting existing workloads is not enabled, only new or updated workloads will be modified (at " +
@@ -1231,8 +1240,10 @@ func (i *Instrumenter) revertWorkloadInstrumentation(
 		if modificationResult.HasBeenModified {
 			// Changing the workload spec sometimes triggers a new admission request, which would re-instrument the
 			// workload via the webhook immediately. To prevent this, we add a label that the webhook can check to
-			// prevent instrumentation.
-			util.AddWebhookIgnoreOnceLabel(objectMeta)
+			// prevent instrumentation. Without the webhook, nothing would remove the label again.
+			if i.ClusterInstrumentationConfig.InstrumentationEnabledViaHelm {
+				util.AddWebhookIgnoreOnceLabel(objectMeta)
+			}
 			return i.Update(ctx, workload.asClientObject(), &client.UpdateOptions{FieldManager: util.FieldManager})
 		} else {
 			return nil

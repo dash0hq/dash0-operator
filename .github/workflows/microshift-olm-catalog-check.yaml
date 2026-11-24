@@ -79,7 +79,7 @@ jobs:
           .github/workflows/scripts/microshift-olm-catalog-check.sh
 
       - name: collect MicroShift logs on failure
-        if: failure()
+        if: failure() || cancelled()
         run: |
           mkdir -p microshift-olm-catalog-check-diagnostics
           # The runner user owns the diagnostics directory, only podman needs sudo.
@@ -88,24 +88,17 @@ jobs:
             > microshift-olm-catalog-check-diagnostics/microshift-journal.txt 2>&1 || true
 
       - name: upload cluster diagnostics on failure
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: microshift-olm-catalog-check-diagnostics-${{ matrix.scenario }}
           path: microshift-olm-catalog-check-diagnostics
           if-no-files-found: ignore
 
-      - name: send Slack notification on success
-        if: success()
-        uses: ./.github/actions/slack-notification
-        with:
-          status: success
-          subject: MicroShift OLM catalog check (${{ matrix.scenario }})
-          botToken: ${{ secrets.SLACK_BOT_TOKEN }}
-          channelId: ${{ secrets.SLACK_CHANNEL_ID }}
-
+      # cancelled() covers a job that exceeds timeout-minutes, for which failure() is false. A manual cancellation is
+      # reported as a failure as well.
       - name: send Slack notification on failure
-        if: failure()
+        if: failure() || cancelled()
         uses: ./.github/actions/slack-notification
         with:
           status: failure

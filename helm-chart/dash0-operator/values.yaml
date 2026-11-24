@@ -671,7 +671,7 @@ operator:
     repository: "ghcr.io/dash0hq/dash0-synthetics-worker"
     # The synthetics-worker is versioned independently of the operator, so this tag is pinned to that component
     # version; it does not track the chart appVersion.
-    tag: "0.2.0"
+    tag: "0.3.1"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -700,6 +700,47 @@ operator:
 
   # Settings related to the modification and instrumentation of workloads in the cluster.
   instrumentation:
+
+    # Whether the operator instruments workloads automatically. Set this to false if you do not want to use automatic
+    # workload instrumentation at all, for example if you only collect logs, metrics and Kubernetes events.
+    # If set to false, no namespace can be configured with an instrumentWorkloads.mode other than none.
+    #
+    # If this is false, the chart does not register the mutating webhook that instruments workloads. The Kubernetes API
+    # server then no longer sends an admission request to the operator for every workload and pod that is created or
+    # updated in the cluster, which reduces the traffic between the operator and the Kubernetes API server. (The
+    # webhook is also not registered if operator.telemetryCollectionEnabled is false, since workloads are not
+    # instrumented then either.)
+    # In addition:
+    # - Dash0Monitoring resources and the operator.monitoringTemplate default to instrumentWorkloads.mode=none.
+    # - Creating a Dash0Monitoring resource, or the monitoring template of a Dash0OperatorConfiguration resource, with
+    #   instrumentWorkloads.mode other than none is rejected.
+    # - Setting operator.monitoringTemplate.spec.instrumentWorkloads.mode to a value other than none fails the
+    #   installation.
+    #
+    # Switching this from true to false removes the instrumentation from workloads in namespaces that are monitored via
+    # automatic namespace monitoring: the operator sets instrumentWorkloads.mode=none in the Dash0Monitoring resources
+    # it manages for these namespaces, regardless of the mode in the monitoring template. Dash0Monitoring resources that
+    # have not been created by automatic namespace monitoring are not changed, and the instrumentation of their
+    # workloads is not actively removed.
+    #
+    # Before switching this to false, set instrumentWorkloads.mode=none in all Dash0Monitoring resources (and in
+    # operator.monitoringTemplate, if you use automatic namespace monitoring), and wait until the operator has removed
+    # the instrumentation. A Dash0Monitoring resource that still has a mode other than none after switching this to
+    # false is reported in the operator manager's log. It can still be updated, but its mode can only be changed to
+    # none, which also removes the instrumentation from its workloads.
+    #
+    # In namespaces with instrumentWorkloads.mode=pods, pods that are created after switching this to false are not
+    # instrumented, and existing pods lose their instrumentation when they are recreated.
+    #
+    # Setting operator.telemetryCollectionEnabled=false implies operator.instrumentation.enabled=false, regardless of
+    # the value of this setting, and the rules for Dash0Monitoring resources above apply. However, since the operator
+    # does not modify workloads at all while telemetry collection is disabled, it also does not remove the
+    # instrumentation from workloads when the instrumentWorkloads.mode of a Dash0Monitoring resource is changed to none,
+    # and it does not report Dash0Monitoring resources with a mode other than none in its log. A mode other than none in
+    # operator.monitoringTemplate does not fail the installation, the operator uses instrumentWorkloads.mode=none for
+    # the monitoring template instead.
+    enabled: true
+
     # Controls how the Dash0 instrumentation files (the OpenTelemetry injector and the auto-instrumentation agents)
     # are made available to instrumented workload containers. The operator can either use a Kubernetes image volume
     # sourced from the Dash0 instrumentation image, or the traditional init container plus emptyDir volume approach.

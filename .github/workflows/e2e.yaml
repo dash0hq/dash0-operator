@@ -12,7 +12,9 @@ on:
         required: false
         default: true
         type: boolean
-        description: Send a Slack notification with the test outcome. Defaults to true.
+        description: >-
+          Send a Slack notification with the test outcome. A success is only reported if the calling workflow has been
+          dispatched manually. Defaults to true.
     secrets:
       SLACK_BOT_TOKEN:
         required: true
@@ -157,8 +159,10 @@ jobs:
         run: |
           make build-all-push-all-test-e2e
 
+      # For a workflow_call, github.event_name is the event of the caller, so the run after a push to main only notifies
+      # about failures.
       - name: Send Slack notification on success
-        if: success() && inputs.notify_slack
+        if: success() && inputs.notify_slack && github.event_name == 'workflow_dispatch'
         uses: ./.github/actions/slack-notification
         with:
           status: success
@@ -171,15 +175,17 @@ jobs:
 
       - name: Upload Kubernetes cluster information and pod logs for failed tests
         id: upload-k8s-logs
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: e2e-cluster-info-and-logs
           path: test-resources/e2e/logs
           if-no-files-found: ignore
 
+      # cancelled() covers a job that exceeds timeout-minutes, for which failure() is false. A manual cancellation is
+      # reported as a failure as well.
       - name: Send Slack notification on failure
-        if: failure() && inputs.notify_slack
+        if: (failure() || cancelled()) && inputs.notify_slack
         uses: ./.github/actions/slack-notification
         with:
           status: failure
@@ -246,7 +252,7 @@ jobs:
     steps:
       - name: Create GitHub app token
         id: app-token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           client-id: ${{ vars.DASH0_OPERATOR_CI_APP_CLIENT_ID }}
           private-key: ${{ secrets.DASH0_OPERATOR_CI_APP_PRIVATE_KEY }}

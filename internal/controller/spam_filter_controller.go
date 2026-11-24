@@ -99,6 +99,10 @@ func (r *SpamFilterReconciler) ShortName() string {
 	return "spam-filter"
 }
 
+func (r *SpamFilterReconciler) Kind() string {
+	return "Dash0SpamFilter"
+}
+
 func (r *SpamFilterReconciler) GetDefaultApiConfigs() []ApiConfig {
 	return r.defaultApiConfigs.Get()
 }

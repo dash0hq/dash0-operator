@@ -69,7 +69,7 @@ tests:
           value: DASH0_SYNTHETICS_WORKER_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[17].value
-          value: ghcr.io/dash0hq/dash0-synthetics-worker:0.2.0
+          value: ghcr.io/dash0hq/dash0-synthetics-worker:0.3.1
       - equal:
           path: spec.template.spec.containers[0].env[18].name
           value: DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION
@@ -1015,7 +1015,7 @@ tests:
           value: DASH0_SYNTHETICS_WORKER_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[24].value
-          value: ghcr.io/dash0hq/dash0-synthetics-worker:0.2.0
+          value: ghcr.io/dash0hq/dash0-synthetics-worker:0.3.1
       - equal:
           path: spec.template.spec.containers[0].env[25].name
           value: DASH0_DEVELOPMENT_MODE
@@ -1973,6 +1973,77 @@ tests:
           name: dash0-operator-injector
         not: true
 
+  - it: should not render the injector webhook if workload instrumentation is disabled
+    set:
+      operator:
+        instrumentation:
+          enabled: false
+    asserts:
+      - containsDocument:
+          kind: MutatingWebhookConfiguration
+          apiVersion: admissionregistration.k8s.io/v1
+          name: dash0-operator-injector
+        not: true
+
+  - it: should still render the other webhooks if workload instrumentation is disabled
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-monitoring-mutating
+    set:
+      operator:
+        instrumentation:
+          enabled: false
+    asserts:
+      - isKind:
+          of: MutatingWebhookConfiguration
+
+  - it: should pass --dash0-instrumentation-enabled=false if workload instrumentation is disabled
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        instrumentation:
+          enabled: false
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --dash0-instrumentation-enabled=false
+
+  - it: should not pass --dash0-instrumentation-enabled if workload instrumentation is enabled
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --dash0-instrumentation-enabled=false
+
+  - it: should render the injector webhook if operator.instrumentation.enabled is unset
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-injector
+    set:
+      operator:
+        instrumentation:
+          enabled: null
+    asserts:
+      - isKind:
+          of: MutatingWebhookConfiguration
+
+  - it: should not pass --dash0-instrumentation-enabled if operator.instrumentation.enabled is missing
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        instrumentation:
+          enabled: null
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --dash0-instrumentation-enabled=false
+
   - it: should render the injector webhook when Signal Control is enabled together with telemetry collection
     documentSelector:
       path: metadata.name
@@ -1985,16 +2056,16 @@ tests:
       - isKind:
           of: MutatingWebhookConfiguration
 
-  - it: should render the injector webhook when telemetry collection is disabled without Signal Control
-    documentSelector:
-      path: metadata.name
-      value: dash0-operator-injector
+  - it: should not render the injector webhook when telemetry collection is disabled without Signal Control
     set:
       operator:
         telemetryCollectionEnabled: false
     asserts:
-      - isKind:
-          of: MutatingWebhookConfiguration
+      - containsDocument:
+          kind: MutatingWebhookConfiguration
+          apiVersion: admissionregistration.k8s.io/v1
+          name: dash0-operator-injector
+        not: true
 
   - it: should support custom Signal Control collector and Edge Proxy images with pull policies
     chart:

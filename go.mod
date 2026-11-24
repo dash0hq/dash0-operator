@@ -23,6 +23,7 @@ require (
 	go.opentelemetry.io/collector/component v1.71.0
 	go.opentelemetry.io/collector/confmap v1.71.0
 	go.opentelemetry.io/collector/pdata v1.71.0
+	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/metric v1.47.0
 	go.opentelemetry.io/otel/sdk/log v1.47.0
 	go.opentelemetry.io/otel/sdk/metric v1.47.0
@@ -34,7 +35,7 @@ require (
 	k8s.io/apimachinery v0.37.2
 	k8s.io/client-go v0.37.2
 	k8s.io/utils v0.0.0-20261023123148-ca04ba58ecab
-	sigs.k8s.io/controller-runtime v0.25.2
+	sigs.k8s.io/controller-runtime v0.25.3
 	sigs.k8s.io/yaml v1.6.0
 )
 
@@ -157,7 +158,6 @@ require (
 	go.opentelemetry.io/collector/processor/processorhelper/xprocessorhelper v0.165.0 // indirect
 	go.opentelemetry.io/collector/processor/xprocessor v0.165.0 // indirect
 	go.opentelemetry.io/contrib/bridges/otelzap v0.21.0 // indirect
-	go.opentelemetry.io/otel v1.47.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.23.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.23.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.47.0 // indirect

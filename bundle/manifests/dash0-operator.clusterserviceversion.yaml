@@ -393,9 +393,9 @@ metadata:
     capabilities: Seamless Upgrades
     categories: Monitoring,Logging & Tracing
     containerImage: ghcr.io/dash0hq/operator-controller:0.0.0
-    createdAt: "2026-11-23T12:44:43Z"
-    description: Collect traces, metrics and logs from your Kubernetes workloads and
-      infrastructure with OpenTelemetry and send them to Dash0.
+    createdAt: "2026-11-23T18:36:54Z"
+    description: Collect traces, metrics, logs and profiles from your Kubernetes workloads
+      and infrastructure with OpenTelemetry and send them to Dash0.
     operators.operatorframework.io/builder: operator-sdk-v1.42.3
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
     repository: https://github.com/dash0hq/dash0-operator
@@ -664,8 +664,8 @@ spec:
       version: v1beta1
   description: |
     The Dash0 Operator brings OpenTelemetry-based observability to your Kubernetes cluster. It instruments your
-    workloads automatically, collects their traces, metrics and logs together with telemetry about the cluster itself,
-    and sends everything to Dash0.
+    workloads automatically, collects their traces, metrics, logs and profiles together with telemetry about the
+    cluster itself, and sends everything to Dash0.
 
     ### Features
 
@@ -678,6 +678,8 @@ spec:
       the telemetry that matters and reduce egress costs.
     * **Dash0 configuration as code**: views, synthetic checks, notification channels, teams, SLOs and more are managed
       as Kubernetes resources and kept in sync with Dash0.
+    * **Agent0 Kubernetes integration** (off by default): lets Agent0, Dash0's observability and SRE assistant, run
+      read-only `kubectl` commands in the cluster during an investigation.
 
     ### Getting started
 

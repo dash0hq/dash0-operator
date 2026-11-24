@@ -26,8 +26,9 @@ name: Synchronize operator docs to dash0.com/docs
 # The target repository and the directory within it that receives the pages are supplied from the repository secrets
 # SYNC_DOCUMENTATION_TARGET_REPOSITORY and SYNC_DOCUMENTATION_TARGET_DIRECTORY, so the (non-public) target repository
 # name and its internal layout are not hardcoded in this workflow. Authentication to the target repository is done via
-# the DASH0_DOCS_REPO_GITHUB_PAT secret: a fine-grained personal access token scoped to the target repository with
-# Contents: Read and write (to push the branch) and Pull requests: Read and write (to open the PR).
+# a short-lived installation token of the GitHub App "Dash0 Docs Sync" (dash0-docs-sync), which is installed only on the
+# target repository. (GITHUB_TOKEN cannot be used for this: it has no access to other repositories, and a pull
+# request opened with it would not trigger the CI workflows of the target repository.)
 
 # The runs called from ci.yaml (dry runs and syncs after a release) are covered by the concurrency group of ci.yaml.
 # jactionlint ignore=concurrency-limits
@@ -45,8 +46,8 @@ on:
         type: boolean
         default: false
     secrets:
-      DASH0_DOCS_REPO_GITHUB_PAT:
-        description: Fine-grained PAT with contents + pull-requests write access for the documentation repository. Only required when dry-run is false.
+      DOCS_SYNC_APP_PRIVATE_KEY:
+        description: Private key of the GitHub App that opens the pull request in the documentation repository. Only required when dry-run is false.
         required: false
       SYNC_DOCUMENTATION_TARGET_REPOSITORY:
         description: owner/name of the target documentation repository. Only required when dry-run is false.
@@ -57,7 +58,7 @@ on:
 
 jobs:
   sync-docs:
-    name: Synchronize Helm chart docs with dash0.com/docs
+    name: Synchronize operator docs to dash0.com/docs
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -68,6 +69,18 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+
+      - name: create GitHub App token for the documentation repository
+        id: app-token
+        if: ${{ !inputs.dry-run }}
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.DOCS_SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DOCS_SYNC_APP_PRIVATE_KEY }}
+          repositories: ${{ secrets.SYNC_DOCUMENTATION_TARGET_REPOSITORY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-members: read
 
       # Single invocation for both modes. On a dry run the action applies the transformations and the coverage check,
       # then stops before touching the target repository; the target-side inputs are ignored, so they can be supplied
@@ -83,8 +96,8 @@ jobs:
           transformations-file: ../../.github/workflows/sync-docs/transformations.yaml
           target-repository: ${{ secrets.SYNC_DOCUMENTATION_TARGET_REPOSITORY }}
           target-directory: ${{ secrets.SYNC_DOCUMENTATION_TARGET_DIRECTORY }}
-          target-github-token: ${{ secrets.DASH0_DOCS_REPO_GITHUB_PAT }}
-          pr-branch: sync-dash0-operator-helm-chart-docs
+          target-github-token: ${{ steps.app-token.outputs.token }}
+          pr-branch: sync-dash0-operator-docs
           pr-title: "docs: synchronize Dash0 operator documentation"
           pr-body: >-
             This PR synchronizes the content of the Dash0 operator documentation from
