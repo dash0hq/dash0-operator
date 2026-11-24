@@ -4,11 +4,16 @@
 package e2e
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
+
+	corev1 "k8s.io/api/core/v1"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
 
@@ -541,4 +546,82 @@ func getCollectorPodRestartCounts(operatorNamespace string, labelSelector string
 		}
 	}
 	return restartCounts
+}
+
+// deleteCollectorPodAndGetCollectorContainerTerminatedState deletes one pod of the given collector workload and returns
+// the terminated state of its opentelemetry-collector container. The state is read from a watch, since the pod is
+// removed right after its containers have terminated.
+func deleteCollectorPodAndGetCollectorContainerTerminatedState(
+	collectorNameQualified string,
+) *corev1.ContainerStateTerminated {
+	podNames := getCollectorPodNames(Default, collectorNameQualified)
+	Expect(podNames).ToNot(BeEmpty(),
+		"Expected to find at least one pod for collector %s, but found none.", collectorNameQualified)
+	podName := podNames[0]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	// Watching a list (via the field selector) instead of the named pod starts the watch at the resource version of the
+	// initial list, so no event after the initial ADDED event is missed.
+	watchPod := exec.CommandContext(
+		ctx,
+		"kubectl",
+		"get",
+		"pods",
+		"--namespace",
+		operatorNamespace,
+		"--field-selector",
+		fmt.Sprintf("metadata.name=%s", podName),
+		"--watch",
+		"--output-watch-events",
+		"--output",
+		"json",
+	)
+	e2ePrint("running: %s\n", strings.Join(watchPod.Args, " "))
+	stdout, err := watchPod.StdoutPipe()
+	Expect(err).ToNot(HaveOccurred())
+	var stderr bytes.Buffer
+	watchPod.Stderr = &stderr
+	Expect(watchPod.Start()).To(Succeed())
+	stopWatch := sync.OnceFunc(func() {
+		cancel()
+		_ = watchPod.Wait()
+	})
+	defer stopWatch()
+
+	decoder := json.NewDecoder(stdout)
+	podDeletionRequested := false
+	var terminatedState *corev1.ContainerStateTerminated
+	for {
+		var event struct {
+			Type   string     `json:"type"`
+			Object corev1.Pod `json:"object"`
+		}
+		if err = decoder.Decode(&event); err != nil {
+			// stderr must only be read after the process has terminated.
+			stopWatch()
+			Expect(err).ToNot(HaveOccurred(),
+				"watching pod %s did not report its deletion, kubectl stderr: %s", podName, stderr.String())
+		}
+		for _, containerStatus := range event.Object.Status.ContainerStatuses {
+			if containerStatus.Name == "opentelemetry-collector" && containerStatus.State.Terminated != nil {
+				terminatedState = containerStatus.State.Terminated
+			}
+		}
+		if event.Type == "DELETED" {
+			return terminatedState
+		}
+		if !podDeletionRequested {
+			Expect(runAndIgnoreOutput(exec.Command(
+				"kubectl",
+				"delete",
+				"pod",
+				"--namespace",
+				operatorNamespace,
+				podName,
+				"--wait=false",
+			))).To(Succeed())
+			podDeletionRequested = true
+		}
+	}
 }

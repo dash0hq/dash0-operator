@@ -575,6 +575,27 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				})
 			})
 
+			Describe("collector shutdown", func() {
+				It("shuts down the collectors gracefully when their pods are stopped", func() {
+					for _, collectorNameQualified := range []string{
+						collectorDaemonSetNameQualified,
+						collectorDeploymentNameQualified,
+					} {
+						By(fmt.Sprintf("deleting a pod of %s", collectorNameQualified))
+						terminatedState := deleteCollectorPodAndGetCollectorContainerTerminatedState(collectorNameQualified)
+						Expect(terminatedState).ToNot(BeNil(),
+							"the pod of %s was removed without reporting a terminated state for the collector container",
+							collectorNameQualified)
+						// An unhandled SIGTERM results in exit code 143 (128 + 15).
+						Expect(terminatedState.ExitCode).To(BeZero(),
+							"the collector container of %s terminated with exit code %d (%s) instead of shutting down "+
+								"gracefully",
+							collectorNameQualified, terminatedState.ExitCode, terminatedState.Reason)
+					}
+					waitForCollectorToStart(operatorNamespace, operatorHelmChart)
+				})
+			})
+
 			Describe("event collection", func() {
 				It("collects Kubernetes events", func() {
 					timestampLowerBound := time.Now()
