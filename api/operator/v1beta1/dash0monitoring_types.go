@@ -174,8 +174,8 @@ type InstrumentWorkloads struct {
 type TraceContext struct {
 	// A comma-separated list of trace context propagators, e.g. "tracecontext,xray" for the W3C traceparent header and
 	// AWS X-Ray headers. If set, it is added to workloads as the environment variable OTEL_PROPAGATORS (the SDK default
-	// is "tracecontext,baggage", and "tracecontext,baggage,xray" for Node.js 18.19+ and 20.6+). If several propagators
-	// extract the same information, the last one wins, so list the preferred propagator last.
+	// is "tracecontext,baggage", and "tracecontext,baggage,xray" for Node.js 18.19+ and 20.6+ and for Ruby). If several
+	// propagators extract the same information, the last one wins, so list the preferred propagator last.
 	//
 	// +kubebuilder:validation:Optional
 	Propagators *string `json:"propagators,omitempty"`
