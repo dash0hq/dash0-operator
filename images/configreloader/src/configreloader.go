@@ -189,7 +189,7 @@ func main() {
 			}
 			retryDeferredReload = nil
 			if err != nil {
-				logger.Info("An error occurred while check for configuration changes", errorLabel, err)
+				logger.Info("An error occurred while checking for configuration changes", errorLabel, err)
 			} else if isUpdateTriggered {
 				logger.Info("Triggered collector configuration update")
 			}
