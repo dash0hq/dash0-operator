@@ -23,16 +23,14 @@ if [ -n "${feature_gates}" ]; then
   set -- "$@" "--feature-gates=${feature_gates}"
 fi
 
-./otelcol "$@" &
-
-DASH0_COLLECTOR_PID=$!
-
 mkdir -p "$(dirname "${DASH0_COLLECTOR_PID_FILE}")"
 
-printf "%s" "${DASH0_COLLECTOR_PID}" > "${DASH0_COLLECTOR_PID_FILE}"
+# exec keeps the PID of this shell, so the pid file is valid for the collector as well. Replacing the shell with the
+# collector makes the collector the container's main process, which receives the SIGTERM when the pod is stopped.
+printf "%s" "$$" > "${DASH0_COLLECTOR_PID_FILE}"
 
 printf "Collector pid file created at \"%s\": " "${DASH0_COLLECTOR_PID_FILE}"
 cat "${DASH0_COLLECTOR_PID_FILE}"
 echo
 
-wait ${DASH0_COLLECTOR_PID}
+exec ./otelcol "$@"
