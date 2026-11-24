@@ -42,7 +42,7 @@ var _ = Describe("Converting a Dash0SamplingRule to the API client's SamplingDef
 				"kind": "and",
 				"spec": map[string]any{
 					"conditions": []any{
-						map[string]any{"kind": "error"},
+						map[string]any{"kind": "error", "spec": map[string]any{}},
 						map[string]any{
 							"kind": "ottl",
 							"spec": map[string]any{"ottl": `attributes["http.route"] == "/checkout"`},
@@ -74,6 +74,24 @@ var _ = Describe("Converting a Dash0SamplingRule to the API client's SamplingDef
 		Expect(err).ToNot(HaveOccurred())
 		Expect(probabilistic.Spec.Rate).To(BeNumerically("~", 0.1, 1e-6))
 	})
+
+	DescribeTable("adds the spec the Dash0 API requires to a top-level error condition",
+		func(conditionSpec *dash0v1alpha1.Dash0SamplingRuleConditionSpec) {
+			samplingRule := fullyPopulatedSamplingRule()
+			samplingRule.Spec.Conditions = dash0v1alpha1.Dash0SamplingRuleCondition{Kind: "error", Spec: conditionSpec}
+			unstructuredSamplingRule, err := structToMap(samplingRule)
+			Expect(err).ToNot(HaveOccurred())
+
+			samplingDefinition, err :=
+				mapToSamplingDefinition(unstructuredSamplingRule.Object, "full-sampling-rule", "default")
+			Expect(err).ToNot(HaveOccurred())
+			serializedConditions, err := samplingDefinition.Spec.Conditions.MarshalJSON()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(serializedConditions).To(MatchJSON(`{"kind":"error","spec":{}}`))
+		},
+		Entry("without spec", nil),
+		Entry("with an empty spec", &dash0v1alpha1.Dash0SamplingRuleConditionSpec{}),
+	)
 })
 
 func fullyPopulatedSamplingRule() *dash0v1alpha1.Dash0SamplingRule {

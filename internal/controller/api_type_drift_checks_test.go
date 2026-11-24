@@ -120,7 +120,7 @@ var namedCrdSchemaDriftChecks = []namedCrdSchemaDriftCheck{
 		clientType: reflect.TypeFor[dash0apiclient.SamplingSpec](),
 		allowedDifferences: map[string]string{
 			"required only in client: conditions.spec": "the custom resource does not require a spec for error " +
-				"conditions, which have no settings",
+				"conditions, which have no settings; transformToSamplingApiPayload adds an empty spec",
 			"type: conditions.spec.rate: string in CRD, number in client": "custom resources avoid floating point " +
 				"numbers, the rate is a string with a validation pattern",
 		},
