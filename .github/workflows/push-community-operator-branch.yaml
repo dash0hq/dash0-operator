@@ -1,0 +1,248 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Push the community catalog submission branch
+
+# Pushes the branch dash0-operator-<version> with one signed-off commit that submits a release to the OpenShift
+# community catalog to the fork dash0hq/community-operators-prod. The commit adds operators/dash0-operator/<version>,
+# prepared by "make olm-community-bundle" from the release bundle image. A person opens the pull request against
+# redhat-openshift-ecosystem/community-operators-prod from the compare link in the job summary.
+#
+# ci.yaml invokes this workflow (workflow_call) for every release tag after the bundle image has been pushed. Release
+# candidates are skipped, and so are all releases until the first submission (which adds operators/dash0-operator/ci.yaml)
+# has been merged upstream. A release whose branch exists in the fork already is skipped as well, so that a re-run does
+# not replace commits that have been added to an open pull request; delete the branch in the fork to push it again. The
+# manual run (workflow_dispatch) covers releases whose tag job failed or that were tagged before this workflow existed.
+#
+# The pipeline of community-operators-prod requires a DCO sign-off with a person's real name. Author and sign-off of the
+# commit are the inputs signer-name and signer-email if both are set, otherwise the entry of the person who triggered the
+# run in community-operator/signers.yaml.
+#
+# The fork is accessed with an installation token of a GitHub App that is installed only on the fork, with Contents and
+# Workflows: Read and write. Workflows is needed for syncing the fork with upstream, which GitHub refuses when the
+# upstream commits change workflow files.
+
+# The runs called from ci.yaml are covered by the concurrency group of ci.yaml. Of concurrent manual runs for the same
+# version, only the first push succeeds.
+# jactionlint ignore=concurrency-limits
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The release to submit (x.y.z).
+        type: string
+        required: true
+      signer-name:
+        description: Real name for the author and the sign-off of the commit. Without it, the entry of the person who runs this workflow in signers.yaml is used.
+        type: string
+        required: false
+      signer-email:
+        description: E-mail address for the author and the sign-off of the commit, required together with signer-name.
+        type: string
+        required: false
+  workflow_call:
+    secrets:
+      COMMUNITY_OPERATORS_SYNC_APP_PRIVATE_KEY:
+        description: Private key of the GitHub App that pushes to the fork dash0hq/community-operators-prod.
+        required: true
+
+jobs:
+  push-community-operator-branch:
+    name: Push the community catalog submission branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      UPSTREAM_REPOSITORY: redhat-openshift-ecosystem/community-operators-prod
+      FORK_OWNER: dash0hq
+      FORK_REPOSITORY: dash0hq/community-operators-prod
+      FORK_DIR: community-operators-prod
+
+    steps:
+      - name: determine the version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          # Not GITHUB_EVENT_NAME: in a run called from ci.yaml it is the event of ci.yaml, which can be workflow_dispatch.
+          if [[ -n "$INPUT_VERSION" ]]; then
+            version="$INPUT_VERSION"
+            if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "error: the version \"$version\" is not a release version (x.y.z)"
+              exit 1
+            fi
+          else
+            version="$GITHUB_REF_NAME"
+            if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::notice::$version is not a release version (x.y.z), release candidates are not submitted to the community catalog."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "submitting the release $version"
+          {
+            echo "version=$version"
+            echo "skip=false"
+          } >> "$GITHUB_OUTPUT"
+
+      # Runs before the signer and the token are determined, so that releases are skipped before the first submission
+      # even if signers.yaml or the GitHub App are not set up yet.
+      - name: check whether to submit
+        id: submit
+        if: ${{ steps.version.outputs.skip == 'false' }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Succeeds if the API path exists, fails if it does not (HTTP 404), and exits on any other error.
+          api_path_exists() {
+            local error_file="$RUNNER_TEMP/gh-api-error.txt"
+            if gh api --silent "$1" 2> "$error_file"; then
+              return 0
+            fi
+            if grep -q "HTTP 404" "$error_file"; then
+              return 1
+            fi
+            cat "$error_file"
+            exit 1
+          }
+          if ! api_path_exists "repos/$UPSTREAM_REPOSITORY/contents/operators/dash0-operator/ci.yaml"; then
+            echo "::notice::$UPSTREAM_REPOSITORY has no operators/dash0-operator/ci.yaml yet. The first submission is" \
+              "prepared and opened manually, later releases are pushed by this workflow once it has been merged."
+            echo "submit=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          branch="dash0-operator-$VERSION"
+          if api_path_exists "repos/$FORK_REPOSITORY/git/ref/heads/$branch"; then
+            echo "::notice::The branch $branch exists in $FORK_REPOSITORY already and is left unchanged. Delete it in" \
+              "the fork to push it again."
+            echo "submit=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          {
+            echo "branch=$branch"
+            echo "submit=true"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        if: ${{ steps.submit.outputs.submit == 'true' }}
+        with:
+          persist-credentials: false
+
+      - name: determine the signer
+        id: signer
+        if: ${{ steps.submit.outputs.submit == 'true' }}
+        env:
+          INPUT_SIGNER_NAME: ${{ inputs.signer-name }}
+          INPUT_SIGNER_EMAIL: ${{ inputs.signer-email }}
+          # A re-run keeps github.actor of the original run, github.triggering_actor is the person who started the re-run.
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          signers_file=.github/workflows/community-operator/signers.yaml
+          if [[ -n "$INPUT_SIGNER_NAME" || -n "$INPUT_SIGNER_EMAIL" ]]; then
+            if [[ -z "$INPUT_SIGNER_NAME" || -z "$INPUT_SIGNER_EMAIL" ]]; then
+              echo "error: signer-name and signer-email have to be set together"
+              exit 1
+            fi
+            name="$INPUT_SIGNER_NAME"
+            email="$INPUT_SIGNER_EMAIL"
+          else
+            name="$(yq -r '.[strenv(TRIGGERING_ACTOR)].name // ""' "$signers_file")"
+            email="$(yq -r '.[strenv(TRIGGERING_ACTOR)].email // ""' "$signers_file")"
+            if [[ -z "$name" || -z "$email" ]]; then
+              echo "error: $signers_file has no entry with name and email for the GitHub user $TRIGGERING_ACTOR, who" \
+                "triggered this run. Add the entry for the next release. For this release, run the workflow" \
+                "\"$GITHUB_WORKFLOW\" manually with the inputs version, signer-name and signer-email."
+              exit 1
+            fi
+          fi
+          if [[ ! "$email" =~ ^[^[:space:]@]+@[^[:space:]@]+$ ]]; then
+            echo "error: \"$email\" is not an e-mail address"
+            exit 1
+          fi
+          echo "author and sign-off: $name <$email>"
+          {
+            echo "name=$name"
+            echo "email=$email"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: create GitHub App token for the fork
+        id: app-token
+        if: ${{ steps.submit.outputs.submit == 'true' }}
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.COMMUNITY_OPERATORS_SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.COMMUNITY_OPERATORS_SYNC_APP_PRIVATE_KEY }}
+          owner: ${{ env.FORK_OWNER }}
+          repositories: community-operators-prod
+          permission-contents: write
+          permission-workflows: write
+
+      # The branch is pushed from a shallow clone, which only works if the fork has the commit the branch is based on.
+      - name: sync the fork with upstream
+        if: ${{ steps.submit.outputs.submit == 'true' }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh repo sync "$FORK_REPOSITORY" --source "$UPSTREAM_REPOSITORY" --branch main --force
+
+      # The sparse checkout implies a partial clone without blobs, so neither the other operators nor the catalogs are
+      # downloaded.
+      - name: check out the fork
+        if: ${{ steps.submit.outputs.submit == 'true' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ${{ env.FORK_REPOSITORY }}
+          ref: main
+          token: ${{ steps.app-token.outputs.token }}
+          path: ${{ env.FORK_DIR }}
+          sparse-checkout: operators/dash0-operator
+          persist-credentials: false
+
+      # make operator-sdk uses go env to determine the operating system and architecture of the operator-sdk binary
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        if: ${{ steps.submit.outputs.submit == 'true' }}
+        with:
+          go-version-file: 'go.mod'
+          cache: false
+
+      - name: prepare the submission
+        if: ${{ steps.submit.outputs.submit == 'true' }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          make olm-community-bundle COMMUNITY_OPERATORS_DIR="$FORK_DIR" COMMUNITY_BUNDLE_VERSION="$VERSION"
+
+      # The commit is created with git instead of createCommitOnBranch, which has no author field: the DCO check requires
+      # the author to match the sign-off.
+      - name: commit and push the submission branch
+        id: push
+        if: ${{ steps.submit.outputs.submit == 'true' }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BRANCH: ${{ steps.submit.outputs.branch }}
+          SIGNER_NAME: ${{ steps.signer.outputs.name }}
+          SIGNER_EMAIL: ${{ steps.signer.outputs.email }}
+          FORK_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          git -C "$FORK_DIR" switch -c "$BRANCH"
+          git -C "$FORK_DIR" add operators/dash0-operator
+          git -C "$FORK_DIR" -c user.name="$SIGNER_NAME" -c user.email="$SIGNER_EMAIL" \
+            commit --signoff -m "operator dash0-operator ($VERSION)"
+          git -C "$FORK_DIR" push "https://x-access-token:$FORK_TOKEN@github.com/$FORK_REPOSITORY.git" \
+            "HEAD:refs/heads/$BRANCH"
+
+      - name: write the job summary
+        if: ${{ steps.push.outcome == 'success' }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BRANCH: ${{ steps.submit.outputs.branch }}
+        run: |
+          compare_url="https://github.com/$UPSTREAM_REPOSITORY/compare/main...$FORK_OWNER:$BRANCH?expand=1"
+          {
+            echo "### Community catalog submission of $VERSION"
+            echo
+            echo "The branch \`$BRANCH\` has been pushed to [$FORK_REPOSITORY](https://github.com/$FORK_REPOSITORY)."
+            echo "[Open the pull request]($compare_url) against \`$UPSTREAM_REPOSITORY\` and follow its pipeline."
+          } >> "$GITHUB_STEP_SUMMARY"
