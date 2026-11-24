@@ -367,7 +367,7 @@ var (
 	defaultCollectorProbes = CollectorProbes{
 		Liveness:  defaultProbe(20),
 		Readiness: defaultProbe(3),
-		Startup:   defaultProbe(45),
+		Startup:   defaultProbe(30),
 	}
 )
 

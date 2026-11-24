@@ -1019,7 +1019,7 @@ spec:
                           The timing settings of the liveness, readiness and startup probes. The operator always sets the probe handler
                           itself. The settings are merged with the default probes of the Helm chart per field, not with the probes provided
                           via Helm: a probe or a field that is not set here keeps its default. The defaults are initialDelaySeconds 0,
-                          periodSeconds 2, timeoutSeconds 1, and failureThreshold 20 for the liveness, 3 for the readiness and 45 for the
+                          periodSeconds 2, timeoutSeconds 1, and failureThreshold 20 for the liveness, 3 for the readiness and 30 for the
                           startup probe.
                         properties:
                           liveness:
@@ -1879,7 +1879,7 @@ spec:
                           The timing settings of the liveness, readiness and startup probes. The operator always sets the probe handler
                           itself. The settings are merged with the default probes of the Helm chart per field, not with the probes provided
                           via Helm: a probe or a field that is not set here keeps its default. The defaults are initialDelaySeconds 0,
-                          periodSeconds 2, timeoutSeconds 1, and failureThreshold 20 for the liveness, 3 for the readiness and 45 for the
+                          periodSeconds 2, timeoutSeconds 1, and failureThreshold 20 for the liveness, 3 for the readiness and 30 for the
                           startup probe.
                         properties:
                           liveness:

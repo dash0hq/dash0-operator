@@ -1856,7 +1856,7 @@ tests:
                 periodSeconds: 2
                 timeoutSeconds: 1
               startup:
-                failureThreshold: 45
+                failureThreshold: 30
                 initialDelaySeconds: 0
                 periodSeconds: 2
                 timeoutSeconds: 1
@@ -1902,7 +1902,7 @@ tests:
                 periodSeconds: 2
                 timeoutSeconds: 1
               startup:
-                failureThreshold: 45
+                failureThreshold: 30
                 initialDelaySeconds: 0
                 periodSeconds: 2
                 timeoutSeconds: 1
@@ -1944,7 +1944,7 @@ tests:
                 periodSeconds: 2
                 timeoutSeconds: 1
               startup:
-                failureThreshold: 45
+                failureThreshold: 30
                 initialDelaySeconds: 0
                 periodSeconds: 2
                 timeoutSeconds: 1
