@@ -1014,7 +1014,7 @@ spec:
                           The timing settings of the liveness, readiness and startup probes. The operator always sets the probe handler
                           itself. The settings are merged with the default probes of the Helm chart per field, not with the probes provided
                           via Helm: a probe or a field that is not set here keeps its default. The defaults are initialDelaySeconds 0,
-                          periodSeconds 2, timeoutSeconds 1, and failureThreshold 20 for the liveness, 3 for the readiness and 45 for the
+                          periodSeconds 2, timeoutSeconds 1, and failureThreshold 20 for the liveness, 3 for the readiness and 30 for the
                           startup probe.
                         properties:
                           liveness:
@@ -1874,7 +1874,7 @@ spec:
                           The timing settings of the liveness, readiness and startup probes. The operator always sets the probe handler
                           itself. The settings are merged with the default probes of the Helm chart per field, not with the probes provided
                           via Helm: a probe or a field that is not set here keeps its default. The defaults are initialDelaySeconds 0,
-                          periodSeconds 2, timeoutSeconds 1, and failureThreshold 20 for the liveness, 3 for the readiness and 45 for the
+                          periodSeconds 2, timeoutSeconds 1, and failureThreshold 20 for the liveness, 3 for the readiness and 30 for the
                           startup probe.
                         properties:
                           liveness:
@@ -3296,11 +3296,18 @@ spec:
                       Filters for the logs signal.
                       This can be used to drop _log records_.
                     properties:
-                      log_records:
+                      log_record:
                         description: |-
                           OTTL conditions for dropping log records. A log record is dropped if at least one condition is true. Example:
                           - 'IsMatch(body, ".*password.*")'
                           - 'severity_number < SEVERITY_NUMBER_WARN'
+                        items:
+                          type: string
+                        type: array
+                      log_records:
+                        description: |-
+                          Deprecated: Use `log_record` instead. If both `log_record` and `log_records` are specified, the conditions of
+                          both lists are applied.
                         items:
                           type: string
                         type: array
@@ -4094,11 +4101,18 @@ spec:
                               Filters for the logs signal.
                               This can be used to drop _log records_.
                             properties:
-                              log_records:
+                              log_record:
                                 description: |-
                                   OTTL conditions for dropping log records. A log record is dropped if at least one condition is true. Example:
                                   - 'IsMatch(body, ".*password.*")'
                                   - 'severity_number < SEVERITY_NUMBER_WARN'
+                                items:
+                                  type: string
+                                type: array
+                              log_records:
+                                description: |-
+                                  Deprecated: Use `log_record` instead. If both `log_record` and `log_records` are specified, the conditions of
+                                  both lists are applied.
                                 items:
                                   type: string
                                 type: array
@@ -4225,8 +4239,8 @@ spec:
                                 description: |-
                                   A comma-separated list of trace context propagators, e.g. "tracecontext,xray" for the W3C traceparent header and
                                   AWS X-Ray headers. If set, it is added to workloads as the environment variable OTEL_PROPAGATORS (the SDK default
-                                  is "tracecontext,baggage"). If several propagators extract the same information, the last one wins, so list the
-                                  preferred propagator last.
+                                  is "tracecontext,baggage", and "tracecontext,baggage,xray" for Node.js 18.19+ and 20.6+). If several propagators
+                                  extract the same information, the last one wins, so list the preferred propagator last.
                                 type: string
                             type: object
                         type: object
@@ -5681,11 +5695,18 @@ spec:
                               Filters for the logs signal.
                               This can be used to drop _log records_.
                             properties:
-                              log_records:
+                              log_record:
                                 description: |-
                                   OTTL conditions for dropping log records. A log record is dropped if at least one condition is true. Example:
                                   - 'IsMatch(body, ".*password.*")'
                                   - 'severity_number < SEVERITY_NUMBER_WARN'
+                                items:
+                                  type: string
+                                type: array
+                              log_records:
+                                description: |-
+                                  Deprecated: Use `log_record` instead. If both `log_record` and `log_records` are specified, the conditions of
+                                  both lists are applied.
                                 items:
                                   type: string
                                 type: array
@@ -5812,8 +5833,8 @@ spec:
                                 description: |-
                                   A comma-separated list of trace context propagators, e.g. "tracecontext,xray" for the W3C traceparent header and
                                   AWS X-Ray headers. If set, it is added to workloads as the environment variable OTEL_PROPAGATORS (the SDK default
-                                  is "tracecontext,baggage"). If several propagators extract the same information, the last one wins, so list the
-                                  preferred propagator last.
+                                  is "tracecontext,baggage", and "tracecontext,baggage,xray" for Node.js 18.19+ and 20.6+). If several propagators
+                                  extract the same information, the last one wins, so list the preferred propagator last.
                                 type: string
                             type: object
                         type: object

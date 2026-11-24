@@ -687,6 +687,8 @@ CI also publishes an OLM catalog image (a file-based catalog with the package `d
 `stable-v0`) for every commit on `main`, which holds the bundle image of that commit:
 `ghcr.io/dash0hq/dash0-operator-catalog:main-dev`.
 Pull requests and other branches build the catalog image from the bundle image `main-dev` without pushing it.
+Both also hold the bundle of the latest release (from `OLM_CATALOG_FIRST_VERSION` on) in the history of the commit,
+which the dev bundle `replaces`, so the upgrade from that release can be tested. The channel head stays the dev bundle.
 The build for the highest release tag publishes the release catalog `ghcr.io/dash0hq/dash0-operator-catalog:<version>`,
 which holds the bundles of all releases from `OLM_CATALOG_FIRST_VERSION` (`.github/workflows/ci.yaml`) on. It is also
 tagged with the other version tags of the release, `latest` and `sha-<short commit sha>` (which overwrites the dev
@@ -713,11 +715,14 @@ To test a catalog:
   a `Dash0Monitoring` resource. It installs the catalog `main-dev` unless `CATALOG_IMAGE` is set, and does not build
   any images. With `CATALOG_POLL_INTERVAL` (e.g. `5m`), OLM polls the catalog image for updates, which is needed to
   test the upgrade to the next release with `CATALOG_IMAGE=ghcr.io/dash0hq/dash0-operator-catalog:latest`.
-  `test-resources/bin/test-olm-catalog.sh cleanup` removes the operator again; the CRDs remain, as after an uninstall
-  via OLM.
+  `CATALOG_STARTING_CSV` (e.g. `dash0-operator.v0.162.0`) installs that version instead of the channel head, and
+  every upgrade then waits for the approval of its `InstallPlan`, e.g. to test the upgrade from the latest release to
+  `main-dev`. `test-resources/bin/test-olm-catalog.sh cleanup` removes the operator again; the CRDs remain, as after an
+  uninstall via OLM.
 - `make olm-catalog CATALOG_BUNDLE_IMAGES="<bundle image> ..."` renders and validates a catalog with the given bundle
   images into `olm/build/catalog` (`CATALOG_DIR`). Reference the bundle images by digest, a tag can be overwritten.
-  With the local registry of the kind setup, also set `CATALOG_REGISTRY_USE_HTTP=true`.
+  With the local registry of the kind setup, also set `CATALOG_REGISTRY_USE_HTTP=true`. With
+  `CATALOG_UPGRADE_FROM_BUNDLE_IMAGE="<bundle image>"`, the only bundle of `CATALOG_BUNDLE_IMAGES` replaces that bundle.
   `make olm-catalog-image push-olm-catalog-image` builds and pushes the catalog image
   `${IMAGE_REPOSITORY_PREFIX}dash0-operator-catalog:v0.0.1` (`CATALOG_IMAGE_REPOSITORY`, `CATALOG_IMAGE_TAG`), which
   `test-olm-catalog.sh` then installs with `CATALOG_IMAGE`.
@@ -726,7 +731,9 @@ To test a catalog:
 - For every commit on `main`, CI installs the catalog `main-dev` on MicroShift, which runs in a container started by
   [minc](https://github.com/minc-org/minc) (workflow `.github/workflows/microshift-olm-catalog-check.yaml`). The check
   [.github/workflows/scripts/microshift-olm-catalog-check.sh](.github/workflows/scripts/microshift-olm-catalog-check.sh)
-  runs `test-olm-catalog.sh` and waits until the collectors are ready. It also works with a local minc cluster: run
+  runs `test-olm-catalog.sh` and waits until the collectors are ready. If the catalog has an upgrade edge from a
+  release, a second run on its own cluster installs that release (`UPGRADE_FROM_CSV`), approves the upgrade to the dev
+  bundle and runs the checks again. It also works with a local minc cluster: run
   `minc create`, add its kube context `microshift` to `ALLOWED_KUBECTXS` (in `test-resources/.env`, if it sets the
   variable), then run the script.
 

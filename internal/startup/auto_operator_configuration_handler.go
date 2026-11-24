@@ -49,6 +49,7 @@ type OperatorConfigurationValues struct {
 	PrometheusCrdSupportEnabled                      bool
 	ProfilingEnabled                                 bool
 	EbpfProfilerEnabled                              bool
+	EbpfProfilerPIDNamespaceTranslationMode          string
 	TelemetryCollectionEnabled                       bool
 	ClusterName                                      string
 	AutoMonitorNamespacesEnabled                     bool
@@ -647,6 +648,12 @@ func convertValuesToResource(
 		// they are dropped here, analogous to the collection settings below.
 		filter = nil
 		transform = nil
+		if monitoringTemplate != nil {
+			// Workloads are never instrumented while telemetry collection is disabled, and the operator configuration
+			// validation webhook rejects a monitoring template with a mode other than none.
+			monitoringTemplate = monitoringTemplate.DeepCopy()
+			monitoringTemplate.Spec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeNone
+		}
 		operatorConfigurationValues.KubernetesInfrastructureMetricsCollectionEnabled = false
 		operatorConfigurationValues.KubernetesObjectCollectionEnabled = false
 		operatorConfigurationValues.CollectPodLabelsAndAnnotationsEnabled = false
@@ -698,7 +705,10 @@ func convertValuesToResource(
 		},
 	}
 	if operatorConfigurationValues.EbpfProfilerEnabled {
-		spec.Profiling.EbpfProfiler = &dash0v1alpha1.EbpfProfiler{Enabled: new(true)}
+		spec.Profiling.EbpfProfiler = &dash0v1alpha1.EbpfProfiler{
+			Enabled:                     new(true),
+			PIDNamespaceTranslationMode: operatorConfigurationValues.EbpfProfilerPIDNamespaceTranslationMode,
+		}
 	}
 	if operatorConfigurationValues.InstrumentationDelivery != "" {
 		spec.InstrumentWorkloads = dash0v1alpha1.InstrumentWorkloads{

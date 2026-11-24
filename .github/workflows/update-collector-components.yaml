@@ -12,8 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
+      pull-requests: read
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -22,7 +22,7 @@ jobs:
 
       # Required to update the collector modules of the custom internal-telemetry factory, see
       # .github/workflows/scripts/update-collector-components-check-and-bump-versions.sh.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -37,9 +37,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: .github/workflows/scripts/update-collector-components-check-if-pr-exists.sh
 
+      # Branches, commits and PRs created with GITHUB_TOKEN do not trigger workflow runs, hence the GitHub app token.
+      - name: create GitHub app token
+        id: app-token
+        if: steps.open_pr_exists.outputs.pr_exists != 'true'
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.DASH0_OPERATOR_CI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DASH0_OPERATOR_CI_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: update component versions and create PR
         if: steps.open_pr_exists.outputs.pr_exists != 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         shell: bash
         run: .github/workflows/scripts/update-collector-components-create-pr.sh

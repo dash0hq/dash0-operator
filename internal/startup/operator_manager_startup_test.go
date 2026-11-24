@@ -217,6 +217,26 @@ var _ = Describe("operator manager startup", func() {
 		)
 	})
 
+	Context("deriveImpliedCommandLineArguments", func() {
+		DescribeTable("derives whether workload instrumentation is enabled", func(
+			telemetryCollectionEnabled bool,
+			instrumentationEnabled bool,
+			expectedInstrumentationEnabled bool,
+		) {
+			cliArgs := &commandLineArguments{
+				telemetryCollectionEnabled: telemetryCollectionEnabled,
+				instrumentationEnabled:     instrumentationEnabled,
+			}
+			deriveImpliedCommandLineArguments(cliArgs)
+			Expect(cliArgs.instrumentationEnabled).To(Equal(expectedInstrumentationEnabled))
+		},
+			Entry("telemetry collection and instrumentation enabled", true, true, true),
+			Entry("instrumentation disabled", true, false, false),
+			Entry("telemetry collection disabled", false, true, false),
+			Entry("telemetry collection and instrumentation disabled", false, false, false),
+		)
+	})
+
 	Context("resolveOperatorConfigurationProfilingEnabled", func() {
 		const profilingEnvVarName = "DASH0_OPERATOR_CONFIGURATION_PROFILING_ENABLED"
 

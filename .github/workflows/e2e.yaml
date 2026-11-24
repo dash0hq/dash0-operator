@@ -12,7 +12,9 @@ on:
         required: false
         default: true
         type: boolean
-        description: Send a Slack notification with the test outcome. Defaults to true.
+        description: >-
+          Send a Slack notification with the test outcome. A success is only reported if the calling workflow has been
+          dispatched manually. Defaults to true.
     secrets:
       SLACK_BOT_TOKEN:
         required: true
@@ -31,6 +33,17 @@ on:
         default: true
         type: boolean
         description: Send a Slack notification with the test outcome. Defaults to true.
+      on_success:
+        required: false
+        default: none
+        type: choice
+        options:
+          - none
+          - review
+          - merge
+        description: >-
+          Follow-up action for the PR given by pr_number after the tests have passed: mark it as ready for review
+          (review), or enable auto-merge (merge). Defaults to none.
 
 env:
   DASH0_KIND_CLUSTER: dash0-operator-ci
@@ -132,12 +145,6 @@ jobs:
           echo "All pods:"
           kubectl get pods -A
 
-      # Workaround for resourcedetection bug in the gcp detector that makes the collector slow to become ready.
-      # https://github.com/GoogleCloudPlatform/opentelemetry-operations-go/issues/1026
-      - name: Make the instance metadata endpoint unreachable
-        run: |
-          ./.github/workflows/e2e/add-instance-metadata-unreachable-route.sh
-
       - name: Verify registry is running
         run: |
           echo "Checking registry container..."
@@ -152,8 +159,10 @@ jobs:
         run: |
           make build-all-push-all-test-e2e
 
+      # For a workflow_call, github.event_name is the event of the caller, so the run after a push to main only notifies
+      # about failures.
       - name: Send Slack notification on success
-        if: success() && inputs.notify_slack
+        if: success() && inputs.notify_slack && github.event_name == 'workflow_dispatch'
         uses: ./.github/actions/slack-notification
         with:
           status: success
@@ -166,15 +175,17 @@ jobs:
 
       - name: Upload Kubernetes cluster information and pod logs for failed tests
         id: upload-k8s-logs
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: e2e-cluster-info-and-logs
           path: test-resources/e2e/logs
           if-no-files-found: ignore
 
+      # cancelled() covers a job that exceeds timeout-minutes, for which failure() is false. A manual cancellation is
+      # reported as a failure as well.
       - name: Send Slack notification on failure
-        if: failure() && inputs.notify_slack
+        if: (failure() || cancelled()) && inputs.notify_slack
         uses: ./.github/actions/slack-notification
         with:
           status: failure
@@ -227,3 +238,105 @@ jobs:
                 `- **Run**: [#${process.env.GITHUB_RUN_ID}](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})`,
               ].join('\n'),
             });
+
+  follow-up-action:
+    name: Run follow-up action after successful e2e tests
+    needs: run-e2e-tests-on-kind
+    if: inputs.pr_number != '' && (inputs.on_success == 'review' || inputs.on_success == 'merge')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # All API calls use the GitHub app token: a merge queue entry for which auto-merge has been enabled with
+    # GITHUB_TOKEN does not trigger the merge_group workflows.
+    permissions: {}
+
+    steps:
+      - name: Create GitHub app token
+        id: app-token
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.DASH0_OPERATOR_CI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DASH0_OPERATOR_CI_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Mark PR as ready for review or enable auto-merge
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+          ON_SUCCESS: ${{ inputs.on_success }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const { owner, repo } = context.repo;
+            const prNumber = Number(process.env.PR_NUMBER);
+            const action = process.env.ON_SUCCESS;
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+
+            let outcome;
+            let failed = false;
+            try {
+              if (pr.state !== 'open') {
+                outcome = `:x: The pull request is ${pr.state}, skipping the follow-up action.`;
+                failed = true;
+              } else if (action === 'review') {
+                if (pr.draft) {
+                  await github.graphql(
+                    `mutation($id: ID!) {
+                      markPullRequestReadyForReview(input: { pullRequestId: $id }) { pullRequest { isDraft } }
+                    }`,
+                    { id: pr.node_id },
+                  );
+                  outcome = ':eyes: Marked the pull request as ready for review.';
+                } else {
+                  outcome = ':information_source: The pull request is already ready for review, nothing to do.';
+                }
+              } else if (action === 'merge') {
+                const testedSha = process.env.GITHUB_SHA;
+                if (pr.draft) {
+                  outcome = ':x: The pull request is a draft, not enabling auto-merge.';
+                  failed = true;
+                } else if (pr.head.sha !== testedSha) {
+                  outcome =
+                    `:x: The pull request head has moved from \`${testedSha}\` (tested) to \`${pr.head.sha}\` ` +
+                    'since the tests ran, not enabling auto-merge.';
+                  failed = true;
+                } else {
+                  // expectedHeadOid makes GitHub reject the mutation if a push happened after the check above.
+                  await github.graphql(
+                    `mutation($id: ID!, $sha: GitObjectID!) {
+                      enablePullRequestAutoMerge(
+                        input: { pullRequestId: $id, mergeMethod: SQUASH, expectedHeadOid: $sha }
+                      ) {
+                        pullRequest { number }
+                      }
+                    }`,
+                    { id: pr.node_id, sha: testedSha },
+                  );
+                  outcome =
+                    ':rocket: Enabled auto-merge. The pull request will be added to the merge queue once all ' +
+                    'requirements are met.';
+                }
+              } else {
+                outcome = `:x: Unknown follow-up action \`${action}\`.`;
+                failed = true;
+              }
+            } catch (err) {
+              outcome = `:x: The follow-up action \`${action}\` failed: ${err.message}`;
+              failed = true;
+            }
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: prNumber,
+              body: [
+                '### Follow-up action after successful E2E tests',
+                '',
+                outcome,
+                '',
+                `- **Run**: [#${process.env.GITHUB_RUN_ID}](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})`,
+              ].join('\n'),
+            });
+            if (failed) {
+              core.setFailed(outcome);
+            }

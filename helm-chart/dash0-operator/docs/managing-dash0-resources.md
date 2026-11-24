@@ -211,6 +211,7 @@ Prometheus rules will be mapped to Dash0 check rules as follows:
 | `annotations/dash0-enabled`            | Denotes whether the check rule is enabled and should be evaluated.                                                | default: "true"; must be either "true" or "false"                                                                                                          |
 | `annotations/dash0-threshold-degraded` | Will be used in place of the token `$__threshold` in the expression, to determine whether the check is degraded   | If present, it needs to be a string that can be parsed to a float value according to the syntax described in https://go.dev/ref/spec#Floating-point_literals.   |
 | `annotations/dash0-threshold-critical` | Will be used in place of the token `$__threshold` in the expression, to determine whether the check is critical   | If present, it needs to be a string that can be parsed to a float value according to the syntax described in https://go.dev/ref/spec#Floating-point_literals.   |
+| `annotations/dash0.com/on-no-data`     | "When no data"                                                                                                    | default: "ignored"; must be "ignored", "degraded" or "critical"; see [No Data](https://www.dash0.com/docs/dash0/monitoring/alerting/alerting-model#no-data) |
 | `annotations/*`                        | "Annotations"                                                                                                     | |
 | `labels/*`                             | "Additional labels"                                                                                               | |
 
@@ -877,6 +878,114 @@ Status:
   Synchronized At:        2026-05-01T12:00:00Z
 ```
 
+### Managing Dash0 Evals
+
+You can manage your evals (generative AI evaluations) via the Dash0 operator.
+An eval is an LLM judge that scores a sample of the generative AI spans that match its filters.
+
+Pre-requisites for this feature:
+* A Dash0 operator configuration resource has to be installed in the cluster.
+* The operator configuration resource must have the `apiEndpoint` property.
+* The operator configuration resource must have at least one Dash0 export configured with authorization
+  (either `token` or `secret-ref`).
+* The operator will only pick up eval resources in namespaces that have a Dash0 monitoring resource deployed.
+* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
+  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
+  monitoring resource.
+
+With the prerequisites in place, you can manage Dash0 evals via the operator.
+The Dash0 operator will watch for `Dash0GenerativeAiEvaluation` resources in all namespaces that have a Dash0 monitoring
+resource deployed, and synchronize them with the Dash0 backend:
+* When a new eval resource is created, the operator will create a corresponding eval via Dash0's API.
+* When an eval resource is changed, the operator will update the corresponding eval via Dash0's API.
+* When an eval resource is deleted, the operator will delete the corresponding eval via Dash0's API.
+
+The custom resource definition for Dash0 evals can be found
+[here](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/templates/operator/custom-resource-definition-generative-ai-evaluations.yaml).
+You can use the short names `dash0eval` and `dash0evals` with `kubectl`, e.g. `kubectl get dash0evals`.
+
+Here is an example of an eval that scores how well an answer addresses the question:
+
+```yaml
+apiVersion: dash0.com/v1alpha1
+kind: Dash0GenerativeAiEvaluation
+metadata:
+  name: answer-relevance
+spec:
+  enabled: true
+  display:
+    name: Answer relevance
+    description: Checks that the agent answers the question that was asked.
+  match:
+    filters:
+      - key: gen_ai.operation.name
+        operator: is_set
+      - key: service.name
+        operator: is
+        value: checkout-agent
+  sample:
+    rate: 0.1
+  judge:
+    model: light
+    systemPrompt: You review the answers of an AI assistant.
+    userPrompt: |
+      Score from 0 to 1 how well the answer addresses the question.
+      Question: {{ gen_ai.input.messages }}
+      Answer: {{ gen_ai.output.messages }}
+    output:
+      kind: numeric
+      spec:
+        threshold: 0.7
+```
+
+* The name of the resource (`metadata.name`) is the name of the eval in Dash0.
+  It must be unique within the Dash0 dataset.
+  If two eval resources with the same name (for example in different namespaces) are synchronized to the same dataset,
+  Dash0 rejects the second one, and its status shows the error.
+* `spec.match.filters` must contain an `is_set` filter for the attribute `gen_ai.operation.name`, without a value.
+  Kubernetes rejects an eval without it.
+  All filters must match.
+* `spec.sample.rate` is the share of the matching traces that is judged, between 0 and 1.
+* `spec.judge.model` is `light` (fast, low-cost) or `standard` (balanced quality and cost).
+* In `spec.judge.userPrompt`, an attribute key in double curly braces (like `{{ gen_ai.input.messages }}`) is replaced
+  with the value of that span or resource attribute.
+  A span is skipped when a referenced attribute is missing or empty, unless `spec.judge.allowPartialPrompt` is `true`.
+* `spec.judge.output.kind` is `numeric` (a score between 0 and 1, with an optional `spec.threshold`), `boolean`
+  (no `spec`) or `categorical` (a list of labels in `spec.options`, each with an optional `intent` of `positive`,
+  `neutral` or `negative`).
+  The output kind cannot change after the eval has been created: Kubernetes rejects such a change.
+  To use a different output kind, create a new resource with a different name (and delete the old one, if it is no
+  longer needed).
+  Deleting the resource and creating it again with the same name does not work: Dash0 keeps the deleted eval under
+  the same identifier, and rejects the new output kind.
+* Do not put secrets into the prompts.
+
+If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the eval in
+that dataset, otherwise it will be created in the `default` dataset.
+
+The annotations `dash0.com/folder-path` and `dash0.com/sharing` of the resource are synchronized to Dash0.
+
+You can opt out of synchronization for individual eval resources by adding the Kubernetes label
+`dash0.com/enable: false` to the eval resource.
+If this label is added to an eval which has previously been synchronized to Dash0, the operator will delete the
+corresponding eval in Dash0.
+Note that the `spec.instrumentWorkloads.labelSelector` in the monitoring resource does not affect the synchronization of
+evals, the label to opt out of synchronization is always `dash0.com/enable: false`, even if a non-default label
+selector has been set in `spec.instrumentWorkloads.labelSelector`.
+To keep an eval in Dash0 but stop it from judging spans, set `spec.enabled` to `false` instead.
+
+When an eval resource has been synchronized to Dash0, the operator will write a summary of that synchronization
+operation to the status of the eval resource.
+The status also shows whether an error occurred during synchronization.
+
+```yaml
+Kind: Dash0GenerativeAiEvaluation
+...
+Status:
+  Synchronization Status: successful
+  Synchronized At:        2026-11-10T12:00:00Z
+```
+
 ### Managing Dash0 Signal-to-Metrics
 
 You can manage your Dash0 signal-to-metrics rules via the Dash0 operator.
@@ -1173,6 +1282,75 @@ kind: SLO
 Status:
   Synchronization Status: successful
   Synchronized At:        2026-01-15T10:00:00Z
+```
+
+### Alerting on Synchronization Failures
+
+Besides writing synchronization results to the status of Kubernetes resources, the operator reports them in its
+[self-monitoring](configuration.md#operatorconfigurationresource.spec.selfMonitoring.enabled) telemetry, so you can
+alert on resources that cannot be synchronized:
+
+* `dash0.operator.manager.api_sync.unsynchronized_resources` is a gauge with one time series per resource (and dataset)
+  whose most recent synchronization was not successful. A resource is reported until it has been synchronized
+  successfully, has been deleted, or is no longer subject to synchronization. This is the recommended metric for
+  alerting, since it reflects the current state, also for errors that the operator does not retry (like an invalid
+  resource rejected by the Dash0 API). The attributes describe the most recent synchronization attempt.
+  The gauge also reports resources that cannot be synchronized because a precondition fails before a request is sent
+  to the Dash0 API (see `error.type` below). A resource for which synchronization is not configured (no Dash0
+  monitoring resource in the namespace, no `apiEndpoint`, synchronization disabled) is not reported. An auth token in
+  the operator configuration resource that cannot be resolved is not reported either. In that case, PrometheusRule and
+  PersesDashboard resources are no longer synchronized at all and are removed from the gauge.
+* `dash0.operator.manager.api_sync.synchronizations` is a counter for synchronization attempts, by outcome.
+
+Both metrics have the following attributes:
+
+| Attribute                                | Description                                                                           |
+|------------------------------------------|---------------------------------------------------------------------------------------|
+| `dash0.operator.sync.resource.kind`      | The Kubernetes kind of the resource, for example `PrometheusRule` or `Dash0View`.     |
+| `dash0.operator.sync.resource.namespace` | The namespace of the resource (empty for cluster-scoped resources).                   |
+| `dash0.operator.sync.resource.name`      | The name of the resource (gauge only).                                                |
+| `dash0.operator.sync.dataset`            | The Dash0 dataset the resource is synchronized to (not set for failed preconditions). |
+| `dash0.operator.sync.status`             | `successful` (counter only), `partially-successful` or `failed`.                      |
+| `dash0.operator.sync.action`             | `upsert` or `delete` (counter only).                                                  |
+| `http.response.status_code`              | The highest HTTP status code returned by the Dash0 API, if any (gauge only).          |
+| `error.type`                             | The precondition that failed, if no request has been sent (see below).                |
+
+The log record the operator writes for each synchronization carries the same attributes, except that the log record for
+a failed precondition has no `dash0.operator.sync.action` and no `dash0.operator.sync.dataset`.
+
+`error.type` has one of the following values:
+
+* `monitoring_resource_lookup_failed`: the Dash0 monitoring resource of the namespace could not be looked up. The
+  operator does not retry this, the resource stays reported until it is synchronized again.
+* `api_config_unavailable`: the Dash0 monitoring resource of the namespace configures API access (`apiEndpoint`), but
+  the auth token of none of its Dash0 exports can be resolved. Right after the operator has started, resources can be
+  reported with this value (and counted as failed synchronization attempts) for a short time, until the operator has
+  processed the Dash0 monitoring resource of the namespace. Use a `for` duration in the check rule, like in the example
+  below, to not alert on that.
+
+Here is an example of a check rule that fires for every resource that cannot be synchronized, with the namespace and
+the name of the resource available as template variables:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: dash0-operator-sync-failures
+spec:
+  groups:
+    - name: dash0-operator
+      rules:
+        - alert: Dash0OperatorSynchronizationFailed
+          expr: |
+            max by (k8s_cluster_name, dash0_operator_sync_resource_kind, dash0_operator_sync_resource_namespace, dash0_operator_sync_resource_name) (
+              {otel_metric_name="dash0.operator.manager.api_sync.unsynchronized_resources"}
+            ) > 0
+          for: 5m
+          annotations:
+            summary: >-
+              {{ $labels.dash0_operator_sync_resource_kind }}
+              {{ $labels.dash0_operator_sync_resource_namespace }}/{{ $labels.dash0_operator_sync_resource_name }}
+              cannot be synchronized to Dash0 in cluster {{ $labels.k8s_cluster_name }}
 ```
 
 ### Infrastructure-as-Code Only Mode (Disable Telemetry Collection)

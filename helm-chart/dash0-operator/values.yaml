@@ -671,7 +671,7 @@ operator:
     repository: "ghcr.io/dash0hq/dash0-synthetics-worker"
     # The synthetics-worker is versioned independently of the operator, so this tag is pinned to that component
     # version; it does not track the chart appVersion.
-    tag: "0.2.0"
+    tag: "0.3.1"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -700,6 +700,47 @@ operator:
 
   # Settings related to the modification and instrumentation of workloads in the cluster.
   instrumentation:
+
+    # Whether the operator instruments workloads automatically. Set this to false if you do not want to use automatic
+    # workload instrumentation at all, for example if you only collect logs, metrics and Kubernetes events.
+    # If set to false, no namespace can be configured with an instrumentWorkloads.mode other than none.
+    #
+    # If this is false, the chart does not register the mutating webhook that instruments workloads. The Kubernetes API
+    # server then no longer sends an admission request to the operator for every workload and pod that is created or
+    # updated in the cluster, which reduces the traffic between the operator and the Kubernetes API server. (The
+    # webhook is also not registered if operator.telemetryCollectionEnabled is false, since workloads are not
+    # instrumented then either.)
+    # In addition:
+    # - Dash0Monitoring resources and the operator.monitoringTemplate default to instrumentWorkloads.mode=none.
+    # - Creating a Dash0Monitoring resource, or the monitoring template of a Dash0OperatorConfiguration resource, with
+    #   instrumentWorkloads.mode other than none is rejected.
+    # - Setting operator.monitoringTemplate.spec.instrumentWorkloads.mode to a value other than none fails the
+    #   installation.
+    #
+    # Switching this from true to false removes the instrumentation from workloads in namespaces that are monitored via
+    # automatic namespace monitoring: the operator sets instrumentWorkloads.mode=none in the Dash0Monitoring resources
+    # it manages for these namespaces, regardless of the mode in the monitoring template. Dash0Monitoring resources that
+    # have not been created by automatic namespace monitoring are not changed, and the instrumentation of their
+    # workloads is not actively removed.
+    #
+    # Before switching this to false, set instrumentWorkloads.mode=none in all Dash0Monitoring resources (and in
+    # operator.monitoringTemplate, if you use automatic namespace monitoring), and wait until the operator has removed
+    # the instrumentation. A Dash0Monitoring resource that still has a mode other than none after switching this to
+    # false is reported in the operator manager's log. It can still be updated, but its mode can only be changed to
+    # none, which also removes the instrumentation from its workloads.
+    #
+    # In namespaces with instrumentWorkloads.mode=pods, pods that are created after switching this to false are not
+    # instrumented, and existing pods lose their instrumentation when they are recreated.
+    #
+    # Setting operator.telemetryCollectionEnabled=false implies operator.instrumentation.enabled=false, regardless of
+    # the value of this setting, and the rules for Dash0Monitoring resources above apply. However, since the operator
+    # does not modify workloads at all while telemetry collection is disabled, it also does not remove the
+    # instrumentation from workloads when the instrumentWorkloads.mode of a Dash0Monitoring resource is changed to none,
+    # and it does not report Dash0Monitoring resources with a mode other than none in its log. A mode other than none in
+    # operator.monitoringTemplate does not fail the installation, the operator uses instrumentWorkloads.mode=none for
+    # the monitoring template instead.
+    enabled: true
+
     # Controls how the Dash0 instrumentation files (the OpenTelemetry injector and the auto-instrumentation agents)
     # are made available to instrumented workload containers. The operator can either use a Kubernetes image volume
     # sourced from the Dash0 instrumentation image, or the traditional init container plus emptyDir volume approach.
@@ -1025,7 +1066,7 @@ operator:
         initialDelaySeconds: 0
         periodSeconds: 2
         timeoutSeconds: 1
-        failureThreshold: 45
+        failureThreshold: 30
 
     # Resource settings for the collector container of the Deployment collector pod (cluster-metrics-collector) managed
     # by the operator. There should usually be no reason to override this.
@@ -1145,7 +1186,7 @@ operator:
         initialDelaySeconds: 0
         periodSeconds: 2
         timeoutSeconds: 1
-        failureThreshold: 45
+        failureThreshold: 30
 
     # The number of replicas of the Signal Control collector Deployment managed by the operator. This collector only
     # exists when Signal Control is enabled (see operator.signalControl.enabled); it receives the Dash0-bound telemetry
@@ -1259,15 +1300,26 @@ operator:
         initialDelaySeconds: 0
         periodSeconds: 2
         timeoutSeconds: 1
-        failureThreshold: 45
+        failureThreshold: 30
 
     # Settings for the k8s_attributes processor in the Dash0 operator collectors:
     k8s_attributes:
 
-      # Disables the replicaset informer for the k8s_attributes processor. This will lead to not collecting the resource
-      # attribute k8s.deployment.uid, and might lead to wrong values k8s.deployment.name in some edge cases.
-      # The default is false, do not override this unless explicitly instructed by Dash0 support.
+      # Omits k8s.deployment.uid from the k8s_attributes extract list, which keeps the processor from starting its
+      # ReplicaSet informer. This will lead to not collecting the resource attribute k8s.deployment.uid.
+      # This setting can be useful to reduce the memory usage of the collectors and the traffic between the collectors
+      # and the Kubernetes API server. (The replicaset informer watches and caches all ReplicaSets in the cluster,
+      # including the default 10 revision history ReplicaSets per deployment, and it does so in every collector pod on
+      # each node. The effect is most noticeable in large clusters.)
+      # The default is false.
       disableReplicasetInformer: false
+
+      # Omits k8s.cronjob.uid from the k8s_attributes extract list, which keeps the processor from starting its
+      # Job informer. This will lead to not collecting the resource attribute k8s.cronjob.uid.
+      # This setting can be useful to reduce the memory usage of the collectors and the traffic between the collectors
+      # and the Kubernetes API server in large clusters with many jobs.
+      # The default is false.
+      disableJobInformer: false
 
       # By default, the k8s_attributes processor will not wait until Kubernetes metadata has been fetched from the
       # Kubernetes API. Telemetry which is collected before the Kubernetes metadata has been synchronized will not be
@@ -1289,8 +1341,8 @@ operator:
       # instead of running one instance (with its own Kubernetes API watches and metadata cache) per pipeline. This can
       # reduce the memory usage of the collectors considerably, in particular in large clusters.
       # This enables the collector feature gate processor.k8sattributes.ShareProcessorBetweenPipelines, which is
-      # currently in alpha stage. The default is false.
-      shareProcessorBetweenPipelines: false
+      # currently in alpha stage. The default is true, set this to false to run one instance per pipeline.
+      shareProcessorBetweenPipelines: true
 
     # Settings for the kubeletstats receiver in the DaemonSet collector, which scrapes the local kubelet for Kubernetes
     # infrastructure metrics.
@@ -1885,6 +1937,12 @@ operator:
   # Settings for the eBPF profiler DaemonSet managed by the operator. All settings in operator.ebpfProfiler will be
   # ignored if operator.ebpfProfilerEnabled is false. See docs/profiling.md.
   ebpfProfiler:
+
+    # The PID namespace translation mode of the eBPF profiler, one of "none", "auto", "exact" or "recursive". Set this
+    # to "auto" for nodes with nested PID namespaces, such as kind nodes. When not set, the profiler uses "none". This
+    # setting only has an effect if the operator configuration resource is created via Helm (operator.dash0Export or
+    # operator.exports). See docs/profiling.md for details on the modes.
+    pidNamespaceTranslationMode:
 
     # Resource settings for the profiler container of the eBPF profiler DaemonSet managed by the operator.
     containerResources:

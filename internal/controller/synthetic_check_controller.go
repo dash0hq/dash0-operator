@@ -99,6 +99,10 @@ func (r *SyntheticCheckReconciler) ShortName() string {
 	return "check"
 }
 
+func (r *SyntheticCheckReconciler) Kind() string {
+	return "Dash0SyntheticCheck"
+}
+
 func (r *SyntheticCheckReconciler) GetDefaultApiConfigs() []ApiConfig {
 	return r.defaultApiConfigs.Get()
 }

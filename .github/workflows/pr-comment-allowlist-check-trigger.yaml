@@ -73,15 +73,23 @@ jobs:
             });
             return { ref: pr.head.ref, sha: pr.head.sha };
 
+      # GITHUB_TOKEN cannot trigger workflow_dispatch events on the same repository, hence the GitHub app token.
+      - name: Create GitHub app token
+        id: app-token
+        if: fromJson(steps.check-permissions.outputs.result) == true
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.DASH0_OPERATOR_CI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DASH0_OPERATOR_CI_APP_PRIVATE_KEY }}
+          permission-actions: write
+
       - name: Dispatch GKE Autopilot WorkloadAllowlist check workflow
         if: fromJson(steps.check-permissions.outputs.result) == true
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
           PR_INFO: ${{ steps.pr-info.outputs.result }}
         with:
-          # E2E_DISPATCH_PAT is required because GITHUB_TOKEN cannot trigger workflow_dispatch
-          # events on the same repository.
-          github-token: ${{ secrets.E2E_DISPATCH_PAT }}
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const prInfo = JSON.parse(process.env.PR_INFO);
             await github.rest.actions.createWorkflowDispatch({

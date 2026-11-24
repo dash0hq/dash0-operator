@@ -148,6 +148,27 @@ var _ = Describe(
 			Entry("ignores disabled profiling without telemetry collection", false, false, true),
 		)
 
+		DescribeTable("should apply the Helm eBPF profiler PID namespace translation mode", func(mode string) {
+			handler := NewAutoOperatorConfigurationResourceHandler(k8sClient, readyCheckExecuter,
+				OperatorConfigurationValues{
+					Endpoint: EndpointDash0Test, Token: AuthorizationTokenTest,
+					TelemetryCollectionEnabled: true, ProfilingEnabled: true, EbpfProfilerEnabled: true,
+					EbpfProfilerPIDNamespaceTranslationMode: mode,
+				}, util.ExtraConfig{})
+			handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+			_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				var configuration v1alpha1.Dash0OperatorConfiguration
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName}, &configuration)).To(Succeed())
+				g.Expect(configuration.Spec.Profiling.EbpfProfiler).NotTo(BeNil())
+				g.Expect(configuration.Spec.Profiling.EbpfProfiler.PIDNamespaceTranslationMode).To(Equal(mode))
+			}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
+		},
+			Entry("sets the mode", "auto"),
+			Entry("leaves the mode unset", ""),
+		)
+
 		It(
 			"should fail validation if the eBPF profiler is enabled with profiling disabled", func() {
 				handler := NewAutoOperatorConfigurationResourceHandler(
@@ -656,6 +677,7 @@ var _ = Describe(
 
 		It(
 			"should set telemetry-dependent settings to false when telemetryCollectionEnabled is false", func() {
+				monitoringTemplateJSON := json.RawMessage(`{"spec":{"instrumentWorkloads":{"mode":"all"}}}`)
 				handler := NewAutoOperatorConfigurationResourceHandler(
 					k8sClient,
 					readyCheckExecuter,
@@ -674,7 +696,7 @@ var _ = Describe(
 						AutoMonitorNamespacesEnabled:                     true,
 						TelemetryCollectionEnabled:                       false,
 					},
-					util.ExtraConfig{},
+					util.ExtraConfig{MonitoringTemplateRaw: &monitoringTemplateJSON},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
@@ -715,6 +737,9 @@ var _ = Describe(
 						g.Expect(spec.AutoMonitorNamespaces.IsEnabled()).To(BeFalse())
 						g.Expect(spec.TelemetryCollection.Enabled).ToNot(BeNil())
 						g.Expect(*spec.TelemetryCollection.Enabled).To(BeFalse())
+						g.Expect(spec.MonitoringTemplate).ToNot(BeNil())
+						g.Expect(spec.MonitoringTemplate.Spec.InstrumentWorkloads.Mode).To(
+							Equal(dash0common.InstrumentWorkloadsModeNone))
 					}, 5*time.Second, 100*time.Millisecond,
 				).Should(Succeed())
 			},
@@ -863,7 +888,7 @@ var _ = Describe(
 				handler := NewAutoOperatorConfigurationResourceHandler(
 					k8sClient,
 					readyCheckExecuter,
-					operatorConfigurationValuesWithToken,
+					operatorConfigurationValuesWithTokenAndTelemetryCollection,
 					util.ExtraConfig{MonitoringTemplateRaw: &monitoringTemplateJSON},
 				)
 				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
@@ -1026,6 +1051,42 @@ var _ = Describe(
 						g.Expect(transform.Traces).To(HaveLen(1))
 						g.Expect(string(transform.Traces[0])).To(
 							Equal(`"truncate_all(span.attributes, 128)"`))
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		It(
+			"should keep log filters specified via log_record and the deprecated log_records",
+			func() {
+				filterJSON := json.RawMessage(
+					`{"logs":{"log_record":["severity_number < SEVERITY_NUMBER_WARN"],` +
+						`"log_records":["IsMatch(body, \".*password.*\")"]}}`)
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithTokenAndTelemetryCollection,
+					util.ExtraConfig{FilterRaw: &filterJSON},
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+							&operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+						filter := operatorConfiguration.Spec.Filter
+						g.Expect(filter).ToNot(BeNil())
+						g.Expect(filter.Logs).ToNot(BeNil())
+						g.Expect(filter.Logs.LogRecordFilter).To(
+							ConsistOf("severity_number < SEVERITY_NUMBER_WARN"))
+						g.Expect(filter.Logs.DeprecatedLogRecordFilter).To(
+							ConsistOf(`IsMatch(body, ".*password.*")`))
 					}, 5*time.Second, 100*time.Millisecond,
 				).Should(Succeed())
 			},

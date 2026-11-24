@@ -17,19 +17,20 @@ import (
 )
 
 const (
-	syntheticCheckName        = "synthetic-check-e2e-test"
-	sloName                   = "slo-e2e-test"
-	viewName                  = "view-e2e-test"
-	persesDashboardNamePrefix = "perses-dashboard-e2e-test"
-	persesDashboardV1Alpha1   = "v1alpha1"
-	persesDashboardV1Alpha2   = "v1alpha2"
-	prometheusRuleName        = "prometheus-rules-e2e-test"
-	notificationChannelName   = "notification-channel-e2e-test"
-	samplingRuleName          = "sampling-rule-e2e-test"
-	signalToMetricsName       = "signal-to-metrics-e2e-test"
-	spamFilterName            = "spam-filter-e2e-test"
-	timeSeriesAggregationName = "time-series-aggregation-e2e-test"
-	teamName                  = "team-e2e-test"
+	syntheticCheckName         = "synthetic-check-e2e-test"
+	sloName                    = "slo-e2e-test"
+	viewName                   = "view-e2e-test"
+	persesDashboardNamePrefix  = "perses-dashboard-e2e-test"
+	persesDashboardV1Alpha1    = "v1alpha1"
+	persesDashboardV1Alpha2    = "v1alpha2"
+	prometheusRuleName         = "prometheus-rules-e2e-test"
+	notificationChannelName    = "notification-channel-e2e-test"
+	samplingRuleName           = "sampling-rule-e2e-test"
+	signalToMetricsName        = "signal-to-metrics-e2e-test"
+	spamFilterName             = "spam-filter-e2e-test"
+	timeSeriesAggregationName  = "time-series-aggregation-e2e-test"
+	generativeAiEvaluationName = "generative-ai-evaluation-e2e-test"
+	teamName                   = "team-e2e-test"
 )
 
 var (
@@ -76,6 +77,10 @@ var (
 	//go:embed dash0timeseriesaggregation.yaml.template
 	timeSeriesAggregationSource   string
 	timeSeriesAggregationTemplate *template.Template
+
+	//go:embed dash0generativeaievaluation.yaml.template
+	generativeAiEvaluationSource   string
+	generativeAiEvaluationTemplate *template.Template
 
 	//go:embed dash0team.yaml.template
 	teamSource   string
@@ -613,6 +618,61 @@ func setOptOutLabelInTimeSeriesAggregation(namespace string, value string) {
 	).To(Succeed())
 }
 
+func renderGenerativeAiEvaluationTemplate() string {
+	generativeAiEvaluationTemplate = initTemplateOnce(
+		generativeAiEvaluationTemplate,
+		generativeAiEvaluationSource,
+		"dash0generativeaievaluation",
+	)
+	return renderResourceTemplate(generativeAiEvaluationTemplate, nil, "dash0generativeaievaluation")
+}
+
+func deployGenerativeAiEvaluationResource(namespace string) {
+	renderedResourceFileName := renderGenerativeAiEvaluationTemplate()
+	defer func() {
+		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
+	}()
+
+	By(fmt.Sprintf(
+		"deploying a Dash0GenerativeAiEvaluation resource to namespace %s", namespace))
+	Expect(runAndIgnoreOutput(exec.Command(
+		"kubectl",
+		"apply",
+		"-n",
+		namespace,
+		"-f",
+		renderedResourceFileName,
+	))).To(Succeed())
+}
+
+func setOptOutLabelInGenerativeAiEvaluation(namespace string, value string) {
+	By(fmt.Sprintf("setting the opt-out label in the generative AI evaluation with value %s", value))
+	Expect(
+		runAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"label",
+			"-n",
+			namespace,
+			"--overwrite",
+			"Dash0GenerativeAiEvaluation",
+			generativeAiEvaluationName,
+			fmt.Sprintf("dash0.com/enable=%s", value),
+		)),
+	).To(Succeed())
+}
+
+func removeGenerativeAiEvaluationResource(namespace string) {
+	_ = runAndIgnoreOutput(exec.Command(
+		"kubectl",
+		"delete",
+		"--ignore-not-found",
+		"-n",
+		namespace,
+		"Dash0GenerativeAiEvaluation",
+		generativeAiEvaluationName,
+	))
+}
+
 func removeSamplingRuleResource(namespace string) {
 	_ = runAndIgnoreOutput(exec.Command(
 		"kubectl",
@@ -771,6 +831,7 @@ func removeDash0ApiSyncResources(namespace string) {
 	removeSignalToMetricsResource(namespace)
 	removeSpamFilterResource(namespace)
 	removeTimeSeriesAggregationResource(namespace)
+	removeGenerativeAiEvaluationResource(namespace)
 	removeTeamResource(namespace)
 }
 

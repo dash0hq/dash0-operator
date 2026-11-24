@@ -124,8 +124,6 @@ if [[ "${delete_namespaces}" = "true" ]]; then
   kubectl delete ns test-namespace-6 --ignore-not-found
 fi
 
-helm uninstall --namespace "$operator_namespace" ebpf-profiler --ignore-not-found || true
-
 helm uninstall --namespace "$operator_namespace" dash0-operator --timeout 30s || true
 
 # Kyverno (see deploy-kyverno.sh) is removed only after the operator has been uninstalled, so that Kyverno also

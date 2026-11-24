@@ -5,8 +5,8 @@ metadata:
     alm-examples: '[]'
     capabilities: Seamless Upgrades
     categories: Monitoring,Logging & Tracing
-    description: Collect traces, metrics and logs from your Kubernetes workloads and infrastructure with OpenTelemetry
-      and send them to Dash0.
+    description: Collect traces, metrics, logs and profiles from your Kubernetes workloads and infrastructure with
+      OpenTelemetry and send them to Dash0.
     repository: https://github.com/dash0hq/dash0-operator
     support: Dash0
   name: dash0-operator.v0.0.0
@@ -186,6 +186,27 @@ spec:
         displayName: Sample
         path: sample
       version: v1alpha1
+    - description: An eval, an LLM judge that scores a sample of the generative AI spans that match its filters.
+      displayName: Dash0 Generative AI Evaluation
+      kind: Dash0GenerativeAiEvaluation
+      name: dash0generativeaievaluations.dash0.com
+      specDescriptors:
+      - description: Whether the eval judges spans.
+        displayName: Enabled
+        path: enabled
+      - description: The name and description of the eval shown in Dash0.
+        displayName: Display
+        path: display
+      - description: The spans that the eval judges.
+        displayName: Match
+        path: match
+      - description: The share of the matching traces that is judged.
+        displayName: Sample
+        path: sample
+      - description: The model, the prompts and the kind of result of the judge.
+        displayName: Judge
+        path: judge
+      version: v1alpha1
     - description: A saved Dash0 view with a filter and table layout for exploring telemetry such as logs, spans or
         metrics.
       displayName: Dash0 View
@@ -243,8 +264,8 @@ spec:
       version: v1
   description: |
     The Dash0 Operator brings OpenTelemetry-based observability to your Kubernetes cluster. It instruments your
-    workloads automatically, collects their traces, metrics and logs together with telemetry about the cluster itself,
-    and sends everything to Dash0.
+    workloads automatically, collects their traces, metrics, logs and profiles together with telemetry about the
+    cluster itself, and sends everything to Dash0.
 
     ### Features
 
@@ -257,6 +278,8 @@ spec:
       the telemetry that matters and reduce egress costs.
     * **Dash0 configuration as code**: views, synthetic checks, notification channels, teams, SLOs and more are managed
       as Kubernetes resources and kept in sync with Dash0.
+    * **Agent0 Kubernetes integration** (off by default): lets Agent0, Dash0's observability and SRE assistant, run
+      read-only `kubectl` commands in the cluster during an investigation.
 
     ### Getting started
 

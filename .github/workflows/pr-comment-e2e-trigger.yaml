@@ -3,6 +3,12 @@
 
 name: Trigger E2E tests via PR comment
 
+# Supported commands (as the first word of the comment, optionally followed by a Ginkgo focus on the same line):
+# - /run-e2e: run the e2e tests
+# - /run-e2e-then-review: run the e2e tests, and mark the PR as ready for review if they pass
+# - /run-e2e-then-merge: run the e2e tests, and enable auto-merge if they pass (refused for draft PRs, and when the PR
+#   head has moved since the tests started)
+
 # Every comment is a separate command, a newer comment never supersedes an older one.
 # jactionlint ignore=concurrency-limits
 on:
@@ -27,8 +33,34 @@ jobs:
       startsWith(github.event.comment.body, '/run-e2e')
 
     steps:
+      - name: Parse command and optional focus from comment
+        id: parse-comment
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          FIRST_LINE=$(printf '%s\n' "$COMMENT_BODY" | head -1 | tr -d '\r')
+          COMMAND=${FIRST_LINE%%[[:space:]]*}
+          case "$COMMAND" in
+            /run-e2e)             ON_SUCCESS=none ;;
+            /run-e2e-then-review) ON_SUCCESS=review ;;
+            /run-e2e-then-merge)  ON_SUCCESS=merge ;;
+            *)
+              echo "Ignoring unknown command $COMMAND."
+              echo "valid=false" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+          # Everything after the command on the first line is the optional focus string.
+          FOCUS=$(printf '%s' "${FIRST_LINE#"$COMMAND"}" | xargs)
+          {
+            echo "valid=true"
+            echo "on_success=$ON_SUCCESS"
+            echo "focus=$FOCUS"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Check commenter permissions
         id: check-permissions
+        if: steps.parse-comment.outputs.valid == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         with:
           script: |
@@ -49,7 +81,7 @@ jobs:
             }
 
       - name: Acknowledge comment with reaction
-        if: fromJson(steps.check-permissions.outputs.result) == true
+        if: steps.check-permissions.outputs.result == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         with:
           script: |
@@ -62,7 +94,7 @@ jobs:
 
       - name: Get PR branch
         id: pr-info
-        if: fromJson(steps.check-permissions.outputs.result) == true
+        if: steps.check-permissions.outputs.result == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         with:
           script: |
@@ -71,30 +103,58 @@ jobs:
               repo: context.repo.repo,
               pull_number: context.issue.number,
             });
-            return { ref: pr.head.ref, sha: pr.head.sha };
+            core.setOutput('ref', pr.head.ref);
+            core.setOutput('draft', String(pr.draft));
 
-      - name: Parse optional focus from comment
-        id: parse-comment
-        if: fromJson(steps.check-permissions.outputs.result) == true
-        env:
-          COMMENT_BODY: ${{ github.event.comment.body }}
-        run: |
-          # Extract everything after "/run-e2e" on the first line as the optional focus string
-          FOCUS=$(printf '%s' "$COMMENT_BODY" | head -1 | sed 's|^/run-e2e[[:space:]]*||' | xargs)
-          echo "focus=$FOCUS" >> "$GITHUB_OUTPUT"
+      - name: Refuse auto-merge for draft PR
+        if: |
+          steps.check-permissions.outputs.result == 'true' &&
+          steps.parse-comment.outputs.on_success == 'merge' &&
+          steps.pr-info.outputs.draft == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: '-1',
+            });
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                '### :no_entry: E2E tests not triggered',
+                '',
+                '`/run-e2e-then-merge` is not supported for draft pull requests. Mark the pull request as ready ' +
+                  'for review first, or use `/run-e2e-then-review`.',
+              ].join('\n'),
+            });
+
+      # GITHUB_TOKEN cannot trigger workflow_dispatch events on the same repository, hence the GitHub app token.
+      - name: Create GitHub app token
+        id: app-token
+        if: |
+          steps.check-permissions.outputs.result == 'true' &&
+          !(steps.parse-comment.outputs.on_success == 'merge' && steps.pr-info.outputs.draft == 'true')
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.DASH0_OPERATOR_CI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DASH0_OPERATOR_CI_APP_PRIVATE_KEY }}
+          permission-actions: write
 
       - name: Dispatch e2e workflow
-        if: fromJson(steps.check-permissions.outputs.result) == true
+        id: dispatch
+        if: steps.app-token.outcome == 'success'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
-          PR_INFO: ${{ steps.pr-info.outputs.result }}
+          PR_REF: ${{ steps.pr-info.outputs.ref }}
           FOCUS: ${{ steps.parse-comment.outputs.focus }}
+          ON_SUCCESS: ${{ steps.parse-comment.outputs.on_success }}
         with:
-          # E2E_DISPATCH_PAT is required because GITHUB_TOKEN cannot trigger workflow_dispatch
-          # events on the same repository.
-          github-token: ${{ secrets.E2E_DISPATCH_PAT }}
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
-            const prInfo = JSON.parse(process.env.PR_INFO);
             const inputs = {
               pr_number: String(context.issue.number),
               notify_slack: 'false',
@@ -102,24 +162,35 @@ jobs:
             if (process.env.FOCUS) {
               inputs.focus = process.env.FOCUS;
             }
+            // Only pass on_success when needed, so that /run-e2e keeps working for branches whose e2e.yaml does not
+            // have this input yet.
+            if (process.env.ON_SUCCESS !== 'none') {
+              inputs.on_success = process.env.ON_SUCCESS;
+            }
             await github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: 'e2e.yaml',
-              ref: prInfo.ref,
+              ref: process.env.PR_REF,
               inputs,
             });
 
       - name: Post trigger comment
-        if: fromJson(steps.check-permissions.outputs.result) == true
+        if: steps.dispatch.outcome == 'success'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
-          PR_INFO: ${{ steps.pr-info.outputs.result }}
+          PR_REF: ${{ steps.pr-info.outputs.ref }}
           FOCUS: ${{ steps.parse-comment.outputs.focus }}
+          ON_SUCCESS: ${{ steps.parse-comment.outputs.on_success }}
         with:
           script: |
-            const prInfo = JSON.parse(process.env.PR_INFO);
             const focusLine = process.env.FOCUS ? `\n- **Focus**: \`${process.env.FOCUS}\`` : '';
+            const onSuccessDescriptions = {
+              review: 'mark the pull request as ready for review',
+              merge: 'enable auto-merge',
+            };
+            const onSuccess = onSuccessDescriptions[process.env.ON_SUCCESS];
+            const onSuccessLine = onSuccess ? `\n- **On success**: ${onSuccess}` : '';
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -127,9 +198,27 @@ jobs:
               body: [
                 '### :rocket: E2E tests triggered',
                 '',
-                `- **Branch**: \`${prInfo.ref}\`${focusLine}`,
+                `- **Branch**: \`${process.env.PR_REF}\`${focusLine}${onSuccessLine}`,
                 `- **Triggered by**: @${context.actor}`,
                 '',
                 `Results will be posted here once the tests complete. You can also [view the workflow runs](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/e2e.yaml) directly.`,
+              ].join('\n'),
+            });
+
+      - name: Post comment if the dispatch failed
+        if: failure() && (steps.app-token.outcome == 'failure' || steps.dispatch.outcome == 'failure')
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        with:
+          script: |
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                '### :x: E2E tests could not be triggered',
+                '',
+                `See [run #${process.env.GITHUB_RUN_ID}](${runUrl}) for details. If you used ` +
+                  '`/run-e2e-then-review` or `/run-e2e-then-merge`, the branch might need to be rebased onto main.',
               ].join('\n'),
             });

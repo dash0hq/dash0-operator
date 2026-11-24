@@ -407,6 +407,11 @@ func addHelmParametersForImages(arguments []string, images Images) []string {
 	arguments = setIfNotEmpty(arguments, "operator.syntheticsWorkerImage.digest", images.syntheticsWorker.digest)
 	arguments = setIfNotEmpty(arguments, "operator.syntheticsWorkerImage.pullPolicy", images.syntheticsWorker.pullPolicy)
 
+	arguments = setIfNotEmpty(arguments, "operator.debuginfoProxyImage.repository", images.debuginfoProxy.repository)
+	arguments = setIfNotEmpty(arguments, "operator.debuginfoProxyImage.tag", images.debuginfoProxy.tag)
+	arguments = setIfNotEmpty(arguments, "operator.debuginfoProxyImage.digest", images.debuginfoProxy.digest)
+	arguments = setIfNotEmpty(arguments, "operator.debuginfoProxyImage.pullPolicy", images.debuginfoProxy.pullPolicy)
+
 	return arguments
 }
 

@@ -91,22 +91,24 @@ updates:
       - dependency-name: "github.com/spf13/cobra"
       - dependency-name: "github.com/spf13/pflag"
 
-  # Dash0 OpenTelemetry Distro for Node.js
-  - package-ecosystem: "npm"
-    directory: "images/instrumentation/node.js/"
-    schedule:
-      interval: "daily"
-      time: "07:10"
-      timezone: "Europe/Berlin"
-    cooldown:
-      default-days: 7
-    groups:
-      security-updates:
-        applies-to: "security-updates"
-        patterns:
-          - "*"
-    commit-message:
-      prefix: "chore(deps)"
+  # Paused until early December 2026 so the next operator release does not ship the Dash0 Node.js distro with
+  # dash0hq/opentelemetry-js-distribution#301. Restore this block to resume updates.
+  # # Dash0 OpenTelemetry Distro for Node.js
+  # - package-ecosystem: "npm"
+  #   directory: "images/instrumentation/node.js/"
+  #   schedule:
+  #     interval: "daily"
+  #     time: "07:10"
+  #     timezone: "Europe/Berlin"
+  #   cooldown:
+  #     default-days: 7
+  #   groups:
+  #     security-updates:
+  #       applies-to: "security-updates"
+  #       patterns:
+  #         - "*"
+  #   commit-message:
+  #     prefix: "chore(deps)"
 
   # OpenTelemetry Java agent
   - package-ecosystem: "maven"
@@ -194,7 +196,6 @@ updates:
   - package-ecosystem: "helm"
     directories:
       - "/test/e2e/otlp-sink/helm-chart"
-      - "/test-resources/ebpf-profiler/helm-chart"
     schedule:
       interval: "daily"
       time: "09:00"

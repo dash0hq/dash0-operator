@@ -9,6 +9,7 @@ import (
 	"math"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -119,6 +120,7 @@ type oTelColConfig struct {
 	KubernetesObjectCollectionEnabled                bool
 	CollectClusterScopedObjects                      bool
 	K8sAttributesDisableReplicasetInformer           bool
+	K8sAttributesDisableJobInformer                  bool
 	K8sAttributesWaitForMetadata                     bool
 	K8sAttributesWaitForMetadataTimeout              string
 	K8sAttributesShareProcessor                      bool
@@ -1569,6 +1571,18 @@ func assembleConfigurationReloaderContainer(
 			workloadNameEnvVar,
 			k8sPodUidEnvVar,
 			k8sPodNameEnvVar,
+			{
+				Name: "DASH0_POD_IP",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: "status.podIP",
+					},
+				},
+			},
+			{
+				Name:  "DASH0_COLLECTOR_HEALTH_CHECK_PORT",
+				Value: strconv.Itoa(probesHttpPort),
+			},
 		},
 		Resources:    resourceRequirements.ToResourceRequirements(),
 		VolumeMounts: reloaderVolumeMounts,

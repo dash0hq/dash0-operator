@@ -512,6 +512,7 @@ tests:
             apiGroups:
               - dash0.com
             resources:
+              - dash0generativeaievaluations
               - dash0teams
             verbs:
               - get

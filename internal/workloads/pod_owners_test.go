@@ -368,6 +368,8 @@ var _ = Describe("Modifying a pod with owners", func() {
 			false,
 			false,
 			false,
+			true,
+			true,
 		)
 		namespaceConfig := DefaultNamespaceInstrumentationConfig
 		namespaceConfig.InstrumentPods = true

@@ -31,6 +31,12 @@ In namespaces with
 operator does not restart pods after an upgrade.
 Existing pods keep the instrumentation of the previous operator version until they are recreated.
 
+> **Note:** Using `--reuse-values` when upgrading to a new chart version is not supported.
+> With `--reuse-values`, Helm uses the default values of the previously installed chart version instead of those of
+> the new version, so default values that the new version adds or changes are missing.
+> To keep the values you have set explicitly, use `--reset-then-reuse-values` (Helm 3.14 or later), or provide your
+> values again via `--values` or `--set`.
+
 ### Operator Version 0.158.0: Operator-Managed Webhook Certificates
 
 Starting with version 0.158.0, the operator manages the TLS certificates for its webhooks instead of the Helm chart, see

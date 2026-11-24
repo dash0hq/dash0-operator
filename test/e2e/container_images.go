@@ -27,6 +27,7 @@ type Images struct {
 	edgeProxy                    ImageSpec
 	agent0Connector              ImageSpec
 	syntheticsWorker             ImageSpec
+	debuginfoProxy               ImageSpec
 }
 
 const (
@@ -40,6 +41,7 @@ const (
 	signalControlCollectorImageName       = "signal-control-collector"
 	edgeProxyImageName                    = "edge-proxy"
 	agent0ConnectorImageName              = "agent0-connector"
+	debuginfoProxyImageName               = "debuginfo-proxy"
 
 	tagLatest = "latest"
 
@@ -141,6 +143,13 @@ func createContainerImages(repositoryPrefix string, imageTag string, pullPolicy 
 		// synthetics-worker-X.Y.Z), like the Signal Control collector and the Edge Proxy, so its default
 		// repository/tag comes from the Helm chart's pinned values.yaml, not from this run's IMAGE_TAG.
 		syntheticsWorker: determineExternalContainerImage("SYNTHETICS_WORKER"),
+		debuginfoProxy: determineContainerImage(
+			"DEBUGINFO_PROXY",
+			repositoryPrefix,
+			debuginfoProxyImageName,
+			imageTag,
+			pullPolicy,
+		),
 	}
 }
 
