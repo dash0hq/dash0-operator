@@ -9,10 +9,14 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -34,6 +38,11 @@ const (
 	// doing something really nonsensical.
 	PID_MAX_LIMIT = 32_768
 
+	podIpEnvVarName                    = "DASH0_POD_IP"
+	collectorHealthCheckPortEnvVarName = "DASH0_COLLECTOR_HEALTH_CHECK_PORT"
+	collectorHealthCheckTimeout        = time.Second
+	deferredReloadRetryInterval        = time.Second
+
 	meterName       = "dash0.operator.configuration_reloader"
 	metricNameLabel = "metric.name"
 	errorLabel      = "error"
@@ -43,6 +52,16 @@ var (
 	logger *slog.Logger
 
 	configurationFileHashes = make(map[string]string)
+
+	collectorHealthCheckClient = &http.Client{
+		Timeout: collectorHealthCheckTimeout,
+		Transport: &http.Transport{
+			Proxy:             nil,
+			DisableKeepAlives: true,
+		},
+	}
+	errCollectorNotReady = errors.New("the collector is not ready")
+	signalCollector      = triggerConfigurationReload
 
 	metricNamePrefix = fmt.Sprintf("%s.", meterName)
 
@@ -121,6 +140,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	collectorHealthCheckUrl := collectorHealthCheckUrlFromEnv()
+	if collectorHealthCheckUrl == "" {
+		logger.Info(fmt.Sprintf(
+			"%s or %s is not set, configuration updates will not wait for the collector to be ready",
+			podIpEnvVarName,
+			collectorHealthCheckPortEnvVarName,
+		))
+	}
+
 	ticker := time.NewTicker(*checkFrequency)
 	shutdown := make(chan os.Signal, 1)
 	done := make(chan bool, 1)
@@ -130,27 +158,40 @@ func main() {
 	initializeSelfMonitoringMetrics(meter)
 
 	go func() {
+		var retryDeferredReload <-chan time.Time
 		for {
 			select {
 			case <-ticker.C:
-				if isUpdateTriggered, err :=
-					checkConfiguration(
-						ctx,
-						configurationFilePaths,
-						*decompressedOutputPath,
-						*collectorPidFilePath,
-					); err != nil {
-					logger.Info(
-						"An error occurred while check for configuration changes",
-						errorLabel,
-						err,
-					)
-				} else if isUpdateTriggered {
-					logger.Info("Triggered collector configuration update")
-				}
+			case <-retryDeferredReload:
 			case <-shutdown:
 				ticker.Stop()
 				done <- true
+				return
+			}
+
+			isUpdateTriggered, err := checkConfiguration(
+				ctx,
+				configurationFilePaths,
+				*decompressedOutputPath,
+				*collectorPidFilePath,
+				collectorHealthCheckUrl,
+			)
+			if errors.Is(err, errCollectorNotReady) {
+				if retryDeferredReload == nil {
+					logger.Info(
+						"Deferring the collector configuration update until the collector is ready",
+						errorLabel,
+						err,
+					)
+				}
+				retryDeferredReload = time.After(deferredReloadRetryInterval)
+				continue
+			}
+			retryDeferredReload = nil
+			if err != nil {
+				logger.Info("An error occurred while checking for configuration changes", errorLabel, err)
+			} else if isUpdateTriggered {
+				logger.Info("Triggered collector configuration update")
 			}
 		}
 	}()
@@ -160,57 +201,73 @@ func main() {
 	common.ShutDownOTelSdk(ctx)
 }
 
+func collectorHealthCheckUrlFromEnv() string {
+	podIp := os.Getenv(podIpEnvVarName)
+	port := os.Getenv(collectorHealthCheckPortEnvVarName)
+	if podIp == "" || port == "" {
+		return ""
+	}
+	return "http://" + net.JoinHostPort(podIp, port) + "/"
+}
+
 func initializeHashes(configurationFilePaths []string) error {
 	for _, configurationFilePath := range configurationFilePaths {
-		configurationFile, err := os.Open(configurationFilePath)
+		hashValue, err := hashConfigurationFile(configurationFilePath)
 		if err != nil {
-			return fmt.Errorf("cannot open configuration file '%s': %w", configurationFilePath, err)
+			return err
 		}
-		defer func() {
-			_ = configurationFile.Close()
-		}()
-
-		configurationFileHash := md5.New()
-		if _, err := io.Copy(configurationFileHash, configurationFile); err != nil {
-			return fmt.Errorf("cannot hash configuration file '%s': %w", configurationFilePath, err)
-		}
-		hashValue := hex.EncodeToString(configurationFileHash.Sum(nil))
 		configurationFileHashes[configurationFilePath] = hashValue
 	}
 
 	return nil
 }
 
+func hashConfigurationFile(configurationFilePath string) (string, error) {
+	configurationFile, err := os.Open(configurationFilePath)
+	if err != nil {
+		return "", fmt.Errorf("cannot open configuration file '%s': %w", configurationFilePath, err)
+	}
+	defer func() {
+		_ = configurationFile.Close()
+	}()
+
+	configurationFileHash := md5.New()
+	if _, err := io.Copy(configurationFileHash, configurationFile); err != nil {
+		return "", fmt.Errorf("cannot hash configuration file '%s': %w", configurationFilePath, err)
+	}
+	return hex.EncodeToString(configurationFileHash.Sum(nil)), nil
+}
+
 type HasTriggeredReload bool
 
+/*
+checkConfiguration compares the configuration files with the hashes of the configuration that has last been applied, and
+sends SIGHUP to the collector if they differ. The collector only installs its SIGHUP handler after all its components
+have been started; a SIGHUP that arrives earlier terminates the process. Hence the reload is deferred (by returning an
+error wrapping errCollectorNotReady) until the collector's health check reports it as ready. The new hashes are only
+recorded after the collector has been signalled successfully, so that a reload that has been deferred or that failed is
+attempted again on the next check.
+*/
 func checkConfiguration(
 	ctx context.Context,
 	configurationFilePaths []string,
 	decompressedOutputPath string,
 	collectorPidFilePath string,
+	collectorHealthCheckUrl string,
 ) (HasTriggeredReload, error) {
 	var updatesConfigurationFilePaths []string
+	updatedConfigurationFileHashes := make(map[string]string)
 	// We need to poll files, the filesystem timestamps are not reliable in container runtime
 	for _, configurationFilePath := range configurationFilePaths {
-		configurationFile, err := os.Open(configurationFilePath)
+		hashValue, err := hashConfigurationFile(configurationFilePath)
 		if err != nil {
-			return false, fmt.Errorf("cannot open configuration file '%s': %w", configurationFilePath, err)
+			return false, err
 		}
-		defer func() {
-			_ = configurationFile.Close()
-		}()
-
-		configurationFileHash := md5.New()
-		if _, err := io.Copy(configurationFileHash, configurationFile); err != nil {
-			return false, fmt.Errorf("cannot hash configuration file '%s': %w", configurationFilePath, err)
-		}
-		hashValue := hex.EncodeToString(configurationFileHash.Sum(nil))
 
 		if previousConfigurationFileHash, ok := configurationFileHashes[configurationFilePath]; ok {
 			if previousConfigurationFileHash != hashValue {
-				logger.Info("configuration file has been updated", "configurationFilePath", configurationFilePath)
 				updatesConfigurationFilePaths = append(updatesConfigurationFilePaths, configurationFilePath)
-				configurationFileHashes[configurationFilePath] = hashValue
+				updatedConfigurationFileHashes[configurationFilePath] = hashValue
 			}
 		} else {
 			// This is the first time we hash this config file, nothing to do beyond updating. This should actually
@@ -226,12 +283,11 @@ func checkConfiguration(
 		return false, nil
 	}
 
-	changedFiles := strings.Join(updatesConfigurationFilePaths, ",")
-	configFilesChangesMetric.Add(ctx, 1, otelmetric.WithAttributes(
-		attribute.Int(metricNamePrefix+"changed_files.count", len(updatesConfigurationFilePaths)),
-		attribute.String(metricNamePrefix+"changed_files.names", changedFiles),
-	))
+	if err := checkCollectorReadiness(ctx, collectorHealthCheckUrl); err != nil {
+		return false, fmt.Errorf("%w: %w", errCollectorNotReady, err)
+	}
 
+	changedFiles := strings.Join(updatesConfigurationFilePaths, ",")
 	if decompressedOutputPath != "" {
 		if err := decompressAllConfigFiles(ctx, updatesConfigurationFilePaths, decompressedOutputPath); err != nil {
 			return false, err
@@ -249,7 +305,7 @@ func checkConfiguration(
 		return false, fmt.Errorf("cannot retrieve collector pid: %w", err)
 	}
 
-	if err = triggerConfigurationReload(collectorPid); err != nil {
+	if err = signalCollector(collectorPid); err != nil {
 		reloadErrorsMetric.Add(ctx, 1, otelmetric.WithAttributes(
 			attribute.String("error.type", "CannotTriggerCollectorUpdate"),
 			attribute.String("error.message", common.TruncateErrorForMetricAttribute(err)),
@@ -257,7 +313,31 @@ func checkConfiguration(
 		return false, fmt.Errorf("cannot trigger collector update: %w", err)
 	}
 
+	maps.Copy(configurationFileHashes, updatedConfigurationFileHashes)
+	configFilesChangesMetric.Add(ctx, 1, otelmetric.WithAttributes(
+		attribute.Int(metricNamePrefix+"changed_files.count", len(updatesConfigurationFilePaths)),
+		attribute.String(metricNamePrefix+"changed_files.names", changedFiles),
+	))
 	return true, nil
+}
+
+func checkCollectorReadiness(ctx context.Context, collectorHealthCheckUrl string) error {
+	if collectorHealthCheckUrl == "" {
+		return nil
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, collectorHealthCheckUrl, nil)
+	if err != nil {
+		return err
+	}
+	response, err := collectorHealthCheckClient.Do(request)
+	if err != nil {
+		return err
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("the health check at %s responded with HTTP %d", collectorHealthCheckUrl, response.StatusCode)
+	}
+	return nil
 }
 
 func decompressAllConfigFiles(
