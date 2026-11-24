@@ -82,16 +82,20 @@ spec:
                 description: Dash0SyntheticCheckPlugin defines the plugin configuration
                 properties:
                   kind:
+                    description: |-
+                      The kind of check: "http" sends an HTTP request and evaluates assertions on the response, "browser" runs a
+                      Playwright test script. A browser check runs only on private locations.
                     enum:
                     - http
+                    - browser
                     type: string
                   spec:
-                    description: Dash0SyntheticCheckHTTPPluginSpec defines the HTTP
-                      plugin specification
+                    description: Dash0SyntheticCheckPluginSpec defines the plugin
+                      specification. The fields that apply depend on the plugin kind.
                     properties:
                       assertions:
-                        description: Dash0SyntheticCheckHTTPAssertions defines HTTP
-                          assertions
+                        description: The assertions to evaluate on the HTTP response.
+                          Required for http checks.
                         properties:
                           criticalAssertions:
                             items:
@@ -119,14 +123,30 @@ spec:
                                       description: For response_header assertions
                                       type: string
                                     operator:
-                                      description: For status_code, timing assertions
+                                      description: |-
+                                        For status_code, timing, response_header, json_body and text_body assertions. The numeric operators gt, gte,
+                                        lt and lte are only supported by status_code and timing assertions, the string operators (is_set, is_not_set,
+                                        matches, contains, starts_with, ends_with and their negations) only by response_header, json_body and
+                                        text_body assertions.
                                       enum:
                                       - is
                                       - is_not
+                                      - is_one_of
+                                      - is_not_one_of
                                       - gt
                                       - lt
                                       - gte
                                       - lte
+                                      - is_set
+                                      - is_not_set
+                                      - matches
+                                      - does_not_match
+                                      - contains
+                                      - does_not_contain
+                                      - starts_with
+                                      - does_not_start_with
+                                      - ends_with
+                                      - does_not_end_with
                                       type: string
                                     type:
                                       description: For timing assertions
@@ -139,8 +159,12 @@ spec:
                                       - response
                                       type: string
                                     value:
-                                      description: For all assertions
+                                      description: For all assertions. For error assertions,
+                                        one of dns, location_unavailable, tcp, timeout,
+                                        tls and unknown.
                                       type: string
+                                  required:
+                                  - value
                                   type: object
                               required:
                               - kind
@@ -158,6 +182,25 @@ spec:
                                   && has(self.spec.operator) && has(self.spec.value))
                                   || (self.kind == 'error' && has(self.spec.value))
                                   || (self.kind == 'ssl_certificate' && has(self.spec.value))
+                              - message: status_code and timing assertions only support
+                                  the operators is, is_not, is_one_of, is_not_one_of,
+                                  gt, gte, lt and lte
+                                rule: '!(self.kind in [''status_code'', ''timing''])
+                                  || !has(self.spec.operator) || self.spec.operator
+                                  in [''is'', ''is_not'', ''is_one_of'', ''is_not_one_of'',
+                                  ''gt'', ''gte'', ''lt'', ''lte'']'
+                              - message: response_header, json_body and text_body
+                                  assertions do not support the operators gt, gte,
+                                  lt and lte
+                                rule: '!(self.kind in [''response_header'', ''json_body'',
+                                  ''text_body'']) || !has(self.spec.operator) || !(self.spec.operator
+                                  in [''gt'', ''gte'', ''lt'', ''lte''])'
+                              - message: the value of an error assertion must be one
+                                  of dns, location_unavailable, tcp, timeout, tls
+                                  and unknown
+                                rule: self.kind != 'error' || !has(self.spec.value)
+                                  || self.spec.value in ['dns', 'location_unavailable',
+                                  'tcp', 'timeout', 'tls', 'unknown']
                             type: array
                           degradedAssertions:
                             items:
@@ -185,14 +228,30 @@ spec:
                                       description: For response_header assertions
                                       type: string
                                     operator:
-                                      description: For status_code, timing assertions
+                                      description: |-
+                                        For status_code, timing, response_header, json_body and text_body assertions. The numeric operators gt, gte,
+                                        lt and lte are only supported by status_code and timing assertions, the string operators (is_set, is_not_set,
+                                        matches, contains, starts_with, ends_with and their negations) only by response_header, json_body and
+                                        text_body assertions.
                                       enum:
                                       - is
                                       - is_not
+                                      - is_one_of
+                                      - is_not_one_of
                                       - gt
                                       - lt
                                       - gte
                                       - lte
+                                      - is_set
+                                      - is_not_set
+                                      - matches
+                                      - does_not_match
+                                      - contains
+                                      - does_not_contain
+                                      - starts_with
+                                      - does_not_start_with
+                                      - ends_with
+                                      - does_not_end_with
                                       type: string
                                     type:
                                       description: For timing assertions
@@ -205,8 +264,12 @@ spec:
                                       - response
                                       type: string
                                     value:
-                                      description: For all assertions
+                                      description: For all assertions. For error assertions,
+                                        one of dns, location_unavailable, tcp, timeout,
+                                        tls and unknown.
                                       type: string
+                                  required:
+                                  - value
                                   type: object
                               required:
                               - kind
@@ -224,14 +287,80 @@ spec:
                                   && has(self.spec.operator) && has(self.spec.value))
                                   || (self.kind == 'error' && has(self.spec.value))
                                   || (self.kind == 'ssl_certificate' && has(self.spec.value))
+                              - message: status_code and timing assertions only support
+                                  the operators is, is_not, is_one_of, is_not_one_of,
+                                  gt, gte, lt and lte
+                                rule: '!(self.kind in [''status_code'', ''timing''])
+                                  || !has(self.spec.operator) || self.spec.operator
+                                  in [''is'', ''is_not'', ''is_one_of'', ''is_not_one_of'',
+                                  ''gt'', ''gte'', ''lt'', ''lte'']'
+                              - message: response_header, json_body and text_body
+                                  assertions do not support the operators gt, gte,
+                                  lt and lte
+                                rule: '!(self.kind in [''response_header'', ''json_body'',
+                                  ''text_body'']) || !has(self.spec.operator) || !(self.spec.operator
+                                  in [''gt'', ''gte'', ''lt'', ''lte''])'
+                              - message: the value of an error assertion must be one
+                                  of dns, location_unavailable, tcp, timeout, tls
+                                  and unknown
+                                rule: self.kind != 'error' || !has(self.spec.value)
+                                  || self.spec.value in ['dns', 'location_unavailable',
+                                  'tcp', 'timeout', 'tls', 'unknown']
                             type: array
                         required:
                         - criticalAssertions
                         - degradedAssertions
                         type: object
+                      env:
+                        description: |-
+                          Environment variables the script reads, only for browser checks. Each name is unique within the check. The
+                          runner sets PATH, HOME, TMPDIR, PLAYWRIGHT_BROWSERS_PATH, TRACEPARENT, CI and NODE_OPTIONS itself, so a check
+                          cannot set them.
+                        items:
+                          description: Dash0SyntheticCheckEnvVar defines an environment
+                            variable of a browser check.
+                          properties:
+                            name:
+                              description: The environment variable name, as the script
+                                reads it.
+                              type: string
+                            value:
+                              description: |-
+                                The plaintext value. Dash0 stores it with the check and returns it to anyone who may read the check, so a
+                                secret belongs in valueFrom instead.
+                              type: string
+                            valueFrom:
+                              description: Where Dash0 reads the value from.
+                              properties:
+                                platformVariableRef:
+                                  description: A platform variable, resolved when
+                                    the check is dispatched. The variable must list
+                                    synthetics in its usableIn.
+                                  properties:
+                                    name:
+                                      description: The name of the platform variable,
+                                        not the environment variable name the script
+                                        reads.
+                                      type: string
+                                  required:
+                                  - name
+                                  type: object
+                              type: object
+                              x-kubernetes-validations:
+                              - message: platformVariableRef must be set
+                                rule: has(self.platformVariableRef)
+                          required:
+                          - name
+                          type: object
+                          x-kubernetes-validations:
+                          - message: exactly one of value and valueFrom must be set
+                            rule: has(self.value) != has(self.valueFrom)
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
                       request:
-                        description: Dash0SyntheticCheckHTTPRequest defines the HTTP
-                          request configuration
+                        description: The HTTP request to send. Required for http checks.
                         properties:
                           basicAuthentication:
                             description: Dash0SyntheticCheckHTTPBasicAuthentication
@@ -332,24 +461,31 @@ spec:
                           url:
                             type: string
                         required:
-                        - headers
                         - method
-                        - queryParameters
                         - redirects
                         - tls
                         - tracing
                         - url
                         type: object
-                    required:
-                    - assertions
-                    - request
+                      script:
+                        description: The Playwright test script. Required for browser
+                          checks.
+                        maxLength: 65536
+                        type: string
                     type: object
                 required:
                 - kind
                 - spec
                 type: object
                 x-kubernetes-validations:
-                - rule: self.kind == 'http'
+                - message: an http check requires spec.request and spec.assertions,
+                    and must not set spec.script or spec.env
+                  rule: self.kind != 'http' || (has(self.spec.request) && has(self.spec.assertions)
+                    && !has(self.spec.script) && !has(self.spec.env))
+                - message: a browser check requires spec.script, and must not set
+                    spec.request or spec.assertions
+                  rule: self.kind != 'browser' || (has(self.spec.script) && !has(self.spec.request)
+                    && !has(self.spec.assertions))
               retries:
                 description: Dash0SyntheticCheckRetries defines the retry configuration
                 properties:

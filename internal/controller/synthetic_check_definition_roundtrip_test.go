@@ -125,8 +125,8 @@ func fullyPopulatedSyntheticCheck() *dash0v1alpha1.Dash0SyntheticCheck {
 			},
 			Plugin: dash0v1alpha1.Dash0SyntheticCheckPlugin{
 				Kind: "http",
-				Spec: dash0v1alpha1.Dash0SyntheticCheckHTTPPluginSpec{
-					Request: dash0v1alpha1.Dash0SyntheticCheckHTTPRequest{
+				Spec: dash0v1alpha1.Dash0SyntheticCheckPluginSpec{
+					Request: &dash0v1alpha1.Dash0SyntheticCheckHTTPRequest{
 						Method:    "post",
 						URL:       "https://shop.example.com/api/checkout",
 						Redirects: "follow",
@@ -147,7 +147,7 @@ func fullyPopulatedSyntheticCheck() *dash0v1alpha1.Dash0SyntheticCheck {
 							Spec: dash0v1alpha1.Dash0SyntheticCheckHTTPBodySpec{Content: `{"items":[]}`},
 						},
 					},
-					Assertions: dash0v1alpha1.Dash0SyntheticCheckHTTPAssertions{
+					Assertions: &dash0v1alpha1.Dash0SyntheticCheckHTTPAssertions{
 						CriticalAssertions: []dash0v1alpha1.Dash0SyntheticCheckAssertion{
 							{
 								Kind: "status_code",

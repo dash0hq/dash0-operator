@@ -43,7 +43,7 @@ custom resource definition for notification channels should match snapshot:
 
                     Exactly one of the type-specific config fields (slackConfig, slackBotConfig, emailV2Config, webhookConfig,
                     incidentioConfig, opsgenieConfig, pagerdutyConfig, teamsWebhookConfig, discordWebhookConfig,
-                    googleChatWebhookConfig, ilertConfig, allQuietConfig) must be set, matching the value of the type field.
+                    googleChatWebhookConfig, ilertConfig, allQuietConfig, mattermostWebhookConfig) must be set, matching the value of the type field.
                   properties:
                     allQuietConfig:
                       description: Configuration for All Quiet notifications. Required when type is "all_quiet".
@@ -124,6 +124,24 @@ custom resource definition for notification channels should match snapshot:
                           type: string
                       required:
                         - headers
+                        - url
+                      type: object
+                    mattermostWebhookConfig:
+                      description: Configuration for Mattermost webhook notifications. Required when type is "mattermost_webhook".
+                      properties:
+                        channel:
+                          description: |-
+                            Optional channel override. Accepts a channel name (town-square) or a direct message target (@username). When
+                            omitted, Mattermost posts to the channel the incoming webhook was created for. Overriding requires the
+                            webhook's creator to have access to the target channel; Mattermost rejects the post otherwise.
+                          type: string
+                        url:
+                          description: |-
+                            The Mattermost incoming webhook URL, as shown in "Integrations → Incoming Webhooks" of the Mattermost server
+                            (e.g. https://mattermost.example.com/hooks/xxx-generatedkey-xxx).
+                          format: uri
+                          type: string
+                      required:
                         - url
                       type: object
                     opsgenieConfig:
@@ -297,6 +315,7 @@ custom resource definition for notification channels should match snapshot:
                         - google_chat_webhook
                         - ilert
                         - all_quiet
+                        - mattermost_webhook
                       type: string
                     webhookConfig:
                       description: Configuration for generic webhook notifications. Required when type is "webhook".
@@ -350,6 +369,8 @@ custom resource definition for notification channels should match snapshot:
                       rule: 'self.type == ''ilert'' ? has(self.ilertConfig) : !has(self.ilertConfig)'
                     - message: allQuietConfig must be set when type is 'all_quiet', and must not be set otherwise
                       rule: 'self.type == ''all_quiet'' ? has(self.allQuietConfig) : !has(self.allQuietConfig)'
+                    - message: mattermostWebhookConfig must be set when type is 'mattermost_webhook', and must not be set otherwise
+                      rule: 'self.type == ''mattermost_webhook'' ? has(self.mattermostWebhookConfig) : !has(self.mattermostWebhookConfig)'
                 status:
                   description: Dash0NotificationChannelStatus defines the observed state of Dash0NotificationChannel
                   properties:

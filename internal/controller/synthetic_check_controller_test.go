@@ -13,6 +13,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/yaml"
@@ -862,6 +863,181 @@ spec:
 				)
 			},
 		)
+
+		Describe(
+			"the CRD schema", func() {
+				const schemaTestSyntheticCheckName = "synthetic-check-schema-test"
+
+				AfterEach(
+					func() {
+						deleteSyntheticCheckResourceIfItExists(
+							ctx, k8sClient, TestNamespaceName, schemaTestSyntheticCheckName)
+					},
+				)
+
+				browserPlugin := func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
+					plugin.Kind = "browser"
+					plugin.Spec = dash0v1alpha1.Dash0SyntheticCheckPluginSpec{
+						Script: "import { test } from '@playwright/test';",
+						Env: []dash0v1alpha1.Dash0SyntheticCheckEnvVar{
+							{Name: "USER_NAME", Value: ptr.To("test-user")},
+							{
+								Name: "PASSWORD",
+								ValueFrom: &dash0v1alpha1.Dash0SyntheticCheckEnvVarSource{
+									PlatformVariableRef: &dash0v1alpha1.Dash0SyntheticCheckPlatformVariableRef{
+										Name: "test-password",
+									},
+								},
+							},
+						},
+					}
+				}
+				withAssertion := func(kind string, assertionSpec dash0v1alpha1.Dash0SyntheticCheckAssertionSpec) func(
+					plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin,
+				) {
+					return func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
+						plugin.Spec.Assertions.CriticalAssertions = []dash0v1alpha1.Dash0SyntheticCheckAssertion{
+							{Kind: kind, Spec: assertionSpec},
+						}
+					}
+				}
+
+				DescribeTable(
+					"validates the plugin",
+					func(modifyPlugin func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin), expectedError string) {
+						resource := createSyntheticCheckResource(TestNamespaceName, schemaTestSyntheticCheckName)
+						modifyPlugin(&resource.Spec.Plugin)
+						err := k8sClient.Create(ctx, resource)
+						if expectedError == "" {
+							Expect(err).ToNot(HaveOccurred())
+						} else {
+							Expect(err).To(MatchError(ContainSubstring(expectedError)))
+						}
+					},
+					Entry(
+						"accepts an http check",
+						func(*dash0v1alpha1.Dash0SyntheticCheckPlugin) {},
+						"",
+					),
+					Entry(
+						"accepts an http check without headers and query parameters",
+						func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
+							plugin.Spec.Request.Headers = nil
+							plugin.Spec.Request.QueryParameters = nil
+						},
+						"",
+					),
+					Entry(
+						"rejects an http check without request",
+						func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
+							plugin.Spec.Request = nil
+						},
+						"an http check requires spec.request and spec.assertions",
+					),
+					Entry(
+						"rejects an http check with a script",
+						func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
+							plugin.Spec.Script = "import { test } from '@playwright/test';"
+						},
+						"an http check requires spec.request and spec.assertions, and must not set spec.script",
+					),
+					Entry(
+						"accepts a browser check",
+						browserPlugin,
+						"",
+					),
+					Entry(
+						"rejects a browser check without script",
+						func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
+							browserPlugin(plugin)
+							plugin.Spec.Script = ""
+						},
+						"a browser check requires spec.script",
+					),
+					Entry(
+						"rejects a browser check with a request",
+						func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
+							request := plugin.Spec.Request
+							browserPlugin(plugin)
+							plugin.Spec.Request = request
+						},
+						"a browser check requires spec.script, and must not set spec.request or spec.assertions",
+					),
+					Entry(
+						"rejects an environment variable with value and valueFrom",
+						func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
+							browserPlugin(plugin)
+							plugin.Spec.Env[0].ValueFrom = plugin.Spec.Env[1].ValueFrom
+						},
+						"exactly one of value and valueFrom must be set",
+					),
+					Entry(
+						"rejects an environment variable without value and valueFrom",
+						func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
+							browserPlugin(plugin)
+							plugin.Spec.Env[0].Value = nil
+						},
+						"exactly one of value and valueFrom must be set",
+					),
+					Entry(
+						"rejects duplicate environment variable names",
+						func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
+							browserPlugin(plugin)
+							plugin.Spec.Env[1].Name = plugin.Spec.Env[0].Name
+						},
+						"Duplicate value",
+					),
+					Entry(
+						"accepts a string operator for a response header assertion",
+						withAssertion("response_header", dash0v1alpha1.Dash0SyntheticCheckAssertionSpec{
+							Key:      ptr.To("Content-Type"),
+							Operator: ptr.To("contains"),
+							Value:    ptr.To("json"),
+						}),
+						"",
+					),
+					Entry(
+						"rejects a numeric operator for a json body assertion",
+						withAssertion("json_body", dash0v1alpha1.Dash0SyntheticCheckAssertionSpec{
+							JSONPath: ptr.To("$.count"),
+							Operator: ptr.To("gt"),
+							Value:    ptr.To("1"),
+						}),
+						"response_header, json_body and text_body assertions do not support the operators gt",
+					),
+					Entry(
+						"accepts is_one_of for a status code assertion",
+						withAssertion("status_code", dash0v1alpha1.Dash0SyntheticCheckAssertionSpec{
+							Operator: ptr.To("is_one_of"),
+							Value:    ptr.To("200,204"),
+						}),
+						"",
+					),
+					Entry(
+						"rejects a string operator for a status code assertion",
+						withAssertion("status_code", dash0v1alpha1.Dash0SyntheticCheckAssertionSpec{
+							Operator: ptr.To("contains"),
+							Value:    ptr.To("20"),
+						}),
+						"status_code and timing assertions only support the operators",
+					),
+					Entry(
+						"accepts a known error type for an error assertion",
+						withAssertion("error", dash0v1alpha1.Dash0SyntheticCheckAssertionSpec{
+							Value: ptr.To("timeout"),
+						}),
+						"",
+					),
+					Entry(
+						"rejects an unknown error type for an error assertion",
+						withAssertion("error", dash0v1alpha1.Dash0SyntheticCheckAssertionSpec{
+							Value: ptr.To("http"),
+						}),
+						"the value of an error assertion must be one of",
+					),
+				)
+			},
+		)
 	},
 )
 
@@ -960,8 +1136,8 @@ func createSyntheticCheckResourceWithEnableLabel(
 			},
 			Plugin: dash0v1alpha1.Dash0SyntheticCheckPlugin{
 				Kind: "http",
-				Spec: dash0v1alpha1.Dash0SyntheticCheckHTTPPluginSpec{
-					Request: dash0v1alpha1.Dash0SyntheticCheckHTTPRequest{
+				Spec: dash0v1alpha1.Dash0SyntheticCheckPluginSpec{
+					Request: &dash0v1alpha1.Dash0SyntheticCheckHTTPRequest{
 						Method:    "get",
 						URL:       "https://example.com",
 						Redirects: "follow",
@@ -974,7 +1150,7 @@ func createSyntheticCheckResourceWithEnableLabel(
 						Headers:         []dash0v1alpha1.Dash0SyntheticCheckHTTPHeader{},
 						QueryParameters: []dash0v1alpha1.Dash0SyntheticCheckHTTPQueryParameter{},
 					},
-					Assertions: dash0v1alpha1.Dash0SyntheticCheckHTTPAssertions{
+					Assertions: &dash0v1alpha1.Dash0SyntheticCheckHTTPAssertions{
 						CriticalAssertions: []dash0v1alpha1.Dash0SyntheticCheckAssertion{
 							{
 								Kind: "status_code",

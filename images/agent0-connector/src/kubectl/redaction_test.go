@@ -177,12 +177,14 @@ func TestRedactDocument(t *testing.T) {
 			googleChatWebhookUrl,
 			ilertUrl,
 			allQuietUrl,
+			mattermostWebhookUrl,
 			syntheticCheckHeaderValue,
 			syntheticCheckQueryParameterValue,
 			syntheticCheckPassword,
 			syntheticCheckUrlPassword,
 			syntheticCheckUrlApiKey,
 			syntheticCheckBodyContent,
+			syntheticCheckBrowserEnvValue,
 		} {
 			if strings.Contains(rendered, secret) {
 				t.Errorf("expected the credential %q to be redacted, got %q", secret, rendered)
@@ -1877,12 +1879,14 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 			googleChatWebhookUrl,
 			ilertUrl,
 			allQuietUrl,
+			mattermostWebhookUrl,
 			syntheticCheckHeaderValue,
 			syntheticCheckQueryParameterValue,
 			syntheticCheckPassword,
 			syntheticCheckUrlPassword,
 			syntheticCheckUrlApiKey,
 			syntheticCheckBodyContent,
+			syntheticCheckBrowserEnvValue,
 		} {
 			if strings.Contains(resp.GetStdout(), secret) {
 				t.Errorf("expected the credential %q to be redacted, got %q", secret, resp.GetStdout())
@@ -2696,6 +2700,7 @@ const (
 	discordWebhookUrl         = "https://discord.com/api/webhooks/1234567890/my-discord-webhook-secret"
 	ilertUrl                  = "https://api.ilert.com/api/v1/events/dash0/my-ilert-secret"
 	allQuietUrl               = "https://events.allquiet.app/api/webhook/my-all-quiet-secret"
+	mattermostWebhookUrl      = "https://mattermost.example.com/hooks/my-mattermost-webhook-secret"
 
 	// The canonical shape of a Google Chat webhook URL: its credentials are query parameters, so the value contains an
 	// ampersand, which the JSON serializer escapes. Redacting the parsed document rather than the rendered text is what
@@ -2707,6 +2712,7 @@ const (
 	syntheticCheckUsername            = "my-synthetic-check-user"
 	syntheticCheckPassword            = "my-synthetic-check-password"
 	syntheticCheckBodyContent         = "client_secret=my-synthetic-check-body-secret"
+	syntheticCheckBrowserEnvValue     = "my-synthetic-check-browser-env-secret"
 	routingFilterAttributeKey         = "service.namespace"
 
 	// The URL a synthetic check requests is not a credential itself, but it carries two: the password of its user
@@ -2914,6 +2920,16 @@ const dash0ApiResourcesJson = `{
       }
     },
     {
+      "apiVersion": "operator.dash0.com/v1beta1",
+      "kind": "Dash0NotificationChannel",
+      "metadata": { "name": "mattermost-channel", "namespace": "my-namespace" },
+      "spec": {
+        "display": { "name": "Mattermost" },
+        "type": "mattermost_webhook",
+        "mattermostWebhookConfig": { "url": "` + mattermostWebhookUrl + `", "channel": "town-square" }
+      }
+    },
+    {
       "apiVersion": "operator.dash0.com/v1alpha1",
       "kind": "Dash0SyntheticCheck",
       "metadata": { "name": "synthetic-check", "namespace": "my-namespace" },
@@ -2950,6 +2966,25 @@ const dash0ApiResourcesJson = `{
               "criticalAssertions": [{ "kind": "status_code", "spec": { "operator": "is", "value": "200" } }],
               "degradedAssertions": []
             }
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "operator.dash0.com/v1alpha1",
+      "kind": "Dash0SyntheticCheck",
+      "metadata": { "name": "browser-check", "namespace": "my-namespace" },
+      "spec": {
+        "display": { "name": "My Browser Check" },
+        "enabled": true,
+        "plugin": {
+          "kind": "browser",
+          "spec": {
+            "script": "import { test } from '@playwright/test';",
+            "env": [
+              { "name": "PASSWORD", "value": "` + syntheticCheckBrowserEnvValue + `" },
+              { "name": "API_KEY", "valueFrom": { "platformVariableRef": { "name": "api-key" } } }
+            ]
           }
         }
       }

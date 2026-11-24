@@ -303,6 +303,50 @@ Once the check is managed via the operator, you might want to delete the synthet
 Dash0 UI directly in the first step -- otherwise it would show up as a duplicate in the Dash0 UI, i.e. two synthetic
 checks with the same name but different internal IDs.
 
+Besides HTTP checks (`spec.plugin.kind: http`), the operator supports browser checks (`spec.plugin.kind: browser`),
+which run a Playwright test script.
+A browser check runs only on private locations.
+The script reads its configuration from environment variables, listed in `spec.plugin.spec.env`.
+A plaintext `value` is stored with the check and visible to everyone who can read it, so secrets should be provided via
+`valueFrom.platformVariableRef`, which references a Dash0 platform variable:
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SyntheticCheck
+metadata:
+  name: checkout-flow
+spec:
+  display:
+    name: Checkout Flow
+  enabled: true
+  plugin:
+    kind: browser
+    spec:
+      script: |
+        import { test, expect } from '@playwright/test';
+        test('checkout', async ({ page }) => {
+          await page.goto(process.env.SHOP_URL);
+          await expect(page.getByRole('button', { name: 'Checkout' })).toBeVisible();
+        });
+      env:
+        - name: SHOP_URL
+          value: https://shop.example.com
+        - name: SHOP_PASSWORD
+          valueFrom:
+            platformVariableRef:
+              name: shop-password
+  schedule:
+    strategy: all_locations
+    interval: 5m
+    locations:
+      - my-private-location
+  retries:
+    kind: off
+    spec: {}
+  notifications:
+    channels: []
+```
+
 If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the synthetic
 checks in that dataset, otherwise they will be created in the `default` dataset.
 
@@ -761,6 +805,23 @@ spec:
     url: "https://allquiet.app/api/webhook/my-inbound-integration-id"
 ```
 
+##### Mattermost Webhook
+
+```yaml
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: mattermost-alerts
+spec:
+  display:
+    name: Mattermost Alerts
+  type: mattermost_webhook
+  mattermostWebhookConfig:
+    url: "https://mattermost.example.com/hooks/xxx-generatedkey-xxx"
+    # optional, a channel name or a direct message target (@username); defaults to the channel of the webhook
+    channel: town-square
+```
+
 #### Optional Fields
 
 **`frequency`**: Controls the notification frequency (e.g. `10m`, `5m`, `1h`). Defaults to `10m` if omitted.
@@ -849,7 +910,8 @@ spec:
       value: "kube-system"
 ```
 
-The `contexts` field specifies which signal types the filter applies to (e.g. `log`, `span`, `metric` or `datapoint`).
+The `contexts` field specifies which signal types the filter applies to (`datapoint`, `log`, `profile_sample`, `span`
+or `web_event`).
 The `filter` field contains one or more conditions. Each condition matches against an attribute `key` with an `operator`
 (e.g. `is`, `is_not`, `contains`, `starts_with`) and a `value` to compare against.
 

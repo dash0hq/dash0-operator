@@ -40,9 +40,14 @@ spec:
             description: Dash0SpamFilterSpec defines the desired state of Dash0SpamFilter
             properties:
               contexts:
-                description: The signal contexts this spam filter applies to (e.g.,
-                  log, span, metric).
+                description: The signal contexts this spam filter applies to.
                 items:
+                  enum:
+                  - datapoint
+                  - log
+                  - profile_sample
+                  - span
+                  - web_event
                   type: string
                 minItems: 1
                 type: array

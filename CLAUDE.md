@@ -96,6 +96,12 @@ The resulting changes in the directory `config/crd` need to be carried over to t
 `helm-chart/dash0-operator/templates/operator`, which are the Helm chart templates. The test in `olm/crds` fails when
 a CRD template of the chart differs from `config/crd/bases`.
 
+The drift check in `internal/controller/api_type_drift_checks_test.go` compares the generated schemas in
+`config/crd/bases` with the types of `dash0-api-client-go`: fields, JSON types, enum values, required fields and the
+variants of unions, which it merges the same way the CRDs model a union (one object with a `kind` field). It reads the
+generated schemas, so run `make manifests` before running it. When it fails after a CRD change or an update of the API
+client, align the CRD with the API, or add the difference with the reason to the allowed differences of that check.
+
 CRD specs must be fully typed with structured Go types (enums, nested objects, required/optional markers, and
 kubebuilder validation annotations). Do not use opaque string fields to hold structured data. Validate the Go types
 against the canonical OpenAPI spec in `https://github.com/dash0hq/dash0hq/dash0/tree/main/modules/openapi-types/internal/spec/` to ensure they match the Dash0 API

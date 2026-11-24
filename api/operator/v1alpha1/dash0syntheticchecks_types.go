@@ -54,23 +54,73 @@ type Dash0SyntheticCheckDisplay struct {
 }
 
 // Dash0SyntheticCheckPlugin defines the plugin configuration
-// +kubebuilder:validation:XValidation:rule="self.kind == 'http'"
+// +kubebuilder:validation:XValidation:rule="self.kind != 'http' || (has(self.spec.request) && has(self.spec.assertions) && !has(self.spec.script) && !has(self.spec.env))",message="an http check requires spec.request and spec.assertions, and must not set spec.script or spec.env"
+// +kubebuilder:validation:XValidation:rule="self.kind != 'browser' || (has(self.spec.script) && !has(self.spec.request) && !has(self.spec.assertions))",message="a browser check requires spec.script, and must not set spec.request or spec.assertions"
 type Dash0SyntheticCheckPlugin struct {
+	// The kind of check: "http" sends an HTTP request and evaluates assertions on the response, "browser" runs a
+	// Playwright test script. A browser check runs only on private locations.
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=http
+	// +kubebuilder:validation:Enum=http;browser
 	Kind string `json:"kind"`
 
 	// +kubebuilder:validation:Required
-	Spec Dash0SyntheticCheckHTTPPluginSpec `json:"spec"`
+	Spec Dash0SyntheticCheckPluginSpec `json:"spec"`
 }
 
-// Dash0SyntheticCheckHTTPPluginSpec defines the HTTP plugin specification
-type Dash0SyntheticCheckHTTPPluginSpec struct {
-	// +kubebuilder:validation:Required
-	Request Dash0SyntheticCheckHTTPRequest `json:"request"`
+// Dash0SyntheticCheckPluginSpec defines the plugin specification. The fields that apply depend on the plugin kind.
+type Dash0SyntheticCheckPluginSpec struct {
+	// The HTTP request to send. Required for http checks.
+	// +kubebuilder:validation:Optional
+	Request *Dash0SyntheticCheckHTTPRequest `json:"request,omitempty"`
 
+	// The assertions to evaluate on the HTTP response. Required for http checks.
+	// +kubebuilder:validation:Optional
+	Assertions *Dash0SyntheticCheckHTTPAssertions `json:"assertions,omitempty"`
+
+	// The Playwright test script. Required for browser checks.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxLength=65536
+	Script string `json:"script,omitempty"`
+
+	// Environment variables the script reads, only for browser checks. Each name is unique within the check. The
+	// runner sets PATH, HOME, TMPDIR, PLAYWRIGHT_BROWSERS_PATH, TRACEPARENT, CI and NODE_OPTIONS itself, so a check
+	// cannot set them.
+	// +kubebuilder:validation:Optional
+	// +listType=map
+	// +listMapKey=name
+	Env []Dash0SyntheticCheckEnvVar `json:"env,omitempty"`
+}
+
+// Dash0SyntheticCheckEnvVar defines an environment variable of a browser check.
+// +kubebuilder:validation:XValidation:rule="has(self.value) != has(self.valueFrom)",message="exactly one of value and valueFrom must be set"
+type Dash0SyntheticCheckEnvVar struct {
+	// The environment variable name, as the script reads it.
 	// +kubebuilder:validation:Required
-	Assertions Dash0SyntheticCheckHTTPAssertions `json:"assertions"`
+	Name string `json:"name"`
+
+	// The plaintext value. Dash0 stores it with the check and returns it to anyone who may read the check, so a
+	// secret belongs in valueFrom instead.
+	// +kubebuilder:validation:Optional
+	Value *string `json:"value,omitempty"`
+
+	// Where Dash0 reads the value from.
+	// +kubebuilder:validation:Optional
+	ValueFrom *Dash0SyntheticCheckEnvVarSource `json:"valueFrom,omitempty"`
+}
+
+// Dash0SyntheticCheckEnvVarSource defines where Dash0 reads the value of an environment variable from.
+// +kubebuilder:validation:XValidation:rule="has(self.platformVariableRef)",message="platformVariableRef must be set"
+type Dash0SyntheticCheckEnvVarSource struct {
+	// A platform variable, resolved when the check is dispatched. The variable must list synthetics in its usableIn.
+	// +kubebuilder:validation:Optional
+	PlatformVariableRef *Dash0SyntheticCheckPlatformVariableRef `json:"platformVariableRef,omitempty"`
+}
+
+// Dash0SyntheticCheckPlatformVariableRef references a Dash0 platform variable.
+type Dash0SyntheticCheckPlatformVariableRef struct {
+	// The name of the platform variable, not the environment variable name the script reads.
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
 }
 
 // Dash0SyntheticCheckHTTPRequest defines the HTTP request configuration
@@ -92,11 +142,11 @@ type Dash0SyntheticCheckHTTPRequest struct {
 	// +kubebuilder:validation:Required
 	Tracing Dash0SyntheticCheckHTTPTracing `json:"tracing"`
 
-	// +kubebuilder:validation:Required
-	Headers []Dash0SyntheticCheckHTTPHeader `json:"headers"`
+	// +kubebuilder:validation:Optional
+	Headers []Dash0SyntheticCheckHTTPHeader `json:"headers,omitempty"`
 
-	// +kubebuilder:validation:Required
-	QueryParameters []Dash0SyntheticCheckHTTPQueryParameter `json:"queryParameters"`
+	// +kubebuilder:validation:Optional
+	QueryParameters []Dash0SyntheticCheckHTTPQueryParameter `json:"queryParameters,omitempty"`
 
 	// +kubebuilder:validation:Optional
 	BasicAuthentication *Dash0SyntheticCheckHTTPBasicAuthentication `json:"basicAuthentication,omitempty"`
@@ -172,6 +222,9 @@ type Dash0SyntheticCheckHTTPAssertions struct {
 
 // Dash0SyntheticCheckAssertion defines a check assertion
 // +kubebuilder:validation:XValidation:rule="(self.kind == 'status_code' && has(self.spec.operator) && has(self.spec.value)) || (self.kind == 'response_header' && has(self.spec.key) && has(self.spec.operator) && has(self.spec.value)) || (self.kind == 'json_body' && has(self.spec.jsonPath) && has(self.spec.operator) && has(self.spec.value)) || (self.kind == 'text_body' && has(self.spec.operator) && has(self.spec.value)) || (self.kind == 'timing' && has(self.spec.type) && has(self.spec.operator) && has(self.spec.value)) || (self.kind == 'error' && has(self.spec.value)) || (self.kind == 'ssl_certificate' && has(self.spec.value))"
+// +kubebuilder:validation:XValidation:rule="!(self.kind in ['status_code', 'timing']) || !has(self.spec.operator) || self.spec.operator in ['is', 'is_not', 'is_one_of', 'is_not_one_of', 'gt', 'gte', 'lt', 'lte']",message="status_code and timing assertions only support the operators is, is_not, is_one_of, is_not_one_of, gt, gte, lt and lte"
+// +kubebuilder:validation:XValidation:rule="!(self.kind in ['response_header', 'json_body', 'text_body']) || !has(self.spec.operator) || !(self.spec.operator in ['gt', 'gte', 'lt', 'lte'])",message="response_header, json_body and text_body assertions do not support the operators gt, gte, lt and lte"
+// +kubebuilder:validation:XValidation:rule="self.kind != 'error' || !has(self.spec.value) || self.spec.value in ['dns', 'location_unavailable', 'tcp', 'timeout', 'tls', 'unknown']",message="the value of an error assertion must be one of dns, location_unavailable, tcp, timeout, tls and unknown"
 type Dash0SyntheticCheckAssertion struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=status_code;response_header;json_body;text_body;timing;error;ssl_certificate
@@ -183,14 +236,17 @@ type Dash0SyntheticCheckAssertion struct {
 
 // Dash0SyntheticCheckAssertionSpec defines assertion specification
 type Dash0SyntheticCheckAssertionSpec struct {
-	// For status_code, timing assertions
+	// For status_code, timing, response_header, json_body and text_body assertions. The numeric operators gt, gte,
+	// lt and lte are only supported by status_code and timing assertions, the string operators (is_set, is_not_set,
+	// matches, contains, starts_with, ends_with and their negations) only by response_header, json_body and
+	// text_body assertions.
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:Enum=is;is_not;gt;lt;gte;lte
+	// +kubebuilder:validation:Enum=is;is_not;is_one_of;is_not_one_of;gt;lt;gte;lte;is_set;is_not_set;matches;does_not_match;contains;does_not_contain;starts_with;does_not_start_with;ends_with;does_not_end_with
 	Operator *string `json:"operator,omitempty"`
 
-	// For all assertions
-	// +kubebuilder:validation:Optional
-	Value *string `json:"value,omitempty"`
+	// For all assertions. For error assertions, one of dns, location_unavailable, tcp, timeout, tls and unknown.
+	// +kubebuilder:validation:Required
+	Value *string `json:"value"`
 
 	// For response_header assertions
 	// +kubebuilder:validation:Optional

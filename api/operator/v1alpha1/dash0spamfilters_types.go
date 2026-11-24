@@ -24,9 +24,10 @@ type Dash0SpamFilter struct {
 
 // Dash0SpamFilterSpec defines the desired state of Dash0SpamFilter
 type Dash0SpamFilterSpec struct {
-	// The signal contexts this spam filter applies to (e.g., log, span, metric).
+	// The signal contexts this spam filter applies to.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:items:Enum=datapoint;log;profile_sample;span;web_event
 	Contexts []string `json:"contexts"`
 
 	// The filter conditions that define which telemetry data to drop.

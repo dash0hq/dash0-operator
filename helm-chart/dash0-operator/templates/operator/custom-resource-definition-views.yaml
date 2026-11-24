@@ -44,6 +44,53 @@ spec:
           spec:
             description: Dash0ViewSpec defines the desired state of Dash0View
             properties:
+              clientFilter:
+                description: |-
+                  A filter the UI applies to the rows it has loaded, for attributes the query cannot filter on, such as a
+                  Kubernetes pod's phase. Only applicable when type is "kubernetes_pods", where only `is` and `is_one_of`
+                  criteria on `k8s.pod.phase` apply.
+                items:
+                  description: Dash0ViewFilter defines a filter condition
+                  properties:
+                    key:
+                      description: The attribute key to be filtered.
+                      type: string
+                    operator:
+                      description: The match operation for filtering attributes.
+                      enum:
+                      - is
+                      - is_not
+                      - is_set
+                      - is_not_set
+                      - is_one_of
+                      - is_not_one_of
+                      - gt
+                      - lt
+                      - gte
+                      - lte
+                      - matches
+                      - does_not_match
+                      - contains
+                      - does_not_contain
+                      - starts_with
+                      - does_not_start_with
+                      - ends_with
+                      - does_not_end_with
+                      - is_any
+                      type: string
+                    value:
+                      type: string
+                    values:
+                      description: List of values to match against. This parameter
+                        is mandatory for the is_one_of and is_not_one_of operators.
+                      items:
+                        type: string
+                      type: array
+                  required:
+                  - key
+                  - operator
+                  type: object
+                type: array
               display:
                 description: Dash0ViewDisplay defines the display configuration
                 properties:
@@ -250,6 +297,17 @@ spec:
                 - metrics
                 - failed_checks
                 - web_events
+                - services
+                - slos
+                - sql
+                - profiles
+                - kubernetes_pods
+                - aws_lambda
+                - gcp_cloud_run_jobs
+                - gcp_cloud_run_services
+                - gcp_cloud_sql_instances
+                - gcp_cloud_storage
+                - gcp_pubsub
                 type: string
               visualizations:
                 description: A visualization configuration for the view. We only support

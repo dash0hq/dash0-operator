@@ -26,7 +26,7 @@ type Dash0View struct {
 type Dash0ViewSpec struct {
 	// The view type describes where this view configuration is intended to be applied in the UI.
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=resources;spans;logs;metrics;failed_checks;web_events
+	// +kubebuilder:validation:Enum=resources;spans;logs;metrics;failed_checks;web_events;services;slos;sql;profiles;kubernetes_pods;aws_lambda;gcp_cloud_run_jobs;gcp_cloud_run_services;gcp_cloud_sql_instances;gcp_cloud_storage;gcp_pubsub
 	Type string `json:"type"`
 
 	// +kubebuilder:validation:Required
@@ -49,6 +49,12 @@ type Dash0ViewSpec struct {
 	// be shown in the UI.
 	// +kubebuilder:validation:Optional
 	ImplicitFilter []Dash0ViewFilter `json:"implicitFilter,omitempty"`
+
+	// A filter the UI applies to the rows it has loaded, for attributes the query cannot filter on, such as a
+	// Kubernetes pod's phase. Only applicable when type is "kubernetes_pods", where only `is` and `is_one_of`
+	// criteria on `k8s.pod.phase` apply.
+	// +kubebuilder:validation:Optional
+	ClientFilter []Dash0ViewFilter `json:"clientFilter,omitempty"`
 
 	// +kubebuilder:validation:Optional
 	Table *Dash0ViewTable `json:"table,omitempty"`
