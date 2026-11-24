@@ -108,6 +108,10 @@ func (r *ViewReconciler) ShortName() string {
 	return "view"
 }
 
+func (r *ViewReconciler) Kind() string {
+	return "Dash0View"
+}
+
 func (r *ViewReconciler) GetDefaultApiConfigs() []ApiConfig {
 	return r.defaultApiConfigs.Get()
 }

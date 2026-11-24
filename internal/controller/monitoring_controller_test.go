@@ -13,6 +13,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -448,6 +449,43 @@ var _ = Describe(
 								Expect(namespacedApiClient1.setSyncEnabledCalls).To(Equal(1))
 								Expect(namespacedApiClient2.removeNamespacedApiEndpointCalls).To(Equal(1))
 								Expect(namespacedApiClient2.setSyncEnabledCalls).To(Equal(1))
+							},
+						)
+
+						It(
+							"should stop reporting resources with an unavailable API config when API access is removed",
+							func() {
+								apiSyncFailures.clear()
+								defer apiSyncFailures.clear()
+								triggerReconcileRequest(ctx, monitoringReconciler)
+								verifyMonitoringResourceIsAvailable(ctx)
+
+								apiConfigUnavailable := apiSyncResourceKey{
+									kind: "Dash0View", namespace: TestNamespaceName, name: "view",
+								}
+								httpFailure := apiSyncResourceKey{
+									kind: "Dash0View", namespace: TestNamespaceName, name: "other-view",
+								}
+								otherNamespace := apiSyncResourceKey{
+									kind: "Dash0View", namespace: "other-namespace", name: "view",
+								}
+								for _, key := range []apiSyncResourceKey{apiConfigUnavailable, otherNamespace} {
+									apiSyncFailures.set(key, []apiSyncFailure{{
+										status:              dash0common.Dash0ApiResourceSynchronizationStatusFailed,
+										preconditionFailure: apiSyncPreconditionFailureApiConfigUnavailable,
+									}})
+								}
+								apiSyncFailures.set(httpFailure, []apiSyncFailure{{
+									dataset:        DatasetCustomTest,
+									status:         dash0common.Dash0ApiResourceSynchronizationStatusFailed,
+									httpStatusCode: http.StatusBadRequest,
+								}})
+
+								By("Remove export and reconcile")
+								RemoveExportFromMonitoringResource(ctx, k8sClient)
+								triggerReconcileRequest(ctx, monitoringReconciler)
+
+								Expect(apiSyncFailureKeys()).To(ConsistOf(httpFailure, otherNamespace))
 							},
 						)
 

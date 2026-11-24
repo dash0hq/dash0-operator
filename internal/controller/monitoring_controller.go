@@ -424,6 +424,12 @@ func (r *MonitoringReconciler) applyApiAccessSettings(
 		for _, apiClient := range r.namespacedApiClients {
 			apiClient.RemoveNamespacedApiConfigs(ctx, monitoringResource.Namespace, logger)
 		}
+		// RemoveNamespacedApiConfigs only resynchronizes resources when the namespace had an API config, which is not
+		// the case for resources that have been reported because their API config was unavailable.
+		apiSyncFailures.deletePreconditionFailuresInNamespace(
+			monitoringResource.Namespace,
+			apiSyncPreconditionFailureApiConfigUnavailable,
+		)
 	}
 
 	for _, apiClient := range r.namespacedApiClients {
@@ -551,6 +557,7 @@ func (r *MonitoringReconciler) runCleanupActions(
 	for _, apiClient := range r.namespacedApiClients {
 		apiClient.RemoveSynchronizationEnabled(monitoringResource.Namespace)
 	}
+	apiSyncFailures.deleteNamespace(monitoringResource.Namespace)
 
 	// The Dash0 monitoring resource will be deleted after this reconcile finished. We still need to update its status,
 	// to make sure that when we run r.reconcileOpenTelemetryCollector in the next and final reconcile cycle triggered

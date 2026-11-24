@@ -592,6 +592,7 @@ func stopWatchingThirdPartyResources(
 	logger.Info(fmt.Sprintf("stopping the controller %s now", resourceReconciler.ControllerName()))
 	(*cancelFunc)()
 	resourceReconciler.SetControllerStopFunction(nil)
+	apiSyncFailures.deleteKind(resourceReconciler.Kind())
 }
 
 func filterValidApiConfigs(apiConfigs []ApiConfig, logger logd.Logger, configContext string) []ApiConfig {
