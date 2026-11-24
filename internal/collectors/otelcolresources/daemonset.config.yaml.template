@@ -549,7 +549,7 @@ receivers:
   With retry_on_failure, the file_log receivers stop reading and resend the current batch when the pipeline rejects it
   (memory_limiter, or a full sending queue of a Dash0 exporter while Dash0 is unavailable), instead of dropping it. The
   log files on disk act as the buffer. Exporters that had already accepted a rejected batch receive it again. Exporters
-  to other backends do not retry and keep their queues draining, see nonDash0RetryOnFailure in
+  to other backends do not retry and keep their queues draining, see nonDash0ExportSettings in
   exporters.partial.yaml.template, so an unavailable non-Dash0 backend does not stall the log collection.
   */}}
   file_log:

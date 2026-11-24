@@ -3997,11 +3997,23 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		sendingQueueSizeMiB *uint32,
 		expectedSendingQueue map[string]any,
 	) {
+		exps := cmTestMultipleNamespacedOtlpExporters()
+		nonDash0ExporterNames := map[string]bool{}
+		for _, ns := range exps.AllNamespaceKeys() {
+			for _, exporter := range exps.Namespaced[ns] {
+				if !exporter.IsDash0() {
+					nonDash0ExporterNames[exporter.Name] = true
+				}
+			}
+		}
+		Expect(nonDash0ExporterNames).ToNot(BeEmpty())
+		expectedNonDash0SendingQueue := maps.Clone(expectedSendingQueue)
+		expectedNonDash0SendingQueue["num_consumers"] = 20
 		for _, cmTypeDef := range configMapTypeDefinitions {
 			config := &oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Exporters:         cmTestMultipleNamespacedOtlpExporters(),
+				Exporters:         exps,
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 				SendBatchSize:       sendBatchSize,
 				SendBatchMaxSize:    sendBatchMaxSize,
@@ -4023,8 +4035,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				if name == "debug" {
 					continue
 				}
+				expected := expectedSendingQueue
+				if nonDash0ExporterNames[name] {
+					expected = expectedNonDash0SendingQueue
+				}
 				Expect(ReadFromMap(exporter.(map[string]any), []string{"sending_queue"})).
-					To(Equal(expectedSendingQueue), fmt.Sprintf("%s: %s", cmTypeDef.cmType, name))
+					To(Equal(expected), fmt.Sprintf("%s: %s", cmTypeDef.cmType, name))
 			}
 		}
 	},
@@ -4118,7 +4134,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}
 	})
 
-	DescribeTable("should turn off retries for exporters to other backends than Dash0", func(
+	DescribeTable("should keep the queues of exporters to other backends than Dash0 draining", func(
 		exportersUnderTest func() otlpExporters,
 	) {
 		exps := exportersUnderTest()
@@ -4138,17 +4154,25 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			for _, exporter := range allExporters {
 				description := fmt.Sprintf("%s: %s", cmTypeDef.cmType, exporter.Name)
 				Expect(renderedExporters).To(HaveKey(exporter.Name), description)
-				retryOnFailure := ReadFromMap(renderedExporters[exporter.Name].(map[string]any), []string{"retry_on_failure"})
+				renderedExporter := renderedExporters[exporter.Name].(map[string]any)
+				retryOnFailure := ReadFromMap(renderedExporter, []string{"retry_on_failure"})
+				timeout := ReadFromMap(renderedExporter, []string{"timeout"})
+				numConsumers := ReadFromMap(renderedExporter, []string{"sending_queue", "num_consumers"})
 				if exporter.IsDash0() {
 					Expect(retryOnFailure).To(BeNil(), description)
+					Expect(timeout).To(BeNil(), description)
+					Expect(numConsumers).To(BeNil(), description)
 				} else {
 					Expect(retryOnFailure).To(Equal(map[string]any{"enabled": false}), description)
+					Expect(timeout).To(Equal("5s"), description)
+					Expect(numConsumers).To(Equal(20), description)
 				}
 			}
 		}
 	},
 		Entry("for default exporters", cmTestDash0GrpcAndHttpExporters),
 		Entry("for namespaced exporters", cmTestNamespacedExportersWithBalancerName),
+		Entry("for namespaced gRPC and HTTP exporters", cmTestMultipleNamespacedOtlpExporters),
 	)
 
 	It("should resend rejected batches from the file_log receivers instead of dropping them [DaemonSet]", func() {

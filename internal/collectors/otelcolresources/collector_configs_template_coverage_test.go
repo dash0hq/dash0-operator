@@ -22,7 +22,16 @@ import (
 //
 // Conditions inside a range or with body are not collected: those rebind the dot, so their field paths do not refer to
 // the template values. They are covered indirectly, because covering both sides of the enclosing condition means
-// rendering the body at least once.
+// rendering the body at least once. Conditions of templates that are invoked with another dot than the template values
+// are evaluated against the dots listed in templatesWithOwnDot.
+
+// templatesWithOwnDot lists the templates that are invoked with another dot than the template values, together with the
+// dots they are invoked with. Their conditions are reported as "<template name>:<field path>".
+var templatesWithOwnDot = map[string]func(*collectorConfigurationTemplateValues) []any{
+	"sendingQueue": func(values *collectorConfigurationTemplateValues) []any {
+		return []any{values.ExporterBatching, values.ExporterBatching.NonDash0()}
+	},
+}
 
 // conditionsWithUnreachableFalseBranch lists the template conditions whose false branch no configuration can reach,
 // together with the reason. The test verifies that these conditions are indeed never false, so an entry that becomes
@@ -48,17 +57,20 @@ var _ = Describe("The collector configuration matrix", func() {
 		for _, entry := range collectorConfigMatrix() {
 			values := entry.templateValues()
 			for _, path := range conditionPaths {
-				truth, err := evaluateTemplateCondition(values, path)
-				Expect(err).ToNot(
-					HaveOccurred(),
-					"cannot evaluate the template condition %s for the matrix entry %s",
-					path,
-					entry.name,
-				)
-				if truth {
-					truthyIn[path] = append(truthyIn[path], entry.name)
-				} else {
-					falsyIn[path] = append(falsyIn[path], entry.name)
+				dots, pathRelativeToDot := templateDotsAndPath(values, path)
+				for _, dot := range dots {
+					truth, err := evaluateTemplateCondition(dot, pathRelativeToDot)
+					Expect(err).ToNot(
+						HaveOccurred(),
+						"cannot evaluate the template condition %s for the matrix entry %s",
+						path,
+						entry.name,
+					)
+					if truth {
+						truthyIn[path] = append(truthyIn[path], entry.name)
+					} else {
+						falsyIn[path] = append(falsyIn[path], entry.name)
+					}
 				}
 			}
 		}
@@ -92,7 +104,8 @@ var _ = Describe("The collector configuration matrix", func() {
 })
 
 // collectTemplateConditionPaths returns the field paths of all conditions in the collector configuration templates,
-// relative to the template values, sorted and deduplicated.
+// relative to the template values (or prefixed with the template name for the templates in templatesWithOwnDot),
+// sorted and deduplicated.
 func collectTemplateConditionPaths() []string {
 	paths := map[string]struct{}{}
 	for _, tmpl := range []*template.Template{
@@ -104,7 +117,15 @@ func collectTemplateConditionPaths() []string {
 			if associated.Tree == nil {
 				continue
 			}
-			collectConditionPathsFromList(associated.Tree.Root, paths)
+			templatePaths := map[string]struct{}{}
+			collectConditionPathsFromList(associated.Tree.Root, templatePaths)
+			_, ownDot := templatesWithOwnDot[associated.Name()]
+			for path := range templatePaths {
+				if ownDot {
+					path = associated.Name() + ":" + path
+				}
+				paths[path] = struct{}{}
+			}
 		}
 	}
 
@@ -158,10 +179,19 @@ func collectConditionPathsFromPipe(pipe *parse.PipeNode, paths map[string]struct
 	}
 }
 
-// evaluateTemplateCondition resolves a field path against the template values and reports whether text/template would
+// templateDotsAndPath returns the dots a condition path collected by collectTemplateConditionPaths is evaluated against,
+// and the path relative to these dots.
+func templateDotsAndPath(values *collectorConfigurationTemplateValues, conditionPath string) ([]any, string) {
+	if templateName, path, found := strings.Cut(conditionPath, ":"); found {
+		return templatesWithOwnDot[templateName](values), path
+	}
+	return []any{values}, conditionPath
+}
+
+// evaluateTemplateCondition resolves a field path against the dot of a template and reports whether text/template would
 // consider the result true, using the same notion of truth as {{ if }}.
-func evaluateTemplateCondition(values *collectorConfigurationTemplateValues, path string) (bool, error) {
-	current := reflect.ValueOf(values)
+func evaluateTemplateCondition(dot any, path string) (bool, error) {
+	current := reflect.ValueOf(dot)
 	for _, segment := range strings.Split(path, ".") {
 		resolved, err := resolveTemplatePathSegment(current, segment)
 		if err != nil {
