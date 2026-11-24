@@ -738,6 +738,28 @@ To test a catalog:
   `minc create`, add its kube context `microshift` to `ALLOWED_KUBECTXS` (in `test-resources/.env`, if it sets the
   variable), then run the script.
 
+## OLM Community Catalog
+
+Releases can also be published in the OpenShift community catalog (`community-operators` in the OperatorHub of the
+OpenShift console) via pull requests to
+[redhat-openshift-ecosystem/community-operators-prod](https://github.com/redhat-openshift-ecosystem/community-operators-prod).
+The package `dash0-operator` there is a file-based catalog rendered from an `olm.semver` template with the channel
+`stable-v0`, like the self-hosted catalog, and the submitted bundle is a copy of the release bundle image. After a pull
+request has been merged, the release pipeline of `community-operators-prod` adds the bundle to
+`operators/dash0-operator/catalog-templates/semver.yaml`, then opens and merges the pull request that updates the
+catalogs. A release can be left out, every release in `stable-v0` upgrades directly to the newest one.
+
+[olm/bin/prepare-community-bundle.sh](olm/bin/prepare-community-bundle.sh) (`make olm-community-bundle`) prepares the
+content of such a pull request in a clone of `community-operators-prod`: it copies the bundle of the release from
+`ghcr.io/dash0hq/dash0-operator-bundle:<version>` into `operators/dash0-operator/<version>/`, adds its
+`release-config.yaml` and validates the bundle like the pipeline does. For the first submission, it also writes
+`operators/dash0-operator/ci.yaml` and the catalog template `operators/dash0-operator/catalog-templates/semver.yaml`.
+
+A merged bundle cannot be changed anymore, a defect has to be fixed in a new release. The pipeline is documented in
+[Contributing via PR](https://redhat-openshift-ecosystem.github.io/operator-pipelines/users/contributing-via-pr/),
+[File based catalog workflow](https://redhat-openshift-ecosystem.github.io/operator-pipelines/users/fbc_workflow/) and
+[Troubleshooting for Community Operators](https://redhat-openshift-ecosystem.github.io/operator-pipelines/users/community-operators-troubleshooting/).
+
 ## Testing with Kyverno
 
 [test-resources/bin/deploy-kyverno.sh](test-resources/bin/deploy-kyverno.sh) installs Kyverno and the upstream Kyverno
