@@ -27,6 +27,9 @@ never appear in any pipeline here. Variables:
 - $useRouting: routing is used (only with namespaced Dash0 exporters; the routing connector requires a non-empty
   table). Without it, everything received here belongs to the default branch.
 - $samplingActive: tail sampling is enabled and something feeds it.
+- $splitLogs: each logs branch is split around dash0signaltometrics into a pre-filter pipeline (dash0filter with the
+  ingress role) and a post-filter pipeline (dash0filter with the egress role), so that the drop filters of
+  signal-to-metrics rules with dropMatched only drop logs after the metric has been derived from them.
 
 Metering: the mark a dash0metering processor stamps is what settles Signal Control usage for billing. Once Dash0 turns
 enforcement on for an organization it is also what every Signal Control component requires before it acts.
@@ -35,6 +38,7 @@ enforcement on for an organization it is also what every Signal Control componen
 {{- $hasNamespacedDash0 := .Exporters.HasNamespacedDash0Exporters -}}
 {{- $useRouting := $hasNamespacedDash0 -}}
 {{- $samplingActive := and .SignalControl.SamplingEnabled (or $scDefault $hasNamespacedDash0) -}}
+{{- $splitLogs := and .SignalControl.SpamFilterEnabled .SignalControl.SignalToMetricsEnabled -}}
 
 extensions:
   health_check:
@@ -43,6 +47,9 @@ extensions:
   pprof: {}
   {{- end }}
   dash0settingsonedgeextension:
+    {{- /* TODO: set drop_matched_logs: true when $splitLogs, once the pinned Signal Control collector release
+    supports this setting (released versions reject it as an unknown key). It makes the extension build the drop
+    filters for signal-to-metrics rules with dropMatched, which only the egress dash0filter instances apply. */}}
 {{- if and .SignalControl.EdgeProxyEnabled .SignalControl.ApiEndpoint }}
     {{- /* Edge Proxy mode: subscribe to the in-cluster Edge Proxy, which performs a single settings poll per site
     and fans the snapshot out to every collector. The Endpoint/auth_token HTTP fields are ignored in this mode. */}}
@@ -81,6 +88,16 @@ connectors:
   forward/traces-default-exporter: {}
   forward/metrics-default-exporter: {}
   forward/logs-default-exporter: {}
+{{- if $splitLogs }}
+  forward/logs-post-filter: {}
+{{- end }}
+{{- end }}
+{{- if and $splitLogs $hasNamespacedDash0 }}
+{{- range $ns, $sc := .Exporters.NamespaceSC }}
+{{- range $b := $sc.DatasetBranches }}
+  forward/logs-post-filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}: {}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- if not $useRouting }}
   forward/traces-to-sc: {}
@@ -292,6 +309,12 @@ processors:
   dash0metering:
     mode: count_and_mark
     metric_recorder: dash0metricrecorder
+{{- if $splitLogs }}
+  {{- /* Downstream of dash0metering in the logs branch, so the logs arrive already counted. */}}
+  dash0metering/logs-post-filter:
+    mode: mark_only
+    metric_recorder: dash0metricrecorder
+{{- end }}
 {{- end }}
 {{- if $samplingActive }}
   {{- /* The sampled pipeline is fed by the SC pipelines, so its spans arrive already marked and counting them
@@ -319,6 +342,11 @@ processors:
     mode: mark_only
 {{- end }}
     metric_recorder: dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+{{- if $splitLogs }}
+  dash0metering/ns/{{ $ns }}/{{ $b.DatasetIndex }}/logs-post-filter:
+    mode: mark_only
+    metric_recorder: dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -387,6 +415,30 @@ processors:
 {{- else }}
   dash0filter: {}
 {{- end }}
+{{- if $splitLogs }}
+  dash0filter/logs-ingress:
+    signal_control_role: ingress
+{{- if $scDefault }}
+    metric_recorder: dash0metricrecorder
+{{- end }}
+{{- if .SignalControl.SpamFilterCacheExpiration }}
+    cache_expiration: {{ .SignalControl.SpamFilterCacheExpiration }}
+{{- end }}
+{{- if .SignalControl.SpamFilterAllowNoSettingsExt }}
+    allow_no_settings_ext: {{ .SignalControl.SpamFilterAllowNoSettingsExt }}
+{{- end }}
+  dash0filter/logs-egress:
+    signal_control_role: egress
+{{- if $scDefault }}
+    metric_recorder: dash0metricrecorder
+{{- end }}
+{{- if .SignalControl.SpamFilterCacheExpiration }}
+    cache_expiration: {{ .SignalControl.SpamFilterCacheExpiration }}
+{{- end }}
+{{- if .SignalControl.SpamFilterAllowNoSettingsExt }}
+    allow_no_settings_ext: {{ .SignalControl.SpamFilterAllowNoSettingsExt }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- if and $hasNamespacedDash0 .SignalControl.SpamFilterEnabled }}
 {{- range $ns, $sc := .Exporters.NamespaceSC }}
@@ -398,6 +450,26 @@ processors:
 {{- end }}
 {{- if $.SignalControl.SpamFilterAllowNoSettingsExt }}
     allow_no_settings_ext: {{ $.SignalControl.SpamFilterAllowNoSettingsExt }}
+{{- end }}
+{{- if $splitLogs }}
+  dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}/logs-ingress:
+    signal_control_role: ingress
+    metric_recorder: dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+{{- if $.SignalControl.SpamFilterCacheExpiration }}
+    cache_expiration: {{ $.SignalControl.SpamFilterCacheExpiration }}
+{{- end }}
+{{- if $.SignalControl.SpamFilterAllowNoSettingsExt }}
+    allow_no_settings_ext: {{ $.SignalControl.SpamFilterAllowNoSettingsExt }}
+{{- end }}
+  dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}/logs-egress:
+    signal_control_role: egress
+    metric_recorder: dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+{{- if $.SignalControl.SpamFilterCacheExpiration }}
+    cache_expiration: {{ $.SignalControl.SpamFilterCacheExpiration }}
+{{- end }}
+{{- if $.SignalControl.SpamFilterAllowNoSettingsExt }}
+    allow_no_settings_ext: {{ $.SignalControl.SpamFilterAllowNoSettingsExt }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -757,17 +829,34 @@ Dash0-Dataset header and the accountant sums what arrives, so a second delivery 
         - dash0logparser
         - dash0loggrouping
         {{- end }}
-        {{- if .SignalControl.SpamFilterEnabled }}
+        {{- if $splitLogs }}
+        - dash0filter/logs-ingress
+        {{- else if .SignalControl.SpamFilterEnabled }}
         - dash0filter
         {{- end }}
         {{- if .SignalControl.CardholderDataRedactionEnabled }}
         - dash0redaction
         {{- end }}
       exporters:
+        {{- if $splitLogs }}
+        - forward/logs-post-filter
+        {{- else }}
         - forward/logs-default-exporter
+        {{- end }}
         {{- if .SignalControl.SignalToMetricsEnabled }}
         - dash0signaltometrics
         {{- end }}
+{{- if $splitLogs }}
+
+    logs/post-filter/default:
+      receivers:
+        - forward/logs-post-filter
+      processors:
+        - dash0metering/logs-post-filter
+        - dash0filter/logs-egress
+      exporters:
+        - forward/logs-default-exporter
+{{- end }}
 
     logs/export/default:
       receivers:
@@ -797,12 +886,36 @@ Dash0-Dataset header and the accountant sums what arrives, so a second delivery 
         - dash0logparser
         - dash0loggrouping
         {{- end }}
-        {{- if $.SignalControl.SpamFilterEnabled }}
+        {{- if $splitLogs }}
+        - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}/logs-ingress
+        {{- else if $.SignalControl.SpamFilterEnabled }}
         - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- end }}
         {{- if $.SignalControl.CardholderDataRedactionEnabled }}
         - dash0redaction/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- end }}
+      exporters:
+        {{- if $splitLogs }}
+        - forward/logs-post-filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- else }}
+        {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        {{- range $exporter := $b.Exporters }}
+        - {{ $exporter.Name }}
+        {{- end }}
+        {{- end }}
+        {{- if $.SignalControl.SignalToMetricsEnabled }}
+        - dash0signaltometrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
+{{- if $splitLogs }}
+
+    logs/post-filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+      receivers:
+        - forward/logs-post-filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+      processors:
+        - dash0metering/ns/{{ $ns }}/{{ $b.DatasetIndex }}/logs-post-filter
+        - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}/logs-egress
       exporters:
         {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
         - debug
@@ -810,9 +923,7 @@ Dash0-Dataset header and the accountant sums what arrives, so a second delivery 
         {{- range $exporter := $b.Exporters }}
         - {{ $exporter.Name }}
         {{- end }}
-        {{- if $.SignalControl.SignalToMetricsEnabled }}
-        - dash0signaltometrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-        {{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 

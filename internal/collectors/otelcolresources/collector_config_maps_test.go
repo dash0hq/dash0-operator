@@ -6757,8 +6757,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				"dash0metering",
 				"dash0logparser",
 				"dash0loggrouping",
-				"dash0filter",
+				"dash0filter/logs-ingress",
 				"dash0redaction",
+			}))
+			Expect(readPipelineProcessors(pipelines, "logs/post-filter/default")).To(Equal([]any{
+				"dash0metering/logs-post-filter",
+				"dash0filter/logs-egress",
 			}))
 
 			processors := collectorConfig["processors"].(map[string]interface{})
@@ -6874,14 +6878,18 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			// Metering runs after resource/signal_control_attributes, which stamps the dataset the counts are
 			// attributed to, and after dash0resource, whose edge-origin marker has to travel with metering's mark for
 			// Dash0 to recognize the usage as already settled. It runs before the first capability in each chain.
-			for _, pipelineName := range []string{"metrics/sc/default", "logs/sc/default"} {
-				Expect(readPipelineProcessors(pipelines, pipelineName)).To(Equal([]any{
-					"resource/signal_control_attributes",
-					"dash0resource",
-					"dash0metering",
-					"dash0filter",
-				}), pipelineName)
-			}
+			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0filter",
+			}))
+			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0filter/logs-ingress",
+			}))
 			Expect(readPipelineProcessors(pipelines, "traces/sc/default")).To(Equal([]any{
 				"resource/signal_control_attributes",
 				"dash0resource",
@@ -6981,14 +6989,26 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					"dash0operation",
 					"dash0filter/ns/" + branch,
 				}))
-				for _, pipelineName := range []string{"metrics/sc/ns/" + branch, "logs/sc/ns/" + branch} {
-					Expect(readPipelineProcessors(pipelines, pipelineName)).To(Equal([]any{
-						"resource/signal_control_attributes/ns/" + branch,
-						"dash0resource",
-						metering,
-						"dash0filter/ns/" + branch,
-					}), pipelineName)
-				}
+				Expect(readPipelineProcessors(pipelines, "metrics/sc/ns/"+branch)).To(Equal([]any{
+					"resource/signal_control_attributes/ns/" + branch,
+					"dash0resource",
+					metering,
+					"dash0filter/ns/" + branch,
+				}))
+				Expect(readPipelineProcessors(pipelines, "logs/sc/ns/"+branch)).To(Equal([]any{
+					"resource/signal_control_attributes/ns/" + branch,
+					"dash0resource",
+					metering,
+					"dash0filter/ns/" + branch + "/logs-ingress",
+				}))
+
+				// The post-filter pipeline is fed by the pre-filter one, so its logs arrive already counted.
+				postFilterMetering := metering + "/logs-post-filter"
+				Expect(processors[postFilterMetering].(map[string]interface{})).To(HaveKeyWithValue("mode", "mark_only"))
+				Expect(readPipelineProcessors(pipelines, "logs/post-filter/ns/"+branch)).To(Equal([]any{
+					postFilterMetering,
+					"dash0filter/ns/" + branch + "/logs-egress",
+				}))
 			}
 
 			assertCollectorConfigStructurallyValid(collectorConfig, "signal-control/metering-ns-multi-dataset")
@@ -7109,17 +7129,33 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			// branch, which runs the SC prelude and the spam filter.
 			Expect(readPipelineExporters(pipelines, "logs/otlp-to-sc")).To(ContainElement("forward/logs-to-sc"))
 			logsScProcessors := readPipelineProcessors(pipelines, "logs/sc/default")
-			Expect(logsScProcessors).To(ContainElements("resource/signal_control_attributes", "dash0resource", "dash0filter"),
+			Expect(logsScProcessors).To(ContainElements("resource/signal_control_attributes", "dash0resource", "dash0filter/logs-ingress"),
 				"dash0filter must run after resource/signal_control_attributes, and dash0resource stamps the resource hash for s2m")
 
 			// s2m is an exporter on the logs SC branch and a receiver on the derived-metrics pipeline.
-			Expect(readPipelineExporters(pipelines, "logs/sc/default")).To(ContainElement("dash0signaltometrics"))
+			Expect(readPipelineExporters(pipelines, "logs/sc/default")).
+				To(ConsistOf("dash0signaltometrics", "forward/logs-post-filter"))
 			Expect(readPipelineReceivers(pipelines, "metrics/derived/default")).To(ContainElement("dash0signaltometrics"))
 
-			// The shared default dash0filter records spam counts through the default metric recorder.
+			// The egress filter runs after s2m has seen the logs, so it is the one that applies the drop filters of
+			// signal-to-metrics rules with dropMatched.
+			Expect(readPipelineReceivers(pipelines, "logs/post-filter/default")).To(ConsistOf("forward/logs-post-filter"))
+			Expect(readPipelineProcessors(pipelines, "logs/post-filter/default")).To(ContainElement("dash0filter/logs-egress"))
+			Expect(readPipelineExporters(pipelines, "logs/post-filter/default")).
+				To(ConsistOf("forward/logs-default-exporter"))
+
+			// The default dash0filter instances record spam counts through the default metric recorder.
 			processors := collectorConfig["processors"].(map[string]interface{})
 			Expect(processors["dash0filter"].(map[string]interface{})).
 				To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder"))
+			Expect(processors["dash0filter/logs-ingress"]).To(Equal(map[string]interface{}{
+				"signal_control_role": "ingress",
+				"metric_recorder":     "dash0metricrecorder",
+			}))
+			Expect(processors["dash0filter/logs-egress"]).To(Equal(map[string]interface{}{
+				"signal_control_role": "egress",
+				"metric_recorder":     "dash0metricrecorder",
+			}))
 
 			assertCollectorConfigStructurallyValid(collectorConfig, "deployment/all-on")
 			assertNoDanglingPipelineComponents(collectorConfig, "deployment/all-on")
@@ -7166,16 +7202,28 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(connectors["dash0signaltometrics/ns/"+b0]).
 				To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder/ns/"+b0))
 			Expect(readPipelineProcessors(pipelines, "logs/sc/ns/"+b0)).To(ContainElements(
-				"resource/signal_control_attributes/ns/"+b0, "dash0resource", "dash0filter/ns/"+b0))
+				"resource/signal_control_attributes/ns/"+b0, "dash0resource", "dash0filter/ns/"+b0+"/logs-ingress"))
 			Expect(readPipelineExporters(pipelines, "logs/sc/ns/"+b0)).
-				To(ContainElement("dash0signaltometrics/ns/" + b0))
+				To(ConsistOf("dash0signaltometrics/ns/"+b0, "forward/logs-post-filter/ns/"+b0))
 			Expect(readPipelineReceivers(pipelines, "metrics/derived/ns/"+b0)).
 				To(ContainElement("dash0signaltometrics/ns/" + b0))
+			Expect(readPipelineReceivers(pipelines, "logs/post-filter/ns/"+b0)).
+				To(ConsistOf("forward/logs-post-filter/ns/" + b0))
+			Expect(readPipelineProcessors(pipelines, "logs/post-filter/ns/"+b0)).
+				To(ContainElement("dash0filter/ns/" + b0 + "/logs-egress"))
 
-			// The per-branch dash0filter records spam counts through its own per-branch metric recorder.
+			// The per-branch dash0filter instances record spam counts through their own per-branch metric recorder.
 			processors := collectorConfig["processors"].(map[string]interface{})
 			Expect(processors["dash0filter/ns/"+b0].(map[string]interface{})).
 				To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder/ns/"+b0))
+			Expect(processors["dash0filter/ns/"+b0+"/logs-ingress"]).To(Equal(map[string]interface{}{
+				"signal_control_role": "ingress",
+				"metric_recorder":     "dash0metricrecorder/ns/" + b0,
+			}))
+			Expect(processors["dash0filter/ns/"+b0+"/logs-egress"]).To(Equal(map[string]interface{}{
+				"signal_control_role": "egress",
+				"metric_recorder":     "dash0metricrecorder/ns/" + b0,
+			}))
 
 			assertCollectorConfigStructurallyValid(collectorConfig, "deployment/ns-multi-dataset")
 			assertNoDanglingPipelineComponents(collectorConfig, "deployment/ns-multi-dataset")
@@ -7203,9 +7251,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(readPipelineReceivers(pipelines, "metrics/signal-control-counters/ns/"+b0)).
 				To(ConsistOf("dash0metricrecorder/ns/" + b0))
 
-			Expect(readPipelineProcessors(pipelines, "logs/sc/ns/"+b0)).To(ContainElement("dash0filter/ns/" + b0))
+			Expect(readPipelineProcessors(pipelines, "logs/sc/ns/"+b0)).To(ContainElement("dash0filter/ns/" + b0 + "/logs-ingress"))
 			processors := collectorConfig["processors"].(map[string]interface{})
-			Expect(processors["dash0filter/ns/"+b0].(map[string]interface{})).
+			Expect(processors["dash0filter/ns/"+b0+"/logs-ingress"].(map[string]interface{})).
 				To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder/ns/"+b0))
 
 			assertCollectorConfigStructurallyValid(collectorConfig, "signal-control/infra-off")
@@ -7230,6 +7278,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(readPipelineReceivers(pipelines, "metrics/derived/default")).To(ConsistOf("dash0redmetrics"))
 			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(ContainElement("dash0filter"))
 			Expect(readPipelineExporters(pipelines, "logs/sc/default")).ToNot(ContainElement("dash0signaltometrics"))
+			Expect(pipelines).ToNot(HaveKey("logs/post-filter/default"))
 
 			assertNoDanglingPipelineComponents(collectorConfig, "deployment/s2m-off")
 		})
