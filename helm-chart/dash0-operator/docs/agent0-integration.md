@@ -199,8 +199,7 @@ Redacted are:
   environment variable,
 * the header values of HTTP probes and lifecycle hooks of any workload,
 * all credential fields of the Dash0 custom resources — the Dash0 authorization token, exporter headers, the
-  credentials of notification channel integrations, the credentials a synthetic check sends with its request, and
-  the script of a browser synthetic check,
+  credentials of notification channel integrations, and the credentials a synthetic check sends with its request,
 * the credentials of the Prometheus operator and Perses custom resources the default rules grant access to — for
   example proxy URLs, OAuth2 token URLs and parameters, the query parameters of scrape and probe configurations, and
   the access keys of service discovery configurations in `ScrapeConfig` resources,

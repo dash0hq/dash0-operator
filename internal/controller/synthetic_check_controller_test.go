@@ -875,23 +875,6 @@ spec:
 					},
 				)
 
-				browserPlugin := func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
-					plugin.Kind = "browser"
-					plugin.Spec = dash0v1alpha1.Dash0SyntheticCheckPluginSpec{
-						Script: "import { test } from '@playwright/test';",
-						Env: []dash0v1alpha1.Dash0SyntheticCheckEnvVar{
-							{Name: "USER_NAME", Value: ptr.To("test-user")},
-							{
-								Name: "PASSWORD",
-								ValueFrom: &dash0v1alpha1.Dash0SyntheticCheckEnvVarSource{
-									PlatformVariableRef: &dash0v1alpha1.Dash0SyntheticCheckPlatformVariableRef{
-										Name: "test-password",
-									},
-								},
-							},
-						},
-					}
-				}
 				withAssertion := func(kind string, assertionSpec dash0v1alpha1.Dash0SyntheticCheckAssertionSpec) func(
 					plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin,
 				) {
@@ -926,66 +909,6 @@ spec:
 							plugin.Spec.Request.QueryParameters = nil
 						},
 						"",
-					),
-					Entry(
-						"rejects an http check without request",
-						func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
-							plugin.Spec.Request = nil
-						},
-						"an http check requires spec.request and spec.assertions",
-					),
-					Entry(
-						"rejects an http check with a script",
-						func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
-							plugin.Spec.Script = "import { test } from '@playwright/test';"
-						},
-						"an http check requires spec.request and spec.assertions, and must not set spec.script",
-					),
-					Entry(
-						"accepts a browser check",
-						browserPlugin,
-						"",
-					),
-					Entry(
-						"rejects a browser check without script",
-						func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
-							browserPlugin(plugin)
-							plugin.Spec.Script = ""
-						},
-						"a browser check requires spec.script",
-					),
-					Entry(
-						"rejects a browser check with a request",
-						func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
-							request := plugin.Spec.Request
-							browserPlugin(plugin)
-							plugin.Spec.Request = request
-						},
-						"a browser check requires spec.script, and must not set spec.request or spec.assertions",
-					),
-					Entry(
-						"rejects an environment variable with value and valueFrom",
-						func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
-							browserPlugin(plugin)
-							plugin.Spec.Env[0].ValueFrom = plugin.Spec.Env[1].ValueFrom
-						},
-						"exactly one of value and valueFrom must be set",
-					),
-					Entry(
-						"rejects an environment variable without value and valueFrom",
-						func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
-							browserPlugin(plugin)
-							plugin.Spec.Env[0].Value = nil
-						},
-						"exactly one of value and valueFrom must be set",
-					),
-					Entry(
-						"rejects duplicate environment variable names",
-						func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
-							browserPlugin(plugin)
-							plugin.Spec.Env[1].Name = plugin.Spec.Env[0].Name
-						},
-						"Duplicate value",
 					),
 					Entry(
 						"accepts a string operator for a response header assertion",
@@ -1136,8 +1059,8 @@ func createSyntheticCheckResourceWithEnableLabel(
 			},
 			Plugin: dash0v1alpha1.Dash0SyntheticCheckPlugin{
 				Kind: "http",
-				Spec: dash0v1alpha1.Dash0SyntheticCheckPluginSpec{
-					Request: &dash0v1alpha1.Dash0SyntheticCheckHTTPRequest{
+				Spec: dash0v1alpha1.Dash0SyntheticCheckHTTPPluginSpec{
+					Request: dash0v1alpha1.Dash0SyntheticCheckHTTPRequest{
 						Method:    "get",
 						URL:       "https://example.com",
 						Redirects: "follow",
@@ -1150,7 +1073,7 @@ func createSyntheticCheckResourceWithEnableLabel(
 						Headers:         []dash0v1alpha1.Dash0SyntheticCheckHTTPHeader{},
 						QueryParameters: []dash0v1alpha1.Dash0SyntheticCheckHTTPQueryParameter{},
 					},
-					Assertions: &dash0v1alpha1.Dash0SyntheticCheckHTTPAssertions{
+					Assertions: dash0v1alpha1.Dash0SyntheticCheckHTTPAssertions{
 						CriticalAssertions: []dash0v1alpha1.Dash0SyntheticCheckAssertion{
 							{
 								Kind: "status_code",

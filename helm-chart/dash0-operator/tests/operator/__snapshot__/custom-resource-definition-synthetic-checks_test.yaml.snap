@@ -75,18 +75,14 @@ custom resource definition for synthetic checks should match snapshot:
                       description: Dash0SyntheticCheckPlugin defines the plugin configuration
                       properties:
                         kind:
-                          description: |-
-                            The kind of check: "http" sends an HTTP request and evaluates assertions on the response, "browser" runs a
-                            Playwright test script. A browser check runs only on private locations.
                           enum:
                             - http
-                            - browser
                           type: string
                         spec:
-                          description: Dash0SyntheticCheckPluginSpec defines the plugin specification. The fields that apply depend on the plugin kind.
+                          description: Dash0SyntheticCheckHTTPPluginSpec defines the HTTP plugin specification
                           properties:
                             assertions:
-                              description: The assertions to evaluate on the HTTP response. Required for http checks.
+                              description: Dash0SyntheticCheckHTTPAssertions defines HTTP assertions
                               properties:
                                 criticalAssertions:
                                   items:
@@ -248,50 +244,8 @@ custom resource definition for synthetic checks should match snapshot:
                                 - criticalAssertions
                                 - degradedAssertions
                               type: object
-                            env:
-                              description: |-
-                                Environment variables the script reads, only for browser checks. Each name is unique within the check. The
-                                runner sets PATH, HOME, TMPDIR, PLAYWRIGHT_BROWSERS_PATH, TRACEPARENT, CI and NODE_OPTIONS itself, so a check
-                                cannot set them.
-                              items:
-                                description: Dash0SyntheticCheckEnvVar defines an environment variable of a browser check.
-                                properties:
-                                  name:
-                                    description: The environment variable name, as the script reads it.
-                                    type: string
-                                  value:
-                                    description: |-
-                                      The plaintext value. Dash0 stores it with the check and returns it to anyone who may read the check, so a
-                                      secret belongs in valueFrom instead.
-                                    type: string
-                                  valueFrom:
-                                    description: Where Dash0 reads the value from.
-                                    properties:
-                                      platformVariableRef:
-                                        description: A platform variable, resolved when the check is dispatched. The variable must list synthetics in its usableIn.
-                                        properties:
-                                          name:
-                                            description: The name of the platform variable, not the environment variable name the script reads.
-                                            type: string
-                                        required:
-                                          - name
-                                        type: object
-                                    type: object
-                                    x-kubernetes-validations:
-                                      - message: platformVariableRef must be set
-                                        rule: has(self.platformVariableRef)
-                                required:
-                                  - name
-                                type: object
-                                x-kubernetes-validations:
-                                  - message: exactly one of value and valueFrom must be set
-                                    rule: has(self.value) != has(self.valueFrom)
-                              type: array
-                              x-kubernetes-list-map-keys:
-                                - name
-                              x-kubernetes-list-type: map
                             request:
-                              description: The HTTP request to send. Required for http checks.
+                              description: Dash0SyntheticCheckHTTPRequest defines the HTTP request configuration
                               properties:
                                 basicAuthentication:
                                   description: Dash0SyntheticCheckHTTPBasicAuthentication defines basic authentication
@@ -392,21 +346,16 @@ custom resource definition for synthetic checks should match snapshot:
                                 - tracing
                                 - url
                               type: object
-                            script:
-                              description: The Playwright test script. Required for browser checks.
-                              maxLength: 65536
-                              minLength: 1
-                              type: string
+                          required:
+                            - assertions
+                            - request
                           type: object
                       required:
                         - kind
                         - spec
                       type: object
                       x-kubernetes-validations:
-                        - message: an http check requires spec.request and spec.assertions, and must not set spec.script or spec.env
-                          rule: self.kind != 'http' || (has(self.spec.request) && has(self.spec.assertions) && !has(self.spec.script) && !has(self.spec.env))
-                        - message: a browser check requires spec.script, and must not set spec.request or spec.assertions
-                          rule: self.kind != 'browser' || (has(self.spec.script) && !has(self.spec.request) && !has(self.spec.assertions))
+                        - rule: self.kind == 'http'
                     retries:
                       description: Dash0SyntheticCheckRetries defines the retry configuration
                       properties:

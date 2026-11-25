@@ -20,6 +20,7 @@ const (
 		"accepts an AnyValue object as well"
 	notSupportedByDash0ViewYet           = "not supported by Dash0View yet"
 	notSupportedByDash0SyntheticCheckYet = "not supported by Dash0SyntheticCheck yet"
+	onlyHttpSyntheticChecksReason        = "the custom resource only supports http checks"
 	errorAssertionValueReason            = "the custom resource has one value field for all assertion kinds, the " +
 		"values of error assertions are restricted by a CEL validation rule"
 	movedToConfigReason        = "assembled into spec.config by prepareNotificationChannelApiPayload"
@@ -70,6 +71,11 @@ var namedCrdSchemaDriftChecks = []namedCrdSchemaDriftCheck{
 				"operator has a name",
 			"enum only in some union variants: plugin.spec.assertions.criticalAssertions.spec.value": errorAssertionValueReason,
 			"enum only in some union variants: plugin.spec.assertions.degradedAssertions.spec.value": errorAssertionValueReason,
+			"enum value only in client: plugin.kind = browser":                                       onlyHttpSyntheticChecksReason,
+			"only in client: plugin.spec.env":                                                        onlyHttpSyntheticChecksReason,
+			"only in client: plugin.spec.script":                                                     onlyHttpSyntheticChecksReason,
+			"required only in CRD: plugin.spec.assertions":                                           onlyHttpSyntheticChecksReason,
+			"required only in CRD: plugin.spec.request":                                              onlyHttpSyntheticChecksReason,
 		},
 	}},
 	{"Dash0NotificationChannel", crdSchemaDriftCheck{

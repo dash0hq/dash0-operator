@@ -54,74 +54,23 @@ type Dash0SyntheticCheckDisplay struct {
 }
 
 // Dash0SyntheticCheckPlugin defines the plugin configuration
-// +kubebuilder:validation:XValidation:rule="self.kind != 'http' || (has(self.spec.request) && has(self.spec.assertions) && !has(self.spec.script) && !has(self.spec.env))",message="an http check requires spec.request and spec.assertions, and must not set spec.script or spec.env"
-// +kubebuilder:validation:XValidation:rule="self.kind != 'browser' || (has(self.spec.script) && !has(self.spec.request) && !has(self.spec.assertions))",message="a browser check requires spec.script, and must not set spec.request or spec.assertions"
+// +kubebuilder:validation:XValidation:rule="self.kind == 'http'"
 type Dash0SyntheticCheckPlugin struct {
-	// The kind of check: "http" sends an HTTP request and evaluates assertions on the response, "browser" runs a
-	// Playwright test script. A browser check runs only on private locations.
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=http;browser
+	// +kubebuilder:validation:Enum=http
 	Kind string `json:"kind"`
 
 	// +kubebuilder:validation:Required
-	Spec Dash0SyntheticCheckPluginSpec `json:"spec"`
+	Spec Dash0SyntheticCheckHTTPPluginSpec `json:"spec"`
 }
 
-// Dash0SyntheticCheckPluginSpec defines the plugin specification. The fields that apply depend on the plugin kind.
-type Dash0SyntheticCheckPluginSpec struct {
-	// The HTTP request to send. Required for http checks.
-	// +kubebuilder:validation:Optional
-	Request *Dash0SyntheticCheckHTTPRequest `json:"request,omitempty"`
-
-	// The assertions to evaluate on the HTTP response. Required for http checks.
-	// +kubebuilder:validation:Optional
-	Assertions *Dash0SyntheticCheckHTTPAssertions `json:"assertions,omitempty"`
-
-	// The Playwright test script. Required for browser checks.
-	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=65536
-	Script string `json:"script,omitempty"`
-
-	// Environment variables the script reads, only for browser checks. Each name is unique within the check. The
-	// runner sets PATH, HOME, TMPDIR, PLAYWRIGHT_BROWSERS_PATH, TRACEPARENT, CI and NODE_OPTIONS itself, so a check
-	// cannot set them.
-	// +kubebuilder:validation:Optional
-	// +listType=map
-	// +listMapKey=name
-	Env []Dash0SyntheticCheckEnvVar `json:"env,omitempty"`
-}
-
-// Dash0SyntheticCheckEnvVar defines an environment variable of a browser check.
-// +kubebuilder:validation:XValidation:rule="has(self.value) != has(self.valueFrom)",message="exactly one of value and valueFrom must be set"
-type Dash0SyntheticCheckEnvVar struct {
-	// The environment variable name, as the script reads it.
+// Dash0SyntheticCheckHTTPPluginSpec defines the HTTP plugin specification
+type Dash0SyntheticCheckHTTPPluginSpec struct {
 	// +kubebuilder:validation:Required
-	Name string `json:"name"`
+	Request Dash0SyntheticCheckHTTPRequest `json:"request"`
 
-	// The plaintext value. Dash0 stores it with the check and returns it to anyone who may read the check, so a
-	// secret belongs in valueFrom instead.
-	// +kubebuilder:validation:Optional
-	Value *string `json:"value,omitempty"`
-
-	// Where Dash0 reads the value from.
-	// +kubebuilder:validation:Optional
-	ValueFrom *Dash0SyntheticCheckEnvVarSource `json:"valueFrom,omitempty"`
-}
-
-// Dash0SyntheticCheckEnvVarSource defines where Dash0 reads the value of an environment variable from.
-// +kubebuilder:validation:XValidation:rule="has(self.platformVariableRef)",message="platformVariableRef must be set"
-type Dash0SyntheticCheckEnvVarSource struct {
-	// A platform variable, resolved when the check is dispatched. The variable must list synthetics in its usableIn.
-	// +kubebuilder:validation:Optional
-	PlatformVariableRef *Dash0SyntheticCheckPlatformVariableRef `json:"platformVariableRef,omitempty"`
-}
-
-// Dash0SyntheticCheckPlatformVariableRef references a Dash0 platform variable.
-type Dash0SyntheticCheckPlatformVariableRef struct {
-	// The name of the platform variable, not the environment variable name the script reads.
 	// +kubebuilder:validation:Required
-	Name string `json:"name"`
+	Assertions Dash0SyntheticCheckHTTPAssertions `json:"assertions"`
 }
 
 // Dash0SyntheticCheckHTTPRequest defines the HTTP request configuration
