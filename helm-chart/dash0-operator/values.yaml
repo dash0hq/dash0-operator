@@ -34,11 +34,11 @@ operator:
 
     # The URL of the Dash0 ingress endpoint to which telemetry data will be sent. If operator.dash0Export.enabled is
     # false, this property will be ignored. It can only be omitted if operator.dash0Export.apiEndpoint is set and either
-    # operator.selfMonitoringEnabled is false or operator.exports is not empty; the operator configuration resource then
-    # has no Dash0 export, but it can still manage Dash0 resources via the API. The value needs to be the OTLP via gRPC
-    # endpoint of your Dash0 organization. The correct gRPC endpoint can be copied from
-    # https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. The correct endpoint value will always
-    # start with `ingress.` and end in `dash0.com:4317`.
+    # operator.exports is not empty or both operator.telemetryCollectionEnabled and operator.selfMonitoringEnabled are
+    # false; the operator configuration resource then has no Dash0 export, but it can still manage Dash0 resources via
+    # the API. The value needs to be the OTLP via gRPC endpoint of your Dash0 organization. The correct gRPC endpoint
+    # can be copied from https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_grpc. The correct endpoint
+    # value will always start with `ingress.` and end in `dash0.com:4317`.
     endpoint:
 
     # The identifier of the dataset to be used for reported telemetry and API access (spec.exports[0].dash0.dataset and

@@ -148,8 +148,8 @@ spec:
 {{- end }}{{/* closes "not (or .Values.operator.dash0Export.endpoint .Values.operator.dash0Export.apiEndpoint)" */}}
 {{- if .Values.operator.dash0Export.endpoint }}
         - --operator-configuration-endpoint={{ .Values.operator.dash0Export.endpoint }}
-{{- else if and .Values.operator.selfMonitoringEnabled (not .Values.operator.exports) }}
-{{- fail "Error: operator.dash0Export.endpoint is not set and operator.exports is empty, so there is no export for the operator's self-monitoring telemetry. Either provide operator.dash0Export.endpoint or operator.exports, or set operator.selfMonitoringEnabled to false." -}}
+{{- else if and (or .Values.operator.telemetryCollectionEnabled .Values.operator.selfMonitoringEnabled) (not .Values.operator.exports) }}
+{{- fail "Error: operator.dash0Export.endpoint is not set and operator.exports is empty, so there is no export for the collected telemetry and the operator's self-monitoring telemetry. Either provide operator.dash0Export.endpoint or operator.exports, or, to only manage Dash0 resources via the Dash0 API, set operator.telemetryCollectionEnabled and operator.selfMonitoringEnabled to false." -}}
 {{- end }}{{/* closes "if .Values.operator.dash0Export.endpoint" */}}
 {{- if .Values.operator.dash0Export.token }}
         - --operator-configuration-token={{ .Values.operator.dash0Export.token }}

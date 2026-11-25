@@ -335,12 +335,13 @@ func (r *AutoOperatorConfigurationResourceHandler) validateOperatorConfiguration
 			)
 		}
 	}
-	if values.SelfMonitoringEnabled && values.Endpoint == "" && len(exports) == 0 {
+	if (values.TelemetryCollectionEnabled || values.SelfMonitoringEnabled) && values.Endpoint == "" && len(exports) == 0 {
 		return fmt.Errorf(
-			"invalid operator configuration: self-monitoring is enabled, but there is no export to send the " +
-				"self-monitoring telemetry to; either provide --operator-configuration-endpoint (Helm value " +
-				"operator.dash0Export.endpoint) or an export (Helm value operator.exports), or disable self-monitoring " +
-				"(Helm value operator.selfMonitoringEnabled=false)",
+			"invalid operator configuration: telemetry collection or self-monitoring is enabled, but there is no " +
+				"export to send the telemetry to; either provide --operator-configuration-endpoint (Helm value " +
+				"operator.dash0Export.endpoint) or an export (Helm value operator.exports), or, to only manage Dash0 " +
+				"resources via the Dash0 API, disable telemetry collection and self-monitoring (Helm values " +
+				"operator.telemetryCollectionEnabled=false and operator.selfMonitoringEnabled=false)",
 		)
 	}
 	if r.operatorConfigurationValues.TelemetryCollectionEnabled &&

@@ -351,6 +351,11 @@ operator:
   telemetryCollectionEnabled: false
 ```
 
+Without an export, telemetry collection and self-monitoring both need to be disabled: the Helm chart refuses to render
+the configuration above if either of them is left enabled, and the operator issues a warning for an operator
+configuration resource that has telemetry collection enabled but no export. Dash0 monitoring resources cannot be
+created in that state.
+
 Dash0 resources are only synchronized in namespaces that have a Dash0 monitoring resource, see
 [Managing Dash0 Resources](managing-dash0-resources.md).
 

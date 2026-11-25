@@ -976,13 +976,24 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				To(Succeed())
 		})
 
-		It("should allow dash0Api without an export", func() {
-			response := newHandler().Handle(ctx, operatorConfigurationAdmissionRequest(dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		It("should allow dash0Api without an export if telemetry collection is disabled via Helm", func() {
+			handler := NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, false, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+			response := handler.Handle(ctx, operatorConfigurationAdmissionRequest(dash0v1alpha1.Dash0OperatorConfigurationSpec{
 				SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(false)},
 				Dash0Api:       dash0ApiConfigurations(),
 			}))
 			Expect(response.Allowed).To(BeTrue())
 			Expect(response.Warnings).To(BeEmpty())
+		})
+
+		It("should warn if telemetry collection is enabled but there are no exports", func() {
+			response := newHandler().Handle(ctx, operatorConfigurationAdmissionRequest(dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(false)},
+				Dash0Api:       dash0ApiConfigurations(),
+			}))
+			Expect(response.Allowed).To(BeTrue())
+			Expect(response.Warnings).To(Equal([]string{WarningOperatorConfigurationTelemetryCollectionWithoutExports}))
 		})
 
 		It("should reject dash0Api together with the deprecated apiEndpoint", func() {
@@ -1027,8 +1038,10 @@ var _ = Describe("The validation webhook for the operator configuration resource
 					Dash0Api:       dash0ApiConfigurations(),
 				}))
 				g.Expect(response.Allowed).To(BeTrue())
-				g.Expect(response.Warnings).To(Equal(
-					[]string{WarningOperatorConfigurationNoExportsButMonitoringResourcesWithExports}))
+				g.Expect(response.Warnings).To(Equal([]string{
+					WarningOperatorConfigurationTelemetryCollectionWithoutExports,
+					WarningOperatorConfigurationNoExportsButMonitoringResourcesWithExports,
+				}))
 			}).Should(Succeed())
 		})
 	})

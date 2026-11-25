@@ -1439,6 +1439,7 @@ tests:
           token: "very-secret-dash0-auth-token"
           apiEndpoint: https://api.dash0.com
         selfMonitoringEnabled: false
+        telemetryCollectionEnabled: false
     asserts:
       - equal:
           path: spec.template.spec.containers[0].args[3]
@@ -1474,9 +1475,22 @@ tests:
           enabled: true
           token: "very-secret-dash0-auth-token"
           apiEndpoint: https://api.dash0.com
+        telemetryCollectionEnabled: false
     asserts:
       - failedTemplate:
-          errorMessage: "Error: operator.dash0Export.endpoint is not set and operator.exports is empty, so there is no export for the operator's self-monitoring telemetry. Either provide operator.dash0Export.endpoint or operator.exports, or set operator.selfMonitoringEnabled to false."
+          errorMessage: "Error: operator.dash0Export.endpoint is not set and operator.exports is empty, so there is no export for the collected telemetry and the operator's self-monitoring telemetry. Either provide operator.dash0Export.endpoint or operator.exports, or, to only manage Dash0 resources via the Dash0 API, set operator.telemetryCollectionEnabled and operator.selfMonitoringEnabled to false."
+
+  - it: should fail if dash0Export has no endpoint while telemetry collection is enabled and there are no exports
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+        selfMonitoringEnabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.dash0Export.endpoint is not set and operator.exports is empty, so there is no export for the collected telemetry and the operator's self-monitoring telemetry. Either provide operator.dash0Export.endpoint or operator.exports, or, to only manage Dash0 resources via the Dash0 API, set operator.telemetryCollectionEnabled and operator.selfMonitoringEnabled to false."
 
   - it: should add args for creating an operator configuration resource with a custom dataset to the deployment
     documentSelector:

@@ -494,10 +494,11 @@ var _ = Describe(
 					k8sClient,
 					readyCheckExecuter,
 					OperatorConfigurationValues{
-						SecretRef:             secretRef,
-						ApiEndpoint:           ApiEndpointTest,
-						Dataset:               "custom",
-						SelfMonitoringEnabled: false,
+						SecretRef:                  secretRef,
+						ApiEndpoint:                ApiEndpointTest,
+						Dataset:                    "custom",
+						SelfMonitoringEnabled:      false,
+						TelemetryCollectionEnabled: false,
 					},
 					util.ExtraConfig{},
 				)
@@ -528,15 +529,17 @@ var _ = Describe(
 			},
 		)
 
-		It(
-			"should fail validation if self-monitoring is enabled but there is no export", func() {
+		DescribeTable(
+			"should fail validation if telemetry collection or self-monitoring is enabled but there is no export",
+			func(telemetryCollectionEnabled bool, selfMonitoringEnabled bool) {
 				handler := NewAutoOperatorConfigurationResourceHandler(
 					k8sClient,
 					readyCheckExecuter,
 					OperatorConfigurationValues{
-						Token:                 AuthorizationTokenTest,
-						ApiEndpoint:           ApiEndpointTest,
-						SelfMonitoringEnabled: true,
+						Token:                      AuthorizationTokenTest,
+						ApiEndpoint:                ApiEndpointTest,
+						TelemetryCollectionEnabled: telemetryCollectionEnabled,
+						SelfMonitoringEnabled:      selfMonitoringEnabled,
 					},
 					util.ExtraConfig{},
 				)
@@ -545,12 +548,15 @@ var _ = Describe(
 				Expect(err).To(
 					MatchError(
 						ContainSubstring(
-							"invalid operator configuration: self-monitoring is enabled, but there is no export to send " +
-								"the self-monitoring telemetry to",
+							"invalid operator configuration: telemetry collection or self-monitoring is enabled, but " +
+								"there is no export to send the telemetry to",
 						),
 					),
 				)
 			},
+			Entry("telemetry collection enabled", true, false),
+			Entry("self-monitoring enabled", false, true),
+			Entry("both enabled", true, true),
 		)
 
 		It(

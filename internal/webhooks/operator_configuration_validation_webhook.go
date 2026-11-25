@@ -86,6 +86,11 @@ const ErrorMessageOperatorConfigurationDash0ApiAndApiEndpointAreMutuallyExclusiv
 const WarningOperatorConfigurationDeprecatedApiEndpoint = "spec.exports[].dash0.apiEndpoint is deprecated, use " +
 	"spec.dash0Api instead."
 
+const WarningOperatorConfigurationTelemetryCollectionWithoutExports = "Telemetry collection is enabled, but the " +
+	"operator configuration resource has no exports, so no telemetry is collected and Dash0 monitoring resources " +
+	"cannot be created. Add an export, or, to only manage Dash0 resources via the Dash0 API, set " +
+	"spec.telemetryCollection.enabled to false."
+
 const WarningOperatorConfigurationNoExportsButMonitoringResourcesWithExports = "The operator configuration resource " +
 	"has no exports, so the operator does not deploy any OpenTelemetry collectors. At least one Dash0 monitoring " +
 	"resource has exports of its own, which have no effect without an export in the operator configuration resource."
@@ -314,6 +319,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) exportWarnings(
 		!pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.TelemetryCollection.Enabled, true) {
 		return warnings, nil
 	}
+	warnings = append(warnings, WarningOperatorConfigurationTelemetryCollectionWithoutExports)
 	allMonitoringResources := &dash0v1beta1.Dash0MonitoringList{}
 	if err := h.Client.List(ctx, allMonitoringResources); err != nil {
 		return nil, fmt.Errorf("failed to list all Dash0 monitoring resources: %w", err)
