@@ -159,6 +159,7 @@ tests:
               initialDelaySeconds: 7
               periodSeconds: 6
               timeoutSeconds: 5
+          deploymentReplicas: 2
           signalControlCollectorReplicas: 4
           signalControlCollectorContainerResources:
             limits:
@@ -584,6 +585,7 @@ tests:
                 initialDelaySeconds: 7
                 periodSeconds: 6
                 timeoutSeconds: 5
+            collectorDeploymentReplicas: 2
             signalControlCollectorReplicas: 4
             signalControlCollectorContainerResources:
               gomemlimit: 2400MiB
@@ -967,6 +969,50 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: "Error: operator.collectors.daemonSetSeLinuxOptions must be a map with the settings user, role, type and level."
+
+  - it: should render the default number of replicas of the cluster metrics collector
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: "collectorDeploymentReplicas: 1\n"
+
+  - it: should render a custom number of replicas of the cluster metrics collector
+    set:
+      operator:
+        collectors:
+          deploymentReplicas: 3
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: "collectorDeploymentReplicas: 3\n"
+
+  - it: should omit the number of replicas of the cluster metrics collector if it is null
+    set:
+      operator:
+        collectors:
+          deploymentReplicas: null
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: collectorDeploymentReplicas
+
+  - it: should reject deploymentReplicas 0
+    set:
+      operator:
+        collectors:
+          deploymentReplicas: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.deploymentReplicas must be an integer of at least 1, but was 0."
+
+  - it: should reject a non-integer deploymentReplicas
+    set:
+      operator:
+        collectors:
+          deploymentReplicas: 1.5
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.deploymentReplicas must be an integer of at least 1, but was 1.5."
 
   - it: should reject signalControlCollectorReplicas 0 when Signal Control is enabled
     set:
@@ -1906,6 +1952,7 @@ tests:
                 initialDelaySeconds: 0
                 periodSeconds: 2
                 timeoutSeconds: 1
+            collectorDeploymentReplicas: 1
             signalControlCollectorContainerResources:
               gomemlimit: ""
               limits:

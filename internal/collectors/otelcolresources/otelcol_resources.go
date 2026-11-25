@@ -273,6 +273,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	config.DaemonSetCollectorMemoryLimit = *extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Memory()
 	config.DeploymentCollectorMemoryLimit = *extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory()
 	config.SignalControlCollectorMemoryLimit = *extraConfig.SignalControlCollectorContainerResources.Limits.Memory()
+	config.DeploymentCollectorReplicas = extraConfig.CollectorDeploymentReplicas
 	config.TargetAllocatorMtlsCaSha = m.targetAllocatorMtlsCaSha(ctx, extraConfig, logger)
 	if err = m.resolveFilelogOffsetStorage(ctx, config, extraConfig, operatorConfigurationResource, logger); err != nil {
 		return false, false, err

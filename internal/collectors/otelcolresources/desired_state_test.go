@@ -1057,6 +1057,114 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			To(HaveKeyWithValue("app.kubernetes.io/component", "signal-control-collector"))
 	})
 
+	Describe("the replicas of the cluster metrics collector", func() {
+		assemble := func(replicas int32) []clientObject {
+			desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         defaultDash0ExportersWithToken(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				DeploymentCollectorReplicas:                      replicas,
+				Images:                                           TestImages,
+			}, nil, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+			return desiredState
+		}
+
+		indexOf := func(desiredState []clientObject, name string) int {
+			return slices.IndexFunc(desiredState, func(o clientObject) bool { return o.object.GetName() == name })
+		}
+
+		DescribeTable("should run a single replica without leader election",
+			func(replicas int32) {
+				desiredState := assemble(replicas)
+				Expect(desiredState).To(HaveLen(numberOfResourcesWithKubernetesInfrastructureMetricsCollectionEnabled))
+				deployment := getDeployment(desiredState)
+				Expect(*deployment.Spec.Replicas).To(Equal(int32(1)))
+				Expect(deployment.Spec.Template.Spec.TopologySpreadConstraints).To(BeEmpty())
+				Expect(findObjectByName(desiredState, ExpectedDeploymentRoleName)).To(BeNil())
+				Expect(findObjectByName(desiredState, ExpectedDeploymentRoleBindingName)).To(BeNil())
+				Expect(findObjectByName(desiredState, ExpectedDeploymentPdbName)).To(BeNil())
+				Expect(getDeploymentCollectorConfigMapContent(desiredState)).ToNot(ContainSubstring("k8s_leader_elector"))
+			},
+			Entry("when the number of replicas is not set", int32(0)),
+			Entry("with one replica", int32(1)),
+		)
+
+		It("should elect a leader, spread the replicas, and guard them with a pod disruption budget", func() {
+			desiredState := assemble(3)
+			Expect(desiredState).To(HaveLen(numberOfResourcesWithKubernetesInfrastructureMetricsCollectionEnabled + 3))
+
+			deployment := getDeployment(desiredState)
+			Expect(*deployment.Spec.Replicas).To(Equal(int32(3)))
+			constraints := deployment.Spec.Template.Spec.TopologySpreadConstraints
+			Expect(constraints).To(HaveLen(2))
+			Expect(constraints[0].TopologyKey).To(Equal("topology.kubernetes.io/zone"))
+			Expect(constraints[0].WhenUnsatisfiable).To(Equal(corev1.ScheduleAnyway))
+			Expect(constraints[0].LabelSelector.MatchLabels).
+				To(HaveKeyWithValue("app.kubernetes.io/component", "cluster-metrics-collector"))
+			Expect(constraints[1].TopologyKey).To(Equal("kubernetes.io/hostname"))
+			Expect(constraints[1].WhenUnsatisfiable).To(Equal(corev1.ScheduleAnyway))
+
+			role := findObjectByName(desiredState, ExpectedDeploymentRoleName).(*rbacv1.Role)
+			Expect(role.Namespace).To(Equal(OperatorNamespace))
+			Expect(role.Rules).To(ConsistOf(
+				rbacv1.PolicyRule{
+					APIGroups: []string{"coordination.k8s.io"},
+					Resources: []string{"leases"},
+					Verbs:     []string{"create"},
+				},
+				rbacv1.PolicyRule{
+					APIGroups:     []string{"coordination.k8s.io"},
+					Resources:     []string{"leases"},
+					ResourceNames: []string{ExpectedDeploymentCollectorLeaseName},
+					Verbs:         []string{"get", "update", "patch"},
+				},
+			))
+			roleBinding := findObjectByName(desiredState, ExpectedDeploymentRoleBindingName).(*rbacv1.RoleBinding)
+			Expect(roleBinding.Namespace).To(Equal(OperatorNamespace))
+			Expect(roleBinding.RoleRef.Name).To(Equal(ExpectedDeploymentRoleName))
+			Expect(roleBinding.Subjects).To(ConsistOf(rbacv1.Subject{
+				Kind:      "ServiceAccount",
+				Name:      ExpectedDeploymentServiceAccountName,
+				Namespace: OperatorNamespace,
+			}))
+			// The replicas need access to the lease as soon as they start.
+			Expect(indexOf(desiredState, ExpectedDeploymentRoleBindingName)).
+				To(BeNumerically("<", indexOf(desiredState, ExpectedDeploymentName)))
+
+			pdbSpec := findObjectByName(desiredState, ExpectedDeploymentPdbName).(*policyv1.PodDisruptionBudget).Spec
+			Expect(pdbSpec.MinAvailable).To(BeNil())
+			Expect(pdbSpec.MaxUnavailable.IntValue()).To(Equal(1))
+			Expect(pdbSpec.Selector.MatchLabels).
+				To(HaveKeyWithValue("app.kubernetes.io/component", "cluster-metrics-collector"))
+
+			collectorConfig := parseConfigMapContent(getDeploymentCollectorConfigMap(desiredState))
+			Expect(ReadFromMap(collectorConfig, []string{"extensions", "k8s_leader_elector"})).To(Equal(map[string]any{
+				"auth_type":       "serviceAccount",
+				"lease_name":      ExpectedDeploymentCollectorLeaseName,
+				"lease_namespace": OperatorNamespace,
+			}))
+			Expect(ReadFromMap(collectorConfig, []string{"service", "extensions"})).To(ContainElement("k8s_leader_elector"))
+			Expect(ReadFromMap(collectorConfig, []string{"receivers", "k8s_cluster", "k8s_leader_elector"})).
+				To(Equal("k8s_leader_elector"))
+		})
+
+		It("should include the leader election resources in the desired state for deletion", func() {
+			desiredState, err := assembleDesiredStateForDelete(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         defaultDash0ExportersWithToken(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				Images: TestImages,
+			}, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(findObjectByName(desiredState, ExpectedDeploymentRoleName)).ToNot(BeNil())
+			Expect(findObjectByName(desiredState, ExpectedDeploymentRoleBindingName)).ToNot(BeNil())
+			Expect(findObjectByName(desiredState, ExpectedDeploymentPdbName)).ToNot(BeNil())
+		})
+	})
+
 	DescribeTable("should set spec.trafficDistribution on the Signal Control collector service depending on the "+
 		"Kubernetes version",
 		func(version cluster.KubernetesVersion, versionDetected bool, expectedValue *string) {

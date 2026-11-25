@@ -1067,6 +1067,25 @@ operator:
         timeoutSeconds: 1
         failureThreshold: 30
 
+    # The number of replicas of the collector Deployment (cluster-metrics-collector) managed by the operator. Must be at
+    # least 1. This collector collects cluster-wide telemetry (Kubernetes infrastructure metrics, Kubernetes events and
+    # Kubernetes objects), which must only be collected once. With more than one replica, the replicas elect a leader
+    # via a Kubernetes lease in the operator namespace; only the leader collects, the other replicas are on standby and
+    # take over when the leader becomes unavailable, for example when its node is drained or removed by the cluster
+    # autoscaler. With more than one replica, the operator also adds a pod disruption budget that allows at most one
+    # replica to be unavailable at a time, and topology spread constraints that prefer spreading the replicas across
+    # zones and nodes.
+    #
+    # Things to consider before running more than one replica:
+    # - Every replica, including the replicas on standby, requests the resources configured in
+    #   deploymentCollectorContainerResources.
+    # - Taking over the lease takes up to 15 seconds after the leader has stopped, and the leader also gives up its
+    #   lease when it reloads its configuration (for example when monitoring is enabled for another namespace).
+    #   Telemetry is not collected during that time.
+    # - A replica that takes over sends the Kubernetes events which are still stored in the cluster and occurred since
+    #   that replica has been started, also those the previous leader has already sent.
+    deploymentReplicas: 1
+
     # Resource settings for the collector container of the Deployment collector pod (cluster-metrics-collector) managed
     # by the operator. There should usually be no reason to override this.
     deploymentCollectorContainerResources:

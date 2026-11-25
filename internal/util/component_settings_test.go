@@ -377,6 +377,22 @@ var _ = Describe("component settings", func() {
 			Expect(conflicts).To(BeEmpty())
 		})
 
+		It("should apply the replicas of the deployment collector and report a conflicting Helm value", func() {
+			fileConfig := ExtraConfigDefaults
+			fileConfig.CollectorDeploymentReplicas = 2
+			effective, conflicts := resolveOperatorConfiguration(fileConfig, &dash0v1alpha1.OperatorConfigurationComponents{
+				DeploymentCollector: &dash0v1alpha1.DeploymentCollectorSettings{Replicas: new(int32(3))},
+			})
+			Expect(effective.CollectorDeploymentReplicas).To(Equal(int32(3)))
+			Expect(conflicts).To(ConsistOf(ComponentSettingConflict{
+				Resource:        "Dash0OperatorConfiguration",
+				Path:            "spec.components.deploymentCollector.replicas",
+				HelmValue:       "operator.collectors.deploymentReplicas",
+				HelmSetting:     "2",
+				ResourceSetting: "3",
+			}))
+		})
+
 		It("should use the nested Helm value names for the target-allocator", func() {
 			fileConfig := ExtraConfigDefaults
 			fileConfig.TargetAllocatorPodAnnotations = map[string]string{"a": "helm"}

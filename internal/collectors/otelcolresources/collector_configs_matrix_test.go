@@ -130,6 +130,7 @@ func maximalMatrixBaseline() collectorConfigMatrixEntry {
 			DeploymentCollectorMemoryLimit:    resource.MustParse("500Mi"),
 			SignalControlCollectorMemoryLimit: resource.MustParse("500Mi"),
 			EnableProfExtension:               true,
+			DeploymentCollectorReplicas:       3,
 			ProfilingEnabled:                  true,
 			EbpfProfilerEnabled:               true,
 		},
@@ -430,6 +431,15 @@ func matrixSettings() []matrixSetting {
 			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
 				e.config.DevelopmentMode = true
 				e.config.DebugVerbosityDetailed = enabled
+			},
+		},
+		{
+			name: "deployment-collector-leader-election",
+			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				e.config.DeploymentCollectorReplicas = 1
+				if enabled {
+					e.config.DeploymentCollectorReplicas = 2
+				}
 			},
 		},
 		{

@@ -156,6 +156,10 @@ data:
     deploymentSysctls:
       {{- toYaml .Values.operator.collectors.deploymentSysctls | nindent 6 }}
 {{- end }}
+{{- include "dash0-operator.validateReplicas" (dict "name" "operator.collectors.deploymentReplicas" "value" .Values.operator.collectors.deploymentReplicas) }}
+{{- if not (kindIs "invalid" .Values.operator.collectors.deploymentReplicas) }}
+    collectorDeploymentReplicas: {{ .Values.operator.collectors.deploymentReplicas }}
+{{- end }}
 {{- if .Values.operator.signalControl.enabled }}
 {{- include "dash0-operator.validateReplicas" (dict "name" "operator.collectors.signalControlCollectorReplicas" "value" .Values.operator.collectors.signalControlCollectorReplicas) }}
 {{- if not (kindIs "invalid" .Values.operator.collectors.signalControlCollectorReplicas) }}

@@ -5775,6 +5775,52 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		})
 	})
 
+	DescribeTable("leader election of the cluster metrics collector replicas",
+		func(replicas int32, expectLeaderElection bool) {
+			configMap, err := assembleDeploymentCollectorConfigMap(
+				&oTelColConfig{
+					OperatorNamespace: OperatorNamespace,
+					NamePrefix:        namePrefix,
+					Exporters:         cmTestSingleDefaultOtlpExporter(),
+					KubernetesInfrastructureMetricsCollectionEnabled: true,
+					DeploymentCollectorReplicas:                      replicas,
+				},
+				[]string{"namespace"},
+				[]string{"namespace"},
+				[]string{"namespace"},
+				nil,
+				nil,
+				false,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			receivers := []string{"k8s_cluster", "k8s_events", "k8s_objects/default", "k8s_objects/highcardinality"}
+			if !expectLeaderElection {
+				Expect(ReadFromMap(collectorConfig, []string{"extensions", "k8s_leader_elector"})).To(BeNil())
+				Expect(ReadFromMap(collectorConfig, []string{"service", "extensions"})).
+					ToNot(ContainElement("k8s_leader_elector"))
+				for _, receiver := range receivers {
+					Expect(ReadFromMap(collectorConfig, []string{"receivers", receiver})).ToNot(BeNil())
+					Expect(ReadFromMap(collectorConfig, []string{"receivers", receiver, "k8s_leader_elector"})).To(BeNil())
+				}
+				return
+			}
+			Expect(ReadFromMap(collectorConfig, []string{"extensions", "k8s_leader_elector"})).To(Equal(map[string]any{
+				"auth_type":       "serviceAccount",
+				"lease_name":      ExpectedDeploymentCollectorLeaseName,
+				"lease_namespace": OperatorNamespace,
+			}))
+			Expect(ReadFromMap(collectorConfig, []string{"service", "extensions"})).To(ContainElement("k8s_leader_elector"))
+			for _, receiver := range receivers {
+				Expect(ReadFromMap(collectorConfig, []string{"receivers", receiver, "k8s_leader_elector"})).
+					To(Equal("k8s_leader_elector"), "receiver %s does not use the leader elector", receiver)
+			}
+		},
+		Entry("not used with the default number of replicas", int32(0), false),
+		Entry("not used with one replica", int32(1), false),
+		Entry("used with two replicas", int32(2), true),
+	)
+
 	Describe("Kubernetes infrastructure metrics collection", func() {
 		It("should not render the k8s_cluster receiver and the associated pipeline if Kubernetes infrastructure metrics collection is disabled", func() {
 			configMap, err := assembleDeploymentCollectorConfigMap(

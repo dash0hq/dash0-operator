@@ -135,6 +135,10 @@ type collectorConfigurationTemplateValues struct {
 	SignalControlCollectorServiceName                string
 	SignalControlCollectorDeploymentName             string
 	SignalControlSceOnlyMode                         bool
+	// DeploymentCollectorLeaderElection is set when the cluster metrics collector runs with more than one replica; its
+	// receivers then only run in the replica that holds the lease DeploymentCollectorLeaseName.
+	DeploymentCollectorLeaderElection bool
+	DeploymentCollectorLeaseName      string
 	// MemoryLimiterLimitMiB and MemoryLimiterSpikeLimitMiB are the memory_limiter limit_mib / spike_limit_mib
 	// derived from the collector container memory limit. When MemoryLimiterLimitMiB is zero (no limit set), the
 	// template falls back to the percentage-based memory_limiter configuration.
@@ -467,6 +471,8 @@ func newCollectorConfigurationTemplateValues(
 		SignalControlCollectorServiceName:                SignalControlCollectorServiceName(config.NamePrefix),
 		SignalControlCollectorDeploymentName:             SignalControlCollectorDeploymentName(config.NamePrefix),
 		SignalControlSceOnlyMode:                         config.SignalControlSceOnlyMode,
+		DeploymentCollectorLeaderElection:                config.deploymentCollectorUsesLeaderElection(),
+		DeploymentCollectorLeaseName:                     deploymentCollectorLeaseName(config.NamePrefix),
 		MemoryLimiterLimitMiB:                            memoryLimiterLimitMiB,
 		MemoryLimiterSpikeLimitMiB:                       memoryLimiterSpikeMiB,
 	}
