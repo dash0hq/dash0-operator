@@ -58,6 +58,12 @@ spec:
                 required:
                 - name
                 type: object
+              dropMatched:
+                description: |-
+                  When true, the log records this rule matches are dropped once the metric is derived from them. The drop runs
+                  after signal-to-metrics conversion, so the dropped log records still count toward the metrics of every rule that
+                  matches them. Only allowed for logs rules with at least one filter other than is_any. Defaults to false.
+                type: boolean
               enabled:
                 description: Whether this rule is active.
                 type: boolean
@@ -283,6 +289,14 @@ spec:
             - match
             - output
             type: object
+            x-kubernetes-validations:
+            - message: dropMatched is only allowed when match.signal is 'logs'
+              rule: '!has(self.dropMatched) || !self.dropMatched || self.match.signal
+                == ''logs'''
+            - message: dropMatched requires at least one filter with an operator other
+                than 'is_any'
+              rule: '!has(self.dropMatched) || !self.dropMatched || self.match.filters.exists(f,
+                f.operator != ''is_any'')'
           status:
             description: Dash0SignalToMetricsStatus defines the observed state of
               a Dash0SignalToMetrics resource.
