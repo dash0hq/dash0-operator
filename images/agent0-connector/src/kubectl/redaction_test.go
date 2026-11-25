@@ -185,6 +185,7 @@ func TestRedactDocument(t *testing.T) {
 			syntheticCheckUrlApiKey,
 			syntheticCheckBodyContent,
 			syntheticCheckBrowserEnvValue,
+			syntheticCheckBrowserScript,
 		} {
 			if strings.Contains(rendered, secret) {
 				t.Errorf("expected the credential %q to be redacted, got %q", secret, rendered)
@@ -1887,6 +1888,7 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 			syntheticCheckUrlApiKey,
 			syntheticCheckBodyContent,
 			syntheticCheckBrowserEnvValue,
+			syntheticCheckBrowserScript,
 		} {
 			if strings.Contains(resp.GetStdout(), secret) {
 				t.Errorf("expected the credential %q to be redacted, got %q", secret, resp.GetStdout())
@@ -2713,6 +2715,7 @@ const (
 	syntheticCheckPassword            = "my-synthetic-check-password"
 	syntheticCheckBodyContent         = "client_secret=my-synthetic-check-body-secret"
 	syntheticCheckBrowserEnvValue     = "my-synthetic-check-browser-env-secret"
+	syntheticCheckBrowserScript       = "await page.fill('#password', 'my-synthetic-check-browser-script-secret');"
 	routingFilterAttributeKey         = "service.namespace"
 
 	// The URL a synthetic check requests is not a credential itself, but it carries two: the password of its user
@@ -2980,7 +2983,7 @@ const dash0ApiResourcesJson = `{
         "plugin": {
           "kind": "browser",
           "spec": {
-            "script": "import { test } from '@playwright/test';",
+            "script": "` + syntheticCheckBrowserScript + `",
             "env": [
               { "name": "PASSWORD", "value": "` + syntheticCheckBrowserEnvValue + `" },
               { "name": "API_KEY", "valueFrom": { "platformVariableRef": { "name": "api-key" } } }

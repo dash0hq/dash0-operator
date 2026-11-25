@@ -140,7 +140,11 @@ var credentialFieldsPerConfigObject = map[string][]string{
 	"ilertConfig":             {"url"},
 	"allQuietConfig":          {"url"},
 	"mattermostWebhookConfig": {"url"},
-	"body":                    {"spec.content"},
+
+	// Dash0SyntheticCheck, the request body of an HTTP check and the script of a browser check, both free text that can
+	// hold a credential anywhere in it.
+	"body":   {"spec.content"},
+	"plugin": {"spec.script"},
 
 	// Prometheus Operator ScrapeConfig, spec.<provider>SDConfigs, both allow providing credentials as literal
 	// strings.
@@ -638,8 +642,8 @@ func isWalkableNode(node any) bool {
 //     spec.export.dash0.authorization.token) and the basic authentication password of a synthetic check,
 //   - the literal header values of the gRPC and HTTP exports, of the webhook notification channels, and of the request
 //     of a synthetic check, as well as its query parameter values,
-//   - the credentials of the third-party integration of a notification channel and the request body of a synthetic
-//     check (see credentialFieldsPerConfigObject),
+//   - the credentials of the third-party integration of a notification channel, the request body of an HTTP synthetic
+//     check and the script of a browser synthetic check (see credentialFieldsPerConfigObject),
 //   - the credential-bearing parts of every field that holds a URL, e.g. the target of a synthetic check, the URL of an
 //     HTTP proxy or an OAuth2 token endpoint (see isUrlField),
 //   - the query parameter values of the requests that a scrape configuration configures (see

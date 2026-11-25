@@ -148,7 +148,7 @@ custom resource definition for synthetic checks should match snapshot:
                                               - response
                                             type: string
                                           value:
-                                            description: For all assertions. For error assertions, one of dns, location_unavailable, tcp, timeout, tls and unknown.
+                                            description: For all assertions. For error assertions, one of dns, tcp, timeout, tls and unknown.
                                             type: string
                                         required:
                                           - value
@@ -163,8 +163,8 @@ custom resource definition for synthetic checks should match snapshot:
                                         rule: '!(self.kind in [''status_code'', ''timing'']) || !has(self.spec.operator) || self.spec.operator in [''is'', ''is_not'', ''is_one_of'', ''is_not_one_of'', ''gt'', ''gte'', ''lt'', ''lte'']'
                                       - message: response_header, json_body and text_body assertions do not support the operators gt, gte, lt and lte
                                         rule: '!(self.kind in [''response_header'', ''json_body'', ''text_body'']) || !has(self.spec.operator) || !(self.spec.operator in [''gt'', ''gte'', ''lt'', ''lte''])'
-                                      - message: the value of an error assertion must be one of dns, location_unavailable, tcp, timeout, tls and unknown
-                                        rule: self.kind != 'error' || !has(self.spec.value) || self.spec.value in ['dns', 'location_unavailable', 'tcp', 'timeout', 'tls', 'unknown']
+                                      - message: the value of an error assertion must be one of dns, tcp, timeout, tls and unknown
+                                        rule: self.kind != 'error' || !has(self.spec.value) || self.spec.value in ['dns', 'tcp', 'timeout', 'tls', 'unknown']
                                   type: array
                                 degradedAssertions:
                                   items:
@@ -226,7 +226,7 @@ custom resource definition for synthetic checks should match snapshot:
                                               - response
                                             type: string
                                           value:
-                                            description: For all assertions. For error assertions, one of dns, location_unavailable, tcp, timeout, tls and unknown.
+                                            description: For all assertions. For error assertions, one of dns, tcp, timeout, tls and unknown.
                                             type: string
                                         required:
                                           - value
@@ -241,8 +241,8 @@ custom resource definition for synthetic checks should match snapshot:
                                         rule: '!(self.kind in [''status_code'', ''timing'']) || !has(self.spec.operator) || self.spec.operator in [''is'', ''is_not'', ''is_one_of'', ''is_not_one_of'', ''gt'', ''gte'', ''lt'', ''lte'']'
                                       - message: response_header, json_body and text_body assertions do not support the operators gt, gte, lt and lte
                                         rule: '!(self.kind in [''response_header'', ''json_body'', ''text_body'']) || !has(self.spec.operator) || !(self.spec.operator in [''gt'', ''gte'', ''lt'', ''lte''])'
-                                      - message: the value of an error assertion must be one of dns, location_unavailable, tcp, timeout, tls and unknown
-                                        rule: self.kind != 'error' || !has(self.spec.value) || self.spec.value in ['dns', 'location_unavailable', 'tcp', 'timeout', 'tls', 'unknown']
+                                      - message: the value of an error assertion must be one of dns, tcp, timeout, tls and unknown
+                                        rule: self.kind != 'error' || !has(self.spec.value) || self.spec.value in ['dns', 'tcp', 'timeout', 'tls', 'unknown']
                                   type: array
                               required:
                                 - criticalAssertions
@@ -395,6 +395,7 @@ custom resource definition for synthetic checks should match snapshot:
                             script:
                               description: The Playwright test script. Required for browser checks.
                               maxLength: 65536
+                              minLength: 1
                               type: string
                           type: object
                       required:

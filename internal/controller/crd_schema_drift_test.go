@@ -59,7 +59,6 @@ method per variant) at the path where it occurs.
 type clientUnionOccurrence struct {
 	key       string
 	fieldPath string
-	unionType reflect.Type
 	variants  []reflect.Type
 }
 
@@ -167,7 +166,7 @@ func (c *clientFactsCollector) collect(t reflect.Type, fieldPath string, key str
 		t = t.Elem()
 	}
 	if variants, isUnion := unionVariants(t); isUnion {
-		c.unions = append(c.unions, clientUnionOccurrence{key: key, fieldPath: fieldPath, unionType: t, variants: variants})
+		c.unions = append(c.unions, clientUnionOccurrence{key: key, fieldPath: fieldPath, variants: variants})
 		if len(variants) == 0 {
 			return
 		}

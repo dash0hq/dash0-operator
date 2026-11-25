@@ -341,7 +341,7 @@ spec:
     locations:
       - my-private-location
   retries:
-    kind: off
+    kind: "off"
     spec: {}
   notifications:
     channels: []
