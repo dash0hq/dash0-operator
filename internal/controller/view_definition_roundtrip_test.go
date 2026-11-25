@@ -76,6 +76,7 @@ func fullyPopulatedView() *dash0v1alpha1.Dash0View {
 			ImplicitFilter: []dash0v1alpha1.Dash0ViewFilter{
 				{Key: "k8s.namespace.name", Operator: "is_set"},
 			},
+			Query: "SELECT count(*) FROM spans",
 			Table: &dash0v1alpha1.Dash0ViewTable{
 				Columns: []dash0v1alpha1.Dash0ViewTableColumn{
 					{Key: "service.name", Label: "Service", ColSize: "minmax(auto, 2fr)"},

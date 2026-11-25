@@ -56,6 +56,11 @@ type Dash0ViewSpec struct {
 	// +kubebuilder:validation:Optional
 	ClientFilter []Dash0ViewFilter `json:"clientFilter,omitempty"`
 
+	// The SQL query associated with this view. Only applicable when type is "sql". When the view is loaded, this
+	// query is used to populate the editor and is executed automatically.
+	// +kubebuilder:validation:Optional
+	Query string `json:"query,omitempty"`
+
 	// +kubebuilder:validation:Optional
 	Table *Dash0ViewTable `json:"table,omitempty"`
 

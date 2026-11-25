@@ -231,6 +231,11 @@ custom resource definition for views should match snapshot:
                           - actions
                         type: object
                       type: array
+                    query:
+                      description: |-
+                        The SQL query associated with this view. Only applicable when type is "sql". When the view is loaded, this
+                        query is used to populate the editor and is executed automatically.
+                      type: string
                     table:
                       description: Dash0ViewTable defines table configuration
                       properties:
