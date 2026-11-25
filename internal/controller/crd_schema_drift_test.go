@@ -166,6 +166,7 @@ func (c *clientFactsCollector) collect(t reflect.Type, fieldPath string, key str
 		t = t.Elem()
 	}
 	if variants, isUnion := unionVariants(t); isUnion {
+		variants = withoutVariantsRepresentedAsString(variants)
 		c.unions = append(c.unions, clientUnionOccurrence{key: key, fieldPath: fieldPath, variants: variants})
 		if len(variants) == 0 {
 			return
@@ -276,6 +277,23 @@ func unionVariants(t reflect.Type) ([]reflect.Type, bool) {
 		variants = append(variants, method.Type.Out(0))
 	}
 	return variants, true
+}
+
+/*
+withoutVariantsRepresentedAsString removes the variants listed in clientUnionVariantsRepresentedAsString from the
+variants of a union that also has a string variant, since the custom resources represent the union by that string.
+*/
+func withoutVariantsRepresentedAsString(variants []reflect.Type) []reflect.Type {
+	hasStringVariant := slices.ContainsFunc(variants, func(variant reflect.Type) bool {
+		return clientJsonType(variant) == "string"
+	})
+	if !hasStringVariant {
+		return variants
+	}
+	return slices.DeleteFunc(slices.Clone(variants), func(variant reflect.Type) bool {
+		_, representedAsString := clientUnionVariantsRepresentedAsString[variant]
+		return representedAsString
+	})
 }
 
 func clientJsonType(t reflect.Type) string {
@@ -689,6 +707,32 @@ type schemaDriftTestClient struct {
 	OnlyClient *string                `json:"onlyClient,omitempty"`
 }
 
+type schemaDriftTestAttributeValue struct {
+	union json.RawMessage //nolint:unused
+}
+
+func (schemaDriftTestAttributeValue) AsSchemaDriftTestStringValue() (string, error) {
+	return "", nil
+}
+
+func (schemaDriftTestAttributeValue) AsSchemaDriftTestAnyValue() (dash0apiclient.AnyValue, error) {
+	return dash0apiclient.AnyValue{}, nil
+}
+
+type schemaDriftTestAnyValueOnly struct {
+	union json.RawMessage //nolint:unused
+}
+
+func (schemaDriftTestAnyValueOnly) AsSchemaDriftTestAnyValue() (dash0apiclient.AnyValue, error) {
+	return dash0apiclient.AnyValue{}, nil
+}
+
+type schemaDriftTestAttributeFilter struct {
+	Value        *schemaDriftTestAttributeValue   `json:"value,omitempty"`
+	Values       *[]schemaDriftTestAttributeValue `json:"values,omitempty"`
+	AnyValueOnly *schemaDriftTestAnyValueOnly     `json:"anyValueOnly,omitempty"`
+}
+
 func schemaDriftTestEnumValues(t reflect.Type) ([]string, bool) {
 	if t == reflect.TypeFor[schemaDriftTestKind]() {
 		return []string{"first", "second", "third"}, true
@@ -824,6 +868,33 @@ var _ = Describe("Comparing custom resource definition schemas with Dash0 API cl
 		})).To(Equal([]string{
 			"required only in CRD: conditions.spec.rate",
 			"required only in client: conditions.spec.nested.name",
+		}))
+	})
+
+	It("compares a union with a variant that the custom resources represent as a string by its string variant", func() {
+		attributeFilterDrift := func(valueType string) []string {
+			return crdSchemaDrift(
+				&apiextensionsv1.JSONSchemaProps{
+					Type: "object",
+					Properties: map[string]apiextensionsv1.JSONSchemaProps{
+						"value": {Type: valueType},
+						"values": {Type: "array", Items: &apiextensionsv1.JSONSchemaPropsOrArray{
+							Schema: &apiextensionsv1.JSONSchemaProps{Type: "string"},
+						}},
+						"anyValueOnly": {Type: "string"},
+					},
+				},
+				reflect.TypeFor[schemaDriftTestAttributeFilter](),
+				schemaDriftTestEnumValues,
+			)
+		}
+		// A union without a string variant keeps the variant, so an AnyValue is still an object.
+		Expect(attributeFilterDrift("string")).To(Equal([]string{
+			"type: anyValueOnly: string in CRD, object in client",
+		}))
+		Expect(attributeFilterDrift("integer")).To(Equal([]string{
+			"type: anyValueOnly: string in CRD, object in client",
+			"type: value: integer in CRD, string in client",
 		}))
 	})
 

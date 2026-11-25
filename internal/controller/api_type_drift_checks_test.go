@@ -16,8 +16,6 @@ type namedCrdSchemaDriftCheck struct {
 }
 
 const (
-	attributeFilterValueReason = "the custom resources represent attribute values as strings, the API client " +
-		"accepts an AnyValue object as well"
 	notSupportedByDash0ViewYet           = "not supported by Dash0View yet"
 	notSupportedByDash0SyntheticCheckYet = "not supported by Dash0SyntheticCheck yet"
 	onlyHttpSyntheticChecksReason        = "the custom resource only supports http checks"
@@ -42,20 +40,14 @@ var namedCrdSchemaDriftChecks = []namedCrdSchemaDriftCheck{
 		allowedDifferences: map[string]string{
 			"only in CRD: display.folder": "ignored by the Dash0 API, folders are set via the dash0.com/folder-path " +
 				"annotation",
-			"only in client: frameFilters":                                          notSupportedByDash0ViewYet,
-			"only in client: invertCallStack":                                       notSupportedByDash0ViewYet,
-			"only in client: profileType":                                           notSupportedByDash0ViewYet,
-			"only in client: query":                                                 notSupportedByDash0ViewYet,
-			"only in client: serviceMapProperties":                                  notSupportedByDash0ViewYet,
-			"only in client: serviceName":                                           notSupportedByDash0ViewYet,
-			"only in client: stackFilters":                                          notSupportedByDash0ViewYet,
-			"only in client: sumBy":                                                 notSupportedByDash0ViewYet,
-			"type: clientFilter.value: string in CRD, object|string in client":      attributeFilterValueReason,
-			"type: clientFilter.values[]: string in CRD, object|string in client":   attributeFilterValueReason,
-			"type: filter.value: string in CRD, object|string in client":            attributeFilterValueReason,
-			"type: filter.values[]: string in CRD, object|string in client":         attributeFilterValueReason,
-			"type: implicitFilter.value: string in CRD, object|string in client":    attributeFilterValueReason,
-			"type: implicitFilter.values[]: string in CRD, object|string in client": attributeFilterValueReason,
+			"only in client: frameFilters":         notSupportedByDash0ViewYet,
+			"only in client: invertCallStack":      notSupportedByDash0ViewYet,
+			"only in client: profileType":          notSupportedByDash0ViewYet,
+			"only in client: serviceMapProperties": notSupportedByDash0ViewYet,
+			"only in client: serviceName": "legacy field of the profiling page, profiles views use a service.name " +
+				"criterion in filter instead",
+			"only in client: stackFilters": notSupportedByDash0ViewYet,
+			"only in client: sumBy":        notSupportedByDash0ViewYet,
 		},
 	}},
 	{"Dash0SyntheticCheck", crdSchemaDriftCheck{
@@ -100,8 +92,6 @@ var namedCrdSchemaDriftChecks = []namedCrdSchemaDriftCheck{
 			"only in CRD: mattermostWebhookConfig": movedToConfigReason,
 			"only in client: config": "assembled from the type-specific *Config field by " +
 				"prepareNotificationChannelApiPayload, the config types are compared one by one",
-			"type: routing.filters.value: string in CRD, object|string in client":    attributeFilterValueReason,
-			"type: routing.filters.values[]: string in CRD, object|string in client": attributeFilterValueReason,
 		},
 	}},
 	notificationChannelConfigCheck("slackConfig", reflect.TypeFor[dash0apiclient.SlackConfig]()),
@@ -136,10 +126,6 @@ var namedCrdSchemaDriftChecks = []namedCrdSchemaDriftCheck{
 		version:    "v1alpha1",
 		schemaPath: "spec",
 		clientType: reflect.TypeFor[dash0apiclient.SpamFilterSpec](),
-		allowedDifferences: map[string]string{
-			"type: filter.value: string in CRD, object|string in client":    attributeFilterValueReason,
-			"type: filter.values[]: string in CRD, object|string in client": attributeFilterValueReason,
-		},
 	}},
 	{"Dash0SignalToMetrics", crdSchemaDriftCheck{
 		crdFile:    "operator.dash0.com_dash0signaltometrics.yaml",
@@ -147,14 +133,8 @@ var namedCrdSchemaDriftChecks = []namedCrdSchemaDriftCheck{
 		schemaPath: "spec",
 		clientType: reflect.TypeFor[dash0apiclient.SignalToMetricsSpec](),
 		allowedDifferences: map[string]string{
-			"only in client: alternativeDatasetId":                                                 "not supported by Dash0SignalToMetrics yet",
-			"only in client: targetDatasetMode":                                                    "not supported by Dash0SignalToMetrics yet",
-			"type: match.filters.value: string in CRD, object|string in client":                    attributeFilterValueReason,
-			"type: match.filters.values[]: string in CRD, object|string in client":                 attributeFilterValueReason,
-			"type: output.keepResourceAttributes.value: string in CRD, object|string in client":    attributeFilterValueReason,
-			"type: output.keepResourceAttributes.values[]: string in CRD, object|string in client": attributeFilterValueReason,
-			"type: output.keepSignalAttributes.value: string in CRD, object|string in client":      attributeFilterValueReason,
-			"type: output.keepSignalAttributes.values[]: string in CRD, object|string in client":   attributeFilterValueReason,
+			"only in client: alternativeDatasetId": "not supported by Dash0SignalToMetrics yet",
+			"only in client: targetDatasetMode":    "not supported by Dash0SignalToMetrics yet",
 		},
 	}},
 	{"Dash0TimeSeriesAggregation", crdSchemaDriftCheck{
@@ -162,24 +142,12 @@ var namedCrdSchemaDriftChecks = []namedCrdSchemaDriftCheck{
 		version:    "v1alpha1",
 		schemaPath: "spec",
 		clientType: reflect.TypeFor[dash0apiclient.TimeSeriesAggregationSpec](),
-		allowedDifferences: map[string]string{
-			"type: attributeModifications.spec.keyMatcher.value: string in CRD, object|string in client":    attributeFilterValueReason,
-			"type: attributeModifications.spec.keyMatcher.values[]: string in CRD, object|string in client": attributeFilterValueReason,
-			"type: match.metricNameMatcher.value: string in CRD, object|string in client":                   attributeFilterValueReason,
-			"type: match.metricNameMatcher.values[]: string in CRD, object|string in client":                attributeFilterValueReason,
-			"type: match.otherFilters.value: string in CRD, object|string in client":                        attributeFilterValueReason,
-			"type: match.otherFilters.values[]: string in CRD, object|string in client":                     attributeFilterValueReason,
-		},
 	}},
 	{"Dash0GenerativeAiEvaluation", crdSchemaDriftCheck{
 		crdFile:    "dash0.com_dash0generativeaievaluations.yaml",
 		version:    "v1alpha1",
 		schemaPath: "spec",
 		clientType: reflect.TypeFor[dash0apiclient.GenerativeAiEvaluationSpec](),
-		allowedDifferences: map[string]string{
-			"type: match.filters.value: string in CRD, object|string in client":    attributeFilterValueReason,
-			"type: match.filters.values[]: string in CRD, object|string in client": attributeFilterValueReason,
-		},
 	}},
 	{"Dash0Team", crdSchemaDriftCheck{
 		crdFile:    "dash0.com_dash0teams.yaml",
@@ -260,4 +228,12 @@ func crdSchemaDriftCheckEntries() []TableEntry {
 // deliberately do not support, with the reason.
 var unsupportedApiClientUnionVariants = map[reflect.Type]string{
 	reflect.TypeFor[dash0apiclient.EmailConfig](): "deprecated in the Dash0 API, superseded by EmailV2Config",
+}
+
+// clientUnionVariantsRepresentedAsString lists the variants of Dash0 API client unions that the custom resources
+// represent by the string variant of the same union, with the reason. The drift check only compares the other variants
+// of such a union.
+var clientUnionVariantsRepresentedAsString = map[reflect.Type]string{
+	reflect.TypeFor[dash0apiclient.AnyValue](): "the custom resources represent attribute values as strings, the " +
+		"API client accepts an AnyValue object as well",
 }
