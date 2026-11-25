@@ -675,6 +675,54 @@ spec:
 						"spec.output.count: Invalid value",
 					),
 				)
+
+				DescribeTable(
+					"validates dropMatched",
+					func(modifySpec func(spec *dash0v1alpha1.Dash0SignalToMetricsSpec), expectedError string) {
+						resource := createSignalToMetricsResource(TestNamespaceName, signalToMetricsName)
+						resource.Spec.Match.Signal = dash0v1alpha1.Dash0SignalToMetricsSignalTypeLogs
+						modifySpec(&resource.Spec)
+						err := k8sClient.Create(ctx, resource)
+						if expectedError == "" {
+							Expect(err).ToNot(HaveOccurred())
+						} else {
+							Expect(err).To(MatchError(ContainSubstring(expectedError)))
+						}
+					},
+					Entry(
+						"accepts dropMatched on a logs rule",
+						func(spec *dash0v1alpha1.Dash0SignalToMetricsSpec) {
+							spec.DropMatched = ptr.To(true)
+						},
+						"",
+					),
+					Entry(
+						"accepts dropMatched false on a spans rule",
+						func(spec *dash0v1alpha1.Dash0SignalToMetricsSpec) {
+							spec.Match.Signal = dash0v1alpha1.Dash0SignalToMetricsSignalTypeSpans
+							spec.DropMatched = ptr.To(false)
+						},
+						"",
+					),
+					Entry(
+						"rejects dropMatched on a spans rule",
+						func(spec *dash0v1alpha1.Dash0SignalToMetricsSpec) {
+							spec.Match.Signal = dash0v1alpha1.Dash0SignalToMetricsSignalTypeSpans
+							spec.DropMatched = ptr.To(true)
+						},
+						"dropMatched is only allowed when match.signal is 'logs'",
+					),
+					Entry(
+						"rejects dropMatched when every filter is is_any",
+						func(spec *dash0v1alpha1.Dash0SignalToMetricsSpec) {
+							spec.Match.Filters = []dash0v1alpha1.Dash0SignalToMetricsAttributeFilter{
+								{Key: "service.name", Operator: "is_any"},
+							}
+							spec.DropMatched = ptr.To(true)
+						},
+						"dropMatched requires at least one filter with an operator other than 'is_any'",
+					),
+				)
 			},
 		)
 	},

@@ -1077,6 +1077,31 @@ in the span context for `spans` rules and in the log context for `logs` rules. `
 The Dash0 API validates the OTTL expressions when the rule is synchronized; an invalid expression is reported as a
 synchronization error in the status of the signal-to-metrics resource.
 
+Set `dropMatched: true` on a `logs` rule to drop the log records it matches once the metric is derived from them.
+The dropped log records still count toward the metrics of every rule that matches them. `dropMatched` requires at least
+one filter with an operator other than `is_any`; it is not allowed on `spans` rules.
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SignalToMetrics
+metadata:
+  name: health-check-logs
+spec:
+  enabled: true
+  display:
+    name: Health Check Logs
+  match:
+    signal: logs
+    filters:
+      - key: http.route
+        operator: is
+        value: /healthz
+  output:
+    name: health.check.logs
+    interval: 60s
+  dropMatched: true
+```
+
 You can opt out of synchronization for individual signal-to-metrics resources by adding the Kubernetes label
 `dash0.com/enable: false` to the resource.
 If this label is added to a signal-to-metrics resource which has previously been synchronized to Dash0, the operator
