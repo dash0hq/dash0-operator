@@ -73,6 +73,7 @@ var _ = Describe("Converting a Dash0SignalToMetrics to the API client's SignalTo
 				"maxSize":   float64(80),
 				"count":     "attributes[\"batch.size\"]",
 			},
+			"dropMatched": true,
 		}))
 		Expect(roundTripped["metadata"]).To(Equal(map[string]any{
 			"name": "full-signal-to-metrics",
@@ -153,6 +154,7 @@ func fullyPopulatedSignalToMetrics() *dash0v1alpha1.Dash0SignalToMetrics {
 				MaxSize:   ptr.To(int32(80)),
 				Count:     ptr.To("attributes[\"batch.size\"]"),
 			},
+			DropMatched: ptr.To(true),
 		},
 		Status: dash0v1alpha1.Dash0SignalToMetricsStatus{
 			SynchronizationStatus: "successful",
