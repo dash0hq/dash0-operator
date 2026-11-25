@@ -22,6 +22,7 @@ replaces:
   - "github.com/dash0hq/dash0-operator/images/pkg/nodeuid => ../pkg/nodeuid"
 extensions:
   - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.166.0"
+  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/extension/k8sleaderelector v0.166.0"
   - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.166.0"
   - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension v0.166.0"
 providers:

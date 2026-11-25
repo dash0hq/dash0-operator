@@ -404,6 +404,8 @@ func (m *componentSettingsApplier) applyOperatorConfigurationComponents(
 
 	if deployment := components.DeploymentCollector; deployment != nil {
 		p := path + "." + componentDeploymentCollector
+		replaceValueIfSet(m, p+".replicas", "operator.collectors.deploymentReplicas",
+			&effective.CollectorDeploymentReplicas, defaults.CollectorDeploymentReplicas, deployment.Replicas)
 		m.applyContainerResources(
 			p+".collectorContainerResources",
 			"operator.collectors.deploymentCollectorContainerResources",

@@ -1757,6 +1757,7 @@ var extraConfigKeysToHelmValues = map[string]string{
 	"collectorDeploymentPriorityClassName":                          "operator.collectors.deploymentPriorityClassName",
 	"deploymentProbes":                                              "operator.collectors.deploymentProbes",
 	"deploymentSysctls":                                             "operator.collectors.deploymentSysctls",
+	"collectorDeploymentReplicas":                                   "operator.collectors.deploymentReplicas",
 	"signalControlCollectorReplicas":                                "operator.collectors.signalControlCollectorReplicas",
 	"signalControlCollectorContainerResources":                      "operator.collectors.signalControlCollectorContainerResources",
 	"signalControlCollectorConfigurationReloaderContainerResources": "operator.collectors.signalControlCollectorConfigurationReloaderContainerResources",

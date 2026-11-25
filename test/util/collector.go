@@ -46,6 +46,10 @@ var (
 	ExpectedDeploymentClusterRoleBindingName = fmt.Sprintf("%s-cluster-metrics-collector-crb", NamePrefix)
 	ExpectedDeploymentCollectorConfigMapName = fmt.Sprintf("%s-cluster-metrics-collector-cm", NamePrefix)
 	ExpectedDeploymentName                   = fmt.Sprintf("%s-cluster-metrics-collector-deployment", NamePrefix)
+	ExpectedDeploymentRoleName               = fmt.Sprintf("%s-cluster-metrics-collector-role", NamePrefix)
+	ExpectedDeploymentRoleBindingName        = fmt.Sprintf("%s-cluster-metrics-collector-rolebinding", NamePrefix)
+	ExpectedDeploymentPdbName                = fmt.Sprintf("%s-cluster-metrics-collector-pdb", NamePrefix)
+	ExpectedDeploymentCollectorLeaseName     = fmt.Sprintf("%s-cluster-metrics-collector-lease", NamePrefix)
 
 	ExpectedSignalControlCollectorConfigMapName = fmt.Sprintf("%s-signal-control-collector-cm", NamePrefix)
 	ExpectedSignalControlCollectorServiceName   = fmt.Sprintf("%s-signal-control-collector-service", NamePrefix)

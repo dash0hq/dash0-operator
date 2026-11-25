@@ -98,6 +98,7 @@ func (r *CollectorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&policyv1.PodDisruptionBudget{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
+				otelcolresources.DeploymentCollectorPodDisruptionBudgetName(r.namePrefix),
 				otelcolresources.SignalControlCollectorPodDisruptionBudgetName(r.namePrefix),
 			}, true)).
 		Watches(
