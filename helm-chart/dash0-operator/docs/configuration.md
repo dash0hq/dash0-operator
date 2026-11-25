@@ -487,8 +487,16 @@ The Dash0 monitoring resource supports additional configuration settings:
   See <https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators> for more information.
 
   When the option is not set, the operator will not set the environment variable `OTEL_PROPAGATORS`.
-  Workloads then use the default propagators of their runtime's instrumentation.
-  `OTEL_PROPAGATORS`, whether set by this option or on the container, overrides that default.
+  Instrumented workloads then use the propagators `tracecontext,baggage,xray`, that is, they send and accept both the
+  W3C `traceparent` header and the AWS X-Ray header `X-Amzn-Trace-Id`.
+  When an incoming request carries both headers, the X-Ray context wins.
+  This applies to the JVM, .NET, Python and Ruby, and to Node.js 18.19+ and 20.6+; older Node.js versions use
+  `tracecontext,baggage`.
+  For JVM workloads, the operator achieves this by setting `OTEL_JAVAAGENT_CONFIGURATION_FILE` to a defaults file that
+  ships with the instrumentation image, unless the container already sets that variable.
+  `OTEL_PROPAGATORS`, whether set by this option or on the container, overrides the default; for JVM workloads,
+  `-Dotel.propagators` does as well.
+  To keep the previous behavior, set this option to `tracecontext,baggage`.
   If the option is set in the monitoring resource at some point and then later removed again, the operator will remove
   the environment variable from instrumented workloads if and only if the value of the environment variable matches the
   previously used setting in the monitoring resource.
