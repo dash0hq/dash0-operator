@@ -393,7 +393,7 @@ metadata:
     capabilities: Seamless Upgrades
     categories: Monitoring,Logging & Tracing
     containerImage: ghcr.io/dash0hq/operator-controller:0.0.0
-    createdAt: "2026-11-23T18:36:54Z"
+    createdAt: "2026-11-25T09:45:52Z"
     description: Collect traces, metrics, logs and profiles from your Kubernetes workloads
       and infrastructure with OpenTelemetry and send them to Dash0.
     operators.operatorframework.io/builder: operator-sdk-v1.42.3
@@ -1684,6 +1684,10 @@ spec:
                   value: ghcr.io/parca-dev/parca-agent:0.0.0
                 - name: DASH0_DEBUGINFO_PROXY_IMAGE
                   value: ghcr.io/dash0hq/debuginfo-proxy:0.0.0
+                - name: DASH0_SCRAPE_COORDINATOR_IMAGE
+                  value: ghcr.io/dash0hq/scrape-coordinator:0.0.0
+                - name: DASH0_SCRAPE_COORDINATOR_ENABLED
+                  value: "false"
                 - name: DASH0_TELEMETRY_COLLECTION_ENABLED
                   value: "true"
                 - name: DASH0_FEATURE_SIGNAL_CONTROL_ENABLED
@@ -1730,6 +1734,8 @@ spec:
                   value: ghcr.io/parca-dev/parca-agent:0.0.0
                 - name: RELATED_IMAGE_DEBUGINFO_PROXY
                   value: ghcr.io/dash0hq/debuginfo-proxy:0.0.0
+                - name: RELATED_IMAGE_SCRAPE_COORDINATOR
+                  value: ghcr.io/dash0hq/scrape-coordinator:0.0.0
                 image: ghcr.io/dash0hq/operator-controller:0.0.0
                 livenessProbe:
                   httpGet:
@@ -1952,6 +1958,8 @@ spec:
     name: ebpf-profiler
   - image: ghcr.io/dash0hq/debuginfo-proxy:0.0.0
     name: debuginfo-proxy
+  - image: ghcr.io/dash0hq/scrape-coordinator:0.0.0
+    name: scrape-coordinator
   version: 0.0.1
   webhookdefinitions:
   - admissionReviewVersions:

@@ -18,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	"github.com/dash0hq/dash0-operator/internal/scrapecoordinator/scoresources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -100,41 +101,44 @@ type collectorConfigurationTemplateValues struct {
 	K8sAttributesWaitForMetadata                     bool
 	K8sAttributesWaitForMetadataTimeout              string
 	PrometheusCrdSupportEnabled                      bool
+	ScrapeCoordinatorEnabled                         bool
 	TargetAllocatorAppKubernetesIoInstance           string
 	TargetAllocatorAppKubernetesIoName               string
-	TargetAllocatorServiceName                       string
-	TargetAllocatorMtlsEnabled                       bool
-	TargetAllocatorMtlsClientCertsDir                string
-	KubeletStatsReceiverConfig                       util.KubeletStatsReceiverConfig
-	UseHostMetricsReceiver                           bool
-	IsGkeAutopilot                                   bool
-	PseudoClusterUid                                 string
-	ClusterName                                      string
-	OperatorVersion                                  string
-	NamespacesWithLogCollection                      []string
-	NamespacesWithEventCollection                    []string
-	NamespacesWithKubernetesObjectCollection         []string
-	CollectClusterScopedObjects                      bool
-	NamespaceOttlFilter                              string
-	NamespacesWithPrometheusScraping                 []string
-	CustomFilters                                    customFilters
-	CustomTransforms                                 customTransforms
-	SelfIpReference                                  string
-	InternalTelemetryEnabled                         bool
-	SelfMonitoringEnabled                            bool
-	SelfMonitoringMetricsConfig                      string
-	SelfMonitoringLogsConfig                         string
-	DevelopmentMode                                  bool
-	DebugVerbosityDetailed                           bool
-	EnableProfExtension                              bool
-	ProfilingEnabled                                 bool
-	EbpfProfilerEnabled                              bool
-	PodAssociationPipelines                          map[string]string
-	SignalControl                                    SignalControlConfig
-	SignalControlGatewayActive                       bool
-	SignalControlCollectorServiceName                string
-	SignalControlCollectorDeploymentName             string
-	SignalControlSceOnlyMode                         bool
+	// TargetAllocatorServiceName, TargetAllocatorMtlsEnabled and TargetAllocatorMtlsClientCertsDir configure the
+	// target_allocator block of the prometheus receiver, which points to the scrape coordinator if it is enabled.
+	TargetAllocatorServiceName               string
+	TargetAllocatorMtlsEnabled               bool
+	TargetAllocatorMtlsClientCertsDir        string
+	KubeletStatsReceiverConfig               util.KubeletStatsReceiverConfig
+	UseHostMetricsReceiver                   bool
+	IsGkeAutopilot                           bool
+	PseudoClusterUid                         string
+	ClusterName                              string
+	OperatorVersion                          string
+	NamespacesWithLogCollection              []string
+	NamespacesWithEventCollection            []string
+	NamespacesWithKubernetesObjectCollection []string
+	CollectClusterScopedObjects              bool
+	NamespaceOttlFilter                      string
+	NamespacesWithPrometheusScraping         []string
+	CustomFilters                            customFilters
+	CustomTransforms                         customTransforms
+	SelfIpReference                          string
+	InternalTelemetryEnabled                 bool
+	SelfMonitoringEnabled                    bool
+	SelfMonitoringMetricsConfig              string
+	SelfMonitoringLogsConfig                 string
+	DevelopmentMode                          bool
+	DebugVerbosityDetailed                   bool
+	EnableProfExtension                      bool
+	ProfilingEnabled                         bool
+	EbpfProfilerEnabled                      bool
+	PodAssociationPipelines                  map[string]string
+	SignalControl                            SignalControlConfig
+	SignalControlGatewayActive               bool
+	SignalControlCollectorServiceName        string
+	SignalControlCollectorDeploymentName     string
+	SignalControlSceOnlyMode                 bool
 	// MemoryLimiterLimitMiB and MemoryLimiterSpikeLimitMiB are the memory_limiter limit_mib / spike_limit_mib
 	// derived from the collector container memory limit. When MemoryLimiterLimitMiB is zero (no limit set), the
 	// template falls back to the percentage-based memory_limiter configuration.
@@ -402,6 +406,9 @@ func newCollectorConfigurationTemplateValues(
 		)
 
 	targetAllocatorServiceName := taresources.ServiceName(config.NamePrefix)
+	if config.ScrapeCoordinatorEnabled {
+		targetAllocatorServiceName = scoresources.ServiceName(config.NamePrefix)
+	}
 
 	memoryLimiterLimitMiB := 0
 	memoryLimiterSpikeMiB := 0
@@ -432,11 +439,12 @@ func newCollectorConfigurationTemplateValues(
 		K8sAttributesWaitForMetadata:                     config.K8sAttributesWaitForMetadata,
 		K8sAttributesWaitForMetadataTimeout:              config.K8sAttributesWaitForMetadataTimeout,
 		PrometheusCrdSupportEnabled:                      config.PrometheusCrdSupportEnabled,
+		ScrapeCoordinatorEnabled:                         config.ScrapeCoordinatorEnabled,
 		TargetAllocatorAppKubernetesIoName:               taresources.AppKubernetesIoNameValue,
 		TargetAllocatorAppKubernetesIoInstance:           taresources.AppKubernetesIoInstanceValue,
 		TargetAllocatorServiceName:                       targetAllocatorServiceName,
 		TargetAllocatorMtlsEnabled:                       targetAllocatorMtlsConfig.Enabled,
-		TargetAllocatorMtlsClientCertsDir:                targetAllocatorCertsVolumeDir,
+		TargetAllocatorMtlsClientCertsDir:                targetAllocatorMtlsConfig.CertsDir,
 		KubeletStatsReceiverConfig:                       config.KubeletStatsReceiverConfig,
 		UseHostMetricsReceiver:                           config.UseHostMetricsReceiver,
 		IsGkeAutopilot:                                   config.IsGkeAutopilot,
@@ -508,15 +516,22 @@ func renderOttlNamespaceFilter(
 			DeploymentName(config.NamePrefix),
 		)
 	}
-	// Do not drop metrics from the target-allocator even if there isn't a Dash0Monitoring resource in the namespace.
-	// target-allocator metrics are considered self-monitoring and therefore controlled via the global SelfMonitoring
-	// config (and prometheusCrdSupportEnabled) from the Dash0OperatorConfiguration.
+	// Do not drop metrics from the target-allocator or the scrape coordinator even if there isn't a Dash0Monitoring
+	// resource in the namespace. Their metrics are considered self-monitoring and therefore controlled via the global
+	// SelfMonitoring config (and prometheusCrdSupport.enabled) from the Dash0OperatorConfiguration.
 	taExclusion := ""
 	if selfMonitoringEnabled && config.PrometheusCrdSupportEnabled {
 		taDeploymentName := taresources.DeploymentName(config.NamePrefix)
 		taExclusion = fmt.Sprintf("(resource.attributes[\"k8s.deployment.name\"] != \"%s\" or "+
 			"resource.attributes[\"k8s.namespace.name\"] != \"%s\") and\n          ",
 			taDeploymentName,
+			config.OperatorNamespace,
+		)
+	}
+	if selfMonitoringEnabled && config.ScrapeCoordinatorEnabled {
+		taExclusion = fmt.Sprintf("(resource.attributes[\"k8s.deployment.name\"] != \"%s\" or "+
+			"resource.attributes[\"k8s.namespace.name\"] != \"%s\") and\n          ",
+			scoresources.DeploymentName(config.NamePrefix),
 			config.OperatorNamespace,
 		)
 	}

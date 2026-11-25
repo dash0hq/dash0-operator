@@ -203,6 +203,10 @@ Moving beyond the quickstart instructions, here are more details on the test scr
 * `test-resources/bin/test-scenario-16-kyverno.sh`: Installs Kyverno with restrictive policies in Enforce mode and
   deploys the operator with the target-allocator, the agent0-connector and Signal Control enabled. The script fails
   unless Kyverno admits all of the operator's workloads (see [Testing with Kyverno](#testing-with-kyverno)).
+* `test-resources/bin/scrape-coordinator-diff.sh`: Run it after `test-scenario-05-operator-prom-crd.sh`. It deploys a
+  scrape coordinator next to the target-allocator, plus additional Prometheus CRDs from
+  `test-resources/scrape-coordinator`, and prints the differences between the scrape configs and the target
+  assignments of both. The expected differences are listed in the header of the script.
 * `test-resources/bin/test-cleanup.sh`: This script removes all resources created by the other scripts. **You should
   always run this script after running any of the scenario scripts, when you are done with your tests, otherwise the
   e2e tests will fail the next time you start them.** Note that all scenario scripts call the cleanup at the beginning,
@@ -364,6 +368,11 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `PROMETHEUS_CRD_SUPPORT_ENABLED`: Set this to `true` to enable support for Prometheus CRDs (e.g. ServiceMonitor).
       If at least one namespace has a monitoring resource with Prometheus scraping enabled, the OpenTelemetry
       target-allocator will be deployed.
+    * `SCRAPE_COORDINATOR_ENABLED`: Set this to `true` to discover the scrape targets of Prometheus CRDs with the Dash0
+      scrape coordinator instead of the OpenTelemetry target-allocator (`operator.scrapeCoordinator.enabled`). It only
+      has an effect together with `PROMETHEUS_CRD_SUPPORT_ENABLED=true`, which test scenarios 05, 06, 14 and 16 set. The
+      settings `TA_MTLS_ENABLED`, `TA_ALLOW_INSECURE_AUTH_SECRETS` and `TA_ALLOW_SECRET_ACCESS_IN_NAMESPACES` then apply
+      to the scrape coordinator (`operator.scrapeCoordinator.*`) instead of the target allocator.
     * `SELF_MONITORING_ENABLED`: Set this to "false" to disable the operator's self monitoring.
       This defaults to "true".
     * `SYNCHRONIZE_PERSES_DASHBOARDS`: Set this to "false" to disable synchronizing Perses dashboard resources via the

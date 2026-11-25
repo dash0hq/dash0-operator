@@ -38,8 +38,9 @@ type CollectorManager struct {
 	// zoneCoverageReporter warns when the Signal Control collector has fewer replicas than the cluster has
 	// availability zones. See cluster.ZoneCoverageReporter.
 	zoneCoverageReporter *cluster.ZoneCoverageReporter
-	// targetAllocatorMtlsClientCertSecretName is the effective name of the target-allocator mTLS client cert secret as
-	// of the most recent reconciliation, empty if mTLS is disabled. The collector reconciler watches this secret.
+	// targetAllocatorMtlsClientCertSecretName is the effective name of the mTLS client cert secret for the
+	// target-allocator or, if it is active, the scrape coordinator, as of the most recent reconciliation, empty if mTLS is
+	// disabled. The collector reconciler watches this secret.
 	targetAllocatorMtlsClientCertSecretName atomic.Pointer[string]
 }
 
@@ -113,8 +114,9 @@ func (m *CollectorManager) NotifyOperatorManagerJustBecameLeader(ctx context.Con
 	}()
 }
 
-// TargetAllocatorMtlsClientCertSecretName returns the effective name of the target-allocator mTLS client cert secret
-// as of the most recent reconciliation, or an empty string if mTLS is disabled or no reconciliation has happened yet.
+// TargetAllocatorMtlsClientCertSecretName returns the effective name of the mTLS client cert secret for the
+// target-allocator or, if it is active, the scrape coordinator, as of the most recent reconciliation, or an empty string
+// if mTLS is disabled or no reconciliation has happened yet.
 func (m *CollectorManager) TargetAllocatorMtlsClientCertSecretName() string {
 	if secretName := m.targetAllocatorMtlsClientCertSecretName.Load(); secretName != nil {
 		return *secretName
@@ -122,10 +124,14 @@ func (m *CollectorManager) TargetAllocatorMtlsClientCertSecretName() string {
 	return ""
 }
 
-func (m *CollectorManager) storeTargetAllocatorMtlsClientCertSecretName(extraConfig util.ExtraConfig) {
+func (m *CollectorManager) storeTargetAllocatorMtlsClientCertSecretName(
+	extraConfig util.ExtraConfig,
+	scrapeCoordinatorActive bool,
+) {
+	mtlsConfig := otelcolresources.EffectiveTargetAllocatorMtlsConfig(extraConfig, scrapeCoordinatorActive)
 	secretName := ""
-	if extraConfig.TargetAllocatorMtlsEnabled {
-		secretName = extraConfig.TargetAllocatorMtlsClientCertSecretName
+	if mtlsConfig.Enabled {
+		secretName = mtlsConfig.ClientCertSecretName
 	}
 	m.targetAllocatorMtlsClientCertSecretName.Store(&secretName)
 }
@@ -221,7 +227,11 @@ func (m *CollectorManager) reconcileOpenTelemetryCollector(ctx context.Context, 
 	}
 	extraConfig := util.EffectiveExtraConfig(
 		*fileExtraConfig, m.extraConfigDefaults, operatorConfigurationResource, signalControlResource)
-	m.storeTargetAllocatorMtlsClientCertSecretName(extraConfig)
+	m.storeTargetAllocatorMtlsClientCertSecretName(
+		extraConfig,
+		otelcolresources.ScrapeCoordinatorActive(
+			m.oTelColResourceManager.ScrapeCoordinatorEnabledViaHelm(), operatorConfigurationResource),
+	)
 
 	if operatorConfigurationResource == nil {
 		logger.WarnTelemetryCollectionIssue(logMsgOperatorConfigMissing)

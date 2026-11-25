@@ -236,6 +236,47 @@ data:
       {{- toYaml .Values.operator.targetAllocator.tolerations | nindent 6 }}
     targetAllocatorNodeAffinity:
       {{- toYaml .Values.operator.targetAllocator.nodeAffinity | nindent 6 }}
+{{- if and .Values.operator.scrapeCoordinator.mTls.enabled (or (not .Values.operator.scrapeCoordinator.mTls.serverCertSecretName) (not .Values.operator.scrapeCoordinator.mTls.clientCertSecretName)) }}
+  {{- fail "scrapeCoordinatorMtlsEnabled is set to 'true' but one or both certificate secret names are not provided. Please set both operator.scrapeCoordinator.mTls.serverCertSecretName and operator.scrapeCoordinator.mTls.clientCertSecretName." }}
+{{- end }}
+    scrapeCoordinatorMtlsEnabled: {{ .Values.operator.scrapeCoordinator.mTls.enabled }}
+    scrapeCoordinatorMtlsServerCertSecretName: {{ .Values.operator.scrapeCoordinator.mTls.serverCertSecretName | quote }}
+    scrapeCoordinatorMtlsClientCertSecretName: {{ .Values.operator.scrapeCoordinator.mTls.clientCertSecretName | quote }}
+    scrapeCoordinatorAllowInsecureAuthSecrets: {{ .Values.operator.scrapeCoordinator.allowInsecureAuthSecrets }}
+{{- if .Values.operator.scrapeCoordinator.allowSecretAccessInNamespaces }}
+{{- if not (kindIs "slice" .Values.operator.scrapeCoordinator.allowSecretAccessInNamespaces) }}
+{{- fail "Error: operator.scrapeCoordinator.allowSecretAccessInNamespaces must be a list, e.g. --set operator.scrapeCoordinator.allowSecretAccessInNamespaces={namespace-a,namespace-b}." }}
+{{- end }}
+{{- range $namespace := .Values.operator.scrapeCoordinator.allowSecretAccessInNamespaces }}
+{{- if not (and (kindIs "string" $namespace) (le (len $namespace) 63) (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $namespace)) }}
+{{- fail "Error: operator.scrapeCoordinator.allowSecretAccessInNamespaces must only contain valid namespace names." }}
+{{- end }}
+{{- end }}
+    scrapeCoordinatorAllowSecretAccessInNamespaces:
+      {{- toYaml .Values.operator.scrapeCoordinator.allowSecretAccessInNamespaces | nindent 6 }}
+{{- end }}
+    scrapeCoordinatorContainerResources:
+      {{- toYaml .Values.operator.scrapeCoordinator.containerResources | nindent 6 }}
+{{- if .Values.operator.scrapeCoordinator.labels }}
+    scrapeCoordinatorLabels:
+      {{- toYaml .Values.operator.scrapeCoordinator.labels | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.scrapeCoordinator.annotations }}
+    scrapeCoordinatorAnnotations:
+      {{- toYaml .Values.operator.scrapeCoordinator.annotations | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.scrapeCoordinator.podLabels }}
+    scrapeCoordinatorPodLabels:
+      {{- toYaml .Values.operator.scrapeCoordinator.podLabels | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.scrapeCoordinator.podAnnotations }}
+    scrapeCoordinatorPodAnnotations:
+      {{- toYaml .Values.operator.scrapeCoordinator.podAnnotations | nindent 6 }}
+{{- end }}
+    scrapeCoordinatorTolerations:
+      {{- toYaml .Values.operator.scrapeCoordinator.tolerations | nindent 6 }}
+    scrapeCoordinatorNodeAffinity:
+      {{- toYaml .Values.operator.scrapeCoordinator.nodeAffinity | nindent 6 }}
 {{- if .Values.operator.signalControl.enabled }}
 {{- include "dash0-operator.validateReplicas" (dict "name" "operator.signalControl.edgeProxy.replicas" "value" .Values.operator.signalControl.edgeProxy.replicas) }}
 {{- if not (kindIs "invalid" .Values.operator.signalControl.edgeProxy.replicas) }}

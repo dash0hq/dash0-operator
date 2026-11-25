@@ -97,6 +97,12 @@ func (m *OTelColResourceManager) SignalControlSceOnlyMode() bool {
 	return m.collectorConfig.SignalControlSceOnlyMode
 }
 
+// ScrapeCoordinatorEnabledViaHelm reports whether the scrape coordinator has been selected via Helm instead of the
+// target-allocator as the implementation of Prometheus CRD support.
+func (m *OTelColResourceManager) ScrapeCoordinatorEnabledViaHelm() bool {
+	return m.collectorConfig.ScrapeCoordinatorEnabledViaHelm
+}
+
 func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	ctx context.Context,
 	extraConfig util.ExtraConfig,
@@ -128,7 +134,6 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	// container.
 	selfMonitoringConfiguration.ResolvedSecretHeaderValues = nil
 
-	prometheusCrdSupportEnabled := false
 	clusterName := ""
 
 	kubernetesInfrastructureMetricsCollectionEnabled :=
@@ -161,11 +166,6 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		pointers.ReadBoolPointerWithDefault(
 			operatorConfigurationResource.Spec.KubernetesObjectCollection.CollectClusterScopedObjects,
 			true,
-		)
-	prometheusCrdSupportEnabled =
-		pointers.ReadBoolPointerWithDefault(
-			operatorConfigurationResource.Spec.PrometheusCrdSupport.Enabled,
-			false,
 		)
 	ebpfProfilerEnabled := m.collectorConfig.EbpfProfilerEnabledViaHelm &&
 		operatorConfigurationResource.Spec.Profiling != nil &&
@@ -231,12 +231,15 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		K8sAttributesWaitForMetadata:                     m.collectorConfig.K8sAttributesWaitForMetadata,
 		K8sAttributesWaitForMetadataTimeout:              m.collectorConfig.K8sAttributesWaitForMetadataTimeout,
 		K8sAttributesShareProcessor:                      m.collectorConfig.K8sAttributesShareProcessor,
-		PrometheusCrdSupportEnabled:                      prometheusCrdSupportEnabled,
-		Agent0ConnectorEnabled:                           agent0ConnectorEnabled,
-		Agent0ConnectorDeploymentName:                    a0cresources.DeploymentName(m.collectorConfig.NamePrefix),
-		SyntheticsWorkerDeploymentNames:                  syntheticsWorkerDeploymentNames,
-		KubeletStatsReceiverConfig:                       kubeletStatsReceiverConfig,
-		AutoNamespaceMonitoringEnabled:                   operatorConfigurationResource.Spec.AutoMonitorNamespaces.IsEnabled(),
+		PrometheusCrdSupportEnabled: TargetAllocatorActive(
+			m.collectorConfig.ScrapeCoordinatorEnabledViaHelm, operatorConfigurationResource),
+		ScrapeCoordinatorEnabled: ScrapeCoordinatorActive(
+			m.collectorConfig.ScrapeCoordinatorEnabledViaHelm, operatorConfigurationResource),
+		Agent0ConnectorEnabled:          agent0ConnectorEnabled,
+		Agent0ConnectorDeploymentName:   a0cresources.DeploymentName(m.collectorConfig.NamePrefix),
+		SyntheticsWorkerDeploymentNames: syntheticsWorkerDeploymentNames,
+		KubeletStatsReceiverConfig:      kubeletStatsReceiverConfig,
+		AutoNamespaceMonitoringEnabled:  operatorConfigurationResource.Spec.AutoMonitorNamespaces.IsEnabled(),
 		// The hostmetrics receiver requires mapping the root file system as a volume mount, see
 		// https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/hostmetricsreceiver#collecting-host-metrics-from-inside-a-container-linux-only.
 		// Therefore, we disable the hostmetrics receiver on platforms where this is not possible or not supported:
@@ -273,7 +276,8 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	config.DaemonSetCollectorMemoryLimit = *extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Memory()
 	config.DeploymentCollectorMemoryLimit = *extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory()
 	config.SignalControlCollectorMemoryLimit = *extraConfig.SignalControlCollectorContainerResources.Limits.Memory()
-	config.TargetAllocatorMtlsCaSha = m.targetAllocatorMtlsCaSha(ctx, extraConfig, logger)
+	config.TargetAllocatorMtlsCaSha = m.targetAllocatorMtlsCaSha(
+		ctx, EffectiveTargetAllocatorMtlsConfig(extraConfig, config.ScrapeCoordinatorEnabled), logger)
 	if err = m.resolveFilelogOffsetStorage(ctx, config, extraConfig, operatorConfigurationResource, logger); err != nil {
 		return false, false, err
 	}
@@ -335,18 +339,19 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, nil
 }
 
-// targetAllocatorMtlsCaSha returns a hash of the CA certificate in the target-allocator mTLS client cert secret, or an
-// empty string if mTLS is disabled. If the CA certificate cannot be read, the hash on the existing daemonset collector's
-// pod template is kept: restarting the collector pods while the secret is missing would leave them unable to mount it.
+// targetAllocatorMtlsCaSha returns a hash of the CA certificate in the mTLS client cert secret of the target-allocator or
+// the scrape coordinator, or an empty string if mTLS is disabled. If the CA certificate cannot be read, the hash on the
+// existing daemonset collector's pod template is kept: restarting the collector pods while the secret is missing would
+// leave them unable to mount it.
 func (m *OTelColResourceManager) targetAllocatorMtlsCaSha(
 	ctx context.Context,
-	extraConfig util.ExtraConfig,
+	mtlsConfig TargetAllocatorMtlsConfig,
 	logger logd.Logger,
 ) string {
-	if !extraConfig.TargetAllocatorMtlsEnabled {
+	if !mtlsConfig.Enabled {
 		return ""
 	}
-	secretName := extraConfig.TargetAllocatorMtlsClientCertSecretName
+	secretName := mtlsConfig.ClientCertSecretName
 	secret := &corev1.Secret{}
 	err := m.Get(ctx, client.ObjectKey{Namespace: m.collectorConfig.OperatorNamespace, Name: secretName}, secret)
 	if err == nil {
@@ -357,8 +362,8 @@ func (m *OTelColResourceManager) targetAllocatorMtlsCaSha(
 	}
 	logger.ErrorAsWarnTelemetryCollectionIssue(
 		err,
-		fmt.Sprintf("Cannot read the CA certificate from the target-allocator mTLS client cert secret %s/%s. The "+
-			"daemonset collector needs this secret to fetch scrape targets from the target-allocator.",
+		fmt.Sprintf("Cannot read the CA certificate from the mTLS client cert secret %s/%s. The daemonset "+
+			"collector needs this secret to fetch scrape targets from the target-allocator or the scrape coordinator.",
 			m.collectorConfig.OperatorNamespace, secretName),
 	)
 	existingDaemonSet := &appsv1.DaemonSet{}
@@ -368,7 +373,7 @@ func (m *OTelColResourceManager) targetAllocatorMtlsCaSha(
 	}, existingDaemonSet); err != nil {
 		return ""
 	}
-	return existingDaemonSet.Spec.Template.Annotations[targetAllocatorMtlsCaShaAnnotation]
+	return existingDaemonSet.Spec.Template.Annotations[mtlsConfig.CaShaAnnotation]
 }
 
 func (m *OTelColResourceManager) createOrUpdateResource(

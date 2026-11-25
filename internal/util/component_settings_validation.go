@@ -91,6 +91,12 @@ func validateOperatorConfigurationComponents(
 			targetAllocator.ContainerResources, defaults.TargetAllocatorContainerResources)...)
 		errs = append(errs, validateWorkloadSettings(p, targetAllocator.WorkloadSettings)...)
 	}
+	if scrapeCoordinator := components.ScrapeCoordinator; scrapeCoordinator != nil {
+		p := path.Child(componentScrapeCoordinator)
+		errs = append(errs, validateContainerResourcesWithGoMemLimit(p.Child("containerResources"),
+			scrapeCoordinator.ContainerResources, defaults.ScrapeCoordinatorContainerResources)...)
+		errs = append(errs, validateWorkloadSettings(p, scrapeCoordinator.WorkloadSettings)...)
+	}
 	if agent0Connector := components.Agent0Connector; agent0Connector != nil {
 		p := path.Child(componentAgent0Connector)
 		errs = append(errs, validateContainerResourcesWithGoMemLimit(p.Child("containerResources"),

@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+operator:
+  scrapeCoordinator:
+    mTls:
+      enabled: true
+      serverCertSecretName: "ta-server-cert-secret"
+      clientCertSecretName: "ta-client-cert-secret"

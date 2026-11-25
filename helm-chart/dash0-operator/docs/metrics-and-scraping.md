@@ -13,6 +13,7 @@ This document covers metrics collection, Prometheus endpoint scraping, profiling
     - [Allowing Insecure Auth Secrets](#allowing-insecure-auth-secrets)
   - [Restricting Access to Secrets](#restricting-access-to-secrets)
   - [Configuring Resource Requests/Limits for the Target-Allocator](#configuring-resource-requestslimits-for-the-target-allocator)
+  - [Scraping via the Dash0 Scrape Coordinator](#scraping-via-the-dash0-scrape-coordinator)
 
 ## Configure Metrics Collection
 
@@ -250,6 +251,50 @@ operator:
         cpu: 200m
         memory: 128Mi
 ```
+
+### Scraping via the Dash0 Scrape Coordinator
+
+As an opt-in alternative to the OpenTelemetry Target Allocator, the Dash0 scrape coordinator can watch the Prometheus CRDs and assign their targets to the collectors.
+It supports the same CRDs as the Target Allocator, and it assigns each target to the collector running on the same node as the monitored workload as well.
+To use it, include `--set operator.scrapeCoordinator.enabled=true` in addition to `--set operator.prometheusCrdSupportEnabled=true` when running `helm install`.
+The Helm value `operator.scrapeCoordinator.enabled` selects the scrape coordinator instead of the Target Allocator; it can only be set via Helm.
+Whether support for Prometheus CRDs is enabled is still controlled by `operator.prometheusCrdSupportEnabled`, or by `spec.prometheusCrdSupport.enabled` if you are creating the operator configuration resource manually.
+
+To switch from the Target Allocator to the scrape coordinator, set `operator.scrapeCoordinator.enabled=true` in a `helm upgrade`.
+The operator then points the collectors to the scrape coordinator, removes the Target Allocator and deploys the scrape coordinator.
+Until the scrape coordinator is ready and the collectors have fetched their scrape targets from it, the targets of Prometheus CRDs are not scraped.
+Switching back works the same way in reverse.
+
+The scrape coordinator differs from the Target Allocator as follows:
+
+* Prometheus CRDs that reference a file in their authorization or TLS settings (for example `bearerTokenFile`, `tlsConfig.caFile`, `tlsConfig.certFile` or `tlsConfig.keyFile`) are not scraped, since these files would be read from the file system of the collector.
+  The scrape coordinator logs the name of every such CRD.
+  Use secret references instead.
+* The scrape coordinator does not expose the `opentelemetry_allocator_*` and `prometheus_sd_*` metrics of the Target Allocator.
+  It reports its own metrics as part of the operator's self-monitoring.
+
+The settings for the Target Allocator described above exist for the scrape coordinator as well, under `operator.scrapeCoordinator` instead of `operator.targetAllocator`:
+
+```yaml
+operator:
+  scrapeCoordinator:
+    enabled: true
+    mTls:
+      enabled: true
+      serverCertSecretName: "scrape-coordinator-mtls-server-cert-secret"
+      clientCertSecretName: "scrape-coordinator-mtls-client-cert-secret"
+    allowInsecureAuthSecrets: false
+    allowSecretAccessInNamespaces: []
+    containerResources:
+      limits:
+        cpu: 200m
+        memory: 500Mi
+      requests:
+        cpu: 200m
+        memory: 128Mi
+```
+
+With mTLS, the server certificate needs to be valid for the name of the scrape coordinator service, `dash0-operator-scrape-coordinator-service` (with the default `operator.managedResourceNamePrefix`), and the certificate renewal works as described in [Certificate Renewal](#certificate-renewal).
 
 ## Related Documentation
 

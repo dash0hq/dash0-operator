@@ -663,8 +663,8 @@ rules:
   - watch
 
 # Permissions required due to the fact that the operator needs to create dedicated service accounts/cluster roles/
-# cluster role bindings for the OTel target-allocator and give it a set of permissions; which it can only
-# do if holds these permissions itself.
+# cluster role bindings for the OTel target-allocator or the Dash0 scrape coordinator and give it a set of permissions;
+# which it can only do if holds these permissions itself.
 - apiGroups:
   - monitoring.coreos.com
   resources:
@@ -719,8 +719,8 @@ rules:
   - get
   - list
   - watch
-{{- if not .Values.operator.targetAllocator.allowSecretAccessInNamespaces }}
-# The target allocator resolves secrets referenced by Prometheus CRDs in any namespace.
+{{- if or (and .Values.operator.scrapeCoordinator.enabled (not .Values.operator.scrapeCoordinator.allowSecretAccessInNamespaces)) (and (not .Values.operator.scrapeCoordinator.enabled) (not .Values.operator.targetAllocator.allowSecretAccessInNamespaces)) }}
+# The target allocator or the scrape coordinator resolves secrets referenced by Prometheus CRDs in any namespace.
 - apiGroups:
   - ""
   resources:
@@ -772,6 +772,35 @@ metadata:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: controller
     app.kubernetes.io/instance: cluster-role-target-allocator-secrets
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+
+{{ end }}
+
+---
+{{ if and .Values.operator.telemetryCollectionEnabled .Values.operator.scrapeCoordinator.allowSecretAccessInNamespaces }}
+{{/*
+The -scrape-coordinator-secrets cluster role grants the Dash0 scrape coordinator read access to secrets in the
+namespaces listed in operator.scrapeCoordinator.allowSecretAccessInNamespaces, see
+role-binding-scrape-coordinator-secrets.yaml.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-scrape-coordinator-secrets
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: cluster-role-scrape-coordinator-secrets
     {{- include "dash0-operator.labels" . | nindent 4 }}
 
 rules:

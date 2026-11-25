@@ -97,6 +97,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			util.ExtraConfigDefaults,
 			util.ExtraConfigDefaults,
 			false,
+			false,
 			targetAllocatorResourceManager,
 		)
 		reconciler = controller.NewMonitoringReconciler(
@@ -106,6 +107,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			instrumenter,
 			collectorManager,
 			targetAllocatorManager,
+			nil,
 			&DanglingEventsTimeoutsTest,
 			OperatorNamespace,
 		)

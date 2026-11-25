@@ -69,6 +69,7 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 			util.ExtraConfigDefaults,
 			util.ExtraConfigDefaults,
 			false,
+			false,
 			targetAllocatorResourceManager,
 		)
 	})
@@ -193,6 +194,35 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 			createdObjectsTargetAllocatorManagerTest = append(createdObjectsTargetAllocatorManagerTest, monitoringResource)
 
 			hasBeenReconciled, err := targetAllocatorManager.ReconcileTargetAllocator(
+				ctx,
+				TriggeredByDash0ResourceReconcile,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
+			tatest.VerifyTargetAllocatorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
+		})
+
+		It("should delete the target-allocator if the scrape coordinator has been selected via Helm", func() {
+			tatest.CreateDefaultOperatorConfigurationResourceWithPrometheusCrdSupport(
+				ctx,
+				k8sClient,
+			)
+			monitoringResource := tatest.EnsureMonitoringResourceWithPrometheusScrapingExistsAndIsAvailable(
+				ctx,
+				k8sClient,
+			)
+			createdObjectsTargetAllocatorManagerTest = append(createdObjectsTargetAllocatorManagerTest, monitoringResource)
+
+			hasBeenReconciled, err := targetAllocatorManager.ReconcileTargetAllocator(
+				ctx,
+				TriggeredByDash0ResourceReconcile,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
+			tatest.VerifyTargetAllocatorResources(ctx, k8sClient, operatorNamespace)
+
+			targetAllocatorManager.scrapeCoordinatorEnabledViaHelm = true
+			hasBeenReconciled, err = targetAllocatorManager.ReconcileTargetAllocator(
 				ctx,
 				TriggeredByDash0ResourceReconcile,
 			)

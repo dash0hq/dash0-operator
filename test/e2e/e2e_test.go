@@ -6287,6 +6287,145 @@ spec:
 				})
 
 			})
+
+			Describe("after switching to the scrape coordinator via helm upgrade", func() {
+				BeforeAll(func() {
+					operatorConfigurationValues := defaultAutoOperatorConfigurationValues(true)
+					Expect(upgradeOperator(
+						operatorNamespace,
+						operatorHelmChart,
+						operatorHelmChartUrl,
+						"",
+						&images,
+						operatorConfigurationValues,
+						map[string]string{
+							"operator.prometheusCrdSupportEnabled": "true",
+							"operator.scrapeCoordinator.enabled":   "true",
+						},
+					)).To(Succeed())
+				})
+
+				It("should replace the OpenTelemetry target-allocator with the scrape coordinator", func() {
+					waitForScrapeCoordinatorToStart(operatorNamespace)
+					verifyThatTargetAllocatorIsNotDeployed(operatorNamespace)
+				})
+
+				Describe("with a deployed test application and ServiceMonitor", func() {
+					var timestampLowerBound time.Time
+
+					BeforeAll(func() {
+						timestampLowerBound = time.Now()
+						By("installing the Node.js deployment")
+						Expect(installNodeJsDeploymentWithServiceMonitor(applicationUnderTestNamespace)).To(Succeed())
+					})
+
+					It("should collect metrics from the app's /metrics endpoint", func() {
+						By("waiting for prometheus receiver metrics")
+						Eventually(func(g Gomega) {
+							verifyPrometheusMetricsIgnoreNamespaceChecks(g, timestampLowerBound)
+						}, 90*time.Second, time.Second).Should(Succeed())
+					})
+				})
+			})
+		})
+	})
+
+	Context("with an existing operator deployment and the scrape coordinator enabled", func() {
+		BeforeAll(func() {
+			By("deploying the Dash0 operator")
+			deployOperatorWithDefaultAutoOperationConfiguration(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				"",
+				&images,
+				true,
+				map[string]string{
+					"operator.prometheusCrdSupportEnabled": "true",
+					"operator.scrapeCoordinator.enabled":   "true",
+				},
+			)
+		})
+
+		AfterAll(func() {
+			undeployOperator(operatorNamespace)
+		})
+
+		Describe("without any Dash0 monitoring resources", func() {
+			It("should not deploy the scrape coordinator", func() {
+				verifyThatScrapeCoordinatorIsNotDeployed(operatorNamespace)
+			})
+		})
+
+		Describe("with a deployed Dash0 monitoring resource but prometheusScraping.enabled=false", func() {
+			BeforeAll(func() {
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringWithScrapingDisabled,
+					operatorNamespace,
+				)
+			})
+
+			AfterAll(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+			})
+
+			It("should not deploy the scrape coordinator", func() {
+				verifyThatScrapeCoordinatorIsNotDeployed(operatorNamespace)
+			})
+		})
+
+		Describe("with a deployed Dash0 monitoring resource and prometheusScraping.enabled=true", func() {
+			BeforeAll(func() {
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+			})
+
+			AfterAll(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+			})
+
+			It("should deploy the scrape coordinator instead of the OpenTelemetry target-allocator", func() {
+				waitForScrapeCoordinatorToStart(operatorNamespace)
+				verifyThatTargetAllocatorIsNotDeployed(operatorNamespace)
+			})
+
+			Describe("with a deployed test application and ServiceMonitor", func() {
+				var timestampLowerBound time.Time
+
+				BeforeAll(func() {
+					timestampLowerBound = time.Now()
+					By("installing the Node.js deployment")
+					Expect(installNodeJsDeploymentWithServiceMonitor(applicationUnderTestNamespace)).To(Succeed())
+				})
+
+				It("should collect metrics from the app's /metrics endpoint", func() {
+					By("waiting for prometheus receiver metrics")
+					Eventually(func(g Gomega) {
+						verifyPrometheusMetricsIgnoreNamespaceChecks(g, timestampLowerBound)
+					}, 90*time.Second, time.Second).Should(Succeed())
+				})
+			})
+
+			Describe("with a deployed test application and PodMonitor", func() {
+				var timestampLowerBound time.Time
+
+				BeforeAll(func() {
+					timestampLowerBound = time.Now()
+					By("installing the Node.js deployment")
+					Expect(installNodeJsDeploymentWithPodMonitor(applicationUnderTestNamespace)).To(Succeed())
+				})
+
+				It("should collect metrics from the app's /metrics endpoint", func() {
+					By("waiting for prometheus receiver metrics")
+					Eventually(func(g Gomega) {
+						verifyPrometheusMetricsIgnoreNamespaceChecks(g, timestampLowerBound)
+					}, 90*time.Second, time.Second).Should(Succeed())
+				})
+			})
 		})
 	})
 

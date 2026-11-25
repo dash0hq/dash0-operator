@@ -194,7 +194,8 @@ type KubernetesInfrastructureMetricsCollection struct {
 
 type PrometheusCrdSupport struct {
 	// Whether to discover scrape targets via Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig) by deploying the
-	// OpenTelemetry target-allocator. Defaults to `false`. It is a validation error to set it to `true` together with
+	// OpenTelemetry target-allocator, or the Dash0 scrape coordinator if it has been selected when installing the
+	// operator. Defaults to `false`. It is a validation error to set it to `true` together with
 	// `telemetryCollection.enabled=false`.
 	//
 	// +kubebuilder:validation:Optional

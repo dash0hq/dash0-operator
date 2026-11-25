@@ -164,6 +164,32 @@ data:
             operator: In
             values:
             - linux
+    scrapeCoordinatorMtlsEnabled: false
+    scrapeCoordinatorMtlsServerCertSecretName: ""
+    scrapeCoordinatorMtlsClientCertSecretName: ""
+    scrapeCoordinatorAllowInsecureAuthSecrets: false
+    scrapeCoordinatorContainerResources:
+      gomemlimit: ""
+      limits:
+        cpu: 200m
+        memory: 500Mi
+      requests:
+        cpu: 200m
+        memory: 128Mi
+    scrapeCoordinatorTolerations:
+      []
+    scrapeCoordinatorNodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: dash0.com/enable
+            operator: NotIn
+            values:
+            - "false"
+          - key: kubernetes.io/os
+            operator: In
+            values:
+            - linux
     edgeProxyReplicas: 2
     edgeProxyEnablePprof: false
     edgeProxyContainerResources:

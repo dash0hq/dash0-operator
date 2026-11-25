@@ -2521,6 +2521,46 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(getDeployment(desiredState).Spec.Template.Annotations).ToNot(HaveKey(targetAllocatorMtlsCaShaAnnotation))
 	})
 
+	It("should mount the scrape coordinator client certs and add its CA hash if the scrape coordinator is enabled", func() {
+		const certSecretName = "sco-mtls-client-cert-secret"
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			Images:                                           TestImages,
+			ScrapeCoordinatorEnabled:                         true,
+			TargetAllocatorMtlsCaSha:                         "ca-sha",
+		}, nil, util.ExtraConfig{
+			TargetAllocatorMtlsEnabled:                true,
+			TargetAllocatorMtlsClientCertSecretName:   "ta-mtls-client-cert-secret",
+			ScrapeCoordinatorMtlsEnabled:              true,
+			ScrapeCoordinatorMtlsClientCertSecretName: certSecretName,
+		})
+
+		Expect(err).ToNot(HaveOccurred())
+
+		daemonSetPodSpec := getDaemonSet(desiredState).Spec.Template.Spec
+		Expect(daemonSetPodSpec.Volumes).To(ContainElement(MatchVolume(
+			scrapeCoordinatorCertsVolumeName,
+			"secret", map[string]string{
+				"secretName": certSecretName,
+			},
+		)))
+		Expect(daemonSetPodSpec.Containers[0].VolumeMounts).To(ContainElement(MatchVolumeMount(
+			scrapeCoordinatorCertsVolumeName,
+			scrapeCoordinatorCertsVolumeDir,
+		)))
+		for _, volume := range daemonSetPodSpec.Volumes {
+			Expect(volume.Name).ToNot(Equal(targetAllocatorCertsVolumeName))
+		}
+
+		annotations := getDaemonSet(desiredState).Spec.Template.Annotations
+		Expect(annotations).To(HaveKeyWithValue(scrapeCoordinatorMtlsCaShaAnnotation, "ca-sha"))
+		Expect(annotations).ToNot(HaveKey(targetAllocatorMtlsCaShaAnnotation))
+	})
+
 	It("should not add a target-allocator mTLS CA hash to the daemonset pod template if there is none", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,

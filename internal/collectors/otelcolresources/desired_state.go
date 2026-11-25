@@ -24,6 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
@@ -124,15 +125,20 @@ type oTelColConfig struct {
 	K8sAttributesWaitForMetadata                     bool
 	K8sAttributesWaitForMetadataTimeout              string
 	K8sAttributesShareProcessor                      bool
-	PrometheusCrdSupportEnabled                      bool
-	Agent0ConnectorEnabled                           bool
-	Agent0ConnectorDeploymentName                    string
-	SyntheticsWorkerDeploymentNames                  []string
-	KubeletStatsReceiverConfig                       util.KubeletStatsReceiverConfig
-	UseHostMetricsReceiver                           bool
-	DisableHostPorts                                 bool
-	OtlpGrpcHostPort                                 int32
-	OtlpHttpHostPort                                 int32
+	// PrometheusCrdSupportEnabled is true if the daemonset collector fetches its scrape targets from the
+	// target-allocator, see TargetAllocatorActive.
+	PrometheusCrdSupportEnabled bool
+	// ScrapeCoordinatorEnabled is true if the daemonset collector fetches its scrape targets from the scrape coordinator
+	// instead of the target-allocator, see ScrapeCoordinatorActive.
+	ScrapeCoordinatorEnabled        bool
+	Agent0ConnectorEnabled          bool
+	Agent0ConnectorDeploymentName   string
+	SyntheticsWorkerDeploymentNames []string
+	KubeletStatsReceiverConfig      util.KubeletStatsReceiverConfig
+	UseHostMetricsReceiver          bool
+	DisableHostPorts                bool
+	OtlpGrpcHostPort                int32
+	OtlpHttpHostPort                int32
 	// DaemonSetServiceAccountName is the name of an external service account for the collector daemonset, which the
 	// operator neither creates nor deletes. When empty, the daemonset uses the service account the operator manages.
 	DaemonSetServiceAccountName string
@@ -178,9 +184,10 @@ type oTelColConfig struct {
 	DeploymentCollectorMemoryLimit    resource.Quantity
 	SignalControlCollectorMemoryLimit resource.Quantity
 	SignalControlSceOnlyMode          bool
-	// TargetAllocatorMtlsCaSha is a hash of the CA certificate in the target-allocator mTLS client cert secret, empty if
-	// mTLS is disabled. It is added to the daemonset collector's pod template, so that the collector pods are restarted
-	// when the CA changes; the collector reloads the client certificate and key at runtime, but not the CA.
+	// TargetAllocatorMtlsCaSha is a hash of the CA certificate in the mTLS client cert secret of the target-allocator or
+	// the scrape coordinator, empty if mTLS is disabled. It is added to the daemonset collector's pod template, so that
+	// the collector pods are restarted when the CA changes; the collector reloads the client certificate and key at
+	// runtime, but not the CA.
 	TargetAllocatorMtlsCaSha string
 }
 
@@ -264,9 +271,65 @@ type NamespacedTransform struct {
 	Transform dash0common.NormalizedTransformSpec
 }
 
+// TargetAllocatorMtlsConfig holds the mTLS client settings of the daemonset collector for the target_allocator block of
+// the prometheus receiver, which either points to the target-allocator or to the scrape coordinator.
 type TargetAllocatorMtlsConfig struct {
 	Enabled              bool
 	ClientCertSecretName string
+	// VolumeName and CertsDir are the name and the mount path of the volume with the client cert secret.
+	VolumeName string
+	CertsDir   string
+	// CaShaAnnotation is the pod template annotation with the hash of the CA certificate.
+	CaShaAnnotation string
+}
+
+// prometheusCrdSupportEnabledInResource reports whether Prometheus CRD support is enabled in the operator
+// configuration resource, no matter whether the target-allocator or the scrape coordinator implements it.
+func prometheusCrdSupportEnabledInResource(operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration) bool {
+	return operatorConfigurationResource != nil &&
+		pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.PrometheusCrdSupport.Enabled, false)
+}
+
+// ScrapeCoordinatorActive reports whether the collectors fetch their scrape targets from the scrape coordinator, that
+// is, whether Prometheus CRD support is enabled and the scrape coordinator has been selected via Helm (instead of the
+// target-allocator).
+func ScrapeCoordinatorActive(
+	scrapeCoordinatorEnabledViaHelm bool,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+) bool {
+	return scrapeCoordinatorEnabledViaHelm && prometheusCrdSupportEnabledInResource(operatorConfigurationResource)
+}
+
+// TargetAllocatorActive reports whether the collectors fetch their scrape targets from the target-allocator.
+func TargetAllocatorActive(
+	scrapeCoordinatorEnabledViaHelm bool,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+) bool {
+	return !scrapeCoordinatorEnabledViaHelm && prometheusCrdSupportEnabledInResource(operatorConfigurationResource)
+}
+
+// EffectiveTargetAllocatorMtlsConfig returns the mTLS client settings for the scrape target source of the daemonset
+// collector: the scrape coordinator if it is active, the target-allocator otherwise.
+func EffectiveTargetAllocatorMtlsConfig(
+	extraConfig util.ExtraConfig,
+	scrapeCoordinatorActive bool,
+) TargetAllocatorMtlsConfig {
+	if scrapeCoordinatorActive {
+		return TargetAllocatorMtlsConfig{
+			Enabled:              extraConfig.ScrapeCoordinatorMtlsEnabled,
+			ClientCertSecretName: extraConfig.ScrapeCoordinatorMtlsClientCertSecretName,
+			VolumeName:           scrapeCoordinatorCertsVolumeName,
+			CertsDir:             scrapeCoordinatorCertsVolumeDir,
+			CaShaAnnotation:      scrapeCoordinatorMtlsCaShaAnnotation,
+		}
+	}
+	return TargetAllocatorMtlsConfig{
+		Enabled:              extraConfig.TargetAllocatorMtlsEnabled,
+		ClientCertSecretName: extraConfig.TargetAllocatorMtlsClientCertSecretName,
+		VolumeName:           targetAllocatorCertsVolumeName,
+		CertsDir:             targetAllocatorCertsVolumeDir,
+		CaShaAnnotation:      targetAllocatorMtlsCaShaAnnotation,
+	}
 }
 
 const (
@@ -361,9 +424,14 @@ const (
 	targetAllocatorCertsVolumeName     = "ta-mtls-certs"
 	targetAllocatorCertsVolumeDir      = "/etc/certs/ta-client"
 	targetAllocatorMtlsCaShaAnnotation = "ta-mtls-ca-sha"
+
+	scrapeCoordinatorCertsVolumeName     = "scrape-coordinator-mtls-certs"
+	scrapeCoordinatorCertsVolumeDir      = "/etc/certs/scrape-coordinator-client"
+	scrapeCoordinatorMtlsCaShaAnnotation = "scrape-coordinator-mtls-ca-sha"
 )
 
-// TargetAllocatorMtlsCaCertKey is the key of the CA certificate in the target-allocator mTLS client cert secret.
+// TargetAllocatorMtlsCaCertKey is the key of the CA certificate in the mTLS client cert secret of the target-allocator
+// or the scrape coordinator.
 const TargetAllocatorMtlsCaCertKey = "ca.crt"
 
 var (
@@ -607,10 +675,7 @@ func assembleDesiredState(
 		return strings.Compare(ns1.Namespace, ns2.Namespace)
 	})
 
-	targetAllocatorMtlsConfig := TargetAllocatorMtlsConfig{
-		Enabled:              extraConfig.TargetAllocatorMtlsEnabled,
-		ClientCertSecretName: extraConfig.TargetAllocatorMtlsClientCertSecretName,
-	}
+	targetAllocatorMtlsConfig := EffectiveTargetAllocatorMtlsConfig(extraConfig, config.ScrapeCoordinatorEnabled)
 
 	var desiredState []clientObject
 
@@ -923,10 +988,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 		Value: daemonSetName,
 	}
 
-	targetAllocatorMtlsConfig := TargetAllocatorMtlsConfig{
-		Enabled:              extraConfig.TargetAllocatorMtlsEnabled,
-		ClientCertSecretName: extraConfig.TargetAllocatorMtlsClientCertSecretName,
-	}
+	targetAllocatorMtlsConfig := EffectiveTargetAllocatorMtlsConfig(extraConfig, config.ScrapeCoordinatorEnabled)
 
 	volumes, filelogOffsetsVolume := assembleCollectorDaemonSetVolumes(config, configMapItems, targetAllocatorMtlsConfig)
 	collectorContainer, err := assembleDaemonSetCollectorContainer(
@@ -1065,7 +1127,11 @@ func daemonSetPodTemplateAnnotations(config *oTelColConfig) map[string]string {
 	if config.TargetAllocatorMtlsCaSha == "" {
 		return nil
 	}
-	return map[string]string{targetAllocatorMtlsCaShaAnnotation: config.TargetAllocatorMtlsCaSha}
+	annotation := targetAllocatorMtlsCaShaAnnotation
+	if config.ScrapeCoordinatorEnabled {
+		annotation = scrapeCoordinatorMtlsCaShaAnnotation
+	}
+	return map[string]string{annotation: config.TargetAllocatorMtlsCaSha}
 }
 
 func assembleFileLogOffsetSyncContainer(
@@ -1241,7 +1307,7 @@ func assembleCollectorDaemonSetVolumes(
 
 	if targetAllocatorMtlsConfig.Enabled {
 		volumes = append(volumes, corev1.Volume{
-			Name: targetAllocatorCertsVolumeName,
+			Name: targetAllocatorMtlsConfig.VolumeName,
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName: targetAllocatorMtlsConfig.ClientCertSecretName,
@@ -1325,8 +1391,8 @@ func assembleCollectorDaemonSetVolumeMounts(
 
 	if targetAllocatorMtlsConfig.Enabled {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      targetAllocatorCertsVolumeName,
-			MountPath: targetAllocatorCertsVolumeDir,
+			Name:      targetAllocatorMtlsConfig.VolumeName,
+			MountPath: targetAllocatorMtlsConfig.CertsDir,
 		})
 	}
 

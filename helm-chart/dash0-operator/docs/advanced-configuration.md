@@ -382,6 +382,7 @@ The following Helm values control the resource settings, all nested under the to
 | `collectors.signalControlCollectorContainerResources` | SignalControl collector container | `memory: 1Gi` | `memory: 1Gi` |
 | `collectors.signalControlCollectorConfigurationReloaderContainerResources` | SignalControl collector configuration reloader | `memory: 12Mi` | `memory: 26Mi` |
 | `targetAllocator.containerResources` | target-allocator container | `cpu: 200m`, `memory: 128Mi` | `cpu: 200m`, `memory: 500Mi` |
+| `scrapeCoordinator.containerResources` | scrape coordinator container | `cpu: 200m`, `memory: 128Mi` | `cpu: 200m`, `memory: 500Mi` |
 | `agent0Connector.containerResources` | agent0-connector container | `memory: 64Mi` | `memory: 256Mi` |
 | `ebpfProfiler.containerResources` | eBPF profiler container | `cpu: 100m`, `memory: 128Mi` | `memory: 512Mi` |
 | `debuginfoProxy.containerResources` | debuginfo proxy container | `cpu: 10m`, `memory: 32Mi` | `memory: 128Mi` |
@@ -449,9 +450,9 @@ operator:
 > **Note:** Most of the operator's containers are Go processes whose `GOMEMLIMIT`
 > ([the environment variable](https://pkg.go.dev/runtime#hdr-Environment_Variables), a soft memory limit for the Go
 > runtime's garbage collector) is derived automatically from the container's memory limit when `gomemlimit` is left
-> empty: the three collectors (which also derive their `memory_limiter` thresholds), the target-allocator, edge-proxy,
-> agent0-connector, eBPF profiler, debuginfo proxy, configuration reloaders and filelog offset sync container. For
-> these you normally adjust only the memory limit. The one exception is the operator manager
+> empty: the three collectors (which also derive their `memory_limiter` thresholds), the target-allocator, the scrape
+> coordinator, edge-proxy, agent0-connector, eBPF profiler, debuginfo proxy, configuration reloaders and filelog offset
+> sync container. For these you normally adjust only the memory limit. The one exception is the operator manager
 > (`managerContainerResources`), whose `gomemlimit` is set statically — whenever you raise or lower its memory limit,
 > adjust its `gomemlimit` as well (about 80% of the limit).
 > Note that `gomemlimit` uses different units than Kubernetes resource settings (`MiB`/`GiB` rather than `Mi`/`Gi`).
@@ -489,7 +490,8 @@ In the same fashion, tolerations can also be configured for the Dash0 operator m
 `operator.tolerations`), the OpenTelemetry collector deployment for collecting cluster metrics
 (Helm value `operator.collectors.deploymentTolerations`), the SignalControl collector deployment
 (Helm value `operator.collectors.signalControlCollectorTolerations`), the OpenTelemetry target-allocator deployment
-(Helm value `operator.targetAllocator.tolerations`), the agent0-connector deployment (Helm value
+(Helm value `operator.targetAllocator.tolerations`), the scrape coordinator deployment (Helm value
+`operator.scrapeCoordinator.tolerations`), the agent0-connector deployment (Helm value
 `operator.agent0Connector.tolerations`), the eBPF profiler daemonset (Helm value `operator.ebpfProfiler.tolerations`)
 and the debuginfo proxy daemonset (Helm value `operator.debuginfoProxy.tolerations`).
 
@@ -543,6 +545,9 @@ operator:
   targetAllocator:
     nodeAffinity: <custom_node_affinity>
 
+  scrapeCoordinator:
+    nodeAffinity: <custom_node_affinity>
+
   agent0Connector:
     nodeAffinity: <custom_node_affinity>
 
@@ -555,7 +560,7 @@ operator:
 
 ### Adding Custom Labels and Annotations to the Collector Resources
 
-Additional labels and annotations can be added to the collector resources, the target-allocator resource, the agent0-connector resource, and the eBPF profiler and debuginfo proxy resources managed by the operator, both to the workload objects (the daemonsets and the deployments) and to their pods.
+Additional labels and annotations can be added to the collector resources, the target-allocator resource, the scrape coordinator resource, the agent0-connector resource, and the eBPF profiler and debuginfo proxy resources managed by the operator, both to the workload objects (the daemonsets and the deployments) and to their pods.
 These are merged with the labels and annotations the operator sets itself; the operator-managed entries always take precedence, so they cannot be overridden.
 
 ```yaml
@@ -593,6 +598,17 @@ operator:
 
   targetAllocator:
     # labels/annotations for the target-allocator deployment
+    labels:
+      my-label: my-value
+    annotations:
+      my-annotation: my-value
+    podLabels:
+      my-pod-label: my-value
+    podAnnotations:
+      my-pod-annotation: my-value
+
+  scrapeCoordinator:
+    # labels/annotations for the scrape coordinator deployment
     labels:
       my-label: my-value
     annotations:

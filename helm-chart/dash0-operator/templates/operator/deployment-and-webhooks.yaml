@@ -507,6 +507,14 @@ spec:
           value: {{ .Values.operator.debuginfoProxyImage.pullPolicy | quote }}
         {{- end }}
         {{- end }}
+        - name: DASH0_SCRAPE_COORDINATOR_IMAGE
+          value: {{ include "dash0-operator.scrapeCoordinatorImage" . | quote }}
+        {{- if .Values.operator.scrapeCoordinatorImage.pullPolicy }}
+        - name: DASH0_SCRAPE_COORDINATOR_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.scrapeCoordinatorImage.pullPolicy }}
+        {{- end }}
+        - name: DASH0_SCRAPE_COORDINATOR_ENABLED
+          value: {{ .Values.operator.scrapeCoordinator.enabled | toString | quote }}
         ports:
         - containerPort: 9443
           name: webhook-server

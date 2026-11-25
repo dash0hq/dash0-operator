@@ -1424,7 +1424,7 @@ func createReconcilerWithManagers(
 		},
 	)
 	targetallocatorManager := targetallocator.NewTargetAllocatorManager(
-		k8sClient, clientset, util.ExtraConfigDefaults, util.ExtraConfigDefaults, false, targetallocatorResourceManager,
+		k8sClient, clientset, util.ExtraConfigDefaults, util.ExtraConfigDefaults, false, false, targetallocatorResourceManager,
 	)
 	delegatingZapCoreWrapper := zaputil.NewDelegatingZapCoreWrapper()
 	otelSdkStarter := selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCoreWrapper, NewNoopExporterFactory())
@@ -1438,6 +1438,7 @@ func createReconcilerWithManagers(
 		},
 		collectorManager,
 		targetallocatorManager,
+		nil,
 		agent0ConnectorManager,
 		syntheticsWorkerManager,
 		nil,

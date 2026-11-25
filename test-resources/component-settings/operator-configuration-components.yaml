@@ -168,6 +168,42 @@ spec:
         clientCertSecretName: ta-client-cert-secret
       allowInsecureAuthSecrets: false
 
+    # Only applied if the scrape coordinator has been selected via the Helm value operator.scrapeCoordinator.enabled.
+    scrapeCoordinator:
+      containerResources:
+        limits:
+          cpu: 300m
+          memory: 400Mi
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        gomemlimit: 320MiB
+      labels:
+        dash0.com/component-settings-test: custom-resource
+      annotations:
+        dash0.com/component-settings-test: custom-resource
+      podLabels:
+        dash0.com/component-settings-test: custom-resource
+      podAnnotations:
+        dash0.com/component-settings-test: custom-resource
+      tolerations:
+        - key: dash0.com/component-settings-test
+          operator: Exists
+          effect: NoSchedule
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: dash0.com/enable
+                  operator: NotIn
+                  values: ["false"]
+                - key: kubernetes.io/os
+                  operator: In
+                  values: ["linux"]
+      mTls:
+        enabled: false
+      allowInsecureAuthSecrets: false
+
     agent0Connector:
       maxConcurrentCommands: 3
       allowedKubectlCommands:

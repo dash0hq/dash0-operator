@@ -138,6 +138,7 @@ var _ = Describe(
 					util.ExtraConfigDefaults,
 					util.ExtraConfigDefaults,
 					false,
+					false,
 					targetAllocatorResourceManager,
 				)
 				monitoringReconciler = NewMonitoringReconciler(
@@ -147,6 +148,7 @@ var _ = Describe(
 					instrumenter,
 					collectorManager,
 					targetAllocatorManager,
+					nil,
 					&DanglingEventsTimeoutsTest,
 					OperatorNamespace,
 				)

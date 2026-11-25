@@ -383,6 +383,12 @@ func addHelmParametersForImages(arguments []string, images Images) []string {
 	arguments = setIfNotEmpty(arguments, "operator.targetAllocatorImage.digest", images.targetAllocator.digest)
 	arguments = setIfNotEmpty(arguments, "operator.targetAllocatorImage.pullPolicy", images.targetAllocator.pullPolicy)
 
+	arguments = setIfNotEmpty(arguments, "operator.scrapeCoordinatorImage.repository", images.scrapeCoordinator.repository)
+	arguments = setIfNotEmpty(arguments, "operator.scrapeCoordinatorImage.tag", images.scrapeCoordinator.tag)
+	arguments = setIfNotEmpty(arguments, "operator.scrapeCoordinatorImage.digest", images.scrapeCoordinator.digest)
+	arguments = setIfNotEmpty(arguments, "operator.scrapeCoordinatorImage.pullPolicy",
+		images.scrapeCoordinator.pullPolicy)
+
 	arguments = setIfNotEmpty(arguments, "operator.signalControlCollectorImage.repository",
 		images.signalControlCollector.repository)
 	arguments = setIfNotEmpty(arguments, "operator.signalControlCollectorImage.tag",

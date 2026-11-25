@@ -213,6 +213,9 @@ Here is a list of configuration options for this resource:
   Setting it to `true` and having at least one namespace with `prometheusScraping` enabled, will deploy the
   OpenTelemetry target-allocator and update the `prometheusreceiver` in the OpenTelemetry collectors, so they query the
   allocator for targets to be scraped.
+  If the Dash0 scrape coordinator has been selected via the Helm value `operator.scrapeCoordinator.enabled`, the
+  operator deploys the scrape coordinator instead of the target-allocator, see
+  [Scraping via the Dash0 Scrape Coordinator](metrics-and-scraping.md#scraping-via-the-dash0-scrape-coordinator).
 
 * <a href="#operatorconfigurationresource.spec.profiling.enabled"><span id="operatorconfigurationresource.spec.profiling.enabled">**`spec.profiling.enabled`**</span></a>:
   If enabled, the OpenTelemetry collectors accept, process and export profiling data via OTLP.

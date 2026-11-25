@@ -48,6 +48,9 @@ operator:
                 values: ["linux"]
               - key: kubernetes.io/hostname
                 operator: Exists
+  scrapeCoordinator:
+    podAnnotations:
+      dash0.com/component-settings-test: helm
   signalControl:
     edgeProxy:
       replicas: 3

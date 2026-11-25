@@ -21,6 +21,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/componentsettings"
 	"github.com/dash0hq/dash0-operator/internal/resources"
+	"github.com/dash0hq/dash0-operator/internal/scrapecoordinator"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol"
 	"github.com/dash0hq/dash0-operator/internal/syntheticsworker"
@@ -35,6 +36,7 @@ type OperatorConfigurationReconciler struct {
 	apiClients                  []ApiClient
 	collectorManager            *collectors.CollectorManager
 	targetAllocatorManager      *targetallocator.TargetAllocatorManager
+	scrapeCoordinatorManager    *scrapecoordinator.ScrapeCoordinatorManager
 	agent0ConnectorManager      *agent0connector.Agent0ConnectorManager
 	syntheticsWorkerManager     *syntheticsworker.SyntheticsWorkerManager
 	signalControlManager        *signalcontrol.SignalControlManager
@@ -68,6 +70,7 @@ func NewOperatorConfigurationReconciler(
 	apiClients []ApiClient,
 	collectorManager *collectors.CollectorManager,
 	targetAllocatorManager *targetallocator.TargetAllocatorManager,
+	scrapeCoordinatorManager *scrapecoordinator.ScrapeCoordinatorManager,
 	agent0ConnectorManager *agent0connector.Agent0ConnectorManager,
 	syntheticsWorkerManager *syntheticsworker.SyntheticsWorkerManager,
 	signalControlManager *signalcontrol.SignalControlManager,
@@ -86,6 +89,7 @@ func NewOperatorConfigurationReconciler(
 		apiClients:                  apiClients,
 		collectorManager:            collectorManager,
 		targetAllocatorManager:      targetAllocatorManager,
+		scrapeCoordinatorManager:    scrapeCoordinatorManager,
 		agent0ConnectorManager:      agent0ConnectorManager,
 		syntheticsWorkerManager:     syntheticsWorkerManager,
 		signalControlManager:        signalControlManager,
@@ -163,6 +167,9 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 			return ctrl.Result{}, err
 		}
 		if err = r.reconcileOpenTelemetryTargetAllocator(ctx, logger); err != nil {
+			return ctrl.Result{}, err
+		}
+		if err = r.reconcileScrapeCoordinator(ctx, logger); err != nil {
 			return ctrl.Result{}, err
 		}
 		if err = r.reconcileAgent0Connector(ctx, logger); err != nil {
@@ -245,6 +252,10 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	if err = r.reconcileOpenTelemetryTargetAllocator(ctx, logger); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if err = r.reconcileScrapeCoordinator(ctx, logger); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -422,6 +433,23 @@ func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryTargetAllocator(
 		targetallocator.TriggeredByDash0ResourceReconcile,
 	); err != nil {
 		logger.Error(err, "Failed to reconcile the OpenTelemetry target-allocator, requeuing reconcile request.")
+		return err
+	}
+	return nil
+}
+
+func (r *OperatorConfigurationReconciler) reconcileScrapeCoordinator(ctx context.Context, logger logd.Logger) error {
+	if r.scrapeCoordinatorManager == nil {
+		// If telemetry collection is disabled via Helm, the scrape coordinator manager is not initialized.
+		logger.Debug("scrape coordinator manager is not initialized, skipping scrape coordinator reconciliation")
+		return nil
+	}
+	logger.Info("Reconciling the scrape coordinator.")
+	if _, err := r.scrapeCoordinatorManager.ReconcileScrapeCoordinator(
+		ctx,
+		scrapecoordinator.TriggeredByDash0ResourceReconcile,
+	); err != nil {
+		logger.Error(err, "Failed to reconcile the scrape coordinator, requeuing reconcile request.")
 		return err
 	}
 	return nil

@@ -42,6 +42,7 @@ const (
 	CollectorImageTest                    = "some-registry.com:1234/dash0hq/collector:7.8.9"
 	SignalControlCollectorImageTest       = "some-registry.com:1234/dash0hq/signal-control-collector:7.8.9"
 	TargetAllocatorImageTest              = "some-registry.com:1234/dash0hq/target-allocator:8.9.10"
+	ScrapeCoordinatorImageTest            = "some-registry.com:1234/dash0hq/scrape-coordinator:9.10.11"
 	ConfigurationReloaderImageTest        = "some-registry.com:1234/dash0hq/configuration-reloader:10.11.12"
 	FilelogOffsetSyncImageTest            = "some-registry.com:1234/dash0hq/filelog-offset-sync:13.14.15"
 	FilelogOffsetVolumeOwnershipImageTest = "some-registry.com:1234/dash0hq/filelog-offset-volume-ownership:16.17.18"
@@ -102,6 +103,8 @@ var (
 		SignalControlCollectorImagePullPolicy:       corev1.PullAlways,
 		TargetAllocatorImage:                        TargetAllocatorImageTest,
 		TargetAllocatorPullPolicy:                   corev1.PullAlways,
+		ScrapeCoordinatorImage:                      ScrapeCoordinatorImageTest,
+		ScrapeCoordinatorPullPolicy:                 corev1.PullAlways,
 		ConfigurationReloaderImage:                  ConfigurationReloaderImageTest,
 		ConfigurationReloaderImagePullPolicy:        corev1.PullAlways,
 		FilelogOffsetSyncImage:                      FilelogOffsetSyncImageTest,

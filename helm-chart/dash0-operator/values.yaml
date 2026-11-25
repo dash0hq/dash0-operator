@@ -228,7 +228,8 @@ operator:
 
   # An opt-in for enabling support for Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig). If set to true,
   # the operator will deploy an OpenTelemetry target-allocator that watches Prometheus CRDs and provides an API that
-  # allows collectors to query the resulting scrape configs.
+  # allows collectors to query the resulting scrape configs. If operator.scrapeCoordinator.enabled is true, the
+  # operator deploys the Dash0 scrape coordinator instead of the target-allocator.
   #
   # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
   # resource will be created by the Helm chart then.
@@ -571,6 +572,17 @@ operator:
   # the container image to use for the target-allocator component (there should usually be no reason to override this)
   targetAllocatorImage:
     repository: "ghcr.io/dash0hq/target-allocator"
+    # overrides the image tag, which defaults to the chart appVersion.
+    tag:
+    # pull image by digest instead of tag; if this is set, the tag value will be ignored
+    digest:
+    # override the default image pull policy
+    pullPolicy:
+
+  # the container image to use for the scrape coordinator component (there should usually be no reason to override
+  # this)
+  scrapeCoordinatorImage:
+    repository: "ghcr.io/dash0hq/scrape-coordinator"
     # overrides the image tag, which defaults to the chart appVersion.
     tag:
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
@@ -1447,6 +1459,90 @@ operator:
 
     # The nodeAffinity for the target-allocator deployment managed by the operator. This can be used to constrain which
     # nodes the target-allocator pod will be scheduled on.
+    #
+    # See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: "dash0.com/enable"
+                operator: "NotIn"
+                values: ["false"]
+              - key: "kubernetes.io/os"
+                operator: "In"
+                values: ["linux"]
+
+  # Settings related to the Dash0 scrape coordinator managed by the operator.
+  scrapeCoordinator:
+    # An opt-in for discovering scrape targets via Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig) with the
+    # Dash0 scrape coordinator instead of the OpenTelemetry target-allocator. If set to true, the operator deploys the
+    # scrape coordinator instead of the target-allocator whenever support for Prometheus CRDs is enabled, that is, if
+    # operator.prometheusCrdSupportEnabled is true or, if operator.dash0Export.enabled is false, if
+    # spec.prometheusCrdSupport.enabled is true in the manually created Dash0OperatorConfiguration resource. The scrape
+    # coordinator watches Prometheus CRDs and assigns the resulting scrape targets to the collectors.
+    #
+    # The scrape coordinator can only be selected via this setting, it cannot be selected via the
+    # Dash0OperatorConfiguration resource.
+    # This setting has no effect if operator.telemetryCollectionEnabled is set to false, the scrape coordinator will
+    # be disabled implicitly.
+    enabled: false
+
+    mTls:
+      # Whether to enable mTLS for the communication between the scrape coordinator and the collectors.
+      # If your metrics endpoints require authorization, enabling mTLS ensures the scrape coordinator
+      # can share the credentials with the collectors in a secure way.
+      # Alternatively, you can explicitly configure the scrape coordinator to share the credentials over plain HTTP by
+      # setting allowInsecureAuthSecrets to true, but note that transport security must then be ensured by
+      # other means.
+      # Enabling mTLS without providing the required secrets will result in a validation error.
+      enabled: false
+      # Name of the secret containing the server certificate.
+      serverCertSecretName: ""
+      # Name of the secret containing the client (collector) certificate.
+      clientCertSecretName: ""
+
+    # Whether to let the scrape coordinator serve the credentials for metrics endpoints which require authorization over
+    # plain HTTP, instead of over mTLS. Only enable this if the transport security for the communication between the
+    # scrape coordinator and the collectors is guaranteed by other means, for example by a service mesh.
+    allowInsecureAuthSecrets: false
+
+    # An optional list of namespaces in which the scrape coordinator may read secrets referenced by Prometheus CRDs. If
+    # set, the scrape coordinator can only read secrets in these namespaces, and the operator manager loses its
+    # cluster-wide read access to secrets. Prometheus CRDs in other namespaces are still watched, but the ones that
+    # reference a secret are rejected and not scraped. If empty (the default), both can read secrets in all namespaces.
+    # Every listed namespace must exist at install/upgrade time, since a role binding is created in it.
+    allowSecretAccessInNamespaces: []
+
+    # Resource settings for the scrape coordinator container managed by the operator.
+    containerResources:
+      limits:
+        cpu: 200m
+        memory: 500Mi
+      # The GOMEMLIMIT environment variable value for the scrape coordinator container. Leaving this empty is
+      # recommended; the operator then derives it from containerResources.limits.memory. Set a value only to override
+      # it. Valid units differ from Kubernetes resource settings, use MiB or GiB (see
+      # https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
+      requests:
+        cpu: 200m
+        memory: 128Mi
+
+    # Additional labels to be set on the scrape coordinator deployment managed by the operator.
+    labels: {}
+
+    # Additional annotations to be set on the scrape coordinator deployment managed by the operator.
+    annotations: {}
+
+    # Additional labels to be set on the scrape coordinator pods managed by the operator.
+    podLabels: {}
+
+    # Additional annotations to be set on the scrape coordinator pods managed by the operator.
+    podAnnotations: {}
+
+    # An array of tolerations for the scrape coordinator pods managed by the operator.
+    tolerations: []
+
+    # The nodeAffinity for the scrape coordinator deployment managed by the operator.
     #
     # See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
     nodeAffinity:

@@ -254,6 +254,11 @@ Parameters: kind and name of the object, and the name of the webhook entry (omit
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.targetAllocatorImage "context" .) -}}
 {{- end }}
 
+{{/* the scrape coordinator image */}}
+{{- define "dash0-operator.scrapeCoordinatorImage" -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.scrapeCoordinatorImage "context" .) -}}
+{{- end }}
+
 {{/* the config reloader image */}}
 {{- define "dash0-operator.configurationReloaderImage" -}}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.configurationReloaderImage "context" .) -}}

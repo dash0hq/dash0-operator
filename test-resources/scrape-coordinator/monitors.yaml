@@ -1,0 +1,145 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# Prometheus custom resources for test-resources/bin/scrape-coordinator-diff.sh, in addition to the ServiceMonitor of the
+# Node.js test application. They select the Node.js test application deployed by test-scenario-05-operator-prom-crd.sh.
+# Several monitors select the same Service, so the same address shows up in several jobs.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: scrape-coordinator-diff-basic-auth
+type: Opaque
+stringData:
+  username: scrape-coordinator-diff-user
+  password: scrape-coordinator-diff-password
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: scrape-coordinator-diff-basic-auth
+spec:
+  endpoints:
+    - interval: 30s
+      path: /metrics
+      port: http
+      basicAuth:
+        username:
+          name: scrape-coordinator-diff-basic-auth
+          key: username
+        password:
+          name: scrape-coordinator-diff-basic-auth
+          key: password
+  selector:
+    matchLabels:
+      app: dash0-operator-nodejs-20-express-test-deployment-service
+---
+# Only the target-allocator serves this monitor, the scrape coordinator drops monitors that reference a file.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: scrape-coordinator-diff-bearer-token-file
+spec:
+  endpoints:
+    - interval: 30s
+      path: /metrics
+      port: http
+      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+  selector:
+    matchLabels:
+      app: dash0-operator-nodejs-20-express-test-deployment-service
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: scrape-coordinator-diff
+spec:
+  podMetricsEndpoints:
+    - interval: 30s
+      path: /metrics
+      portNumber: 1207
+  selector:
+    matchLabels:
+      app: dash0-operator-nodejs-20-express-test-deployment-app
+---
+# A second Service for the pods of the Node.js test application. Kubernetes label values are restricted to ASCII, so the
+# UTF-8 value is an annotation.
+apiVersion: v1
+kind: Service
+metadata:
+  name: scrape-coordinator-diff
+  labels:
+    app: scrape-coordinator-diff
+  annotations:
+    scrape-coordinator-diff/description: "Überwachung – 監視 ✓"
+spec:
+  selector:
+    app: dash0-operator-nodejs-20-express-test-deployment-app
+  ports:
+    - name: http
+      port: 1207
+      targetPort: 1207
+---
+# Each relabeling action, and a relabeling that reads job, __scheme__ and a __param_* label. The second endpoint has the
+# same address as the first one, with a different path.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: scrape-coordinator-diff-relabelings
+spec:
+  endpoints:
+    - interval: 30s
+      path: /metrics
+      port: http
+      params:
+        format:
+          - prometheus
+      relabelings:
+        - action: keep
+          sourceLabels: [__meta_kubernetes_service_name]
+          regex: scrape-coordinator-diff
+        - action: drop
+          sourceLabels: [__meta_kubernetes_pod_phase]
+          regex: Failed|Succeeded
+        - action: keepequal
+          sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+        - action: dropequal
+          sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: service
+        - action: replace
+          sourceLabels: [job, __scheme__, __param_format]
+          separator: ";"
+          targetLabel: origin
+        - action: hashmod
+          sourceLabels: [__address__]
+          modulus: 4
+          targetLabel: hash
+        - action: labelmap
+          regex: __meta_kubernetes_service_annotation_scrape_coordinator_diff_(.+)
+          replacement: annotation_$1
+        - action: uppercase
+          sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod_upper
+        - action: lowercase
+          sourceLabels: [pod_upper]
+          targetLabel: pod_lower
+        - action: labeldrop
+          regex: pod_upper
+        - action: labelkeep
+          regex: __.+|job|namespace|service|pod|container|endpoint|origin|hash|annotation_.+|pod_lower
+    - interval: 30s
+      path: /other-metrics
+      port: http
+  selector:
+    matchLabels:
+      app: scrape-coordinator-diff
+---
+# Static targets have no node name, neither the target-allocator nor the scrape coordinator assigns them to a collector.
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: scrape-coordinator-diff-static
+spec:
+  staticConfigs:
+    - targets:
+        - scrape-coordinator-diff.invalid:9090

@@ -62,7 +62,8 @@ var knownUnredactedFields = map[string]string{
 	// operator resolves it into the workload, and the custom resource only ever holds the reference.
 	"secretKeyRef.key": "the name of an entry in a Kubernetes secret, not its value",
 	"secretRef.key":    "the name of an entry in a Kubernetes secret, not its value",
-	// The names of the Kubernetes secrets that hold the target-allocator's mTLS certificates, not their content.
+	// The names of the Kubernetes secrets that hold the mTLS certificates of the target-allocator or the scrape
+	// coordinator, not their content.
 	"mTls.serverCertSecretName": "the name of a Kubernetes secret, not its content",
 	"mTls.clientCertSecretName": "the name of a Kubernetes secret, not its content",
 	// Attribute keys of filters, columns and assertions - the left-hand side of a comparison, never a secret.

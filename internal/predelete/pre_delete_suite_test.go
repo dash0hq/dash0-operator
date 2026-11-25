@@ -156,6 +156,7 @@ var _ = BeforeSuite(func() {
 		util.ExtraConfigDefaults,
 		util.ExtraConfigDefaults,
 		false,
+		false,
 		targetAllocatorResourceManager,
 	)
 	reconciler = controller.NewMonitoringReconciler(
@@ -165,6 +166,7 @@ var _ = BeforeSuite(func() {
 		instrumenter,
 		collectorManager,
 		targetAllocatorManager,
+		nil,
 		&DanglingEventsTimeoutsTest,
 		OperatorNamespace,
 	)

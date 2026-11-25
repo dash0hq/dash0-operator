@@ -49,7 +49,7 @@ var _ = Describe("The collector reconciler", func() {
 			extraConfig.TargetAllocatorMtlsEnabled = true
 			extraConfig.TargetAllocatorMtlsServerCertSecretName = "server-cert"
 			extraConfig.TargetAllocatorMtlsClientCertSecretName = clientCertSecretName
-			collectorManager.storeTargetAllocatorMtlsClientCertSecretName(extraConfig)
+			collectorManager.storeTargetAllocatorMtlsClientCertSecretName(extraConfig, false)
 		}
 
 		It("should not match any secret before the first reconciliation", func() {
@@ -59,7 +59,7 @@ var _ = Describe("The collector reconciler", func() {
 		})
 
 		It("should not match any secret if mTLS is disabled", func() {
-			collectorManager.storeTargetAllocatorMtlsClientCertSecretName(util.ExtraConfigDefaults)
+			collectorManager.storeTargetAllocatorMtlsClientCertSecretName(util.ExtraConfigDefaults, false)
 			p := reconciler.targetAllocatorMtlsClientCertSecretPredicate()
 			Expect(p.Create(event.CreateEvent{Object: secret(OperatorNamespace, "")})).To(BeFalse())
 		})
@@ -106,6 +106,19 @@ var _ = Describe("The collector reconciler", func() {
 			enableMtls("renamed-client-cert")
 			Expect(p.Create(event.CreateEvent{Object: secret(OperatorNamespace, "client-cert")})).To(BeFalse())
 			Expect(p.Create(event.CreateEvent{Object: secret(OperatorNamespace, "renamed-client-cert")})).To(BeTrue())
+		})
+
+		It("should match the scrape coordinator client cert secret if the scrape coordinator is active", func() {
+			extraConfig := util.ExtraConfigDefaults
+			extraConfig.TargetAllocatorMtlsEnabled = true
+			extraConfig.TargetAllocatorMtlsClientCertSecretName = "ta-client-cert"
+			extraConfig.ScrapeCoordinatorMtlsEnabled = true
+			extraConfig.ScrapeCoordinatorMtlsClientCertSecretName = "sco-client-cert"
+			collectorManager.storeTargetAllocatorMtlsClientCertSecretName(extraConfig, true)
+			p := reconciler.targetAllocatorMtlsClientCertSecretPredicate()
+
+			Expect(p.Create(event.CreateEvent{Object: secret(OperatorNamespace, "sco-client-cert")})).To(BeTrue())
+			Expect(p.Create(event.CreateEvent{Object: secret(OperatorNamespace, "ta-client-cert")})).To(BeFalse())
 		})
 	})
 })

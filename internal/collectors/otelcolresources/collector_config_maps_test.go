@@ -24,6 +24,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
+	"github.com/dash0hq/dash0-operator/internal/scrapecoordinator/scoresources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
@@ -8809,6 +8810,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		taMtlsConfig := TargetAllocatorMtlsConfig{
 			Enabled:              true,
 			ClientCertSecretName: "ta-mtls-client-cert-secret",
+			CertsDir:             targetAllocatorCertsVolumeDir,
 		}
 
 		nsWithPrometheusScraping := []string{"ns1", "ns2", "ns3"}
@@ -8874,6 +8876,82 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 			tlsConfig := ReadFromMap(taConfig, []string{"tls"})
 			Expect(tlsConfig).To(BeNil())
+		})
+
+		It("should use the scrape coordinator HTTPS endpoint and its client certs if the scrape coordinator is enabled", func() {
+			config := &oTelColConfig{
+				OperatorNamespace:        OperatorNamespace,
+				NamePrefix:               namePrefix,
+				Exporters:                cmTestSingleDefaultOtlpExporter(),
+				ScrapeCoordinatorEnabled: true,
+			}
+			extraConfig := util.ExtraConfigDefaults
+			extraConfig.ScrapeCoordinatorMtlsEnabled = true
+			extraConfig.ScrapeCoordinatorMtlsClientCertSecretName = "sco-mtls-client-cert-secret"
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, nsWithPrometheusScraping, nil, nil, EffectiveTargetAllocatorMtlsConfig(extraConfig, true), false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			taConfig := ReadFromMap(collectorConfig, []string{"receivers", "prometheus", "target_allocator"})
+			Expect(taConfig).ToNot(BeNil())
+
+			endpoint, ok := ReadFromMap(taConfig, []string{"endpoint"}).(string)
+			Expect(ok).To(BeTrue())
+			Expect(endpoint).To(Equal(fmt.Sprintf("https://%s:443", scoresources.ServiceName(namePrefix))))
+
+			tlsConfig, ok := ReadFromMap(taConfig, []string{"tls"}).(map[string]any)
+			Expect(ok).To(BeTrue())
+			Expect(tlsConfig["ca_file"]).To(Equal(fmt.Sprintf("%s/ca.crt", scrapeCoordinatorCertsVolumeDir)))
+			Expect(tlsConfig["cert_file"]).To(Equal(fmt.Sprintf("%s/tls.crt", scrapeCoordinatorCertsVolumeDir)))
+			Expect(tlsConfig["key_file"]).To(Equal(fmt.Sprintf("%s/tls.key", scrapeCoordinatorCertsVolumeDir)))
+		})
+
+		It("should use the scrape coordinator HTTP endpoint if the scrape coordinator is enabled without mTLS", func() {
+			config := &oTelColConfig{
+				OperatorNamespace:        OperatorNamespace,
+				NamePrefix:               namePrefix,
+				Exporters:                cmTestSingleDefaultOtlpExporter(),
+				ScrapeCoordinatorEnabled: true,
+			}
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, nsWithPrometheusScraping, nil, nil, EffectiveTargetAllocatorMtlsConfig(util.ExtraConfigDefaults, true), false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			taConfig := ReadFromMap(collectorConfig, []string{"receivers", "prometheus", "target_allocator"})
+			Expect(taConfig).ToNot(BeNil())
+
+			endpoint, ok := ReadFromMap(taConfig, []string{"endpoint"}).(string)
+			Expect(ok).To(BeTrue())
+			Expect(endpoint).To(Equal(fmt.Sprintf("http://%s", scoresources.ServiceName(namePrefix))))
+			Expect(ReadFromMap(taConfig, []string{"tls"})).To(BeNil())
+		})
+	})
+
+	Describe("scrape coordinator self-monitoring", func() {
+		It("should collect the scrape coordinator pod logs when both SelfMonitoringEnabled and ScrapeCoordinatorEnabled are true", func() {
+			config := &oTelColConfig{
+				OperatorNamespace:        OperatorNamespace,
+				NamePrefix:               namePrefix,
+				Exporters:                cmTestSingleDefaultOtlpExporter(),
+				ScrapeCoordinatorEnabled: true,
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: true,
+				},
+			}
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, []string{}, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			include, ok := ReadFromMap(collectorConfig, []string{"receivers", "file_log/selfmonitoring", "include"}).([]any)
+			Expect(ok).To(BeTrue())
+			Expect(include).To(HaveLen(1))
+			Expect(include[0].(string)).To(ContainSubstring(
+				fmt.Sprintf("%s_%s-scrape-coordinator", OperatorNamespace, namePrefix),
+			))
+
+			pipelines := readPipelines(collectorConfig)
+			Expect(readPipelineReceivers(pipelines, "logs/selfmonitoring-filelog-to-forwarder")).To(ConsistOf("file_log/selfmonitoring"))
 		})
 	})
 

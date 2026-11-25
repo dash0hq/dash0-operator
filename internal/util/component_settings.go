@@ -40,6 +40,7 @@ const (
 	componentDaemonSetCollector           = "daemonSetCollector"
 	componentDeploymentCollector          = "deploymentCollector"
 	componentTargetAllocator              = "targetAllocator"
+	componentScrapeCoordinator            = "scrapeCoordinator"
 	componentAgent0Connector              = "agent0Connector"
 	componentEbpfProfiler                 = "ebpfProfiler"
 	componentDebuginfoProxy               = "debuginfoProxy"
@@ -272,8 +273,8 @@ type collectorPodHelmValues struct {
 	priorityClassName string
 }
 
-// targetAllocatorMTls holds the fields of the extra configuration for the target-allocator mTLS settings, which are
-// replaced together.
+// targetAllocatorMTls holds the fields of the extra configuration for the mTLS settings of the target-allocator or the
+// scrape coordinator, which are replaced together.
 type targetAllocatorMTls struct {
 	Enabled              bool   `json:"enabled"`
 	ServerCertSecretName string `json:"serverCertSecretName"`
@@ -473,6 +474,47 @@ func (m *componentSettingsApplier) applyOperatorConfigurationComponents(
 		replaceValueIfSet(m, p+".allowInsecureAuthSecrets", "operator.targetAllocator.allowInsecureAuthSecrets",
 			&effective.TargetAllocatorAllowInsecureAuthSecrets, defaults.TargetAllocatorAllowInsecureAuthSecrets,
 			targetAllocator.AllowInsecureAuthSecrets)
+	}
+
+	if scrapeCoordinator := components.ScrapeCoordinator; scrapeCoordinator != nil {
+		p := path + "." + componentScrapeCoordinator
+		m.applyContainerResources(
+			p+".containerResources",
+			"operator.scrapeCoordinator.containerResources",
+			&effective.ScrapeCoordinatorContainerResources,
+			defaults.ScrapeCoordinatorContainerResources,
+			scrapeCoordinator.ContainerResources,
+		)
+		m.applyWorkload(p, nestedHelmValues("operator.scrapeCoordinator"), workloadFields{
+			labels:         &effective.ScrapeCoordinatorLabels,
+			annotations:    &effective.ScrapeCoordinatorAnnotations,
+			podLabels:      &effective.ScrapeCoordinatorPodLabels,
+			podAnnotations: &effective.ScrapeCoordinatorPodAnnotations,
+			tolerations:    &effective.ScrapeCoordinatorTolerations,
+			nodeAffinity:   &effective.ScrapeCoordinatorNodeAffinity,
+		}, defaults.ScrapeCoordinatorNodeAffinity, scrapeCoordinator.WorkloadSettings)
+		if mTls := scrapeCoordinator.MTls; mTls != nil {
+			current := targetAllocatorMTls{
+				Enabled:              effective.ScrapeCoordinatorMtlsEnabled,
+				ServerCertSecretName: effective.ScrapeCoordinatorMtlsServerCertSecretName,
+				ClientCertSecretName: effective.ScrapeCoordinatorMtlsClientCertSecretName,
+			}.withoutUnusedSecretNames()
+			replaceValue(m, p+".mTls", "operator.scrapeCoordinator.mTls", &current, targetAllocatorMTls{
+				Enabled:              defaults.ScrapeCoordinatorMtlsEnabled,
+				ServerCertSecretName: defaults.ScrapeCoordinatorMtlsServerCertSecretName,
+				ClientCertSecretName: defaults.ScrapeCoordinatorMtlsClientCertSecretName,
+			}.withoutUnusedSecretNames(), targetAllocatorMTls{
+				Enabled:              ptr.Deref(mTls.Enabled, false),
+				ServerCertSecretName: mTls.ServerCertSecretName,
+				ClientCertSecretName: mTls.ClientCertSecretName,
+			}.withoutUnusedSecretNames())
+			effective.ScrapeCoordinatorMtlsEnabled = current.Enabled
+			effective.ScrapeCoordinatorMtlsServerCertSecretName = current.ServerCertSecretName
+			effective.ScrapeCoordinatorMtlsClientCertSecretName = current.ClientCertSecretName
+		}
+		replaceValueIfSet(m, p+".allowInsecureAuthSecrets", "operator.scrapeCoordinator.allowInsecureAuthSecrets",
+			&effective.ScrapeCoordinatorAllowInsecureAuthSecrets, defaults.ScrapeCoordinatorAllowInsecureAuthSecrets,
+			scrapeCoordinator.AllowInsecureAuthSecrets)
 	}
 
 	if agent0Connector := components.Agent0Connector; agent0Connector != nil {

@@ -27,6 +27,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
 	"github.com/dash0hq/dash0-operator/internal/resources"
+	"github.com/dash0hq/dash0-operator/internal/scrapecoordinator"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -37,13 +38,14 @@ import (
 
 type MonitoringReconciler struct {
 	client.Client
-	clientset              *kubernetes.Clientset
-	namespacedApiClients   []NamespacedApiClient
-	instrumenter           *instrumentation.Instrumenter
-	collectorManager       *collectors.CollectorManager
-	targetAllocatorManager *targetallocator.TargetAllocatorManager
-	danglingEventsTimeouts *util.DanglingEventsTimeouts
-	operatorNamespace      string
+	clientset                *kubernetes.Clientset
+	namespacedApiClients     []NamespacedApiClient
+	instrumenter             *instrumentation.Instrumenter
+	collectorManager         *collectors.CollectorManager
+	targetAllocatorManager   *targetallocator.TargetAllocatorManager
+	scrapeCoordinatorManager *scrapecoordinator.ScrapeCoordinatorManager
+	danglingEventsTimeouts   *util.DanglingEventsTimeouts
+	operatorNamespace        string
 }
 
 type statusUpdateInfo struct {
@@ -95,18 +97,20 @@ func NewMonitoringReconciler(
 	instrumenter *instrumentation.Instrumenter,
 	collectorManager *collectors.CollectorManager,
 	targetAllocatorManager *targetallocator.TargetAllocatorManager,
+	scrapeCoordinatorManager *scrapecoordinator.ScrapeCoordinatorManager,
 	danglingEventsTimeouts *util.DanglingEventsTimeouts,
 	operatorNamespace string,
 ) *MonitoringReconciler {
 	return &MonitoringReconciler{
-		Client:                 k8sClient,
-		clientset:              clientset,
-		namespacedApiClients:   namespacedApiClients,
-		instrumenter:           instrumenter,
-		collectorManager:       collectorManager,
-		targetAllocatorManager: targetAllocatorManager,
-		danglingEventsTimeouts: danglingEventsTimeouts,
-		operatorNamespace:      operatorNamespace,
+		Client:                   k8sClient,
+		clientset:                clientset,
+		namespacedApiClients:     namespacedApiClients,
+		instrumenter:             instrumenter,
+		collectorManager:         collectorManager,
+		targetAllocatorManager:   targetAllocatorManager,
+		scrapeCoordinatorManager: scrapeCoordinatorManager,
+		danglingEventsTimeouts:   danglingEventsTimeouts,
+		operatorNamespace:        operatorNamespace,
 	}
 }
 
@@ -181,6 +185,9 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if err = r.reconcileOpenTelemetryTargetAllocator(ctx, logger); err != nil {
 			return ctrl.Result{}, err
 		}
+		if err = r.reconcileScrapeCoordinator(ctx, logger); err != nil {
+			return ctrl.Result{}, err
+		}
 
 		return ctrl.Result{}, nil
 	} else if checkResourceResult.StopReconcile {
@@ -241,6 +248,9 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if err = r.reconcileOpenTelemetryTargetAllocator(ctx, logger); err != nil {
 			return ctrl.Result{}, err
 		}
+		if err = r.reconcileScrapeCoordinator(ctx, logger); err != nil {
+			return ctrl.Result{}, err
+		}
 		// The Dash0 monitoring resource is slated for deletion, the finalizer has already been removed in the last
 		// reconcile cycle (which also means all cleanup actions have been processed last time), no further
 		// reconciliation is necessary.
@@ -284,6 +294,10 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	if err = r.reconcileOpenTelemetryTargetAllocator(ctx, logger); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if err = r.reconcileScrapeCoordinator(ctx, logger); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -579,6 +593,11 @@ func (r *MonitoringReconciler) runCleanupActions(
 		return err
 	}
 
+	if err := r.reconcileScrapeCoordinator(ctx, logger); err != nil {
+		// err has been logged in r.reconcileScrapeCoordinator already
+		return err
+	}
+
 	if finalizersUpdated := controllerutil.RemoveFinalizer(
 		monitoringResource,
 		dash0common.MonitoringFinalizerId,
@@ -729,6 +748,23 @@ func (r *MonitoringReconciler) reconcileOpenTelemetryTargetAllocator(
 		targetallocator.TriggeredByDash0ResourceReconcile,
 	); err != nil {
 		logger.Error(err, "Failed to reconcile the OpenTelemetry target-allocator, requeuing reconcile request.")
+		return err
+	}
+	return nil
+}
+
+func (r *MonitoringReconciler) reconcileScrapeCoordinator(ctx context.Context, logger logd.Logger) error {
+	if r.scrapeCoordinatorManager == nil {
+		// If telemetry collection is disabled via Helm, the scrape coordinator manager is not initialized.
+		logger.Debug("scrape coordinator manager is not initialized, skipping scrape coordinator reconciliation")
+		return nil
+	}
+	// Like the target-allocator, this must only run after this monitoring resource has been updated.
+	if _, err := r.scrapeCoordinatorManager.ReconcileScrapeCoordinator(
+		ctx,
+		scrapecoordinator.TriggeredByDash0ResourceReconcile,
+	); err != nil {
+		logger.Error(err, "Failed to reconcile the scrape coordinator, requeuing reconcile request.")
 		return err
 	}
 	return nil

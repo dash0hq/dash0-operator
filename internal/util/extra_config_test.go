@@ -444,6 +444,18 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.TargetAllocatorTolerations).To(HaveLen(0))
 					Expect(extraConfig.TargetAllocatorNodeAffinity).To(Equal(defaultNodeAffinity()))
 
+					Expect(extraConfig.ScrapeCoordinatorMtlsEnabled).To(BeFalse())
+					Expect(extraConfig.ScrapeCoordinatorMtlsServerCertSecretName).To(Equal(""))
+					Expect(extraConfig.ScrapeCoordinatorMtlsClientCertSecretName).To(Equal(""))
+					Expect(extraConfig.ScrapeCoordinatorAllowInsecureAuthSecrets).To(BeFalse())
+					Expect(extraConfig.ScrapeCoordinatorAllowSecretAccessInNamespaces).To(BeEmpty())
+					Expect(extraConfig.ScrapeCoordinatorContainerResources.Limits.Cpu().String()).To(Equal("200m"))
+					Expect(extraConfig.ScrapeCoordinatorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))
+					Expect(extraConfig.ScrapeCoordinatorContainerResources.Requests.Cpu().String()).To(Equal("200m"))
+					Expect(extraConfig.ScrapeCoordinatorContainerResources.Requests.Memory().String()).To(Equal("128Mi"))
+					Expect(extraConfig.ScrapeCoordinatorTolerations).To(HaveLen(0))
+					Expect(extraConfig.ScrapeCoordinatorNodeAffinity).To(Equal(defaultNodeAffinity()))
+
 					Expect(extraConfig.EdgeProxyReplicas).To(Equal(int32(2)))
 					Expect(extraConfig.EdgeProxyEnablePprof).To(BeFalse())
 					Expect(extraConfig.EdgeProxyContainerResources.Limits.Cpu().String()).To(Equal("500m"))
@@ -1781,6 +1793,18 @@ var extraConfigKeysToHelmValues = map[string]string{
 	"targetAllocatorPodAnnotations":                                 "operator.targetAllocator.podAnnotations",
 	"targetAllocatorTolerations":                                    "operator.targetAllocator.tolerations",
 	"targetAllocatorNodeAffinity":                                   "operator.targetAllocator.nodeAffinity",
+	"scrapeCoordinatorMtlsEnabled":                                  "operator.scrapeCoordinator.mTls.enabled",
+	"scrapeCoordinatorMtlsServerCertSecretName":                     "operator.scrapeCoordinator.mTls.serverCertSecretName",
+	"scrapeCoordinatorMtlsClientCertSecretName":                     "operator.scrapeCoordinator.mTls.clientCertSecretName",
+	"scrapeCoordinatorAllowInsecureAuthSecrets":                     "operator.scrapeCoordinator.allowInsecureAuthSecrets",
+	"scrapeCoordinatorAllowSecretAccessInNamespaces":                "operator.scrapeCoordinator.allowSecretAccessInNamespaces",
+	"scrapeCoordinatorContainerResources":                           "operator.scrapeCoordinator.containerResources",
+	"scrapeCoordinatorLabels":                                       "operator.scrapeCoordinator.labels",
+	"scrapeCoordinatorAnnotations":                                  "operator.scrapeCoordinator.annotations",
+	"scrapeCoordinatorPodLabels":                                    "operator.scrapeCoordinator.podLabels",
+	"scrapeCoordinatorPodAnnotations":                               "operator.scrapeCoordinator.podAnnotations",
+	"scrapeCoordinatorTolerations":                                  "operator.scrapeCoordinator.tolerations",
+	"scrapeCoordinatorNodeAffinity":                                 "operator.scrapeCoordinator.nodeAffinity",
 	"edgeProxyReplicas":                                             "operator.signalControl.edgeProxy.replicas",
 	"edgeProxyEnablePprof":                                          "operator.signalControl.edgeProxy.enablePprof",
 	"edgeProxyContainerResources":                                   "operator.signalControl.edgeProxy.containerResources",

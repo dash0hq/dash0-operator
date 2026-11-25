@@ -136,8 +136,20 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[30].name
           value: DASH0_EBPF_PROFILER_ENABLED
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[31].name
+          value: DASH0_SCRAPE_COORDINATOR_IMAGE
+      - equal:
+          path: spec.template.spec.containers[0].env[31].value
+          value: ghcr.io/dash0hq/scrape-coordinator:99.100.101
+      - equal:
+          path: spec.template.spec.containers[0].env[32].name
+          value: DASH0_SCRAPE_COORDINATOR_ENABLED
+      - equal:
+          path: spec.template.spec.containers[0].env[32].value
+          value: "false"
+      - notExists:
+          path: spec.template.spec.containers[0].env[33].name
 
   - it: webhook certificates secret should be rendered without data
     documentSelector:
@@ -728,6 +740,10 @@ tests:
           repository: custom-ta-image
           tag: "8.9.10"
           pullPolicy: Never
+        scrapeCoordinatorImage:
+          repository: custom-scrape-coordinator-image
+          tag: "9.10.11"
+          pullPolicy: Always
         configurationReloaderImage:
           repository: custom-configuration-reloader-image
           tag: "10.11.12"
@@ -1151,8 +1167,23 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[49].name
           value: DASH0_EBPF_PROFILER_ENABLED
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[50].name
+          value: DASH0_SCRAPE_COORDINATOR_IMAGE
+      - equal:
+          path: spec.template.spec.containers[0].env[50].value
+          value: custom-scrape-coordinator-image:9.10.11
+      - equal:
+          path: spec.template.spec.containers[0].env[51].name
+          value: DASH0_SCRAPE_COORDINATOR_IMAGE_PULL_POLICY
+      - equal:
+          path: spec.template.spec.containers[0].env[51].value
+          value: Always
+      - equal:
+          path: spec.template.spec.containers[0].env[52].name
+          value: DASH0_SCRAPE_COORDINATOR_ENABLED
+      - notExists:
+          path: spec.template.spec.containers[0].env[53].name
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
           value: 123m
@@ -1781,6 +1812,35 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args[14]
           value: --operator-configuration-prometheus-crd-support-enabled=true
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_SCRAPE_COORDINATOR_ENABLED
+            value: "false"
+
+  - it: should select the scrape coordinator
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+        prometheusCrdSupportEnabled: true
+        scrapeCoordinator:
+          enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_SCRAPE_COORDINATOR_ENABLED
+            value: "true"
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-prometheus-crd-support-enabled=true
 
   - it: should not render the profiling pipelines arg by default
     documentSelector:
@@ -2140,6 +2200,8 @@ tests:
           digest: sha256:3e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda03
         targetAllocatorImage:
           digest: sha256:f3ec1cd500980f4fe5491a102b4a73a9eb3c5bd21bd3ef986c74f97de35a35dc
+        scrapeCoordinatorImage:
+          digest: sha256:7e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda07
         configurationReloaderImage:
           digest: sha256:4e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda04
         filelogOffsetSyncImage:
@@ -2266,8 +2328,20 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[30].name
           value: DASH0_EBPF_PROFILER_ENABLED
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[31].name
+          value: DASH0_SCRAPE_COORDINATOR_IMAGE
+      - equal:
+          path: spec.template.spec.containers[0].env[31].value
+          value: ghcr.io/dash0hq/scrape-coordinator@sha256:7e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda07
+      - equal:
+          path: spec.template.spec.containers[0].env[32].name
+          value: DASH0_SCRAPE_COORDINATOR_ENABLED
+      - equal:
+          path: spec.template.spec.containers[0].env[32].value
+          value: "false"
+      - notExists:
+          path: spec.template.spec.containers[0].env[33].name
 
   - it: deployment should support changing repositories for images
     chart:
@@ -2287,6 +2361,8 @@ tests:
         targetAllocatorImage:
           repository: customrepo.io/repo/custom-target-allocator
           tag: "latest"
+        scrapeCoordinatorImage:
+          repository: customrepo.io/repo/custom-scrape-coordinator
         configurationReloaderImage:
           repository: customrepo.io/repo/custom-configuration-reloader
         filelogOffsetSyncImage:
@@ -2416,8 +2492,20 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[30].name
           value: DASH0_EBPF_PROFILER_ENABLED
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[31].name
+          value: DASH0_SCRAPE_COORDINATOR_IMAGE
+      - equal:
+          path: spec.template.spec.containers[0].env[31].value
+          value: customrepo.io/repo/custom-scrape-coordinator:99.100.101
+      - equal:
+          path: spec.template.spec.containers[0].env[32].name
+          value: DASH0_SCRAPE_COORDINATOR_ENABLED
+      - equal:
+          path: spec.template.spec.containers[0].env[32].value
+          value: "false"
+      - notExists:
+          path: spec.template.spec.containers[0].env[33].name
 
   - it: webhook configurations should not render a caBundle if the live objects cannot be read
     set:

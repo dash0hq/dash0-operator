@@ -1,0 +1,157 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# A scrape coordinator that runs next to the target-allocator deployed by the operator, for
+# test-resources/bin/scrape-coordinator-diff.sh. The ClusterRole and the configuration mirror the ones the operator
+# renders in internal/scrapecoordinator/scoresources/desired_state.go.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scrape-coordinator-diff
+  namespace: $OPERATOR_NAMESPACE
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: scrape-coordinator-diff
+rules:
+  - apiGroups:
+      - monitoring.coreos.com
+    resources:
+      - servicemonitors
+      - podmonitors
+      - prometheusrules
+      - probes
+      - scrapeconfigs
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - apps
+    resources:
+      - statefulsets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+      - nodes
+      - nodes/metrics
+      - services
+      - endpoints
+      - pods
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - networking.k8s.io
+    resources:
+      - ingresses
+    verbs:
+      - get
+      - list
+      - watch
+  - nonResourceURLs:
+      - /metrics
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: scrape-coordinator-diff
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: scrape-coordinator-diff
+subjects:
+  - kind: ServiceAccount
+    name: scrape-coordinator-diff
+    namespace: $OPERATOR_NAMESPACE
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scrape-coordinator-diff
+  namespace: $OPERATOR_NAMESPACE
+data:
+  config.yaml: |
+    collectorNamespace: $OPERATOR_NAMESPACE
+    pools:
+      perNode:
+        selector:
+          matchLabels:
+            app.kubernetes.io/component: agent-collector
+    prometheusCRs:
+      namespaces:
+        - $TARGET_NAMESPACE
+    server:
+      listenAddr: ":8080"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scrape-coordinator-diff
+  namespace: $OPERATOR_NAMESPACE
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: scrape-coordinator-diff
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: scrape-coordinator-diff
+    spec:
+      serviceAccountName: scrape-coordinator-diff
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+      containers:
+        - name: scrape-coordinator
+          image: $SCRAPE_COORDINATOR_IMAGE
+          imagePullPolicy: $SCRAPE_COORDINATOR_IMAGE_PULL_POLICY
+          args:
+            - --config=/etc/scrape-coordinator/config.yaml
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: config
+              mountPath: /etc/scrape-coordinator
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: scrape-coordinator-diff

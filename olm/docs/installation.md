@@ -249,6 +249,7 @@ OLM restarts the operator manager when the `Subscription` changes, and keeps the
 | `operator.instrumentation.enablePythonAutoInstrumentation`                                                                                    | `DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION`                                                                                                                                 |
 | `operator.instrumentation.enableRubyAutoInstrumentation`                                                                                      | `DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION`                                                                                                                                   |
 | `operator.ebpfProfilerEnabled`                                                                                                                | `DASH0_EBPF_PROFILER_ENABLED`, see [Optional Features](#optional-features)                                                                                                 |
+| `operator.scrapeCoordinator.enabled`                                                                                                          | `DASH0_SCRAPE_COORDINATOR_ENABLED`, see [Optional Features](#optional-features)                                                                                            |
 | `operator.agent0Connector.enabled`, `.serverAddress`, `.token`, `.secretRef.name`, `.secretRef.key`, `.insecure`                              | `DASH0_AGENT0_CONNECTOR_ENABLED`, `DASH0_AGENT0_CONNECTOR_SERVER_ADDRESS`, `DASH0_AGENT0_CONNECTOR_TOKEN`, `DASH0_AGENT0_CONNECTOR_SECRET_REF_NAME`, `DASH0_AGENT0_CONNECTOR_SECRET_REF_KEY`, `DASH0_AGENT0_CONNECTOR_INSECURE` |
 | `operator.syntheticsWorker.enabled`, `.serverAddress`, `.insecure`, `.priorityClassName`                                                      | `DASH0_SYNTHETICS_WORKER_ENABLED`, `DASH0_SYNTHETICS_WORKER_SERVER_ADDRESS`, `DASH0_SYNTHETICS_WORKER_INSECURE`, `DASH0_SYNTHETICS_WORKER_PRIORITY_CLASS_NAME`             |
 | `operator.iac.periodicRetry.enabled`, `.interval`                                                                                             | `DASH0_IAC_PERIODIC_RETRY_ENABLED`, `DASH0_IAC_PERIODIC_RETRY_INTERVAL`                                                                                                    |
@@ -317,6 +318,7 @@ Fields that are not set keep their defaults.
 | Collector DaemonSet            | `Dash0OperatorConfiguration` `spec.components.daemonSetCollector`           | `collectorContainerResources`, `configurationReloaderContainerResources`, `filelogOffsetSyncContainerResources`, `filelogOffsetStorageVolume`, `seLinuxOptions`, `sysctls`, `probes`, `priorityClassName`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity` | `operator.collectors.daemonSet*`, `operator.collectors.filelogOffsetSyncStorageVolume` |
 | Collector Deployment           | `Dash0OperatorConfiguration` `spec.components.deploymentCollector`          | `collectorContainerResources`, `configurationReloaderContainerResources`, `sysctls`, `probes`, `priorityClassName`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                                                        | `operator.collectors.deployment*`                                                      |
 | Target-allocator               | `Dash0OperatorConfiguration` `spec.components.targetAllocator`              | `containerResources`, `mTls`, `allowInsecureAuthSecrets`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                                                                                                                  | `operator.targetAllocator.*`                                                           |
+| Scrape coordinator             | `Dash0OperatorConfiguration` `spec.components.scrapeCoordinator`            | `containerResources`, `mTls`, `allowInsecureAuthSecrets`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                                                                                                                  | `operator.scrapeCoordinator.*`                                                         |
 | Agent0-connector               | `Dash0OperatorConfiguration` `spec.components.agent0Connector`              | `containerResources`, `maxConcurrentCommands`, `allowedKubectlCommands`, `enablePprof`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                                                                                    | `operator.agent0Connector.*`                                                           |
 | eBPF profiler                  | `Dash0OperatorConfiguration` `spec.components.ebpfProfiler`                 | `containerResources`, `priorityClassName`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                                                                                                                                 | `operator.ebpfProfiler.*`                                                              |
 | Debuginfo proxy                | `Dash0OperatorConfiguration` `spec.components.debuginfoProxy`               | `containerResources`, `priorityClassName`, `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`, `nodeAffinity`                                                                                                                                                                 | `operator.debuginfoProxy.*`                                                            |
@@ -392,6 +394,10 @@ The following features are switched off by default and are switched on via the `
   `DASH0_EBPF_PROFILER_ENABLED` instead.
   The profiler runs as a privileged container, which the namespace label from
   [Creating the Operator Namespace](#creating-the-operator-namespace) allows.
+* **Scrape coordinator:** Set `DASH0_SCRAPE_COORDINATOR_ENABLED` to `true`, and set
+  `spec.prometheusCrdSupport.enabled: true` in the `Dash0OperatorConfiguration` resource, see
+  [Scraping via the Dash0 Scrape Coordinator](../../helm-chart/dash0-operator/docs/metrics-and-scraping.md#scraping-via-the-dash0-scrape-coordinator).
+  The operator then deploys the scrape coordinator instead of the OpenTelemetry target-allocator.
 
 Python and Ruby auto-instrumentation are enabled by default.
 To disable them, set `DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION` or `DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION` to `false`
@@ -412,11 +418,13 @@ The following Helm values have no equivalent under OLM:
   `PersesDashboard` CRD under OLM.
 * `operator.targetAllocator.allowSecretAccessInNamespaces`: The operator and the target-allocator can read secrets in
   all namespaces.
+* `operator.scrapeCoordinator.allowSecretAccessInNamespaces`: The operator and the scrape coordinator can read secrets
+  in all namespaces.
 * `operator.agent0Connector.clusterRole.rules` and `operator.agent0Connector.clusterRole.additionalRules`: The
   agent0-connector always uses its default RBAC rules.
 * `operator.managedResourceNamePrefix`: The names of the workloads the operator manages (collectors,
-  target-allocator, Signal Control, eBPF profiler, agent0-connector and synthetics workers) always start with
-  `dash0-operator`, for example `dash0-operator-opentelemetry-collector-agent`.
+  target-allocator, scrape coordinator, Signal Control, eBPF profiler, agent0-connector and synthetics workers) always
+  start with `dash0-operator`, for example `dash0-operator-opentelemetry-collector-agent`.
 * `operator.collectors.filelogOffsetStorageMode` and `operator.collectors.filelogOffsetHostPath`: The operator always
   uses the storage mode `auto` and the directory `/var/lib/dash0-operator/filelog-offsets` on the nodes.
   Log messages of the operator that suggest setting `operator.collectors.filelogOffsetStorageMode=hostPath` do not

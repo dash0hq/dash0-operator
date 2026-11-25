@@ -23,12 +23,13 @@ import (
 
 type TargetAllocatorManager struct {
 	client.Client
-	clientset                      *kubernetes.Clientset
-	targetAllocatorResourceManager *taresources.TargetAllocatorResourceManager
-	extraConfig                    atomic.Pointer[util.ExtraConfig]
-	extraConfigDefaults            util.ExtraConfig
-	developmentMode                bool
-	reconcileGuard                 util.ReconcileGuard
+	clientset                       *kubernetes.Clientset
+	targetAllocatorResourceManager  *taresources.TargetAllocatorResourceManager
+	extraConfig                     atomic.Pointer[util.ExtraConfig]
+	extraConfigDefaults             util.ExtraConfig
+	scrapeCoordinatorEnabledViaHelm bool
+	developmentMode                 bool
+	reconcileGuard                  util.ReconcileGuard
 }
 
 type TargetAllocatorReconcileTrigger string
@@ -43,15 +44,17 @@ func NewTargetAllocatorManager(
 	clientset *kubernetes.Clientset,
 	extraConfig util.ExtraConfig,
 	extraConfigDefaults util.ExtraConfig,
+	scrapeCoordinatorEnabledViaHelm bool,
 	developmentMode bool,
 	targetAllocatorResourceManager *taresources.TargetAllocatorResourceManager,
 ) *TargetAllocatorManager {
 	m := &TargetAllocatorManager{
-		Client:                         k8sClient,
-		clientset:                      clientset,
-		extraConfigDefaults:            extraConfigDefaults,
-		developmentMode:                developmentMode,
-		targetAllocatorResourceManager: targetAllocatorResourceManager,
+		Client:                          k8sClient,
+		clientset:                       clientset,
+		extraConfigDefaults:             extraConfigDefaults,
+		scrapeCoordinatorEnabledViaHelm: scrapeCoordinatorEnabledViaHelm,
+		developmentMode:                 developmentMode,
+		targetAllocatorResourceManager:  targetAllocatorResourceManager,
 	}
 	m.extraConfig.Store(&extraConfig)
 	return m
@@ -144,6 +147,15 @@ func (m *TargetAllocatorManager) reconcileTargetAllocator(ctx context.Context, l
 		return false, fmt.Errorf("extra config is nil in TargetAllocatorManager#ReconcileTargetAllocator")
 	}
 	extraConfig := util.EffectiveExtraConfig(*fileExtraConfig, m.extraConfigDefaults, operatorConfigurationResource, nil)
+
+	if m.scrapeCoordinatorEnabledViaHelm {
+		logger.Info("The Dash0 scrape coordinator has been selected via the Helm value " +
+			"operator.scrapeCoordinator.enabled, no Dash0 OpenTelemetry target-allocator will be created, the existing " +
+			"Dash0 OpenTelemetry target-allocator (if present) will be removed.",
+		)
+		err = m.removeTargetAllocator(ctx, extraConfig, logger)
+		return err == nil, err
+	}
 
 	if operatorConfigurationResource == nil {
 		logger.Info("The Dash0Configuration resource is missing or has been deleted, no Dash0 OpenTelemetry " +

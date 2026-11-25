@@ -44,6 +44,10 @@ spec:
     - dash0-operator-opentelemetry-target-allocator-service
     - dash0-operator-opentelemetry-target-allocator-service.$OPERATOR_NAMESPACE.svc
     - dash0-operator-opentelemetry-target-allocator-service.$OPERATOR_NAMESPACE.svc.cluster.local
+    # The scrape coordinator (SCRAPE_COORDINATOR_ENABLED=true) uses the same certificates.
+    - dash0-operator-scrape-coordinator-service
+    - dash0-operator-scrape-coordinator-service.$OPERATOR_NAMESPACE.svc
+    - dash0-operator-scrape-coordinator-service.$OPERATOR_NAMESPACE.svc.cluster.local
   # Well below one third of the CA duration, so this certificate is renewed before the old CA certificate in its secret
   # expires.
   duration: 2160h # 90 days

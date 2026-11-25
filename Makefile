@@ -56,6 +56,11 @@ TARGET_ALLOCATOR_IMAGE_TAG ?= $(IMAGE_TAG)
 TARGET_ALLOCATOR_IMAGE ?= $(TARGET_ALLOCATOR_IMAGE_REPOSITORY):$(TARGET_ALLOCATOR_IMAGE_TAG)
 TARGET_ALLOCATOR_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
 
+SCRAPE_COORDINATOR_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)scrape-coordinator
+SCRAPE_COORDINATOR_IMAGE_TAG ?= $(IMAGE_TAG)
+SCRAPE_COORDINATOR_IMAGE ?= $(SCRAPE_COORDINATOR_IMAGE_REPOSITORY):$(SCRAPE_COORDINATOR_IMAGE_TAG)
+SCRAPE_COORDINATOR_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
+
 SIGNAL_CONTROL_COLLECTOR_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)signal-control-collector
 SIGNAL_CONTROL_COLLECTOR_IMAGE_TAG ?= $(IMAGE_TAG)
 SIGNAL_CONTROL_COLLECTOR_IMAGE ?= $(SIGNAL_CONTROL_COLLECTOR_IMAGE_REPOSITORY):$(SIGNAL_CONTROL_COLLECTOR_IMAGE_TAG)
@@ -189,7 +194,7 @@ go-fix: ## Run go fix against code.
 test: go-unit-tests helm-unit-tests ## Run all unit tests (Go, Helm chart unit tests).
 
 .PHONY: go-unit-tests
-go-unit-tests: common-package-unit-tests nodeuid-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests collector-telemetry-unit-tests configreloader-unit-tests debuginfo-proxy-unit-tests filelog-offset-sync-unit-tests ## Run the Go unit tests for all packages.
+go-unit-tests: common-package-unit-tests nodeuid-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests collector-telemetry-unit-tests configreloader-unit-tests debuginfo-proxy-unit-tests filelog-offset-sync-unit-tests scrape-coordinator-unit-tests ## Run the Go unit tests for all packages.
 
 .PHONY: operator-manager-unit-tests
 operator-manager-unit-tests: manifests generate fmt vet envtest ## Run the Go unit tests for the operator code.
@@ -226,6 +231,10 @@ debuginfo-proxy-unit-tests: ## Run the debuginfo upload proxy tests.
 .PHONY: filelog-offset-sync-unit-tests
 filelog-offset-sync-unit-tests: ## Run the Go unit tests for the filelog offset sync image Go app.
 	cd images/filelogoffsetsync/src && go test -race ./...
+
+.PHONY: scrape-coordinator-unit-tests
+scrape-coordinator-unit-tests: ## Run the Go unit tests for the scrape coordinator image Go app.
+	cd images/scrape-coordinator/src && go test -race ./...
 
 .PHONY: helm-unit-tests
 helm-unit-tests: ## Run the Helm chart unit tests.
@@ -407,6 +416,7 @@ GO_VERSION_CHECK_GOMOD_DOCKERFILE_PAIRS := \
   dockerfile:images/configreloader/src/go.mod:images/configreloader/Dockerfile \
   dockerfile:images/debuginfo-proxy/src/go.mod:images/debuginfo-proxy/Dockerfile \
   dockerfile:images/filelogoffsetsync/src/go.mod:images/filelogoffsetsync/Dockerfile \
+  dockerfile:images/scrape-coordinator/src/go.mod:images/scrape-coordinator/Dockerfile \
   dockerfile:test/e2e/control-plane-mock/go.mod:test/e2e/control-plane-mock/Dockerfile \
   dockerfile:test/e2e/dash0-api-mock/go.mod:test/e2e/dash0-api-mock/Dockerfile \
   dockerfile:test/e2e/decision-maker-mock/go.mod:test/e2e/decision-maker-mock/Dockerfile \
@@ -661,6 +671,7 @@ images: \
   image-filelog-offset-sync \
   image-filelog-offset-volume-ownership \
   image-target-allocator \
+  image-scrape-coordinator \
   image-agent0-connector \
   image-debuginfo-proxy ## Build all container images. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
 
@@ -714,6 +725,10 @@ image-filelog-offset-volume-ownership: ## Build the filelog offset volume owners
 image-target-allocator: ## Build the OpenTelemetry target-allocator container image.
 	@$(call build_container_image,$(TARGET_ALLOCATOR_IMAGE_REPOSITORY),$(TARGET_ALLOCATOR_IMAGE_TAG),images/target-allocator)
 
+.PHONY: image-scrape-coordinator
+image-scrape-coordinator: ## Build the scrape coordinator container image.
+	@$(call build_container_image,$(SCRAPE_COORDINATOR_IMAGE_REPOSITORY),$(SCRAPE_COORDINATOR_IMAGE_TAG),images,images/scrape-coordinator/Dockerfile)
+
 .PHONY: image-agent0-connector
 image-agent0-connector: ## Build the agent0-connector container image.
 	@$(call build_container_image,$(AGENT0_CONNECTOR_IMAGE_REPOSITORY),$(AGENT0_CONNECTOR_IMAGE_TAG),images,images/agent0-connector/Dockerfile)
@@ -731,6 +746,7 @@ push-images: \
 	push-image-filelog-offset-sync \
 	push-image-filelog-offset-volume-ownership \
 	push-image-target-allocator \
+	push-image-scrape-coordinator \
 	push-image-agent0-connector \
 	push-image-debuginfo-proxy ## Push all container images using the full image reference.
 
@@ -771,6 +787,10 @@ push-image-filelog-offset-volume-ownership: ## Push the filelog offset volume ow
 push-image-target-allocator: ## Push the OpenTelemetry target-allocator container image.
 	@$(call push_container_image,$(TARGET_ALLOCATOR_IMAGE_REPOSITORY),$(TARGET_ALLOCATOR_IMAGE_TAG))
 
+.PHONY: push-image-scrape-coordinator
+push-image-scrape-coordinator: ## Push the scrape coordinator container image.
+	@$(call push_container_image,$(SCRAPE_COORDINATOR_IMAGE_REPOSITORY),$(SCRAPE_COORDINATOR_IMAGE_TAG))
+
 .PHONY: push-image-agent0-connector
 push-image-agent0-connector: ## Push the agent0-connector container image.
 	@$(call push_container_image,$(AGENT0_CONNECTOR_IMAGE_REPOSITORY),$(AGENT0_CONNECTOR_IMAGE_TAG))
@@ -802,6 +822,9 @@ HELM_BUILT_IMAGE_SETTINGS = \
 	--set operator.targetAllocatorImage.repository=$(TARGET_ALLOCATOR_IMAGE_REPOSITORY) \
 	--set operator.targetAllocatorImage.tag=$(TARGET_ALLOCATOR_IMAGE_TAG) \
 	--set operator.targetAllocatorImage.pullPolicy=$(TARGET_ALLOCATOR_IMAGE_PULL_POLICY) \
+	--set operator.scrapeCoordinatorImage.repository=$(SCRAPE_COORDINATOR_IMAGE_REPOSITORY) \
+	--set operator.scrapeCoordinatorImage.tag=$(SCRAPE_COORDINATOR_IMAGE_TAG) \
+	--set operator.scrapeCoordinatorImage.pullPolicy=$(SCRAPE_COORDINATOR_IMAGE_PULL_POLICY) \
 	--set operator.agent0ConnectorImage.repository=$(AGENT0_CONNECTOR_IMAGE_REPOSITORY) \
 	--set operator.agent0ConnectorImage.tag=$(AGENT0_CONNECTOR_IMAGE_TAG) \
 	--set operator.agent0ConnectorImage.pullPolicy=$(AGENT0_CONNECTOR_IMAGE_PULL_POLICY) \

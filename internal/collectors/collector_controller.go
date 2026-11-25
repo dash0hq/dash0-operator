@@ -107,7 +107,8 @@ func (r *CollectorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// targetAllocatorMtlsClientCertSecretPredicate matches events for the target-allocator mTLS client cert secret. Updates
+// targetAllocatorMtlsClientCertSecretPredicate matches events for the mTLS client cert secret of the target-allocator or
+// the scrape coordinator, see CollectorManager.TargetAllocatorMtlsClientCertSecretName. Updates
 // only match if they change the CA certificate, since the collector reloads the client certificate and key by itself.
 // The secret name is looked up for every event, since it can be changed via the operator configuration resource at
 // runtime.

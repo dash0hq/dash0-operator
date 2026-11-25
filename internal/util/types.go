@@ -79,10 +79,13 @@ type CollectorConfig struct {
 	// target-allocator, the eBPF profiler, the agent0-connector and the synthetics workers), set to the value of
 	// the environment variable DASH0_MANAGED_RESOURCE_NAME_PREFIX, which the operator Helm chart sets to
 	// operator.managedResourceNamePrefix, or to the Helm release name if that is not set.
-	NamePrefix                             string
-	Agent0ConnectorEnabledViaHelm          bool
-	SyntheticsWorkerEnabledViaHelm         bool
-	EbpfProfilerEnabledViaHelm             bool
+	NamePrefix                     string
+	Agent0ConnectorEnabledViaHelm  bool
+	SyntheticsWorkerEnabledViaHelm bool
+	EbpfProfilerEnabledViaHelm     bool
+	// ScrapeCoordinatorEnabledViaHelm selects the scrape coordinator instead of the target-allocator as the
+	// implementation of Prometheus CRD support.
+	ScrapeCoordinatorEnabledViaHelm        bool
 	SendBatchSize                          *uint32
 	SendBatchMaxSize                       *uint32
 	K8sAttributesDisableReplicasetInformer bool
@@ -158,6 +161,22 @@ type TargetAllocatorConfig struct {
 	DevelopmentMode    bool
 }
 
+type ScrapeCoordinatorConfig struct {
+	Images            Images
+	OperatorNamespace string
+	// NamePrefix is used as a prefix for the scrape coordinator Kubernetes resources created by the operator, set to the
+	// value of the environment variable DASH0_MANAGED_RESOURCE_NAME_PREFIX, which the operator Helm chart sets to
+	// operator.managedResourceNamePrefix, or to the Helm release name if that is not set.
+	NamePrefix string
+	// CollectorComponent is used as a label matcher, so scrape targets are only assigned to Dash0 daemonset collectors.
+	CollectorComponent string
+	// PseudoClusterUid is the UID of the kube-system namespace, used as the k8s.cluster.uid resource attribute of the
+	// self-monitoring telemetry of the scrape coordinator.
+	PseudoClusterUid types.UID
+	IsOpenShift      bool
+	DevelopmentMode  bool
+}
+
 type Agent0ConnectorConfig struct {
 	Images            Images
 	OperatorNamespace string
@@ -223,6 +242,8 @@ type Images struct {
 	SignalControlCollectorImagePullPolicy       corev1.PullPolicy
 	TargetAllocatorImage                        string
 	TargetAllocatorPullPolicy                   corev1.PullPolicy
+	ScrapeCoordinatorImage                      string
+	ScrapeCoordinatorPullPolicy                 corev1.PullPolicy
 	ConfigurationReloaderImage                  string
 	ConfigurationReloaderImagePullPolicy        corev1.PullPolicy
 	FilelogOffsetSyncImage                      string

@@ -1738,6 +1738,9 @@ var helmOnlyExtraConfigKeys = map[string]string{
 	"targetAllocatorAllowSecretAccessInNamespaces": "the Helm chart grants the target-allocator access to secrets in " +
 		"these namespaces via role bindings instead of cluster-wide access (role-binding-target-allocator-secrets.yaml, " +
 		"cluster-roles.yaml)",
+	"scrapeCoordinatorAllowSecretAccessInNamespaces": "the Helm chart grants the scrape coordinator access to secrets " +
+		"in these namespaces via role bindings instead of cluster-wide access " +
+		"(role-binding-scrape-coordinator-secrets.yaml, cluster-roles.yaml)",
 	"exports": "only used for the operator configuration resource that the operator creates from the Helm values, " +
 		"which has spec.exports",
 	"monitoringTemplate": "only used for the operator configuration resource that the operator creates from the Helm " +
@@ -1756,6 +1759,12 @@ var componentSettingPrerequisites = map[componentSetting][]componentSetting{
 	},
 	{operatorConfigurationKind, "targetAllocator.mTls.clientCertSecretName"}: {
 		{operatorConfigurationKind, "targetAllocator.mTls.enabled"},
+	},
+	{operatorConfigurationKind, "scrapeCoordinator.mTls.serverCertSecretName"}: {
+		{operatorConfigurationKind, "scrapeCoordinator.mTls.enabled"},
+	},
+	{operatorConfigurationKind, "scrapeCoordinator.mTls.clientCertSecretName"}: {
+		{operatorConfigurationKind, "scrapeCoordinator.mTls.enabled"},
 	},
 }
 

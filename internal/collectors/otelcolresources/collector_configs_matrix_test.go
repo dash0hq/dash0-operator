@@ -143,6 +143,7 @@ func maximalMatrixBaseline() collectorConfigMatrixEntry {
 		targetAllocatorMtlsConfig: TargetAllocatorMtlsConfig{
 			Enabled:              true,
 			ClientCertSecretName: "target-allocator-client-certs",
+			CertsDir:             targetAllocatorCertsVolumeDir,
 		},
 	}
 	// The Signal Control collector is only rendered when the gateway is active, which additionally requires the
@@ -331,6 +332,22 @@ func matrixSettings() []matrixSetting {
 				e.targetAllocatorMtlsConfig = TargetAllocatorMtlsConfig{Enabled: enabled}
 				if enabled {
 					e.targetAllocatorMtlsConfig.ClientCertSecretName = "target-allocator-client-certs"
+					e.targetAllocatorMtlsConfig.CertsDir = targetAllocatorCertsVolumeDir
+				}
+			},
+		},
+		{
+			// The scrape coordinator and the target-allocator exclude each other, enabling the scrape coordinator
+			// replaces the target-allocator of the maximal baseline.
+			name: "scrape-coordinator",
+			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				e.config.ScrapeCoordinatorEnabled = enabled
+				if enabled {
+					e.config.PrometheusCrdSupportEnabled = false
+					extraConfig := util.ExtraConfigDefaults
+					extraConfig.ScrapeCoordinatorMtlsEnabled = true
+					extraConfig.ScrapeCoordinatorMtlsClientCertSecretName = "scrape-coordinator-client-certs"
+					e.targetAllocatorMtlsConfig = EffectiveTargetAllocatorMtlsConfig(extraConfig, true)
 				}
 			},
 		},

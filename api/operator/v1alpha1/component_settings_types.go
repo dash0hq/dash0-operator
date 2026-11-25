@@ -29,6 +29,11 @@ type OperatorConfigurationComponents struct {
 	// +kubebuilder:validation:Optional
 	TargetAllocator *TargetAllocatorSettings `json:"targetAllocator,omitempty"`
 
+	// Settings for the Dash0 scrape coordinator.
+	//
+	// +kubebuilder:validation:Optional
+	ScrapeCoordinator *ScrapeCoordinatorSettings `json:"scrapeCoordinator,omitempty"`
+
 	// Settings for the agent0-connector. Its cluster role rules can only be configured via the Helm chart, since the
 	// operator can only grant permissions it holds itself.
 	//
@@ -377,6 +382,51 @@ type TargetAllocatorSettings struct {
 // +kubebuilder:validation:XValidation:rule="!has(self.enabled) || !self.enabled || (has(self.serverCertSecretName) && size(self.serverCertSecretName) > 0 && has(self.clientCertSecretName) && size(self.clientCertSecretName) > 0)",message="serverCertSecretName and clientCertSecretName are required when mTLS is enabled"
 type TargetAllocatorMTls struct {
 	// Whether to enable mTLS between the target-allocator and the collectors. Defaults to false, also when mTLS is
+	// enabled via Helm. Enabling mTLS requires serverCertSecretName and clientCertSecretName.
+	//
+	// +kubebuilder:validation:Optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// The name of the secret in the operator's namespace that contains the server certificate.
+	//
+	// +kubebuilder:validation:Optional
+	ServerCertSecretName string `json:"serverCertSecretName,omitempty"`
+
+	// The name of the secret in the operator's namespace that contains the client (collector) certificate.
+	//
+	// +kubebuilder:validation:Optional
+	ClientCertSecretName string `json:"clientCertSecretName,omitempty"`
+}
+
+// ScrapeCoordinatorSettings are the settings for the Dash0 scrape coordinator.
+type ScrapeCoordinatorSettings struct {
+	// The resources of the scrape coordinator container (Helm value operator.scrapeCoordinator.containerResources).
+	//
+	// +kubebuilder:validation:Optional
+	ContainerResources *ContainerResourcesWithGoMemLimit `json:"containerResources,omitempty"`
+
+	WorkloadSettings `json:",inline"`
+
+	// Settings for mTLS between the scrape coordinator and the collectors (Helm value operator.scrapeCoordinator.mTls).
+	// They replace the mTLS settings provided via the Helm chart as a whole, an empty object disables mTLS.
+	//
+	// +kubebuilder:validation:Optional
+	MTls *ScrapeCoordinatorMTls `json:"mTls,omitempty"`
+
+	// Whether the scrape coordinator serves the credentials for metrics endpoints which require authorization over plain
+	// HTTP instead of mTLS. Only enable this if the transport security between the scrape coordinator and the collectors
+	// is guaranteed by other means, for example by a service mesh (Helm value
+	// operator.scrapeCoordinator.allowInsecureAuthSecrets, default false).
+	//
+	// +kubebuilder:validation:Optional
+	AllowInsecureAuthSecrets *bool `json:"allowInsecureAuthSecrets,omitempty"`
+}
+
+// ScrapeCoordinatorMTls are the settings for mTLS between the scrape coordinator and the collectors.
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.enabled) || !self.enabled || (has(self.serverCertSecretName) && size(self.serverCertSecretName) > 0 && has(self.clientCertSecretName) && size(self.clientCertSecretName) > 0)",message="serverCertSecretName and clientCertSecretName are required when mTLS is enabled"
+type ScrapeCoordinatorMTls struct {
+	// Whether to enable mTLS between the scrape coordinator and the collectors. Defaults to false, also when mTLS is
 	// enabled via Helm. Enabling mTLS requires serverCertSecretName and clientCertSecretName.
 	//
 	// +kubebuilder:validation:Optional

@@ -139,8 +139,8 @@ set to `true`, the Dash0 operator Helm chart and operator:
 - create a custom `SecurityContextConstraints` resource plus the RBAC that binds it to the OpenTelemetry collector
   DaemonSet's service account, so the DaemonSet may use the host access it requires (host log directories via `hostPath`
   and the OTLP host ports),
-- drop the hard-coded pod-level `runAsUser` from the agent0-connector, the target-allocator, the synthetics-worker, the
-  cluster-metrics collector, the Signal Control collector, the Signal Control edge-proxy and the debuginfo-proxy, and
+- drop the hard-coded pod-level `runAsUser` from the agent0-connector, the target-allocator, the scrape coordinator, the
+  synthetics-worker, the cluster-metrics collector, the Signal Control collector, the Signal Control edge-proxy and the debuginfo-proxy, and
   the `runAsUser`/`runAsGroup` from the injected instrumentation init container, so that the namespace's SCC assigns
   an in-range UID instead of a pinned one that `restricted-v2` would reject (SCCs do not constrain `runAsGroup`, so
   these workloads keep their pinned non-root group), and

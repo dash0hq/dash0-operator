@@ -69,7 +69,12 @@ verify_workloads_admitted() {
     # Prometheus CRD support is only enabled via Helm, the operator configuration resource templates do not set it.
     if [[ "$PROMETHEUS_CRD_SUPPORT_ENABLED" = "true" && "${PROMETHEUS_SCRAPING_ENABLED:-}" != "false" &&
       "${DEPLOY_MONITORING_RESOURCE:-}" != "false" && "${DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM:-}" != "false" ]]; then
-      workloads+=("deployment/dash0-operator-opentelemetry-target-allocator-deployment")
+      # SCRAPE_COORDINATOR_ENABLED selects the scrape coordinator instead of the target-allocator.
+      if [[ "${SCRAPE_COORDINATOR_ENABLED:-}" = "true" ]]; then
+        workloads+=("deployment/dash0-operator-scrape-coordinator-deployment")
+      else
+        workloads+=("deployment/dash0-operator-opentelemetry-target-allocator-deployment")
+      fi
     fi
   fi
   if [[ "$AGENT0_CONNECTOR_ENABLED" = "true" ]]; then

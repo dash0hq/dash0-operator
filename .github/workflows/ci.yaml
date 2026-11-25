@@ -305,6 +305,17 @@ jobs:
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/target-allocator
           context: images/target-allocator
 
+      - name: build scrape-coordinator image
+        uses: ./.github/actions/build-image
+        with:
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          imageName: scrape-coordinator
+          imageTitle: Dash0 Scrape Coordinator
+          imageDescription: assigns the scrape targets of Prometheus custom resources to the collectors of the Dash0 operator for Kubernetes
+          imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/scrape-coordinator
+          context: images
+          file: images/scrape-coordinator/Dockerfile
+
       - name: build agent0-connector image
         uses: ./.github/actions/build-image
         with:

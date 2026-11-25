@@ -23,6 +23,7 @@ type Images struct {
 	fileLogOffsetSync            ImageSpec
 	fileLogOffsetVolumeOwnership ImageSpec
 	targetAllocator              ImageSpec
+	scrapeCoordinator            ImageSpec
 	signalControlCollector       ImageSpec
 	edgeProxy                    ImageSpec
 	agent0Connector              ImageSpec
@@ -38,6 +39,7 @@ const (
 	filelogOffsetSyncImageName            = "filelog-offset-sync"
 	filelogOffsetVolumeOwnershipImageName = "filelog-offset-volume-ownership"
 	targetAllocatorImageName              = "target-allocator"
+	scrapeCoordinatorImageName            = "scrape-coordinator"
 	signalControlCollectorImageName       = "signal-control-collector"
 	edgeProxyImageName                    = "edge-proxy"
 	agent0ConnectorImageName              = "agent0-connector"
@@ -122,6 +124,13 @@ func createContainerImages(repositoryPrefix string, imageTag string, pullPolicy 
 			"TARGET_ALLOCATOR",
 			repositoryPrefix,
 			targetAllocatorImageName,
+			imageTag,
+			pullPolicy,
+		),
+		scrapeCoordinator: determineContainerImage(
+			"SCRAPE_COORDINATOR",
+			repositoryPrefix,
+			scrapeCoordinatorImageName,
 			imageTag,
 			pullPolicy,
 		),

@@ -59,6 +59,8 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/predelete"
 	"github.com/dash0hq/dash0-operator/internal/profiling"
 	"github.com/dash0hq/dash0-operator/internal/profiling/prresources"
+	"github.com/dash0hq/dash0-operator/internal/scrapecoordinator"
+	"github.com/dash0hq/dash0-operator/internal/scrapecoordinator/scoresources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol/scresources"
@@ -95,6 +97,8 @@ type environmentVariables struct {
 	signalControlCollectorImagePullPolicy       corev1.PullPolicy
 	targetAllocatorImage                        string
 	targetAllocatorImagePullPolicy              corev1.PullPolicy
+	scrapeCoordinatorImage                      string
+	scrapeCoordinatorImagePullPolicy            corev1.PullPolicy
 	configurationReloaderImage                  string
 	configurationReloaderImagePullPolicy        corev1.PullPolicy
 	filelogOffsetSyncImage                      string
@@ -117,6 +121,7 @@ type environmentVariables struct {
 	syntheticsWorkerServerAddress               string
 	syntheticsWorkerInsecure                    bool
 	syntheticsWorkerPriorityClassName           string
+	scrapeCoordinatorEnabled                    bool
 	ebpfProfilerEnabled                         bool
 	ebpfProfilerImage                           string
 	ebpfProfilerImagePullPolicy                 corev1.PullPolicy
@@ -237,6 +242,9 @@ const (
 	signalControlCollectorImagePullPolicyEnvVarName       = "DASH0_SIGNAL_CONTROL_COLLECTOR_IMAGE_PULL_POLICY"
 	targetAllocatorImageEnvVarName                        = "DASH0_TARGET_ALLOCATOR_IMAGE"
 	targetAllocatorImageImagePullPolicyEnvVarName         = "DASH0_TARGET_ALLOCATOR_IMAGE_PULL_POLICY"
+	scrapeCoordinatorImageEnvVarName                      = "DASH0_SCRAPE_COORDINATOR_IMAGE"
+	scrapeCoordinatorImagePullPolicyEnvVarName            = "DASH0_SCRAPE_COORDINATOR_IMAGE_PULL_POLICY"
+	scrapeCoordinatorEnabledEnvVarName                    = "DASH0_SCRAPE_COORDINATOR_ENABLED"
 	configurationReloaderImageEnvVarName                  = "DASH0_CONFIGURATION_RELOADER_IMAGE"
 	configurationReloaderImagePullPolicyEnvVarName        = "DASH0_CONFIGURATION_RELOADER_IMAGE_PULL_POLICY"
 	filelogOffsetSyncImageEnvVarName                      = "DASH0_FILELOG_OFFSET_SYNC_IMAGE"
@@ -1060,6 +1068,12 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	}
 	targetAllocatorImagePullPolicy := readOptionalPullPolicyFromEnvironmentVariable(targetAllocatorImageImagePullPolicyEnvVarName)
 
+	scrapeCoordinatorImage, isSet := os.LookupEnv(scrapeCoordinatorImageEnvVarName)
+	if !isSet {
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, scrapeCoordinatorImageEnvVarName)
+	}
+	scrapeCoordinatorImagePullPolicy := readOptionalPullPolicyFromEnvironmentVariable(scrapeCoordinatorImagePullPolicyEnvVarName)
+
 	configurationReloaderImage, isSet := os.LookupEnv(configurationReloaderImageEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, configurationReloaderImageEnvVarName)
@@ -1099,6 +1113,8 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	syntheticsWorkerServerAddress, _ := os.LookupEnv(syntheticsWorkerServerAddressEnvVarName)
 	syntheticsWorkerInsecure := readBooleanEnvVar(syntheticsWorkerInsecureEnvVarName)
 	syntheticsWorkerPriorityClassName, _ := os.LookupEnv(syntheticsWorkerPriorityClassNameEnvVarName)
+
+	scrapeCoordinatorEnabled := readOptionalBoolFromEnvironmentVariable(scrapeCoordinatorEnabledEnvVarName, false)
 
 	ebpfProfilerEnabled := readOptionalBoolFromEnvironmentVariable(ebpfProfilerEnabledEnvVarName, false)
 	ebpfProfilerImage, _ := os.LookupEnv(ebpfProfilerImageEnvVarName)
@@ -1186,6 +1202,8 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		signalControlCollectorImagePullPolicy:       signalControlCollectorImagePullPolicy,
 		targetAllocatorImage:                        targetAllocatorImage,
 		targetAllocatorImagePullPolicy:              targetAllocatorImagePullPolicy,
+		scrapeCoordinatorImage:                      scrapeCoordinatorImage,
+		scrapeCoordinatorImagePullPolicy:            scrapeCoordinatorImagePullPolicy,
 		configurationReloaderImage:                  configurationReloaderImage,
 		configurationReloaderImagePullPolicy:        configurationReloaderImagePullPolicy,
 		filelogOffsetSyncImage:                      filelogOffsetSyncImage,
@@ -1208,6 +1226,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		syntheticsWorkerServerAddress:               syntheticsWorkerServerAddress,
 		syntheticsWorkerInsecure:                    syntheticsWorkerInsecure,
 		syntheticsWorkerPriorityClassName:           syntheticsWorkerPriorityClassName,
+		scrapeCoordinatorEnabled:                    scrapeCoordinatorEnabled,
 		ebpfProfilerEnabled:                         ebpfProfilerEnabled,
 		ebpfProfilerImage:                           ebpfProfilerImage,
 		ebpfProfilerImagePullPolicy:                 ebpfProfilerImagePullPolicy,
@@ -1770,6 +1789,11 @@ func startOperatorManager(
 		"target-allocator image pull policy override",
 		envVars.targetAllocatorImagePullPolicy,
 
+		"scrape coordinator image",
+		envVars.scrapeCoordinatorImage,
+		"scrape coordinator image pull policy override",
+		envVars.scrapeCoordinatorImagePullPolicy,
+
 		"configuration reloader image",
 		envVars.configurationReloaderImage,
 		"configuration reloader image pull policy override",
@@ -1964,6 +1988,8 @@ func startDash0Controllers(
 		SignalControlCollectorImagePullPolicy:       envVars.signalControlCollectorImagePullPolicy,
 		TargetAllocatorImage:                        envVars.targetAllocatorImage,
 		TargetAllocatorPullPolicy:                   envVars.targetAllocatorImagePullPolicy,
+		ScrapeCoordinatorImage:                      envVars.scrapeCoordinatorImage,
+		ScrapeCoordinatorPullPolicy:                 envVars.scrapeCoordinatorImagePullPolicy,
 		ConfigurationReloaderImage:                  envVars.configurationReloaderImage,
 		ConfigurationReloaderImagePullPolicy:        envVars.configurationReloaderImagePullPolicy,
 		FilelogOffsetSyncImage:                      envVars.filelogOffsetSyncImage,
@@ -2055,6 +2081,7 @@ func startDash0Controllers(
 	var instrumenter *instrumentation.Instrumenter
 	var collectorManager *collectors.CollectorManager
 	var targetallocatorManager *targetallocator.TargetAllocatorManager
+	var scrapeCoordinatorManager *scrapecoordinator.ScrapeCoordinatorManager
 
 	if cliArgs.telemetryCollectionEnabled || cliArgs.signalControlSceOnlyMode {
 		if cliArgs.signalControlSceOnlyMode {
@@ -2089,6 +2116,7 @@ func startDash0Controllers(
 			Agent0ConnectorEnabledViaHelm:          envVars.agent0ConnectorEnabled,
 			SyntheticsWorkerEnabledViaHelm:         envVars.syntheticsWorkerEnabled,
 			EbpfProfilerEnabledViaHelm:             envVars.ebpfProfilerEnabled,
+			ScrapeCoordinatorEnabledViaHelm:        envVars.scrapeCoordinatorEnabled,
 			SendBatchSize:                          envVars.sendBatchSize,
 			SendBatchMaxSize:                       envVars.sendBatchMaxSize,
 			K8sAttributesDisableReplicasetInformer: envVars.k8sAttributesDisableReplicasetInformer,
@@ -2146,6 +2174,11 @@ func startDash0Controllers(
 		if !cliArgs.signalControlSceOnlyMode {
 			if targetallocatorManager, err = setupTargetAllocatorManager(
 				mgr, k8sClient, clientset, images, cliArgs, developmentMode,
+			); err != nil {
+				return err
+			}
+			if scrapeCoordinatorManager, err = setupScrapeCoordinatorManager(
+				mgr, k8sClient, images, cliArgs, clusterUid, developmentMode,
 			); err != nil {
 				return err
 			}
@@ -2465,6 +2498,7 @@ func startDash0Controllers(
 		apiClients,
 		collectorManager,
 		targetallocatorManager,
+		scrapeCoordinatorManager,
 		agent0ConnectorManager,
 		syntheticsWorkerManager,
 		scManager,
@@ -2508,6 +2542,7 @@ func startDash0Controllers(
 		instrumenter,
 		collectorManager,
 		targetallocatorManager,
+		scrapeCoordinatorManager,
 		nil,
 		envVars.operatorNamespace,
 	)
@@ -2815,7 +2850,13 @@ func setupTargetAllocatorManager(
 		targetAllocatorConfig,
 	)
 	targetallocatorManager := targetallocator.NewTargetAllocatorManager(
-		k8sClient, clientset, extraConfig, extraConfigDefaults, developmentMode, targetallocatorResourceManager,
+		k8sClient,
+		clientset,
+		extraConfig,
+		extraConfigDefaults,
+		envVars.scrapeCoordinatorEnabled,
+		developmentMode,
+		targetallocatorResourceManager,
 	)
 	// We update the extra config map in the targetallocatorManager when the extra config map changes, and also trigger a
 	// reconciliation of the target-allocator.
@@ -2830,6 +2871,45 @@ func setupTargetAllocatorManager(
 		return nil, fmt.Errorf("unable to set up the target-allocator reconciler: %w", err)
 	}
 	return targetallocatorManager, nil
+}
+
+// setupScrapeCoordinatorManager creates the scrape coordinator manager and sets up the scrape coordinator reconciler.
+func setupScrapeCoordinatorManager(
+	mgr ctrl.Manager,
+	k8sClient client.Client,
+	images util.Images,
+	cliArgs *commandLineArguments,
+	pseudoClusterUid types.UID,
+	developmentMode bool,
+) (*scrapecoordinator.ScrapeCoordinatorManager, error) {
+	resourceManager := scoresources.NewScrapeCoordinatorResourceManager(
+		k8sClient,
+		mgr.GetScheme(),
+		operatorDeploymentSelfReference,
+		util.ScrapeCoordinatorConfig{
+			Images:             images,
+			OperatorNamespace:  envVars.operatorNamespace,
+			NamePrefix:         envVars.managedResourceNamePrefix,
+			CollectorComponent: otelcolresources.CollectorDaemonSetServiceComponent(),
+			PseudoClusterUid:   pseudoClusterUid,
+			IsOpenShift:        cliArgs.isOpenShift,
+			DevelopmentMode:    developmentMode,
+		},
+	)
+	scrapeCoordinatorManager := scrapecoordinator.NewScrapeCoordinatorManager(
+		k8sClient, extraConfig, extraConfigDefaults, envVars.scrapeCoordinatorEnabled, developmentMode, resourceManager,
+	)
+	extraConfigMapWatcher.AddClient(scrapeCoordinatorManager)
+	reconciler := scrapecoordinator.NewScrapeCoordinatorReconciler(
+		k8sClient,
+		scrapeCoordinatorManager,
+		envVars.operatorNamespace,
+		envVars.managedResourceNamePrefix,
+	)
+	if err := reconciler.SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("unable to set up the scrape coordinator reconciler: %w", err)
+	}
+	return scrapeCoordinatorManager, nil
 }
 
 // setupCollectorReconciler sets up the reconciler that watches the OpenTelemetry collector resources managed by the

@@ -2433,6 +2433,349 @@ spec:
                             type: object
                         type: object
                     type: object
+                  scrapeCoordinator:
+                    description: Settings for the Dash0 scrape coordinator.
+                    properties:
+                      allowInsecureAuthSecrets:
+                        description: |-
+                          Whether the scrape coordinator serves the credentials for metrics endpoints which require authorization over plain
+                          HTTP instead of mTLS. Only enable this if the transport security between the scrape coordinator and the collectors
+                          is guaranteed by other means, for example by a service mesh (Helm value
+                          operator.scrapeCoordinator.allowInsecureAuthSecrets, default false).
+                        type: boolean
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional annotations for the workload. They replace the annotations provided via the Helm chart, empty
+                          annotations keep them.
+                        type: object
+                      containerResources:
+                        description: The resources of the scrape coordinator container
+                          (Helm value operator.scrapeCoordinator.containerResources).
+                        properties:
+                          gomemlimit:
+                            description: |-
+                              The GOMEMLIMIT in the format of the Go runtime (e.g. 400MiB, not 400Mi), or off. If empty (recommended), it is
+                              derived from the memory limit. It must be greater than 0 and below the effective memory limit. In
+                              collectorContainerResources, it should also be below the memory_limiter soft limit.
+                            pattern: ^(off|[0-9]+(([KMGT]i)?B)?)$
+                            type: string
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource limits. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default limit, and -1 removes it. A default limit below the request set in requests is raised to that request.
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              The resource requests. Only cpu, memory and ephemeral-storage are supported. A resource that is not set here keeps
+                              its default request, and -1 removes it. A default request above the limit set in limits is lowered to that limit.
+                              A request above the limit set in limits is rejected.
+                            type: object
+                        type: object
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: Additional labels for the workload. They replace
+                          the labels provided via the Helm chart, empty labels keep
+                          them.
+                        type: object
+                      mTls:
+                        description: |-
+                          Settings for mTLS between the scrape coordinator and the collectors (Helm value operator.scrapeCoordinator.mTls).
+                          They replace the mTLS settings provided via the Helm chart as a whole, an empty object disables mTLS.
+                        properties:
+                          clientCertSecretName:
+                            description: The name of the secret in the operator's
+                              namespace that contains the client (collector) certificate.
+                            type: string
+                          enabled:
+                            description: |-
+                              Whether to enable mTLS between the scrape coordinator and the collectors. Defaults to false, also when mTLS is
+                              enabled via Helm. Enabling mTLS requires serverCertSecretName and clientCertSecretName.
+                            type: boolean
+                          serverCertSecretName:
+                            description: The name of the secret in the operator's
+                              namespace that contains the server certificate.
+                            type: string
+                        type: object
+                        x-kubernetes-validations:
+                        - message: serverCertSecretName and clientCertSecretName are
+                            required when mTLS is enabled
+                          rule: '!has(self.enabled) || !self.enabled || (has(self.serverCertSecretName)
+                            && size(self.serverCertSecretName) > 0 && has(self.clientCertSecretName)
+                            && size(self.clientCertSecretName) > 0)'
+                      nodeAffinity:
+                        description: |-
+                          The node affinity for the pods of the workload. The required and the preferred node affinity each replace the
+                          default of the Helm chart (not the one provided via Helm), unless they are absent. The default requires nodes that
+                          run Linux and are not labelled with dash0.com/enable=false, and has no preferred node affinity. A required node
+                          affinity with an empty list of nodeSelectorTerms removes it.
+                        properties:
+                          preferredDuringSchedulingIgnoredDuringExecution:
+                            description: |-
+                              The scheduler will prefer to schedule pods to nodes that satisfy
+                              the affinity expressions specified by this field, but it may choose
+                              a node that violates one or more of the expressions. The node that is
+                              most preferred is the one with the greatest sum of weights, i.e.
+                              for each node that meets all of the scheduling requirements (resource
+                              request, requiredDuringScheduling affinity expressions, etc.),
+                              compute a sum by iterating through the elements of this field and adding
+                              "weight" to the sum if the node matches the corresponding matchExpressions; the
+                              node(s) with the highest sum are the most preferred.
+                            items:
+                              description: |-
+                                An empty preferred scheduling term matches all objects with implicit weight 0
+                                (i.e. it's a no-op). A null preferred scheduling term matches no objects (i.e. is also a no-op).
+                              properties:
+                                preference:
+                                  description: A node selector term, associated with
+                                    the corresponding weight.
+                                  properties:
+                                    matchExpressions:
+                                      description: A list of node selector requirements
+                                        by node's labels.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                    matchFields:
+                                      description: A list of node selector requirements
+                                        by node's fields.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                weight:
+                                  description: Weight associated with matching the
+                                    corresponding nodeSelectorTerm, in the range 1-100.
+                                  format: int32
+                                  type: integer
+                              required:
+                              - preference
+                              - weight
+                              type: object
+                            type: array
+                            x-kubernetes-list-type: atomic
+                          requiredDuringSchedulingIgnoredDuringExecution:
+                            description: |-
+                              If the affinity requirements specified by this field are not met at
+                              scheduling time, the pod will not be scheduled onto the node.
+                              If the affinity requirements specified by this field cease to be met
+                              at some point during pod execution (e.g. due to an update), the system
+                              may or may not try to eventually evict the pod from its node.
+                            properties:
+                              nodeSelectorTerms:
+                                description: Required. A list of node selector terms.
+                                  The terms are ORed.
+                                items:
+                                  description: |-
+                                    A null or empty node selector term matches no objects. The requirements of
+                                    them are ANDed.
+                                    The TopologySelectorTerm type implements a subset of the NodeSelectorTerm.
+                                  properties:
+                                    matchExpressions:
+                                      description: A list of node selector requirements
+                                        by node's labels.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                    matchFields:
+                                      description: A list of node selector requirements
+                                        by node's fields.
+                                      items:
+                                        description: |-
+                                          A node selector requirement is a selector that contains values, a key, and an operator
+                                          that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector
+                                              applies to.
+                                            type: string
+                                          operator:
+                                            description: |-
+                                              Represents a key's relationship to a set of values.
+                                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: |-
+                                              An array of string values. If the operator is In or NotIn,
+                                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                              the values array must be empty. If the operator is Gt or Lt, the values
+                                              array must have a single element, which will be interpreted as an integer.
+                                              This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: atomic
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            required:
+                            - nodeSelectorTerms
+                            type: object
+                            x-kubernetes-map-type: atomic
+                        type: object
+                      podAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional annotations for the pods of the workload. They replace the pod annotations provided via the Helm
+                          chart, empty pod annotations keep them.
+                        type: object
+                      podLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Additional labels for the pods of the workload. They replace the pod labels provided via the Helm chart, empty
+                          pod labels keep them.
+                        type: object
+                      tolerations:
+                        description: |-
+                          Tolerations for the pods of the workload. They replace the tolerations provided via the Helm chart, empty
+                          tolerations keep them. Only the operators Equal and Exists are supported.
+                        items:
+                          description: |-
+                            The pod this Toleration is attached to tolerates any taint that matches
+                            the triple <key,value,effect> using the matching operator <operator>.
+                          properties:
+                            effect:
+                              description: |-
+                                Effect indicates the taint effect to match. Empty means match all taint effects.
+                                When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                              type: string
+                            key:
+                              description: |-
+                                Key is the taint key that the toleration applies to. Empty means match all taint keys.
+                                If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                              type: string
+                            operator:
+                              description: |-
+                                Operator represents a key's relationship to the value.
+                                Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                                Exists is equivalent to wildcard for value, so that a pod can
+                                tolerate all taints of a particular category.
+                                Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
+                              type: string
+                            tolerationSeconds:
+                              description: |-
+                                TolerationSeconds represents the period of time the toleration (which must be
+                                of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+                                it is not set, which means tolerate the taint forever (do not evict). Zero and
+                                negative values will be treated as 0 (evict immediately) by the system.
+                              format: int64
+                              type: integer
+                            value:
+                              description: |-
+                                Value is the taint value the toleration matches to.
+                                If the operator is Exists, the value should be empty, otherwise just a regular string.
+                              type: string
+                          type: object
+                        type: array
+                    type: object
                   targetAllocator:
                     description: Settings for the OpenTelemetry target-allocator.
                     properties:
@@ -4487,7 +4830,8 @@ spec:
                   enabled:
                     description: |-
                       Whether to discover scrape targets via Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig) by deploying the
-                      OpenTelemetry target-allocator. Defaults to `false`. It is a validation error to set it to `true` together with
+                      OpenTelemetry target-allocator, or the Dash0 scrape coordinator if it has been selected when installing the
+                      operator. Defaults to `false`. It is a validation error to set it to `true` together with
                       `telemetryCollection.enabled=false`.
                     type: boolean
                 type: object

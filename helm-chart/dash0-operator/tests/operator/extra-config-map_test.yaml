@@ -256,6 +256,33 @@ tests:
                       operator: In
                       values:
                         - value-09
+        scrapeCoordinator:
+          mTls:
+            enabled: true
+            serverCertSecretName: sco-mtls-server-cert
+            clientCertSecretName: sco-mtls-client-cert
+          allowInsecureAuthSecrets: true
+          allowSecretAccessInNamespaces:
+            - namespace-c
+          containerResources:
+            limits:
+              memory: 1Gi
+              cpu: 400m
+            requests:
+              memory: 300Mi
+              cpu: 100m
+          tolerations:
+            - key: key6
+              operator: Exists
+              effect: NoSchedule
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: node-label-key-10
+                      operator: In
+                      values:
+                        - value-14
         signalControl:
           enabled: true
           edgeProxy:
@@ -679,6 +706,32 @@ tests:
                     values:
                     - value-07
                     - value-08
+            scrapeCoordinatorMtlsEnabled: true
+            scrapeCoordinatorMtlsServerCertSecretName: "sco-mtls-server-cert"
+            scrapeCoordinatorMtlsClientCertSecretName: "sco-mtls-client-cert"
+            scrapeCoordinatorAllowInsecureAuthSecrets: true
+            scrapeCoordinatorAllowSecretAccessInNamespaces:
+              - namespace-c
+            scrapeCoordinatorContainerResources:
+              gomemlimit: ""
+              limits:
+                cpu: 400m
+                memory: 1Gi
+              requests:
+                cpu: 100m
+                memory: 300Mi
+            scrapeCoordinatorTolerations:
+              - effect: NoSchedule
+                key: key6
+                operator: Exists
+            scrapeCoordinatorNodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: node-label-key-10
+                    operator: In
+                    values:
+                    - value-14
             edgeProxyReplicas: 2
             edgeProxyEnablePprof: false
             edgeProxyContainerResources:
@@ -1234,6 +1287,79 @@ tests:
       - notMatchRegex:
           path: data['extra.yaml']
           pattern: targetAllocatorAllowSecretAccessInNamespaces
+
+  - it: should render scrape coordinator labels and annotations when set
+    set:
+      operator:
+        scrapeCoordinator:
+          labels:
+            sco-label: sco-label-value
+          annotations:
+            sco-annotation: sco-annotation-value
+          podLabels:
+            sco-pod-label: sco-pod-label-value
+          podAnnotations:
+            sco-pod-annotation: sco-pod-annotation-value
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            scrapeCoordinatorLabels:
+              sco-label: sco-label-value
+            scrapeCoordinatorAnnotations:
+              sco-annotation: sco-annotation-value
+            scrapeCoordinatorPodLabels:
+              sco-pod-label: sco-pod-label-value
+            scrapeCoordinatorPodAnnotations:
+              sco-pod-annotation: sco-pod-annotation-value
+
+  - it: should not render scrape coordinator labels, annotations and allowSecretAccessInNamespaces by default
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: scrapeCoordinatorLabels
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: scrapeCoordinatorAnnotations
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: scrapeCoordinatorPodLabels
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: scrapeCoordinatorPodAnnotations
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: scrapeCoordinatorAllowSecretAccessInNamespaces
+
+  - it: should reject an invalid namespace name in allowSecretAccessInNamespaces for the scrape coordinator
+    set:
+      operator:
+        scrapeCoordinator:
+          allowSecretAccessInNamespaces:
+            - "namespace-a\nfoo: bar"
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.scrapeCoordinator.allowSecretAccessInNamespaces must only contain valid namespace names."
+
+  - it: should reject a single string instead of a list for allowSecretAccessInNamespaces of the scrape coordinator
+    set:
+      operator:
+        scrapeCoordinator:
+          allowSecretAccessInNamespaces: namespace-a
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.scrapeCoordinator.allowSecretAccessInNamespaces must be a list, e.g. --set operator.scrapeCoordinator.allowSecretAccessInNamespaces={namespace-a,namespace-b}."
+
+  - it: should reject enabling mTLS for the scrape coordinator without certificate secret names
+    set:
+      operator:
+        scrapeCoordinator:
+          mTls:
+            enabled: true
+            serverCertSecretName: sco-mtls-server-cert
+    asserts:
+      - failedTemplate:
+          errorMessage: "scrapeCoordinatorMtlsEnabled is set to 'true' but one or both certificate secret names are not provided. Please set both operator.scrapeCoordinator.mTls.serverCertSecretName and operator.scrapeCoordinator.mTls.clientCertSecretName."
 
   - it: should render agent0-connector labels and annotations when set
     set:
@@ -1963,6 +2089,32 @@ tests:
             targetAllocatorTolerations:
               []
             targetAllocatorNodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: dash0.com/enable
+                    operator: NotIn
+                    values:
+                    - "false"
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                    - linux
+            scrapeCoordinatorMtlsEnabled: false
+            scrapeCoordinatorMtlsServerCertSecretName: ""
+            scrapeCoordinatorMtlsClientCertSecretName: ""
+            scrapeCoordinatorAllowInsecureAuthSecrets: false
+            scrapeCoordinatorContainerResources:
+              gomemlimit: ""
+              limits:
+                cpu: 200m
+                memory: 500Mi
+              requests:
+                cpu: 200m
+                memory: 128Mi
+            scrapeCoordinatorTolerations:
+              []
+            scrapeCoordinatorNodeAffinity:
               requiredDuringSchedulingIgnoredDuringExecution:
                 nodeSelectorTerms:
                 - matchExpressions:

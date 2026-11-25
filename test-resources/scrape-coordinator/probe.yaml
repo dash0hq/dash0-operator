@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# A Probe for test-resources/bin/scrape-coordinator-diff.sh. Neither the target-allocator nor the scrape coordinator
+# selects Probes, so it must not show up in the scrape configs of either.
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: scrape-coordinator-diff
+spec:
+  prober:
+    url: scrape-coordinator-diff-prober.invalid:9115
+  targets:
+    staticConfig:
+      static:
+        - scrape-coordinator-diff.invalid

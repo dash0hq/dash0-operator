@@ -136,6 +136,19 @@ type ExtraConfig struct {
 	TargetAllocatorTolerations                   []corev1.Toleration                `json:"targetAllocatorTolerations,omitempty"`
 	TargetAllocatorNodeAffinity                  *corev1.NodeAffinity               `json:"targetAllocatorNodeAffinity,omitempty"`
 
+	ScrapeCoordinatorMtlsEnabled                   bool                               `json:"scrapeCoordinatorMtlsEnabled,omitempty"`
+	ScrapeCoordinatorMtlsServerCertSecretName      string                             `json:"scrapeCoordinatorMtlsServerCertSecretName,omitempty"`
+	ScrapeCoordinatorMtlsClientCertSecretName      string                             `json:"scrapeCoordinatorMtlsClientCertSecretName,omitempty"`
+	ScrapeCoordinatorAllowInsecureAuthSecrets      bool                               `json:"scrapeCoordinatorAllowInsecureAuthSecrets,omitempty"`
+	ScrapeCoordinatorAllowSecretAccessInNamespaces []string                           `json:"scrapeCoordinatorAllowSecretAccessInNamespaces,omitempty"`
+	ScrapeCoordinatorContainerResources            ResourceRequirementsWithGoMemLimit `json:"scrapeCoordinatorContainerResources"`
+	ScrapeCoordinatorLabels                        map[string]string                  `json:"scrapeCoordinatorLabels,omitempty"`
+	ScrapeCoordinatorAnnotations                   map[string]string                  `json:"scrapeCoordinatorAnnotations,omitempty"`
+	ScrapeCoordinatorPodLabels                     map[string]string                  `json:"scrapeCoordinatorPodLabels,omitempty"`
+	ScrapeCoordinatorPodAnnotations                map[string]string                  `json:"scrapeCoordinatorPodAnnotations,omitempty"`
+	ScrapeCoordinatorTolerations                   []corev1.Toleration                `json:"scrapeCoordinatorTolerations,omitempty"`
+	ScrapeCoordinatorNodeAffinity                  *corev1.NodeAffinity               `json:"scrapeCoordinatorNodeAffinity,omitempty"`
+
 	EdgeProxyReplicas           int32                              `json:"edgeProxyReplicas,omitempty"`
 	EdgeProxyEnablePprof        bool                               `json:"edgeProxyEnablePprof,omitempty"`
 	EdgeProxyContainerResources ResourceRequirementsWithGoMemLimit `json:"edgeProxyContainerResources"`
@@ -301,7 +314,19 @@ var (
 			},
 		},
 		TargetAllocatorNodeAffinity: defaultNodeAffinity(),
-		EdgeProxyReplicas:           2,
+		ScrapeCoordinatorContainerResources: ResourceRequirementsWithGoMemLimit{
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("200m"),
+				corev1.ResourceMemory: resource.MustParse("500Mi"),
+			},
+			GoMemLimit: "",
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("200m"),
+				corev1.ResourceMemory: resource.MustParse("128Mi"),
+			},
+		},
+		ScrapeCoordinatorNodeAffinity: defaultNodeAffinity(),
+		EdgeProxyReplicas:             2,
 		EdgeProxyContainerResources: ResourceRequirementsWithGoMemLimit{
 			Limits: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("500m"),
@@ -545,6 +570,12 @@ func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig
 	}
 	if missing("targetAllocatorNodeAffinity") {
 		extraConfig.TargetAllocatorNodeAffinity = defaults.TargetAllocatorNodeAffinity.DeepCopy()
+	}
+	if missing("scrapeCoordinatorContainerResources") {
+		extraConfig.ScrapeCoordinatorContainerResources = defaults.ScrapeCoordinatorContainerResources.DeepCopy()
+	}
+	if missing("scrapeCoordinatorNodeAffinity") {
+		extraConfig.ScrapeCoordinatorNodeAffinity = defaults.ScrapeCoordinatorNodeAffinity.DeepCopy()
 	}
 	if missingOrNull("edgeProxyReplicas") {
 		extraConfig.EdgeProxyReplicas = defaults.EdgeProxyReplicas

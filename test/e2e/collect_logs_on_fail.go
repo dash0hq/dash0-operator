@@ -67,6 +67,9 @@ func collectPodInfoAndLogs(specReport SpecReport) {
 		fmt.Sprintf("kubectl -n %s describe deployment e2e-tests-operator-hr-opentelemetry-target-allocator-deployment",
 			operatorNamespace), outputPath)
 	executeCommandAndStoreOutput(
+		fmt.Sprintf("kubectl -n %s describe deployment %s",
+			operatorNamespace, scrapeCoordinatorName), outputPath)
+	executeCommandAndStoreOutput(
 		fmt.Sprintf("kubectl -n %s describe daemonset %s",
 			operatorNamespace, ebpfProfilerDaemonSetName), outputPath)
 
