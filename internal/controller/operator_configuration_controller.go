@@ -316,9 +316,9 @@ func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 ) {
 	if !operatorConfigurationResource.HasDash0ApiAccessConfigured() {
 		logger.Warn(
-			"The API endpoint setting required for managing dashboards, check rules, synthetic checks and	 " +
-				"views via the operator is missing or has been removed, the operator will not update these resources " +
-				"in Dash0.",
+			"The Dash0 API settings (spec.dash0Api) required for managing dashboards, check rules, synthetic " +
+				"checks and views via the operator are missing or have been removed, the operator will not update " +
+				"these resources in Dash0.",
 		)
 		for _, apiClient := range r.apiClients {
 			apiClient.RemoveDefaultApiConfigs(ctx, logger)
@@ -326,33 +326,32 @@ func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 		return
 	}
 
-	exportsWithApiAccess := operatorConfigurationResource.GetDash0ExportsWithApiAccess()
 	var apiConfigs []ApiConfig
-	for idx, dash0Export := range exportsWithApiAccess {
-		dataset := dash0Export.Dataset
-		token, err := selfmonitoringapiaccess.GetAuthTokenForDash0Export(
+	for idx, dash0ApiConfiguration := range operatorConfigurationResource.EffectiveDash0ApiConfigurations() {
+		token, err := selfmonitoringapiaccess.GetAuthToken(
 			ctx,
 			r.Client,
 			r.operatorNamespace,
-			dash0Export,
+			dash0ApiConfiguration.Authorization,
 			logger,
 		)
 		if err != nil || token == nil || *token == "" {
 			logger.Error(
 				err,
 				fmt.Sprintf(
-					"The operator could not get the auth token for export #%d (endpoint: %s) or the token was empty. "+
-						"This export will be skipped, but other exports will continue to be processed.",
+					"The operator could not get the auth token for Dash0 API connection #%d (endpoint: %s) or the "+
+						"token was empty. This connection will be skipped, but other connections will continue to be "+
+						"processed.",
 					idx+1,
-					dash0Export.ApiEndpoint,
+					dash0ApiConfiguration.Endpoint,
 				),
 			)
 			continue
 		}
 		apiConfigs = append(
 			apiConfigs, ApiConfig{
-				Endpoint: dash0Export.ApiEndpoint,
-				Dataset:  dataset,
+				Endpoint: dash0ApiConfiguration.Endpoint,
+				Dataset:  dash0ApiConfiguration.Dataset,
 				Token:    *token,
 			},
 		)
@@ -360,7 +359,7 @@ func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 
 	if len(apiConfigs) == 0 {
 		logger.Warn(
-			"None of the configured exports have valid API access settings. " +
+			"None of the configured Dash0 API connections have valid settings. " +
 				"The operator will not update dashboards, check rules, synthetic checks or views in Dash0.",
 		)
 		for _, apiClient := range r.apiClients {

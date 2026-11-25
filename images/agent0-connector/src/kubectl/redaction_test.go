@@ -142,7 +142,9 @@ func TestRedactDocument(t *testing.T) {
 
 		for _, secret := range []string{
 			operatorConfigurationToken,
+			operatorConfigurationApiToken,
 			monitoringToken,
+			monitoringApiToken,
 			lastAppliedToken,
 			httpHeaderValue,
 			grpcHeaderValue,
@@ -1804,7 +1806,9 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 			if resp.GetExitCode() != 0 {
 				t.Fatalf("expected exit code 0, got %d (stderr: %q)", resp.GetExitCode(), resp.GetStderr())
 			}
-			for _, secret := range []string{monitoringToken, lastAppliedToken, httpHeaderValue, grpcHeaderValue} {
+			for _, secret := range []string{
+				monitoringToken, monitoringApiToken, lastAppliedToken, httpHeaderValue, grpcHeaderValue,
+			} {
 				if strings.Contains(resp.GetStdout(), secret) {
 					t.Errorf("expected the secret %q to be redacted, got %q", secret, resp.GetStdout())
 				}
@@ -2677,11 +2681,13 @@ const (
 	scrapeConfigScalewayAccessKey      = "my-scrape-config-scaleway-access-key"
 	scrapeConfigOvhcloudApplicationKey = "my-scrape-config-ovhcloud-application-key"
 
-	operatorConfigurationToken = "auth_operator-configuration-token"
-	monitoringToken            = "auth_monitoring-token"
-	lastAppliedToken           = "auth_last-applied-token"
-	httpHeaderValue            = "Bearer my-http-header-secret"
-	grpcHeaderValue            = "my-grpc-header-secret"
+	operatorConfigurationToken    = "auth_operator-configuration-token"
+	operatorConfigurationApiToken = "auth_operator-configuration-api-token"
+	monitoringToken               = "auth_monitoring-token"
+	monitoringApiToken            = "auth_monitoring-api-token"
+	lastAppliedToken              = "auth_last-applied-token"
+	httpHeaderValue               = "Bearer my-http-header-secret"
+	grpcHeaderValue               = "my-grpc-header-secret"
 
 	slackWebhookUrl           = "https://hooks.slack.com/services/T0000/B0000/my-slack-webhook-secret"
 	webhookUrl                = "https://webhook.example.com/hook?token=my-webhook-url-secret"
@@ -2761,6 +2767,12 @@ const dash0ResourcesJson = `{
               ]
             }
           }
+        ],
+        "dash0Api": [
+          {
+            "endpoint": "https://api.dash0.com",
+            "authorization": { "token": "` + monitoringApiToken + `" }
+          }
         ]
       }
     },
@@ -2782,7 +2794,18 @@ const dash0ResourcesJson = `{
             "dataset": "default",
             "authorization": { "token": "` + operatorConfigurationToken + `" }
           }
-        }
+        },
+        "dash0Api": [
+          {
+            "endpoint": "https://api.dash0.com",
+            "authorization": { "secretRef": { "name": "dash0-authorization-secret", "key": "token" } }
+          },
+          {
+            "endpoint": "https://api.dash0.com",
+            "dataset": "other",
+            "authorization": { "token": "` + operatorConfigurationApiToken + `" }
+          }
+        ]
       }
     }
   ]
@@ -2985,6 +3008,10 @@ items:
         headers:
         - name: authorization
           value: ` + grpcHeaderValue + `
+    dash0Api:
+    - authorization:
+        token: ` + monitoringApiToken + `
+      endpoint: https://api.dash0.com
 kind: List
 `
 

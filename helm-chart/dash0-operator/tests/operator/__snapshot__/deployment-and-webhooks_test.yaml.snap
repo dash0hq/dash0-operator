@@ -525,6 +525,58 @@ monitoring resource CRD should match snapshot:
                         type: object
                       type: array
                   type: object
+                dash0Api:
+                  description: |-
+                    The connections to the Dash0 API for the dashboards, check rules, synthetic checks, views and other Dash0
+                    resources defined in this namespace. They replace the `dash0Api` settings of the Dash0OperatorConfiguration
+                    resource for this namespace.
+                  items:
+                    description: |-
+                      Dash0ApiConfiguration describes a connection to the Dash0 API. The operator uses it to manage dashboards, check
+                      rules, synthetic checks, views and other Dash0 resources that are defined as Kubernetes resources. It is independent
+                      of the exports, which describe where telemetry is sent.
+                    properties:
+                      authorization:
+                        description: The authorization settings for the Dash0 API. Exactly one of token and secretRef has to be provided.
+                        maxProperties: 1
+                        minProperties: 1
+                        properties:
+                          secretRef:
+                            description: A reference to a Kubernetes secret containing the Dash0 authorization token.
+                            properties:
+                              key:
+                                default: token
+                                description: The key of the value which contains the Dash0 authorization token. Defaults to "token"
+                                type: string
+                              name:
+                                default: dash0-authorization-secret
+                                description: The name of the secret containing the Dash0 authorization token. Defaults to "dash0-authorization-secret".
+                                type: string
+                            required:
+                              - key
+                              - name
+                            type: object
+                          token:
+                            description: The Dash0 authorization token, see https://app.dash0.com/settings/auth-tokens.
+                            type: string
+                        type: object
+                      dataset:
+                        description: |-
+                          The identifier (not the display name) of the Dash0 dataset in which the resources are managed, see
+                          https://app.dash0.com/settings/datasets. If omitted, the dataset "default" is used.
+                        type: string
+                      endpoint:
+                        description: |-
+                          The API endpoint of your Dash0 organization, see
+                          https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. It starts with `https://api.` and ends in
+                          `.dash0.com`.
+                        minLength: 1
+                        type: string
+                    required:
+                      - authorization
+                      - endpoint
+                    type: object
+                  type: array
                 export:
                   description: |-
                     Deprecated: Use `exports` instead. If both `export` and `exports` are specified, `export` will be ignored.
@@ -546,10 +598,9 @@ monitoring resource CRD should match snapshot:
                       properties:
                         apiEndpoint:
                           description: |-
-                            The API endpoint of your Dash0 organization, see
-                            https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. It starts with `https://api.` and ends in
-                            `.dash0.com`. It is not used for telemetry, but for managing dashboards, check rules, synthetic checks and views
-                            via the operator.
+                            Deprecated: Use `dash0Api` instead. If `dash0Api` is not set, every Dash0 export with an `apiEndpoint` is used as
+                            a Dash0 API connection, with the dataset and authorization of the export. Setting both `dash0Api` and
+                            `apiEndpoint` is a validation error.
                           type: string
                         authorization:
                           description: The authorization settings for sending data to Dash0. Exactly one of token and secretRef has to be provided.
@@ -578,8 +629,7 @@ monitoring resource CRD should match snapshot:
                         dataset:
                           description: |-
                             The identifier (not the display name) of the Dash0 dataset to which telemetry data will be sent, see
-                            https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token,
-                            and API access (dashboards, check rules, etc.) uses the dataset "default".
+                            https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token.
                           type: string
                         endpoint:
                           description: |-
@@ -767,10 +817,9 @@ monitoring resource CRD should match snapshot:
                         properties:
                           apiEndpoint:
                             description: |-
-                              The API endpoint of your Dash0 organization, see
-                              https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. It starts with `https://api.` and ends in
-                              `.dash0.com`. It is not used for telemetry, but for managing dashboards, check rules, synthetic checks and views
-                              via the operator.
+                              Deprecated: Use `dash0Api` instead. If `dash0Api` is not set, every Dash0 export with an `apiEndpoint` is used as
+                              a Dash0 API connection, with the dataset and authorization of the export. Setting both `dash0Api` and
+                              `apiEndpoint` is a validation error.
                             type: string
                           authorization:
                             description: The authorization settings for sending data to Dash0. Exactly one of token and secretRef has to be provided.
@@ -799,8 +848,7 @@ monitoring resource CRD should match snapshot:
                           dataset:
                             description: |-
                               The identifier (not the display name) of the Dash0 dataset to which telemetry data will be sent, see
-                              https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token,
-                              and API access (dashboards, check rules, etc.) uses the dataset "default".
+                              https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token.
                             type: string
                           endpoint:
                             description: |-
@@ -1547,6 +1595,60 @@ monitoring resource CRD should match snapshot:
                         type: object
                       type: array
                   type: object
+                dash0Api:
+                  description: |-
+                    The connections to the Dash0 API for the dashboards, check rules, synthetic checks, views and other Dash0
+                    resources defined in this namespace. They replace the `dash0Api` settings of the Dash0OperatorConfiguration
+                    resource for this namespace. If omitted, the operator configuration's settings are used, unless `exports` contains
+                    a Dash0 export: resources in a namespace that sends telemetry to a Dash0 export of its own are only synchronized
+                    via the `dash0Api` settings of the namespace (or the deprecated `exports[].dash0.apiEndpoint`).
+                  items:
+                    description: |-
+                      Dash0ApiConfiguration describes a connection to the Dash0 API. The operator uses it to manage dashboards, check
+                      rules, synthetic checks, views and other Dash0 resources that are defined as Kubernetes resources. It is independent
+                      of the exports, which describe where telemetry is sent.
+                    properties:
+                      authorization:
+                        description: The authorization settings for the Dash0 API. Exactly one of token and secretRef has to be provided.
+                        maxProperties: 1
+                        minProperties: 1
+                        properties:
+                          secretRef:
+                            description: A reference to a Kubernetes secret containing the Dash0 authorization token.
+                            properties:
+                              key:
+                                default: token
+                                description: The key of the value which contains the Dash0 authorization token. Defaults to "token"
+                                type: string
+                              name:
+                                default: dash0-authorization-secret
+                                description: The name of the secret containing the Dash0 authorization token. Defaults to "dash0-authorization-secret".
+                                type: string
+                            required:
+                              - key
+                              - name
+                            type: object
+                          token:
+                            description: The Dash0 authorization token, see https://app.dash0.com/settings/auth-tokens.
+                            type: string
+                        type: object
+                      dataset:
+                        description: |-
+                          The identifier (not the display name) of the Dash0 dataset in which the resources are managed, see
+                          https://app.dash0.com/settings/datasets. If omitted, the dataset "default" is used.
+                        type: string
+                      endpoint:
+                        description: |-
+                          The API endpoint of your Dash0 organization, see
+                          https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. It starts with `https://api.` and ends in
+                          `.dash0.com`.
+                        minLength: 1
+                        type: string
+                    required:
+                      - authorization
+                      - endpoint
+                    type: object
+                  type: array
                 eventCollection:
                   description: Settings for collecting Kubernetes events in the target namespace.
                   properties:
@@ -1568,10 +1670,9 @@ monitoring resource CRD should match snapshot:
                       properties:
                         apiEndpoint:
                           description: |-
-                            The API endpoint of your Dash0 organization, see
-                            https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. It starts with `https://api.` and ends in
-                            `.dash0.com`. It is not used for telemetry, but for managing dashboards, check rules, synthetic checks and views
-                            via the operator.
+                            Deprecated: Use `dash0Api` instead. If `dash0Api` is not set, every Dash0 export with an `apiEndpoint` is used as
+                            a Dash0 API connection, with the dataset and authorization of the export. Setting both `dash0Api` and
+                            `apiEndpoint` is a validation error.
                           type: string
                         authorization:
                           description: The authorization settings for sending data to Dash0. Exactly one of token and secretRef has to be provided.
@@ -1600,8 +1701,7 @@ monitoring resource CRD should match snapshot:
                         dataset:
                           description: |-
                             The identifier (not the display name) of the Dash0 dataset to which telemetry data will be sent, see
-                            https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token,
-                            and API access (dashboards, check rules, etc.) uses the dataset "default".
+                            https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token.
                           type: string
                         endpoint:
                           description: |-
@@ -1784,10 +1884,9 @@ monitoring resource CRD should match snapshot:
                         properties:
                           apiEndpoint:
                             description: |-
-                              The API endpoint of your Dash0 organization, see
-                              https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. It starts with `https://api.` and ends in
-                              `.dash0.com`. It is not used for telemetry, but for managing dashboards, check rules, synthetic checks and views
-                              via the operator.
+                              Deprecated: Use `dash0Api` instead. If `dash0Api` is not set, every Dash0 export with an `apiEndpoint` is used as
+                              a Dash0 API connection, with the dataset and authorization of the export. Setting both `dash0Api` and
+                              `apiEndpoint` is a validation error.
                             type: string
                           authorization:
                             description: The authorization settings for sending data to Dash0. Exactly one of token and secretRef has to be provided.
@@ -1816,8 +1915,7 @@ monitoring resource CRD should match snapshot:
                           dataset:
                             description: |-
                               The identifier (not the display name) of the Dash0 dataset to which telemetry data will be sent, see
-                              https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token,
-                              and API access (dashboards, check rules, etc.) uses the dataset "default".
+                              https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token.
                             type: string
                           endpoint:
                             description: |-

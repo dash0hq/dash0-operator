@@ -19,6 +19,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/pointers"
@@ -73,6 +74,21 @@ const ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure = "The provided
 const ErrorMessageOperatorConfigurationExportAndExportsAreMutuallyExclusive = "The provided Dash0 operator configuration resource has both the " +
 	"deprecated `export` and the `exports` field set. These fields are mutually exclusive. Please use only the " +
 	"`exports` field and remove the `export` field."
+
+const ErrorMessageOperatorConfigurationMonitoringTemplateWithDash0Api = "The provided Dash0 operator configuration " +
+	"resource has a monitoring template with `dash0Api`. Please use the `dash0Api` field in the operator configuration " +
+	"and remove the `dash0Api` from the monitoringTemplate.spec."
+
+const ErrorMessageOperatorConfigurationDash0ApiAndApiEndpointAreMutuallyExclusive = "The provided Dash0 operator " +
+	"configuration resource has both the `dash0Api` field and the deprecated `exports[].dash0.apiEndpoint` field set. " +
+	"These fields are mutually exclusive. Please use only `dash0Api` and remove `apiEndpoint` from the exports."
+
+const WarningOperatorConfigurationDeprecatedApiEndpoint = "spec.exports[].dash0.apiEndpoint is deprecated, use " +
+	"spec.dash0Api instead."
+
+const WarningOperatorConfigurationNoExportsButMonitoringResourcesWithExports = "The operator configuration resource " +
+	"has no exports, so the operator does not deploy any OpenTelemetry collectors. At least one Dash0 monitoring " +
+	"resource has exports of its own, which have no effect without an export in the operator configuration resource."
 
 const ErrorMessageOperatorConfigurationMonitoringTemplateWithExports = "The provided Dash0 operator configuration resource has a monitoring template with `exports`. Please use the " +
 	"`exports` field in the operator configuration and remove the `exports` from the monitoringTemplate.spec."
@@ -194,6 +210,12 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		return admission.Denied(ErrorMessageOperatorConfigurationExportAndExportsAreMutuallyExclusive)
 	}
 
+	if len(spec.Dash0Api) > 0 &&
+		dash0common.UsesDeprecatedApiEndpoint(operatorConfigurationResource.EffectiveExports()) {
+		logger.Warn(ErrorMessageOperatorConfigurationDash0ApiAndApiEndpointAreMutuallyExclusive)
+		return admission.Denied(ErrorMessageOperatorConfigurationDash0ApiAndApiEndpointAreMutuallyExclusive)
+	}
+
 	//nolint:staticcheck
 	if spec.KubernetesInfrastructureMetricsCollectionEnabled != nil &&
 		//nolint:staticcheck
@@ -269,7 +291,40 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 			deprecatedLogRecordsFilterWarnings(spec.MonitoringTemplate.Spec.Filter, "spec.monitoringTemplate.spec.filter")...,
 		)
 	}
+	exportWarnings, err := h.exportWarnings(ctx, operatorConfigurationResource)
+	if err != nil {
+		return admission.Errored(http.StatusInternalServerError, err)
+	}
+	warnings = append(warnings, exportWarnings...)
 	return h.validateComponentSettings(request, spec, logger).WithWarnings(warnings...)
+}
+
+// exportWarnings returns admission warnings for export and Dash0 API settings which are valid, but either deprecated
+// or without effect.
+func (h *OperatorConfigurationValidationWebhookHandler) exportWarnings(
+	ctx context.Context,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+) ([]string, error) {
+	var warnings []string
+	if dash0common.UsesDeprecatedApiEndpoint(operatorConfigurationResource.EffectiveExports()) {
+		warnings = append(warnings, WarningOperatorConfigurationDeprecatedApiEndpoint)
+	}
+	if operatorConfigurationResource.HasExportsConfigured() ||
+		!h.telemetryCollectionEnabledViaHelm ||
+		!pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.TelemetryCollection.Enabled, true) {
+		return warnings, nil
+	}
+	allMonitoringResources := &dash0v1beta1.Dash0MonitoringList{}
+	if err := h.Client.List(ctx, allMonitoringResources); err != nil {
+		return nil, fmt.Errorf("failed to list all Dash0 monitoring resources: %w", err)
+	}
+	for _, monitoringResource := range allMonitoringResources.Items {
+		if monitoringResource.HasExportsConfigured() {
+			warnings = append(warnings, WarningOperatorConfigurationNoExportsButMonitoringResourcesWithExports)
+			break
+		}
+	}
+	return warnings, nil
 }
 
 // validateMonitoringTemplate rejects a monitoring template with an export, and, while workload instrumentation is
@@ -296,6 +351,10 @@ func (h *OperatorConfigurationValidationWebhookHandler) validateMonitoringTempla
 	if len(monitoringTemplate.Spec.Exports) > 0 {
 		logger.Warn(ErrorMessageOperatorConfigurationMonitoringTemplateWithExports)
 		return admission.Denied(ErrorMessageOperatorConfigurationMonitoringTemplateWithExports), true
+	}
+	if len(monitoringTemplate.Spec.Dash0Api) > 0 {
+		logger.Warn(ErrorMessageOperatorConfigurationMonitoringTemplateWithDash0Api)
+		return admission.Denied(ErrorMessageOperatorConfigurationMonitoringTemplateWithDash0Api), true
 	}
 
 	templateMode := monitoringTemplate.Spec.InstrumentWorkloads.Mode

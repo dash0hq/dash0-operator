@@ -29,7 +29,10 @@ spec:
           # Provide the Dash0 authorization token as a string via the token property:
           token: auth_... # TODO needs to be replaced with the actual value, see below
 
-        apiEndpoint: https://api.....dash0.com # TODO needs to be replaced with the actual value, see below
+  dash0Api: # optional, see below
+    - endpoint: https://api.....dash0.com # TODO needs to be replaced with the actual value, see below
+      authorization:
+        token: auth_... # TODO needs to be replaced with the actual value, see below
 
   clusterName: my-kubernetes-cluster # optional, see below
 ```
@@ -38,9 +41,9 @@ Here is a list of configuration options for this resource:
 
 * <a href="#operatorconfigurationresource.spec.exports[]"><span id="operatorconfigurationresource.spec.exports[]">**`spec.exports[]`**</span></a>:
   One or more `export` configs defining endpoints and authorization (see below for details).
-  If multiple exports are defined, the telemetry will be exported to all defined exports and CRs (views, synthetic
-  checks, dashboards, check rules, notification channels, spam filters, signal-to-metrics rules) will be synced to all
-  defined Dash0 exports.
+  If multiple exports are defined, the telemetry will be exported to all defined exports.
+  This property is required unless `spec.selfMonitoring.enabled` is `false`.
+  The operator only deploys its OpenTelemetry collectors if there is at least one export.
   Next to `dash0`, an export can also be an `http` or a `grpc` export, to send telemetry to an arbitrary
   OTLP-compatible backend; see
   [Exporting Data to Other Observability Backends](advanced-configuration.md#exporting-data-to-other-observability-backends).
@@ -76,16 +79,37 @@ Here is a list of configuration options for this resource:
       Additional steps are required to make sure secret values are encrypted.
       See https://kubernetes.io/docs/concepts/configuration/secret/ for more information on Kubernetes secrets.
 
+* <a href="#operatorconfigurationresource.spec.dash0Api[]"><span id="operatorconfigurationresource.spec.dash0Api[]">**`spec.dash0Api[]`**</span></a>:
+  One or more connections to the Dash0 API.
+  The Dash0 API is not where telemetry will be sent, but it is used for managing dashboards, check rules, synthetic
+  checks, views, notification channels, spam filters and signal-to-metrics rules via the operator (see
+  [Managing Dash0 Resources](managing-dash0-resources.md)).
+  The collector edge settings and Signal Control use the endpoint of the first entry as well.
+  If multiple entries are defined, the resources are synchronized to all of them.
+  This property is optional and independent of `spec.exports`: it can be used without any export, see
+  [Managing Dash0 Resources Without Collecting Telemetry](#managing-dash0-resources-without-collecting-telemetry).
+  If it is omitted, managing these resources via the operator will not work.
+
+    * <a href="#operatorconfigurationresource.spec.dash0Api[].endpoint"><span id="operatorconfigurationresource.spec.dash0Api[].endpoint">**`spec.dash0Api[].endpoint`**</span></a>:
+      The API endpoint of your Dash0 organization.
+      The correct API endpoint can be copied from https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http.
+      The correct endpoint value will always start with "https://api." and end in ".dash0.com".
+      This property is mandatory.
+
+    * <a href="#operatorconfigurationresource.spec.dash0Api[].dataset"><span id="operatorconfigurationresource.spec.dash0Api[].dataset">**`spec.dash0Api[].dataset`**</span></a>:
+      The identifier of the Dash0 dataset in which the resources are managed.
+      This property is optional, it defaults to `default`.
+
+    * <a href="#operatorconfigurationresource.spec.dash0Api[].authorization"><span id="operatorconfigurationresource.spec.dash0Api[].authorization">**`spec.dash0Api[].authorization`**</span></a>:
+      The Dash0 authorization token for the API, either as `token` or as `secretRef`, exactly like
+      `spec.exports[].dash0.authorization`.
+      This property is mandatory.
+
 * <a href="#operatorconfigurationresource.spec.exports[].dash0.apiEndpoint"><span id="operatorconfigurationresource.spec.exports[].dash0.apiEndpoint">**`spec.exports[].dash0.apiEndpoint`**</span></a>:
-  The base URL of the Dash0 API to talk to.
-  This is not where telemetry will be sent, but it is used for managing dashboards, check rules, synthetic checks,
-  views, notification channels, spam filters and signal-to-metrics rules via the operator.
-  This property is optional.
-  The value needs to be the API endpoint of your Dash0 organization.
-  The correct API endpoint can be copied from https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http.
-  The correct endpoint value will always start with "https://api." and end in ".dash0.com".
-  If this property is omitted, managing dashboards, check rules, synthetic checks, views, notification channels, spam
-  filters and signal-to-metrics rules via the operator will not work.
+  Deprecated, use `spec.dash0Api` instead.
+  If `spec.dash0Api` is not set, every Dash0 export with an `apiEndpoint` is used as a connection to the Dash0 API, with
+  the dataset and the authorization of that export.
+  Setting both `spec.dash0Api` and `spec.exports[].dash0.apiEndpoint` is a validation error.
 
 * <a href="#operatorconfigurationresource.spec.selfMonitoring.enabled"><span id="operatorconfigurationresource.spec.selfMonitoring.enabled">**`spec.selfMonitoring.enabled`**</span></a>:
   An opt-out for self-monitoring for the operator.
@@ -287,6 +311,48 @@ applying it.
 > You can consult the chart's
 > [values.yaml](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml) file for a
 > complete list of available configuration settings.
+
+### Managing Dash0 Resources Without Collecting Telemetry
+
+The operator can manage dashboards, check rules, synthetic checks, views and the other Dash0 resources without collecting
+any telemetry in the cluster.
+Disable telemetry collection and self-monitoring, and provide only the connection to the Dash0 API:
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0OperatorConfiguration
+metadata:
+  name: dash0-operator-configuration
+spec:
+  dash0Api:
+    - endpoint: https://api... # TODO REPLACE THIS WITH YOUR DASH0 API ENDPOINT
+      authorization:
+        secretRef:
+          name: dash0-authorization-secret
+          key: token
+  selfMonitoring:
+    enabled: false
+  telemetryCollection:
+    enabled: false
+```
+
+The same can be achieved via Helm, by providing `operator.dash0Export.apiEndpoint` without
+`operator.dash0Export.endpoint`:
+
+```yaml
+operator:
+  dash0Export:
+    enabled: true
+    apiEndpoint: REPLACE THIS WITH YOUR DASH0 API ENDPOINT
+    secretRef:
+      name: dash0-authorization-secret
+      key: token
+  selfMonitoringEnabled: false
+  telemetryCollectionEnabled: false
+```
+
+Dash0 resources are only synchronized in namespaces that have a Dash0 monitoring resource, see
+[Managing Dash0 Resources](managing-dash0-resources.md).
 
 ### Notes on Creating the Operator Configuration Resource Via Helm
 
@@ -771,10 +837,15 @@ It is possible to override the global/default exports config provided via the Da
 per-namespace basis by providing the corresponding exports config via the Dash0 monitoring resource. Please note that
 the namespace-specific overrides replace the default list of exports from the Dash0 operator configuration.
 
-The override supports both the export of telemetry and the sync of resources, like dashboards or views, via the Dash0 API.
+Likewise, `spec.dash0Api` in the Dash0 monitoring resource replaces the `spec.dash0Api` settings of the operator
+configuration for synchronizing the dashboards, views and other Dash0 resources of that namespace.
+A namespace whose monitoring resource has a Dash0 export of its own, but no `spec.dash0Api` (and no deprecated
+`apiEndpoint` in its Dash0 exports), is not synchronized at all, since the default API connections could belong to a
+different Dash0 organization or dataset.
 
-Note: The operator always expects default export and API-sync settings via the Dash0 operator configuration, even when
-namespace-specific overrides are used.
+Note: Namespace-specific exports require at least one export in the Dash0 operator configuration, unless telemetry
+collection is disabled. Without a default export, the operator does not deploy its OpenTelemetry collectors, and a
+monitoring resource with exports is rejected.
 
 Note: Namespace-specific exports do not apply to profiling data. Profiles are always sent to the default export, because
 the routing connector of the OpenTelemetry collector, which the operator uses for namespace-specific exports, does not
@@ -1176,7 +1247,12 @@ spec:
             name: dash0-authorization-secret
             key: token
 
-        apiEndpoint: https://api... # optional, see above
+  dash0Api: # optional, see above
+    - endpoint: https://api... # TODO REPLACE THIS WITH YOUR DASH0 API ENDPOINT
+      authorization:
+        secretRef:
+          name: dash0-authorization-secret
+          key: token
 ```
 
 When deploying the operator configuration resource via `kubectl`, the following defaults apply:
@@ -1198,7 +1274,10 @@ spec:
         authorization:
           secretRef: {}
 
-        apiEndpoint: https://api... # optional, see above
+  dash0Api: # optional, see above
+    - endpoint: https://api... # TODO needs to be replaced with the actual value, see above
+      authorization:
+        secretRef: {}
 ```
 
 > **Note:** There are no defaults when using `--set operator.dash0Export.secretRef.name` and
@@ -1236,7 +1315,8 @@ spec:
 
         authorization: # see above
           ...
-
-        apiEndpoint: https://api... # optional, see above
 ```
+
+The dataset in which the operator manages dashboards, check rules and other Dash0 resources is configured separately via
+`spec.dash0Api[].dataset`, see [above](#operatorconfigurationresource.spec.dash0Api[].dataset).
 

@@ -2128,9 +2128,9 @@ var _ = Describe(
 		)
 
 		Describe(
-			"GetAuthTokenForDash0Export", func() {
+			"GetAuthToken", func() {
 				type getAuthTokenTestConfig struct {
-					dash0Export   dash0common.Dash0Configuration
+					authorization dash0common.Authorization
 					secret        *corev1.Secret
 					expectedError string
 					expectedToken string
@@ -2151,11 +2151,11 @@ var _ = Describe(
 							Expect(k8sClient.Create(ctx, testConfig.secret)).To(Succeed())
 							createdObjectsGetAuthToken = append(createdObjectsGetAuthToken, testConfig.secret)
 						}
-						token, err := GetAuthTokenForDash0Export(
+						token, err := GetAuthToken(
 							ctx,
 							k8sClient,
 							OperatorNamespace,
-							testConfig.dash0Export,
+							testConfig.authorization,
 							logger,
 						)
 						if testConfig.expectedError != "" {
@@ -2169,23 +2169,16 @@ var _ = Describe(
 					},
 					Entry(
 						"should return the token literal if present", getAuthTokenTestConfig{
-							dash0Export: dash0common.Dash0Configuration{
-								Endpoint: EndpointDash0Test,
-								Authorization: dash0common.Authorization{
-									Token: &AuthorizationTokenTest,
-								},
+							authorization: dash0common.Authorization{
+								Token: &AuthorizationTokenTest,
 							},
 							expectedToken: AuthorizationTokenTest,
 						},
 					),
 					Entry(
 						"should resolve secret ref and return the token", getAuthTokenTestConfig{
-							dash0Export: dash0common.Dash0Configuration{
-								Endpoint:    EndpointDash0Test,
-								ApiEndpoint: ApiEndpointTest,
-								Authorization: dash0common.Authorization{
-									SecretRef: &SecretRefTest,
-								},
+							authorization: dash0common.Authorization{
+								SecretRef: &SecretRefTest,
 							},
 							secret:        DefaultSecret(),
 							expectedToken: AuthorizationTokenTestFromSecret,
@@ -2193,20 +2186,14 @@ var _ = Describe(
 					),
 					Entry(
 						"should error if there is neither a token nor a secret ref", getAuthTokenTestConfig{
-							dash0Export: dash0common.Dash0Configuration{
-								Endpoint: EndpointDash0Test,
-							},
+							authorization: dash0common.Authorization{},
 							expectedError: "authorization has neither secretRef nor token literal",
 						},
 					),
 					Entry(
 						"should error if the secret does not exist", getAuthTokenTestConfig{
-							dash0Export: dash0common.Dash0Configuration{
-								Endpoint:    EndpointDash0Test,
-								ApiEndpoint: ApiEndpointTest,
-								Authorization: dash0common.Authorization{
-									SecretRef: &SecretRefTest,
-								},
+							authorization: dash0common.Authorization{
+								SecretRef: &SecretRefTest,
 							},
 							expectedError: "failed to fetch secret with name secret-ref in namespace test-operator-namespace",
 						},
@@ -2218,7 +2205,7 @@ var _ = Describe(
 		Describe(
 			"ExchangeSecretRefForToken", func() {
 				type exchangeTestConfig struct {
-					dash0Config   dash0common.Dash0Configuration
+					authorization dash0common.Authorization
 					secret        *corev1.Secret
 					expectedError string
 					expectedToken string
@@ -2243,7 +2230,7 @@ var _ = Describe(
 							ctx,
 							k8sClient,
 							OperatorNamespace,
-							testConfig.dash0Config,
+							testConfig.authorization,
 							logger,
 						)
 						if testConfig.expectedError != "" {
@@ -2256,31 +2243,23 @@ var _ = Describe(
 						}
 					},
 					Entry(
-						"should error if the Dash0 config has no secret ref", exchangeTestConfig{
-							dash0Config:   dash0common.Dash0Configuration{},
-							expectedError: "dash0Config has no secret ref",
+						"should error if the authorization has no secret ref", exchangeTestConfig{
+							authorization: dash0common.Authorization{},
+							expectedError: "authorization has no secret ref",
 						},
 					),
 					Entry(
 						"should error if the secret does not exist", exchangeTestConfig{
-							dash0Config: dash0common.Dash0Configuration{
-								Endpoint:    EndpointDash0Test,
-								ApiEndpoint: ApiEndpointTest,
-								Authorization: dash0common.Authorization{
-									SecretRef: &SecretRefTest,
-								},
+							authorization: dash0common.Authorization{
+								SecretRef: &SecretRefTest,
 							},
 							expectedError: "failed to fetch secret with name secret-ref in namespace test-operator-namespace for Dash0 self-monitoring/API access: secrets \"secret-ref\" not found",
 						},
 					),
 					Entry(
 						"should error if the secret exists but does not have the key", exchangeTestConfig{
-							dash0Config: dash0common.Dash0Configuration{
-								Endpoint:    EndpointDash0Test,
-								ApiEndpoint: ApiEndpointTest,
-								Authorization: dash0common.Authorization{
-									SecretRef: &SecretRefTest,
-								},
+							authorization: dash0common.Authorization{
+								SecretRef: &SecretRefTest,
 							},
 							secret: &corev1.Secret{
 								ObjectMeta: metav1.ObjectMeta{
@@ -2296,12 +2275,8 @@ var _ = Describe(
 					),
 					Entry(
 						"should resolve the secret ref and return the token", exchangeTestConfig{
-							dash0Config: dash0common.Dash0Configuration{
-								Endpoint:    EndpointDash0Test,
-								ApiEndpoint: ApiEndpointTest,
-								Authorization: dash0common.Authorization{
-									SecretRef: &SecretRefTest,
-								},
+							authorization: dash0common.Authorization{
+								SecretRef: &SecretRefTest,
 							},
 							secret:        DefaultSecret(),
 							expectedToken: AuthorizationTokenTestFromSecret,

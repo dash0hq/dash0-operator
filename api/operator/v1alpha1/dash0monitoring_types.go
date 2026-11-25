@@ -81,6 +81,13 @@ type Dash0MonitoringSpec struct {
 	// +kubebuilder:validation:Optional
 	Exports []dash0common.Export `json:"exports,omitempty"`
 
+	// The connections to the Dash0 API for the dashboards, check rules, synthetic checks, views and other Dash0
+	// resources defined in this namespace. They replace the `dash0Api` settings of the Dash0OperatorConfiguration
+	// resource for this namespace.
+	//
+	// +kubebuilder:validation:Optional
+	Dash0Api []dash0common.Dash0ApiConfiguration `json:"dash0Api,omitempty"`
+
 	// Opt-out for automatic workload instrumentation for the target namespace. There are three possible settings:
 	// `all`, `created-and-updated` and `none`. By default, the setting `all` is assumed, unless there is an operator
 	// configuration resource with `telemetryCollection.enabled=false`, then the setting `none` is assumed.
@@ -405,6 +412,7 @@ func (dst *Dash0Monitoring) ConvertFrom(srcRaw conversion.Hub) error {
 	//nolint:staticcheck
 	dst.Spec.Export = src.Spec.Export
 	dst.Spec.Exports = src.Spec.Exports
+	dst.Spec.Dash0Api = src.Spec.Dash0Api
 	dst.Spec.InstrumentWorkloads = src.Spec.InstrumentWorkloads.Mode
 	if strings.TrimSpace(src.Spec.InstrumentWorkloads.LabelSelector) != "" &&
 		src.Spec.InstrumentWorkloads.LabelSelector != dash0common.DefaultAutoInstrumentationLabelSelector {
@@ -496,6 +504,7 @@ func (src *Dash0Monitoring) ConvertTo(dstRaw conversion.Hub) error {
 	//nolint:staticcheck
 	dst.Spec.Export = src.Spec.Export
 	dst.Spec.Exports = src.Spec.Exports
+	dst.Spec.Dash0Api = src.Spec.Dash0Api
 	dst.Spec.InstrumentWorkloads = dash0v1beta1.InstrumentWorkloads{
 		LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 		Mode:          src.Spec.InstrumentWorkloads,

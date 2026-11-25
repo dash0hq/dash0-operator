@@ -54,6 +54,16 @@ type Dash0OperatorConfigurationSpec struct {
 	// Dash0 over gRPC over HTTP; HTTP with JSON encoding is not supported for self-monitoring data.
 	Exports []dash0common.Export `json:"exports,omitempty"`
 
+	// The default connections to the Dash0 API, which the operator uses to manage dashboards, check rules, synthetic
+	// checks, views and other Dash0 resources defined as Kubernetes resources. Resources are synchronized to every
+	// connection. These settings are independent of `exports`; managing Dash0 resources does not require an export.
+	// Collector edge settings and Signal Control use the endpoint of the first connection. Monitoring resources can
+	// override these settings for their namespace. If omitted, the deprecated `exports[].dash0.apiEndpoint` settings are
+	// used.
+	//
+	// +kubebuilder:validation:Optional
+	Dash0Api []dash0common.Dash0ApiConfiguration `json:"dash0Api,omitempty"`
+
 	// Global opt-out for the operator's self-monitoring.
 	//
 	// +kubebuilder:default={enabled: true}
@@ -727,19 +737,36 @@ func (d *Dash0OperatorConfiguration) GetDash0Exports() []dash0common.Dash0Config
 	return dash0Configs
 }
 
+// HasDash0ApiAccessConfigured returns true if the operator configuration resource has at least one Dash0 API
+// connection, either via dash0Api or via the deprecated apiEndpoint field of a Dash0 export.
 func (d *Dash0OperatorConfiguration) HasDash0ApiAccessConfigured() bool {
-	return len(d.GetDash0ExportsWithApiAccess()) > 0
+	return len(d.EffectiveDash0ApiConfigurations()) > 0
 }
 
-func (d *Dash0OperatorConfiguration) GetDash0ExportsWithApiAccess() []dash0common.Dash0Configuration {
-	var res []dash0common.Dash0Configuration
-	for _, export := range d.EffectiveExports() {
-		// intentionally not doing any further filtering here, as validation will happen later where errors are properly logged
-		if export.Dash0 != nil {
-			res = append(res, *export.Dash0)
-		}
+// EffectiveDash0ApiConfigurations returns the Dash0 API connections of the operator configuration resource, see
+// dash0common.EffectiveDash0ApiConfigurations.
+func (d *Dash0OperatorConfiguration) EffectiveDash0ApiConfigurations() []dash0common.Dash0ApiConfiguration {
+	if d == nil {
+		return nil
 	}
-	return res
+	return dash0common.EffectiveDash0ApiConfigurations(d.Spec.Dash0Api, d.EffectiveExports())
+}
+
+// PrimaryDash0ApiEndpoint returns the Dash0 API endpoint that collector edge settings and Signal Control use: the
+// endpoint of the first dash0Api entry if dash0Api is set, otherwise the deprecated apiEndpoint field of the first
+// Dash0 export (which might be empty).
+func (d *Dash0OperatorConfiguration) PrimaryDash0ApiEndpoint() string {
+	if d == nil {
+		return ""
+	}
+	if len(d.Spec.Dash0Api) > 0 {
+		return d.Spec.Dash0Api[0].Endpoint
+	}
+	if firstDash0Export := d.GetFirstDash0Export(); firstDash0Export != nil {
+		//nolint:staticcheck
+		return firstDash0Export.Dash0.ApiEndpoint
+	}
+	return ""
 }
 
 func (d *Dash0OperatorConfiguration) GetNaturalLanguageResourceTypeName() string {
@@ -824,6 +851,9 @@ func (d *Dash0OperatorConfiguration) cloneAndRedact() Dash0OperatorConfiguration
 	delete(redactedResource.Annotations, "kubectl.kubernetes.io/last-applied-configuration")
 	for _, export := range redactedResource.EffectiveExports() {
 		export.Redact()
+	}
+	for i := range redactedResource.Spec.Dash0Api {
+		redactedResource.Spec.Dash0Api[i].Authorization.Redact()
 	}
 	for _, instance := range redactedResource.Spec.SyntheticsWorker.Instances {
 		if instance.Authorization != nil {

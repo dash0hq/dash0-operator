@@ -958,6 +958,81 @@ var _ = Describe("The validation webhook for the operator configuration resource
 		})
 	})
 
+	Describe("Dash0 API settings", func() {
+		dash0ApiConfigurations := func() []dash0common.Dash0ApiConfiguration {
+			return []dash0common.Dash0ApiConfiguration{{
+				Endpoint:      ApiEndpointTest,
+				Authorization: dash0common.Authorization{Token: &AuthorizationTokenTest},
+			}}
+		}
+
+		newHandler := func() *OperatorConfigurationValidationWebhookHandler {
+			return NewOperatorConfigurationValidationWebhookHandler(
+				k8sClient, true, true, false, false, util.ExtraConfigDefaults, util.ExtraConfigDefaults)
+		}
+
+		AfterEach(func() {
+			Expect(k8sClient.DeleteAllOf(ctx, &dash0v1beta1.Dash0Monitoring{}, client.InNamespace(TestNamespaceName))).
+				To(Succeed())
+		})
+
+		It("should allow dash0Api without an export", func() {
+			response := newHandler().Handle(ctx, operatorConfigurationAdmissionRequest(dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(false)},
+				Dash0Api:       dash0ApiConfigurations(),
+			}))
+			Expect(response.Allowed).To(BeTrue())
+			Expect(response.Warnings).To(BeEmpty())
+		})
+
+		It("should reject dash0Api together with the deprecated apiEndpoint", func() {
+			response := newHandler().Handle(ctx, operatorConfigurationAdmissionRequest(dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				Exports:  []dash0common.Export{*Dash0ExportWithEndpointTokenAndCustomDatasetAndApiEndpoint()},
+				Dash0Api: dash0ApiConfigurations(),
+			}))
+			Expect(response.Allowed).To(BeFalse())
+			Expect(response.Result.Message).To(Equal(ErrorMessageOperatorConfigurationDash0ApiAndApiEndpointAreMutuallyExclusive))
+		})
+
+		It("should reject dash0Api in the monitoring template", func() {
+			response := newHandler().Handle(ctx, operatorConfigurationAdmissionRequest(dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+				MonitoringTemplate: &dash0v1alpha1.MonitoringTemplate{
+					Spec: dash0v1beta1.Dash0MonitoringSpec{
+						Dash0Api: dash0ApiConfigurations(),
+					},
+				},
+			}))
+			Expect(response.Allowed).To(BeFalse())
+			Expect(response.Result.Message).To(Equal(ErrorMessageOperatorConfigurationMonitoringTemplateWithDash0Api))
+		})
+
+		It("should warn about the deprecated apiEndpoint", func() {
+			response := newHandler().Handle(ctx, operatorConfigurationAdmissionRequest(dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				Exports: []dash0common.Export{*Dash0ExportWithEndpointTokenAndCustomDatasetAndApiEndpoint()},
+			}))
+			Expect(response.Allowed).To(BeTrue())
+			Expect(response.Warnings).To(Equal([]string{WarningOperatorConfigurationDeprecatedApiEndpoint}))
+		})
+
+		It("should warn if there are no exports but monitoring resources have exports of their own", func() {
+			EnsureTestNamespaceExists(ctx, k8sClient)
+			monitoringResource := DefaultMonitoringResource()
+			monitoringResource.Spec.Exports = Dash0ExportsWithEndpointAndTokenSingle()
+			Expect(k8sClient.Create(ctx, monitoringResource)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				response := newHandler().Handle(ctx, operatorConfigurationAdmissionRequest(dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(false)},
+					Dash0Api:       dash0ApiConfigurations(),
+				}))
+				g.Expect(response.Allowed).To(BeTrue())
+				g.Expect(response.Warnings).To(Equal(
+					[]string{WarningOperatorConfigurationNoExportsButMonitoringResourcesWithExports}))
+			}).Should(Succeed())
+		})
+	})
+
 	Describe("component settings", func() {
 		componentsSpec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
 			Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},

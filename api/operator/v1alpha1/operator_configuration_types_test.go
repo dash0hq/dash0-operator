@@ -15,6 +15,7 @@ import (
 
 const (
 	EndpointHttpTest = "https://endpoint.backend.com:4318"
+	apiEndpointTest  = "https://api.dash0.com"
 )
 
 var (
@@ -65,6 +66,23 @@ var _ = Describe("v1alpha1 Dash0 operator configuration CRD", func() {
 
 			Expect(*redacted.Spec.Exports[0].Dash0.Authorization.Token).To(Equal("<redacted>"))
 			Expect(*original.Spec.Exports[0].Dash0.Authorization.Token).To(Equal("my-secret-token"))
+		})
+
+		It("should redact the token of a Dash0 API connection", func() {
+			token := "my-secret-token"
+			original := Dash0OperatorConfiguration{
+				Spec: Dash0OperatorConfigurationSpec{
+					Dash0Api: []dash0common.Dash0ApiConfiguration{{
+						Endpoint:      apiEndpointTest,
+						Authorization: dash0common.Authorization{Token: &token},
+					}},
+				},
+			}
+
+			redacted := original.cloneAndRedact()
+
+			Expect(*redacted.Spec.Dash0Api[0].Authorization.Token).To(Equal("<redacted>"))
+			Expect(*original.Spec.Dash0Api[0].Authorization.Token).To(Equal("my-secret-token"))
 		})
 
 		It("should redact a synthetics-worker instance's literal authorization token", func() {
@@ -211,6 +229,66 @@ var _ = Describe("v1alpha1 Dash0 operator configuration CRD", func() {
 			Expect(redacted.Spec.Exports[0].Grpc.Headers[0].ValueFrom).ToNot(BeNil())
 			Expect(redacted.Spec.Exports[0].Grpc.Headers[0].ValueFrom.SecretKeyRef.Name).To(Equal("my-secret"))
 			Expect(redacted.Spec.Exports[0].Grpc.Headers[0].ValueFrom.SecretKeyRef.Key).To(Equal("api-key"))
+		})
+	})
+
+	Describe("Dash0 API connections", func() {
+		token := "token"
+		dash0ExportWithApiEndpoint := func(apiEndpoint string, dataset string) dash0common.Export {
+			return dash0common.Export{
+				Dash0: &dash0common.Dash0Configuration{
+					Endpoint:      EndpointDash0Test,
+					Dataset:       dataset,
+					Authorization: dash0common.Authorization{Token: &token},
+					ApiEndpoint:   apiEndpoint,
+				},
+			}
+		}
+
+		It("should return no connections if neither dash0Api nor apiEndpoint is set", func() {
+			resource := Dash0OperatorConfiguration{
+				Spec: Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{dash0ExportWithApiEndpoint("", "")},
+				},
+			}
+			Expect(resource.EffectiveDash0ApiConfigurations()).To(BeEmpty())
+			Expect(resource.HasDash0ApiAccessConfigured()).To(BeFalse())
+			Expect(resource.PrimaryDash0ApiEndpoint()).To(BeEmpty())
+		})
+
+		It("should use dash0Api if it is set", func() {
+			dash0Api := []dash0common.Dash0ApiConfiguration{
+				{Endpoint: "https://api-1.dash0.com", Authorization: dash0common.Authorization{Token: &token}},
+				{Endpoint: "https://api-2.dash0.com", Authorization: dash0common.Authorization{Token: &token}},
+			}
+			resource := Dash0OperatorConfiguration{
+				Spec: Dash0OperatorConfigurationSpec{
+					Dash0Api: dash0Api,
+				},
+			}
+			Expect(resource.EffectiveDash0ApiConfigurations()).To(Equal(dash0Api))
+			Expect(resource.HasDash0ApiAccessConfigured()).To(BeTrue())
+			Expect(resource.PrimaryDash0ApiEndpoint()).To(Equal("https://api-1.dash0.com"))
+		})
+
+		It("should derive the connections from the deprecated apiEndpoint if dash0Api is not set", func() {
+			resource := Dash0OperatorConfiguration{
+				Spec: Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{
+						{Grpc: &dash0common.GrpcConfiguration{Endpoint: "otelcol:4317"}},
+						dash0ExportWithApiEndpoint("", ""),
+						dash0ExportWithApiEndpoint("https://api-2.dash0.com", "dataset-2"),
+					},
+				},
+			}
+			Expect(resource.EffectiveDash0ApiConfigurations()).To(Equal([]dash0common.Dash0ApiConfiguration{{
+				Endpoint:      "https://api-2.dash0.com",
+				Dataset:       "dataset-2",
+				Authorization: dash0common.Authorization{Token: &token},
+			}}))
+			Expect(resource.HasDash0ApiAccessConfigured()).To(BeTrue())
+			// edge settings and Signal Control keep using the apiEndpoint of the first Dash0 export
+			Expect(resource.PrimaryDash0ApiEndpoint()).To(BeEmpty())
 		})
 	})
 

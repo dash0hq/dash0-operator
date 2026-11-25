@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -29,6 +30,31 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
+
+// ErrorMessageMonitoringDash0ApiAndApiEndpointAreMutuallyExclusive is the message for rejecting a monitoring resource
+// that combines dash0Api with the deprecated exports[].dash0.apiEndpoint field.
+const ErrorMessageMonitoringDash0ApiAndApiEndpointAreMutuallyExclusive = "The provided Dash0 monitoring resource has " +
+	"both the `dash0Api` field and the deprecated `exports[].dash0.apiEndpoint` field set. These fields are mutually " +
+	"exclusive. Please use only `dash0Api` and remove `apiEndpoint` from the exports."
+
+// ErrorMessageMonitoringExportsWithoutDefaultExport is the message for rejecting a monitoring resource with exports
+// while the operator configuration resource has none.
+const ErrorMessageMonitoringExportsWithoutDefaultExport = "The provided Dash0 monitoring resource has an export " +
+	"configuration, but the Dash0 operator configuration resource does not have one. The operator only deploys " +
+	"OpenTelemetry collectors if the operator configuration resource has an export, so the exports of this monitoring " +
+	"resource would have no effect. Please add an export to the operator configuration resource, or remove the " +
+	"exports from this monitoring resource."
+
+// WarningMonitoringDeprecatedApiEndpoint is the admission warning for a monitoring resource that uses the deprecated
+// exports[].dash0.apiEndpoint field.
+const WarningMonitoringDeprecatedApiEndpoint = "spec.exports[].dash0.apiEndpoint is deprecated, use spec.dash0Api " +
+	"instead."
+
+// WarningMonitoringExportsWithTelemetryCollectionDisabled is the admission warning for a monitoring resource with
+// exports while telemetry collection is disabled.
+const WarningMonitoringExportsWithTelemetryCollectionDisabled = "Telemetry collection is disabled, the exports of " +
+	"this monitoring resource are not used for sending telemetry. Use spec.dash0Api to configure the Dash0 API " +
+	"connection for this namespace."
 
 const ErrorMessageMonitoringGrpcExportInvalidInsecure = "The provided Dash0 monitoring resource has both insecure and insecureSkipVerify " +
 	"explicitly enabled for the GRPC export. This is an invalid combination. " +
@@ -203,7 +229,7 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 		logger.Info(admissionResponse.Result.Message)
 		return admissionResponse
 	}
-	admissionResponse, done = h.validateExport(availableOperatorConfigurations, monitoringResource)
+	admissionResponse, done = h.validateExport(request, availableOperatorConfigurations, monitoringResource)
 	if done {
 		logger.Info(admissionResponse.Result.Message)
 		return admissionResponse
@@ -233,8 +259,9 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 		return admissionResponse
 	}
 
-	return admission.Allowed("").
-		WithWarnings(deprecatedLogRecordsFilterWarnings(monitoringResource.Spec.Filter, "spec.filter")...)
+	warnings := deprecatedLogRecordsFilterWarnings(monitoringResource.Spec.Filter, "spec.filter")
+	warnings = append(warnings, h.exportWarnings(availableOperatorConfigurations, monitoringResource)...)
+	return admission.Allowed("").WithWarnings(warnings...)
 }
 
 // changesInstrumentWorkloadsModeWhereOnlyNoneIsAllowed checks whether an update request changes the effective
@@ -346,14 +373,30 @@ func (h *MonitoringValidationWebhookHandler) rejectCustomMonitoringResourceInAut
 }
 
 func (h *MonitoringValidationWebhookHandler) validateExport(
+	request admission.Request,
 	availableOperatorConfigurations []dash0v1alpha1.Dash0OperatorConfiguration,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 ) (admission.Response, bool) {
-
 	// Reject if both the deprecated export and the new exports field are set.
 	//nolint:staticcheck
 	if monitoringResource.Spec.Export != nil && len(monitoringResource.Spec.Exports) > 0 {
 		return admission.Denied(ErrorMessageMonitoringExportAndExportsAreMutuallyExclusive), true
+	}
+
+	if len(monitoringResource.Spec.Dash0Api) > 0 &&
+		dash0common.UsesDeprecatedApiEndpoint(monitoringResource.EffectiveExports()) {
+		return admission.Denied(ErrorMessageMonitoringDash0ApiAndApiEndpointAreMutuallyExclusive), true
+	}
+
+	for _, export := range monitoringResource.Spec.Exports {
+		if !validateGrpcExportInsecureFlags(&export) {
+			return admission.Denied(ErrorMessageMonitoringGrpcExportInvalidInsecure), true
+		}
+	}
+
+	if h.isTelemetryCollectionDisabled(availableOperatorConfigurations) {
+		// Exports are not used for telemetry, a missing default export is not a problem.
+		return admission.Response{}, false
 	}
 
 	if len(monitoringResource.Spec.Exports) == 0 {
@@ -375,15 +418,51 @@ func (h *MonitoringValidationWebhookHandler) validateExport(
 				"The provided Dash0 monitoring resource does not have an export configuration, and the existing Dash0 " +
 					"operator configuration does not have an export configuration either."), true
 		}
+		return admission.Response{}, false
 	}
 
-	for _, export := range monitoringResource.Spec.Exports {
-		if !validateGrpcExportInsecureFlags(&export) {
-			return admission.Denied(ErrorMessageMonitoringGrpcExportInvalidInsecure), true
+	if len(availableOperatorConfigurations) == 1 && !availableOperatorConfigurations[0].HasExportsConfigured() {
+		if request.Operation == admissionv1.Update {
+			// Only reject an update that changes the exports, so that resources which have been created before the
+			// exports have been removed from the operator configuration resource can still be updated.
+			oldMonitoringResource, errorResponse := decodeOldMonitoringResource(request)
+			if errorResponse != nil {
+				return *errorResponse, true
+			}
+			if reflect.DeepEqual(oldMonitoringResource.EffectiveExports(), monitoringResource.EffectiveExports()) {
+				return admission.Response{}, false
+			}
 		}
+		return admission.Denied(ErrorMessageMonitoringExportsWithoutDefaultExport), true
 	}
 
 	return admission.Response{}, false
+}
+
+// isTelemetryCollectionDisabled returns true if telemetry collection has been disabled via Helm or via the operator
+// configuration resource.
+func (h *MonitoringValidationWebhookHandler) isTelemetryCollectionDisabled(
+	availableOperatorConfigurations []dash0v1alpha1.Dash0OperatorConfiguration,
+) bool {
+	return !h.telemetryCollectionEnabledViaHelm ||
+		(len(availableOperatorConfigurations) > 0 &&
+			!pointers.ReadBoolPointerWithDefault(availableOperatorConfigurations[0].Spec.TelemetryCollection.Enabled, true))
+}
+
+// exportWarnings returns admission warnings for export and Dash0 API settings which are valid, but either deprecated
+// or without effect.
+func (h *MonitoringValidationWebhookHandler) exportWarnings(
+	availableOperatorConfigurations []dash0v1alpha1.Dash0OperatorConfiguration,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+) []string {
+	var warnings []string
+	if dash0common.UsesDeprecatedApiEndpoint(monitoringResource.EffectiveExports()) {
+		warnings = append(warnings, WarningMonitoringDeprecatedApiEndpoint)
+	}
+	if monitoringResource.HasExportsConfigured() && h.isTelemetryCollectionDisabled(availableOperatorConfigurations) {
+		warnings = append(warnings, WarningMonitoringExportsWithTelemetryCollectionDisabled)
+	}
+	return warnings
 }
 
 func (h *MonitoringValidationWebhookHandler) validateTelemetryRelatedSettingsIfTelemetryCollectionIsDisabled(

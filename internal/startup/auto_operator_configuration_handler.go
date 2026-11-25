@@ -308,28 +308,40 @@ func (r *AutoOperatorConfigurationResourceHandler) loadExports() []dash0common.E
 }
 
 func (r *AutoOperatorConfigurationResourceHandler) validateOperatorConfiguration(exports []dash0common.Export) error {
-	if r.operatorConfigurationValues.Endpoint == "" && len(exports) == 0 {
+	values := r.operatorConfigurationValues
+	if values.Endpoint == "" && values.ApiEndpoint == "" && len(exports) == 0 {
 		return fmt.Errorf(
 			"invalid operator configuration: the operator configuration resource is managed via Helm, but neither " +
-				"--operator-configuration-endpoint (Helm value operator.dash0Export.endpoint) nor any export (Helm " +
-				"value operator.exports) has been provided",
+				"--operator-configuration-endpoint (Helm value operator.dash0Export.endpoint), " +
+				"--operator-configuration-api-endpoint (Helm value operator.dash0Export.apiEndpoint) nor any export " +
+				"(Helm value operator.exports) has been provided",
 		)
 	}
-	if r.operatorConfigurationValues.Endpoint != "" && r.operatorConfigurationValues.Token == "" {
-		if r.operatorConfigurationValues.SecretRef.Name == "" { //nolint:staticcheck
+	if (values.Endpoint != "" || values.ApiEndpoint != "") && values.Token == "" {
+		if values.SecretRef.Name == "" { //nolint:staticcheck
 			return fmt.Errorf(
-				"invalid operator configuration: --operator-configuration-endpoint has been provided, " +
-					"indicating that an operator configuration resource should be created/updated, but neither " +
-					"--operator-configuration-token nor --operator-configuration-secret-ref-name have been provided",
+				"invalid operator configuration: --operator-configuration-endpoint or " +
+					"--operator-configuration-api-endpoint has been provided, indicating that an operator " +
+					"configuration resource should be created/updated, but neither --operator-configuration-token nor " +
+					"--operator-configuration-secret-ref-name have been provided",
 			)
 		}
-		if r.operatorConfigurationValues.SecretRef.Key == "" { //nolint:staticcheck
+		if values.SecretRef.Key == "" { //nolint:staticcheck
 			return fmt.Errorf(
-				"invalid operator configuration: --operator-configuration-endpoint has been provided, " +
-					"indicating that an operator configuration resource should be created/updated, but neither " +
-					"--operator-configuration-token nor --operator-configuration-secret-ref-key have been provided",
+				"invalid operator configuration: --operator-configuration-endpoint or " +
+					"--operator-configuration-api-endpoint has been provided, indicating that an operator " +
+					"configuration resource should be created/updated, but neither --operator-configuration-token nor " +
+					"--operator-configuration-secret-ref-key have been provided",
 			)
 		}
+	}
+	if values.SelfMonitoringEnabled && values.Endpoint == "" && len(exports) == 0 {
+		return fmt.Errorf(
+			"invalid operator configuration: self-monitoring is enabled, but there is no export to send the " +
+				"self-monitoring telemetry to; either provide --operator-configuration-endpoint (Helm value " +
+				"operator.dash0Export.endpoint) or an export (Helm value operator.exports), or disable self-monitoring " +
+				"(Helm value operator.selfMonitoringEnabled=false)",
+		)
 	}
 	if r.operatorConfigurationValues.TelemetryCollectionEnabled &&
 		r.operatorConfigurationValues.EbpfProfilerEnabled &&
@@ -581,7 +593,7 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 	return nil
 }
 
-func dash0ExportFromValues(operatorConfigurationValues OperatorConfigurationValues) dash0common.Export {
+func authorizationFromValues(operatorConfigurationValues OperatorConfigurationValues) dash0common.Authorization {
 	authorization := dash0common.Authorization{}
 	if operatorConfigurationValues.Token != "" {
 		authorization.Token = &operatorConfigurationValues.Token
@@ -591,13 +603,13 @@ func dash0ExportFromValues(operatorConfigurationValues OperatorConfigurationValu
 			Key:  operatorConfigurationValues.SecretRef.Key,  //nolint:staticcheck
 		}
 	}
+	return authorization
+}
 
+func dash0ExportFromValues(operatorConfigurationValues OperatorConfigurationValues) dash0common.Export {
 	dash0Configuration := &dash0common.Dash0Configuration{
 		Endpoint:      operatorConfigurationValues.Endpoint,
-		Authorization: authorization,
-	}
-	if operatorConfigurationValues.ApiEndpoint != "" {
-		dash0Configuration.ApiEndpoint = operatorConfigurationValues.ApiEndpoint
+		Authorization: authorizationFromValues(operatorConfigurationValues),
 	}
 	if operatorConfigurationValues.Dataset != "" {
 		dash0Configuration.Dataset = operatorConfigurationValues.Dataset
@@ -630,13 +642,34 @@ func convertValuesToResource(
 ) *dash0v1alpha1.Dash0OperatorConfiguration {
 	// The Dash0 export is derived from the operator.dash0Export.* Helm values, which are transported as command line
 	// arguments; the exports from the Helm value operator.exports are transported via the extra config map. The Dash0
-	// export comes first, since self-monitoring only uses the first export.
+	// export comes first, since self-monitoring only uses the first export. The Dash0 API connections are derived from
+	// the same sources in the same order; an apiEndpoint in an entry of operator.exports is converted into a dash0Api
+	// entry, so the resource never uses the deprecated apiEndpoint field.
 	var exports []dash0common.Export
+	var dash0Api []dash0common.Dash0ApiConfiguration
 	if operatorConfigurationValues.Endpoint != "" {
 		exports = append(exports, dash0ExportFromValues(operatorConfigurationValues))
 	}
+	if operatorConfigurationValues.ApiEndpoint != "" {
+		dash0Api = append(dash0Api, dash0common.Dash0ApiConfiguration{
+			Endpoint:      operatorConfigurationValues.ApiEndpoint,
+			Dataset:       operatorConfigurationValues.Dataset,
+			Authorization: authorizationFromValues(operatorConfigurationValues),
+		})
+	}
 	for _, export := range exportsFromExtraConfig {
 		export := *export.DeepCopy()
+		//nolint:staticcheck
+		if export.Dash0 != nil && export.Dash0.ApiEndpoint != "" {
+			dash0Api = append(dash0Api, dash0common.Dash0ApiConfiguration{
+				//nolint:staticcheck
+				Endpoint:      export.Dash0.ApiEndpoint,
+				Dataset:       export.Dash0.Dataset,
+				Authorization: export.Dash0.Authorization,
+			})
+			//nolint:staticcheck
+			export.Dash0.ApiEndpoint = ""
+		}
 		if export.Http != nil && export.Http.Encoding == "" {
 			export.Http.Encoding = dash0common.Proto
 		}
@@ -669,7 +702,8 @@ func convertValuesToResource(
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 			Enabled: new(operatorConfigurationValues.SelfMonitoringEnabled),
 		},
-		Exports: exports,
+		Exports:  exports,
+		Dash0Api: dash0Api,
 		KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
 			Enabled: new(operatorConfigurationValues.KubernetesInfrastructureMetricsCollectionEnabled),
 		},

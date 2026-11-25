@@ -365,29 +365,29 @@ func (r *MonitoringReconciler) applyApiAccessSettings(
 			monitoringResource.Namespace,
 		)
 		var apiConfigs []ApiConfig
-		for idx, dash0Config := range monitoringResource.GetDash0Exports() {
-			token, err := selfmonitoringapiaccess.GetAuthTokenForDash0Export(
+		for idx, dash0ApiConfiguration := range monitoringResource.EffectiveDash0ApiConfigurations() {
+			token, err := selfmonitoringapiaccess.GetAuthToken(
 				ctx,
 				r.Client,
 				r.operatorNamespace,
-				dash0Config,
+				dash0ApiConfiguration.Authorization,
 				logger,
 			)
 			if err != nil || token == nil {
 				logger.Warn(
 					fmt.Sprintf(
-						"Could not retrieve token for export #%d (endpoint: %s) in namespace %s. "+
-							"This export will be skipped, but other exports will continue to be processed.",
+						"Could not retrieve token for Dash0 API connection #%d (endpoint: %s) in namespace %s. "+
+							"This connection will be skipped, but other connections will continue to be processed.",
 						idx+1,
-						dash0Config.ApiEndpoint,
+						dash0ApiConfiguration.Endpoint,
 						monitoringResource.Namespace,
 					),
 				)
 				continue
 			}
 			apiConfig := ApiConfig{
-				Endpoint: dash0Config.ApiEndpoint,
-				Dataset:  dash0Config.Dataset,
+				Endpoint: dash0ApiConfiguration.Endpoint,
+				Dataset:  dash0ApiConfiguration.Dataset,
 				Token:    *token,
 			}
 			apiConfigs = append(apiConfigs, apiConfig)
@@ -395,7 +395,7 @@ func (r *MonitoringReconciler) applyApiAccessSettings(
 		if len(apiConfigs) == 0 {
 			logger.Info(
 				fmt.Sprintf(
-					"None of the configured exports in namespace %s have valid tokens. "+
+					"None of the configured Dash0 API connections in namespace %s have valid tokens. "+
 						"API sync in this namespace will attempt to use the defaults from the operator configuration.",
 					monitoringResource.Namespace,
 				),

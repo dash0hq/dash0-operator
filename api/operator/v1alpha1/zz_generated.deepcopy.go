@@ -490,6 +490,13 @@ func (in *Dash0MonitoringSpec) DeepCopyInto(out *Dash0MonitoringSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.Dash0Api != nil {
+		in, out := &in.Dash0Api, &out.Dash0Api
+		*out = make([]common.Dash0ApiConfiguration, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	in.LogCollection.DeepCopyInto(&out.LogCollection)
 	in.PrometheusScraping.DeepCopyInto(&out.PrometheusScraping)
 	if in.PrometheusScrapingEnabled != nil {
@@ -640,6 +647,13 @@ func (in *Dash0OperatorConfigurationSpec) DeepCopyInto(out *Dash0OperatorConfigu
 	if in.Exports != nil {
 		in, out := &in.Exports, &out.Exports
 		*out = make([]common.Export, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
+	if in.Dash0Api != nil {
+		in, out := &in.Dash0Api, &out.Dash0Api
+		*out = make([]common.Dash0ApiConfiguration, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}

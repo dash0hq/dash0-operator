@@ -46,8 +46,7 @@ type Dash0Configuration struct {
 	Endpoint string `json:"endpoint"`
 
 	// The identifier (not the display name) of the Dash0 dataset to which telemetry data will be sent, see
-	// https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token,
-	// and API access (dashboards, check rules, etc.) uses the dataset "default".
+	// https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token.
 	Dataset string `json:"dataset,omitempty"`
 
 	// The authorization settings for sending data to Dash0. Exactly one of token and secretRef has to be provided.
@@ -55,10 +54,9 @@ type Dash0Configuration struct {
 	// +kubebuilder:validation:Required
 	Authorization Authorization `json:"authorization"`
 
-	// The API endpoint of your Dash0 organization, see
-	// https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. It starts with `https://api.` and ends in
-	// `.dash0.com`. It is not used for telemetry, but for managing dashboards, check rules, synthetic checks and views
-	// via the operator.
+	// Deprecated: Use `dash0Api` instead. If `dash0Api` is not set, every Dash0 export with an `apiEndpoint` is used as
+	// a Dash0 API connection, with the dataset and authorization of the export. Setting both `dash0Api` and
+	// `apiEndpoint` is a validation error.
 	//
 	// +kubebuilder:validation:Optional
 	ApiEndpoint string `json:"apiEndpoint,omitempty"`
@@ -67,6 +65,30 @@ type Dash0Configuration struct {
 	//
 	// +kubebuilder:validation:Optional
 	Keepalive *KeepaliveClientConfig `json:"keepalive,omitempty"`
+}
+
+// Dash0ApiConfiguration describes a connection to the Dash0 API. The operator uses it to manage dashboards, check
+// rules, synthetic checks, views and other Dash0 resources that are defined as Kubernetes resources. It is independent
+// of the exports, which describe where telemetry is sent.
+type Dash0ApiConfiguration struct {
+	// The API endpoint of your Dash0 organization, see
+	// https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. It starts with `https://api.` and ends in
+	// `.dash0.com`.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Endpoint string `json:"endpoint"`
+
+	// The identifier (not the display name) of the Dash0 dataset in which the resources are managed, see
+	// https://app.dash0.com/settings/datasets. If omitted, the dataset "default" is used.
+	//
+	// +kubebuilder:validation:Optional
+	Dataset string `json:"dataset,omitempty"`
+
+	// The authorization settings for the Dash0 API. Exactly one of token and secretRef has to be provided.
+	//
+	// +kubebuilder:validation:Required
+	Authorization Authorization `json:"authorization"`
 }
 
 // Authorization contains the authorization settings for Dash0.
@@ -239,10 +261,38 @@ func (e *Export) HasDash0ExportConfigured() bool {
 	return e != nil && e.Dash0 != nil
 }
 
-func (e *Export) HasDash0ApiAccessConfigured() bool {
-	return e.HasDash0ExportConfigured() &&
-		e.Dash0.ApiEndpoint != "" &&
-		(e.Dash0.Authorization.Token != nil || e.Dash0.Authorization.SecretRef != nil)
+// EffectiveDash0ApiConfigurations returns dash0Api if it is not empty. Otherwise, it derives one Dash0 API
+// configuration from each Dash0 export that has the deprecated apiEndpoint field set, using the dataset and the
+// authorization of that export.
+func EffectiveDash0ApiConfigurations(dash0Api []Dash0ApiConfiguration, exports []Export) []Dash0ApiConfiguration {
+	if len(dash0Api) > 0 {
+		return dash0Api
+	}
+	var derived []Dash0ApiConfiguration
+	for _, export := range exports {
+		//nolint:staticcheck
+		if export.Dash0 == nil || export.Dash0.ApiEndpoint == "" {
+			continue
+		}
+		derived = append(derived, Dash0ApiConfiguration{
+			//nolint:staticcheck
+			Endpoint:      export.Dash0.ApiEndpoint,
+			Dataset:       export.Dash0.Dataset,
+			Authorization: export.Dash0.Authorization,
+		})
+	}
+	return derived
+}
+
+// UsesDeprecatedApiEndpoint returns true if at least one Dash0 export has the deprecated apiEndpoint field set.
+func UsesDeprecatedApiEndpoint(exports []Export) bool {
+	for _, export := range exports {
+		//nolint:staticcheck
+		if export.Dash0 != nil && export.Dash0.ApiEndpoint != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // CountExports counts the total number of different exports (dash0, grpc, http) in the given slice of Export elements.

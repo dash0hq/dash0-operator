@@ -609,7 +609,7 @@ func deriveUpstreamConfig(
 	for _, export := range operatorConfig.EffectiveExports() {
 		if export.Dash0 != nil {
 			endpoint := util.DeriveDecisionMakerEndpoint(export.Dash0.Endpoint)
-			apiEndpoint := strings.TrimSuffix(export.Dash0.ApiEndpoint, "/")
+			apiEndpoint := strings.TrimSuffix(operatorConfig.PrimaryDash0ApiEndpoint(), "/")
 			dataset := export.Dash0.Dataset
 			if dataset == "" {
 				dataset = defaultDataset

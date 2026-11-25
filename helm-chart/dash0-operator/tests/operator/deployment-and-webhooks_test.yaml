@@ -1428,6 +1428,56 @@ tests:
           path: spec.template.spec.containers[0].args[14]
           value: --operator-configuration-prometheus-crd-support-enabled=false
 
+  - it: should add args for creating an operator configuration resource with only Dash0 API access to the deployment
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+        selfMonitoringEnabled: false
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[3]
+          value: --operator-configuration-managed-via-helm=true
+      - equal:
+          path: spec.template.spec.containers[0].args[4]
+          value: --operator-configuration-token=very-secret-dash0-auth-token
+      - equal:
+          path: spec.template.spec.containers[0].args[5]
+          value: --operator-configuration-api-endpoint=https://api.dash0.com
+      - equal:
+          path: spec.template.spec.containers[0].args[6]
+          value: --operator-configuration-self-monitoring-enabled=false
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-endpoint=
+          any: true
+
+  - it: should fail if dash0Export is enabled without endpoint and apiEndpoint
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          token: "very-secret-dash0-auth-token"
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.dash0Export.enabled is set to true, but you provided neither operator.dash0Export.endpoint nor operator.dash0Export.apiEndpoint. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator."
+
+  - it: should fail if dash0Export has no endpoint while self-monitoring is enabled and there are no exports
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.dash0Export.endpoint is not set and operator.exports is empty, so there is no export for the operator's self-monitoring telemetry. Either provide operator.dash0Export.endpoint or operator.exports, or set operator.selfMonitoringEnabled to false."
+
   - it: should add args for creating an operator configuration resource with a custom dataset to the deployment
     documentSelector:
       path: metadata.name
