@@ -1,0 +1,504 @@
+{{- $selfManagedCertificates := include "dash0-operator.selfManagedCertificates" . }}
+{{- if and .Values.operator.ebpfProfilerEnabled (not .Values.operator.telemetryCollectionEnabled) }}
+{{- fail "Error: operator.ebpfProfilerEnabled requires operator.telemetryCollectionEnabled=true." }}
+{{- end }}
+{{- if and .Values.operator.ebpfProfilerEnabled (eq (toString .Values.operator.profilingEnabled) "false") }}
+{{- fail "Error: operator.ebpfProfilerEnabled cannot be combined with operator.profilingEnabled=false. Set operator.profilingEnabled to true or leave it unset." }}
+{{- end }}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dash0-operator.deploymentName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: deployment
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+    dash0.com/enable: "false"
+  {{- with .Values.operator.deploymentAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- include "dash0-operator.validateReplicas" (dict "name" "operator.replicaCount" "value" .Values.operator.replicaCount) }}
+  {{- if not (kindIs "invalid" .Values.operator.replicaCount) }}
+  replicas: {{ .Values.operator.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dash0-operator
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+        {{- if .Values.operator.podAnnotations }}
+        {{- include "dash0-operator.podAnnotations" . | nindent 8 }}
+        {{- end }}
+      labels:
+        app.kubernetes.io/name: dash0-operator
+        app.kubernetes.io/component: controller
+        {{- if .Values.operator.podLabels }}
+        {{- include "dash0-operator.podLabels" . | nindent 8 }}
+        {{- end }}
+        {{- if .Values.operator.gke.autopilot.enabled }}
+        cloud.google.com/matching-allowlist: dash0-operator-manager-v1.0.4
+        {{- end }}
+    spec:
+{{- if .Values.operator.nodeAffinity }}
+      affinity:
+        nodeAffinity:
+          {{- toYaml .Values.operator.nodeAffinity | nindent 10 }}
+{{- end }}
+{{- if .Values.operator.tolerations }}
+      tolerations:
+        {{- toYaml .Values.operator.tolerations | nindent 8 }}
+{{- end }}
+{{- if .Values.operator.managerPriorityClassName }}
+      priorityClassName: {{ .Values.operator.managerPriorityClassName }}
+{{- end }}
+{{- if include "dash0-operator.operatorManagerHasMultipleReplicas" . }}
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: dash0-operator
+            app.kubernetes.io/component: controller
+{{- if semverCompare ">=1.27-0" .Capabilities.KubeVersion.Version }}
+        matchLabelKeys:
+        - pod-template-hash
+{{- end }}
+{{- end }}
+      containers:
+      - name: manager
+        image: {{ include "dash0-operator.image" . | quote }}
+        {{- if .Values.operator.image.pullPolicy }}
+        imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
+        {{- end }}
+        command:
+        - /manager
+        args:
+        - --health-probe-bind-address=:8081
+        - --metrics-bind-address=127.0.0.1:8080
+        - --leader-elect
+{{- if include "dash0-operator.createOperatorConfigurationResource" . }}
+        - --operator-configuration-managed-via-helm=true
+{{- if .Values.operator.dash0Export.enabled }}
+{{- if not .Values.operator.dash0Export.endpoint }}
+{{- fail "Error: operator.dash0Export.enabled is set to true, but you did not provide a value for operator.dash0Export.endpoint. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
+{{- end }}{{/* closes "not .Values.operator.dash0Export.endpoint" */}}
+        - --operator-configuration-endpoint={{ .Values.operator.dash0Export.endpoint }}
+{{- if .Values.operator.dash0Export.token }}
+        - --operator-configuration-token={{ .Values.operator.dash0Export.token }}
+{{- else if (and .Values.operator.dash0Export.secretRef.name .Values.operator.dash0Export.secretRef.key) }}
+        - --operator-configuration-secret-ref-name={{ .Values.operator.dash0Export.secretRef.name }}
+        - --operator-configuration-secret-ref-key={{ .Values.operator.dash0Export.secretRef.key }}
+{{- else }}{{/*else for "Values.operator.dash0Export.token" / "else if (and .Values.operator.dash0Export.secretRef.name .Values.operator.dash0Export.secretRef.key)" */}}
+{{- fail "Error: operator.dash0Export.enabled is set to true, but neither operator.dash0Export.token nor operator.dash0Export.secretRef.name & operator.dash0Export.secretRef.key have been provided. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
+{{- end }}{{/*closes "if Values.operator.dash0Export.token" */}}
+{{- if .Values.operator.dash0Export.apiEndpoint }}
+        - --operator-configuration-api-endpoint={{ .Values.operator.dash0Export.apiEndpoint }}
+{{- end }}{{/*closes "if .Values.operator.dash0Export.apiEndpoint" */}}
+{{- end }}{{/*closes the first "if .Values.operator.dash0Export.enabled" */}}
+        - --operator-configuration-self-monitoring-enabled={{ .Values.operator.selfMonitoringEnabled }}
+        - --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled={{ .Values.operator.kubernetesInfrastructureMetricsCollectionEnabled }}
+        - --operator-configuration-kubernetes-object-collection-enabled={{ .Values.operator.kubernetesObjectCollection.enabled }}
+        - --operator-configuration-kubernetes-object-collection-collect-cluster-scoped-objects={{ .Values.operator.kubernetesObjectCollection.collectClusterScopedObjects }}
+        - --operator-configuration-collect-pod-labels-and-annotations-enabled={{ .Values.operator.collectPodLabelsAndAnnotationsEnabled }}
+        - --operator-configuration-collect-namespace-labels-and-annotations-enabled={{ .Values.operator.collectNamespaceLabelsAndAnnotationsEnabled }}
+        - --operator-configuration-collect-node-labels-and-annotations-enabled={{ .Values.operator.collectNodeLabelsAndAnnotationsEnabled }}
+        - --operator-configuration-prometheus-crd-support-enabled={{ .Values.operator.prometheusCrdSupportEnabled }}
+{{- /* Without the argument, profiling follows --operator-configuration-ebpf-profiler-enabled. */}}
+{{- if not (kindIs "invalid" .Values.operator.profilingEnabled) }}
+        - --operator-configuration-profiling-enabled={{ .Values.operator.profilingEnabled }}
+{{- end }}
+{{- if .Values.operator.ebpfProfilerEnabled }}
+        - --operator-configuration-ebpf-profiler-enabled=true
+{{- with .Values.operator.ebpfProfiler.pidNamespaceTranslationMode }}
+{{- if not (has . (list "none" "auto" "exact" "recursive")) }}
+{{- fail (printf "Error: operator.ebpfProfiler.pidNamespaceTranslationMode must be one of \"none\", \"auto\", \"exact\" or \"recursive\", but was %q." .) -}}
+{{- end }}
+        - --operator-configuration-ebpf-profiler-pid-namespace-translation-mode={{ . }}
+{{- end }}
+{{- end }}
+{{- if .Values.operator.clusterName }}
+        - --operator-configuration-cluster-name={{ .Values.operator.clusterName }}
+{{- end }}{{/*closes "if .Values.operator.clusterName" */}}
+{{- if .Values.operator.dash0Export.enabled }}
+{{- if .Values.operator.dash0Export.dataset }}
+        - --operator-configuration-dataset={{ .Values.operator.dash0Export.dataset }}
+{{- end }}{{/*closes "if .Values.operator.dash0Export.dataset" */}}
+{{- if .Values.operator.dash0Export.keepalive.time }}
+        - --operator-configuration-keepalive-time={{ .Values.operator.dash0Export.keepalive.time }}
+{{- end }}{{/*closes "if .Values.operator.dash0Export.keepalive.time" */}}
+{{- if .Values.operator.dash0Export.keepalive.timeout }}
+        - --operator-configuration-keepalive-timeout={{ .Values.operator.dash0Export.keepalive.timeout }}
+{{- end }}{{/*closes "if .Values.operator.dash0Export.keepalive.timeout" */}}
+{{- if .Values.operator.dash0Export.keepalive.permit_without_stream }}
+        - --operator-configuration-keepalive-permit-without-stream={{ .Values.operator.dash0Export.keepalive.permit_without_stream }}
+{{- end }}{{/*closes "if .Values.operator.dash0Export.keepalive.permit_without_stream" */}}
+{{- end }}{{/*closes the second "if .Values.operator.dash0Export.enabled" */}}
+        - --operator-configuration-auto-monitor-namespaces-enabled={{ .Values.operator.autoMonitorNamespaces.enabled }}
+        - --operator-configuration-auto-monitor-namespaces-label-selector={{ .Values.operator.autoMonitorNamespaces.labelSelector }}
+{{- if not (or (eq .Values.operator.instrumentation.delivery "auto") (eq .Values.operator.instrumentation.delivery "image-volume") (eq .Values.operator.instrumentation.delivery "init-container")) }}
+{{- fail (printf "Error: operator.instrumentation.delivery must be one of \"auto\", \"image-volume\" or \"init-container\", but was %q." .Values.operator.instrumentation.delivery) -}}
+{{- end }}
+        - --operator-configuration-instrumentation-delivery={{ .Values.operator.instrumentation.delivery }}
+{{- end }}{{/*closes "if include dash0-operator.createOperatorConfigurationResource" */}}
+        - --dash0-telemetry-collection-enabled={{ .Values.operator.telemetryCollectionEnabled }}
+{{- if not (include "dash0-operator.instrumentationEnabled" .) }}
+        - --dash0-instrumentation-enabled=false
+{{- end }}
+{{- if .Values.operator.signalControl.enabled }}
+        - --dash0-feature-signal-control-enabled=true
+{{- end }}
+        - --dash0-force-use-otel-collector-service-url={{ .Values.operator.collectors.forceUseServiceUrl }}
+        - --dash0-gke-autopilot={{ .Values.operator.gke.autopilot.enabled }}
+{{- /* Without the argument, the operator detects OpenShift via K8S_POD_OPENSHIFT_SCC (used by the OLM bundle). */}}
+{{- if not (kindIs "invalid" .Values.operator.openShift.enabled) }}
+        - --dash0-openshift={{ .Values.operator.openShift.enabled }}
+{{- end }}
+        - --dash0-disable-otel-collector-host-ports={{ .Values.operator.collectors.disableHostPorts }}
+{{- $otlpGrpcHostPort := int .Values.operator.collectors.otlpGrpcHostPort }}
+{{- $otlpHttpHostPort := int .Values.operator.collectors.otlpHttpHostPort }}
+{{- if or (lt $otlpGrpcHostPort 1) (gt $otlpGrpcHostPort 65535) }}
+{{- fail (printf "Error: operator.collectors.otlpGrpcHostPort must be in the range 1-65535, but was %d." $otlpGrpcHostPort) -}}
+{{- end }}
+{{- if or (lt $otlpHttpHostPort 1) (gt $otlpHttpHostPort 65535) }}
+{{- fail (printf "Error: operator.collectors.otlpHttpHostPort must be in the range 1-65535, but was %d." $otlpHttpHostPort) -}}
+{{- end }}
+{{- if eq $otlpGrpcHostPort $otlpHttpHostPort }}
+{{- fail (printf "Error: operator.collectors.otlpGrpcHostPort and operator.collectors.otlpHttpHostPort must be different, both are set to %d." $otlpGrpcHostPort) -}}
+{{- end }}
+        - --dash0-otel-collector-otlp-grpc-host-port={{ $otlpGrpcHostPort }}
+        - --dash0-otel-collector-otlp-http-host-port={{ $otlpHttpHostPort }}
+{{- if (default .Values.operator.instrumentation.delayAfterEachWorkloadMillis .Values.operator.instrumentationDelayAfterEachWorkloadMillis) }}
+        - --instrumentation-delay-after-each-workload-millis={{ default .Values.operator.instrumentation.delayAfterEachWorkloadMillis .Values.operator.instrumentationDelayAfterEachWorkloadMillis }}
+{{- end }}
+{{- if (default .Values.operator.instrumentation.delayAfterEachNamespaceMillis .Values.operator.instrumentationDelayAfterEachNamespaceMillis) }}
+        - --instrumentation-delay-after-each-namespace-millis={{ default .Values.operator.instrumentation.delayAfterEachNamespaceMillis .Values.operator.instrumentationDelayAfterEachNamespaceMillis }}
+{{- end }}
+        - --dash0-log-level={{ .Values.operator.logLevel }}
+        {{- /*
+        Maintenance note: When adding new args or env entries, make sure they are covered by the Google GKE workload
+        allowlist. In particular, adding args with the prefix "--dash0-" or "--operator-configuration-" is always
+        covered, as well as environment variables with any of the prefixes "DASH0_", "OTEL_", or "K8S_".
+        */}}
+        env:
+        - name: GOMEMLIMIT
+          value: {{ .Values.operator.managerContainerResources.gomemlimit | quote }}
+        - name: DASH0_OPERATOR_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: DASH0_DEPLOYMENT_NAME
+          value: {{ include "dash0-operator.deploymentName" . }}
+        - name: DASH0_WEBHOOK_SERVICE_NAME
+          value: {{ include "dash0-operator.webhookServiceName" . }}
+        - name: DASH0_WEBHOOK_SERVICE_PORT
+          value: {{ include "dash0-operator.webhookServicePort" . | quote }}
+        - name: DASH0_PERSES_DASHBOARD_AUTO_PATCH_CONVERSION_WEBHOOK
+          value: {{ .Values.operator.iac.persesDashboard.autoPatchConversionWebhook | toString | quote }}
+        - name: DASH0_IAC_PERIODIC_RETRY_ENABLED
+          value: {{ .Values.operator.iac.periodicRetry.enabled | toString | quote }}
+        - name: DASH0_IAC_PERIODIC_RETRY_INTERVAL
+          value: {{ .Values.operator.iac.periodicRetry.interval | toString | quote }}
+        - name: DASH0_MANAGED_RESOURCE_NAME_PREFIX
+          value: {{ include "dash0-operator.managedResourceNamePrefix" . | quote }}
+        - name: DASH0_OPERATOR_IMAGE
+          value: {{ include "dash0-operator.image" . | quote }}
+        - name: DASH0_INSTRUMENTATION_IMAGE
+          value: {{ include "dash0-operator.instrumentationImage" . | quote }}
+        {{- if .Values.operator.instrumentationImage.pullPolicy }}
+        - name: DASH0_INSTRUMENTATION_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.instrumentationImage.pullPolicy }}
+        {{- end }}
+        - name: DASH0_COLLECTOR_IMAGE
+          value: {{ include "dash0-operator.collectorImage" . | quote }}
+        {{- if .Values.operator.collectorImage.pullPolicy }}
+        - name: DASH0_COLLECTOR_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.collectorImage.pullPolicy }}
+        {{- end }}
+        {{- if .Values.operator.signalControl.enabled }}
+        - name: DASH0_SIGNAL_CONTROL_COLLECTOR_IMAGE
+          value: {{ include "dash0-operator.signalControlCollectorImage" . | quote }}
+        {{- if .Values.operator.signalControlCollectorImage.pullPolicy }}
+        - name: DASH0_SIGNAL_CONTROL_COLLECTOR_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.signalControlCollectorImage.pullPolicy }}
+        {{- end }}
+        {{- end }}
+        - name: DASH0_TARGET_ALLOCATOR_IMAGE
+          value: {{ include "dash0-operator.targetAllocatorImage" . | quote }}
+        {{- if .Values.operator.targetAllocatorImage.pullPolicy }}
+        - name: DASH0_TARGET_ALLOCATOR_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.targetAllocatorImage.pullPolicy }}
+        {{- end }}
+        - name: DASH0_CONFIGURATION_RELOADER_IMAGE
+          value: {{ include "dash0-operator.configurationReloaderImage" . | quote }}
+        {{- if .Values.operator.configurationReloaderImage.pullPolicy }}
+        - name: DASH0_CONFIGURATION_RELOADER_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.configurationReloaderImage.pullPolicy }}
+        {{- end }}
+        - name: DASH0_FILELOG_OFFSET_SYNC_IMAGE
+          value: {{ include "dash0-operator.filelogOffsetSyncImage" . | quote }}
+        {{- if .Values.operator.filelogOffsetSyncImage.pullPolicy }}
+        - name: DASH0_FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.filelogOffsetSyncImage.pullPolicy }}
+        {{- end }}
+        - name: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE
+          value: {{ include "dash0-operator.filelogOffsetVolumeOwnershipImage" . | quote }}
+        {{- if .Values.operator.filelogOffsetVolumeOwnershipImage.pullPolicy }}
+        - name: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.filelogOffsetVolumeOwnershipImage.pullPolicy }}
+        {{- end }}
+        {{- if .Values.operator.signalControl.enabled }}
+        - name: DASH0_EDGE_PROXY_IMAGE
+          value: {{ include "dash0-operator.edgeProxyImage" . | quote }}
+        {{- if .Values.operator.edgeProxyImage.pullPolicy }}
+        - name: DASH0_EDGE_PROXY_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.edgeProxyImage.pullPolicy }}
+        {{- end }}
+        {{- end }}
+        - name: DASH0_AGENT0_CONNECTOR_IMAGE
+          value: {{ include "dash0-operator.agent0ConnectorImage" . | quote }}
+        {{- if .Values.operator.agent0ConnectorImage.pullPolicy }}
+        - name: DASH0_AGENT0_CONNECTOR_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.agent0ConnectorImage.pullPolicy }}
+        {{- end }}
+        {{- if .Values.operator.agent0Connector.enabled }}
+        {{- if not .Values.operator.agent0Connector.serverAddress }}
+        {{- fail "Error: operator.agent0Connector.enabled is set to true, but you did not provide a value for operator.agent0Connector.serverAddress. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
+        {{- end }}{{/* closes "not .Values.operator.agent0Connector.serverAddress" */}}
+        - name: DASH0_AGENT0_CONNECTOR_ENABLED
+          value: "true"
+        - name: DASH0_AGENT0_CONNECTOR_SERVER_ADDRESS
+          value: {{ .Values.operator.agent0Connector.serverAddress | quote }}
+        {{- if .Values.operator.agent0Connector.token }}
+        - name: DASH0_AGENT0_CONNECTOR_TOKEN
+          value: {{ .Values.operator.agent0Connector.token | quote }}
+        {{- else if (and .Values.operator.agent0Connector.secretRef.name .Values.operator.agent0Connector.secretRef.key) }}
+        - name: DASH0_AGENT0_CONNECTOR_SECRET_REF_NAME
+          value: {{ .Values.operator.agent0Connector.secretRef.name | quote }}
+        - name: DASH0_AGENT0_CONNECTOR_SECRET_REF_KEY
+          value: {{ .Values.operator.agent0Connector.secretRef.key | quote }}
+        {{- else }}{{/* else for "Values.operator.agent0Connector.token" / "else if (and .Values.operator.agent0Connector.secretRef.name .Values.operator.agent0Connector.secretRef.key)" */}}
+        {{- fail "Error: operator.agent0Connector.enabled is set to true, but neither operator.agent0Connector.token nor operator.agent0Connector.secretRef.name & operator.agent0Connector.secretRef.key have been provided. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
+        {{- end }}{{/* closes "if .Values.operator.agent0Connector.token" */}}
+        {{- if .Values.operator.agent0Connector.insecure }}
+        - name: DASH0_AGENT0_CONNECTOR_INSECURE
+          value: "true"
+        {{- end }}{{/* closes "if .Values.operator.agent0Connector.insecure" */}}
+        {{- end }}{{/* closes "if .Values.operator.agent0Connector.enabled" */}}
+        - name: DASH0_SYNTHETICS_WORKER_IMAGE
+          value: {{ include "dash0-operator.syntheticsWorkerImage" . | quote }}
+        {{- if .Values.operator.syntheticsWorkerImage.pullPolicy }}
+        - name: DASH0_SYNTHETICS_WORKER_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.syntheticsWorkerImage.pullPolicy }}
+        {{- end }}
+        {{- if .Values.operator.syntheticsWorker.enabled }}
+        {{- if not .Values.operator.syntheticsWorker.serverAddress }}
+        {{- fail "Error: operator.syntheticsWorker.enabled is set to true, but you did not provide a value for operator.syntheticsWorker.serverAddress. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
+        {{- end }}{{/* closes "not .Values.operator.syntheticsWorker.serverAddress" */}}
+        - name: DASH0_SYNTHETICS_WORKER_ENABLED
+          value: "true"
+        - name: DASH0_SYNTHETICS_WORKER_SERVER_ADDRESS
+          value: {{ .Values.operator.syntheticsWorker.serverAddress | quote }}
+        {{- if .Values.operator.syntheticsWorker.insecure }}
+        - name: DASH0_SYNTHETICS_WORKER_INSECURE
+          value: "true"
+        {{- end }}{{/* closes "if .Values.operator.syntheticsWorker.insecure" */}}
+        {{- if .Values.operator.syntheticsWorker.priorityClassName }}
+        - name: DASH0_SYNTHETICS_WORKER_PRIORITY_CLASS_NAME
+          value: {{ .Values.operator.syntheticsWorker.priorityClassName | quote }}
+        {{- end }}{{/* closes "if .Values.operator.syntheticsWorker.priorityClassName" */}}
+        {{- end }}{{/* closes "if .Values.operator.syntheticsWorker.enabled" */}}
+        {{- if .Values.operator.developmentMode }}
+        - name: DASH0_DEVELOPMENT_MODE
+          value: {{ .Values.operator.developmentMode | toString | quote }}
+        {{- end }}
+        {{- if .Values.operator.pprofPort }}
+        - name: DASH0_PPROF_PORT
+          value: {{ .Values.operator.pprofPort | toString | quote }}
+        {{- end }}
+        {{- if .Values.operator.instrumentation.debug }}
+        - name: DASH0_INSTRUMENTATION_DEBUG
+          value: {{ .Values.operator.instrumentation.debug | toString | quote }}
+        {{- end }}
+        - name: DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION
+          value: {{ .Values.operator.instrumentation.enablePythonAutoInstrumentation | toString | quote }}
+        - name: DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION
+          value: {{ .Values.operator.instrumentation.enableRubyAutoInstrumentation | toString | quote }}
+        {{- if .Values.operator.disableCollectorResourceWatches }}
+        - name: DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES
+          value: {{ .Values.operator.disableCollectorResourceWatches | toString | quote }}
+        {{- end }}
+        {{- if .Values.operator.collectors.debugVerbosityDetailed }}
+        - name: OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED
+          value: {{ .Values.operator.collectors.debugVerbosityDetailed | toString | quote }}
+        {{- end }}
+        {{- $sendBatchSize := int (.Values.operator.collectors.sendBatchSize | default 0) }}
+        {{- $sendBatchMaxSize := int (.Values.operator.collectors.sendBatchMaxSize | default 0) }}
+        {{- if lt $sendBatchSize 0 }}
+        {{- fail "Error: operator.collectors.sendBatchSize must not be negative." -}}
+        {{- end }}
+        {{- if lt $sendBatchMaxSize 0 }}
+        {{- fail "Error: operator.collectors.sendBatchMaxSize must not be negative." -}}
+        {{- end }}
+        {{- if and (eq $sendBatchSize 0) (gt $sendBatchMaxSize 0) (lt $sendBatchMaxSize 8192) }}
+        {{- fail "Error: operator.collectors.sendBatchMaxSize must be at least 8192 (the default value of sendBatchSize) when sendBatchSize is not set explicitly." -}}
+        {{- end }}
+        {{- if and (gt $sendBatchSize 0) (gt $sendBatchMaxSize 0) (lt $sendBatchMaxSize $sendBatchSize) }}
+        {{- fail "Error: operator.collectors.sendBatchMaxSize must be greater than or equal to operator.collectors.sendBatchSize." -}}
+        {{- end }}
+        {{- if gt $sendBatchSize 0 }}
+        - name: OTEL_COLLECTOR_SEND_BATCH_SIZE
+          value: {{ .Values.operator.collectors.sendBatchSize | quote }}
+        {{- end }}
+        {{- if gt $sendBatchMaxSize 0 }}
+        - name: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
+          value: {{ .Values.operator.collectors.sendBatchMaxSize | quote }}
+        {{- end }}
+        {{- if or .Values.operator.collectors.k8s_attributes.disableReplicasetInformer .Values.operator.collectors.disableReplicasetInformer }}
+        - name: OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER
+          value: {{ or .Values.operator.collectors.k8s_attributes.disableReplicasetInformer .Values.operator.collectors.disableReplicasetInformer | toString | quote }}
+        {{- end }}
+        {{- if .Values.operator.collectors.k8s_attributes.disableJobInformer }}
+        - name: OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_JOB_INFORMER
+          value: {{ .Values.operator.collectors.k8s_attributes.disableJobInformer | toString | quote }}
+        {{- end }}
+        {{- if .Values.operator.collectors.k8s_attributes.wait_for_metadata }}
+        - name: OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA
+          value: {{ .Values.operator.collectors.k8s_attributes.wait_for_metadata | toString | quote }}
+        - name: OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA_TIMEOUT
+          value: {{ .Values.operator.collectors.k8s_attributes.wait_for_metadata_timeout | toString | quote }}
+        {{- end }}
+        {{- if .Values.operator.collectors.k8s_attributes.shareProcessorBetweenPipelines }}
+        - name: OTEL_COLLECTOR_K8SATTRIBUTES_SHARE_PROCESSOR_BETWEEN_PIPELINES
+          value: "true"
+        {{- end }}
+        {{- if or .Values.operator.collectors.enablePprof .Values.operator.collectors.enablePprofExtension }}
+        - name: OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION
+          value: "true"
+        {{- end }}
+        {{- if .Values.operator.collectors.compressConfigMaps }}
+        - name: OTEL_COLLECTOR_COMPRESS_CONFIG_MAPS
+          value: {{ .Values.operator.collectors.compressConfigMaps | toString | quote }}
+        {{- end }}
+        {{- if not .Values.operator.collectors.kubeletstats.autoDetectEndpoint }}
+        {{- if not .Values.operator.collectors.kubeletstats.endpoint }}
+        {{- fail "Error: operator.collectors.kubeletstats.endpoint is required when operator.collectors.kubeletstats.autoDetectEndpoint is set to false." -}}
+        {{- end }}
+        {{- if not .Values.operator.collectors.kubeletstats.authType }}
+        {{- fail "Error: operator.collectors.kubeletstats.authType is required when operator.collectors.kubeletstats.autoDetectEndpoint is set to false." -}}
+        {{- end }}
+        - name: OTEL_COLLECTOR_KUBELETSTATS_AUTO_DETECT_ENDPOINT
+          value: "false"
+        - name: OTEL_COLLECTOR_KUBELETSTATS_ENDPOINT
+          value: {{ .Values.operator.collectors.kubeletstats.endpoint | quote }}
+        - name: OTEL_COLLECTOR_KUBELETSTATS_AUTH_TYPE
+          value: {{ .Values.operator.collectors.kubeletstats.authType | quote }}
+        - name: OTEL_COLLECTOR_KUBELETSTATS_INSECURE_SKIP_VERIFY
+          value: {{ .Values.operator.collectors.kubeletstats.insecureSkipVerify | toString | quote }}
+        {{- end }}
+        - name: K8S_POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        - name: K8S_NODE_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: K8S_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: K8S_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: K8S_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: K8S_POD_OPENSHIFT_SCC
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['openshift.io/scc']
+        {{- if $selfManagedCertificates }}
+        - name: DASH0_WEBHOOK_CERTIFICATES_SECRET_NAME
+          value: {{ include "dash0-operator.webhookCertificatesSecretName" . }}
+        - name: DASH0_PREVIOUS_CERTIFICATES_SECRET_NAME
+          value: {{ include "dash0-operator.legacyCertificatesSecretName" . }}
+        - name: DASH0_CA_BUNDLE_TARGETS
+          value: {{ include "dash0-operator.caBundleTargets" . | quote }}
+        {{- end }}
+        - name: DASH0_EBPF_PROFILER_ENABLED
+          value: {{ .Values.operator.ebpfProfilerEnabled | toString | quote }}
+        {{- if .Values.operator.ebpfProfilerEnabled }}
+        - name: DASH0_EBPF_PROFILER_IMAGE
+          value: {{ include "dash0-operator.ebpfProfilerImage" . | quote }}
+        {{- if .Values.operator.ebpfProfilerImage.pullPolicy }}
+        - name: DASH0_EBPF_PROFILER_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.ebpfProfilerImage.pullPolicy | quote }}
+        {{- end }}
+        - name: DASH0_DEBUGINFO_PROXY_IMAGE
+          value: {{ include "dash0-operator.debuginfoProxyImage" . | quote }}
+        {{- if .Values.operator.debuginfoProxyImage.pullPolicy }}
+        - name: DASH0_DEBUGINFO_PROXY_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.debuginfoProxyImage.pullPolicy | quote }}
+        {{- end }}
+        {{- end }}
+        ports:
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
+        resources:
+          {{- unset (.Values.operator.managerContainerResources | mustDeepCopy) "gomemlimit" | toYaml | nindent 10 }}
+        {{ include "dash0-operator.restrictiveContainerSecurityContext" dict | nindent 8 }}
+        volumeMounts:
+        {{- if not $selfManagedCertificates }}
+        - name: certificates
+          mountPath: /tmp/k8s-webhook-server/serving-certs
+          readOnly: true
+        {{- end }}
+        - name: config-volume
+          mountPath: /etc/config
+          readOnly: true
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      {{- with .Values.operator.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{ include "dash0-operator.restrictivePodSecurityContext" dict | nindent 6 }}
+      serviceAccountName: {{ template "dash0-operator.serviceAccountName" . }}
+      automountServiceAccountToken: true
+      terminationGracePeriodSeconds: 15
+      volumes:
+      {{- if not $selfManagedCertificates }}
+      {{- if not .Values.operator.certManager.secretName }}
+      {{- fail "Error: operator.certManager.useCertManager is set to true, but you did not provide a value for operator.certManager.secretName. Please refer to the instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#using-cert-manager." -}}
+      {{- end }}
+      - name: certificates
+        secret:
+          defaultMode: 420
+          secretName: {{ .Values.operator.certManager.secretName | quote }}
+      {{- end }}
+      - name: config-volume
+        configMap:
+          name: {{ template "dash0-operator.extraConfigMapName" . }}

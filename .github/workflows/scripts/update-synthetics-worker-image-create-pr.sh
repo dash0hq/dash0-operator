@@ -14,8 +14,8 @@ done
 
 branch_name="update-synthetics-worker-image"
 values_file="helm-chart/dash0-operator/values.yaml"
-test_file="helm-chart/dash0-operator/tests/operator/deployment-and-webhooks_test.yaml"
-snapshot_file="helm-chart/dash0-operator/tests/operator/__snapshot__/deployment-and-webhooks_test.yaml.snap"
+test_file="helm-chart/dash0-operator/tests/operator/deployment_test.yaml"
+snapshot_file="helm-chart/dash0-operator/tests/operator/__snapshot__/deployment_test.yaml.snap"
 
 img="dash0-synthetics-worker"
 yaml_key="syntheticsWorkerImage"

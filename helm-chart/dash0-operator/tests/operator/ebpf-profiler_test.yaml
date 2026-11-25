@@ -1,6 +1,6 @@
 suite: test eBPF profiler opt-in and images
 templates:
-  - operator/deployment-and-webhooks.yaml
+  - operator/deployment.yaml
 release:
   name: test-release
 tests:
