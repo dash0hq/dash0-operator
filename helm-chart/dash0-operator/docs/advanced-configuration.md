@@ -673,6 +673,18 @@ Things to consider before running more than one replica:
   collected while no replica holds the lease.
 - A replica that takes over the lease sends the Kubernetes events that occurred since that replica has been started and
   that are still stored in the cluster, including events the previous leader has already sent.
+- Due to a bug in the Kubernetes cluster receiver of the OpenTelemetry collector, a replica can keep collecting
+  Kubernetes infrastructure metrics after it has lost the lease, which duplicates these metrics until that replica
+  restarts. This can only affect a replica that acquired the lease right after starting, while no lease existed yet,
+  for example when switching to more than one replica for the first time. To avoid this, restart the
+  cluster-metrics-collector once after switching to more than one replica:
+
+  ```console
+  kubectl rollout restart deployment -n <operator-namespace> dash0-operator-cluster-metrics-collector-deployment
+  ```
+
+  The name of the Deployment depends on `operator.managedResourceNamePrefix`, or on the Helm release name if that is not
+  set.
 
 ## Configuring Collector Host Ports
 
