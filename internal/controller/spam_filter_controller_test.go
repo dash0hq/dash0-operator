@@ -272,6 +272,15 @@ var _ = Describe(
 				)
 
 				It(
+					"rejects a spam filter with more than one context", func() {
+						spamFilterResource := createSpamFilterResource(TestNamespaceName, spamFilterName)
+						spamFilterResource.Spec.Contexts = []string{"log", "span"}
+						Expect(k8sClient.Create(ctx, spamFilterResource)).To(
+							MatchError(ContainSubstring("spec.contexts: Too many: 2: must have at most 1 item")))
+					},
+				)
+
+				It(
 					"updates a spam filter", func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
@@ -282,7 +291,7 @@ var _ = Describe(
 						Expect(k8sClient.Create(ctx, spamFilterResource)).To(Succeed())
 
 						// Modify the resource
-						spamFilterResource.Spec.Contexts = []string{"log", "span"}
+						spamFilterResource.Spec.Contexts = []string{"span"}
 						Expect(k8sClient.Update(ctx, spamFilterResource)).To(Succeed())
 
 						result, err := spamFilterReconciler.Reconcile(

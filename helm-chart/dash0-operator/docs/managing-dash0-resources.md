@@ -866,8 +866,9 @@ spec:
       value: "kube-system"
 ```
 
-The `contexts` field specifies which signal types the filter applies to (`datapoint`, `log`, `profile_sample`, `span`
-or `web_event`).
+The `contexts` field specifies the signal type the filter applies to (`datapoint`, `log`, `profile_sample`, `span` or
+`web_event`).
+It must contain exactly one entry; to filter several signal types, create one spam filter per signal type.
 The `filter` field contains one or more conditions. Each condition matches against an attribute `key` with an `operator`
 (e.g. `is`, `is_not`, `contains`, `starts_with`) and a `value` to compare against.
 

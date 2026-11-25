@@ -942,7 +942,25 @@ spec:
 							Operator: ptr.To("contains"),
 							Value:    ptr.To("20"),
 						}),
-						"status_code and timing assertions only support the operators",
+						"status_code assertions only support the operators",
+					),
+					Entry(
+						"accepts lte for a timing assertion",
+						withAssertion("timing", dash0v1alpha1.Dash0SyntheticCheckAssertionSpec{
+							Type:     ptr.To("response"),
+							Operator: ptr.To("lte"),
+							Value:    ptr.To("1000ms"),
+						}),
+						"",
+					),
+					Entry(
+						"rejects an operator other than gte and lte for a timing assertion",
+						withAssertion("timing", dash0v1alpha1.Dash0SyntheticCheckAssertionSpec{
+							Type:     ptr.To("response"),
+							Operator: ptr.To("lt"),
+							Value:    ptr.To("1000ms"),
+						}),
+						"timing assertions only support the operators gte and lte",
 					),
 					Entry(
 						"accepts a known error type for an error assertion",
