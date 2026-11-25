@@ -518,17 +518,24 @@ jobs:
           context: olm/build/catalog
           file: olm/catalog/catalog.Dockerfile
 
-  # After the bundle image of a release has been pushed, pushes the branch that submits the release to the OpenShift
-  # community catalog to the fork dash0hq/community-operators-prod. A person opens the pull request from the compare link
-  # in the job summary.
+  # After the bundle image of a release has been pushed, pushes the branch that submits the release to the community
+  # catalog to its fork in dash0hq, for the OpenShift community catalog (dash0hq/community-operators-prod) and for
+  # operatorhub.io (dash0hq/community-operators-operatorhub). A person opens the pull requests from the compare links in
+  # the job summaries.
   push_community_operator_branch:
-    name: Push Community Catalog Submission Branch
+    name: Push Community Catalog Submission Branch (${{ matrix.catalog }})
     needs:
       - build_and_push_olm_bundle_image
     if: ${{ always() && contains(github.ref, 'refs/tags/') && needs.build_and_push_olm_bundle_image.result == 'success' }}
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        catalog: [openshift, operatorhub]
     uses: ./.github/workflows/push-community-operator-branch.yaml
+    with:
+      catalog: ${{ matrix.catalog }}
     secrets:
       COMMUNITY_OPERATORS_SYNC_APP_PRIVATE_KEY: ${{ secrets.COMMUNITY_OPERATORS_SYNC_APP_PRIVATE_KEY }}
 
