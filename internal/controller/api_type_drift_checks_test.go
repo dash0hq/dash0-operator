@@ -134,6 +134,7 @@ var namedCrdSchemaDriftChecks = []namedCrdSchemaDriftCheck{
 		clientType: reflect.TypeFor[dash0apiclient.SignalToMetricsSpec](),
 		allowedDifferences: map[string]string{
 			"only in client: alternativeDatasetId": "not supported by Dash0SignalToMetrics yet",
+			"only in client: dropMatched":          "not supported by Dash0SignalToMetrics yet",
 			"only in client: targetDatasetMode":    "not supported by Dash0SignalToMetrics yet",
 		},
 	}},
