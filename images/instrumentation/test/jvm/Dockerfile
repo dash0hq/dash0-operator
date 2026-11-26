@@ -36,3 +36,4 @@ RUN for test in /test-cases/*; do \
 COPY --from=init /dash0-instrumentation /__otel_auto_instrumentation
 ENV LD_PRELOAD=/__otel_auto_instrumentation/injector/libotelinject.so
 ENV OTEL_INJECTOR_CONFIG_FILE=/__otel_auto_instrumentation/injector/injector.conf
+ENV OTEL_JAVAAGENT_CONFIGURATION_FILE=/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties

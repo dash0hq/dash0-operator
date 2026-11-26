@@ -113,6 +113,9 @@ func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
 				"OTEL_INJECTOR_CONFIG_FILE": {
 					Value: "/__otel_auto_instrumentation/injector/injector.conf",
 				},
+				"OTEL_JAVAAGENT_CONFIGURATION_FILE": {
+					Value: "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties",
+				},
 				"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 					ValueFrom: "metadata.namespace",
 				},

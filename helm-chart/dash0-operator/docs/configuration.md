@@ -487,6 +487,8 @@ The Dash0 monitoring resource supports additional configuration settings:
   See <https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators> for more information.
 
   When the option is not set, the operator will not set the environment variable `OTEL_PROPAGATORS`.
+  Workloads then use the default propagators of their runtime's instrumentation.
+  `OTEL_PROPAGATORS`, whether set by this option or on the container, overrides that default.
   If the option is set in the monitoring resource at some point and then later removed again, the operator will remove
   the environment variable from instrumented workloads if and only if the value of the environment variable matches the
   previously used setting in the monitoring resource.
