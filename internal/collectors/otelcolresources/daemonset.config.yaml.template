@@ -605,17 +605,6 @@ processors:
     logs:
       resource:
         - 'attributes["parca.agent"] == "true"'
-  {{- if or .SendBatchSize .SendBatchMaxSize }}
-  batch:
-    {{- if .SendBatchSize }}
-    send_batch_size: {{ .SendBatchSize }}
-    {{- end }}
-    {{- if .SendBatchMaxSize }}
-    send_batch_max_size: {{ .SendBatchMaxSize }}
-    {{- end }}
-  {{- else }}
-  batch: {}
-  {{- end }}
 
   resource_detection:
     fail_on_missing_metadata: false
@@ -1183,7 +1172,6 @@ service:
         {{- if .CustomFilters.HasTraceFilters }}
         - filter/traces/custom_telemetry_filter
         {{- end }}
-        - batch
         {{- if .CustomTransforms.HasTraceTransforms }}
         - transform/traces/custom_telemetry_transform
         {{- end }}
@@ -1325,7 +1313,6 @@ service:
         {{- if .CustomFilters.HasMetricFilters }}
         - filter/metrics/custom_telemetry_filter
         {{- end }}
-        - batch
         {{- if .CustomTransforms.HasMetricTransforms }}
         - transform/metrics/custom_telemetry_transform
         {{- end }}
@@ -1473,7 +1460,6 @@ service:
         {{- if .CustomFilters.HasLogFilters }}
         - filter/logs/custom_telemetry_filter
         {{- end }}
-        - batch
         {{- if .CustomTransforms.HasLogTransforms }}
         - transform/logs/custom_telemetry_transform
         {{- end }}
@@ -1589,7 +1575,6 @@ service:
         {{- if .CustomFilters.HasProfileFilters }}
         - filter/profiles/custom_telemetry_filter
         {{- end }}
-        {{- /* Note: the batch processor does not support profiles yet (upstream). */}}
         {{- if .CustomTransforms.HasProfileTransforms }}
         - transform/profiles/custom_telemetry_transform
         {{- end }}

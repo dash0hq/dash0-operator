@@ -806,16 +806,17 @@ operator:
     # This setting produces a large amount of logs and is not suitable for extended production use.
     debugVerbosityDetailed: false
 
-    # If set to a value > 0, the send_batch_size parameter will be set for the batch processor of the collectors
-    # managed by the operator, otherwise it uses the processor's default (8192)
-    # (see https://github.com/open-telemetry/opentelemetry-collector/blob/main/processor/batchprocessor/README.md).
-    # There is usually no need to configure this.
+    # The collectors managed by the operator batch telemetry in their exporters (sending_queue::batch, see
+    # https://github.com/open-telemetry/opentelemetry-collector/blob/main/exporter/exporterhelper/README.md).
+    # If set to a value > 0, sendBatchSize sets the minimum number of items (spans, metric data points, log records,
+    # profile samples) per batch (min_size), otherwise the default of 8192 is used. There is usually no need to
+    # configure this.
     sendBatchSize: 0
 
-    # If set to a value > 0, the send_batch_max_size parameter will be set for the batch processor of the collectors
-    # managed by the operator. There is usually no need to configure this. The value must be greater than or equal to
-    # sendBatchSize, which defaults to 8192. If you need to use a smaller number, make sure to set both sendBatchSize
-    # and sendBatchMaxSize.
+    # If set to a value > 0, sendBatchMaxSize sets the maximum number of items per batch (max_size) for the exporters
+    # of the collectors managed by the operator, otherwise batches have no upper size limit. There is usually no need
+    # to configure this. The value must be greater than or equal to sendBatchSize, which defaults to 8192. If you need
+    # to use a smaller number, make sure to set both sendBatchSize and sendBatchMaxSize.
     sendBatchMaxSize: 0
 
     # If set to true, instrumented workloads will be instructed to use the service URL of the OpenTelemetry collector
