@@ -481,8 +481,8 @@ To buffer longer outages, raise the memory limit of the collector containers; th
 the queue capacity explicitly, use `operator.collectors.sendingQueueSizeMiB`, and make sure the memory limit leaves room
 for it: the in-memory representation of the queued telemetry is about 1.5 to 3.5 times larger than its encoded size.
 
-Exporters to backends other than Dash0 (`grpc` and `http` exports) do not retry failed exports, see
-[Exporting to Multiple Backends](#exporting-to-multiple-backends).
+Exporters to backends other than Dash0 (`grpc` and `http` exports) do not retry failed exports, and drop exports that
+take longer than five seconds, see [Exporting to Multiple Backends](#exporting-to-multiple-backends).
 
 The collectors report the state of their queues in their self-monitoring metrics: `otelcol_exporter_queue_size` and
 `otelcol_exporter_queue_capacity` (the fill level of the queue), `otelcol_exporter_enqueue_failed_*` (data rejected
@@ -980,6 +980,11 @@ clients and the filelog receiver then resend the data, so the export to Dash0 is
 receive the data again. For that reason, exporters to backends other than Dash0 (`grpc` and `http` exports) do not
 retry failed exports: while such a backend is unavailable, the telemetry for it is dropped, and the export to Dash0 and
 to other backends continues unaffected. This also applies when no Dash0 export is configured.
+
+A backend that does not respond at all, instead of returning an error, still holds up each export until it times out.
+To keep their queues draining in that case as well, exporters to backends other than Dash0 send up to 20 batches
+concurrently, and drop a batch that the backend has not accepted within five seconds. A backend that is slow but
+healthy also loses the batches it takes longer than five seconds to accept.
 
 While Dash0 is unavailable and the queues of the Dash0 exporters are full, the resent data can reach other backends
 more than once.

@@ -39,15 +39,27 @@ const (
 	// memory limit to derive it from.
 	defaultExporterQueueSizeMiB = 64
 	mebibyte                    = 1024 * 1024
+	// nonDash0ExporterNumConsumers is the number of batches that an exporter to another backend than Dash0 sends
+	// concurrently (upstream default: 10), see nonDash0ExportSettings in exporters.partial.yaml.template. A batch keeps
+	// its share of the queue capacity until its export has finished, so more concurrent exports only help as long as
+	// the batches in flight fit into the queue.
+	nonDash0ExporterNumConsumers = 20
 )
 
 // exporterBatching holds the sending_queue settings that are rendered for every exporter, see the sendingQueue
 // template in exporters.partial.yaml.template. The queue is sized in bytes, the batches are sized in items. MaxSize
-// zero means no upper bound.
+// zero means no upper bound, NumConsumers zero means upstream's default.
 type exporterBatching struct {
 	QueueSizeBytes uint64
 	MinSize        uint32
 	MaxSize        uint32
+	NumConsumers   uint32
+}
+
+// NonDash0 returns the sending_queue settings for exporters to other backends than Dash0.
+func (b exporterBatching) NonDash0() exporterBatching {
+	b.NumConsumers = nonDash0ExporterNumConsumers
+	return b
 }
 
 type customFilters struct {
