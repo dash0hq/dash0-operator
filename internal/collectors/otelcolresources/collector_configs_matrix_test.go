@@ -905,7 +905,6 @@ func (e *collectorConfigMatrixEntry) renderProducerCollectorConfigs(
 	if config.ProfilingEnabled {
 		daemonSetFeatureGates = append(daemonSetFeatureGates, profilesSupportFeatureGate)
 	}
-	// On GKE Autopilot, the collector image's entrypoint adds the deployment's gates instead of an arg.
 	if config.K8sAttributesShareProcessor {
 		daemonSetFeatureGates = append(daemonSetFeatureGates, k8sAttributesShareProcessorFeatureGate)
 		deploymentFeatureGates = append(deploymentFeatureGates, k8sAttributesShareProcessorFeatureGate)
