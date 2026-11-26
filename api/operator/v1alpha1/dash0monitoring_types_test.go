@@ -37,6 +37,26 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 
 	Describe("converting to and from hub version", func() {
 
+		It("should keep dash0Api when converting to the hub version and back", func() {
+			token := AuthorizationTokenTest
+			dash0Api := []dash0common.Dash0ApiConfiguration{{
+				Endpoint:      "https://api.dash0.com",
+				Dataset:       "dataset",
+				Authorization: dash0common.Authorization{Token: &token},
+			}}
+			src := &Dash0Monitoring{
+				ObjectMeta: testObjectMeta(),
+				Spec:       Dash0MonitoringSpec{Dash0Api: dash0Api},
+			}
+			hubResource := dash0v1beta1.Dash0Monitoring{}
+			Expect(src.ConvertTo(conversion.Hub(&hubResource))).To(Succeed())
+			Expect(hubResource.Spec.Dash0Api).To(Equal(dash0Api))
+
+			dst := &Dash0Monitoring{}
+			Expect(dst.ConvertFrom(conversion.Hub(&hubResource))).To(Succeed())
+			Expect(dst.Spec.Dash0Api).To(Equal(dash0Api))
+		})
+
 		DescribeTable("should convert v1alpha1 to hub version", func(testConfig convertToTestCase) {
 			objectMeta := testConfig.srcObjectMeta
 			src := &Dash0Monitoring{

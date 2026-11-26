@@ -102,6 +102,13 @@ func (in *Dash0MonitoringSpec) DeepCopyInto(out *Dash0MonitoringSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.Dash0Api != nil {
+		in, out := &in.Dash0Api, &out.Dash0Api
+		*out = make([]common.Dash0ApiConfiguration, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	in.InstrumentWorkloads.DeepCopyInto(&out.InstrumentWorkloads)
 	in.LogCollection.DeepCopyInto(&out.LogCollection)
 	in.EventCollection.DeepCopyInto(&out.EventCollection)

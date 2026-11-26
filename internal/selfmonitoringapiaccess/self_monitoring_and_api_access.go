@@ -155,7 +155,7 @@ func ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 	// for self-monitoring we only send telemetry to a single backend
 	export := resource.EffectiveExports()[0]
 	if export.Dash0 != nil {
-		token, err := GetAuthTokenForDash0Export(ctx, k8sClient, operatorNamespace, *export.Dash0, logger)
+		token, err := GetAuthToken(ctx, k8sClient, operatorNamespace, export.Dash0.Authorization, logger)
 		if err != nil || token == nil {
 			logger.Warn(
 				"Self-monitoring is enabled but either no authorization is defined or the token could not be retrieved. " +
@@ -225,7 +225,6 @@ func convertResourceToDash0ExportConfiguration(
 				Endpoint:      dash0Export.Endpoint,
 				Dataset:       dash0Export.Dataset,
 				Authorization: dash0Export.Authorization,
-				ApiEndpoint:   dash0Export.ApiEndpoint,
 			},
 		},
 		Token: token,
@@ -1089,23 +1088,21 @@ func addInsecureFlagIfNecessary(pipeline string, endpoint string) string {
 	return pipeline
 }
 
-// GetAuthTokenForDash0Export takes a Dash0 export configuration and returns the configured token by either
-// resolving the provided secretRef or returning the token literal.
-func GetAuthTokenForDash0Export(
+// GetAuthToken returns the Dash0 auth token of the given authorization settings, by either resolving the provided
+// secretRef or returning the token literal.
+func GetAuthToken(
 	ctx context.Context,
 	k8sClient client.Client,
 	operatorNamespace string, // we always look up the auth secrets in the operator namespace
-	dash0Export dash0common.Dash0Configuration,
+	authorization dash0common.Authorization,
 	logger logd.Logger,
 ) (*string, error) {
-	if dash0Export.Authorization.SecretRef != nil {
-		// The operator configuration resource uses a secret ref to provide the Dash0 auth token, exchange the secret
-		// ref for an actual token and distribute the token value to all clients that need an auth token.
+	if authorization.SecretRef != nil {
 		token, err := ExchangeSecretRefForToken(
 			ctx,
 			k8sClient,
 			operatorNamespace,
-			dash0Export,
+			authorization,
 			logger,
 		)
 		if err != nil {
@@ -1113,27 +1110,25 @@ func GetAuthTokenForDash0Export(
 			return nil, err
 		}
 		return token, nil
-	} else if dash0Export.Authorization.Token != nil &&
-		*dash0Export.Authorization.Token != "" {
-		// The operator configuration resource uses a token literal to provide the Dash0 auth token
-		return dash0Export.Authorization.Token, nil
+	} else if authorization.Token != nil && *authorization.Token != "" {
+		return authorization.Token, nil
 	}
-	// The operator configuration resource neither has a secret ref nor a token literal, remove the auth token from all
-	// clients. This case should not happen since we only call this func if HasDash0ApiAccessConfigured returns true.
 	return nil, errors.New("authorization has neither secretRef nor token literal")
 }
 
+// ExchangeSecretRefForToken resolves the secretRef of the given authorization settings to the token value stored in
+// that secret.
 func ExchangeSecretRefForToken(
 	ctx context.Context,
 	k8sClient client.Client,
 	operatorNamespace string, // we always look up the auth secrets in the operator namespace
-	dash0Config dash0common.Dash0Configuration,
+	authorization dash0common.Authorization,
 	logger logd.Logger,
 ) (*string, error) {
-	if dash0Config.Authorization.SecretRef == nil {
-		return nil, fmt.Errorf("dash0Config has no secret ref")
+	if authorization.SecretRef == nil {
+		return nil, fmt.Errorf("authorization has no secret ref")
 	}
-	secretRef := dash0Config.Authorization.SecretRef
+	secretRef := authorization.SecretRef
 	token, err := getSecretValue(
 		ctx,
 		k8sClient,

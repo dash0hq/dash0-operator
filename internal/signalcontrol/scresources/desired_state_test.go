@@ -396,6 +396,30 @@ var _ = Describe("Edge Proxy tail-sampling gating", func() {
 		Expect(env).To(HaveKey("UPSTREAM_EDGESETTINGS_ENABLED"))
 	})
 
+	It("uses the endpoint of the first dash0Api entry as the API endpoint", func() {
+		opConfig := operatorConfigWithDash0Export.DeepCopy()
+		opConfig.Spec.Dash0Api = []dash0common.Dash0ApiConfiguration{
+			{Endpoint: "https://api.dash0.com/", Authorization: opConfig.Spec.Export.Dash0.Authorization},
+			{Endpoint: "https://api-2.dash0.com", Authorization: opConfig.Spec.Export.Dash0.Authorization},
+		}
+		sc := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Sampling: dash0v1alpha1.SamplingConfig{Enabled: ptr(false)},
+			},
+		}
+
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", sc, opConfig,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testSelfMonitoring, util.ExtraConfig{}, false, false, logd.Discard(),
+		)
+
+		env := envNames(dep.Spec.Template.Spec.Containers[0])
+		Expect(env).To(HaveKey("UPSTREAM_TAILSAMPLING_ENABLED"))
+		Expect(env["UPSTREAM_TAILSAMPLING_ENABLED"].Value).To(Equal("false"))
+		Expect(env).To(HaveKey("UPSTREAM_EDGESETTINGS_ENABLED"))
+		Expect(env["UPSTREAM_EDGESETTINGS_ADDRESS"].Value).To(Equal("https://api.dash0.com"))
+	})
+
 	It("keeps tail sampling on when sampling is enabled", func() {
 		opConfig := operatorConfigWithDash0Export.DeepCopy()
 		opConfig.Spec.Export.Dash0.ApiEndpoint = "https://api.dash0.com"

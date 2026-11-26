@@ -557,6 +557,51 @@ var _ = Describe(
 								Expect(namespacedApiClient2.namespacedApiconfigs[TestNamespaceName]).To(Equal(expectedApiConfigs))
 							},
 						)
+
+						It(
+							"should set the API configs from dash0Api instead of the exports",
+							func() {
+								By("Update monitoring resource to have dash0Api and an export without API endpoint")
+								monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+								monitoringResource.Spec.Exports = []dash0common.Export{
+									{
+										Dash0: &dash0common.Dash0Configuration{
+											Endpoint: EndpointDash0Test,
+											Authorization: dash0common.Authorization{
+												Token: &AuthorizationTokenTest,
+											},
+										},
+									},
+								}
+								monitoringResource.Spec.Dash0Api = []dash0common.Dash0ApiConfiguration{
+									{
+										Endpoint: ApiEndpointTestAlternative,
+										Dataset:  DatasetCustomTestAlternative,
+										Authorization: dash0common.Authorization{
+											Token: &AuthorizationTokenTestAlternative,
+										},
+									},
+								}
+								Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
+
+								namespacedApiClient1.ResetCallCounts()
+								namespacedApiClient2.ResetCallCounts()
+
+								triggerReconcileRequest(ctx, monitoringReconciler)
+
+								expectedApiConfigs := []ApiConfig{
+									{
+										Endpoint: ApiEndpointTestAlternative,
+										Dataset:  DatasetCustomTestAlternative,
+										Token:    AuthorizationTokenTestAlternative,
+									},
+								}
+								Expect(namespacedApiClient1.setNamespacedApiEndpointCalls).To(Equal(1))
+								Expect(namespacedApiClient1.namespacedApiconfigs[TestNamespaceName]).To(Equal(expectedApiConfigs))
+								Expect(namespacedApiClient2.setNamespacedApiEndpointCalls).To(Equal(1))
+								Expect(namespacedApiClient2.namespacedApiconfigs[TestNamespaceName]).To(Equal(expectedApiConfigs))
+							},
+						)
 					},
 				)
 

@@ -183,16 +183,16 @@ var _ = Describe(
 					Entry(
 						"no API endpoint, Dash0 export with token", ApiClientSetRemoveTestConfig{
 							operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithToken,
-							expectSetApiEndpointAndDataset:    true,
-							expectRemoveApiEndpointAndDataset: false,
+							expectSetApiEndpointAndDataset:    false,
+							expectRemoveApiEndpointAndDataset: true,
 						},
 					),
 					Entry(
 						"no API endpoint, Dash0 export with secret ref", ApiClientSetRemoveTestConfig{
 							createSecret:                      DefaultSecret(),
 							operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithSecretRef,
-							expectSetApiEndpointAndDataset:    true,
-							expectRemoveApiEndpointAndDataset: false,
+							expectSetApiEndpointAndDataset:    false,
+							expectRemoveApiEndpointAndDataset: true,
 						},
 					),
 					Entry(
@@ -330,8 +330,79 @@ var _ = Describe(
 									},
 								},
 							},
+							expectSetApiEndpointAndDataset:    false,
+							expectRemoveApiEndpointAndDataset: true,
+						},
+					),
+
+					Entry(
+						"dash0Api with token, no export", ApiClientSetRemoveTestConfig{
+							operatorConfigurationResourceSpec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+									Enabled: new(false),
+								},
+								Dash0Api: []dash0common.Dash0ApiConfiguration{
+									{
+										Endpoint: ApiEndpointTest,
+										Dataset:  "api-dataset",
+										Authorization: dash0common.Authorization{
+											Token: &AuthorizationTokenTest,
+										},
+									},
+								},
+							},
 							expectSetApiEndpointAndDataset:    true,
 							expectRemoveApiEndpointAndDataset: false,
+							expectedApiConfigs: []ApiConfig{
+								{Endpoint: ApiEndpointTest, Dataset: "api-dataset", Token: AuthorizationTokenTest},
+							},
+						},
+					),
+
+					Entry(
+						"dash0Api with secret ref and token, Dash0 export without API endpoint", ApiClientSetRemoveTestConfig{
+							operatorConfigurationResourceSpec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+									Enabled: new(false),
+								},
+								Exports: []dash0common.Export{
+									{
+										Dash0: &dash0common.Dash0Configuration{
+											Endpoint: EndpointDash0Test,
+											Dataset:  "export-dataset",
+											Authorization: dash0common.Authorization{
+												Token: &AuthorizationTokenTest,
+											},
+										},
+									},
+								},
+								Dash0Api: []dash0common.Dash0ApiConfiguration{
+									{
+										Endpoint: ApiEndpointTest,
+										Authorization: dash0common.Authorization{
+											SecretRef: &SecretRefTest,
+										},
+									},
+									{
+										Endpoint: ApiEndpointTestAlternative,
+										Dataset:  "api-dataset",
+										Authorization: dash0common.Authorization{
+											Token: &AuthorizationTokenTestAlternative,
+										},
+									},
+								},
+							},
+							createSecret:                      DefaultSecret(),
+							expectSetApiEndpointAndDataset:    true,
+							expectRemoveApiEndpointAndDataset: false,
+							expectedApiConfigs: []ApiConfig{
+								{Endpoint: ApiEndpointTest, Token: AuthorizationTokenTestFromSecret},
+								{
+									Endpoint: ApiEndpointTestAlternative,
+									Dataset:  "api-dataset",
+									Token:    AuthorizationTokenTestAlternative,
+								},
+							},
 						},
 					),
 

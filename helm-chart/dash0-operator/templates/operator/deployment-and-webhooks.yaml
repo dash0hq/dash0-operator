@@ -143,10 +143,14 @@ spec:
 {{- if include "dash0-operator.createOperatorConfigurationResource" . }}
         - --operator-configuration-managed-via-helm=true
 {{- if .Values.operator.dash0Export.enabled }}
-{{- if not .Values.operator.dash0Export.endpoint }}
-{{- fail "Error: operator.dash0Export.enabled is set to true, but you did not provide a value for operator.dash0Export.endpoint. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
-{{- end }}{{/* closes "not .Values.operator.dash0Export.endpoint" */}}
+{{- if not (or .Values.operator.dash0Export.endpoint .Values.operator.dash0Export.apiEndpoint) }}
+{{- fail "Error: operator.dash0Export.enabled is set to true, but you provided neither operator.dash0Export.endpoint nor operator.dash0Export.apiEndpoint. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
+{{- end }}{{/* closes "not (or .Values.operator.dash0Export.endpoint .Values.operator.dash0Export.apiEndpoint)" */}}
+{{- if .Values.operator.dash0Export.endpoint }}
         - --operator-configuration-endpoint={{ .Values.operator.dash0Export.endpoint }}
+{{- else if and (or .Values.operator.telemetryCollectionEnabled .Values.operator.selfMonitoringEnabled) (not .Values.operator.exports) }}
+{{- fail "Error: operator.dash0Export.endpoint is not set and operator.exports is empty, so there is no export for the collected telemetry and the operator's self-monitoring telemetry. Either provide operator.dash0Export.endpoint or operator.exports, or, to only manage Dash0 resources via the Dash0 API, set operator.telemetryCollectionEnabled and operator.selfMonitoringEnabled to false." -}}
+{{- end }}{{/* closes "if .Values.operator.dash0Export.endpoint" */}}
 {{- if .Values.operator.dash0Export.token }}
         - --operator-configuration-token={{ .Values.operator.dash0Export.token }}
 {{- else if (and .Values.operator.dash0Export.secretRef.name .Values.operator.dash0Export.secretRef.key) }}
@@ -1162,6 +1166,62 @@ spec:
                       type: object
                     type: array
                 type: object
+              dash0Api:
+                description: |-
+                  The connections to the Dash0 API for the dashboards, check rules, synthetic checks, views and other Dash0
+                  resources defined in this namespace. They replace the `dash0Api` settings of the Dash0OperatorConfiguration
+                  resource for this namespace.
+                items:
+                  description: |-
+                    Dash0ApiConfiguration describes a connection to the Dash0 API. The operator uses it to manage dashboards, check
+                    rules, synthetic checks, views and other Dash0 resources that are defined as Kubernetes resources. It is independent
+                    of the exports, which describe where telemetry is sent.
+                  properties:
+                    authorization:
+                      description: The authorization settings for the Dash0 API. Exactly
+                        one of token and secretRef has to be provided.
+                      maxProperties: 1
+                      minProperties: 1
+                      properties:
+                        secretRef:
+                          description: A reference to a Kubernetes secret containing
+                            the Dash0 authorization token.
+                          properties:
+                            key:
+                              default: token
+                              description: The key of the value which contains the
+                                Dash0 authorization token. Defaults to "token"
+                              type: string
+                            name:
+                              default: dash0-authorization-secret
+                              description: The name of the secret containing the Dash0
+                                authorization token. Defaults to "dash0-authorization-secret".
+                              type: string
+                          required:
+                          - key
+                          - name
+                          type: object
+                        token:
+                          description: The Dash0 authorization token, see https://app.dash0.com/settings/auth-tokens.
+                          type: string
+                      type: object
+                    dataset:
+                      description: |-
+                        The identifier (not the display name) of the Dash0 dataset in which the resources are managed, see
+                        https://app.dash0.com/settings/datasets. If omitted, the dataset "default" is used.
+                      type: string
+                    endpoint:
+                      description: |-
+                        The API endpoint of your Dash0 organization, see
+                        https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. It starts with `https://api.` and ends in
+                        `.dash0.com`.
+                      minLength: 1
+                      type: string
+                  required:
+                  - authorization
+                  - endpoint
+                  type: object
+                type: array
               export:
                 description: |-
                   Deprecated: Use `exports` instead. If both `export` and `exports` are specified, `export` will be ignored.
@@ -1183,10 +1243,9 @@ spec:
                     properties:
                       apiEndpoint:
                         description: |-
-                          The API endpoint of your Dash0 organization, see
-                          https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. It starts with `https://api.` and ends in
-                          `.dash0.com`. It is not used for telemetry, but for managing dashboards, check rules, synthetic checks and views
-                          via the operator.
+                          Deprecated: Use `dash0Api` instead. If `dash0Api` is not set, every Dash0 export with an `apiEndpoint` is used as
+                          a Dash0 API connection, with the dataset and authorization of the export. Setting both `dash0Api` and
+                          `apiEndpoint` is a validation error.
                         type: string
                       authorization:
                         description: The authorization settings for sending data to
@@ -1219,8 +1278,7 @@ spec:
                       dataset:
                         description: |-
                           The identifier (not the display name) of the Dash0 dataset to which telemetry data will be sent, see
-                          https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token,
-                          and API access (dashboards, check rules, etc.) uses the dataset "default".
+                          https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token.
                         type: string
                       endpoint:
                         description: |-
@@ -1436,10 +1494,9 @@ spec:
                       properties:
                         apiEndpoint:
                           description: |-
-                            The API endpoint of your Dash0 organization, see
-                            https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. It starts with `https://api.` and ends in
-                            `.dash0.com`. It is not used for telemetry, but for managing dashboards, check rules, synthetic checks and views
-                            via the operator.
+                            Deprecated: Use `dash0Api` instead. If `dash0Api` is not set, every Dash0 export with an `apiEndpoint` is used as
+                            a Dash0 API connection, with the dataset and authorization of the export. Setting both `dash0Api` and
+                            `apiEndpoint` is a validation error.
                           type: string
                         authorization:
                           description: The authorization settings for sending data
@@ -1473,8 +1530,7 @@ spec:
                         dataset:
                           description: |-
                             The identifier (not the display name) of the Dash0 dataset to which telemetry data will be sent, see
-                            https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token,
-                            and API access (dashboards, check rules, etc.) uses the dataset "default".
+                            https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token.
                           type: string
                         endpoint:
                           description: |-
@@ -2269,6 +2325,64 @@ spec:
                       type: object
                     type: array
                 type: object
+              dash0Api:
+                description: |-
+                  The connections to the Dash0 API for the dashboards, check rules, synthetic checks, views and other Dash0
+                  resources defined in this namespace. They replace the `dash0Api` settings of the Dash0OperatorConfiguration
+                  resource for this namespace. If omitted, the operator configuration's settings are used, unless `exports` contains
+                  a Dash0 export: resources in a namespace that sends telemetry to a Dash0 export of its own are only synchronized
+                  via the `dash0Api` settings of the namespace (or the deprecated `exports[].dash0.apiEndpoint`).
+                items:
+                  description: |-
+                    Dash0ApiConfiguration describes a connection to the Dash0 API. The operator uses it to manage dashboards, check
+                    rules, synthetic checks, views and other Dash0 resources that are defined as Kubernetes resources. It is independent
+                    of the exports, which describe where telemetry is sent.
+                  properties:
+                    authorization:
+                      description: The authorization settings for the Dash0 API. Exactly
+                        one of token and secretRef has to be provided.
+                      maxProperties: 1
+                      minProperties: 1
+                      properties:
+                        secretRef:
+                          description: A reference to a Kubernetes secret containing
+                            the Dash0 authorization token.
+                          properties:
+                            key:
+                              default: token
+                              description: The key of the value which contains the
+                                Dash0 authorization token. Defaults to "token"
+                              type: string
+                            name:
+                              default: dash0-authorization-secret
+                              description: The name of the secret containing the Dash0
+                                authorization token. Defaults to "dash0-authorization-secret".
+                              type: string
+                          required:
+                          - key
+                          - name
+                          type: object
+                        token:
+                          description: The Dash0 authorization token, see https://app.dash0.com/settings/auth-tokens.
+                          type: string
+                      type: object
+                    dataset:
+                      description: |-
+                        The identifier (not the display name) of the Dash0 dataset in which the resources are managed, see
+                        https://app.dash0.com/settings/datasets. If omitted, the dataset "default" is used.
+                      type: string
+                    endpoint:
+                      description: |-
+                        The API endpoint of your Dash0 organization, see
+                        https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. It starts with `https://api.` and ends in
+                        `.dash0.com`.
+                      minLength: 1
+                      type: string
+                  required:
+                  - authorization
+                  - endpoint
+                  type: object
+                type: array
               eventCollection:
                 description: Settings for collecting Kubernetes events in the target
                   namespace.
@@ -2291,10 +2405,9 @@ spec:
                     properties:
                       apiEndpoint:
                         description: |-
-                          The API endpoint of your Dash0 organization, see
-                          https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. It starts with `https://api.` and ends in
-                          `.dash0.com`. It is not used for telemetry, but for managing dashboards, check rules, synthetic checks and views
-                          via the operator.
+                          Deprecated: Use `dash0Api` instead. If `dash0Api` is not set, every Dash0 export with an `apiEndpoint` is used as
+                          a Dash0 API connection, with the dataset and authorization of the export. Setting both `dash0Api` and
+                          `apiEndpoint` is a validation error.
                         type: string
                       authorization:
                         description: The authorization settings for sending data to
@@ -2327,8 +2440,7 @@ spec:
                       dataset:
                         description: |-
                           The identifier (not the display name) of the Dash0 dataset to which telemetry data will be sent, see
-                          https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token,
-                          and API access (dashboards, check rules, etc.) uses the dataset "default".
+                          https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token.
                         type: string
                       endpoint:
                         description: |-
@@ -2539,10 +2651,9 @@ spec:
                       properties:
                         apiEndpoint:
                           description: |-
-                            The API endpoint of your Dash0 organization, see
-                            https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http. It starts with `https://api.` and ends in
-                            `.dash0.com`. It is not used for telemetry, but for managing dashboards, check rules, synthetic checks and views
-                            via the operator.
+                            Deprecated: Use `dash0Api` instead. If `dash0Api` is not set, every Dash0 export with an `apiEndpoint` is used as
+                            a Dash0 API connection, with the dataset and authorization of the export. Setting both `dash0Api` and
+                            `apiEndpoint` is a validation error.
                           type: string
                         authorization:
                           description: The authorization settings for sending data
@@ -2576,8 +2687,7 @@ spec:
                         dataset:
                           description: |-
                             The identifier (not the display name) of the Dash0 dataset to which telemetry data will be sent, see
-                            https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token,
-                            and API access (dashboards, check rules, etc.) uses the dataset "default".
+                            https://app.dash0.com/settings/datasets. If omitted, Dash0 selects the dataset based on the authorization token.
                           type: string
                         endpoint:
                           description: |-

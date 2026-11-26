@@ -212,7 +212,8 @@ var _ = Describe(
 					MatchError(
 						ContainSubstring(
 							"invalid operator configuration: the operator configuration resource is managed via Helm, but " +
-								"neither --operator-configuration-endpoint (Helm value operator.dash0Export.endpoint) nor " +
+								"neither --operator-configuration-endpoint (Helm value operator.dash0Export.endpoint), " +
+								"--operator-configuration-api-endpoint (Helm value operator.dash0Export.apiEndpoint) nor " +
 								"any export (Helm value operator.exports) has been provided",
 						),
 					),
@@ -475,10 +476,87 @@ var _ = Describe(
 						g.Expect(export).ToNot(BeNil())
 						dash0Export := export.Dash0
 						g.Expect(dash0Export).ToNot(BeNil())
-						g.Expect(dash0Export.ApiEndpoint).To(Equal(ApiEndpointTest))
+						g.Expect(dash0Export.ApiEndpoint).To(BeEmpty())
+						g.Expect(operatorConfiguration.Spec.Dash0Api).To(HaveLen(1))
+						dash0Api := operatorConfiguration.Spec.Dash0Api[0]
+						g.Expect(dash0Api.Endpoint).To(Equal(ApiEndpointTest))
+						g.Expect(dash0Api.Dataset).To(BeEmpty())
+						g.Expect(dash0Api.Authorization.Token).ToNot(BeNil())
+						g.Expect(*dash0Api.Authorization.Token).To(Equal(AuthorizationTokenTest))
 					}, 5*time.Second, 100*time.Millisecond,
 				).Should(Succeed())
 			},
+		)
+
+		It(
+			"should create an operator configuration resource with only Dash0 API access", func() {
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{
+						SecretRef:                  secretRef,
+						ApiEndpoint:                ApiEndpointTest,
+						Dataset:                    "custom",
+						SelfMonitoringEnabled:      false,
+						TelemetryCollectionEnabled: false,
+					},
+					util.ExtraConfig{},
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{
+								Name: util.OperatorConfigurationAutoResourceName,
+							}, &operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+						g.Expect(operatorConfiguration.Spec.Exports).To(BeEmpty())
+						g.Expect(operatorConfiguration.Spec.Dash0Api).To(HaveLen(1))
+						dash0Api := operatorConfiguration.Spec.Dash0Api[0]
+						g.Expect(dash0Api.Endpoint).To(Equal(ApiEndpointTest))
+						g.Expect(dash0Api.Dataset).To(Equal("custom"))
+						g.Expect(dash0Api.Authorization.Token).To(BeNil())
+						g.Expect(dash0Api.Authorization.SecretRef).ToNot(BeNil())
+						g.Expect(dash0Api.Authorization.SecretRef.Name).To(Equal("test-secret"))
+						g.Expect(dash0Api.Authorization.SecretRef.Key).To(Equal("test-key"))
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		DescribeTable(
+			"should fail validation if telemetry collection or self-monitoring is enabled but there is no export",
+			func(telemetryCollectionEnabled bool, selfMonitoringEnabled bool) {
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{
+						Token:                      AuthorizationTokenTest,
+						ApiEndpoint:                ApiEndpointTest,
+						TelemetryCollectionEnabled: telemetryCollectionEnabled,
+						SelfMonitoringEnabled:      selfMonitoringEnabled,
+					},
+					util.ExtraConfig{},
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).To(
+					MatchError(
+						ContainSubstring(
+							"invalid operator configuration: telemetry collection or self-monitoring is enabled, but " +
+								"there is no export to send the telemetry to",
+						),
+					),
+				)
+			},
+			Entry("telemetry collection enabled", true, false),
+			Entry("self-monitoring enabled", false, true),
+			Entry("both enabled", true, true),
 		)
 
 		It(
@@ -1293,7 +1371,10 @@ var _ = Describe(
 						g.Expect(dash0Export.Authorization.Token).ToNot(BeNil())
 						g.Expect(*dash0Export.Authorization.Token).To(Equal(AuthorizationTokenTest))
 						g.Expect(dash0Export.Authorization.SecretRef).To(BeNil())
-						g.Expect(dash0Export.ApiEndpoint).To(Equal("https://api-1.dash0.com"))
+						g.Expect(dash0Export.ApiEndpoint).To(BeEmpty())
+						g.Expect(operatorConfiguration.Spec.Dash0Api).To(HaveLen(1))
+						g.Expect(operatorConfiguration.Spec.Dash0Api[0].Endpoint).To(Equal("https://api-1.dash0.com"))
+						g.Expect(operatorConfiguration.Spec.Dash0Api[0].Dataset).To(Equal("dataset-1"))
 						g.Expect(dash0Export.Dataset).To(Equal("dataset-1"))
 						g.Expect(*operatorConfiguration.Spec.SelfMonitoring.Enabled).To(BeFalse())
 						g.Expect(*operatorConfiguration.Spec.KubernetesInfrastructureMetricsCollection.Enabled).To(BeTrue())
@@ -1348,7 +1429,10 @@ var _ = Describe(
 						g.Expect(dash0Export.Authorization.SecretRef).ToNot(BeNil())
 						g.Expect(dash0Export.Authorization.SecretRef.Name).To(Equal("test-secret"))
 						g.Expect(dash0Export.Authorization.SecretRef.Key).To(Equal("test-key"))
-						g.Expect(dash0Export.ApiEndpoint).To(Equal("https://api-2.dash0.com"))
+						g.Expect(dash0Export.ApiEndpoint).To(BeEmpty())
+						g.Expect(operatorConfiguration.Spec.Dash0Api).To(HaveLen(1))
+						g.Expect(operatorConfiguration.Spec.Dash0Api[0].Endpoint).To(Equal("https://api-2.dash0.com"))
+						g.Expect(operatorConfiguration.Spec.Dash0Api[0].Dataset).To(Equal("dataset-2"))
 						g.Expect(dash0Export.Dataset).To(Equal("dataset-2"))
 						g.Expect(*operatorConfiguration.Spec.SelfMonitoring.Enabled).To(BeTrue())
 						g.Expect(*operatorConfiguration.Spec.KubernetesInfrastructureMetricsCollection.Enabled).To(BeFalse())
@@ -1442,6 +1526,46 @@ var _ = Describe(
 						g.Expect(exports[1].Http).ToNot(BeNil())
 						g.Expect(exports[1].Http.Encoding).To(Equal(dash0common.Proto))
 						g.Expect(exports[2].Grpc).ToNot(BeNil())
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		It(
+			"should convert the apiEndpoint of a Dash0 export from operator.exports into a dash0Api entry", func() {
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{},
+					util.ExtraConfig{Exports: []dash0common.Export{
+						{Grpc: &dash0common.GrpcConfiguration{Endpoint: "otelcol:4317"}},
+						*Dash0ExportWithEndpointTokenAndCustomDatasetAndApiEndpoint(),
+					}},
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						g.Expect(
+							k8sClient.Get(
+								ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+								&operatorConfiguration,
+							),
+						).To(Succeed())
+
+						exports := operatorConfiguration.Spec.Exports
+						g.Expect(exports).To(HaveLen(2))
+						g.Expect(exports[1].Dash0).ToNot(BeNil())
+						g.Expect(exports[1].Dash0.Endpoint).To(Equal(EndpointDash0Test))
+						g.Expect(exports[1].Dash0.ApiEndpoint).To(BeEmpty())
+						g.Expect(operatorConfiguration.Spec.Dash0Api).To(HaveLen(1))
+						dash0Api := operatorConfiguration.Spec.Dash0Api[0]
+						g.Expect(dash0Api.Endpoint).To(Equal(ApiEndpointTest))
+						g.Expect(dash0Api.Dataset).To(Equal(DatasetCustomTest))
+						g.Expect(*dash0Api.Authorization.Token).To(Equal(AuthorizationTokenTest))
 					}, 5*time.Second, 100*time.Millisecond,
 				).Should(Succeed())
 			},

@@ -43,6 +43,23 @@ var _ = Describe("v1beta1 Dash0 monitoring CRD", func() {
 			Expect(redacted.Spec.Exports).To(BeEmpty())
 		})
 
+		It("should redact the token of a Dash0 API connection", func() {
+			token := "my-secret-token"
+			original := Dash0Monitoring{
+				Spec: Dash0MonitoringSpec{
+					Dash0Api: []dash0common.Dash0ApiConfiguration{{
+						Endpoint:      "https://api.dash0.com",
+						Authorization: dash0common.Authorization{Token: &token},
+					}},
+				},
+			}
+
+			redacted := original.cloneAndRedact()
+
+			Expect(*redacted.Spec.Dash0Api[0].Authorization.Token).To(Equal("<redacted>"))
+			Expect(*original.Spec.Dash0Api[0].Authorization.Token).To(Equal("my-secret-token"))
+		})
+
 		It("should redact the Dash0 token", func() {
 			token := "my-secret-token"
 			original := Dash0Monitoring{
@@ -174,5 +191,40 @@ var _ = Describe("v1beta1 Dash0 monitoring CRD", func() {
 			Expect(redacted.Spec.Exports[0].Http.Headers[0].ValueFrom.SecretKeyRef.Name).To(Equal("my-secret"))
 			Expect(redacted.Spec.Exports[0].Http.Headers[0].ValueFrom.SecretKeyRef.Key).To(Equal("api-key"))
 		})
+	})
+
+	Describe("Dash0 API connections", func() {
+		token := "token"
+		dash0Export := func(apiEndpoint string) dash0common.Export {
+			return dash0common.Export{
+				Dash0: &dash0common.Dash0Configuration{
+					Endpoint:      EndpointDash0Test,
+					Authorization: dash0common.Authorization{Token: &token},
+					ApiEndpoint:   apiEndpoint,
+				},
+			}
+		}
+		dash0Api := []dash0common.Dash0ApiConfiguration{{
+			Endpoint:      "https://api.dash0.com",
+			Authorization: dash0common.Authorization{Token: &token},
+		}}
+
+		DescribeTable("should report the namespaced Dash0 settings",
+			func(spec Dash0MonitoringSpec, expectedApiConfigurations int, expectedNamespacedDash0Settings bool) {
+				resource := Dash0Monitoring{Spec: spec}
+				Expect(resource.EffectiveDash0ApiConfigurations()).To(HaveLen(expectedApiConfigurations))
+				Expect(resource.HasDash0ApiAccessConfigured()).To(Equal(expectedApiConfigurations > 0))
+				Expect(resource.HasNamespacedDash0Settings()).To(Equal(expectedNamespacedDash0Settings))
+			},
+			Entry("no exports, no dash0Api", Dash0MonitoringSpec{}, 0, false),
+			Entry("a grpc export only",
+				Dash0MonitoringSpec{Exports: []dash0common.Export{{Grpc: &dash0common.GrpcConfiguration{Endpoint: "otelcol:4317"}}}},
+				0, false),
+			Entry("a Dash0 export without apiEndpoint",
+				Dash0MonitoringSpec{Exports: []dash0common.Export{dash0Export("")}}, 0, true),
+			Entry("a Dash0 export with the deprecated apiEndpoint",
+				Dash0MonitoringSpec{Exports: []dash0common.Export{dash0Export("https://api.dash0.com")}}, 1, true),
+			Entry("dash0Api without exports", Dash0MonitoringSpec{Dash0Api: dash0Api}, 1, true),
+		)
 	})
 })

@@ -1038,10 +1038,11 @@ func signalControlConfigFromResource(
 	}
 }
 
-// deriveDash0EndpointsAndDataset returns the Decision Maker endpoint, the edge settings API endpoint, the dataset and
-// the index of the first Dash0 export in the operator configuration resource. The index is the position in the export
-// list, which is also what the auth token environment variable name is derived from (see authEnvVarNameDefaultIndexed),
-// so it must not be assumed to be zero: the first Dash0 export can be preceded by generic gRPC/HTTP exports.
+// deriveDash0EndpointsAndDataset returns the Decision Maker endpoint, the edge settings API endpoint (see
+// Dash0OperatorConfiguration#PrimaryDash0ApiEndpoint), the dataset and the index of the first Dash0 export in the
+// operator configuration resource. The index is the position in the export list, which is also what the auth token
+// environment variable name is derived from (see authEnvVarNameDefaultIndexed), so it must not be assumed to be zero:
+// the first Dash0 export can be preceded by generic gRPC/HTTP exports.
 func deriveDash0EndpointsAndDataset(operatorConfig *dash0v1alpha1.Dash0OperatorConfiguration) (string, string, string, int) {
 	if operatorConfig == nil {
 		return "", "", util.DatasetDefault, 0
@@ -1050,7 +1051,7 @@ func deriveDash0EndpointsAndDataset(operatorConfig *dash0v1alpha1.Dash0OperatorC
 	for i, export := range exports {
 		if export.Dash0 != nil {
 			dmEndpoint := util.DeriveDecisionMakerEndpoint(export.Dash0.Endpoint)
-			apiEndpoint := deriveEdgeSettingsApiEndpoint(export.Dash0.ApiEndpoint)
+			apiEndpoint := deriveEdgeSettingsApiEndpoint(operatorConfig.PrimaryDash0ApiEndpoint())
 			dataset := export.Dash0.Dataset
 			if dataset == "" {
 				dataset = util.DatasetDefault

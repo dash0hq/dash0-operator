@@ -772,13 +772,14 @@ func validatePreconditionsAndPreprocess(
 
 	namespacedApiConfigs, namespacedApiConfigExists := apiSyncReconciler.GetNamespacedApiConfigs(namespace)
 
-	// This check is only relevant when the operator starts and we might have already reconciled the operator config
-	// but not the monitoring resource in this namespace. In that case we would incorrectly do an initial sync to the
-	// default backend even though the monitoring resource defines a custom API config.
-	if monitoringResource.HasDash0ExportConfigured() && !namespacedApiConfigExists {
+	// A namespace with Dash0 settings of its own never falls back to the default API config. This check is also
+	// relevant when the operator starts and we might have already reconciled the operator config but not the monitoring
+	// resource in this namespace. In that case we would incorrectly do an initial sync to the default backend even
+	// though the monitoring resource defines a custom API config.
+	if monitoringResource.HasNamespacedDash0Settings() && !namespacedApiConfigExists {
 		// When the monitoring resource configures API access, the API config is missing because its token cannot be
-		// resolved or because the monitoring resource has not been reconciled yet. Otherwise, the Dash0 export of the
-		// namespace has no API endpoint, i.e. synchronization is not configured for this namespace.
+		// resolved or because the monitoring resource has not been reconciled yet. Otherwise, the namespace has a Dash0
+		// export but no Dash0 API connection, i.e. synchronization is not configured for this namespace.
 		var preconditionFailure apiSyncPreconditionFailure
 		var logAttributes []any
 		if monitoringResource.HasDash0ApiAccessConfigured() {
@@ -790,7 +791,7 @@ func validatePreconditionsAndPreprocess(
 		}
 		logger.Warn(
 			fmt.Sprintf(
-				"The monitoring resource of namespace %s has a Dash0 export, but no API config "+
+				"The monitoring resource of namespace %s has Dash0 settings of its own, but no API config "+
 					"is available (yet). This might happen if the monitoring resource has not been reconciled so far and will "+
 					"be resolved once the resource is reconciled. Sync for the %s from %s will be disabled until then.",
 				namespace, apiSyncReconciler.ShortName(), name,

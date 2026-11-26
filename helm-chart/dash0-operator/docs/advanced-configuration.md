@@ -862,7 +862,7 @@ operator:
           secretRef:
             name: dash0-authorization-secret
             key: token
-        apiEndpoint: ... # provide the API endpoint of your Dash0 organization here
+        apiEndpoint: ... # provide the API endpoint of your Dash0 organization here (becomes an entry of spec.dash0Api)
     - grpc:
         endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
 ```
@@ -877,10 +877,10 @@ is not supported for an `http` export with `encoding: json` and is silently disa
 Note that the values of `operator.exports` are rendered verbatim into a Kubernetes ConfigMap. For header values that
 contain sensitive data, use `valueFrom.secretKeyRef` (see the next section) instead of a literal `value`.
 
-Two operator features require a Dash0 export and are therefore not available with `http` or `grpc` exports alone:
-synchronizing dashboards, check rules, synthetic checks, views, notification channels, spam filters and
-signal-to-metrics rules (which needs `dash0.apiEndpoint`), and Signal Control (which needs a Dash0 export with an auth
-token).
+Signal Control requires a Dash0 export with an auth token and is therefore not available with `http` or `grpc` exports
+alone. Synchronizing dashboards, check rules, synthetic checks, views, notification channels, spam filters and
+signal-to-metrics rules does not depend on the exports, it needs a connection to the Dash0 API
+(`operator.dash0Export.apiEndpoint`, or `spec.dash0Api` in the operator configuration resource).
 
 ### Providing Header Values via a Kubernetes Secret
 

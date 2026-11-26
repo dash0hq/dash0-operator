@@ -353,7 +353,12 @@ spec:
           secretRef:
             name: dash0-authorization-secret
             key: token
-        apiEndpoint: https://api... # TODO REPLACE THIS WITH YOUR DASH0 API ENDPOINT
+  dash0Api:
+    - endpoint: https://api... # TODO REPLACE THIS WITH YOUR DASH0 API ENDPOINT
+      authorization:
+        secretRef:
+          name: dash0-authorization-secret
+          key: token
   components:
     daemonSetCollector:
       collectorContainerResources:

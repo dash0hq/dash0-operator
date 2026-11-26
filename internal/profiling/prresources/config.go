@@ -53,6 +53,7 @@ func buildProxyConfiguration(ctx context.Context, configuration *dash0v1alpha1.D
 			continue
 		}
 		uploadDestination := *destination
+		//nolint:staticcheck
 		uploadDestination.ApiEndpoint, uploadDestination.Keepalive = "", nil
 		identity, err := json.Marshal(uploadDestination)
 		if err != nil {

@@ -57,6 +57,15 @@ type Dash0MonitoringSpec struct {
 	// +kubebuilder:validation:Optional
 	Exports []dash0common.Export `json:"exports,omitempty"`
 
+	// The connections to the Dash0 API for the dashboards, check rules, synthetic checks, views and other Dash0
+	// resources defined in this namespace. They replace the `dash0Api` settings of the Dash0OperatorConfiguration
+	// resource for this namespace. If omitted, the operator configuration's settings are used, unless `exports` contains
+	// a Dash0 export: resources in a namespace that sends telemetry to a Dash0 export of its own are only synchronized
+	// via the `dash0Api` settings of the namespace (or the deprecated `exports[].dash0.apiEndpoint`).
+	//
+	// +kubebuilder:validation:Optional
+	Dash0Api []dash0common.Dash0ApiConfiguration `json:"dash0Api,omitempty"`
+
 	// Settings for the automatic instrumentation of workloads in the target namespace. Cluster-wide instrumentation
 	// settings are in the operator configuration resource.
 	//
@@ -447,25 +456,26 @@ func (d *Dash0Monitoring) ExportsCount() int {
 	}
 }
 
+// HasDash0ApiAccessConfigured returns true if the monitoring resource has at least one Dash0 API connection of its
+// own, either via dash0Api or via the deprecated apiEndpoint field of a Dash0 export.
 func (d *Dash0Monitoring) HasDash0ApiAccessConfigured() bool {
-	for _, export := range d.EffectiveExports() {
-		if export.HasDash0ApiAccessConfigured() {
-			return true
-		}
-	}
-
-	return false
+	return len(d.EffectiveDash0ApiConfigurations()) > 0
 }
 
-func (d *Dash0Monitoring) GetDash0Exports() []dash0common.Dash0Configuration {
-	var res []dash0common.Dash0Configuration
-	for _, export := range d.EffectiveExports() {
-		// intentionally not doing any further filtering here, as validation will happen later where errors are properly logged
-		if export.Dash0 != nil {
-			res = append(res, *export.Dash0)
-		}
+// EffectiveDash0ApiConfigurations returns the Dash0 API connections of the monitoring resource, see
+// dash0common.EffectiveDash0ApiConfigurations.
+func (d *Dash0Monitoring) EffectiveDash0ApiConfigurations() []dash0common.Dash0ApiConfiguration {
+	if d == nil {
+		return nil
 	}
-	return res
+	return dash0common.EffectiveDash0ApiConfigurations(d.Spec.Dash0Api, d.EffectiveExports())
+}
+
+// HasNamespacedDash0Settings returns true if the monitoring resource has Dash0 API connections or a Dash0 export of
+// its own. API synchronization for the namespace then never falls back to the API connections of the operator
+// configuration resource, since they could belong to a different Dash0 organization or dataset.
+func (d *Dash0Monitoring) HasNamespacedDash0Settings() bool {
+	return len(d.Spec.Dash0Api) > 0 || d.HasDash0ExportConfigured()
 }
 
 func (d *Dash0Monitoring) LogResourceAsEvent(logger logd.Logger) {
@@ -492,6 +502,9 @@ func (d *Dash0Monitoring) cloneAndRedact() Dash0Monitoring {
 	delete(redactedResource.Annotations, "kubectl.kubernetes.io/last-applied-configuration")
 	for _, export := range redactedResource.EffectiveExports() {
 		export.Redact()
+	}
+	for i := range redactedResource.Spec.Dash0Api {
+		redactedResource.Spec.Dash0Api[i].Authorization.Redact()
 	}
 	return redactedResource
 }

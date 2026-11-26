@@ -14,17 +14,16 @@ You can manage your Dash0 dashboards via the Dash0 operator.
 **Pre-requisites for this feature:**
 
 * A Dash0 operator configuration resource has to be installed in the cluster.
-* The operator configuration resource must have the `apiEndpoint` property.
-* The operator configuration resource must have at least one Dash0 export configured with authorization (either `token`
-  or `secret-ref`).
+* The operator configuration resource must have at least one connection to the Dash0 API with authorization (either
+  `token` or `secretRef`), see [`spec.dash0Api`](configuration.md#operatorconfigurationresource.spec.dash0Api[]).
 * The operator will only pick up Perses dashboard resources in namespaces that have a Dash0 monitoring resource
   deployed.
 * The operator will not synchronize Perses dashboard resources in namespaces where the Dash0 monitoring resource has the
   setting [`synchronizePersesDashboards`](configuration.md#monitoringresource.spec.synchronizePersesDashboards) set to `false`.
   (This setting is optional and defaults to `true` when omitted.)
-* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
-  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
-  monitoring resource.
+* Optional: In addition to the global/default Dash0 API connections described above, it is possible to define
+  namespace-specific overrides via `spec.dash0Api` in the Dash0 monitoring resource, see
+  [Namespace-specific Exports and API-sync Overrides](configuration.md#namespace-specific-exports-and-api-sync-overrides).
 
 The custom resource definition for Perses dashboards needs to be installed in the cluster.
 There are two ways to achieve this:
@@ -131,16 +130,15 @@ You can manage your Dash0 check rules via the Dash0 operator.
 **Pre-requisites for this feature:**
 
 * A Dash0 operator configuration resource has to be installed in the cluster.
-* The operator configuration resource must have the `apiEndpoint` property.
-* The operator configuration resource must have at least one Dash0 export configured with authorization (either `token`
-  or `secret-ref`).
+* The operator configuration resource must have at least one connection to the Dash0 API with authorization (either
+  `token` or `secretRef`), see [`spec.dash0Api`](configuration.md#operatorconfigurationresource.spec.dash0Api[]).
 * The operator will only pick up Prometheus rule resources in namespaces that have a Dash0 monitoring resource deployed.
 * The operator will not synchronize Prometheus rule resources in namespaces where the Dash0 monitoring resource has the
   setting [`synchronizePrometheusRules`](configuration.md#monitoringresource.spec.synchronizePrometheusRules) set to `false`.
   (This setting is optional and defaults to `true` when omitted.)
-* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
-  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
-  monitoring resource.
+* Optional: In addition to the global/default Dash0 API connections described above, it is possible to define
+  namespace-specific overrides via `spec.dash0Api` in the Dash0 monitoring resource, see
+  [Namespace-specific Exports and API-sync Overrides](configuration.md#namespace-specific-exports-and-api-sync-overrides).
 
 The custom resource definition for Prometheus rules also needs to be installed in the cluster.
 There are two ways to achieve this:
@@ -272,14 +270,13 @@ You can manage your Dash0 synthetic checks via the Dash0 operator.
 **Pre-requisites for this feature:**
 
 * A Dash0 operator configuration resource has to be installed in the cluster.
-* The operator configuration resource must have the `apiEndpoint` property.
-* The operator configuration resource must have at least one Dash0 export configured with authorization (either `token`
-  or `secret-ref`).
+* The operator configuration resource must have at least one connection to the Dash0 API with authorization (either
+  `token` or `secretRef`), see [`spec.dash0Api`](configuration.md#operatorconfigurationresource.spec.dash0Api[]).
 * The operator will only pick up synthetic check resources in namespaces that have a Dash0 monitoring resource
   deployed.
-* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
-  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
-  monitoring resource.
+* Optional: In addition to the global/default Dash0 API connections described above, it is possible to define
+  namespace-specific overrides via `spec.dash0Api` in the Dash0 monitoring resource, see
+  [Namespace-specific Exports and API-sync Overrides](configuration.md#namespace-specific-exports-and-api-sync-overrides).
 
 With the prerequisites in place, you can manage Dash0 synthetic checks via the operator.
 The Dash0 operator will watch for synthetic check resources in all namespaces that have a Dash0 monitoring resource
@@ -360,14 +357,13 @@ You can manage your Dash0 views via the Dash0 operator.
 **Pre-requisites for this feature:**
 
 * A Dash0 operator configuration resource has to be installed in the cluster.
-* The operator configuration resource must have the `apiEndpoint` property.
-* The operator configuration resource must have at least one Dash0 export configured with authorization (either `token`
-  or `secret-ref`).
+* The operator configuration resource must have at least one connection to the Dash0 API with authorization (either
+  `token` or `secretRef`), see [`spec.dash0Api`](configuration.md#operatorconfigurationresource.spec.dash0Api[]).
 * The operator will only pick up Dash0 view resources in namespaces that have a Dash0 monitoring resource
   deployed.
-* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
-  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
-  monitoring resource.
+* Optional: In addition to the global/default Dash0 API connections described above, it is possible to define
+  namespace-specific overrides via `spec.dash0Api` in the Dash0 monitoring resource, see
+  [Namespace-specific Exports and API-sync Overrides](configuration.md#namespace-specific-exports-and-api-sync-overrides).
 
 With the prerequisites in place, you can manage Dash0 views via the operator.
 The Dash0 operator will watch for view resources in all namespaces that have a Dash0 monitoring resource deployed, and
@@ -446,14 +442,13 @@ You can manage your Dash0 notification channels via the Dash0 operator.
 
 Pre-requisites for this feature:
 * A Dash0 operator configuration resource has to be installed in the cluster.
-* The operator configuration resource must have the `apiEndpoint` property.
-* The operator configuration resource must have at least one Dash0 export configured with authorization
-  (either `token` or `secret-ref`).
+* The operator configuration resource must have at least one connection to the Dash0 API with authorization (either
+  `token` or `secretRef`), see [`spec.dash0Api`](configuration.md#operatorconfigurationresource.spec.dash0Api[]).
 * The operator will only pick up notification channel resources in namespaces that have a Dash0 monitoring resource
   deployed.
-* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
-  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
-  monitoring resource.
+* Optional: In addition to the global/default Dash0 API connections described above, it is possible to define
+  namespace-specific overrides via `spec.dash0Api` in the Dash0 monitoring resource, see
+  [Namespace-specific Exports and API-sync Overrides](configuration.md#namespace-specific-exports-and-api-sync-overrides).
 
 With the prerequisites in place, you can manage Dash0 notification channels via the operator.
 The Dash0 operator will watch for notification channel resources in all namespaces that have a Dash0 monitoring resource
@@ -814,14 +809,13 @@ is stored in Dash0.
 
 Pre-requisites for this feature:
 * A Dash0 operator configuration resource has to be installed in the cluster.
-* The operator configuration resource must have the `apiEndpoint` property.
-* The operator configuration resource must have at least one Dash0 export configured with authorization
-  (either `token` or `secret-ref`).
+* The operator configuration resource must have at least one connection to the Dash0 API with authorization (either
+  `token` or `secretRef`), see [`spec.dash0Api`](configuration.md#operatorconfigurationresource.spec.dash0Api[]).
 * The operator will only pick up spam filter resources in namespaces that have a Dash0 monitoring resource
   deployed.
-* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
-  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
-  monitoring resource.
+* Optional: In addition to the global/default Dash0 API connections described above, it is possible to define
+  namespace-specific overrides via `spec.dash0Api` in the Dash0 monitoring resource, see
+  [Namespace-specific Exports and API-sync Overrides](configuration.md#namespace-specific-exports-and-api-sync-overrides).
 
 With the prerequisites in place, you can manage Dash0 spam filters via the operator.
 The Dash0 operator will watch for spam filter resources in all namespaces that have a Dash0 monitoring resource
@@ -885,13 +879,12 @@ An eval is an LLM judge that scores a sample of the generative AI spans that mat
 
 Pre-requisites for this feature:
 * A Dash0 operator configuration resource has to be installed in the cluster.
-* The operator configuration resource must have the `apiEndpoint` property.
-* The operator configuration resource must have at least one Dash0 export configured with authorization
-  (either `token` or `secret-ref`).
+* The operator configuration resource must have at least one connection to the Dash0 API with authorization (either
+  `token` or `secretRef`), see [`spec.dash0Api`](configuration.md#operatorconfigurationresource.spec.dash0Api[]).
 * The operator will only pick up eval resources in namespaces that have a Dash0 monitoring resource deployed.
-* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
-  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
-  monitoring resource.
+* Optional: In addition to the global/default Dash0 API connections described above, it is possible to define
+  namespace-specific overrides via `spec.dash0Api` in the Dash0 monitoring resource, see
+  [Namespace-specific Exports and API-sync Overrides](configuration.md#namespace-specific-exports-and-api-sync-overrides).
 
 With the prerequisites in place, you can manage Dash0 evals via the operator.
 The Dash0 operator will watch for `Dash0GenerativeAiEvaluation` resources in all namespaces that have a Dash0 monitoring
@@ -996,14 +989,13 @@ an OTTL expression computes from each matching span or log record.
 
 Pre-requisites for this feature:
 * A Dash0 operator configuration resource has to be installed in the cluster.
-* The operator configuration resource must have the `apiEndpoint` property.
-* The operator configuration resource must have at least one Dash0 export configured with authorization
-  (either `token` or `secret-ref`).
+* The operator configuration resource must have at least one connection to the Dash0 API with authorization (either
+  `token` or `secretRef`), see [`spec.dash0Api`](configuration.md#operatorconfigurationresource.spec.dash0Api[]).
 * The operator will only pick up signal-to-metrics resources in namespaces that have a Dash0 monitoring resource
   deployed.
-* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
-  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
-  monitoring resource.
+* Optional: In addition to the global/default Dash0 API connections described above, it is possible to define
+  namespace-specific overrides via `spec.dash0Api` in the Dash0 monitoring resource, see
+  [Namespace-specific Exports and API-sync Overrides](configuration.md#namespace-specific-exports-and-api-sync-overrides).
 
 With the prerequisites in place, you can manage Dash0 signal-to-metrics rules via the operator.
 The Dash0 operator will watch for signal-to-metrics resources in all namespaces that have a Dash0 monitoring resource
@@ -1105,13 +1097,12 @@ They do not belong to a dataset.
 Pre-requisites for this feature:
 
 * A Dash0 operator configuration resource has to be installed in the cluster.
-* The operator configuration resource must have the `apiEndpoint` property.
-* The operator configuration resource must have at least one Dash0 export configured with authorization
-  (either `token` or `secret-ref`).
+* The operator configuration resource must have at least one connection to the Dash0 API with authorization (either
+  `token` or `secretRef`), see [`spec.dash0Api`](configuration.md#operatorconfigurationresource.spec.dash0Api[]).
 * The operator will only pick up team resources in namespaces that have a Dash0 monitoring resource deployed.
-* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
-  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
-  monitoring resource.
+* Optional: In addition to the global/default Dash0 API connections described above, it is possible to define
+  namespace-specific overrides via `spec.dash0Api` in the Dash0 monitoring resource, see
+  [Namespace-specific Exports and API-sync Overrides](configuration.md#namespace-specific-exports-and-api-sync-overrides).
 
 With the prerequisites in place, you can manage Dash0 teams via the operator.
 The Dash0 operator will watch for team resources in all namespaces that have a Dash0 monitoring resource deployed, and
@@ -1181,13 +1172,12 @@ You can manage your Dash0 service level objectives (SLOs) via the Dash0 operator
 **Pre-requisites for this feature:**
 
 * A Dash0 operator configuration resource has to be installed in the cluster.
-* The operator configuration resource must have the `apiEndpoint` property.
-* The operator configuration resource must have at least one Dash0 export configured with authorization (either `token`
-  or `secret-ref`).
+* The operator configuration resource must have at least one connection to the Dash0 API with authorization (either
+  `token` or `secretRef`), see [`spec.dash0Api`](configuration.md#operatorconfigurationresource.spec.dash0Api[]).
 * The operator will only pick up SLO resources in namespaces that have a Dash0 monitoring resource deployed.
-* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
-  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
-  monitoring resource.
+* Optional: In addition to the global/default Dash0 API connections described above, it is possible to define
+  namespace-specific overrides via `spec.dash0Api` in the Dash0 monitoring resource, see
+  [Namespace-specific Exports and API-sync Overrides](configuration.md#namespace-specific-exports-and-api-sync-overrides).
 
 With the prerequisites in place, the Dash0 operator will watch for SLO resources in all namespaces that have a Dash0
 monitoring resource deployed, and synchronize them with the Dash0 backend:
@@ -1297,7 +1287,7 @@ alert on resources that cannot be synchronized:
   resource rejected by the Dash0 API). The attributes describe the most recent synchronization attempt.
   The gauge also reports resources that cannot be synchronized because a precondition fails before a request is sent
   to the Dash0 API (see `error.type` below). A resource for which synchronization is not configured (no Dash0
-  monitoring resource in the namespace, no `apiEndpoint`, synchronization disabled) is not reported. An auth token in
+  monitoring resource in the namespace, no `dash0Api`, synchronization disabled) is not reported. An auth token in
   the operator configuration resource that cannot be resolved is not reported either. In that case, PrometheusRule and
   PersesDashboard resources are no longer synchronized at all and are removed from the gauge.
 * `dash0.operator.manager.api_sync.synchronizations` is a counter for synchronization attempts, by outcome.
@@ -1322,8 +1312,8 @@ a failed precondition has no `dash0.operator.sync.action` and no `dash0.operator
 
 * `monitoring_resource_lookup_failed`: the Dash0 monitoring resource of the namespace could not be looked up. The
   operator does not retry this, the resource stays reported until it is synchronized again.
-* `api_config_unavailable`: the Dash0 monitoring resource of the namespace configures API access (`apiEndpoint`), but
-  the auth token of none of its Dash0 exports can be resolved. Right after the operator has started, resources can be
+* `api_config_unavailable`: the Dash0 monitoring resource of the namespace configures API access (`dash0Api`), but
+  the auth token of none of its Dash0 API connections can be resolved. Right after the operator has started, resources can be
   reported with this value (and counted as failed synchronization attempts) for a short time, until the operator has
   processed the Dash0 monitoring resource of the namespace. Use a `for` duration in the check rule, like in the example
   below, to not alert on that.
