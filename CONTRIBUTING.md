@@ -295,12 +295,13 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     `test-resources/customresources/dash0signaltometrics` to deploy a signal-to-metrics resource that will be
     synchronized to Dash0 via the Dash0 API. E.g. `DEPLOY_SIGNAL_TO_METRICS=spans` will deploy `spans.yaml`.
     This defaults to being empty, which means no resource will be deployed.
-    * `ENABLE_PYTHON_AUTO_INSTRUMENTATION`: Set this to "true" to enable Python auto-instrumentation. This corresponds
-      to the Helm setting `operator.instrumentation.enablePythonAutoInstrumentation=true`. This defaults to "false".
-    * `ENABLE_RUBY_AUTO_INSTRUMENTATION`: Set this to "true" to enable Ruby auto-instrumentation. This corresponds to
-      the Helm setting `operator.instrumentation.enableRubyAutoInstrumentation=true`. This defaults to "false".
-    * `FILELOG_OFFSETS_PVC`: Use a persistent volume claim to store filelog offsets, instead of the default config map
-      based storage. Possible values:
+    * `ENABLE_PYTHON_AUTO_INSTRUMENTATION`: Set this to "false" to disable Python auto-instrumentation. This
+      corresponds to the Helm setting `operator.instrumentation.enablePythonAutoInstrumentation=false`. This defaults
+      to "true".
+    * `ENABLE_RUBY_AUTO_INSTRUMENTATION`: Set this to "false" to disable Ruby auto-instrumentation. This corresponds to
+      the Helm setting `operator.instrumentation.enableRubyAutoInstrumentation=false`. This defaults to "true".
+    * `FILELOG_OFFSETS_PVC`: Use a persistent volume claim to store filelog offsets, instead of letting the operator
+      choose the storage. Possible values:
         * `FILELOG_OFFSETS_PVC=kind`: deploy a PersistentVolume and PersistentVolumeClaim suitable for kind clusters
           created via test-resources/bin/create_cluster_and_registry.sh or based on `test-resources/kind-config.yaml`
           (i.e. clusters that have the `offset-storage` extra mounts), then use this for filelog offset storage
@@ -312,8 +313,14 @@ Moving beyond the quickstart instructions, here are more details on the test scr
           https://github.com/kubernetes-sigs/aws-efs-csi-driver/tree/master/examples/kubernetes/dynamic_provisioning)
       Take a look at the files in `test-resources/filelog-offset-storage` for details.
       Test scenario 12 configures the volume via `spec.components` instead of via Helm.
-    * `FILELOG_OFFSETS_HOST_PATH_VOLUME`: Use a `hostPath` volume to store filelog offsets, instead of the default
-      config map based storage.
+    * `FILELOG_OFFSETS_HOST_PATH_VOLUME`: Use a user-provided `hostPath` volume to store filelog offsets
+      (`operator.collectors.filelogOffsetSyncStorageVolume`), instead of letting the operator choose the storage.
+    * `FILELOG_OFFSETS_STORAGE_MODE`: Set `operator.collectors.filelogOffsetStorageMode` (`auto`, `configMap` or
+      `hostPath`). This defaults to being empty, which means the Helm chart default (`auto`) is used, that is, the
+      operator uses a `hostPath` volume (`/var/lib/dash0-operator/filelog-offsets/<operator namespace>` on each node)
+      if the cluster admits it, and the config map otherwise. To test the migration from the config map to the
+      `hostPath` volume, deploy with `FILELOG_OFFSETS_STORAGE_MODE=configMap` first, then run
+      `test-scenario-03-rebuild-update-operator-no-cleanup.sh` without it.
     * `INSTRUMENT_WORKLOADS_MODE`: Set this to "all", "created-and-updated" or "none" to control the
       `instrumentWorkloads.mode` setting of the monitoring resource that will be deployed.
       This defaults to "all", unless `$TELEMETRY_COLLECTION_ENABLED` is "false", then it defaults to "none".
@@ -341,12 +348,14 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `OPERATOR_MANAGER_PPROF_PORT`: Set this to a numeric value to enable pprof in the operator manager container.
       See [Creating Heap Profiles](helm-chart/dash0-operator/docs/troubleshooting.md#create-heap-profiles) for instructions on creating heap profiles.
     * `OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED`: Add a debug exporter to the OTel collectors with `verbosity: detailed`.
-    * `OTEL_COLLECTOR_SEND_BATCH_SIZE`: Set the `send_batch_size` parameter of the batch processor of the collectors
-      managed by the operator. There is usually no need to configure this. The default value used by the batch processor
-      is 8192.
-    * `OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE`: Set the `send_batch_max_size` parameter of the batch processor of the
+    * `OTEL_COLLECTOR_SEND_BATCH_SIZE`: Set the `sending_queue::batch::min_size` parameter of the exporters of the
+      collectors managed by the operator. There is usually no need to configure this. The default value is 8192.
+    * `OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE`: Set the `sending_queue::batch::max_size` parameter of the exporters of the
       collectors managed by the operator. There is usually no need to configure this. The value must be greater than or
-      equal to 8192, which is the default value for `send_batch_size`.
+      equal to 8192, which is the default value for `min_size`.
+    * `OTEL_COLLECTOR_SENDING_QUEUE_SIZE_MIB`: Set the capacity (in MiB of protobuf-encoded telemetry) of the
+      `sending_queue` of the exporters of the collectors managed by the operator. By default, the operator derives it
+      from the memory limit of the respective collector container.
     * `PROFILING_ENABLED`: Set this to "true" to enable profiling data pipelines in the operator's OpenTelemetry
       collectors. When enabled, the daemonset collector will accept, process, and export OTLP profiles data.
       See [PROFILING](helm-chart/dash0-operator/docs/profiling.md) for more details.
@@ -663,6 +672,96 @@ To install the operator via OLM in a test cluster, use a test bundle with your o
   [test-resources/bin/delete-olm.sh](test-resources/bin/delete-olm.sh) removes OLM.
 - `make olm-scorecard BUNDLE_DIR=olm/build/test-bundle` runs the operator-sdk scorecard tests against the test bundle.
 
+CI publishes a bundle image for every commit on `main`, which references the images built for that commit, and the
+images with a pinned tag in `values.yaml` (e.g. the Signal Control collector):
+`ghcr.io/dash0hq/dash0-operator-bundle:sha-<short commit sha>`, and `ghcr.io/dash0hq/dash0-operator-bundle:main-dev`
+for the latest commit.
+It can be installed with `operator-sdk run bundle <bundle image> --namespace <namespace> --install-mode AllNamespaces`,
+without building any images.
+CI generates this bundle via `make olm-release-bundle`, which tags all images of the chart that are built in this
+repository with `BUNDLE_OPERATOR_IMAGE_TAG`.
+Release builds publish the bundle as `ghcr.io/dash0hq/dash0-operator-bundle:<version>` (plus the other version tags of
+the release and `latest`), with the release version as bundle version and image tag. They also overwrite the tag
+`sha-<short commit sha>` of the tagged commit with the release bundle.
+
+## OLM Catalog
+
+CI also publishes an OLM catalog image (a file-based catalog with the package `dash0-operator` and the channel
+`stable-v0`) for every commit on `main`, which holds the bundle image of that commit:
+`ghcr.io/dash0hq/dash0-operator-catalog:main-dev`.
+Pull requests and other branches build the catalog image from the bundle image `main-dev` without pushing it.
+Both also hold the bundle of the latest release (from `OLM_CATALOG_FIRST_VERSION` on) in the history of the commit,
+which the dev bundle `replaces`, so the upgrade from that release can be tested. The channel head stays the dev bundle.
+The build for the highest release tag publishes the release catalog `ghcr.io/dash0hq/dash0-operator-catalog:<version>`,
+which holds the bundles of all releases from `OLM_CATALOG_FIRST_VERSION` (`.github/workflows/ci.yaml`) on. It is also
+tagged with the other version tags of the release, `latest` and `sha-<short commit sha>` (which overwrites the dev
+catalog of that commit). Users install the operator from this catalog and receive upgrades through it if their
+`CatalogSource` polls the image (`spec.updateStrategy.registryPoll`).
+
+- A release tag whose bundle image is missing (e.g. its CI run failed or was cancelled) makes the catalog build of
+  every later release fail. Re-run the CI workflow of that tag, then the catalog job of the highest release tag.
+  Re-running the image builds of an older tag can move the tags `latest`, `<major>` and `<major>.<minor>` of the
+  images back to that version, so re-run only the failed jobs where possible. A release tag on a commit from before
+  bundle images were pushed for tags never gets one, not even by a re-run; raise `OLM_CATALOG_FIRST_VERSION` above it
+  instead.
+- Never delete a release tag: the next catalog would no longer contain that release, and installations of it would
+  not be upgraded anymore.
+- A new major version (e.g. `1.0.0`) gets its own channel (`stable-v1`) without an upgrade edge from `stable-v0`.
+  The catalog build fails for it until such an edge (e.g. `skipRange: '<1.0.0'` on the `stable-v1` entries) has been
+  added and the check in `olm/bin/resolve-catalog-bundles.sh` has been adjusted. Users then have to switch their
+  `Subscription` to `stable-v1`.
+
+To test a catalog:
+
+- [test-resources/bin/test-olm-catalog.sh](test-resources/bin/test-olm-catalog.sh) installs the operator from a catalog
+  image via a `CatalogSource`, an `OperatorGroup` and a `Subscription`, and creates a `Dash0OperatorConfiguration` and
+  a `Dash0Monitoring` resource. It installs the catalog `main-dev` unless `CATALOG_IMAGE` is set, and does not build
+  any images. With `CATALOG_POLL_INTERVAL` (e.g. `5m`), OLM polls the catalog image for updates, which is needed to
+  test the upgrade to the next release with `CATALOG_IMAGE=ghcr.io/dash0hq/dash0-operator-catalog:latest`.
+  `CATALOG_STARTING_CSV` (e.g. `dash0-operator.v0.162.0`) installs that version instead of the channel head, and
+  every upgrade then waits for the approval of its `InstallPlan`, e.g. to test the upgrade from the latest release to
+  `main-dev`. `test-resources/bin/test-olm-catalog.sh cleanup` removes the operator again; the CRDs remain, as after an
+  uninstall via OLM.
+- `make olm-catalog CATALOG_BUNDLE_IMAGES="<bundle image> ..."` renders and validates a catalog with the given bundle
+  images into `olm/build/catalog` (`CATALOG_DIR`). Reference the bundle images by digest, a tag can be overwritten.
+  With the local registry of the kind setup, also set `CATALOG_REGISTRY_USE_HTTP=true`. With
+  `CATALOG_UPGRADE_FROM_BUNDLE_IMAGE="<bundle image>"`, the only bundle of `CATALOG_BUNDLE_IMAGES` replaces that bundle.
+  `make olm-catalog-image push-olm-catalog-image` builds and pushes the catalog image
+  `${IMAGE_REPOSITORY_PREFIX}dash0-operator-catalog:v0.0.1` (`CATALOG_IMAGE_REPOSITORY`, `CATALOG_IMAGE_TAG`), which
+  `test-olm-catalog.sh` then installs with `CATALOG_IMAGE`.
+- In CI, [olm/bin/resolve-catalog-bundles.sh](olm/bin/resolve-catalog-bundles.sh) determines the bundle images of the
+  catalog and resolves them to digests.
+- For every commit on `main`, CI installs the catalog `main-dev` on MicroShift, which runs in a container started by
+  [minc](https://github.com/minc-org/minc) (workflow `.github/workflows/microshift-olm-catalog-check.yaml`). The check
+  [.github/workflows/scripts/microshift-olm-catalog-check.sh](.github/workflows/scripts/microshift-olm-catalog-check.sh)
+  runs `test-olm-catalog.sh` and waits until the collectors are ready. If the catalog has an upgrade edge from a
+  release, a second run on its own cluster installs that release (`UPGRADE_FROM_CSV`), approves the upgrade to the dev
+  bundle and runs the checks again. It also works with a local minc cluster: run
+  `minc create`, add its kube context `microshift` to `ALLOWED_KUBECTXS` (in `test-resources/.env`, if it sets the
+  variable), then run the script.
+
+## OLM Community Catalog
+
+Releases can also be published in the OpenShift community catalog (`community-operators` in the OperatorHub of the
+OpenShift console) via pull requests to
+[redhat-openshift-ecosystem/community-operators-prod](https://github.com/redhat-openshift-ecosystem/community-operators-prod).
+The package `dash0-operator` there is a file-based catalog rendered from an `olm.semver` template with the channel
+`stable-v0`, like the self-hosted catalog, and the submitted bundle is a copy of the release bundle image. After a pull
+request has been merged, the release pipeline of `community-operators-prod` adds the bundle to
+`operators/dash0-operator/catalog-templates/semver.yaml`, then opens and merges the pull request that updates the
+catalogs. A release can be left out, every release in `stable-v0` upgrades directly to the newest one.
+
+[olm/bin/prepare-community-bundle.sh](olm/bin/prepare-community-bundle.sh) (`make olm-community-bundle`) prepares the
+content of such a pull request in a clone of `community-operators-prod`: it copies the bundle of the release from
+`ghcr.io/dash0hq/dash0-operator-bundle:<version>` into `operators/dash0-operator/<version>/`, adds its
+`release-config.yaml` and validates the bundle like the pipeline does. For the first submission, it also writes
+`operators/dash0-operator/ci.yaml` and the catalog template `operators/dash0-operator/catalog-templates/semver.yaml`.
+
+A merged bundle cannot be changed anymore, a defect has to be fixed in a new release. The pipeline is documented in
+[Contributing via PR](https://redhat-openshift-ecosystem.github.io/operator-pipelines/users/contributing-via-pr/),
+[File based catalog workflow](https://redhat-openshift-ecosystem.github.io/operator-pipelines/users/fbc_workflow/) and
+[Troubleshooting for Community Operators](https://redhat-openshift-ecosystem.github.io/operator-pipelines/users/community-operators-troubleshooting/).
+
 ## Testing with Kyverno
 
 [test-resources/bin/deploy-kyverno.sh](test-resources/bin/deploy-kyverno.sh) installs Kyverno and the upstream Kyverno
@@ -685,4 +784,4 @@ in the Helm output or in the operator manager's log, and it rejects pods, which 
 Kyverno validates the operator's pre-delete hook as well. A rejected hook shows up as an error of `helm uninstall` in
 the output of the cleanup script. All test scenario scripts except
 `test-scenario-03-rebuild-update-operator-no-cleanup.sh` start with the cleanup and therefore remove Kyverno;
-`test-olm-bundle.sh` and `test-env-var-fallback.sh` do not remove it.
+`test-olm-bundle.sh`, `test-olm-catalog.sh` and `test-env-var-fallback.sh` do not remove it.

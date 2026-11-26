@@ -5,7 +5,7 @@ const process = require('node:process');
 
 if (
   process.env['NODE_OPTIONS'] !==
-  '--require /__otel_auto_instrumentation/agents/node.js/node_modules/@dash0/opentelemetry --no-deprecation'
+  '--require /__otel_auto_instrumentation/agents/node.js/node_modules/@dash0/opentelemetry/dist/src/index.js --no-deprecation'
 ) {
   console.error(`Unexpected value for NODE_OPTIONS: ${process.env['NODE_OPTIONS']}`);
   process.exit(1);

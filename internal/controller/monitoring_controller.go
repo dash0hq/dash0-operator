@@ -12,6 +12,7 @@ import (
 	"time"
 
 	otelmetric "go.opentelemetry.io/otel/metric"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -60,6 +61,17 @@ type statusUpdateInfo struct {
 
 const (
 	updateStatusFailedMessageMonitoring = "Failed to update Dash0 monitoring status conditions, requeuing reconcile request."
+
+	logMsgInstrumentationDisabledButModeIsNotNone = "Workload instrumentation is disabled via the Helm value %s, but " +
+		"the Dash0 monitoring resource %s/%s has instrumentWorkloads.mode=%s. No new workloads will be instrumented " +
+		"in this namespace, workloads that have been instrumented before keep their instrumentation. Set " +
+		"instrumentWorkloads.mode=none to remove the instrumentation from the workloads in this namespace."
+	logMsgInstrumentationDisabledButModeIsPods = "Workload instrumentation is disabled via the Helm value %s, but " +
+		"the Dash0 monitoring resource %s/%s has instrumentWorkloads.mode=pods. Pods created in this namespace " +
+		"from now on will not be instrumented, pods that have been instrumented when they were created keep their " +
+		"instrumentation until they are recreated. Set instrumentWorkloads.mode=none to also remove the " +
+		"instrumentation from the workload pod templates that still have it from before the namespace was switched " +
+		"to mode pods (if any)."
 )
 
 var (
@@ -236,6 +248,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	r.warnIfInOperatorNamespace(monitoringResource, logger)
+	r.warnIfInstrumentationIsDisabled(monitoringResource, logger)
 
 	var requiredAction util.ModificationMode
 	monitoringResource, requiredAction, statusUpdate :=
@@ -293,6 +306,51 @@ func (r *MonitoringReconciler) warnIfInOperatorNamespace(
 			monitoringResource.Name,
 			r.operatorNamespace,
 		))
+}
+
+func (r *MonitoringReconciler) warnIfInstrumentationIsDisabled(
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+	logger logd.Logger,
+) {
+	if r.instrumenter == nil || r.instrumenter.ClusterInstrumentationConfig.InstrumentationEnabledViaHelm {
+		return
+	}
+	instrumentWorkloadsMode := monitoringResource.ReadInstrumentWorkloadsMode()
+	if instrumentWorkloadsMode == dash0common.InstrumentWorkloadsModeNone {
+		return
+	}
+	helmValue := util.InstrumentationDisabledHelmValue(
+		r.instrumenter.ClusterInstrumentationConfig.TelemetryCollectionEnabledViaHelm,
+	)
+	var message string
+	if instrumentWorkloadsMode == dash0common.InstrumentWorkloadsModePods {
+		message = fmt.Sprintf(
+			logMsgInstrumentationDisabledButModeIsPods,
+			helmValue,
+			monitoringResource.Namespace,
+			monitoringResource.Name,
+		)
+	} else {
+		message = fmt.Sprintf(
+			logMsgInstrumentationDisabledButModeIsNotNone,
+			helmValue,
+			monitoringResource.Namespace,
+			monitoringResource.Name,
+			instrumentWorkloadsMode,
+		)
+	}
+	logger.WarnTelemetryCollectionIssue(message)
+	if r.instrumenter.Recorder != nil {
+		r.instrumenter.Recorder.Eventf(
+			monitoringResource,
+			nil,
+			corev1.EventTypeWarning,
+			string(util.ReasonInstrumentationDisabledButModeIsNotNone),
+			string(util.ActionInstrumentation),
+			"%s",
+			message,
+		)
+	}
 }
 
 func (r *MonitoringReconciler) applyApiAccessSettings(
@@ -366,6 +424,12 @@ func (r *MonitoringReconciler) applyApiAccessSettings(
 		for _, apiClient := range r.namespacedApiClients {
 			apiClient.RemoveNamespacedApiConfigs(ctx, monitoringResource.Namespace, logger)
 		}
+		// RemoveNamespacedApiConfigs only resynchronizes resources when the namespace had an API config, which is not
+		// the case for resources that have been reported because their API config was unavailable.
+		apiSyncFailures.deletePreconditionFailuresInNamespace(
+			monitoringResource.Namespace,
+			apiSyncPreconditionFailureApiConfigUnavailable,
+		)
 	}
 
 	for _, apiClient := range r.namespacedApiClients {
@@ -419,6 +483,18 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 				),
 			)
 			requiredAction = util.ModificationModeUninstrumentation
+		} else if previousInstrumentWorkloadsMode != dash0common.InstrumentWorkloadsModePods &&
+			previousInstrumentWorkloadsMode != "" &&
+			currentInstrumentWorkloadsMode == dash0common.InstrumentWorkloadsModePods {
+			logger.Info(
+				fmt.Sprintf(
+					"The instrumentWorkloads mode has changed from \"%s\" to \"%s\". Workloads in this namespace will "+
+						"not be modified anymore, pods will be instrumented when they are created. Existing pods will "+
+						"keep their current state until they are recreated.",
+					previousInstrumentWorkloadsMode,
+					currentInstrumentWorkloadsMode,
+				),
+			)
 		}
 
 		// If the mode switched to "none" and we need to uninstrument, changes in individual settings (like label
@@ -481,6 +557,7 @@ func (r *MonitoringReconciler) runCleanupActions(
 	for _, apiClient := range r.namespacedApiClients {
 		apiClient.RemoveSynchronizationEnabled(monitoringResource.Namespace)
 	}
+	apiSyncFailures.deleteNamespace(monitoringResource.Namespace)
 
 	// The Dash0 monitoring resource will be deleted after this reconcile finished. We still need to update its status,
 	// to make sure that when we run r.reconcileOpenTelemetryCollector in the next and final reconcile cycle triggered

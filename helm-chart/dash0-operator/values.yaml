@@ -132,6 +132,29 @@ operator:
   #               key: token
   exports: []
 
+  # The name prefix for the Kubernetes resources the operator creates and manages: the OpenTelemetry collectors, the
+  # target allocator, the eBPF profiler, the agent0-connector and the synthetics workers. For example
+  # <prefix>-opentelemetry-collector-service. Defaults to the Helm release name.
+  #
+  # Set this if the Helm release name is too long (for example when the chart is deployed with Argo CD, which uses the
+  # name of the Argo CD application as the release name). Kubernetes limits service names to 63 characters, so the
+  # prefix (this value, or the release name if this value is not set) plus the longest service name suffix must not be
+  # longer than that.
+  # The chart limits the resource prefix to the following values, depending on the features that are enabled:
+  # - 24 characters if operator.prometheusCrdSupportEnabled is true (the target allocator service),
+  # - 30 characters if operator.signalControl.enabled is true (the Signal Control collector service),
+  # - 31 characters otherwise (the OpenTelemetry collector service).
+  #
+  # Rendering the chart fails if the prefix is too long for the enabled features. If you enable Prometheus CRD support
+  # via a Dash0OperatorConfiguration resource that is not managed by this chart, make sure the prefix is not longer
+  # than 24 characters.
+  #
+  # Set this value when installing the operator. Do not change the managedResourceNamePrefix value for an existing
+  # installation: the operator will not remove the resources it has created with the previous prefix, so the collectors
+  # with the old names would keep running next to the new ones. To change the prefix of an existing installation,
+  # uninstall and reinstall the operator.
+  managedResourceNamePrefix: ""
+
   # An opt-out for operator self-monitoring. If set to false, self monitoring for the operator will be disabled, that
   # is, the operator will not send self-monitoring telemetry to the configured Dash0 backend. This setting is optional,
   # it defaults to true.
@@ -214,16 +237,17 @@ operator:
   prometheusCrdSupportEnabled: false
 
   # An opt-in for enabling profiling data pipelines. If set to true, the operator will configure its OpenTelemetry
-  # collectors to accept, process and export profiling data over OTLP.
+  # collectors to accept, process and export profiling data over OTLP. If this is not set, the profiling pipelines are
+  # enabled together with operator.ebpfProfilerEnabled, and disabled otherwise.
   #
   # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
   # resource will be created by the Helm chart then.
   # This setting has no effect if operator.telemetryCollectionEnabled is set to false, profiling pipelines will be
   # disabled implicitly.
-  profilingEnabled: false
+  profilingEnabled:
 
-  # Deploy a privileged node-local eBPF profiler. Requires telemetryCollectionEnabled=true.
-  # Also enables profiling pipelines in the Helm-managed operator configuration.
+  # Deploy a privileged node-local eBPF profiler. Requires telemetryCollectionEnabled=true. Also enables the profiling
+  # pipelines, unless operator.profilingEnabled is set to false, which is rejected.
   # The namespace's Pod Security Admission policy must allow privileged pods; the chart never changes namespace labels.
   # See docs/profiling.md for agent release compatibility, security requirements and workload customization.
   ebpfProfilerEnabled: false
@@ -267,7 +291,19 @@ operator:
   clusterName: ""
 
   # The number of replicas for the operator manager deployment. Must be at least 1.
+  #
+  # Every replica serves the operator's admission webhooks, while only the replica that holds the leader election lease
+  # runs the controllers. Running two replicas is recommended in setups that use instrumentWorkloads.mode=pods: in that
+  # mode, pods that are created while no replica serves the webhook are not instrumented until they are recreated. With
+  # more than one replica, the chart adds a pod disruption budget (see operator.podDisruptionBudget) and a topology
+  # spread constraint that prefers spreading the replicas across nodes.
   replicaCount: 1
+
+  # Settings for the pod disruption budget of the operator manager deployment. The pod disruption budget is only
+  # created if operator.replicaCount is greater than 1, it allows at most one replica to be unavailable at a time due to
+  # voluntary disruptions like node drains.
+  podDisruptionBudget:
+    enabled: true
 
   # Settings for GKE clusters:
   gke:
@@ -584,7 +620,7 @@ operator:
     repository: "ghcr.io/dash0hq/signal-control-collector"
     # The Signal Control collector is versioned independently of the operator, so this tag is pinned to that component
     # version; it does not track the chart appVersion.
-    tag: "1.6.0"
+    tag: "1.6.1"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -595,7 +631,7 @@ operator:
     repository: "ghcr.io/dash0hq/edge-proxy"
     # The Edge Proxy is versioned independently of the operator, so this tag is pinned to that component version; it
     # does not track the chart appVersion.
-    tag: "1.6.0"
+    tag: "1.6.1"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -615,7 +651,7 @@ operator:
   ebpfProfilerImage:
     repository: "ghcr.io/parca-dev/parca-agent"
     # Never defaults to the operator appVersion.
-    tag: "v0.51.2"
+    tag: "v0.51.5"
     # Pull by digest instead of tag; takes precedence over tag.
     digest:
     pullPolicy:
@@ -635,7 +671,7 @@ operator:
     repository: "ghcr.io/dash0hq/dash0-synthetics-worker"
     # The synthetics-worker is versioned independently of the operator, so this tag is pinned to that component
     # version; it does not track the chart appVersion.
-    tag: "0.2.0"
+    tag: "0.3.1"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -664,6 +700,47 @@ operator:
 
   # Settings related to the modification and instrumentation of workloads in the cluster.
   instrumentation:
+
+    # Whether the operator instruments workloads automatically. Set this to false if you do not want to use automatic
+    # workload instrumentation at all, for example if you only collect logs, metrics and Kubernetes events.
+    # If set to false, no namespace can be configured with an instrumentWorkloads.mode other than none.
+    #
+    # If this is false, the chart does not register the mutating webhook that instruments workloads. The Kubernetes API
+    # server then no longer sends an admission request to the operator for every workload and pod that is created or
+    # updated in the cluster, which reduces the traffic between the operator and the Kubernetes API server. (The
+    # webhook is also not registered if operator.telemetryCollectionEnabled is false, since workloads are not
+    # instrumented then either.)
+    # In addition:
+    # - Dash0Monitoring resources and the operator.monitoringTemplate default to instrumentWorkloads.mode=none.
+    # - Creating a Dash0Monitoring resource, or the monitoring template of a Dash0OperatorConfiguration resource, with
+    #   instrumentWorkloads.mode other than none is rejected.
+    # - Setting operator.monitoringTemplate.spec.instrumentWorkloads.mode to a value other than none fails the
+    #   installation.
+    #
+    # Switching this from true to false removes the instrumentation from workloads in namespaces that are monitored via
+    # automatic namespace monitoring: the operator sets instrumentWorkloads.mode=none in the Dash0Monitoring resources
+    # it manages for these namespaces, regardless of the mode in the monitoring template. Dash0Monitoring resources that
+    # have not been created by automatic namespace monitoring are not changed, and the instrumentation of their
+    # workloads is not actively removed.
+    #
+    # Before switching this to false, set instrumentWorkloads.mode=none in all Dash0Monitoring resources (and in
+    # operator.monitoringTemplate, if you use automatic namespace monitoring), and wait until the operator has removed
+    # the instrumentation. A Dash0Monitoring resource that still has a mode other than none after switching this to
+    # false is reported in the operator manager's log. It can still be updated, but its mode can only be changed to
+    # none, which also removes the instrumentation from its workloads.
+    #
+    # In namespaces with instrumentWorkloads.mode=pods, pods that are created after switching this to false are not
+    # instrumented, and existing pods lose their instrumentation when they are recreated.
+    #
+    # Setting operator.telemetryCollectionEnabled=false implies operator.instrumentation.enabled=false, regardless of
+    # the value of this setting, and the rules for Dash0Monitoring resources above apply. However, since the operator
+    # does not modify workloads at all while telemetry collection is disabled, it also does not remove the
+    # instrumentation from workloads when the instrumentWorkloads.mode of a Dash0Monitoring resource is changed to none,
+    # and it does not report Dash0Monitoring resources with a mode other than none in its log. A mode other than none in
+    # operator.monitoringTemplate does not fail the installation, the operator uses instrumentWorkloads.mode=none for
+    # the monitoring template instead.
+    enabled: true
+
     # Controls how the Dash0 instrumentation files (the OpenTelemetry injector and the auto-instrumentation agents)
     # are made available to instrumented workload containers. The operator can either use a Kubernetes image volume
     # sourced from the Dash0 instrumentation image, or the traditional init container plus emptyDir volume approach.
@@ -674,14 +751,13 @@ operator:
     #
     # Allowed values:
     # - "auto": use image volumes if the Kubernetes version is 1.36 or later, otherwise use the init container
-    #   approach.
+    #   approach. This is the default.
     # - "image-volume": always use image volumes, also on Kubernetes versions older than 1.36. If the Kubernetes
     #   version is older than 1.31, the operator manager will log a warning and fall back to the init container
     #   approach, since image volumes are not supported in that version. Note that if you are using
     #   Kubernetes 1.34 or earlier, and you want to use this setting, you need to enable image volumes when configuring
     #   your cluster, since image volumes are disabled by default in versions older than 1.35.
     # - "init-container": always use the init container approach, regardless of the Kubernetes version.
-    #   This is the default.
     #
     # Note: Changing the instrumentation delivery setting for an existing operator installation will not trigger a
     # bulk re-instrumentation of all existing workloads, even for namespaces that are set to
@@ -691,13 +767,13 @@ operator:
     #
     # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
     # resource will be created by the Helm chart then.
-    delivery: init-container
+    delivery: auto
 
-    # If set to true, it enables Python auto-instrumentation (beta).
-    enablePythonAutoInstrumentation: false
+    # Python auto-instrumentation is enabled by default. Set this to false to disable it.
+    enablePythonAutoInstrumentation: true
 
-    # If set to true, it enables Ruby auto-instrumentation (beta).
-    enableRubyAutoInstrumentation: false
+    # Ruby auto-instrumentation is enabled by default. Set this to false to disable it.
+    enableRubyAutoInstrumentation: true
 
     # An optional delay to stagger access to the Kubernetes API server to instrument existing workloads at operator
     # startup or when enabling instrumentation for a new namespace via the Dash0Monitoring resource. This delay will be
@@ -730,17 +806,28 @@ operator:
     # This setting produces a large amount of logs and is not suitable for extended production use.
     debugVerbosityDetailed: false
 
-    # If set to a value > 0, the send_batch_size parameter will be set for the batch processor of the collectors
-    # managed by the operator, otherwise it uses the processor's default (8192)
-    # (see https://github.com/open-telemetry/opentelemetry-collector/blob/main/processor/batchprocessor/README.md).
-    # There is usually no need to configure this.
+    # The collectors managed by the operator batch telemetry in their exporters (sending_queue::batch, see
+    # https://github.com/open-telemetry/opentelemetry-collector/blob/main/exporter/exporterhelper/README.md).
+    # If set to a value > 0, sendBatchSize sets the minimum number of items (spans, metric data points, log records,
+    # profile samples) per batch (min_size), otherwise the default of 8192 is used. There is usually no need to
+    # configure this.
     sendBatchSize: 0
 
-    # If set to a value > 0, the send_batch_max_size parameter will be set for the batch processor of the collectors
-    # managed by the operator. There is usually no need to configure this. The value must be greater than or equal to
-    # sendBatchSize, which defaults to 8192. If you need to use a smaller number, make sure to set both sendBatchSize
-    # and sendBatchMaxSize.
+    # If set to a value > 0, sendBatchMaxSize sets the maximum number of items per batch (max_size) for the exporters
+    # of the collectors managed by the operator, otherwise batches have no upper size limit. There is usually no need
+    # to configure this. The value must be greater than or equal to sendBatchSize, which defaults to 8192. If you need
+    # to use a smaller number, make sure to set both sendBatchSize and sendBatchMaxSize.
     sendBatchMaxSize: 0
+
+    # Each exporter of the collectors managed by the operator buffers telemetry in a sending queue while its export
+    # destination is slow or unavailable. When the queue is full, the exporter rejects new data: receivers that support
+    # it (OTLP clients, the filelog receiver) retry later, others drop it. The queue capacity is measured in MiB of
+    # protobuf-encoded telemetry; the in-memory representation is about 1.5 to 3.5 times larger. If set to a value > 0,
+    # sendingQueueSizeMiB sets the capacity of every sending queue (one per exporter and signal), otherwise the operator
+    # derives it from the memory limit of the respective collector container (20% of the memory_limiter soft limit, for
+    # example 74 MiB for the default memory limit of 500Mi). When increasing this value, make sure to increase the
+    # memory limit of the collector containers accordingly. There is usually no need to configure this.
+    sendingQueueSizeMiB: 0
 
     # If set to true, instrumented workloads will be instructed to use the service URL of the OpenTelemetry collector
     # DaemonSet, instead of sending telemetry via a node-local route to the node's IP address and the collector's host
@@ -778,13 +865,49 @@ operator:
     # resources contain a lot of filters or transforms, this limit might be smaller.
     compressConfigMaps: false
 
-    # A reference to a persistent volume to use for the filelog offset sync. Specify this is you have a cluster
-    # with more than pods 100 pods active at the same time. By default, the filelog offset sync will use a config map
-    # for its peristent storage, but ConfigMaps are limited to 1 MB in size. If you have around 100 pods running in
-    # your cluster, the recommendation is to provide volume.
+    # Where the filelog receiver of the collector DaemonSet persists the offsets of the pod log files it reads, so that
+    # log records are neither lost nor sent twice when a collector pod restarts. One of:
+    # - auto (the default): store the offsets in a hostPath volume on each node (see filelogOffsetHostPath), if the
+    #   cluster admits a collector pod with a writable hostPath volume; otherwise in a config map. On GKE Autopilot,
+    #   the config map is always used, since GKE Autopilot does not admit writable hostPath volumes. Unless the
+    #   collector DaemonSet pods run with the SELinux type spc_t (see daemonSetSeLinuxOptions), the config map is also
+    #   used on OpenShift and on clusters whose nodes likely enforce SELinux (nodes with the container runtime CRI-O,
+    #   RKE2, K3s, k0s), since the default container type cannot write to hostPath directories. Otherwise, the operator
+    #   checks via a server-side dry run of a collector pod whether the pod security admission, the validating
+    #   admission policies and the admission webhooks (e.g. OPA gatekeeper, Kyverno) of the cluster admit the hostPath
+    #   volume. If the dry run fails for another reason than an admission denial, the collector DaemonSet keeps the
+    #   storage it currently uses (a new installation starts with the config map) and the check is repeated on the
+    #   next reconciliation.
+    # - hostPath: always store the offsets in the hostPath volume, without any of these checks.
+    # - configMap: always store the offsets in a single config map, which a sidecar container in each collector pod
+    #   updates every few seconds. Only recommended for small clusters, for example local development or test clusters.
+    #   ConfigMaps are limited to 1 MB in size, which clusters with around 100 pods or more can exceed. Admission
+    #   webhooks that process every config map update (e.g. OPA gatekeeper, Kyverno) can consume a lot of resources.
+    #   And etcd stores a complete copy of the config map for every update until the next compaction, so the disk space
+    #   used by etcd grows with the square of the number of nodes. In larger clusters, this can exhaust the etcd
+    #   storage quota, which makes the cluster unusable. This risk is highest for self-managed control planes (e.g.
+    #   on-premises clusters).
+    # When switching from the config map to a volume, the offsets are migrated from the config map (except into a
+    # user-provided volume on GKE Autopilot), which is deleted afterwards. Switching from a volume back to the config
+    # map does not carry the offsets over, so log records may be lost or sent twice during that switch.
+    # Must be left at auto when filelogOffsetSyncStorageVolume is set, which always takes precedence.
+    # See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/advanced-configuration.md#filelog-offset-storage.
+    filelogOffsetStorageMode: auto
+
+    # The directory on the nodes in which the filelog receiver offsets are stored when filelogOffsetStorageMode
+    # resolves to hostPath. The offsets of each node are stored in <filelogOffsetHostPath>/<operator namespace>/<node
+    # name>. The directory is created and handed over to the collector's user via an init container that runs as root
+    # with the CHOWN capability. Uninstalling the operator does not remove the directory
+    # <filelogOffsetHostPath>/<operator namespace> from the nodes.
+    filelogOffsetHostPath: /var/lib/dash0-operator/filelog-offsets
+
+    # A user-provided volume to use for the filelog receiver offsets instead of the operator-managed hostPath volume or
+    # config map selected via filelogOffsetStorageMode. Any volume that is accessible from the collector pods can be
+    # used, for example a hostPath volume with a custom path or a ReadWriteMany persistent volume claim. The volume
+    # ownership init container that runs as root with the CHOWN capability is added in this case as well.
     #
-    # Here is an example with a hostPath volume (see also https://kubernetes.io/docs/concepts/storage/volumes/#hostpath
-    # for considerations around using hostPath volumes):
+    # Here is an example with a user-provided hostPath volume (see also
+    # https://kubernetes.io/docs/concepts/storage/volumes/#hostpath for considerations around using hostPath volumes):
     # operator:
     #   collectors:
     #    filelogOffsetSyncStorageVolume:
@@ -953,7 +1076,26 @@ operator:
         initialDelaySeconds: 0
         periodSeconds: 2
         timeoutSeconds: 1
-        failureThreshold: 45
+        failureThreshold: 30
+
+    # The number of replicas of the collector Deployment (cluster-metrics-collector) managed by the operator. Must be at
+    # least 1. This collector collects cluster-wide telemetry (Kubernetes infrastructure metrics, Kubernetes events and
+    # Kubernetes objects), which must only be collected once. With more than one replica, the replicas elect a leader
+    # via a Kubernetes lease in the operator namespace; only the leader collects, the other replicas are on standby and
+    # take over when the leader becomes unavailable, for example when its node is drained or removed by the cluster
+    # autoscaler. With more than one replica, the operator also adds a pod disruption budget that allows at most one
+    # replica to be unavailable at a time, and topology spread constraints that prefer spreading the replicas across
+    # zones and nodes.
+    #
+    # Things to consider before running more than one replica:
+    # - Every replica, including the replicas on standby, requests the resources configured in
+    #   deploymentCollectorContainerResources.
+    # - Taking over the lease takes up to 15 seconds after the leader has stopped, and the leader also gives up its
+    #   lease when it reloads its configuration (for example when monitoring is enabled for another namespace).
+    #   Telemetry is not collected during that time.
+    # - A replica that takes over sends the Kubernetes events which are still stored in the cluster and occurred since
+    #   that replica has been started, also those the previous leader has already sent.
+    deploymentReplicas: 1
 
     # Resource settings for the collector container of the Deployment collector pod (cluster-metrics-collector) managed
     # by the operator. There should usually be no reason to override this.
@@ -1073,7 +1215,7 @@ operator:
         initialDelaySeconds: 0
         periodSeconds: 2
         timeoutSeconds: 1
-        failureThreshold: 45
+        failureThreshold: 30
 
     # The number of replicas of the Signal Control collector Deployment managed by the operator. This collector only
     # exists when Signal Control is enabled (see operator.signalControl.enabled); it receives the Dash0-bound telemetry
@@ -1187,15 +1329,26 @@ operator:
         initialDelaySeconds: 0
         periodSeconds: 2
         timeoutSeconds: 1
-        failureThreshold: 45
+        failureThreshold: 30
 
     # Settings for the k8s_attributes processor in the Dash0 operator collectors:
     k8s_attributes:
 
-      # Disables the replicaset informer for the k8s_attributes processor. This will lead to not collecting the resource
-      # attribute k8s.deployment.uid, and might lead to wrong values k8s.deployment.name in some edge cases.
-      # The default is false, do not override this unless explicitly instructed by Dash0 support.
+      # Omits k8s.deployment.uid from the k8s_attributes extract list, which keeps the processor from starting its
+      # ReplicaSet informer. This will lead to not collecting the resource attribute k8s.deployment.uid.
+      # This setting can be useful to reduce the memory usage of the collectors and the traffic between the collectors
+      # and the Kubernetes API server. (The replicaset informer watches and caches all ReplicaSets in the cluster,
+      # including the default 10 revision history ReplicaSets per deployment, and it does so in every collector pod on
+      # each node. The effect is most noticeable in large clusters.)
+      # The default is false.
       disableReplicasetInformer: false
+
+      # Omits k8s.cronjob.uid from the k8s_attributes extract list, which keeps the processor from starting its
+      # Job informer. This will lead to not collecting the resource attribute k8s.cronjob.uid.
+      # This setting can be useful to reduce the memory usage of the collectors and the traffic between the collectors
+      # and the Kubernetes API server in large clusters with many jobs.
+      # The default is false.
+      disableJobInformer: false
 
       # By default, the k8s_attributes processor will not wait until Kubernetes metadata has been fetched from the
       # Kubernetes API. Telemetry which is collected before the Kubernetes metadata has been synchronized will not be
@@ -1217,8 +1370,8 @@ operator:
       # instead of running one instance (with its own Kubernetes API watches and metadata cache) per pipeline. This can
       # reduce the memory usage of the collectors considerably, in particular in large clusters.
       # This enables the collector feature gate processor.k8sattributes.ShareProcessorBetweenPipelines, which is
-      # currently in alpha stage. The default is false.
-      shareProcessorBetweenPipelines: false
+      # currently in alpha stage. The default is true, set this to false to run one instance per pipeline.
+      shareProcessorBetweenPipelines: true
 
     # Settings for the kubeletstats receiver in the DaemonSet collector, which scrapes the local kubelet for Kubernetes
     # infrastructure metrics.
@@ -1809,6 +1962,131 @@ operator:
       logs: false
       top: true
       version: true
+
+  # Settings for the eBPF profiler DaemonSet managed by the operator. All settings in operator.ebpfProfiler will be
+  # ignored if operator.ebpfProfilerEnabled is false. See docs/profiling.md.
+  ebpfProfiler:
+
+    # The PID namespace translation mode of the eBPF profiler, one of "none", "auto", "exact" or "recursive". Set this
+    # to "auto" for nodes with nested PID namespaces, such as kind nodes. When not set, the profiler uses "none". This
+    # setting only has an effect if the operator configuration resource is created via Helm (operator.dash0Export or
+    # operator.exports). See docs/profiling.md for details on the modes.
+    pidNamespaceTranslationMode:
+
+    # Resource settings for the profiler container of the eBPF profiler DaemonSet managed by the operator.
+    containerResources:
+      limits:
+        memory: 512Mi
+      # The GOMEMLIMIT environment variable value for the profiler container. Leaving this empty is recommended; the
+      # operator then derives it from containerResources.limits.memory (about 80%). Set a value only to override it.
+      # Valid units differ from Kubernetes resource settings, use MiB or GiB (see
+      # https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+    # Additional labels to be set on the eBPF profiler DaemonSet managed by the operator.
+    labels: {}
+
+    # Additional annotations to be set on the eBPF profiler DaemonSet managed by the operator.
+    annotations: {}
+
+    # Additional labels to be set on the eBPF profiler pods managed by the operator.
+    podLabels: {}
+
+    # Additional annotations to be set on the eBPF profiler pods managed by the operator.
+    podAnnotations: {}
+
+    # An array of tolerations for the eBPF profiler DaemonSet managed by the operator. The tolerations of the DaemonSet
+    # collector (operator.collectors.daemonSetTolerations) are not applied to the profiler. To profile workloads on
+    # tainted nodes, set the same tolerations here and in operator.debuginfoProxy.tolerations.
+    # Example:
+    # tolerations:
+    #   - key: "key1"
+    #     operator: "Equal"
+    #     value: "value1"
+    #     effect: "NoSchedule"
+    tolerations: []
+
+    # The nodeAffinity for the eBPF profiler DaemonSet. This can be used to constrain which nodes the profiler pods will
+    # be scheduled on.
+    #
+    # See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: "dash0.com/enable"
+                operator: "NotIn"
+                values: ["false"]
+              - key: "kubernetes.io/os"
+                operator: "In"
+                values: ["linux"]
+
+    # The priority class name for the eBPF profiler pods. If set, these pods will be scheduled with the specified
+    # priority class. See https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/.
+    # priorityClassName:
+
+  # Settings for the debuginfo upload proxy DaemonSet managed by the operator, which runs whenever the eBPF profiler
+  # uploads debug information. All settings in operator.debuginfoProxy will be ignored if operator.ebpfProfilerEnabled
+  # is false. See docs/profiling.md.
+  debuginfoProxy:
+
+    # Resource settings for the proxy container of the debuginfo proxy DaemonSet managed by the operator.
+    containerResources:
+      limits:
+        memory: 128Mi
+      # The GOMEMLIMIT environment variable value for the debuginfo proxy container. Leaving this empty is recommended;
+      # the operator then derives it from containerResources.limits.memory (about 80%). Set a value only to override it.
+      # Valid units differ from Kubernetes resource settings, use MiB or GiB (see
+      # https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
+      requests:
+        cpu: 10m
+        memory: 32Mi
+
+    # Additional labels to be set on the debuginfo proxy DaemonSet managed by the operator.
+    labels: {}
+
+    # Additional annotations to be set on the debuginfo proxy DaemonSet managed by the operator.
+    annotations: {}
+
+    # Additional labels to be set on the debuginfo proxy pods managed by the operator.
+    podLabels: {}
+
+    # Additional annotations to be set on the debuginfo proxy pods managed by the operator.
+    podAnnotations: {}
+
+    # An array of tolerations for the debuginfo proxy DaemonSet managed by the operator. The profiler only uploads debug
+    # information to the proxy pod on its own node, so the proxy needs the same tolerations as the profiler
+    # (operator.ebpfProfiler.tolerations).
+    # Example:
+    # tolerations:
+    #   - key: "key1"
+    #     operator: "Equal"
+    #     value: "value1"
+    #     effect: "NoSchedule"
+    tolerations: []
+
+    # The nodeAffinity for the debuginfo proxy DaemonSet. This can be used to constrain which nodes the proxy pods will
+    # be scheduled on.
+    #
+    # See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: "dash0.com/enable"
+                operator: "NotIn"
+                values: ["false"]
+              - key: "kubernetes.io/os"
+                operator: "In"
+                values: ["linux"]
+
+    # The priority class name for the debuginfo proxy pods. If set, these pods will be scheduled with the specified
+    # priority class. See https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/.
+    # priorityClassName:
 
   # Settings related to the synthetics-worker, the private-location runner that dials outbound to Dash0 and executes
   # synthetic checks assigned to this cluster's private location (experimental).

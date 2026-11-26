@@ -1,19 +1,21 @@
 # SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-name: Synchronize Helm chart docs to dash0.com/docs
+name: Synchronize operator docs to dash0.com/docs
 
-# Copies the docs from helm-chart/dash0-operator into the documentation on https://www.dash0.com/docs, applying the
-# modifications declared in sync-docs/transformations.yaml, and opens a pull request against the target repository.
+# Copies the docs from helm-chart/dash0-operator and olm/docs into the documentation on https://www.dash0.com/docs,
+# applying the modifications declared in sync-docs/transformations.yaml, and opens a pull request against the target
+# repository.
 #
 # The transformation logic and the PR flow live in the shared dash0hq/sync-docs-action composite action; this workflow
 # only supplies the operator-specific inputs (source root, transformations file, PR metadata) and the token.
 #
 # The documentation is a set of files: the top-level README.md (which becomes the operator overview page
 # dash0-operator/overview.md) and the topic files in helm-chart/dash0-operator/docs/*.md (which keep their names but
-# move into the same dash0-operator/ subdirectory, i.e. the docs/ directory is renamed to dash0-operator/). They are
-# transformed and written into the target directory. The section landing page about-kubernetes.md is hand-maintained
-# in the target repository and is not touched by this sync.
+# move into the same dash0-operator/ subdirectory, i.e. the docs/ directory is renamed to dash0-operator/), plus the
+# OLM docs in olm/docs/*.md (referenced relative to source-root via ../../). They are transformed and written into the
+# target directory. The section landing page about-kubernetes.md is hand-maintained in the target repository and is not
+# touched by this sync.
 #
 # This workflow can be run manually (workflow_dispatch) and is also invoked from ci.yaml (workflow_call) after a new
 # release has been published. Additionally, ci.yaml invokes it with dry-run: true on every CI build, to verify early
@@ -24,8 +26,9 @@ name: Synchronize Helm chart docs to dash0.com/docs
 # The target repository and the directory within it that receives the pages are supplied from the repository secrets
 # SYNC_DOCUMENTATION_TARGET_REPOSITORY and SYNC_DOCUMENTATION_TARGET_DIRECTORY, so the (non-public) target repository
 # name and its internal layout are not hardcoded in this workflow. Authentication to the target repository is done via
-# the DASH0_DOCS_REPO_GITHUB_PAT secret: a fine-grained personal access token scoped to the target repository with
-# Contents: Read and write (to push the branch) and Pull requests: Read and write (to open the PR).
+# a short-lived installation token of the GitHub App "Dash0 Docs Sync" (dash0-docs-sync), which is installed only on the
+# target repository. (GITHUB_TOKEN cannot be used for this: it has no access to other repositories, and a pull
+# request opened with it would not trigger the CI workflows of the target repository.)
 
 # The runs called from ci.yaml (dry runs and syncs after a release) are covered by the concurrency group of ci.yaml.
 # jactionlint ignore=concurrency-limits
@@ -43,8 +46,8 @@ on:
         type: boolean
         default: false
     secrets:
-      DASH0_DOCS_REPO_GITHUB_PAT:
-        description: Fine-grained PAT with contents + pull-requests write access for the documentation repository. Only required when dry-run is false.
+      DOCS_SYNC_APP_PRIVATE_KEY:
+        description: Private key of the GitHub App that opens the pull request in the documentation repository. Only required when dry-run is false.
         required: false
       SYNC_DOCUMENTATION_TARGET_REPOSITORY:
         description: owner/name of the target documentation repository. Only required when dry-run is false.
@@ -55,7 +58,7 @@ on:
 
 jobs:
   sync-docs:
-    name: Synchronize Helm chart docs with dash0.com/docs
+    name: Synchronize operator docs to dash0.com/docs
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -67,12 +70,24 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: create GitHub App token for the documentation repository
+        id: app-token
+        if: ${{ !inputs.dry-run }}
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.DOCS_SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DOCS_SYNC_APP_PRIVATE_KEY }}
+          repositories: ${{ secrets.SYNC_DOCUMENTATION_TARGET_REPOSITORY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-members: read
+
       # Single invocation for both modes. On a dry run the action applies the transformations and the coverage check,
       # then stops before touching the target repository; the target-side inputs are ignored, so they can be supplied
       # unconditionally. The operator's pages live under dash0-operator/ within the target directory; each
       # transformations.yaml `target:` (dash0-operator/<page>.md) is resolved relative to target-directory.
       - name: synchronize docs to the website
-        uses: dash0hq/sync-docs-action@1dc3817bec558ec22265a321177e58fb64a9324c
+        uses: dash0hq/sync-docs-action@c30aaaaa93f3f8a88b9f9e3acd31cfff3e086954 # v0.6.0
         with:
           dry-run: ${{ inputs.dry-run }}
           source-root: helm-chart/dash0-operator
@@ -81,8 +96,8 @@ jobs:
           transformations-file: ../../.github/workflows/sync-docs/transformations.yaml
           target-repository: ${{ secrets.SYNC_DOCUMENTATION_TARGET_REPOSITORY }}
           target-directory: ${{ secrets.SYNC_DOCUMENTATION_TARGET_DIRECTORY }}
-          target-github-token: ${{ secrets.DASH0_DOCS_REPO_GITHUB_PAT }}
-          pr-branch: sync-dash0-operator-helm-chart-docs
+          target-github-token: ${{ steps.app-token.outputs.token }}
+          pr-branch: sync-dash0-operator-docs
           pr-title: "docs: synchronize Dash0 operator documentation"
           pr-body: >-
             This PR synchronizes the content of the Dash0 operator documentation from

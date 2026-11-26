@@ -177,6 +177,7 @@ func TestRedactDocument(t *testing.T) {
 			googleChatWebhookUrl,
 			ilertUrl,
 			allQuietUrl,
+			mattermostWebhookUrl,
 			syntheticCheckHeaderValue,
 			syntheticCheckQueryParameterValue,
 			syntheticCheckPassword,
@@ -1877,6 +1878,7 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 			googleChatWebhookUrl,
 			ilertUrl,
 			allQuietUrl,
+			mattermostWebhookUrl,
 			syntheticCheckHeaderValue,
 			syntheticCheckQueryParameterValue,
 			syntheticCheckPassword,
@@ -2696,6 +2698,7 @@ const (
 	discordWebhookUrl         = "https://discord.com/api/webhooks/1234567890/my-discord-webhook-secret"
 	ilertUrl                  = "https://api.ilert.com/api/v1/events/dash0/my-ilert-secret"
 	allQuietUrl               = "https://events.allquiet.app/api/webhook/my-all-quiet-secret"
+	mattermostWebhookUrl      = "https://mattermost.example.com/hooks/my-mattermost-webhook-secret"
 
 	// The canonical shape of a Google Chat webhook URL: its credentials are query parameters, so the value contains an
 	// ampersand, which the JSON serializer escapes. Redacting the parsed document rather than the rendered text is what
@@ -2911,6 +2914,16 @@ const dash0ApiResourcesJson = `{
         "display": { "name": "All Quiet" },
         "type": "all_quiet",
         "allQuietConfig": { "url": "` + allQuietUrl + `" }
+      }
+    },
+    {
+      "apiVersion": "operator.dash0.com/v1beta1",
+      "kind": "Dash0NotificationChannel",
+      "metadata": { "name": "mattermost-channel", "namespace": "my-namespace" },
+      "spec": {
+        "display": { "name": "Mattermost" },
+        "type": "mattermost_webhook",
+        "mattermostWebhookConfig": { "url": "` + mattermostWebhookUrl + `", "channel": "town-square" }
       }
     },
     {

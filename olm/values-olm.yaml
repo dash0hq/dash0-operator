@@ -19,6 +19,10 @@ operator:
   openShift:
     enabled: null
 
+  # Rendered with true so that the bundle carries the images of the eBPF profiler and the debuginfo proxy. The manifest
+  # transformer sets DASH0_EBPF_PROFILER_ENABLED=false; it is switched on via the env settings of the Subscription.
+  ebpfProfilerEnabled: true
+
   # Signal Control is switched on and off at runtime via a Dash0SignalControl resource.
   signalControl:
     enabled: true

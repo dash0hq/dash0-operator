@@ -58,6 +58,15 @@ rules:
   - pods
   verbs:
   - list
+# Permissions required for the server-side dry run of a collector daemonset pod, with which the operator checks whether
+# the cluster admits a writable hostPath volume for the filelog receiver offsets
+# (operator.collectors.filelogOffsetStorageMode=auto). The dry run does not create a pod.
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - create
 - apiGroups:
   - ""
   resources:

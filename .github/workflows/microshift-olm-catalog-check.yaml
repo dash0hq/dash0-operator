@@ -1,0 +1,107 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+name: MicroShift OLM Catalog Check
+
+# Every run uses its own MicroShift cluster on the runner, runs do not share any resources.
+# jactionlint ignore=concurrency-limits
+on:
+  workflow_call:
+    inputs:
+      upgrade_from_csv:
+        description: "the CSV of the release in the catalog main-dev from which to test the upgrade, empty to skip"
+        type: string
+        required: false
+        default: ''
+    secrets:
+      SLACK_BOT_TOKEN:
+        required: true
+      SLACK_CHANNEL_ID:
+        required: true
+  workflow_dispatch:
+    inputs:
+      upgrade_from_csv:
+        description: "the CSV of the release in the catalog main-dev from which to test the upgrade, empty to skip"
+        type: string
+        required: false
+        default: ''
+
+env:
+  MINC_VERSION: v0.2.0
+  # the sha256 digest of the asset minc_linux_amd64 of the minc release MINC_VERSION
+  MINC_SHA256: d9089a8e2c69d287455846a013915799be610eb899ec12183475507b3250d7a8
+  # a tag of quay.io/minc-org/minc without the architecture suffix
+  MICROSHIFT_VERSION: 4.19.0-okd-scos.17
+  # the kube context that minc creates
+  ALLOWED_KUBECTXS: microshift
+
+jobs:
+  check_olm_catalog_on_microshift:
+    name: Check the OLM Catalog on MicroShift (${{ matrix.scenario }})
+    # minc runs MicroShift in a privileged container via "sudo podman", the runner image provides Podman.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # install: a fresh installation of the channel head; upgrade: the upgrade from upgrade_from_csv to the channel
+        # head, each on its own cluster.
+        scenario: ${{ fromJSON(inputs.upgrade_from_csv != '' && '["install", "upgrade"]' || '["install"]') }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: install minc
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -LsSf -o "$RUNNER_TEMP/bin/minc" \
+            "https://github.com/minc-org/minc/releases/download/$MINC_VERSION/minc_linux_amd64"
+          echo "$MINC_SHA256  $RUNNER_TEMP/bin/minc" | sha256sum --check
+          chmod +x "$RUNNER_TEMP/bin/minc"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: create MicroShift cluster
+        run: |
+          # The API server address in the kubeconfig of minc is 127.0.0.1.nip.io, resolve it without the nip.io DNS
+          # service.
+          echo "127.0.0.1 127.0.0.1.nip.io" | sudo tee -a /etc/hosts
+          minc create --microshift-version "$MICROSHIFT_VERSION"
+          minc status
+
+      - name: run check
+        env:
+          UPGRADE_FROM_CSV: ${{ matrix.scenario == 'upgrade' && inputs.upgrade_from_csv || '' }}
+        run: |
+          .github/workflows/scripts/microshift-olm-catalog-check.sh
+
+      - name: collect MicroShift logs on failure
+        if: failure() || cancelled()
+        run: |
+          mkdir -p microshift-olm-catalog-check-diagnostics
+          # The runner user owns the diagnostics directory, only podman needs sudo.
+          # shellcheck disable=SC2024
+          sudo podman exec microshift journalctl --unit microshift --no-pager \
+            > microshift-olm-catalog-check-diagnostics/microshift-journal.txt 2>&1 || true
+
+      - name: upload cluster diagnostics on failure
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: microshift-olm-catalog-check-diagnostics-${{ matrix.scenario }}
+          path: microshift-olm-catalog-check-diagnostics
+          if-no-files-found: ignore
+
+      # cancelled() covers a job that exceeds timeout-minutes, for which failure() is false. A manual cancellation is
+      # reported as a failure as well.
+      - name: send Slack notification on failure
+        if: failure() || cancelled()
+        uses: ./.github/actions/slack-notification
+        with:
+          status: failure
+          subject: MicroShift OLM catalog check (${{ matrix.scenario }})
+          botToken: ${{ secrets.SLACK_BOT_TOKEN }}
+          channelId: ${{ secrets.SLACK_CHANNEL_ID }}

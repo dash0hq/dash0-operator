@@ -98,6 +98,10 @@ func (r *SignalToMetricsReconciler) ShortName() string {
 	return "signal-to-metrics"
 }
 
+func (r *SignalToMetricsReconciler) Kind() string {
+	return "Dash0SignalToMetrics"
+}
+
 func (r *SignalToMetricsReconciler) GetDefaultApiConfigs() []ApiConfig {
 	return r.defaultApiConfigs.Get()
 }

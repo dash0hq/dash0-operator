@@ -97,6 +97,10 @@ func (r *NotificationChannelReconciler) ShortName() string {
 	return "notification-channel"
 }
 
+func (r *NotificationChannelReconciler) Kind() string {
+	return "Dash0NotificationChannel"
+}
+
 func (r *NotificationChannelReconciler) GetDefaultApiConfigs() []ApiConfig {
 	return r.defaultApiConfigs.Get()
 }
@@ -485,6 +489,7 @@ func prepareNotificationChannelApiPayload(resource map[string]any) {
 		"googleChatWebhookConfig",
 		"ilertConfig",
 		"allQuietConfig",
+		"mattermostWebhookConfig",
 	}
 	for _, fieldName := range configFieldNames {
 		if configValue, exists := spec[fieldName]; exists && configValue != nil {

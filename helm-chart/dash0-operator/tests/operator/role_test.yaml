@@ -1,6 +1,8 @@
 suite: test role
 templates:
   - operator/role.yaml
+release:
+  name: test-release
 tests:
   - it: leader election role should match snapshot
     asserts:
@@ -48,6 +50,12 @@ tests:
             apiGroups: [""]
             resources: [pods]
             verbs: [list]
+      - contains:
+          path: rules
+          content:
+            apiGroups: [""]
+            resources: [pods]
+            verbs: [create]
       - contains:
           path: rules
           content:

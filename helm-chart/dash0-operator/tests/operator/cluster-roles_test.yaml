@@ -1,6 +1,8 @@
 suite: test cluster roles
 templates:
   - operator/cluster-roles.yaml
+release:
+  name: test-release
 tests:
   - it: cluster roles should match snapshot
     asserts:
@@ -510,6 +512,7 @@ tests:
             apiGroups:
               - dash0.com
             resources:
+              - dash0generativeaievaluations
               - dash0teams
             verbs:
               - get

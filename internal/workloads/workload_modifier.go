@@ -48,6 +48,8 @@ const (
 	envVarOtelInjectorConfigFilePythonEnabledValue                      = "/__otel_auto_instrumentation/injector/injector-with-python.conf"
 	envVarOtelInjectorConfigFileRubyEnabledValue                        = "/__otel_auto_instrumentation/injector/injector-with-ruby.conf"
 	envVarOtelInjectorConfigFilePythonAndRubyEnabledValue               = "/__otel_auto_instrumentation/injector/injector-with-python-and-ruby.conf"
+	envVarOtelJavaagentConfigurationFileName                            = "OTEL_JAVAAGENT_CONFIGURATION_FILE"
+	envVarOtelJavaagentConfigurationFileValue                           = "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties"
 	envVarOtelExporterOtlpEndpointName                                  = "OTEL_EXPORTER_OTLP_ENDPOINT"
 	envVarOtelExporterOtlpProtocolName                                  = "OTEL_EXPORTER_OTLP_PROTOCOL"
 	envVarOtelLogsExporterName                                          = "OTEL_LOGS_EXPORTER"
@@ -365,8 +367,11 @@ func (m *ResourceModifier) AddLabelsToImmutableJob(job *batchv1.Job) Modificatio
 	return NewHasBeenModifiedResult(len(job.Spec.Template.Spec.Containers), nil)
 }
 
-func (m *ResourceModifier) ModifyPod(pod *corev1.Pod) ModificationResult {
-	if m.hasMatchingOwnerReference(pod, []metav1.TypeMeta{
+// ModifyPod instruments the pod. The owners of the pod are only relevant with instrumentWorkloads.mode=pods, where the
+// app.kubernetes.io/* labels and resource.opentelemetry.io/* annotations of the top-level owner are taken into account
+// in the same way as when modifying the pod template of that owner. Pass nil for an ownerless pod.
+func (m *ResourceModifier) ModifyPod(pod *corev1.Pod, owners PodOwners) ModificationResult {
+	if !m.namespaceInstrumentationConfig.InstrumentPods && m.hasMatchingOwnerReference(pod, []metav1.TypeMeta{
 		util.K8sTypeMetaDaemonSet,
 		util.K8sTypeMetaReplicaSet,
 		util.K8sTypeMetaStatefulSet,
@@ -378,7 +383,7 @@ func (m *ResourceModifier) ModifyPod(pod *corev1.Pod) ModificationResult {
 	if isIneligibleForModificationResult := m.checkEligibleForModification(&pod.Spec); isIneligibleForModificationResult != nil {
 		return *isIneligibleForModificationResult
 	}
-	podSpecResult := m.modifyPodSpec(&pod.Spec, &pod.ObjectMeta, &pod.ObjectMeta)
+	podSpecResult := m.modifyPodSpec(&pod.Spec, owners.WorkloadMeta(pod), &pod.ObjectMeta)
 	if !podSpecResult.hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
@@ -691,6 +696,7 @@ func (m *ResourceModifier) addEnvironmentVariables(
 	)
 
 	m.addOTelPropagatorsEnvVar(container)
+	m.addOtelJavaagentConfigurationFileEnvVar(container)
 
 	m.addCaptureSqlQueryParametersEnvVar(container)
 
@@ -1239,6 +1245,23 @@ func otelPropagatorsCanBeUpdatedForContainer(container *corev1.Container, namesp
 	}
 }
 
+// addOtelJavaagentConfigurationFileEnvVar points the OpenTelemetry Java agent at the defaults file shipped in the
+// instrumentation image, unless the container already sets OTEL_JAVAAGENT_CONFIGURATION_FILE. Only the Java agent reads
+// this variable, and it ranks the file below environment variables and system properties, so OTEL_PROPAGATORS and
+// -Dotel.* settings override the defaults.
+func (m *ResourceModifier) addOtelJavaagentConfigurationFileEnvVar(container *corev1.Container) {
+	if isSet, _ := envVarIsSetAndNotEmpty(container, envVarOtelJavaagentConfigurationFileName); isSet {
+		return
+	}
+	addOrReplaceEnvironmentVariable(
+		container,
+		corev1.EnvVar{
+			Name:  envVarOtelJavaagentConfigurationFileName,
+			Value: envVarOtelJavaagentConfigurationFileValue,
+		},
+	)
+}
+
 // addCaptureSqlQueryParametersEnvVar reconciles the SQL query parameter capture environment variables on the
 // container. When the monitoring resource enables capture, missing env vars in CaptureSqlQueryParametersEnvVarNames
 // are added with Value="true". When capture is disabled, env vars previously written by the operator (i.e. whose
@@ -1551,6 +1574,22 @@ func (m *ResourceModifier) RemoveLabelsFromImmutableJob(job *batchv1.Job) Modifi
 	return NewHasBeenModifiedResult(len(job.Spec.Template.Spec.Containers), nil)
 }
 
+// RevertPod removes the instrumentation from a pod that is about to be created, for example the instrumentation that a
+// pod has inherited from the pod template of a workload that has been instrumented before the namespace was switched
+// to instrumentWorkloads.mode=pods.
+func (m *ResourceModifier) RevertPod(pod *corev1.Pod) ModificationResult {
+	if util.InstrumentationAttemptHasFailed(&pod.ObjectMeta) {
+		util.RemoveInstrumentationLabelsAndAnnotations(&pod.ObjectMeta)
+		return NewHasBeenModifiedResult(len(pod.Spec.Containers), nil)
+	}
+	podSpecResult := m.revertPodSpec(&pod.Spec, &pod.ObjectMeta)
+	if !podSpecResult.hasBeenModified {
+		return NewNotModifiedNoChangesResult()
+	}
+	util.RemoveInstrumentationLabelsAndAnnotations(&pod.ObjectMeta)
+	return NewHasBeenModifiedResult(len(pod.Spec.Containers), podSpecResult.instrumentationIssuesPerContainer)
+}
+
 func (m *ResourceModifier) RevertReplicaSet(replicaSet *appsv1.ReplicaSet) ModificationResult {
 	if m.hasMatchingOwnerReference(replicaSet, []metav1.TypeMeta{util.K8sTypeMetaDeployment}) {
 		return NewNotModifiedOwnedByHigherOrderWorkloadResult()
@@ -1688,6 +1727,7 @@ func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Containe
 
 	m.removeOtelExporterOtlpEnvVarsIfSetByOperator(container)
 	m.removeOtelPropagatorsIfCurrentValueMatchesConfig(container)
+	m.removeOtelJavaagentConfigurationFileIfSetByOperator(container)
 	m.removeCaptureSqlQueryParametersIfCurrentValueMatchesConfig(container)
 	m.removeOtelLogsExporterEnvVar(container)
 
@@ -1780,6 +1820,14 @@ func (m *ResourceModifier) removeOtelPropagatorsIfCurrentValueMatchesConfig(cont
 			removeEnvironmentVariable(container, util.OtelPropagatorsEnvVarName)
 		}
 	}
+}
+
+func (m *ResourceModifier) removeOtelJavaagentConfigurationFileIfSetByOperator(container *corev1.Container) {
+	idx := findEnvVarIdx(container, envVarOtelJavaagentConfigurationFileName)
+	if idx < 0 || !envVarHasValue(container, idx, envVarOtelJavaagentConfigurationFileValue) {
+		return
+	}
+	removeEnvironmentVariable(container, envVarOtelJavaagentConfigurationFileName)
 }
 
 func (m *ResourceModifier) removeCaptureSqlQueryParametersIfCurrentValueMatchesConfig(container *corev1.Container) {

@@ -14,7 +14,11 @@ The `api` directory contains the Go code from which the custom resource definiti
 (Dash0OperatorConfiguration, Dash0Monitoring) are generated.
 The `config` directory contains the Kustomize sources, which are generated from the Go code in `api`. The Kustomize
 sources are not used, except as an intermediate stage for the Helm chart.
-The `helm-chart/dash0-operator` directory contains the operator's Helm chart.
+The `helm-chart/dash0-operator` directory contains the operator's Helm chart. Its `docs` directory holds the user docs,
+which are synced to the Dash0 website (see `.github/workflows/sync-docs/transformations.yaml`).
+The `olm` directory contains the tooling that generates the OLM bundle from the Helm chart (`olm/bin`,
+`olm/values-olm.yaml`, `olm/manifest-transformer`), the tests for the bundle, and the user docs for OLM installations in
+`olm/docs`, which are synced to the Dash0 website as well. The generated bundle is committed in `bundle/`.
 The `images` directory contains source code for auxiliary images, like the custom OpenTelemetry collector image and the
 instrumentation image.
 The `internal` repository contains the Go code for the main operator manager image (also referred to as
@@ -65,9 +69,24 @@ After changing Go code, run `make golangci-lint`.
 After changing the Helm chart, run `make helm-chart-lint`.
 After changing or creating bash scripts, run `make shellcheck-lint` to verify they have no issues.
 After changing GitHub Actions workflows, composite actions or `.github/dependabot.yml`, run `make jactionlint`.
-After changing the Helm chart, `config/manifests`, `config/samples`, `config/scorecard`, `olm/`, `PROJECT`, the CRDs
-or the OLM settings in the Makefile (`OPERATOR_SDK_VERSION`, `OLM_COMMITTED_BUNDLE_*`), run `make olm-bundle` to
-regenerate the committed OLM bundle in `bundle/`; `make olm-bundle-check` fails otherwise.
+After changing the Helm chart, `config/manifests`, `config/samples`, `config/scorecard`, `olm/` (except `olm/docs`),
+`PROJECT`, the CRDs or the OLM settings in the Makefile (`OPERATOR_SDK_VERSION`, `OLM_COMMITTED_BUNDLE_*`), run
+`make olm-bundle` to regenerate the committed OLM bundle in `bundle/`; `make olm-bundle-check` fails otherwise.
+
+### Adding or changing a Helm value
+
+The user docs exist in two places: `helm-chart/dash0-operator/docs` and `olm/docs/installation.md`. OLM users cannot
+set Helm values, so a new or changed Helm value needs an entry in the OLM doc as well, in the section that matches how
+OLM users configure it:
+* a value that becomes an environment variable of the operator manager: the table in "Operator Settings via the
+  Subscription"
+* a value for a workload the operator manages that has a `spec.components` field: the table in "Settings of the Managed
+  Workloads"
+* a value that switches on an optional feature: additionally a bullet in "Optional Features"
+* a value without an OLM equivalent: the list in "Settings That Are Only Available with Helm"
+
+Other fields of the Dash0 custom resources need no entry in the OLM doc, since the Helm docs that describe them apply to
+OLM installations as well.
 
 ### Changing the Kubernetes Custom Resource Definitions
 
@@ -76,6 +95,12 @@ Then run `make manifests generate` to update the Kustomize source files in `conf
 The resulting changes in the directory `config/crd` need to be carried over to the respective files in
 `helm-chart/dash0-operator/templates/operator`, which are the Helm chart templates. The test in `olm/crds` fails when
 a CRD template of the chart differs from `config/crd/bases`.
+
+The drift check in `internal/controller/api_type_drift_checks_test.go` compares the generated schemas in
+`config/crd/bases` with the types of `dash0-api-client-go`: fields, JSON types, enum values, required fields and the
+variants of unions, which it merges the same way the CRDs model a union (one object with a `kind` field). It reads the
+generated schemas, so run `make manifests` before running it. When it fails after a CRD change or an update of the API
+client, align the CRD with the API, or add the difference with the reason to the allowed differences of that check.
 
 CRD specs must be fully typed with structured Go types (enums, nested objects, required/optional markers, and
 kubebuilder validation annotations). Do not use opaque string fields to hold structured data. Validate the Go types

@@ -1,0 +1,18 @@
+# The people who tag releases, with the real name and the e-mail address that push-community-operator-branch.yaml uses
+# as author and DCO sign-off of the commit that submits a release to the OpenShift community catalog. The key is the
+# GitHub login, spelled as on the GitHub profile, for example:
+#
+# octocat:
+#   name: Mona Lisa Octocat
+#   email: mona.octocat@dash0.com
+p-d0:
+  name: Petra Bierleutgeb
+  email: petra.bierleutgeb@dash0.com
+
+basti1302:
+  name: Bastian Krol
+  email: bastian.krol@dash0.com
+
+thieltges:
+  name: Felix Thieltges
+  email: felix.thieltges@dash0.com

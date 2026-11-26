@@ -451,6 +451,48 @@ func CreatePodOwnedByReplicaSet(
 	return CreateWorkload(ctx, k8sClient, PodOwnedByReplicaSet(namespace, name)).(*corev1.Pod)
 }
 
+func PodControlledBy(namespace string, name string, ownerType metav1.TypeMeta) *corev1.Pod {
+	pod := BasicPod(namespace, name)
+	pod.OwnerReferences = []metav1.OwnerReference{{
+		APIVersion: ownerType.APIVersion,
+		Kind:       ownerType.Kind,
+		Name:       "owner",
+		UID:        "35b829cb-78dc-4544-b7a9-5a8e51b7f322",
+		Controller: new(true),
+	}}
+	return pod
+}
+
+func CreatePodControlledBy(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+	ownerType metav1.TypeMeta,
+) *corev1.Pod {
+	return CreateWorkload(ctx, k8sClient, PodControlledBy(namespace, name, ownerType)).(*corev1.Pod)
+}
+
+// CreateReplicaSetAndPodControlledByDeployment creates a replica set controlled by the given deployment, which needs to
+// exist already, and creates the given pod as controlled by that replica set.
+func CreateReplicaSetAndPodControlledByDeployment(
+	ctx context.Context,
+	k8sClient client.Client,
+	deployment *appsv1.Deployment,
+	pod *corev1.Pod,
+) (*appsv1.ReplicaSet, *corev1.Pod) {
+	replicaSet := BasicReplicaSet(deployment.Namespace, UniqueName(ReplicaSetNamePrefix))
+	replicaSet.OwnerReferences = []metav1.OwnerReference{
+		*metav1.NewControllerRef(deployment, appsv1.SchemeGroupVersion.WithKind("Deployment")),
+	}
+	CreateWorkload(ctx, k8sClient, replicaSet)
+	pod.OwnerReferences = []metav1.OwnerReference{
+		*metav1.NewControllerRef(replicaSet, appsv1.SchemeGroupVersion.WithKind("ReplicaSet")),
+	}
+	CreateWorkload(ctx, k8sClient, pod)
+	return replicaSet, pod
+}
+
 func PodWithOptOutLabel(namespace string, name string) *corev1.Pod {
 	workload := BasicPod(namespace, name)
 	AddOptOutLabel(&workload.ObjectMeta)
@@ -1050,6 +1092,10 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 		{
 			Name:  "OTEL_INJECTOR_CONFIG_FILE",
 			Value: "/__otel_auto_instrumentation/injector/injector.conf",
+		},
+		{
+			Name:  "OTEL_JAVAAGENT_CONFIGURATION_FILE",
+			Value: "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties",
 		},
 		{
 			Name: "OTEL_INJECTOR_K8S_NAMESPACE_NAME",

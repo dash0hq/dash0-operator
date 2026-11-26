@@ -19,15 +19,21 @@ import (
 type InstrumentAtStartupRunnable struct {
 	manager      manager.Manager
 	instrumenter *instrumentation.Instrumenter
+
+	// waitForOperatorConfigurationResource is nil if the operator configuration resource is not managed via Helm, see
+	// newWaitForHelmManagedInstrumentationSettings.
+	waitForOperatorConfigurationResource func(context.Context, logd.Logger)
 }
 
 func NewInstrumentAtStartupRunnable(
 	manager manager.Manager,
 	instrumenter *instrumentation.Instrumenter,
+	waitForOperatorConfigurationResource func(context.Context, logd.Logger),
 ) *InstrumentAtStartupRunnable {
 	return &InstrumentAtStartupRunnable{
-		manager:      manager,
-		instrumenter: instrumenter,
+		manager:                              manager,
+		instrumenter:                         instrumenter,
+		waitForOperatorConfigurationResource: waitForOperatorConfigurationResource,
 	}
 }
 
@@ -41,6 +47,9 @@ func (r *InstrumentAtStartupRunnable) NeedLeaderElection() bool {
 func (r *InstrumentAtStartupRunnable) Start(ctx context.Context) error {
 	logger := logd.FromContext(ctx)
 	r.instrumenter.Client = r.manager.GetClient()
+	if r.waitForOperatorConfigurationResource != nil {
+		r.waitForOperatorConfigurationResource(ctx, logger)
+	}
 	logger.Info("waiting for instrumentation delivery resolution before instrumenting workloads at startup")
 	// The minimum kubelet version detection runs concurrently with the operator manager startup, so it can still be in
 	// progress here. Instrumenting workloads now would pin them to the init container fallback, since they are not

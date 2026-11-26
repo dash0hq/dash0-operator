@@ -2518,7 +2518,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(serviceExtensions).To(ContainElement("dash0settingsonedgeextension"))
 		})
 
-		DescribeTable("should batch received telemetry only in SCE-only mode [SignalControl]",
+		DescribeTable("should not batch received telemetry in the pipelines [SignalControl]",
 			func(exporters otlpExporters, sceOnlyMode bool, expectedProcessors []any) {
 				configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 					OperatorNamespace: OperatorNamespace,
@@ -2540,11 +2540,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				}
 			},
 			Entry("without routing, SCE-only mode", cmTestSingleDefaultOtlpExporter(), true,
-				[]any{"memory_limiter", "batch"}),
+				[]any{"memory_limiter"}),
 			Entry("without routing, regular mode", cmTestSingleDefaultOtlpExporter(), false,
 				[]any{"memory_limiter"}),
 			Entry("with routing, SCE-only mode", cmTestMultipleNamespacedOtlpExporters(), true,
-				[]any{"memory_limiter", "batch"}),
+				[]any{"memory_limiter"}),
 			Entry("with routing, regular mode", cmTestMultipleNamespacedOtlpExporters(), false,
 				[]any{"memory_limiter"}),
 		)
@@ -3991,83 +3991,257 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		})
 	})
 
-	DescribeTable("should render batch processor with defaults if no batch size settings are provided", func(cmTypeDef configMapTypeDefinition) {
-		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+	DescribeTable("should batch in the exporters", func(
+		sendBatchSize *uint32,
+		sendBatchMaxSize *uint32,
+		sendingQueueSizeMiB *uint32,
+		expectedSendingQueue map[string]any,
+	) {
+		exps := cmTestMultipleNamespacedOtlpExporters()
+		nonDash0ExporterNames := map[string]bool{}
+		for _, ns := range exps.AllNamespaceKeys() {
+			for _, exporter := range exps.Namespaced[ns] {
+				if !exporter.IsDash0() {
+					nonDash0ExporterNames[exporter.Name] = true
+				}
+			}
+		}
+		Expect(nonDash0ExporterNames).ToNot(BeEmpty())
+		expectedNonDash0SendingQueue := maps.Clone(expectedSendingQueue)
+		expectedNonDash0SendingQueue["num_consumers"] = 20
+		for _, cmTypeDef := range configMapTypeDefinitions {
+			config := &oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         exps,
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				SendBatchSize:       sendBatchSize,
+				SendBatchMaxSize:    sendBatchMaxSize,
+				SendingQueueSizeMiB: sendingQueueSizeMiB,
+				SignalControl: SignalControlConfig{
+					Enabled:     true,
+					Endpoint:    "decision-maker.example.com:443",
+					ApiEndpoint: "https://control-plane-api.dash0.com",
+					Dataset:     "default",
+				},
+				DevelopmentMode: true,
+			}
+			config.Images.SignalControlCollectorImage = "signal-control-collector:latest"
+			configMap, err := cmTypeDef.assembleConfigMapFunction(config, monitoredNamespaces, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			exporters := ReadFromMap(parseConfigMapContent(configMap), []string{"exporters"}).(map[string]any)
+			Expect(exporters).To(HaveKey("otlp/signal-control-collector"))
+			for name, exporter := range exporters {
+				if name == "debug" {
+					continue
+				}
+				expected := expectedSendingQueue
+				if nonDash0ExporterNames[name] {
+					expected = expectedNonDash0SendingQueue
+				}
+				Expect(ReadFromMap(exporter.(map[string]any), []string{"sending_queue"})).
+					To(Equal(expected), fmt.Sprintf("%s: %s", cmTypeDef.cmType, name))
+			}
+		}
+	},
+		Entry("with defaults if no batch size settings are provided", nil, nil, nil, map[string]any{
+			"sizer":      "bytes",
+			"queue_size": 67108864,
+			"batch": map[string]any{
+				"sizer":         "items",
+				"flush_timeout": "200ms",
+				"min_size":      8192,
+			},
+		}),
+		Entry("with max_size if sendBatchMaxSize is set", nil, ptr.To(uint32(16384)), nil, map[string]any{
+			"sizer":      "bytes",
+			"queue_size": 67108864,
+			"batch": map[string]any{
+				"sizer":         "items",
+				"flush_timeout": "200ms",
+				"min_size":      8192,
+				"max_size":      16384,
+			},
+		}),
+		Entry("with min_size if sendBatchSize is set", ptr.To(uint32(4096)), nil, nil, map[string]any{
+			"sizer":      "bytes",
+			"queue_size": 67108864,
+			"batch": map[string]any{
+				"sizer":         "items",
+				"flush_timeout": "200ms",
+				"min_size":      4096,
+			},
+		}),
+		Entry("with min_size and max_size if both are set", ptr.To(uint32(4096)), ptr.To(uint32(16384)), nil, map[string]any{
+			"sizer":      "bytes",
+			"queue_size": 67108864,
+			"batch": map[string]any{
+				"sizer":         "items",
+				"flush_timeout": "200ms",
+				"min_size":      4096,
+				"max_size":      16384,
+			},
+		}),
+		Entry("with the configured queue size if sendingQueueSizeMiB is set", nil, nil, ptr.To(uint32(100)), map[string]any{
+			"sizer":      "bytes",
+			"queue_size": 104857600,
+			"batch": map[string]any{
+				"sizer":         "items",
+				"flush_timeout": "200ms",
+				"min_size":      8192,
+			},
+		}),
+	)
+
+	DescribeTable("should size the sending queue", func(
+		sendingQueueSizeMiB *uint32,
+		memorySoftLimitMiB int,
+		expectedQueueSizeMiB uint64,
+	) {
+		Expect(newExporterBatching(nil, nil, sendingQueueSizeMiB, memorySoftLimitMiB).QueueSizeBytes).
+			To(Equal(expectedQueueSizeMiB * 1024 * 1024))
+	},
+		Entry("with the default if the collector has no memory limit", nil, 0, uint64(64)),
+		Entry("with a share of the memory_limiter soft limit", nil, 372, uint64(74)),
+		Entry("with at least one MiB if the memory_limiter soft limit is very small", nil, 3, uint64(1)),
+		Entry("with the configured size, which takes precedence", ptr.To(uint32(100)), 372, uint64(100)),
+		Entry("with a share of the memory_limiter soft limit if the configured size is zero", ptr.To(uint32(0)), 372, uint64(74)),
+	)
+
+	It("should derive the sending queue capacity from the collector's memory limit", func() {
+		config := &oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Exporters:         cmTestSingleDefaultOtlpExporter(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
-			SendBatchSize:    nil,
-			SendBatchMaxSize: nil,
-		}, monitoredNamespaces, nil, nil, false)
+			DaemonSetCollectorMemoryLimit:                    resource.MustParse("500Mi"),
+			DeploymentCollectorMemoryLimit:                   resource.MustParse("1Gi"),
+		}
+		expectedQueueSizePerCollector := map[configMapType]int{
+			// 500Mi: memory_limiter soft limit 372 MiB, 20% of it is 74 MiB
+			configMapTypeDaemonSet: 74 * 1024 * 1024,
+			// 1Gi: memory_limiter soft limit 871 MiB, 20% of it is 174 MiB
+			configMapTypeDeployment: 174 * 1024 * 1024,
+		}
+		for _, cmTypeDef := range configMapTypeDefinitions {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(config, monitoredNamespaces, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			exporters := ReadFromMap(parseConfigMapContent(configMap), []string{"exporters"}).(map[string]any)
+			for name, exporter := range exporters {
+				Expect(ReadFromMap(exporter.(map[string]any), []string{"sending_queue", "queue_size"})).
+					To(Equal(expectedQueueSizePerCollector[cmTypeDef.cmType]), fmt.Sprintf("%s: %s", cmTypeDef.cmType, name))
+			}
+		}
+	})
 
-		Expect(err).ToNot(HaveOccurred())
-		collectorConfig := parseConfigMapContent(configMap)
-		batchProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "batch"})
-		Expect(batchProcessorRaw).ToNot(BeNil())
-		batchProcessor := batchProcessorRaw.(map[string]any)
-		Expect(batchProcessor).To(HaveLen(0))
-	}, daemonSetAndDeployment)
+	DescribeTable("should keep the queues of exporters to other backends than Dash0 draining", func(
+		exportersUnderTest func() otlpExporters,
+	) {
+		exps := exportersUnderTest()
+		allExporters := slices.Clone(exps.Default)
+		for _, ns := range exps.AllNamespaceKeys() {
+			allExporters = append(allExporters, exps.Namespaced[ns]...)
+		}
+		for _, cmTypeDef := range configMapTypeDefinitions {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         exps,
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			renderedExporters := ReadFromMap(parseConfigMapContent(configMap), []string{"exporters"}).(map[string]any)
+			for _, exporter := range allExporters {
+				description := fmt.Sprintf("%s: %s", cmTypeDef.cmType, exporter.Name)
+				Expect(renderedExporters).To(HaveKey(exporter.Name), description)
+				renderedExporter := renderedExporters[exporter.Name].(map[string]any)
+				retryOnFailure := ReadFromMap(renderedExporter, []string{"retry_on_failure"})
+				timeout := ReadFromMap(renderedExporter, []string{"timeout"})
+				numConsumers := ReadFromMap(renderedExporter, []string{"sending_queue", "num_consumers"})
+				if exporter.IsDash0() {
+					Expect(retryOnFailure).To(BeNil(), description)
+					Expect(timeout).To(BeNil(), description)
+					Expect(numConsumers).To(BeNil(), description)
+				} else {
+					Expect(retryOnFailure).To(Equal(map[string]any{"enabled": false}), description)
+					Expect(timeout).To(Equal("5s"), description)
+					Expect(numConsumers).To(Equal(20), description)
+				}
+			}
+		}
+	},
+		Entry("for default exporters", cmTestDash0GrpcAndHttpExporters),
+		Entry("for namespaced exporters", cmTestNamespacedExportersWithBalancerName),
+		Entry("for namespaced gRPC and HTTP exporters", cmTestMultipleNamespacedOtlpExporters),
+	)
 
-	DescribeTable("should set send_batch_max_size on batch processor if requested", func(cmTypeDef configMapTypeDefinition) {
-		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			Exporters:         cmTestSingleDefaultOtlpExporter(),
+	It("should resend rejected batches from the file_log receivers instead of dropping them [DaemonSet]", func() {
+		configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+			OperatorNamespace:           OperatorNamespace,
+			NamePrefix:                  namePrefix,
+			Exporters:                   cmTestSingleDefaultOtlpExporter(),
+			PrometheusCrdSupportEnabled: true,
+			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+				SelfMonitoringEnabled: true,
+			},
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
-			SendBatchMaxSize: ptr.To(uint32(16384)),
-		}, monitoredNamespaces, nil, nil, false)
-
+		}, monitoredNamespaces, monitoredNamespaces, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
 		Expect(err).ToNot(HaveOccurred())
-		collectorConfig := parseConfigMapContent(configMap)
-		batchProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "batch"})
-		Expect(batchProcessorRaw).ToNot(BeNil())
-		batchProcessor := batchProcessorRaw.(map[string]any)
-		Expect(batchProcessor).To(HaveLen(1))
-		sendBatchMaxSize := ReadFromMap(batchProcessor, []string{"send_batch_max_size"})
-		Expect(sendBatchMaxSize).To(Equal(16384))
-	}, daemonSetAndDeployment)
+		receivers := ReadFromMap(parseConfigMapContent(configMap), []string{"receivers"}).(map[string]any)
+		for _, receiver := range []string{"file_log", "file_log/selfmonitoring"} {
+			Expect(receivers).To(HaveKey(receiver))
+			Expect(ReadFromMap(receivers[receiver].(map[string]any), []string{"retry_on_failure"})).
+				To(Equal(map[string]any{"enabled": true}), receiver)
+		}
+	})
 
-	DescribeTable("should set send_batch_size on batch processor if requested", func(cmTypeDef configMapTypeDefinition) {
-		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			Exporters:         cmTestSingleDefaultOtlpExporter(),
-			KubernetesInfrastructureMetricsCollectionEnabled: true,
-			SendBatchSize: ptr.To(uint32(4096)),
-		}, monitoredNamespaces, nil, nil, false)
-
-		Expect(err).ToNot(HaveOccurred())
-		collectorConfig := parseConfigMapContent(configMap)
-		batchProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "batch"})
-		Expect(batchProcessorRaw).ToNot(BeNil())
-		batchProcessor := batchProcessorRaw.(map[string]any)
-		Expect(batchProcessor).To(HaveLen(1))
-		sendBatchSize := ReadFromMap(batchProcessor, []string{"send_batch_size"})
-		Expect(sendBatchSize).To(Equal(4096))
-	}, daemonSetAndDeployment)
-
-	DescribeTable("should set both send_batch_size and send_batch_max_size on batch processor if requested", func(cmTypeDef configMapTypeDefinition) {
-		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			Exporters:         cmTestSingleDefaultOtlpExporter(),
-			KubernetesInfrastructureMetricsCollectionEnabled: true,
-			SendBatchSize:    ptr.To(uint32(4096)),
-			SendBatchMaxSize: ptr.To(uint32(16384)),
-		}, monitoredNamespaces, nil, nil, false)
-
-		Expect(err).ToNot(HaveOccurred())
-		collectorConfig := parseConfigMapContent(configMap)
-		batchProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "batch"})
-		Expect(batchProcessorRaw).ToNot(BeNil())
-		batchProcessor := batchProcessorRaw.(map[string]any)
-		Expect(batchProcessor).To(HaveLen(2))
-		sendBatchSize := ReadFromMap(batchProcessor, []string{"send_batch_size"})
-		Expect(sendBatchSize).To(Equal(4096))
-		sendBatchMaxSize := ReadFromMap(batchProcessor, []string{"send_batch_max_size"})
-		Expect(sendBatchMaxSize).To(Equal(16384))
-	}, daemonSetAndDeployment)
+	It("should not use the batch processor in any collector", func() {
+		for _, sceOnlyMode := range []bool{false, true} {
+			config := &oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestMultipleNamespacedOtlpExporters(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				SendBatchSize:    ptr.To(uint32(4096)),
+				SendBatchMaxSize: ptr.To(uint32(16384)),
+				SignalControl: SignalControlConfig{
+					Enabled:                true,
+					SpamFilterEnabled:      true,
+					SignalToMetricsEnabled: true,
+					Endpoint:               "decision-maker.example.com:443",
+					ApiEndpoint:            "https://control-plane-api.dash0.com",
+					Dataset:                "default",
+				},
+				SignalControlSceOnlyMode: sceOnlyMode,
+				EbpfProfilerEnabled:      true,
+			}
+			config.Images.SignalControlCollectorImage = "signal-control-collector:latest"
+			configMaps := map[string]func() (*corev1.ConfigMap, error){
+				"daemonset": func() (*corev1.ConfigMap, error) {
+					return assembleDaemonSetCollectorConfigMapForTest(config, monitoredNamespaces, nil, nil, false)
+				},
+				"deployment": func() (*corev1.ConfigMap, error) {
+					return assembleDeploymentCollectorConfigMapForTest(config, monitoredNamespaces, nil, nil, false)
+				},
+				"signal-control": func() (*corev1.ConfigMap, error) {
+					return assembleSignalControlCollectorConfigMap(config, monitoredNamespaces, false)
+				},
+			}
+			for name, assemble := range configMaps {
+				desc := fmt.Sprintf("%s, SCE-only mode: %t", name, sceOnlyMode)
+				configMap, err := assemble()
+				Expect(err).ToNot(HaveOccurred(), desc)
+				collectorConfig := parseConfigMapContent(configMap)
+				Expect(ReadFromMap(collectorConfig, []string{"processors"})).ToNot(HaveKey("batch"), desc)
+				pipelines := readPipelines(collectorConfig)
+				Expect(pipelines).ToNot(BeEmpty(), desc)
+				for pipelineName := range pipelines {
+					Expect(readPipelineProcessors(pipelines, pipelineName)).
+						ToNot(ContainElement("batch"), fmt.Sprintf("%s: %s", desc, pipelineName))
+				}
+			}
+		}
+	})
 
 	DescribeTable("should not render resource processor if the cluster name has not been set", func(cmTypeDef configMapTypeDefinition) {
 		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
@@ -4371,6 +4545,76 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			k8sAttributesDisableReplicasetInformer: false,
 			profilingEnabled:                       true,
 			k8sAttributesProcessorName:             "k8s_attributes/profiles",
+		}),
+	)
+
+	type jobInformerTest struct {
+		cmTypeDef                       configMapTypeDefinition
+		k8sAttributesDisableJobInformer bool
+		profilingEnabled                bool
+		k8sAttributesProcessorName      string
+	}
+
+	DescribeTable("should enable/disable the job informer", func(testConfig jobInformerTest) {
+		configMap, err := testConfig.cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+			OperatorNamespace:               OperatorNamespace,
+			NamePrefix:                      namePrefix,
+			Exporters:                       cmTestSingleDefaultOtlpExporter(),
+			K8sAttributesDisableJobInformer: testConfig.k8sAttributesDisableJobInformer,
+			ProfilingEnabled:                testConfig.profilingEnabled,
+		}, monitoredNamespaces, nil, nil, false)
+		Expect(err).ToNot(HaveOccurred())
+		collectorConfig := parseConfigMapContent(configMap)
+		metadataListRaw := ReadFromMap(
+			collectorConfig,
+			[]string{"processors", testConfig.k8sAttributesProcessorName, "extract", "metadata"},
+		)
+		Expect(metadataListRaw).ToNot(BeNil())
+		metadataList := metadataListRaw.([]any)
+
+		// The K8sAttributesDisableJobInformer flag informs whether k8s.cronjob.uid is extracted; this implicitly makes
+		// the k8s_attributes processor start the job informer. k8s.cronjob.name is derived from the job name if the job
+		// informer is not running, so it is always extracted.
+		Expect(metadataList).To(ContainElement("k8s.cronjob.name"))
+		if testConfig.k8sAttributesDisableJobInformer {
+			Expect(metadataList).ToNot(ContainElement("k8s.cronjob.uid"))
+		} else {
+			Expect(metadataList).To(ContainElement("k8s.cronjob.uid"))
+		}
+	},
+		Entry("daemonset/job informer disabled/k8s_attributes", jobInformerTest{
+			cmTypeDef:                       cmTypeDefDaemonSet,
+			k8sAttributesDisableJobInformer: true,
+			k8sAttributesProcessorName:      "k8s_attributes",
+		}),
+		Entry("deployment/job informer disabled/k8s_attributes", jobInformerTest{
+			cmTypeDef:                       cmTypeDefDeployment,
+			k8sAttributesDisableJobInformer: true,
+			k8sAttributesProcessorName:      "k8s_attributes",
+		}),
+		Entry("daemonset/job informer enabled/k8s_attributes", jobInformerTest{
+			cmTypeDef:                       cmTypeDefDaemonSet,
+			k8sAttributesDisableJobInformer: false,
+			k8sAttributesProcessorName:      "k8s_attributes",
+		}),
+		Entry("deployment/job informer enabled/k8s_attributes", jobInformerTest{
+			cmTypeDef:                       cmTypeDefDeployment,
+			k8sAttributesDisableJobInformer: false,
+			k8sAttributesProcessorName:      "k8s_attributes",
+		}),
+
+		// k8s_attributes/profiles is a separate configuration of the k8s_attributes, hence it gets its own dedicated tests
+		Entry("daemonset/job informer disabled/k8s_attributes/profiling", jobInformerTest{
+			cmTypeDef:                       cmTypeDefDaemonSet,
+			k8sAttributesDisableJobInformer: true,
+			profilingEnabled:                true,
+			k8sAttributesProcessorName:      "k8s_attributes/profiles",
+		}),
+		Entry("daemonset/job informer enabled/k8s_attributes/profiling", jobInformerTest{
+			cmTypeDef:                       cmTypeDefDaemonSet,
+			k8sAttributesDisableJobInformer: false,
+			profilingEnabled:                true,
+			k8sAttributesProcessorName:      "k8s_attributes/profiles",
 		}),
 	)
 
@@ -4679,7 +4923,6 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					SelfMonitoringEnabled: testConfig.selfMonitoringEnabled,
 				},
 				PrometheusCrdSupportEnabled:     testConfig.prometheusCrdSupportEnabled,
-				TargetAllocatorNamePrefix:       TargetAllocatorPrefixTest,
 				SignalControl:                   testConfig.signalControl,
 				SyntheticsWorkerDeploymentNames: testConfig.syntheticsWorkerDeploymentNames,
 			}
@@ -4908,7 +5151,6 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					SelfMonitoringEnabled: testConfig.selfMonitoringEnabled,
 				},
 				PrometheusCrdSupportEnabled:     testConfig.prometheusCrdSupportEnabled,
-				TargetAllocatorNamePrefix:       TargetAllocatorPrefixTest,
 				SignalControl:                   testConfig.signalControl,
 				SyntheticsWorkerDeploymentNames: testConfig.syntheticsWorkerDeploymentNames,
 			}
@@ -5707,6 +5949,52 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		})
 	})
 
+	DescribeTable("leader election of the cluster metrics collector replicas",
+		func(replicas int32, expectLeaderElection bool) {
+			configMap, err := assembleDeploymentCollectorConfigMap(
+				&oTelColConfig{
+					OperatorNamespace: OperatorNamespace,
+					NamePrefix:        namePrefix,
+					Exporters:         cmTestSingleDefaultOtlpExporter(),
+					KubernetesInfrastructureMetricsCollectionEnabled: true,
+					DeploymentCollectorReplicas:                      replicas,
+				},
+				[]string{"namespace"},
+				[]string{"namespace"},
+				[]string{"namespace"},
+				nil,
+				nil,
+				false,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			receivers := []string{"k8s_cluster", "k8s_events", "k8s_objects/default", "k8s_objects/highcardinality"}
+			if !expectLeaderElection {
+				Expect(ReadFromMap(collectorConfig, []string{"extensions", "k8s_leader_elector"})).To(BeNil())
+				Expect(ReadFromMap(collectorConfig, []string{"service", "extensions"})).
+					ToNot(ContainElement("k8s_leader_elector"))
+				for _, receiver := range receivers {
+					Expect(ReadFromMap(collectorConfig, []string{"receivers", receiver})).ToNot(BeNil())
+					Expect(ReadFromMap(collectorConfig, []string{"receivers", receiver, "k8s_leader_elector"})).To(BeNil())
+				}
+				return
+			}
+			Expect(ReadFromMap(collectorConfig, []string{"extensions", "k8s_leader_elector"})).To(Equal(map[string]any{
+				"auth_type":       "serviceAccount",
+				"lease_name":      ExpectedDeploymentCollectorLeaseName,
+				"lease_namespace": OperatorNamespace,
+			}))
+			Expect(ReadFromMap(collectorConfig, []string{"service", "extensions"})).To(ContainElement("k8s_leader_elector"))
+			for _, receiver := range receivers {
+				Expect(ReadFromMap(collectorConfig, []string{"receivers", receiver, "k8s_leader_elector"})).
+					To(Equal("k8s_leader_elector"), "receiver %s does not use the leader elector", receiver)
+			}
+		},
+		Entry("not used with the default number of replicas", int32(0), false),
+		Entry("not used with one replica", int32(1), false),
+		Entry("used with two replicas", int32(2), true),
+	)
+
 	Describe("Kubernetes infrastructure metrics collection", func() {
 		It("should not render the k8s_cluster receiver and the associated pipeline if Kubernetes infrastructure metrics collection is disabled", func() {
 			configMap, err := assembleDeploymentCollectorConfigMap(
@@ -5923,7 +6211,6 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					"resource/cluster_uid",
 					"resource/dash0_operator_attributes",
 					"filter/logs/custom_telemetry_filter",
-					"batch",
 					"transform/logs/custom_telemetry_transform",
 					"transform/resources",
 				}))
@@ -7619,6 +7906,43 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				expected:        dash0common.FilterTransformErrorModePropagate,
 			}),
 		)
+
+		It("should aggregate log record conditions from log_record and the deprecated log_records", func() {
+			result := aggregateCustomFilters(
+				[]NamespacedFilter{
+					{
+						Namespace: namespace1,
+						Filter: dash0common.Filter{
+							Logs: &dash0common.LogFilter{
+								LogRecordFilter:           []string{"condition 1"},
+								DeprecatedLogRecordFilter: []string{"condition 2"},
+							},
+						},
+					},
+					{
+						Namespace: namespace2,
+						Filter: dash0common.Filter{
+							Logs: &dash0common.LogFilter{
+								DeprecatedLogRecordFilter: []string{"condition 3"},
+							},
+						},
+					},
+				},
+				&dash0common.Filter{
+					Logs: &dash0common.LogFilter{
+						LogRecordFilter:           []string{"global condition 1"},
+						DeprecatedLogRecordFilter: []string{"global condition 2"},
+					},
+				},
+			)
+			Expect(result.LogRecordConditions).To(Equal([]string{
+				`resource.attributes["k8s.namespace.name"] == "namespace-1" and (condition 1)`,
+				`resource.attributes["k8s.namespace.name"] == "namespace-1" and (condition 2)`,
+				`resource.attributes["k8s.namespace.name"] == "namespace-2" and (condition 3)`,
+				"global condition 1",
+				"global condition 2",
+			}))
+		})
 	})
 
 	Describe("configurable transformation of telemetry per namespace", func() {
@@ -8713,7 +9037,6 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace:           OperatorNamespace,
 				NamePrefix:                  namePrefix,
 				Exporters:                   cmTestSingleDefaultOtlpExporter(),
-				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
 				PrometheusCrdSupportEnabled: false,
 			}
 			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, nsWithPrometheusScraping, nil, nil, taMtlsConfig, false)
@@ -8729,7 +9052,6 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace:           OperatorNamespace,
 				NamePrefix:                  namePrefix,
 				Exporters:                   cmTestSingleDefaultOtlpExporter(),
-				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
 				PrometheusCrdSupportEnabled: true,
 			}
 			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, nsWithPrometheusScraping, nil, nil, taMtlsConfig, false)
@@ -8756,7 +9078,6 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace:           OperatorNamespace,
 				NamePrefix:                  namePrefix,
 				Exporters:                   cmTestSingleDefaultOtlpExporter(),
-				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
 				PrometheusCrdSupportEnabled: true,
 			}
 			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, nsWithPrometheusScraping, nil, nil, emptyTargetAllocatorMtlsConfig, false)

@@ -8,7 +8,9 @@ This guide covers automatic workload instrumentation, including Python and Ruby 
 - [Using Image Volumes for Auto-Instrumentation Files](#using-image-volumes-for-auto-instrumentation-files)
 - [Python Auto-Instrumentation](#python-auto-instrumentation)
 - [Ruby Auto-Instrumentation](#ruby-auto-instrumentation)
+- [Instrumenting Pods Instead of Workloads](#instrumenting-pods-instead-of-workloads)
 - [Disabling Auto-Instrumentation for Specific Workloads](#disabling-auto-instrumentation-for-specific-workloads)
+- [Disabling Workload Instrumentation for the Whole Cluster](#disabling-workload-instrumentation-for-the-whole-cluster)
 - [Using a Custom Label Selector to Control Auto-Instrumentation](#using-a-custom-label-selector-to-control-auto-instrumentation)
 - [Specifying Additional Resource Attributes via Labels and Annotations](#specifying-additional-resource-attributes-via-labels-and-annotations)
 - [Sending Data to the OpenTelemetry Collectors Managed by the Dash0 Operator](#sending-data-to-the-opentelemetry-collectors-managed-by-the-dash0-operator)
@@ -39,11 +41,11 @@ The Dash0 operator will instrument the following workload types:
 
 Note that Kubernetes jobs and Kubernetes pods are only instrumented at deploy time, existing jobs and pods cannot be instrumented since there is no way to restart them. For all other workload types, the operator can instrument existing workloads as well as new workloads at deploy time (depending on the setting of `spec.instrumentWorkloads.mode` in the Dash0 monitoring resource).
 
-The instrumentation process is performed by modifying the Pod spec template (for CronJobs, DaemonSets, Deployments, Jobs, ReplicaSets, and StatefulSets) or the Pod spec itself (for standalone Pods).
+The instrumentation process is performed by modifying the Pod spec template (for CronJobs, DaemonSets, Deployments, Jobs, ReplicaSets, and StatefulSets) or the Pod spec itself (for standalone Pods). In namespaces with `spec.instrumentWorkloads.mode: pods`, the operator leaves the Pod spec templates unmodified and modifies the Pod spec of each pod when it is created instead, see [Instrumenting Pods Instead of Workloads](#instrumenting-pods-instead-of-workloads).
 
 ## Using Image Volumes for Auto-Instrumentation Files
 
-When using auto-instrumentation of workloads, by default the operator adds an [`emptyDir` volume](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) and an [init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) to provide the instrumentation files to the workload.
+When using auto-instrumentation of workloads, the operator needs to provide the instrumentation files to the workload. The traditional approach is to add an [`emptyDir` volume](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) and an [init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) that copies the instrumentation files to that volume.
 
 Image volumes are a new Kubernetes feature that provides a better way to do this. They provide the following advantages:
 * No additional ephemeral storage usage.
@@ -51,13 +53,15 @@ Image volumes are a new Kubernetes feature that provides a better way to do this
 
 They were introduced in Kubernetes 1.31 as an alpha feature behind a feature gate. In version 1.33 they graduated to beta, but were still disabled by default. Starting with version 1.35, the image volume feature gate is enabled by default, but they are still considered beta. Image volumes finally became a stable feature in version 1.36.
 
+By default, the operator uses image volumes if the Kubernetes API server and the kubelets of all nodes are on version 1.36 or later, and the init container approach otherwise.
+
 Set the `instrumentationDelivery` setting in the operator configuration resource to determine under which circumstances image volumes will be used instead of the init container approach. When using the operator manager to create and manage the operator configuration resource (i.e. with `operator.dash0Export.enabled=true`), set `operator.instrumentation.delivery` in Helm to configure image volumes.
 
 Allowed values for the instrumentation delivery setting:
 - `auto`: use image volumes if the Kubernetes API server version and the kubelet version of all nodes of the cluster is
    1.36 or later, otherwise use the init container approach. The operator manager determines the minimum kubelet version
    by inspecting all nodes of the cluster once, shortly after it has started; until that has finished, it uses the init
-   container approach. Nodes that join the cluster later on are not taken into account.
+   container approach. Nodes that join the cluster later on are not taken into account. This is the default.
 - `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the operator manager has
    already detected that the Kubernetes API server version or the kubelet version of a node is older than 1.31, it will
    log a warning and fall back to the init container approach, since image volumes are not supported in that version.
@@ -65,7 +69,7 @@ Allowed values for the instrumentation delivery setting:
    cluster's nodes, nor nodes that join the cluster later on. Note that if you are using Kubernetes 1.34 or earlier, and
    you want to use this setting, you need to enable image volumes when configuring your cluster, since image volumes are
    disabled by default in versions older than 1.35.
-- `init-container`: always use the init container approach, regardless of the Kubernetes version. This is the default.
+- `init-container`: always use the init container approach, regardless of the Kubernetes version.
 
 Note: Changing the instrumentation delivery setting for an existing operator installation will not trigger a bulk
 re-instrumentation of all existing workloads, even for namespaces that are set to `instrumentWorkloadsMode=all`.
@@ -75,7 +79,7 @@ The new setting will be applied when instrumenting newly deployed workloads, or 
 
 ## Python Auto-Instrumentation
 
-To enable auto-instrumentation for Python workloads, set `operator.instrumentation.enablePythonAutoInstrumentation=true` via Helm. If this setting is enabled for an existing operator installation, Python auto-instrumentation will be enabled immediately for workloads in namespaces that have a Dash0Monitoring resource with `instrumentWorkloads.mode` set to `all`. This will cause all pods in these namespaces to be restarted. For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will become active with the next re-deployment of the workload. The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a Dash0Monitoring resource.
+Python auto-instrumentation is enabled by default. To disable it, set `operator.instrumentation.enablePythonAutoInstrumentation=false` via Helm. If this setting is changed for an existing operator installation, the change takes effect immediately for workloads in namespaces that have a Dash0Monitoring resource with `instrumentWorkloads.mode` set to `all`. This will cause all pods in these namespaces to be restarted. For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will take effect with the next re-deployment of the workload. The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a Dash0Monitoring resource.
 
 Python auto-instrumentation is only supported for Python 3.10 or later. If the Dash0 Python auto-instrumentation detects an incompatible Python version (i.e. version 3.9 or older), it will automatically deactivate itself safely and print a warning to `stderr`:
 ```
@@ -105,7 +109,7 @@ This warning is also visible in the Dash0 UI's log view, unless log collection h
 
 ## Ruby Auto-Instrumentation
 
-To enable auto-instrumentation for Ruby workloads, set `operator.instrumentation.enableRubyAutoInstrumentation=true` via Helm. If this setting is enabled for an existing operator installation, Ruby auto-instrumentation will be enabled immediately for workloads in namespaces that have a Dash0Monitoring resource with `instrumentWorkloads.mode` set to `all`. This will cause all pods in these namespaces to be restarted. For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will become active with the next re-deployment of the workload. The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a Dash0Monitoring resource.
+Ruby auto-instrumentation is enabled by default. To disable it, set `operator.instrumentation.enableRubyAutoInstrumentation=false` via Helm. If this setting is changed for an existing operator installation, the change takes effect immediately for workloads in namespaces that have a Dash0Monitoring resource with `instrumentWorkloads.mode` set to `all`. This will cause all pods in these namespaces to be restarted. For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will take effect with the next re-deployment of the workload. The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a Dash0Monitoring resource.
 
 Ruby auto-instrumentation is only supported for Ruby 3.3 or later. On an older Ruby version, the Dash0 Ruby distribution deactivates itself safely and prints a warning to `stderr`:
 ```
@@ -128,9 +132,111 @@ Instrumentation for a library is installed when the application loads that libra
 
 Because the Dash0 Ruby distribution is loaded before the application's own libraries, its bundled `google-protobuf` takes precedence over the version the application declares. This only matters for applications that use protobuf themselves and depend on behavior that changed between the bundled version and their own. Set `DISALLOWED_LIB_PATH=google-protobuf` on the container to make the distribution defer to the application's copy instead; if that copy is outside the range the OTLP exporter supports, the distribution deactivates itself safely rather than break the application.
 
+## Instrumenting Pods Instead of Workloads
+
+By default, the operator instruments workloads by modifying the pod template of the workload resource, that is, the
+deployment, daemon set, stateful set, replica set, job or cron job.
+Setting `spec.instrumentWorkloads.mode: pods` in the Dash0 monitoring resource of a namespace switches that namespace to
+pod-level instrumentation: The operator leaves the workload resources unmodified and instead instruments each pod when it
+is created.
+Since the workload resources are never modified, tools that manage them (for example Terraform, Argo CD or Flux) do not
+detect any drift caused by the operator, and pods created by any kind of owner, for example by
+[Argo Rollouts](https://argoproj.github.io/rollouts/), are instrumented as well.
+The modifications to the pod spec are the same as with the other modes, see
+[How Automatic Workload Instrumentation Works](#how-automatic-workload-instrumentation-works); the labels and
+annotations are added to the pod instead of the workload resource.
+The mode is set per namespace, so namespaces with `mode: pods` and namespaces with `mode: all` or
+`mode: created-and-updated` can exist side by side in the same cluster, and namespaces can be switched one at a time.
+
+```yaml
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0Monitoring
+metadata:
+  name: dash0-monitoring-resource
+spec:
+  instrumentWorkloads:
+    mode: pods
+```
+
+With `mode: pods`, the operator never restarts pods, neither to instrument them nor to remove their instrumentation.
+The only exception are workloads that still have instrumentation in their pod template from before the namespace was
+switched to `mode: pods`, see the switching between modes below.
+Pods that already exist keep their current state until they are recreated, for example by the next rollout or a node
+drain:
+* Pods that were running before the namespace was switched to `mode: pods` are instrumented when they are recreated.
+* When the operator is updated, pods keep the instrumentation of the previous operator version until they are
+  recreated.
+* Changes to the settings in `spec.instrumentWorkloads` (for example the label selector or trace context propagators)
+  apply to pods created after the change.
+* When the namespace is switched to `mode: none`, or the Dash0 monitoring resource is removed, pods that have been
+  instrumented when they were created keep their instrumentation until they are recreated.
+
+Since only new pods are affected, the pods of one workload can be in different states for a while.
+For example, when a deployment that has been running since before the namespace was switched to `mode: pods` is scaled
+up, the new pods are instrumented, while the existing pods are not.
+The same happens when the opt-out label of a workload or the label selector changes.
+The next rollout of the workload, for example via `kubectl rollout restart`, brings all of its pods into the same state.
+
+Pods are instrumented by the operator's admission webhook.
+A pod that is created while the webhook is not reachable, for example while the operator is being updated, starts
+without instrumentation and is instrumented the next time it is recreated.
+Running the operator with two replicas (`operator.replicaCount=2`) is recommended for namespaces with `mode: pods`.
+Every replica of the operator manager serves the webhook, while only the replica that holds the leader election lease
+runs the controllers.
+With more than one replica, the Helm chart adds a pod disruption budget that allows at most one replica to be
+unavailable (`operator.podDisruptionBudget.enabled=false` disables it), and a topology spread constraint that prefers
+scheduling the replicas on different nodes.
+
+The [label selector](#using-a-custom-label-selector-to-control-auto-instrumentation)
+(`spec.instrumentWorkloads.labelSelector`, by default `dash0.com/enable!=false`) is evaluated when the pod is created,
+against the labels of the pod combined with the labels of its owners, that is, the replica set and the deployment, the
+job and the cron job, the daemon set, or the stateful set.
+If a label is set on several of these levels with different values, the value from the level closest to the pod wins.
+For example, `dash0.com/enable: "false"` on the top level metadata of a deployment opts its pods out, unless the pod
+template of the deployment sets `dash0.com/enable: "true"`.
+Owners of other types, for example an Argo Rollout, are not taken into account; for pods created by them, put the label
+into the pod template.
+Since changing the labels in the top level metadata of a workload does not recreate its pods, opting a workload in or
+out that way only applies to pods created afterwards.
+
+This differs from the other modes, which evaluate the label selector only against the labels in the top level metadata
+of the workload and ignore the labels in its pod template.
+Check the labels in the pod templates before switching a namespace from `all` or `created-and-updated` to `pods`, since
+the same labels can lead to a different result:
+* A deployment that has `dash0.com/enable: "false"` only in its pod template is instrumented with `mode: all`, but not
+  with `mode: pods`.
+* A deployment that has `dash0.com/enable: "false"` in its top level metadata and `dash0.com/enable: "true"` in its pod
+  template is not instrumented with `mode: all`, but it is instrumented with `mode: pods`.
+
+The `app.kubernetes.io/*` labels and `resource.opentelemetry.io/*` annotations of the top-level owner are taken into
+account in the same way as with the other modes, see
+[Specifying Additional Resource Attributes via Labels and Annotations](#specifying-additional-resource-attributes-via-labels-and-annotations).
+Kubernetes events about the instrumentation of an owned pod are recorded for its top-level owner, for example the
+deployment, since the pod does not have a name yet when it is instrumented.
+
+Switching a namespace between `mode: pods` and the other modes behaves as follows:
+* From `all` or `created-and-updated` to `pods`: No pods are restarted.
+  The workloads keep the instrumentation in their pod template for now, so their pods stay instrumented.
+  The operator removes it from the pod template the next time the pod template changes anyway, for example with the next
+  deployment or `kubectl rollout restart`, so that no additional rollout is necessary.
+  For cron jobs, for replica sets that are not controlled by a deployment, and for daemon sets and stateful sets with the
+  update strategy `OnDelete`, changing the pod template does not replace any pods, so the instrumentation is removed on
+  the next update of the workload.
+  Jobs are immutable, they keep the instrumentation in their pod template.
+* From `pods` to `all`: The workloads are instrumented by modifying their pod template, which replaces their pods, as
+  when switching to `all` from any other mode.
+* From `pods` to `created-and-updated`: No pods are restarted.
+  Pods that have been instrumented when they were created keep their instrumentation until they are recreated; pods
+  created from the pod template of a workload that has not been updated since then are not instrumented.
+  Workloads are instrumented when they are created or updated, as described for `created-and-updated`.
+* From `pods` to `none`, or when the Dash0 monitoring resource is removed: Pods that have been instrumented when they
+  were created keep their instrumentation until they are recreated.
+  Workloads that still have instrumentation in their pod template from before the namespace was switched to `pods` are
+  reverted, which replaces their pods.
+
 ## Disabling Auto-Instrumentation for Specific Workloads
 
-In namespaces that are Dash0-monitoring enabled, all workloads are automatically instrumented for tracing and to improve OpenTelemetry resource attributes. This process will modify the Pod spec, e.g. by adding environment variables, Kubernetes labels and an init container. The modifications are described in detail in the section [How Automatic Workload Instrumentation Works](#how-automatic-workload-instrumentation-works).
+In namespaces that are Dash0-monitoring enabled, all workloads are automatically instrumented for tracing and to improve OpenTelemetry resource attributes. This process will modify the Pod spec, e.g. by adding environment variables, Kubernetes labels and a volume that provides the instrumentation files. The modifications are described in detail in the section [How Automatic Workload Instrumentation Works](#how-automatic-workload-instrumentation-works).
 
 You can disable these workload modifications for specific workloads by setting the label `dash0.com/enable: "false"` in the top level metadata section of the workload specification.
 
@@ -138,6 +244,8 @@ For a cron job, this also applies to the jobs it creates, although Kubernetes do
 to its jobs: the labels of a job are evaluated together with the labels in the top level metadata of the cron job that
 controls it. If a label is set with different values on the cron job and in its job template
 (`spec.jobTemplate.metadata.labels`), the value from the job template wins.
+
+> **Note:** In namespaces with `spec.instrumentWorkloads.mode: pods`, the label is also taken into account when it is set in the pod template or on the pod itself, and it only applies to pods that are created after the label has been set. Pods that already exist keep their instrumentation until they are recreated. See [Instrumenting Pods Instead of Workloads](#instrumenting-pods-instead-of-workloads) for details, including the differences to the other modes that matter when switching a namespace to `mode: pods`.
 
 > **Note:** The actual label selector for enabling or disabling workload modification can be customized in the Dash0 monitoring resource. The label `dash0.com/enable: "false"` can be used when no custom label selector has been configured in the Dash0 monitoring resource, see [Using a Custom Label Selector to Control Auto-Instrumentation](#using-a-custom-label-selector-to-control-auto-instrumentation).
 
@@ -182,7 +290,7 @@ metadata:
 spec:
   filter:
     logs:
-      log_records:
+      log_record:
       - 'IsMatch(resource.attributes["k8s.pod.name"], "my-workload-name-*")'
 ```
 
@@ -217,6 +325,86 @@ spec:
               value: "nodejs"
 ```
 
+## Disabling Workload Instrumentation for the Whole Cluster
+
+If you do not use automatic workload instrumentation in any namespace, for example because you only collect logs,
+metrics and Kubernetes events with the Dash0 operator, or you use manual instrumentation, you can disable it for
+the whole cluster:
+
+```console
+helm upgrade --install \
+  --namespace dash0-system \
+  --set operator.instrumentation.enabled=false \
+  ...
+  dash0-operator \
+  dash0-operator/dash0-operator
+```
+
+With `operator.instrumentation.enabled=false`, the Helm chart does not register the mutating webhook that instruments
+workloads.
+Without that webhook, the Kubernetes API server no longer sends an admission request to the operator for every
+workload and pod that is created or updated in the cluster.
+In clusters with frequent workload changes, for example because of GitOps tools that apply the workloads regularly, or
+because of many pods being created on node churn, this noticeably reduces the network traffic between the operator
+and the Kubernetes API server.
+
+In addition:
+
+* Dash0 monitoring resources without `spec.instrumentWorkloads.mode` get `spec.instrumentWorkloads.mode: none`.
+  The same applies to `operator.monitoringTemplate` and to the monitoring template of a Dash0 operator configuration
+  resource, which are used for [automatic namespace monitoring](configuration.md#enable-dash0-monitoring-for-a-namespace).
+* Dash0 monitoring resources and monitoring templates with `spec.instrumentWorkloads.mode` other than `none` are
+  rejected.
+  Setting `operator.monitoringTemplate.spec.instrumentWorkloads.mode` to a value other than `none` makes the Helm
+  installation fail.
+  Validation for Dash0 operator configuration resources will allow updates for operator configuration resources which
+  have a monitoring template with a mode other than `none`, as long as the update does not change that mode to another
+  value other than `none`.
+* Automatic namespace monitoring creates and updates Dash0 monitoring resources with
+  `spec.instrumentWorkloads.mode: none`, regardless of the mode in the monitoring template.
+
+In namespaces that are monitored via automatic namespace monitoring, disabling workload instrumentation for the whole
+cluster removes the instrumentation from the workloads:
+The operator sets `spec.instrumentWorkloads.mode: none` in the Dash0 monitoring resources it has created for these
+namespaces, regardless of the mode in the monitoring template, which has the same effect as setting
+`spec.instrumentWorkloads.mode: none` manually.
+
+Dash0 monitoring resources that have not been created by automatic namespace monitoring are not changed, and the
+instrumentation of their workloads is not automatically removed.
+
+If workloads in your cluster are already instrumented, proceed as follows:
+
+1. Set `spec.instrumentWorkloads.mode: none` in all Dash0 monitoring resources, and in `operator.monitoringTemplate`
+   if you use automatic namespace monitoring.
+   The operator removes the instrumentation from the workloads in these namespaces.
+2. Change `operator.instrumentation.enabled=false` via Helm (e.g. run
+   `helm upgrade` with `--set operator.instrumentation.enabled=false`).
+
+If a Dash0 monitoring resource still has `spec.instrumentWorkloads.mode` other than `none` after workload
+instrumentation has been disabled, the operator logs a warning for it, and effectively ignores that setting.
+No new workloads are instrumented in that namespace, and workloads that have been instrumented before keep their
+instrumentation.
+With `spec.instrumentWorkloads.mode: pods`, pods are only instrumented when they are created, so pods that are created
+after workload instrumentation has been disabled are not instrumented, and existing pods lose their instrumentation
+when they are recreated.
+Adding the opt-out label `dash0.com/enable: "false"` to such a workload, or changing
+`spec.instrumentWorkloads.labelSelector`, does not remove the instrumentation from the workload either; set
+`spec.instrumentWorkloads.mode: none` to remove it.
+The validation for Dash0 monitoring resources will still allow updates for resources with an invalid workload
+instrumentation mode, but `spec.instrumentWorkloads.mode` can only be changed to `none`, which also
+removes the instrumentation from its workloads.
+Deleting the resource is always possible.
+
+Re-enabling workload instrumentation with `operator.instrumentation.enabled=true` does not change resources that have
+been created or updated while it was disabled:
+Dash0 monitoring resources and monitoring templates of Dash0 operator configuration resources that have received
+`spec.instrumentWorkloads.mode: none` as the default value keep that mode, although it has not been set explicitly.
+To instrument the workloads in these namespaces again, set `spec.instrumentWorkloads.mode` explicitly in these
+resources, for example to `all` for Dash0 monitoring resources and to `created-and-updated` for monitoring templates,
+which are the default values when workload instrumentation is enabled.
+The monitoring template that the Helm chart manages via `operator.monitoringTemplate` is not affected; it gets the
+default mode again when the operator starts with workload instrumentation enabled.
+
 ## Using a Custom Label Selector to Control Auto-Instrumentation
 
 By providing a custom Kubernetes [label selector](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors) in `spec.instrumentWorkloads.labelSelector` in a Dash0 monitoring resource, you can control which workloads in this namespace will be instrumented by the Dash0 operator.
@@ -224,6 +412,7 @@ By providing a custom Kubernetes [label selector](https://kubernetes.io/docs/con
 - Workloads which match this label selector will be instrumented, subject to the value of `spec.instrumentWorkloads.mode`.
 - Workloads which do not match this label selector will never be instrumented, regardless of the value of `spec.instrumentWorkloads.mode`.
 - The setting `spec.instrumentWorkloads.labelSelector` setting is ignored if `spec.instrumentWorkloads.mode=none`.
+- With `spec.instrumentWorkloads.mode=pods`, the label selector is evaluated when a pod is created, against the labels of the pod combined with the labels of its owners, see [Instrumenting Pods Instead of Workloads](#instrumenting-pods-instead-of-workloads). With the other modes, it is evaluated against the labels in the top level metadata of the workload.
 
 If not set explicitly, this label selector assumes the value `"dash0.com/enable!=false"` by default. That is, when no explicit label selector is provided via `spec.instrumentWorkloads.labelSelector`, workloads which:
 
@@ -300,7 +489,8 @@ env:
 
 To use the service endpoint instead of the host port, you need to know:
 
-* the Helm release name of the Dash0 operator (for example `dash0-operator`), and
+* the name prefix of the resources the Dash0 operator creates, that is, the value of `operator.managedResourceNamePrefix`,
+  or the Helm release name if that is not set (for example `dash0-operator`), and
 * the namespace where the Dash0 operator is installed (for example `dash0-system`).
 
 With that information at hand, add the following to your workload:
@@ -308,7 +498,7 @@ With that information at hand, add the following to your workload:
 ```yaml
 env:
   - name: OTEL_EXPORTER_OTLP_ENDPOINT
-    value: "http://${helm-release-name}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4318"
+    value: "http://${name-prefix}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4318"
   - name: OTEL_EXPORTER_OTLP_PROTOCOL
     value: "http/protobuf"
 ```
@@ -318,12 +508,12 @@ or, for gRPC:
 ```yaml
 env:
   - name: OTEL_EXPORTER_OTLP_ENDPOINT
-    value: "http://${helm-release-name}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4317"
+    value: "http://${name-prefix}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4317"
   - name: OTEL_EXPORTER_OTLP_PROTOCOL
     value: "grpc"
 ```
 
-In both cases, `${helm-release-name}` and `${namespace-of-the-dash0-operator}` needs to be replaced with the actual values.
+In both cases, `${name-prefix}` and `${namespace-of-the-dash0-operator}` needs to be replaced with the actual values.
 
 If the workload is in a namespace that is monitored by Dash0 and workload instrumentation is enabled, Dash0 will automatically add Kubernetes-related OpenTelemetry resource attributes to your telemetry, even if the runtime in question is not yet supported by Dash0's auto-instrumentation. There is currently one caveat: The resource attribute auto-detection relies on the process or runtime in question to use dynamic linking at startup (that is, binding to a flavor of libc), which is true for almost all runtimes. One notable exception are so called freestanding a.k.a. libc-free binaries, for example most binaries built with Go.
 
@@ -365,14 +555,14 @@ Regardless of the instrumentation delivery:
 >     value: http://$(MY_NODE_IP):40317
 >   ```
 >   Use the port configured via `operator.collectors.otlpGrpcHostPort` instead of 40317 if the operator has been deployed with a custom gRPC host port.
->   To disable workload instrumentation for a workload, you can opt out of auto-instrumentation via a workload label (i.e. `dash0.com/enable: "false"`, see [Disabling Auto-Instrumentation for Specific Workloads](#disabling-auto-instrumentation-for-specific-workloads)), or by not installing a Dash0 monitoring resource in the namespace where these workloads are located. The workloads can then be monitored by following the setup described in [Sending Data to the OpenTelemetry Collectors Managed by the Dash0 Operator](#sending-data-to-the-opentelemetry-collectors-managed-by-the-dash0-operator) to have the workload send telemetry to the collectors managed by the Dash0 operator, using gRPC. Note that this is not relevant for workloads that do not have an OpenTelemetry SDK at all, since they will ignore `OTEL_EXPORTER_OTLP_ENDPOINT`. In case the Dash0 operator Helm chart has been deployed with `operator.collectors.forceUseServiceUrl=true` or `operator.collectors.disableHostPorts=true`, `OTEL_EXPORTER_OTLP_ENDPOINT` is not set to `http://$(NODE_IP):40318`, but to the HTTP port of the DaemonSet collector's service URL `http://${helm-release-name}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4318` instead.
+>   To disable workload instrumentation for a workload, you can opt out of auto-instrumentation via a workload label (i.e. `dash0.com/enable: "false"`, see [Disabling Auto-Instrumentation for Specific Workloads](#disabling-auto-instrumentation-for-specific-workloads)), or by not installing a Dash0 monitoring resource in the namespace where these workloads are located. The workloads can then be monitored by following the setup described in [Sending Data to the OpenTelemetry Collectors Managed by the Dash0 Operator](#sending-data-to-the-opentelemetry-collectors-managed-by-the-dash0-operator) to have the workload send telemetry to the collectors managed by the Dash0 operator, using gRPC. Note that this is not relevant for workloads that do not have an OpenTelemetry SDK at all, since they will ignore `OTEL_EXPORTER_OTLP_ENDPOINT`. In case the Dash0 operator Helm chart has been deployed with `operator.collectors.forceUseServiceUrl=true` or `operator.collectors.disableHostPorts=true`, `OTEL_EXPORTER_OTLP_ENDPOINT` is not set to `http://$(NODE_IP):40318`, but to the HTTP port of the DaemonSet collector's service URL `http://${name-prefix}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4318` instead.
 
 ### Technical Details
 
 The remainder of this section provides a more detailed step-by-step description of how the Dash0 operator's workload instrumentation for tracing works internally, intended for the technically curious reader. You can safely skip this section if you are not interested in the technical details.
 
-1. The Dash0 operator adds the `dash0-instrumentation` init container with the [Dash0 instrumentation image](https://github.com/dash0hq/dash0-operator/tree/main/images/instrumentation) to the pod spec template of workloads. The instrumentation image contains OpenTelemetry SDKs and distributions for all supported runtimes and the [OpenTelemetry injector](https://github.com/open-telemetry/opentelemetry-injector) binary.
-2. When the init container starts, it copies the OpenTelemetry distributions and the OpenTelemetry injector binary to a dedicated shared volume mount that has been added by the operator, so they are available in the target container's file system. When it has copied all files, the init container exits.
+1. The Dash0 operator adds the `dash0-instrumentation` volume to the pod spec template of workloads and mounts it into all containers. This volume provides the files from the [Dash0 instrumentation image](https://github.com/dash0hq/dash0-operator/tree/main/images/instrumentation), which contains OpenTelemetry SDKs and distributions for all supported runtimes and the [OpenTelemetry injector](https://github.com/open-telemetry/opentelemetry-injector) binary.
+2. How the files get into the volume depends on the [instrumentation delivery](#using-image-volumes-for-auto-instrumentation-files). With image volumes, the kubelet mounts the instrumentation image directly as a read-only volume. With the init container approach, the volume is an `emptyDir` volume, and the operator also adds the `dash0-instrumentation` init container with the instrumentation image. When the init container starts, it copies the OpenTelemetry distributions and the OpenTelemetry injector binary to the volume. When it has copied all files, the init container exits. Either way, the files are available in the target container's file system.
 3. The operator also adds environment variables to the target container to ensure that the OpenTelemetry SDK has the correct configuration and will get activated at startup. The activation of the OpenTelemetry SDK happens via an `LD_PRELOAD` hook. For that purpose, the Dash0 operator adds the `LD_PRELOAD` environment variable to the pod spec template of the workload. `LD_PRELOAD` is an environment variable that is evaluated by the [dynamic linker/loader](https://man7.org/linux/man-pages/man8/ld.so.8.html) when a Linux executable starts. In general, it specifies a list of additional shared objects to be loaded before the actual code of the executable. In this specific case, the OpenTelemetry injector binary is added to the `LD_PRELOAD` list.
-4. At process startup, the OpenTelemetry injector adds additional environment variables to the running process by hooking into the application startup, finding the `dlsym` symbol and `setenv` symbols, and then calling `setenv` to add or modify environment variables (like `OTEL_RESOURCE_ATTRIBUTES`, `NODE_OPTIONS`, `JAVA_TOOL_OPTIONS` and others). The reason for doing that at process startup and not when modifying the pod spec (where environment variables can also be added and modified) is that the original environment variables are not necessarily fully known at that time. Workloads will sometimes set environment variables in their Dockerfile or in an entrypoint script; those environment variables are only available at process runtime. For example, the OpenTelemetry injector sets (or appends to) `NODE_OPTIONS` to activate the [Dash0 OpenTelemetry distribution for Node.js](https://github.com/dash0hq/opentelemetry-js-distribution) to collect tracing data from all Node.js workloads. For JVMs, the same is achieved by setting (or appending to) the `JAVA_TOOL_OPTIONS` environment variable, namely adding a `-javaagent`). For .NET or other CLR-based workloads, `DOTNET_STARTUP_HOOKS` and `CORECLR_PROFILER` are used to add the [Dash0 OpenTelemetry distribution for .NET](https://github.com/dash0hq/opentelemetry-dotnet-distribution). For Python auto-instrumentation, the OpenTelemetry SDK is prepended to `PYTHONPATH`. For Ruby auto-instrumentation, `RUBYOPT` is set (or prepended to) so that Ruby requires the [Dash0 OpenTelemetry distribution for Ruby](https://github.com/dash0hq/opentelemetry-ruby-distribution) at startup, and `OTEL_RUBY_ADDITIONAL_GEM_PATH` points at the distribution's gems. (Python and Ruby auto-instrumentation need to be [enabled](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml) explicitly via Helm.)
+4. At process startup, the OpenTelemetry injector adds additional environment variables to the running process by hooking into the application startup, finding the `dlsym` symbol and `setenv` symbols, and then calling `setenv` to add or modify environment variables (like `OTEL_RESOURCE_ATTRIBUTES`, `NODE_OPTIONS`, `JAVA_TOOL_OPTIONS` and others). The reason for doing that at process startup and not when modifying the pod spec (where environment variables can also be added and modified) is that the original environment variables are not necessarily fully known at that time. Workloads will sometimes set environment variables in their Dockerfile or in an entrypoint script; those environment variables are only available at process runtime. For example, the OpenTelemetry injector sets (or appends to) `NODE_OPTIONS` to activate the [Dash0 OpenTelemetry distribution for Node.js](https://github.com/dash0hq/opentelemetry-js-distribution) to collect tracing data from all Node.js workloads. For JVMs, the same is achieved by setting (or appending to) the `JAVA_TOOL_OPTIONS` environment variable, namely adding a `-javaagent`). The operator also sets `OTEL_JAVAAGENT_CONFIGURATION_FILE` to a defaults file in the instrumentation image, which makes the OpenTelemetry Java agent use the propagators `tracecontext,baggage,xray` unless `OTEL_PROPAGATORS` or `-Dotel.propagators` is set (see [`spec.instrumentWorkloads.traceContext.propagators`](configuration.md#monitoringresource.spec.instrumentWorkloads.traceContext.propagators)). For .NET or other CLR-based workloads, `DOTNET_STARTUP_HOOKS` and `CORECLR_PROFILER` are used to add the [Dash0 OpenTelemetry distribution for .NET](https://github.com/dash0hq/opentelemetry-dotnet-distribution). For Python auto-instrumentation, the OpenTelemetry SDK is prepended to `PYTHONPATH`. For Ruby auto-instrumentation, `RUBYOPT` is set (or prepended to) so that Ruby requires the [Dash0 OpenTelemetry distribution for Ruby](https://github.com/dash0hq/opentelemetry-ruby-distribution) at startup, and `OTEL_RUBY_ADDITIONAL_GEM_PATH` points at the distribution's gems. (Python and Ruby auto-instrumentation are enabled by default and can be disabled via Helm, see [Python Auto-Instrumentation](#python-auto-instrumentation) and [Ruby Auto-Instrumentation](#ruby-auto-instrumentation).)
 5. The OpenTelemetry injector also automatically improves Kubernetes-related resource attributes as follows: The operator sets the environment variables `OTEL_INJECTOR_K8S_NAMESPACE_NAME`, `OTEL_INJECTOR_K8S_POD_NAME`, `OTEL_INJECTOR_K8S_POD_UID` and `OTEL_INJECTOR_K8S_CONTAINER_NAME` on workloads. The OpenTelemetry injector binary picks these values up and uses them to populate the resource attributes `k8s.namespace.name`, `k8s.pod.name`, `k8s.pod.uid` and `k8s.container.name` via the `OTEL_RESOURCE_ATTRIBUTES` environment variable. If `OTEL_RESOURCE_ATTRIBUTES` is already set on the process, the key-value pairs for these attributes are appended to the existing value of `OTEL_RESOURCE_ATTRIBUTES`. If `OTEL_RESOURCE_ATTRIBUTES` was not set on the process, the OpenTelemetry injector will add `OTEL_RESOURCE_ATTRIBUTES` as a new environment variable.

@@ -153,7 +153,7 @@ Here is a list of configuration options for this resource:
   that monitoring resource, these filters apply to all telemetry collected in the cluster.
   That includes telemetry which is not associated with a namespace, like node metrics or cluster-level metrics.
   Log record filters also apply to Kubernetes events, see
-  [`spec.filter.logs.log_records`](#monitoringresource.spec.filter) for how to exclude them.
+  [`spec.filter.logs.log_record`](#monitoringresource.spec.filter) for how to exclude them.
   This setting is optional, by default, no filters are applied.
   It is a validation error to set `telemetryCollection.enabled=false` and set filters at the same time.
 
@@ -214,6 +214,13 @@ Here is a list of configuration options for this resource:
   OpenTelemetry target-allocator and update the `prometheusreceiver` in the OpenTelemetry collectors, so they query the
   allocator for targets to be scraped.
 
+* <a href="#operatorconfigurationresource.spec.profiling.enabled"><span id="operatorconfigurationresource.spec.profiling.enabled">**`spec.profiling.enabled`**</span></a>:
+  If enabled, the OpenTelemetry collectors accept, process and export profiling data via OTLP.
+  This setting does not deploy a profiler, see [Profiling](profiling.md).
+  This setting is optional. If it is not set, profiling is enabled together with `profiling.ebpfProfiler.enabled`.
+  It is a validation error to set `telemetryCollection.enabled=false` and `profiling.enabled=true` at the same time, or
+  to set `profiling.enabled=false` together with `profiling.ebpfProfiler.enabled=true`.
+
 * <a href="#operatorconfigurationresource.spec.instrumentWorkloads.instrumentationDelivery"><span id="operatorconfigurationresource.spec.instrumentWorkloads.instrumentationDelivery">**`spec.instrumentWorkloads.instrumentationDelivery`**</span></a>:
   Whether to use an image volume or an init container plus an emptyDir volume to provide instrumentation files to
   workloads when applying auto-instrumentation.
@@ -224,6 +231,7 @@ Here is a list of configuration options for this resource:
     The operator manager determines the minimum kubelet version by inspecting all nodes of the cluster once, shortly
     after it has started; until that has finished, it uses the init container approach.
     Nodes that join the cluster later on are not taken into account.
+    This is the default.
   - `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the operator manager has
     already detected that the Kubernetes API server version or the kubelet version of a node is older than 1.31, it
     will log a warning and fall back to the init container approach, since image volumes are not supported in that
@@ -232,7 +240,6 @@ Here is a list of configuration options for this resource:
     or earlier, and you want to use this setting, you need to enable image volumes when configuring your cluster, since
     image volumes are disabled by default in versions older than 1.35.
   - `init-container`: always use the init container approach, regardless of the Kubernetes version.
-    This is the default.
 
 * <a href="#operatorconfigurationresource.spec.autoMonitorNamespaces.enabled"><span id="operatorconfigurationresource.spec.autoMonitorNamespaces.enabled">**`spec.autoMonitorNamespaces.enabled`**</span></a>: Controls whether monitoring is set up for namespaces
   automatically.
@@ -393,7 +400,7 @@ The Dash0 monitoring resource supports additional configuration settings:
 
 * <a href="#monitoringresource.spec.instrumentWorkloads.mode"><span id="monitoringresource.spec.instrumentWorkloads.mode"><span id="monitoringresource.spec.instrumentWorkloads">**`spec.instrumentWorkloads.mode`**</span></span></a>:
   A namespace-wide configuration for the workload instrumentation strategy for the target namespace.
-  There are three possible settings: `all`, `created-and-updated` and `none`.
+  There are four possible settings: `all`, `created-and-updated`, `pods` and `none`.
   By default, the setting `all` is assumed; unless there is an operator configuration resource with
   `telemetryCollection.enabled=false`, then the setting `none` is assumed by default.
   Note that `spec.instrumentWorkloads.mode` is the path for this setting starting with version `v1beta1` of the Dash0
@@ -418,6 +425,18 @@ The Dash0 monitoring resource supports additional configuration settings:
       This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
       resource or restarting the Dash0 operator.
 
+    * **`pods`**: If set to `pods`, the operator will not instrument workload resources (deployments,
+      daemon sets, stateful sets, replica sets, jobs and cron jobs).
+      Instead, it instruments each pod when it is created.
+      The operator never restarts pods in this mode; pods that already exist keep their current state until they are
+      recreated.
+      The only exception are workloads that still have instrumentation in their pod template from before the namespace
+      was switched to `pods`.
+      This setting is useful if the workloads are managed by GitOps or infrastructure-as-code tools, which would
+      otherwise report the operator's modifications as drift.
+      See [Instrumenting Pods Instead of Workloads](auto-instrumentation.md#instrumenting-pods-instead-of-workloads)
+      for details.
+
     * **`none`**: You can opt out of instrumenting workloads entirely by setting this option to `none`.
       With `spec.instrumentWorkloads: none`, workloads in the target namespace will never be instrumented to emit
       telemetry.
@@ -439,11 +458,15 @@ The Dash0 monitoring resource supports additional configuration settings:
     * When this setting is updated to `spec.instrumentWorkloads=none` (and it had a different value before):
       The instrumentation will be removed from all instrumented workloads.
       Their pods will be restarted to remove the instrumentation.
+      Pods that have been instrumented when they were created, with `spec.instrumentWorkloads.mode=pods`, keep their
+      instrumentation until they are recreated.
       (After this change, the operator will no longer instrument any workloads nor will it restart any pods.)
     * Updating this value to `spec.instrumentWorkloads=created-and-updated` has no immediate effect; existing
       uninstrumented workloads will not be instrumented, existing instrumented workloads will not be uninstrumented.
       Newly deployed or updated workloads will be instrumented from the point of the configuration change onwards as
       described above.
+    * Updating this value to `spec.instrumentWorkloads.mode=pods` has no immediate effect; no pods will be restarted.
+      Pods will be instrumented when they are created from the point of the configuration change onwards.
 
   Automatic workload instrumentation will automatically add tracing to your workloads.
   You can read more about what exactly this feature entails in the section
@@ -464,6 +487,16 @@ The Dash0 monitoring resource supports additional configuration settings:
   See <https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators> for more information.
 
   When the option is not set, the operator will not set the environment variable `OTEL_PROPAGATORS`.
+  Instrumented workloads then use the propagators `tracecontext,baggage,xray`, that is, they send and accept both the
+  W3C `traceparent` header and the AWS X-Ray header `X-Amzn-Trace-Id`.
+  When an incoming request carries both headers, the X-Ray context wins.
+  This applies to the JVM, .NET, Python and Ruby, and to Node.js 18.19+ and 20.6+; older Node.js versions use
+  `tracecontext,baggage`.
+  For JVM workloads, the operator achieves this by setting `OTEL_JAVAAGENT_CONFIGURATION_FILE` to a defaults file that
+  ships with the instrumentation image, unless the container already sets that variable.
+  `OTEL_PROPAGATORS`, whether set by this option or on the container, overrides the default; for JVM workloads,
+  `-Dotel.propagators` does as well.
+  To keep the previous behavior, set this option to `tracecontext,baggage`.
   If the option is set in the monitoring resource at some point and then later removed again, the operator will remove
   the environment variable from instrumented workloads if and only if the value of the environment variable matches the
   previously used setting in the monitoring resource.
@@ -558,13 +591,15 @@ The Dash0 monitoring resource supports additional configuration settings:
       A list of OTTL conditions for filtering individual data points of metrics.
       All data points where at least one condition evaluates to true will be dropped.
       If all datapoints for a metric are dropped, the metric will also be dropped.
-    * **`spec.filter.logs.log_records`**:
+    * **`spec.filter.logs.log_record`**:
       A list of OTTL conditions for filtering log records.
       All log records where at least one condition evaluates to true will be dropped.
       The conditions also apply to the Kubernetes events collected in the namespace.
       To exclude Kubernetes events from a condition `C`, change it to `(C) and attributes["k8s.event.name"] == nil`,
       for example `(severity_number < SEVERITY_NUMBER_WARN) and attributes["k8s.event.name"] == nil`.
       Keep the parentheses, since `and` binds tighter than `or`.
+      The key `spec.filter.logs.log_records` (plural) is deprecated but still supported; if both keys are set, the
+      conditions of both lists are applied.
     * **`spec.filter.profiles.profile`**:
       A list of OTTL conditions for filtering profiles.
       All profiles where at least one condition evaluates to true will be dropped.
@@ -684,7 +719,7 @@ spec:
       - 'metric.type == METRIC_DATA_TYPE_SUMMARY'
       - 'resource.attributes["service.name"] == "my_service_name"'
     logs:
-      log_records:
+      log_record:
       - 'IsMatch(body, ".*password.*")'
       - 'severity_number < SEVERITY_NUMBER_WARN'
     profiles:
@@ -885,7 +920,7 @@ operator:
           - 'metric.type == METRIC_DATA_TYPE_SUMMARY'
           - 'resource.attributes["service.name"] == "my_service_name"'
         logs:
-          log_records:
+          log_record:
           - 'IsMatch(body, ".*password.*")'
           - 'severity_number < SEVERITY_NUMBER_WARN'
       transform:
@@ -927,10 +962,11 @@ operator:
 
 ### Using Image Volumes for Auto-Instrumentation Files
 
-When using auto-instrumentation of workloads, by default the operator adds an
+When using auto-instrumentation of workloads, the operator needs to provide the instrumentation files to the workload.
+The traditional approach is to add an
 [`emptyDir` volume](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) and an
-[init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) to provide the instrumentation
-files to the workload.
+[init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) that copies the instrumentation
+files to that volume.
 
 Image volumes are a new Kubernetes feature that provides a better way to do this.
 They provide the following advantages:
@@ -940,7 +976,10 @@ They provide the following advantages:
 They were introduced in Kubernetes 1.31 as an alpha feature behind a feature gate.
 In version 1.33 they graduated to beta, but were still disabled by default.
 Starting with version 1.35, the image volume feature gate is enabled by default, but they are still considered beta.
-Image volumes finally became a stable feature in version 1.36
+Image volumes finally became a stable feature in version 1.36.
+
+By default, the operator uses image volumes if the Kubernetes API server and the kubelets of all nodes are on version
+1.36 or later, and the init container approach otherwise.
 
 Set the [`instrumentationDelivery` setting](#operatorconfigurationresource.spec.instrumentWorkloads.instrumentationDelivery)
 in the operator configuration resource to determine under which circumstances image volumes will be used instead of the
@@ -954,6 +993,7 @@ Allowed values for the instrumentation delivery setting:
   The operator manager determines the minimum kubelet version by inspecting all nodes of the cluster once, shortly after
   it has started; until that has finished, it uses the init container approach.
   Nodes that join the cluster later on are not taken into account.
+  This is the default.
 - `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the operator manager has
   already detected that the Kubernetes API server version or the kubelet version of a node is older than 1.31, it will
   log a warning and fall back to the init container approach, since image volumes are not supported in that version.
@@ -962,7 +1002,6 @@ Allowed values for the instrumentation delivery setting:
   you want to use this setting, you need to enable image volumes when configuring your cluster, since image volumes are
   disabled by default in versions older than 1.35.
 - `init-container`: always use the init container approach, regardless of the Kubernetes version.
-  This is the default.
 
 Note: Changing the instrumentation delivery setting for an existing operator installation will not trigger a bulk
 re-instrumentation of all existing workloads, even for namespaces that are set to `instrumentWorkloadsMode=all`.
@@ -972,13 +1011,13 @@ The new setting will be applied when instrumenting newly deployed workloads, or 
 
 ### Python Auto-Instrumentation
 
-To enable auto-instrumentation for Python workloads, set `operator.instrumentation.enablePythonAutoInstrumentation=true`
-via Helm.
-If this setting is enabled for an existing operator installation, Python auto-instrumentation will be enabled
-immediately for workloads in namespaces that have a Dash0Monitoring resource with
+Python auto-instrumentation is enabled by default.
+To disable it, set `operator.instrumentation.enablePythonAutoInstrumentation=false` via Helm.
+If this setting is changed for an existing operator installation, the change takes effect immediately for workloads in
+namespaces that have a Dash0Monitoring resource with
 [`instrumentWorkloads.mode`](#monitoringresource.spec.instrumentWorkloads.mode) `all`.
 This will cause all pods in these namespaces to be restarted.
-For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will become active with the next
+For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will take effect with the next
 re-deployment of the workload.
 The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a
 Dash0Monitoring resource.
@@ -1036,13 +1075,13 @@ example by using the OpenTelemetry Python [zero-code instrumentation](https://op
 
 ### Ruby Auto-Instrumentation
 
-To enable auto-instrumentation for Ruby workloads, set `operator.instrumentation.enableRubyAutoInstrumentation=true`
-via Helm.
-If this setting is enabled for an existing operator installation, Ruby auto-instrumentation will be enabled
-immediately for workloads in namespaces that have a Dash0Monitoring resource with
+Ruby auto-instrumentation is enabled by default.
+To disable it, set `operator.instrumentation.enableRubyAutoInstrumentation=false` via Helm.
+If this setting is changed for an existing operator installation, the change takes effect immediately for workloads in
+namespaces that have a Dash0Monitoring resource with
 [`instrumentWorkloads.mode`](#monitoringresource.spec.instrumentWorkloads.mode) `all`.
 This will cause all pods in these namespaces to be restarted.
-For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will become active with the next
+For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will take effect with the next
 re-deployment of the workload.
 The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a
 Dash0Monitoring resource.

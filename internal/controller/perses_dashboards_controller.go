@@ -506,6 +506,9 @@ func (r *PersesDashboardCrdReconciler) SetSynchronizationEnabled(
 	logger logd.Logger,
 ) {
 	enabled := r.persesDashboardReconciler.IsSynchronizationEnabled(monitoringResource)
+	if !enabled {
+		apiSyncFailures.deleteKindInNamespace(r.persesDashboardReconciler.Kind(), namespace)
+	}
 	previous, hadPrevious := r.persesDashboardReconciler.namespacedSyncEnabled.Swap(namespace, enabled)
 	if prev, ok := previous.(bool); hadPrevious && ok && !prev && enabled {
 		logger.Info(fmt.Sprintf(
@@ -542,6 +545,10 @@ func (r *PersesDashboardReconciler) KindDisplayName() string {
 
 func (r *PersesDashboardReconciler) ShortName() string {
 	return "dashboard"
+}
+
+func (r *PersesDashboardReconciler) Kind() string {
+	return "PersesDashboard"
 }
 
 func (r *PersesDashboardReconciler) ControllerStopFunctionLock() *sync.Mutex {

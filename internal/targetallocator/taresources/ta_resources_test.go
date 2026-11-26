@@ -48,7 +48,7 @@ var _ = Describe("The target-allocator resource manager", func() {
 		deployment := &appsv1.Deployment{}
 		Expect(k8sClient.Get(ctx, types.NamespacedName{
 			Namespace: OperatorNamespace,
-			Name:      DeploymentName(TargetAllocatorPrefixTest),
+			Name:      DeploymentName(ManagedResourceNamePrefixTest),
 		}, deployment)).To(Succeed())
 		return deployment
 	}
@@ -63,10 +63,10 @@ var _ = Describe("The target-allocator resource manager", func() {
 			scheme,
 			OperatorManagerDeployment,
 			util.TargetAllocatorConfig{
-				Images:                    TestImages,
-				OperatorNamespace:         OperatorNamespace,
-				TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
-				IsGkeAutopilot:            true,
+				Images:            TestImages,
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        ManagedResourceNamePrefixTest,
+				IsGkeAutopilot:    true,
 			},
 		)
 	})
@@ -102,9 +102,9 @@ var _ = Describe("The target-allocator resource manager", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		for _, object := range []client.Object{
-			&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: ClusterRoleName(TargetAllocatorPrefixTest)}},
+			&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: ClusterRoleName(ManagedResourceNamePrefixTest)}},
 			&rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{
-				Name: ClusterRoleBindingName(TargetAllocatorPrefixTest),
+				Name: ClusterRoleBindingName(ManagedResourceNamePrefixTest),
 			}},
 		} {
 			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(object), object)).To(Succeed())
@@ -119,7 +119,7 @@ var _ = Describe("The target-allocator resource manager", func() {
 		for _, object := range []client.Object{
 			&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
 				Namespace: OperatorNamespace,
-				Name:      ServiceAccountName(TargetAllocatorPrefixTest),
+				Name:      ServiceAccountName(ManagedResourceNamePrefixTest),
 			}},
 			getDeployment(),
 		} {
@@ -131,7 +131,7 @@ var _ = Describe("The target-allocator resource manager", func() {
 	})
 
 	It("should add the owner reference to existing cluster-scoped resources that do not have one", func() {
-		clusterRoleName := ClusterRoleName(TargetAllocatorPrefixTest)
+		clusterRoleName := ClusterRoleName(ManagedResourceNamePrefixTest)
 		existingClusterRole := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: clusterRoleName}}
 		Expect(patch.DefaultAnnotator.SetLastAppliedAnnotation(existingClusterRole)).To(Succeed())
 		Expect(k8sClient.Create(ctx, existingClusterRole)).To(Succeed())

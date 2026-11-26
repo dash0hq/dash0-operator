@@ -1,6 +1,8 @@
 suite: test separate OpenShift eBPF profiler SCC
 templates:
   - operator/openshift-ebpf-profiler-scc.yaml
+release:
+  name: test-release
 tests:
   - it: should not render by default
     asserts:
@@ -87,5 +89,45 @@ tests:
           value:
             - apiGroups: [security.openshift.io]
               resources: [securitycontextconstraints]
-              resourceNames: [RELEASE-NAME-ebpf-profiler]
+              resourceNames: [test-release-ebpf-profiler]
               verbs: [use]
+
+  - it: should use operator.managedResourceNamePrefix for the SCC, its RBAC and the profiler service account
+    release:
+      name: dash0-operator-an-argo-cd-application-name
+    set:
+      operator.managedResourceNamePrefix: dash0-operator
+      operator.openShift.enabled: true
+      operator.ebpfProfilerEnabled: true
+      operator.ebpfProfilerImage.tag: test-agent
+    asserts:
+      - equal:
+          path: metadata.name
+          value: dash0-operator-ebpf-profiler
+        documentSelector:
+          path: kind
+          value: SecurityContextConstraints
+      - equal:
+          path: metadata.name
+          value: dash0-operator-ebpf-profiler-scc-use
+        documentSelector:
+          path: kind
+          value: ClusterRole
+      - equal:
+          path: rules[0].resourceNames
+          value: [dash0-operator-ebpf-profiler]
+        documentSelector:
+          path: kind
+          value: ClusterRole
+      - equal:
+          path: roleRef.name
+          value: dash0-operator-ebpf-profiler-scc-use
+        documentSelector:
+          path: kind
+          value: RoleBinding
+      - equal:
+          path: subjects[0].name
+          value: dash0-operator-ebpf-profiler
+        documentSelector:
+          path: kind
+          value: RoleBinding

@@ -26,6 +26,17 @@ If the rollout takes longer, for example because pulling the images is slow, `he
 also without `--wait`.
 Use a longer `--timeout` in this case, which allows up to three attempts of the hook.
 
+In namespaces with
+[`instrumentWorkloads.mode: pods`](auto-instrumentation.md#instrumenting-pods-instead-of-workloads), the
+operator does not restart pods after an upgrade.
+Existing pods keep the instrumentation of the previous operator version until they are recreated.
+
+> **Note:** Using `--reuse-values` when upgrading to a new chart version is not supported.
+> With `--reuse-values`, Helm uses the default values of the previously installed chart version instead of those of
+> the new version, so default values that the new version adds or changes are missing.
+> To keep the values you have set explicitly, use `--reset-then-reuse-values` (Helm 3.14 or later), or provide your
+> values again via `--values` or `--set`.
+
 ### Operator Version 0.158.0: Operator-Managed Webhook Certificates
 
 Starting with version 0.158.0, the operator manages the TLS certificates for its webhooks instead of the Helm chart, see
@@ -150,6 +161,11 @@ This will also automatically disable Dash0 monitoring for all namespaces by dele
 all namespaces.
 All workload modifications applied by the Dash0 operator will be reverted.
 This will restart the pods of all workloads that were previously instrumented by the Dash0 operator.
+In namespaces with
+[`instrumentWorkloads.mode: pods`](auto-instrumentation.md#instrumenting-pods-instead-of-workloads), pods
+that have been instrumented when they were created keep their instrumentation until they are recreated.
+Only workloads that still have instrumentation in their pod template from before the namespace was switched to
+`mode: pods` are reverted, which restarts their pods.
 
 Optionally, after `helm uninstall` has finished, remove the namespace that has been created for the operator:
 

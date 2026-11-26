@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -49,8 +50,9 @@ const ErrorMessageEbpfProfilerDisabledViaHelm = "The eBPF profiler has been disa
 	"(operator.ebpfProfilerEnabled: false). Set operator.ebpfProfilerEnabled: true via Helm before enabling " +
 	"spec.profiling.ebpfProfiler.enabled."
 
-const ErrorMessageEbpfProfilerRequiresProfiling = "The eBPF profiler requires spec.profiling.enabled=true. " +
-	"Enable profiling or set spec.profiling.ebpfProfiler.enabled=false."
+const ErrorMessageEbpfProfilerRequiresProfiling = "The eBPF profiler cannot be combined with " +
+	"spec.profiling.enabled=false. Set spec.profiling.enabled to true, remove it, or set " +
+	"spec.profiling.ebpfProfiler.enabled=false."
 
 const ErrorMessageEbpfProfilerRequiresTelemetry = "The eBPF profiler requires telemetry collection to be enabled " +
 	"both via Helm and spec.telemetryCollection.enabled. Enable telemetry collection or set " +
@@ -75,6 +77,13 @@ const ErrorMessageOperatorConfigurationExportAndExportsAreMutuallyExclusive = "T
 const ErrorMessageOperatorConfigurationMonitoringTemplateWithExports = "The provided Dash0 operator configuration resource has a monitoring template with `exports`. Please use the " +
 	"`exports` field in the operator configuration and remove the `exports` from the monitoringTemplate.spec."
 
+// ErrorMessageOperatorConfigurationMonitoringTemplateInstrumentationDisabled is the message for rejecting a monitoring
+// template with instrumentWorkloads.mode other than none while workload instrumentation is disabled.
+const ErrorMessageOperatorConfigurationMonitoringTemplateInstrumentationDisabled = "The provided Dash0 operator " +
+	"configuration resource has a monitoring template with instrumentWorkloads.mode=%s, but workload instrumentation " +
+	"is disabled via the Helm value %s. Please set " +
+	"monitoringTemplate.spec.instrumentWorkloads.mode to none."
+
 const ErrorMessageOperatorConfigurationMonitoringTemplateWithExport = "The provided Dash0 operator configuration resource has a monitoring template with `export`. Please use the " +
 	"`exports` field in the operator configuration and remove the `export` from the monitoringTemplate.spec."
 
@@ -87,6 +96,7 @@ type OperatorConfigurationValidationWebhookHandler struct {
 	Client                            client.Client
 	EbpfProfilerEnabledViaHelm        bool
 	telemetryCollectionEnabledViaHelm bool
+	instrumentationEnabledViaHelm     bool
 	agent0ConnectorEnabledViaHelm     bool
 	syntheticsWorkerEnabledViaHelm    bool
 	extraConfig                       atomic.Pointer[util.ExtraConfig]
@@ -95,10 +105,12 @@ type OperatorConfigurationValidationWebhookHandler struct {
 
 // NewOperatorConfigurationValidationWebhookHandler creates the validation webhook handler for operator configuration
 // resources. The extra configuration and its defaults are used to warn about settings in spec.components that override
-// a value provided via the Helm chart.
+// a value provided via the Helm chart. If instrumentationEnabledViaHelm is false, monitoring templates with
+// instrumentWorkloads.mode other than none are rejected.
 func NewOperatorConfigurationValidationWebhookHandler(
 	k8sClient client.Client,
 	telemetryCollectionEnabledViaHelm bool,
+	instrumentationEnabledViaHelm bool,
 	agent0ConnectorEnabledViaHelm bool,
 	syntheticsWorkerEnabledViaHelm bool,
 	extraConfig util.ExtraConfig,
@@ -107,6 +119,7 @@ func NewOperatorConfigurationValidationWebhookHandler(
 	h := &OperatorConfigurationValidationWebhookHandler{
 		Client:                            k8sClient,
 		telemetryCollectionEnabledViaHelm: telemetryCollectionEnabledViaHelm,
+		instrumentationEnabledViaHelm:     instrumentationEnabledViaHelm,
 		agent0ConnectorEnabledViaHelm:     agent0ConnectorEnabledViaHelm,
 		syntheticsWorkerEnabledViaHelm:    syntheticsWorkerEnabledViaHelm,
 		extraConfigDefaults:               extraConfigDefaults,
@@ -212,20 +225,8 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		}
 	}
 
-	if spec.MonitoringTemplate != nil {
-		// Defining an export in the monitoring template makes no sense, since all monitoring resources would have their
-		// individual export then, but it is the same export target over and over. Users should put the export into the
-		// operator configuration instead.
-
-		//nolint:staticcheck
-		if spec.MonitoringTemplate.Spec.Export != nil {
-			logger.Warn(ErrorMessageOperatorConfigurationMonitoringTemplateWithExport)
-			return admission.Denied(ErrorMessageOperatorConfigurationMonitoringTemplateWithExport)
-		}
-		if len(spec.MonitoringTemplate.Spec.Exports) > 0 {
-			logger.Warn(ErrorMessageOperatorConfigurationMonitoringTemplateWithExports)
-			return admission.Denied(ErrorMessageOperatorConfigurationMonitoringTemplateWithExports)
-		}
+	if response, denied := h.validateMonitoringTemplate(spec.MonitoringTemplate, request, logger); denied {
+		return response
 	}
 
 	if !operatorConfigurationResource.HasDash0ExportConfigured() {
@@ -261,7 +262,65 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		}
 	}
 
-	return h.validateComponentSettings(request, spec, logger)
+	warnings := deprecatedLogRecordsFilterWarnings(spec.Filter, "spec.filter")
+	if spec.MonitoringTemplate != nil {
+		warnings = append(
+			warnings,
+			deprecatedLogRecordsFilterWarnings(spec.MonitoringTemplate.Spec.Filter, "spec.monitoringTemplate.spec.filter")...,
+		)
+	}
+	return h.validateComponentSettings(request, spec, logger).WithWarnings(warnings...)
+}
+
+// validateMonitoringTemplate rejects a monitoring template with an export, and, while workload instrumentation is
+// disabled, a request that sets the instrumentWorkloads.mode of the monitoring template to a value other than none. An
+// update that keeps a mode the stored resource already has is allowed, so that an operator configuration resource
+// stored while instrumentation was enabled can still be updated.
+func (h *OperatorConfigurationValidationWebhookHandler) validateMonitoringTemplate(
+	monitoringTemplate *dash0v1alpha1.MonitoringTemplate,
+	request admission.Request,
+	logger logd.Logger,
+) (admission.Response, bool) {
+	if monitoringTemplate == nil {
+		return admission.Response{}, false
+	}
+
+	// Defining an export in the monitoring template makes no sense, since all monitoring resources would have their
+	// individual export then, but it is the same export target over and over. Users should put the export into the
+	// operator configuration instead.
+	//nolint:staticcheck
+	if monitoringTemplate.Spec.Export != nil {
+		logger.Warn(ErrorMessageOperatorConfigurationMonitoringTemplateWithExport)
+		return admission.Denied(ErrorMessageOperatorConfigurationMonitoringTemplateWithExport), true
+	}
+	if len(monitoringTemplate.Spec.Exports) > 0 {
+		logger.Warn(ErrorMessageOperatorConfigurationMonitoringTemplateWithExports)
+		return admission.Denied(ErrorMessageOperatorConfigurationMonitoringTemplateWithExports), true
+	}
+
+	templateMode := monitoringTemplate.Spec.InstrumentWorkloads.Mode
+	if h.instrumentationEnabledViaHelm ||
+		templateMode == "" ||
+		templateMode == dash0common.InstrumentWorkloadsModeNone {
+		return admission.Response{}, false
+	}
+	newlySet, errorResponse := isFeatureNewlyEnabled(request, logger, "monitoring template instrumentWorkloads.mode",
+		func(r *dash0v1alpha1.Dash0OperatorConfiguration) bool {
+			return r.Spec.MonitoringTemplate != nil && r.Spec.MonitoringTemplate.Spec.InstrumentWorkloads.Mode == templateMode
+		})
+	if errorResponse != nil {
+		return *errorResponse, true
+	}
+	if !newlySet {
+		return admission.Response{}, false
+	}
+	msg := fmt.Sprintf(
+		ErrorMessageOperatorConfigurationMonitoringTemplateInstrumentationDisabled,
+		templateMode,
+		util.InstrumentationDisabledHelmValue(h.telemetryCollectionEnabledViaHelm),
+	)
+	logger.Warn(msg)
+	return admission.Denied(msg), true
 }
 
 // validateComponentSettings checks spec.components, unless an UPDATE leaves it unchanged.
@@ -371,7 +430,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) validateEbpfProfiler(
 		}
 		return admission.Response{}, false
 	}
-	if !pointers.ReadBoolPointerWithDefault(spec.Profiling.Enabled, false) {
+	if !pointers.ReadBoolPointerWithDefault(spec.Profiling.Enabled, true) {
 		logger.Warn(ErrorMessageEbpfProfilerRequiresProfiling)
 		return admission.Denied(ErrorMessageEbpfProfilerRequiresProfiling), true
 	}

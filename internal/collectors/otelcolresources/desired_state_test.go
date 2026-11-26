@@ -557,7 +557,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		// Pruning and the removal of obsolete resources match by name only.
 		It("should not share its name with a resource the operator deletes in an OLM installation", func() {
-			// the OLM bundle sets OTEL_COLLECTOR_NAME_PREFIX to dash0-operator
+			// the OLM bundle sets DASH0_MANAGED_RESOURCE_NAME_PREFIX to dash0-operator
 			config := configWithServiceAccount(OlmDaemonSetServiceAccountName)
 			config.NamePrefix = "dash0-operator"
 			desiredState, err := assembleDesiredStateForDelete(config, util.ExtraConfigDefaults)
@@ -1055,6 +1055,114 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(pdbSpec.MaxUnavailable.IntValue()).To(Equal(1))
 		Expect(pdbSpec.Selector.MatchLabels).
 			To(HaveKeyWithValue("app.kubernetes.io/component", "signal-control-collector"))
+	})
+
+	Describe("the replicas of the cluster metrics collector", func() {
+		assemble := func(replicas int32) []clientObject {
+			desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         defaultDash0ExportersWithToken(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				DeploymentCollectorReplicas:                      replicas,
+				Images:                                           TestImages,
+			}, nil, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+			return desiredState
+		}
+
+		indexOf := func(desiredState []clientObject, name string) int {
+			return slices.IndexFunc(desiredState, func(o clientObject) bool { return o.object.GetName() == name })
+		}
+
+		DescribeTable("should run a single replica without leader election",
+			func(replicas int32) {
+				desiredState := assemble(replicas)
+				Expect(desiredState).To(HaveLen(numberOfResourcesWithKubernetesInfrastructureMetricsCollectionEnabled))
+				deployment := getDeployment(desiredState)
+				Expect(*deployment.Spec.Replicas).To(Equal(int32(1)))
+				Expect(deployment.Spec.Template.Spec.TopologySpreadConstraints).To(BeEmpty())
+				Expect(findObjectByName(desiredState, ExpectedDeploymentRoleName)).To(BeNil())
+				Expect(findObjectByName(desiredState, ExpectedDeploymentRoleBindingName)).To(BeNil())
+				Expect(findObjectByName(desiredState, ExpectedDeploymentPdbName)).To(BeNil())
+				Expect(getDeploymentCollectorConfigMapContent(desiredState)).ToNot(ContainSubstring("k8s_leader_elector"))
+			},
+			Entry("when the number of replicas is not set", int32(0)),
+			Entry("with one replica", int32(1)),
+		)
+
+		It("should elect a leader, spread the replicas, and guard them with a pod disruption budget", func() {
+			desiredState := assemble(3)
+			Expect(desiredState).To(HaveLen(numberOfResourcesWithKubernetesInfrastructureMetricsCollectionEnabled + 3))
+
+			deployment := getDeployment(desiredState)
+			Expect(*deployment.Spec.Replicas).To(Equal(int32(3)))
+			constraints := deployment.Spec.Template.Spec.TopologySpreadConstraints
+			Expect(constraints).To(HaveLen(2))
+			Expect(constraints[0].TopologyKey).To(Equal("topology.kubernetes.io/zone"))
+			Expect(constraints[0].WhenUnsatisfiable).To(Equal(corev1.ScheduleAnyway))
+			Expect(constraints[0].LabelSelector.MatchLabels).
+				To(HaveKeyWithValue("app.kubernetes.io/component", "cluster-metrics-collector"))
+			Expect(constraints[1].TopologyKey).To(Equal("kubernetes.io/hostname"))
+			Expect(constraints[1].WhenUnsatisfiable).To(Equal(corev1.ScheduleAnyway))
+
+			role := findObjectByName(desiredState, ExpectedDeploymentRoleName).(*rbacv1.Role)
+			Expect(role.Namespace).To(Equal(OperatorNamespace))
+			Expect(role.Rules).To(ConsistOf(
+				rbacv1.PolicyRule{
+					APIGroups: []string{"coordination.k8s.io"},
+					Resources: []string{"leases"},
+					Verbs:     []string{"create"},
+				},
+				rbacv1.PolicyRule{
+					APIGroups:     []string{"coordination.k8s.io"},
+					Resources:     []string{"leases"},
+					ResourceNames: []string{ExpectedDeploymentCollectorLeaseName},
+					Verbs:         []string{"get", "update", "patch"},
+				},
+			))
+			roleBinding := findObjectByName(desiredState, ExpectedDeploymentRoleBindingName).(*rbacv1.RoleBinding)
+			Expect(roleBinding.Namespace).To(Equal(OperatorNamespace))
+			Expect(roleBinding.RoleRef.Name).To(Equal(ExpectedDeploymentRoleName))
+			Expect(roleBinding.Subjects).To(ConsistOf(rbacv1.Subject{
+				Kind:      "ServiceAccount",
+				Name:      ExpectedDeploymentServiceAccountName,
+				Namespace: OperatorNamespace,
+			}))
+			// The replicas need access to the lease as soon as they start.
+			Expect(indexOf(desiredState, ExpectedDeploymentRoleBindingName)).
+				To(BeNumerically("<", indexOf(desiredState, ExpectedDeploymentName)))
+
+			pdbSpec := findObjectByName(desiredState, ExpectedDeploymentPdbName).(*policyv1.PodDisruptionBudget).Spec
+			Expect(pdbSpec.MinAvailable).To(BeNil())
+			Expect(pdbSpec.MaxUnavailable.IntValue()).To(Equal(1))
+			Expect(pdbSpec.Selector.MatchLabels).
+				To(HaveKeyWithValue("app.kubernetes.io/component", "cluster-metrics-collector"))
+
+			collectorConfig := parseConfigMapContent(getDeploymentCollectorConfigMap(desiredState))
+			Expect(ReadFromMap(collectorConfig, []string{"extensions", "k8s_leader_elector"})).To(Equal(map[string]any{
+				"auth_type":       "serviceAccount",
+				"lease_name":      ExpectedDeploymentCollectorLeaseName,
+				"lease_namespace": OperatorNamespace,
+			}))
+			Expect(ReadFromMap(collectorConfig, []string{"service", "extensions"})).To(ContainElement("k8s_leader_elector"))
+			Expect(ReadFromMap(collectorConfig, []string{"receivers", "k8s_cluster", "k8s_leader_elector"})).
+				To(Equal("k8s_leader_elector"))
+		})
+
+		It("should include the leader election resources in the desired state for deletion", func() {
+			desiredState, err := assembleDesiredStateForDelete(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         defaultDash0ExportersWithToken(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				Images: TestImages,
+			}, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(findObjectByName(desiredState, ExpectedDeploymentRoleName)).ToNot(BeNil())
+			Expect(findObjectByName(desiredState, ExpectedDeploymentRoleBindingName)).ToNot(BeNil())
+			Expect(findObjectByName(desiredState, ExpectedDeploymentPdbName)).ToNot(BeNil())
+		})
 	})
 
 	DescribeTable("should set spec.trafficDistribution on the Signal Control collector service depending on the "+
@@ -2721,6 +2829,103 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(offsetVolumeMount.SubPathExpr).To(Equal("$(K8S_NODE_NAME)"))
 	})
 
+	It("should add the migrate init container and keep the filelog offsets config map while the migration is pending", func() {
+		config := &oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			Images:                                           TestImages,
+			OffsetStorageVolume: filelogOffsetHostPathVolume(
+				"/var/lib/dash0-operator/filelog-offsets", OperatorNamespace),
+			MigrateFilelogOffsetsFromConfigMap: true,
+			KeepFilelogOffsetsConfigMap:        true,
+		}
+		desiredState, err := assembleDesiredStateForUpsert(config, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(desiredState).To(HaveLen(numberOfResourcesWithKubernetesInfrastructureMetricsCollectionEnabled))
+		Expect(getConfigMap(desiredState, ExpectedDaemonSetFilelogOffsetSyncConfigMapName)).ToNot(BeNil())
+
+		daemonSetPodSpec := getDaemonSet(desiredState).Spec.Template.Spec
+		Expect(daemonSetPodSpec.InitContainers).To(HaveLen(2))
+		Expect(daemonSetPodSpec.InitContainers[0].Name).To(Equal("filelog-offset-volume-ownership"))
+		migrateInitContainer := daemonSetPodSpec.InitContainers[1]
+		Expect(migrateInitContainer.Name).To(Equal("filelog-offset-migrate"))
+		Expect(migrateInitContainer.Image).To(Equal(TestImages.FilelogOffsetSyncImage))
+		Expect(migrateInitContainer.Args).To(Equal([]string{"--mode=migrate"}))
+		Expect(*migrateInitContainer.SecurityContext.RunAsNonRoot).To(BeTrue())
+		Expect(migrateInitContainer.Env).To(ContainElement(MatchEnvVar("K8S_CONFIGMAP_NAME", ExpectedDaemonSetFilelogOffsetSyncConfigMapName)))
+		Expect(migrateInitContainer.VolumeMounts).To(HaveLen(1))
+		Expect(migrateInitContainer.VolumeMounts[0].Name).To(Equal("filelogreceiver-offsets"))
+		Expect(migrateInitContainer.VolumeMounts[0].MountPath).To(Equal("/var/otelcol/filelogreceiver_offsets"))
+		Expect(migrateInitContainer.VolumeMounts[0].SubPathExpr).To(Equal("$(K8S_NODE_NAME)"))
+
+		Expect(daemonSetPodSpec.Containers).To(HaveLen(2))
+		offsetVolume := FindVolumeByName(daemonSetPodSpec.Volumes, "filelogreceiver-offsets")
+		Expect(offsetVolume).ToNot(BeNil())
+		Expect(offsetVolume.HostPath).ToNot(BeNil())
+		Expect(offsetVolume.HostPath.Path).To(Equal("/var/lib/dash0-operator/filelog-offsets/" + OperatorNamespace))
+		Expect(*offsetVolume.HostPath.Type).To(Equal(corev1.HostPathDirectoryOrCreate))
+		offsetVolumeMount := FindVolumeMountByName(daemonSetPodSpec.Containers[0].VolumeMounts, "filelogreceiver-offsets")
+		Expect(offsetVolumeMount).ToNot(BeNil())
+		Expect(offsetVolumeMount.SubPathExpr).To(Equal("$(K8S_NODE_NAME)"))
+	})
+
+	It("should keep the migrate init container without the filelog offsets config map after the migration", func() {
+		offsetStorageVolume := corev1.Volume{
+			Name: "custom-offset-volume",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: "offset-storage-claim",
+				},
+			},
+		}
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			Images:                                           TestImages,
+			OffsetStorageVolume:                              &offsetStorageVolume,
+			MigrateFilelogOffsetsFromConfigMap:               true,
+		}, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(desiredState).To(HaveLen(numberOfResourcesWithKubernetesInfrastructureMetricsCollectionEnabled - 1))
+		Expect(getConfigMap(desiredState, ExpectedDaemonSetFilelogOffsetSyncConfigMapName)).To(BeNil())
+
+		daemonSetPodSpec := getDaemonSet(desiredState).Spec.Template.Spec
+		Expect(daemonSetPodSpec.InitContainers).To(HaveLen(2))
+		Expect(daemonSetPodSpec.InitContainers[0].Name).To(Equal("filelog-offset-volume-ownership"))
+		migrateInitContainer := daemonSetPodSpec.InitContainers[1]
+		Expect(migrateInitContainer.Name).To(Equal("filelog-offset-migrate"))
+		Expect(migrateInitContainer.VolumeMounts).To(HaveLen(1))
+		Expect(migrateInitContainer.VolumeMounts[0].Name).To(Equal("custom-offset-volume"))
+		Expect(migrateInitContainer.VolumeMounts[0].MountPath).To(Equal("/var/otelcol/filelogreceiver_offsets"))
+		Expect(migrateInitContainer.VolumeMounts[0].SubPathExpr).To(Equal("$(K8S_NODE_NAME)"))
+		Expect(daemonSetPodSpec.Containers).To(HaveLen(2))
+	})
+
+	It("should include the filelog offsets config map in the desired state for deletion also with a user-provided volume", func() {
+		desiredState, err := assembleDesiredStateForDelete(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Images:            TestImages,
+			OffsetStorageVolume: &corev1.Volume{
+				Name: "filelogreceiver-offsets",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{},
+				},
+			},
+		}, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(getConfigMap(desiredState, ExpectedDaemonSetFilelogOffsetSyncConfigMapName)).ToNot(BeNil())
+	})
+
 	It("should create config with multiple default Dash0 exports (two Dash0 endpoints)", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
@@ -3085,6 +3290,37 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(deploymentConfigReloaderArgs[3]).To(Equal("/etc/otelcol/conf-compressed/config.yaml"))
 		Expect(FindVolumeMountByName(deploymentConfigReloaderContainer.VolumeMounts, "opentelemetry-collector-configmap-compressed")).NotTo(BeNil())
 		Expect(FindVolumeMountByName(deploymentConfigReloaderContainer.VolumeMounts, "opentelemetry-collector-configmap-decompressed")).NotTo(BeNil())
+	})
+
+	It("should pass the collector health check endpoint to the configuration reloader of every collector pod", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			Images:            TestImages,
+			SignalControl: SignalControlConfig{
+				Enabled:     true,
+				Endpoint:    "decision-maker.example.com:443",
+				ApiEndpoint: "https://control-plane-api.dash0.com",
+				Dataset:     "default",
+			},
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		for _, podSpec := range []corev1.PodSpec{
+			getDaemonSet(desiredState).Spec.Template.Spec,
+			getDeployment(desiredState).Spec.Template.Spec,
+			getSignalControlCollector(desiredState).Spec.Template.Spec,
+		} {
+			configReloaderContainer := FindContainerByName(podSpec.Containers, "configuration-reloader")
+			Expect(configReloaderContainer).NotTo(BeNil())
+			podIpEnvVar := FindEnvVarByName(configReloaderContainer.Env, "DASH0_POD_IP")
+			Expect(podIpEnvVar).NotTo(BeNil())
+			Expect(podIpEnvVar.ValueFrom.FieldRef.FieldPath).To(Equal("status.podIP"))
+			Expect(configReloaderContainer.Env).To(
+				ContainElement(MatchEnvVar("DASH0_COLLECTOR_HEALTH_CHECK_PORT", "13133")))
+		}
 	})
 
 	Context("pprof in the auxiliary containers of the collector pods", func() {

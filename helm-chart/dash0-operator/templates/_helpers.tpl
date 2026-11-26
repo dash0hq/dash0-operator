@@ -3,6 +3,48 @@
 {{- .Chart.Name | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
+{{/*
+The name prefix for the Kubernetes resources the operator manager creates: the OpenTelemetry collectors, the target
+allocator, the eBPF profiler, the agent0-connector and the synthetics workers. Defaults to the Helm release name.
+
+Fails rendering the chart if the prefix would produce a service name that Kubernetes rejects: service names must be
+DNS-1035 labels of at most 63 characters. The maximum length of the prefix is 63 minus the length of the longest
+service name suffix of the enabled features. Rendering only fails if a service would certainly be rejected; enabling
+the target allocator via an operator configuration resource that the chart does not create is not visible to the
+chart, so the target allocator limit only applies if the chart creates that resource. The limits are pinned against
+the Go code by internal/startup/managed_resource_name_prefix_test.go.
+*/}}
+{{- define "dash0-operator.managedResourceNamePrefix" -}}
+{{- $prefix := default .Release.Name .Values.operator.managedResourceNamePrefix -}}
+{{- $source := "the Helm release name" -}}
+{{- if .Values.operator.managedResourceNamePrefix -}}
+{{- $source = "operator.managedResourceNamePrefix" -}}
+{{- end -}}
+{{- $maxLength := 0 -}}
+{{- $longestServiceNameSuffix := "" -}}
+{{- if .Values.operator.telemetryCollectionEnabled -}}
+{{- $maxLength = 31 -}}
+{{- $longestServiceNameSuffix = "opentelemetry-collector-service" -}}
+{{- end -}}
+{{- if .Values.operator.signalControl.enabled -}}
+{{- $maxLength = 30 -}}
+{{- $longestServiceNameSuffix = "signal-control-collector-service" -}}
+{{- end -}}
+{{- if and .Values.operator.telemetryCollectionEnabled .Values.operator.prometheusCrdSupportEnabled (include "dash0-operator.createOperatorConfigurationResource" .) -}}
+{{- $maxLength = 24 -}}
+{{- $longestServiceNameSuffix = "opentelemetry-target-allocator-service" -}}
+{{- end -}}
+{{- if gt $maxLength 0 -}}
+{{- if not (regexMatch "^[a-z]([-a-z0-9]*[a-z0-9])?$" $prefix) -}}
+{{- fail (printf "Error: the name prefix for the resources the operator creates (taken from %s) is \"%s\". The operator would create the service %s-%s, which is not a valid Kubernetes service name. The prefix must start with a lowercase letter, end with a lowercase letter or digit, and contain only lowercase letters, digits and '-'. Set operator.managedResourceNamePrefix to a valid value, or use a different Helm release name." $source $prefix $prefix $longestServiceNameSuffix) -}}
+{{- end -}}
+{{- if gt (len $prefix) $maxLength -}}
+{{- fail (printf "Error: the name prefix for the resources the operator creates (taken from %s) is \"%s\", which is %d characters long. The operator would create the service %s-%s, which exceeds the Kubernetes limit of 63 characters for service names. With the enabled features, the prefix must not be longer than %d characters. Set operator.managedResourceNamePrefix to a shorter value, or use a shorter Helm release name." $source $prefix (len $prefix) $prefix $longestServiceNameSuffix $maxLength) -}}
+{{- end -}}
+{{- end -}}
+{{- $prefix -}}
+{{- end }}
+
 {{/* chart name with version */}}
 {{- define "dash0-operator.chartNameWithVersion" -}}
 {{- printf "%s-%s" (.Chart.Name | trunc 53) .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
@@ -76,6 +118,34 @@ true
 {{- end }}
 {{- end }}
 
+{{/*
+Renders "true" unless workload instrumentation has been disabled via operator.instrumentation.enabled=false, and the
+empty string otherwise.
+
+The true/empty pattern is used so that call sites can refernce this via include (which treats every non-empty string as
+true).
+*/}}
+{{- define "dash0-operator.instrumentationEnabled" -}}
+{{- if ne (toString .Values.operator.instrumentation.enabled) "false" -}}
+true
+{{- end }}
+{{- end }}
+
+{{/*
+Renders the string "true" if the mutating webhook that instruments workloads should be registered, and the empty string
+otherwise. The webhook is not registered if telemetry collection is disabled via operator.telemetryCollectionEnabled, or
+if workload instrumentation is disabled via operator.instrumentation.enabled. The operator manager also does not serve
+the webhook then.
+
+The true/empty pattern is used so that call sites can refernce this via include (which treats every non-empty string as
+true).
+*/}}
+{{- define "dash0-operator.instrumentationWebhookEnabled" -}}
+{{- if and (include "dash0-operator.instrumentationEnabled" .) .Values.operator.telemetryCollectionEnabled -}}
+true
+{{- end }}
+{{- end }}
+
 {{- define "dash0-operator.deploymentName" -}}
 {{ include "dash0-operator.chartName" . }}-controller
 {{- end }}
@@ -86,6 +156,16 @@ true
 
 {{- define "dash0-operator.webhookServicePort" -}}
 {{- default .Values.operator.webhookService.port .Values.operator.webhookPort }}
+{{- end }}
+
+{{/*
+Renders the string "true" if the operator manager manages the webhook certificates itself, and the empty string if
+cert-manager provides them (operator.certManager.useCertManager).
+*/}}
+{{- define "dash0-operator.selfManagedCertificates" -}}
+{{- if not .Values.operator.certManager.useCertManager -}}
+true
+{{- end }}
 {{- end }}
 
 {{/*
@@ -236,6 +316,16 @@ Parameters: kind and name of the object, and the name of the webhook entry (omit
 {{- printf "%s@%s" .image.repository .image.digest }}
 {{- else -}}
 {{- printf "%s:%s" .image.repository (default .context.Chart.AppVersion .image.tag) }}
+{{- end }}
+{{- end }}
+
+{{/*
+Returns "true" if operator.replicaCount is greater than 1, and an empty string otherwise. Null counts as 1, which is the
+Kubernetes default.
+*/}}
+{{- define "dash0-operator.operatorManagerHasMultipleReplicas" -}}
+{{- if and (not (kindIs "invalid" .Values.operator.replicaCount)) (gt (int (toString .Values.operator.replicaCount)) 1) -}}
+true
 {{- end }}
 {{- end }}
 

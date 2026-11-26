@@ -33,6 +33,10 @@ const (
 	gkeAutopilotAllowlistKey           = "cloud.google.com/matching-allowlist"
 	gkeAutopilotAllowlistProfilerValue = "dash0-ebpf-profiler-v1.0.5"
 	gkeAutopilotAllowlistProxyValue    = "dash0-debuginfo-proxy-v1.0.5"
+
+	// OlmEbpfProfilerServiceAccountName is the external service account of the profiler in the OLM bundle. OLM creates it
+	// from the CSV and grants it the use of the privileged SecurityContextConstraints on OpenShift.
+	OlmEbpfProfilerServiceAccountName = "dash0-operator-olm-ebpf-profiler"
 )
 
 // Config contains installation-level settings for the managed profiler and proxy.
@@ -46,10 +50,27 @@ type Config struct {
 	ProxyImage                 string
 	ProxyImagePullPolicy       corev1.PullPolicy
 	IsGkeAutopilot             bool
-	IsOpenShift                bool
+	// ServiceAccountName is the name of an external service account for the profiler, which the operator neither creates
+	// nor deletes. When empty, the profiler uses the service account the operator manages.
+	ServiceAccountName string
+	IsOpenShift        bool
 }
 
 func (c Config) name(component string) string { return c.NamePrefix + "-" + component }
+
+// usesExternalProfilerServiceAccount treats the name of the operator-managed service account as not external, since
+// DeleteResources deletes the service account with that name.
+func (c Config) usesExternalProfilerServiceAccount() bool {
+	return c.ServiceAccountName != "" && c.ServiceAccountName != c.name(profilerComponent)
+}
+
+// profilerServiceAccountName returns the name of the service account the profiler runs with.
+func (c Config) profilerServiceAccountName() string {
+	if c.usesExternalProfilerServiceAccount() {
+		return c.ServiceAccountName
+	}
+	return c.name(profilerComponent)
+}
 
 func (c Config) labels(component string) map[string]string {
 	return map[string]string{
@@ -74,9 +95,12 @@ func (c Config) podTemplateLabels(custom map[string]string, component string, al
 	return labels
 }
 
-func (c Config) profiler(configuration *dash0v1alpha1.Dash0OperatorConfiguration, uploads bool) []client.Object {
+func (c Config) profiler(
+	configuration *dash0v1alpha1.Dash0OperatorConfiguration,
+	settings util.ExtraConfig,
+	uploads bool,
+) []client.Object {
 	spec := configuration.Spec.Profiling.EbpfProfiler
-	settings := util.EffectiveExtraConfig(util.ExtraConfigDefaults, util.ExtraConfigDefaults, configuration, nil)
 	tracers := spec.Tracers
 	if len(tracers) == 0 {
 		tracers = []string{"python", "hotspot", "php", "ruby", "perl", "v8", "dotnet", "beam", "luajit", "labels", "cuda"}
@@ -136,7 +160,7 @@ func (c Config) profiler(configuration *dash0v1alpha1.Dash0OperatorConfiguration
 			{Name: "sys", MountPath: "/sys", ReadOnly: true}, {Name: "tmp", MountPath: "/tmp"}},
 	}
 	pod := corev1.PodSpec{
-		ServiceAccountName: c.name(profilerComponent), AutomountServiceAccountToken: ptr.To(false), HostPID: true,
+		ServiceAccountName: c.profilerServiceAccountName(), AutomountServiceAccountToken: ptr.To(false), HostPID: true,
 		Containers:   []corev1.Container{container},
 		NodeSelector: map[string]string{"kubernetes.io/os": "linux"},
 		Affinity:     &corev1.Affinity{NodeAffinity: settings.EbpfProfilerNodeAffinity},
@@ -149,19 +173,21 @@ func (c Config) profiler(configuration *dash0v1alpha1.Dash0OperatorConfiguration
 	}
 	metadata := c.metadata(profilerComponent)
 	metadata.Labels = mergeLabels(settings.EbpfProfilerLabels, metadata.Labels)
-	metadata.Annotations = settings.EbpfProfilerAnnotations
+	metadata.Annotations = util.MergeMaps(nil, settings.EbpfProfilerAnnotations)
 	ds := &appsv1.DaemonSet{ObjectMeta: metadata, Spec: appsv1.DaemonSetSpec{
 		Selector: &metav1.LabelSelector{MatchLabels: c.labels(profilerComponent)},
 		Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{
 			Labels:      c.podTemplateLabels(settings.EbpfProfilerPodLabels, profilerComponent, gkeAutopilotAllowlistProfilerValue),
-			Annotations: settings.EbpfProfilerPodAnnotations,
+			Annotations: util.MergeMaps(nil, settings.EbpfProfilerPodAnnotations),
 		}, Spec: pod},
 	}}
+	if c.usesExternalProfilerServiceAccount() {
+		return []client.Object{ds}
+	}
 	return []client.Object{&corev1.ServiceAccount{ObjectMeta: c.metadata(profilerComponent), AutomountServiceAccountToken: ptr.To(false)}, ds}
 }
 
-func (c Config) proxy(configuration *dash0v1alpha1.Dash0OperatorConfiguration, config proxyConfiguration, revision string) []client.Object {
-	settings := util.EffectiveExtraConfig(util.ExtraConfigDefaults, util.ExtraConfigDefaults, configuration, nil)
+func (c Config) proxy(settings util.ExtraConfig, config proxyConfiguration, revision string) []client.Object {
 	security := &corev1.SecurityContext{
 		RunAsNonRoot: ptr.To(true), AllowPrivilegeEscalation: ptr.To(false), ReadOnlyRootFilesystem: ptr.To(true),
 		Capabilities:   &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
@@ -172,7 +198,7 @@ func (c Config) proxy(configuration *dash0v1alpha1.Dash0OperatorConfiguration, c
 	env = append(env, corev1.EnvVar{Name: "GOMEMLIMIT", Value: settings.DebuginfoProxyContainerResources.EffectiveGoMemLimitPercent(util.GoMemLimitDefaultPercent)})
 	metadata := c.metadata(proxyComponent)
 	metadata.Labels = mergeLabels(settings.DebuginfoProxyLabels, metadata.Labels)
-	metadata.Annotations = settings.DebuginfoProxyAnnotations
+	metadata.Annotations = util.MergeMaps(nil, settings.DebuginfoProxyAnnotations)
 	podAnnotations := maps.Clone(settings.DebuginfoProxyPodAnnotations)
 	if podAnnotations == nil {
 		podAnnotations = map[string]string{}

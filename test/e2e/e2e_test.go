@@ -86,7 +86,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 
 		e2eKubernetesContext = os.Getenv("E2E_KUBECTX")
 		verboseHttp = strings.ToLower(os.Getenv("E2E_VERBOSE_HTTP")) == "true"
-		includeProfilingTests = strings.ToLower(os.Getenv("E2E_INCLUDE_PROFILING_TESTS")) == "true"
 		if e2eKubernetesContext == "" {
 			Fail(
 				fmt.Sprintf(
@@ -189,8 +188,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				&images,
 				true,
 				map[string]string{
-					"operator.instrumentation.enablePythonAutoInstrumentation": "true",
-					"operator.instrumentation.enableRubyAutoInstrumentation":   "true",
+					"operator.iac.periodicRetry.interval": iacPeriodicRetryInterval.String(),
 				},
 			)
 		})
@@ -577,6 +575,27 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				})
 			})
 
+			Describe("collector shutdown", func() {
+				It("shuts down the collectors gracefully when their pods are stopped", func() {
+					for _, collectorNameQualified := range []string{
+						collectorDaemonSetNameQualified,
+						collectorDeploymentNameQualified,
+					} {
+						By(fmt.Sprintf("deleting a pod of %s", collectorNameQualified))
+						terminatedState := deleteCollectorPodAndGetCollectorContainerTerminatedState(collectorNameQualified)
+						Expect(terminatedState).ToNot(BeNil(),
+							"the pod of %s was removed without reporting a terminated state for the collector container",
+							collectorNameQualified)
+						// An unhandled SIGTERM results in exit code 143 (128 + 15).
+						Expect(terminatedState.ExitCode).To(BeZero(),
+							"the collector container of %s terminated with exit code %d (%s) instead of shutting down "+
+								"gracefully",
+							collectorNameQualified, terminatedState.ExitCode, terminatedState.Reason)
+					}
+					waitForCollectorToStart(operatorNamespace, operatorHelmChart)
+				})
+			})
+
 			Describe("event collection", func() {
 				It("collects Kubernetes events", func() {
 					timestampLowerBound := time.Now()
@@ -663,8 +682,9 @@ spec:
 				})
 
 				AfterEach(func() {
-					cleanupStoredApiRequests()
 					removeDash0ApiSyncResources(applicationUnderTestNamespace)
+					waitForCapturedApiRequestsToSettle()
+					cleanupStoredApiRequests()
 				})
 
 				AfterAll(func() {
@@ -681,7 +701,7 @@ spec:
 					routeRegex := "/api/synthetic-checks/dash0-operator_.*_default_e2e-test-ns_synthetic-check-e2e-test\\?dataset=default"
 
 					By("verifying the synthetic check has been synchronized to the Dash0 API via PUT")
-					req := fetchCapturedApiRequest(0)
+					req := fetchCapturedApiRequest(routeRegex, 0)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
@@ -690,14 +710,14 @@ spec:
 
 					setOptOutLabelInSyntheticCheck(applicationUnderTestNamespace, "false")
 					By("verifying the synthetic check has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
-					req = fetchCapturedApiRequest(1)
+					req = fetchCapturedApiRequest(routeRegex, 1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
 					setOptOutLabelInSyntheticCheck(applicationUnderTestNamespace, "true")
 					//nolint:lll
 					By("verifying the synthetic check has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					req = fetchCapturedApiRequest(2)
+					req = fetchCapturedApiRequest(routeRegex, 2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("This is a test synthetic check."))
@@ -705,7 +725,7 @@ spec:
 
 					removeSyntheticCheckResource(applicationUnderTestNamespace)
 					By("verifying the synthetic check has been deleted via the Dash0 API (after removing the resource)")
-					req = fetchCapturedApiRequest(3)
+					req = fetchCapturedApiRequest(routeRegex, 3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
@@ -720,7 +740,7 @@ spec:
 					routeRegex := "/api/slos/dash0-operator_.*_default_e2e-test-ns_slo-e2e-test\\?dataset=default"
 
 					By("verifying the SLO has been synchronized to the Dash0 API via PUT")
-					req := fetchCapturedApiRequest(0)
+					req := fetchCapturedApiRequest(routeRegex, 0)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
@@ -729,14 +749,14 @@ spec:
 
 					setOptOutLabelInSLO(applicationUnderTestNamespace, "false")
 					By("verifying the SLO has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
-					req = fetchCapturedApiRequest(1)
+					req = fetchCapturedApiRequest(routeRegex, 1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
 					setOptOutLabelInSLO(applicationUnderTestNamespace, "true")
 					//nolint:lll
 					By("verifying the SLO has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					req = fetchCapturedApiRequest(2)
+					req = fetchCapturedApiRequest(routeRegex, 2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("E2E test SLO for synchronizing SLOs with the Dash0 Operator."))
@@ -744,7 +764,7 @@ spec:
 
 					removeSLOResource(applicationUnderTestNamespace)
 					By("verifying the SLO has been deleted via the Dash0 API (after removing the resource)")
-					req = fetchCapturedApiRequest(3)
+					req = fetchCapturedApiRequest(routeRegex, 3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
@@ -759,7 +779,7 @@ spec:
 					routeRegex := "/api/signal-to-metrics/dash0-operator_.*_default_e2e-test-ns_signal-to-metrics-e2e-test\\?dataset=default"
 
 					By("verifying the signal-to-metrics rule has been synchronized to the Dash0 API via PUT")
-					req := fetchCapturedApiRequest(0)
+					req := fetchCapturedApiRequest(routeRegex, 0)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
@@ -769,14 +789,14 @@ spec:
 					setOptOutLabelInSignalToMetrics(applicationUnderTestNamespace, "false")
 					//nolint:lll
 					By("verifying the signal-to-metrics rule has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
-					req = fetchCapturedApiRequest(1)
+					req = fetchCapturedApiRequest(routeRegex, 1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
 					setOptOutLabelInSignalToMetrics(applicationUnderTestNamespace, "true")
 					//nolint:lll
 					By("verifying the signal-to-metrics rule has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					req = fetchCapturedApiRequest(2)
+					req = fetchCapturedApiRequest(routeRegex, 2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("E2E test signal-to-metrics rule"))
@@ -784,7 +804,7 @@ spec:
 
 					removeSignalToMetricsResource(applicationUnderTestNamespace)
 					By("verifying the signal-to-metrics rule has been deleted via the Dash0 API (after removing the resource)")
-					req = fetchCapturedApiRequest(3)
+					req = fetchCapturedApiRequest(routeRegex, 3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
@@ -799,7 +819,7 @@ spec:
 					routeRegex := "/api/views/dash0-operator_.*_default_e2e-test-ns_view-e2e-test\\?dataset=default"
 
 					By("verifying the view has been synchronized to the Dash0 API via PUT")
-					req := fetchCapturedApiRequest(0)
+					req := fetchCapturedApiRequest(routeRegex, 0)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
@@ -808,14 +828,14 @@ spec:
 
 					setOptOutLabelInView(applicationUnderTestNamespace, "false")
 					By("verifying the view has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
-					req = fetchCapturedApiRequest(1)
+					req = fetchCapturedApiRequest(routeRegex, 1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
 					setOptOutLabelInView(applicationUnderTestNamespace, "true")
 					//nolint:lll
 					By("verifying the view has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					req = fetchCapturedApiRequest(2)
+					req = fetchCapturedApiRequest(routeRegex, 2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("\"name\":\"E2E test view\""))
@@ -823,7 +843,7 @@ spec:
 
 					removeViewResource(applicationUnderTestNamespace)
 					By("verifying the view has been deleted via the Dash0 API (after removing the resource)")
-					req = fetchCapturedApiRequest(3)
+					req = fetchCapturedApiRequest(routeRegex, 3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
@@ -839,7 +859,7 @@ spec:
 					routeRegex := "/api/notification-channels/dash0-operator_.*_e2e-test-ns_notification-channel-e2e-test"
 
 					By("verifying the notification channel has been synchronized to the Dash0 API via PUT")
-					req := fetchCapturedApiRequest(0)
+					req := fetchCapturedApiRequest(routeRegex, 0)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
@@ -849,14 +869,14 @@ spec:
 					setOptOutLabelInNotificationChannel(applicationUnderTestNamespace, "false")
 					//nolint:lll
 					By("verifying the notification channel has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
-					req = fetchCapturedApiRequest(1)
+					req = fetchCapturedApiRequest(routeRegex, 1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
 					setOptOutLabelInNotificationChannel(applicationUnderTestNamespace, "true")
 					//nolint:lll
 					By("verifying the notification channel has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					req = fetchCapturedApiRequest(2)
+					req = fetchCapturedApiRequest(routeRegex, 2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("E2E test notification channel"))
@@ -864,7 +884,7 @@ spec:
 
 					removeNotificationChannelResource(applicationUnderTestNamespace)
 					By("verifying the notification channel has been deleted via the Dash0 API (after removing the resource)")
-					req = fetchCapturedApiRequest(3)
+					req = fetchCapturedApiRequest(routeRegex, 3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
@@ -879,7 +899,7 @@ spec:
 					routeRegex := "/api/teams/dash0-operator_.*_e2e-test-ns_team-e2e-test"
 
 					By("verifying the team has been synchronized to the Dash0 API via PUT")
-					req := fetchCapturedApiRequest(0)
+					req := fetchCapturedApiRequest(routeRegex, 0)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
@@ -888,14 +908,14 @@ spec:
 
 					setOptOutLabelInTeam(applicationUnderTestNamespace, "false")
 					By("verifying the team has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
-					req = fetchCapturedApiRequest(1)
+					req = fetchCapturedApiRequest(routeRegex, 1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
 					setOptOutLabelInTeam(applicationUnderTestNamespace, "true")
 					//nolint:lll
 					By("verifying the team has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					req = fetchCapturedApiRequest(2)
+					req = fetchCapturedApiRequest(routeRegex, 2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("E2E test team"))
@@ -903,7 +923,7 @@ spec:
 
 					removeTeamResource(applicationUnderTestNamespace)
 					By("verifying the team has been deleted via the Dash0 API (after removing the resource)")
-					req = fetchCapturedApiRequest(3)
+					req = fetchCapturedApiRequest(routeRegex, 3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
@@ -918,7 +938,7 @@ spec:
 					routeRegex := "/api/spam-filters/dash0-operator_.*_default_e2e-test-ns_spam-filter-e2e-test\\?dataset=default"
 
 					By("verifying the spam filter has been synchronized to the Dash0 API via PUT")
-					req := fetchCapturedApiRequest(0)
+					req := fetchCapturedApiRequest(routeRegex, 0)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
@@ -927,14 +947,14 @@ spec:
 
 					setOptOutLabelInSpamFilter(applicationUnderTestNamespace, "false")
 					By("verifying the spam filter has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
-					req = fetchCapturedApiRequest(1)
+					req = fetchCapturedApiRequest(routeRegex, 1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
 					setOptOutLabelInSpamFilter(applicationUnderTestNamespace, "true")
 					//nolint:lll
 					By("verifying the spam filter has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					req = fetchCapturedApiRequest(2)
+					req = fetchCapturedApiRequest(routeRegex, 2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("k8s.namespace.name"))
@@ -942,7 +962,7 @@ spec:
 
 					removeSpamFilterResource(applicationUnderTestNamespace)
 					By("verifying the spam filter has been deleted via the Dash0 API (after removing the resource)")
-					req = fetchCapturedApiRequest(3)
+					req = fetchCapturedApiRequest(routeRegex, 3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
@@ -957,7 +977,7 @@ spec:
 					routeRegex := "/api/time-series-aggregations/dash0-operator_.*_default_e2e-test-ns_time-series-aggregation-e2e-test\\?dataset=default"
 
 					By("verifying the time series aggregation has been synchronized to the Dash0 API via PUT")
-					req := fetchCapturedApiRequest(0)
+					req := fetchCapturedApiRequest(routeRegex, 0)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
@@ -967,14 +987,14 @@ spec:
 					setOptOutLabelInTimeSeriesAggregation(applicationUnderTestNamespace, "false")
 					//nolint:lll
 					By("verifying the time series aggregation has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
-					req = fetchCapturedApiRequest(1)
+					req = fetchCapturedApiRequest(routeRegex, 1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
 					setOptOutLabelInTimeSeriesAggregation(applicationUnderTestNamespace, "true")
 					//nolint:lll
 					By("verifying the time series aggregation has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					req = fetchCapturedApiRequest(2)
+					req = fetchCapturedApiRequest(routeRegex, 2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("http.server.duration"))
@@ -983,7 +1003,46 @@ spec:
 					removeTimeSeriesAggregationResource(applicationUnderTestNamespace)
 					//nolint:lll
 					By("verifying the time series aggregation has been deleted via the Dash0 API (after removing the resource)")
-					req = fetchCapturedApiRequest(3)
+					req = fetchCapturedApiRequest(routeRegex, 3)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+				})
+
+				//nolint:dupl
+				It("should synchronize a generative AI evaluation to the Dash0 API", func() {
+					deployGenerativeAiEvaluationResource(applicationUnderTestNamespace)
+
+					//nolint:lll
+					routeRegex := "/api/generative-ai-evaluations/dash0-operator_.*_default_e2e-test-ns_generative-ai-evaluation-e2e-test\\?dataset=default"
+
+					By("verifying the generative AI evaluation has been synchronized to the Dash0 API via PUT")
+					req := fetchCapturedApiRequest(routeRegex, 0)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(req.Body).ToNot(BeNil())
+					Expect(*req.Body).To(ContainSubstring("Was the answer polite?"))
+					verifyApiSyncRequest(req)
+
+					setOptOutLabelInGenerativeAiEvaluation(applicationUnderTestNamespace, "false")
+					//nolint:lll
+					By("verifying the generative AI evaluation has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
+					req = fetchCapturedApiRequest(routeRegex, 1)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+
+					setOptOutLabelInGenerativeAiEvaluation(applicationUnderTestNamespace, "true")
+					//nolint:lll
+					By("verifying the generative AI evaluation has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
+					req = fetchCapturedApiRequest(routeRegex, 2)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(*req.Body).To(ContainSubstring("Was the answer polite?"))
+					verifyApiSyncRequest(req)
+
+					removeGenerativeAiEvaluationResource(applicationUnderTestNamespace)
+					//nolint:lll
+					By("verifying the generative AI evaluation has been deleted via the Dash0 API (after removing the resource)")
+					req = fetchCapturedApiRequest(routeRegex, 3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
@@ -996,11 +1055,13 @@ spec:
 						persesDashboardCrdVersion,
 					)
 
-					//nolint:lll
-					routeRegex := "/api/dashboards/dash0-operator_.*_default_e2e-test-ns_perses-dashboard-e2e-test-v1alpha\\d\\?dataset=default"
+					routeRegex := fmt.Sprintf(
+						"/api/dashboards/dash0-operator_.*_default_e2e-test-ns_%s\\?dataset=default",
+						persesDashboardName(persesDashboardCrdVersion),
+					)
 
 					By("verifying the dashboard has been synchronized to the Dash0 API via PUT")
-					req := fetchCapturedApiRequest(0)
+					req := fetchCapturedApiRequest(routeRegex, 0)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
@@ -1009,13 +1070,13 @@ spec:
 
 					setOptOutLabelInPersesDashboard(applicationUnderTestNamespace, persesDashboardCrdVersion, "false")
 					By("verifying the dashboard has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
-					req = fetchCapturedApiRequest(1)
+					req = fetchCapturedApiRequest(routeRegex, 1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
 					setOptOutLabelInPersesDashboard(applicationUnderTestNamespace, persesDashboardCrdVersion, "true")
 					By("verifying the dashboard has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					req = fetchCapturedApiRequest(2)
+					req = fetchCapturedApiRequest(routeRegex, 2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("This is a test dashboard."))
@@ -1023,7 +1084,7 @@ spec:
 
 					removePersesDashboardResource(applicationUnderTestNamespace, persesDashboardCrdVersion)
 					By("verifying the dashboard has been deleted via the Dash0 API (after removing the resource)")
-					req = fetchCapturedApiRequest(3)
+					req = fetchCapturedApiRequest(routeRegex, 3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				}
@@ -1035,6 +1096,8 @@ spec:
 				It("should synchronize Perses v1alpha2 dashboards to the Dash0 API", func() {
 					runPersesDashboardSyncTest(persesDashboardV1Alpha2)
 				})
+
+				prometheusRuleRequestsRegex := "^/api/(alerting/check-rules|recording-rules)[/?]"
 
 				//nolint:lll
 				It("should synchronize Prometheus rules to the Dash0 API", func() {
@@ -1060,7 +1123,7 @@ spec:
 					}
 
 					By("verifying the rules have been synchronized to the Dash0 API via PUT")
-					requests := fetchCapturedApiRequests(0, 6)
+					requests := fetchCapturedApiRequests(prometheusRuleRequestsRegex, 0, 6)
 					Expect(requests).To(HaveLen(6))
 					for i := 0; i < 2; i++ {
 						Expect(requests[i].Method).To(Equal("GET"))
@@ -1077,7 +1140,7 @@ spec:
 
 					setOptOutLabelInPrometheusRule(applicationUnderTestNamespace, "false")
 					By("verifying the rules have been deleted via the Dash0 API (after setting dash0.com/enable=false)")
-					requests = fetchCapturedApiRequests(6, 6)
+					requests = fetchCapturedApiRequests(prometheusRuleRequestsRegex, 6, 6)
 					Expect(requests).To(HaveLen(6))
 					for i := 0; i < 2; i++ {
 						Expect(requests[i].Method).To(Equal("GET"))
@@ -1092,21 +1155,19 @@ spec:
 					addLabelToPrometheusRule(applicationUnderTestNamespace, "e2e-test/trigger-update=1")
 					//nolint:lll
 					By("verifying no DELETE requests are sent for rules that do not exist in Dash0 (after updating the resource while dash0.com/enable=false is set)")
-					requests = fetchCapturedApiRequests(12, 2)
+					requests = fetchCapturedApiRequests(prometheusRuleRequestsRegex, 12, 2)
 					Expect(requests).To(HaveLen(2))
 					for i := 0; i < 2; i++ {
 						Expect(requests[i].Method).To(Equal("GET"))
 						Expect(requests[i].Url).To(MatchRegexp(listRouteRegexes[i]))
 					}
 					Consistently(func(g Gomega) {
-						storedRequests := getStoredApiRequests(g)
-						g.Expect(storedRequests).NotTo(BeNil())
-						g.Expect(storedRequests.Requests).To(HaveLen(14))
+						g.Expect(getStoredApiRequestsMatching(g, prometheusRuleRequestsRegex)).To(HaveLen(14))
 					}, 5*time.Second, 1*time.Second).Should(Succeed())
 
 					setOptOutLabelInPrometheusRule(applicationUnderTestNamespace, "true")
 					By("verifying the rules have been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					requests = fetchCapturedApiRequests(14, 6)
+					requests = fetchCapturedApiRequests(prometheusRuleRequestsRegex, 14, 6)
 					Expect(requests).To(HaveLen(6))
 					for i := 0; i < 2; i++ {
 						Expect(requests[i].Method).To(Equal("GET"))
@@ -1122,7 +1183,7 @@ spec:
 
 					removePrometheusRuleResource(applicationUnderTestNamespace)
 					By("verifying the rules have been deleted via the Dash0 API (after removing the resource)")
-					requests = fetchCapturedApiRequests(20, 6)
+					requests = fetchCapturedApiRequests(prometheusRuleRequestsRegex, 20, 6)
 					Expect(requests).To(HaveLen(6))
 					for i := 0; i < 2; i++ {
 						Expect(requests[i].Method).To(Equal("GET"))
@@ -1169,9 +1230,7 @@ spec:
 
 					By("verifying no API requests are made while sync is disabled")
 					Consistently(func(g Gomega) {
-						storedRequests := getStoredApiRequests(g)
-						g.Expect(storedRequests).NotTo(BeNil())
-						g.Expect(storedRequests.Requests).To(BeEmpty())
+						g.Expect(getStoredApiRequestsMatching(g, prometheusRuleRequestsRegex)).To(BeEmpty())
 					}, 10*time.Second, 1*time.Second).Should(Succeed())
 
 					By("re-enabling synchronization of Prometheus rules")
@@ -1181,7 +1240,7 @@ spec:
 					)
 
 					By("verifying the rules have been synchronized after re-enabling sync")
-					requests := fetchCapturedApiRequests(0, 6)
+					requests := fetchCapturedApiRequests(prometheusRuleRequestsRegex, 0, 6)
 					Expect(requests).To(HaveLen(6))
 					for i := 0; i < 2; i++ {
 						Expect(requests[i].Method).To(Equal("GET"))
@@ -1278,6 +1337,19 @@ spec:
 							syntheticsWorkerDeployment,
 						), false, false, false)).ToNot(Succeed())
 				})
+
+			It("should share the k8s_attributes processor between pipelines by default", func() {
+				verifyCollectorContainerArgsContainString(
+					operatorNamespace,
+					collectorDaemonSetNameQualified,
+					k8sAttributesShareProcessorFeatureGate,
+				)
+				verifyCollectorContainerArgsContainString(
+					operatorNamespace,
+					collectorDeploymentNameQualified,
+					k8sAttributesShareProcessorFeatureGate,
+				)
+			})
 
 		}) // end of suite "with an existing operator deployment and operation configuration resource::with a deployed
 		// Dash0 monitoring resource"
@@ -1832,7 +1904,7 @@ traces:
 					filter :=
 						`
 logs:
-  log_records:
+  log_record:
   - 'NoSuchFunction(body)'
 `
 					deployDash0MonitoringResourceExpectingRejection(
@@ -2114,7 +2186,7 @@ log_statements:
 			routeRegex := "/api/sampling-rules/dash0-operator_.*_default_e2e-test-ns_sampling-rule-e2e-test\\?dataset=default"
 
 			By("verifying the sampling rule has been synchronized to the Dash0 API via PUT")
-			req := fetchCapturedApiRequest(0)
+			req := fetchCapturedApiRequest(routeRegex, 0)
 			Expect(req.Method).To(Equal("PUT"))
 			Expect(req.Url).To(MatchRegexp(routeRegex))
 			Expect(req.Body).ToNot(BeNil())
@@ -2126,14 +2198,14 @@ log_statements:
 
 			setOptOutLabelInSamplingRule(applicationUnderTestNamespace, "false")
 			By("verifying the sampling rule has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
-			req = fetchCapturedApiRequest(1)
+			req = fetchCapturedApiRequest(routeRegex, 1)
 			Expect(req.Method).To(Equal("DELETE"))
 			Expect(req.Url).To(MatchRegexp(routeRegex))
 
 			setOptOutLabelInSamplingRule(applicationUnderTestNamespace, "true")
 			//nolint:lll
 			By("verifying the sampling rule has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-			req = fetchCapturedApiRequest(2)
+			req = fetchCapturedApiRequest(routeRegex, 2)
 			Expect(req.Method).To(Equal("PUT"))
 			Expect(req.Url).To(MatchRegexp(routeRegex))
 			Expect(*req.Body).To(ContainSubstring("E2E test sampling rule"))
@@ -2142,7 +2214,7 @@ log_statements:
 
 			removeSamplingRuleResource(applicationUnderTestNamespace)
 			By("verifying the sampling rule has been deleted via the Dash0 API (after removing the resource)")
-			req = fetchCapturedApiRequest(3)
+			req = fetchCapturedApiRequest(routeRegex, 3)
 			Expect(req.Method).To(Equal("DELETE"))
 			Expect(req.Url).To(MatchRegexp(routeRegex))
 		})
@@ -2648,7 +2720,7 @@ log_statements:
 			routeRegex := "/api/dashboards/dash0-operator_.*_default_e2e-test-ns_perses-dashboard-e2e-test-v1alpha2\\?dataset=default"
 
 			By("verifying the dashboard has been synchronized to the Dash0 API via PUT")
-			req := fetchCapturedApiRequest(0)
+			req := fetchCapturedApiRequest(routeRegex, 0)
 			Expect(req.Method).To(Equal("PUT"))
 			Expect(req.Url).To(MatchRegexp(routeRegex))
 			Expect(req.Body).ToNot(BeNil())
@@ -3674,6 +3746,179 @@ spec:
 					verifyCollectorDeploymentIsNotPresent(g)
 				}, 20*time.Second, pollingInterval).Should(Succeed())
 				verifyThatTargetAllocatorIsNotDeployed(operatorNamespace)
+				verifyInstrumentationWebhookIsNotRegistered()
+			})
+		})
+
+		Describe("with operator.instrumentation.enabled=false via Helm values", func() {
+
+			BeforeAll(func() {
+				By("deploying the Dash0 operator with instrumentation.enabled=false via Helm values")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					true,
+					map[string]string{
+						"operator.instrumentation.enabled": "false",
+					},
+				)
+			})
+
+			AfterAll(func() {
+				removeAllTestApplications(applicationUnderTestNamespace)
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should not register the instrumentation webhook and not instrument workloads", func() {
+				verifyInstrumentationWebhookIsNotRegistered()
+
+				deployDash0MonitoringResourceExpectingRejection(
+					applicationUnderTestNamespace,
+					dash0MonitoringValues{
+						InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
+						Endpoint:                defaultEndpoint,
+						Token:                   defaultToken,
+					},
+					"operator.instrumentation.enabled=false",
+				)
+
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValues{
+						InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeNone,
+						Endpoint:                defaultEndpoint,
+						Token:                   defaultToken,
+					},
+					operatorNamespace,
+				)
+
+				By("installing the Node.js deployment")
+				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+				By("verifying that the Node.js deployment has not been instrumented")
+				Consistently(func(g Gomega) {
+					verifyNoDash0Labels(g, applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDeployment)
+				}, 10*time.Second, pollingInterval).Should(Succeed())
+			})
+		})
+
+		Describe("when switching an instrumented cluster to operator.instrumentation.enabled=false", func() {
+
+			BeforeAll(func() {
+				By("deploying the Dash0 operator with workload instrumentation enabled")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					true,
+					nil,
+				)
+			})
+
+			AfterAll(func() {
+				removeAllTestApplications(applicationUnderTestNamespace)
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should keep existing instrumentations until the mode is set to none, and then remove them", func() {
+				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+
+				By("installing the Node.js deployment")
+				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+				By("verifying that the Node.js deployment has been instrumented by the webhook")
+				verifyThatWorkloadHasBeenInstrumented(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					testId,
+					images,
+					"webhook",
+				)
+
+				By("upgrading the operator with operator.instrumentation.enabled=false")
+				Expect(upgradeOperator(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					defaultAutoOperatorConfigurationValues(true),
+					map[string]string{
+						"operator.instrumentation.enabled": "false",
+					},
+				)).To(Succeed())
+				verifyInstrumentationWebhookIsNotRegistered()
+
+				By("verifying that the operator reports the monitoring resource with instrumentWorkloads.mode=all")
+				Eventually(func(g Gomega) {
+					output, err := run(exec.Command(
+						"kubectl",
+						"get",
+						"events",
+						"--namespace",
+						applicationUnderTestNamespace,
+						"--field-selector",
+						"involvedObject.kind=Dash0Monitoring,reason="+
+							string(util.ReasonInstrumentationDisabledButModeIsNotNone),
+						"-o",
+						"name",
+					), false)
+					g.Expect(err).ToNot(HaveOccurred())
+					g.Expect(strings.TrimSpace(output)).ToNot(BeEmpty())
+				}, 60*time.Second, pollingInterval).Should(Succeed())
+
+				By("verifying that the Node.js deployment keeps its instrumentation")
+				Consistently(func(g Gomega) {
+					verifyLabels(
+						g,
+						applicationUnderTestNamespace,
+						runtimeTypeNodeJs,
+						workloadTypeDeployment,
+						true,
+						images,
+						"webhook",
+					)
+				}, 10*time.Second, pollingInterval).Should(Succeed())
+
+				By("verifying that an update that keeps instrumentWorkloads.mode=all is accepted")
+				Eventually(func(g Gomega) {
+					g.Expect(runAndIgnoreOutput(exec.Command(
+						"kubectl",
+						"patch",
+						"--namespace",
+						applicationUnderTestNamespace,
+						"Dash0Monitoring",
+						dash0MonitoringResourceName,
+						"--type",
+						"merge",
+						"-p",
+						fmt.Sprintf(`{"metadata":{"annotations":{"e2e.dash0.com/updated-at":"%d"}}}`, time.Now().UnixNano()),
+					))).To(Succeed())
+				}, 30*time.Second, time.Second).Should(Succeed())
+
+				By("updating the Dash0Monitoring resource to instrumentWorkloads.mode=none")
+				updateInstrumentWorkloadsModeOfDash0MonitoringResource(
+					applicationUnderTestNamespace,
+					dash0common.InstrumentWorkloadsModeNone,
+				)
+				verifyThatInstrumentationHasBeenReverted(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					testId,
+					"controller",
+				)
 			})
 		})
 
@@ -3819,7 +4064,6 @@ spec:
 			})
 		})
 
-		// This test suite should be removed once Python auto-instrumentation is on by default.
 		//nolint:dupl
 		Describe("with Python auto-instrumentation disabled", func() {
 			BeforeAll(func() {
@@ -3831,7 +4075,9 @@ spec:
 					"",
 					&images,
 					true,
-					nil,
+					map[string]string{
+						"operator.instrumentation.enablePythonAutoInstrumentation": "false",
+					},
 				)
 				deployDash0MonitoringResourceWithRetry(
 					applicationUnderTestNamespace,
@@ -3845,7 +4091,7 @@ spec:
 				undeployOperator(operatorNamespace)
 			})
 
-			It("should not instrument Python if Python auto-instrumentation is not enabled", func() {
+			It("should not instrument Python if Python auto-instrumentation is disabled", func() {
 				testId := generateNewTestId(runtimeTypePython, workloadTypeDeployment)
 				query := fmt.Sprintf("id=%s", testId)
 				By("installing the Python deployment")
@@ -3889,9 +4135,7 @@ spec:
 			})
 		})
 
-		// This test suite should be removed once Ruby auto-instrumentation is on by default.
-		//nolint:dupl
-		Describe("with Ruby auto-instrumentation disabled", func() {
+		Describe("with two cluster metrics collector replicas", func() {
 			BeforeAll(func() {
 				By("deploying the Dash0 operator")
 				deployOperatorWithDefaultAutoOperationConfiguration(
@@ -3901,7 +4145,9 @@ spec:
 					"",
 					&images,
 					true,
-					nil,
+					map[string]string{
+						"operator.collectors.deploymentReplicas": "2",
+					},
 				)
 				deployDash0MonitoringResourceWithRetry(
 					applicationUnderTestNamespace,
@@ -3915,7 +4161,81 @@ spec:
 				undeployOperator(operatorNamespace)
 			})
 
-			It("should not instrument Ruby if Ruby auto-instrumentation is not enabled", func() {
+			It("should keep collecting cluster metrics when the replica holding the lease is deleted", func() {
+				timestampLowerBound := time.Now()
+				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+
+				By("waiting for both cluster metrics collector replicas to become ready")
+				Expect(runAndIgnoreOutput(exec.Command(
+					"kubectl",
+					"-n", operatorNamespace,
+					"rollout", "status", collectorDeploymentNameQualified,
+					"--timeout=120s",
+				))).To(Succeed())
+				Eventually(func(g Gomega) {
+					g.Expect(getCollectorPodNames(g, collectorDeploymentNameQualified)).To(HaveLen(2))
+				}, 60*time.Second, time.Second).Should(Succeed())
+
+				By("waiting for k8s_cluster receiver metrics")
+				Eventually(func(g Gomega) {
+					verifyK8skClusterReceiverMetrics(g, timestampLowerBound)
+				}, 120*time.Second, time.Second).Should(Succeed())
+
+				By("finding the replica that holds the lease")
+				var leader string
+				Eventually(func(g Gomega) {
+					leader = findClusterMetricsCollectorLeader(g)
+				}, 60*time.Second, time.Second).Should(Succeed())
+
+				By(fmt.Sprintf("deleting the replica %s that holds the lease", leader))
+				leaderDeletedAt := time.Now()
+				Expect(runAndIgnoreOutput(exec.Command(
+					"kubectl",
+					"-n", operatorNamespace,
+					"delete", "pod", leader,
+					"--wait=false",
+				))).To(Succeed())
+
+				By("waiting for another replica to take over the lease")
+				Eventually(func(g Gomega) {
+					g.Expect(findClusterMetricsCollectorLeader(g)).ToNot(Equal(leader))
+				}, 90*time.Second, time.Second).Should(Succeed())
+
+				By("waiting for k8s_cluster receiver metrics collected by the new leader")
+				Eventually(func(g Gomega) {
+					verifyK8skClusterReceiverMetrics(g, leaderDeletedAt)
+				}, 120*time.Second, time.Second).Should(Succeed())
+			})
+		})
+
+		//nolint:dupl
+		Describe("with Ruby auto-instrumentation disabled", func() {
+			BeforeAll(func() {
+				By("deploying the Dash0 operator")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					true,
+					map[string]string{
+						"operator.instrumentation.enableRubyAutoInstrumentation": "false",
+					},
+				)
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+			})
+
+			AfterAll(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should not instrument Ruby if Ruby auto-instrumentation is disabled", func() {
 				testId := generateNewTestId(runtimeTypeRuby, workloadTypeDeployment)
 				query := fmt.Sprintf("id=%s", testId)
 				By("installing the Ruby deployment")
@@ -3956,6 +4276,434 @@ spec:
 				Consistently(func(g Gomega) {
 					verifyNoSpans(g, runtimeTypeRuby, workloadTypeDeployment, testEndpoint, query, timestampLowerBound)
 				}, time.Duration(secondsToCheckForSpans)*time.Second, 1*time.Second).Should(Succeed())
+			})
+		})
+
+		Describe("with instrumentWorkloads.mode=pods", func() {
+			dash0MonitoringValuesPodsMode := dash0MonitoringValues{
+				InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModePods,
+			}
+
+			BeforeAll(func() {
+				By("deploying the Dash0 operator")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					true,
+					nil,
+				)
+			})
+
+			AfterEach(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+			})
+
+			AfterAll(func() {
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should not restart existing pods, and instrument them when they are recreated", func() {
+				timestampLowerBound := time.Now()
+				c := runtimeWorkloadTestConfig{
+					namespace:    applicationUnderTestNamespace,
+					workloadType: workloadTypeDeployment,
+					runtime:      runtimeTypeNodeJs,
+				}
+				testIds := testIdMap{c.GetMapKey(): generateNewTestId(c.runtime, c.workloadType)}
+				deployWorkloadsInParallel([]runtimeWorkloadTestConfig{c}, testIds)
+				podUids := readPodUids(c.namespace, c.runtime, c.workloadType)
+
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesPodsMode,
+					operatorNamespace,
+				)
+				verifyThatPodsHaveNeitherBeenRestartedNorInstrumented(c.namespace, c.runtime, c.workloadType, podUids)
+
+				restartWorkload(c.namespace, c.runtime, c.workloadType)
+				verifyThatPodsHaveBeenInstrumentedByTheWebhook(
+					c.namespace,
+					c.runtime,
+					c.workloadType,
+					testIds[c.GetMapKey()],
+					images,
+					podUids,
+					timestampLowerBound,
+				)
+			})
+
+			It("should not instrument the pods of a deployment that has opted out on its own metadata, unless its pod "+
+				"template opts in", func() {
+				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+				By("installing the Node.js deployment with dash0.com/enable=false on the deployment, not on the pod template")
+				Expect(installTestAppWorkload(
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					applicationUnderTestNamespace,
+					testId,
+					map[string]string{"dash0.com/enable": "false"},
+					nil,
+				)).To(Succeed())
+				podUids := readPodUids(applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDeployment)
+
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesPodsMode,
+					operatorNamespace,
+				)
+
+				restartWorkload(applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDeployment)
+				verifyThatNewPodsAreNotInstrumented(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					podUids,
+				)
+
+				podUids = readPodUids(applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDeployment)
+				timestampLowerBound := time.Now()
+				optInOnPodTemplate(applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDeployment)
+				verifyThatPodsOfOptedOutWorkloadHaveBeenInstrumentedByTheWebhook(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					testId,
+					images,
+					podUids,
+					timestampLowerBound,
+				)
+			})
+
+			It("should not restart pods after switching from mode all to mode pods, and remove the instrumentation "+
+				"from the pod template on the next rollout", func() {
+				timestampLowerBound := time.Now()
+				c := runtimeWorkloadTestConfig{
+					namespace:    applicationUnderTestNamespace,
+					workloadType: workloadTypeDeployment,
+					runtime:      runtimeTypeNodeJs,
+				}
+				testIds := testIdMap{c.GetMapKey(): generateNewTestId(c.runtime, c.workloadType)}
+				deployWorkloadsInParallel([]runtimeWorkloadTestConfig{c}, testIds)
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+				verifyThatWorkloadHasBeenInstrumented(
+					c.namespace,
+					c.runtime,
+					c.workloadType,
+					testIds[c.GetMapKey()],
+					images,
+					"controller",
+				)
+				waitForRollout(c.namespace, c.runtime, c.workloadType)
+				podUids := readPodUids(c.namespace, c.runtime, c.workloadType)
+
+				updateInstrumentWorkloadsModeOfDash0MonitoringResource(
+					c.namespace,
+					dash0common.InstrumentWorkloadsModePods,
+				)
+				verifyThatPodsHaveNotBeenRestarted(c.namespace, c.runtime, c.workloadType, podUids)
+
+				restartWorkload(c.namespace, c.runtime, c.workloadType)
+				verifyThatPodsHaveBeenInstrumentedByTheWebhook(
+					c.namespace,
+					c.runtime,
+					c.workloadType,
+					testIds[c.GetMapKey()],
+					images,
+					podUids,
+					timestampLowerBound,
+				)
+			})
+
+			It("should instrument the workload via its pod template after switching from mode pods to mode all",
+				func() {
+					timestampLowerBound := time.Now()
+					c := runtimeWorkloadTestConfig{
+						namespace:    applicationUnderTestNamespace,
+						workloadType: workloadTypeDeployment,
+						runtime:      runtimeTypeNodeJs,
+					}
+					testIds := testIdMap{c.GetMapKey(): generateNewTestId(c.runtime, c.workloadType)}
+					deployDash0MonitoringResourceWithRetry(
+						applicationUnderTestNamespace,
+						dash0MonitoringValuesPodsMode,
+						operatorNamespace,
+					)
+					deployWorkloadsInParallel([]runtimeWorkloadTestConfig{c}, testIds)
+					verifyThatPodsHaveBeenInstrumentedByTheWebhook(
+						c.namespace,
+						c.runtime,
+						c.workloadType,
+						testIds[c.GetMapKey()],
+						images,
+						nil,
+						timestampLowerBound,
+					)
+					podUids := readPodUids(c.namespace, c.runtime, c.workloadType)
+
+					updateInstrumentWorkloadsModeOfDash0MonitoringResource(
+						c.namespace,
+						dash0common.InstrumentWorkloadsModeAll,
+					)
+					verifyThatWorkloadHasBeenInstrumented(
+						c.namespace,
+						c.runtime,
+						c.workloadType,
+						testIds[c.GetMapKey()],
+						images,
+						"controller",
+					)
+					verifyThatPodsHaveBeenReplacedWithPodsFromTheInstrumentedPodTemplate(
+						c.namespace,
+						c.runtime,
+						c.workloadType,
+						podUids,
+					)
+				})
+
+			It("should neither restart nor uninstrument pods instrumented by the webhook after switching from mode pods "+
+				"to mode none, and revert workloads with instrumentation in their pod template", func() {
+				deployment := runtimeWorkloadTestConfig{
+					namespace:    applicationUnderTestNamespace,
+					workloadType: workloadTypeDeployment,
+					runtime:      runtimeTypeNodeJs,
+				}
+				daemonSet := runtimeWorkloadTestConfig{
+					namespace:    applicationUnderTestNamespace,
+					workloadType: workloadTypeDaemonSet,
+					runtime:      runtimeTypeNodeJs,
+				}
+				workloadTestConfigs := []runtimeWorkloadTestConfig{deployment, daemonSet}
+				testIds := make(testIdMap)
+				for _, c := range workloadTestConfigs {
+					testIds[c.GetMapKey()] = generateNewTestId(c.runtime, c.workloadType)
+				}
+				deployWorkloadsInParallel(workloadTestConfigs, testIds)
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+				runInParallel(workloadTestConfigs, func(c runtimeWorkloadTestConfig) {
+					verifyThatWorkloadHasBeenInstrumented(
+						c.namespace,
+						c.runtime,
+						c.workloadType,
+						testIds[c.GetMapKey()],
+						images,
+						"controller",
+					)
+					waitForRollout(c.namespace, c.runtime, c.workloadType)
+				})
+
+				By("switching to mode pods and restarting the daemon set, which removes the instrumentation from its pod " +
+					"template and lets the webhook instrument its pods")
+				updateInstrumentWorkloadsModeOfDash0MonitoringResource(
+					applicationUnderTestNamespace,
+					dash0common.InstrumentWorkloadsModePods,
+				)
+				daemonSetPodUids := readPodUids(daemonSet.namespace, daemonSet.runtime, daemonSet.workloadType)
+				timestampLowerBound := time.Now()
+				restartWorkload(daemonSet.namespace, daemonSet.runtime, daemonSet.workloadType)
+				verifyThatPodsHaveBeenInstrumentedByTheWebhook(
+					daemonSet.namespace,
+					daemonSet.runtime,
+					daemonSet.workloadType,
+					testIds[daemonSet.GetMapKey()],
+					images,
+					daemonSetPodUids,
+					timestampLowerBound,
+				)
+				daemonSetPodUids = readPodUids(daemonSet.namespace, daemonSet.runtime, daemonSet.workloadType)
+				deploymentPodUids := readPodUids(deployment.namespace, deployment.runtime, deployment.workloadType)
+
+				updateInstrumentWorkloadsModeOfDash0MonitoringResource(
+					applicationUnderTestNamespace,
+					dash0common.InstrumentWorkloadsModeNone,
+				)
+				verifyThatInstrumentationHasBeenReverted(
+					deployment.namespace,
+					deployment.runtime,
+					deployment.workloadType,
+					testIds[deployment.GetMapKey()],
+					"controller",
+				)
+				verifyThatNewPodsAreNotInstrumented(
+					deployment.namespace,
+					deployment.runtime,
+					deployment.workloadType,
+					deploymentPodUids,
+				)
+				verifyThatPodsHaveNeitherBeenRestartedNorUninstrumented(
+					daemonSet.namespace,
+					daemonSet.runtime,
+					daemonSet.workloadType,
+					daemonSetPodUids,
+					images,
+				)
+			})
+
+			It("should instrument new pods of all workload types without modifying the workloads", func() {
+				timestampLowerBound := time.Now()
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesPodsMode,
+					operatorNamespace,
+				)
+				workloadTestConfigs := []runtimeWorkloadTestConfig{
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeCronjob, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeDaemonSet, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeDeployment, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeJob, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypePod, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeReplicaSet, runtime: runtimeTypeNodeJs},
+					{namespace: applicationUnderTestNamespace, workloadType: workloadTypeStatefulSet, runtime: runtimeTypeNodeJs},
+				}
+				testIds := make(testIdMap)
+				for _, c := range workloadTestConfigs {
+					testIds[c.GetMapKey()] = generateNewTestId(c.runtime, c.workloadType)
+				}
+				deployWorkloadsInParallel(workloadTestConfigs, testIds)
+
+				runInParallel(workloadTestConfigs, func(c runtimeWorkloadTestConfig) {
+					verifyThatPodsHaveBeenInstrumentedByTheWebhook(
+						c.namespace,
+						c.runtime,
+						c.workloadType,
+						testIds[c.GetMapKey()],
+						images,
+						nil,
+						timestampLowerBound,
+					)
+				})
+			})
+		})
+
+		Describe("with instrumentWorkloads.mode=pods and two operator manager replicas", func() {
+			dash0MonitoringValuesPodsMode := dash0MonitoringValues{
+				InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModePods,
+			}
+
+			BeforeAll(func() {
+				By("deploying the Dash0 operator with two replicas")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					true,
+					map[string]string{
+						"operator.replicaCount": "2",
+					},
+				)
+				waitForOperatorManagerRollout()
+			})
+
+			AfterEach(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+			})
+
+			AfterAll(func() {
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should serve the webhook on every replica and run the controllers only on the leader", func() {
+				verifyOperatorManagerPodDisruptionBudget()
+				var leader string
+				var replicas []string
+				Eventually(func(g Gomega) {
+					leader = readOperatorManagerLeader(g)
+					replicas = readOperatorManagerPods(g)
+					g.Expect(replicas).To(HaveLen(2))
+					g.Expect(replicas).To(ContainElement(leader))
+				}, operatorManagerRolloutTimeout, pollingInterval).Should(Succeed())
+				nonLeader := replicas[0]
+				if nonLeader == leader {
+					nonLeader = replicas[1]
+				}
+				verifyThatLogsShowLeaderElection(leader)
+				verifyThatLogsShowNoLeaderElection(nonLeader)
+
+				detachOperatorManagerPod(leader)
+				waitForOperatorManagerRollout()
+
+				timestampLowerBound := time.Now()
+				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesPodsMode,
+					operatorNamespace,
+				)
+				By("installing the Node.js deployment, its pods can only be instrumented by a replica that is not the leader")
+				Expect(installTestAppWorkload(
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					applicationUnderTestNamespace,
+					testId,
+					nil,
+					nil,
+				)).To(Succeed())
+				verifyThatPodsHaveBeenInstrumentedByTheWebhook(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					testId,
+					images,
+					nil,
+					timestampLowerBound,
+				)
+
+				By("verifying that the detached pod is still the leader")
+				Expect(readOperatorManagerLeader(Default)).To(Equal(leader))
+				verifyThatLogsShowNoLeaderElection(nonLeader)
+			})
+
+			It("should not block rolling out a workload while the webhook is not available, and instrument its pods "+
+				"once they are restarted", func() {
+				timestampLowerBound := time.Now()
+				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesPodsMode,
+					operatorNamespace,
+				)
+				restoreWebhook := makeInstrumentationWebhookUnavailable()
+				By("verifying that the Node.js deployment rolls out while the webhook is not available")
+				Expect(installTestAppWorkload(
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					applicationUnderTestNamespace,
+					testId,
+					nil,
+					nil,
+				)).To(Succeed())
+				podUids := readPodUids(applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDeployment)
+
+				restoreWebhook()
+				verifyThatPodsHaveNeitherBeenRestartedNorInstrumented(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					podUids,
+				)
+
+				restartWorkload(applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDeployment)
+				verifyThatPodsHaveBeenInstrumentedByTheWebhook(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					testId,
+					images,
+					podUids,
+					timestampLowerBound,
+				)
 			})
 		})
 
@@ -4274,9 +5022,9 @@ spec:
 			})
 		})
 
-		Describe("with shared k8s_attributes processor", func() {
+		Describe("with the shared k8s_attributes processor disabled", func() {
 			BeforeAll(func() {
-				By("deploying the Dash0 operator with the shared k8s_attributes processor enabled")
+				By("deploying the Dash0 operator with the shared k8s_attributes processor disabled")
 				deployOperatorWithDefaultAutoOperationConfiguration(
 					operatorNamespace,
 					operatorHelmChart,
@@ -4285,71 +5033,26 @@ spec:
 					&images,
 					true,
 					map[string]string{
-						"operator.collectors.k8s_attributes.shareProcessorBetweenPipelines": "true",
+						"operator.collectors.k8s_attributes.shareProcessorBetweenPipelines": "false",
 					},
-				)
-				deployDash0MonitoringResourceWithRetry(
-					applicationUnderTestNamespace,
-					dash0MonitoringValuesDefault,
-					operatorNamespace,
 				)
 			})
 
 			AfterAll(func() {
-				undeployDash0MonitoringResource(applicationUnderTestNamespace)
 				undeployOperator(operatorNamespace)
 			})
 
-			It("should enable the feature gate for the daemonset and deployment collectors", func() {
-				featureGateArg := "--feature-gates=processor.k8sattributes.ShareProcessorBetweenPipelines"
-				verifyCollectorContainerArgsContainString(operatorNamespace, collectorDaemonSetNameQualified, featureGateArg)
-				verifyCollectorContainerArgsContainString(
+			It("should not enable the feature gate for the daemonset and deployment collectors", func() {
+				verifyCollectorContainerArgsDoNotContainString(
+					operatorNamespace,
+					collectorDaemonSetNameQualified,
+					k8sAttributesShareProcessorFeatureGate,
+				)
+				verifyCollectorContainerArgsDoNotContainString(
 					operatorNamespace,
 					collectorDeploymentNameQualified,
-					featureGateArg,
+					k8sAttributesShareProcessorFeatureGate,
 				)
-			})
-
-			It("should enrich spans, logs and metrics with Kubernetes metadata", func() {
-				timestampLowerBound := time.Now()
-				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
-
-				By("installing the Node.js deployment")
-				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
-
-				By("verifying that spans carry Kubernetes metadata")
-				verifyThatWorkloadHasBeenInstrumented(
-					applicationUnderTestNamespace,
-					runtimeTypeNodeJs,
-					workloadTypeDeployment,
-					testId,
-					images,
-					"webhook",
-				)
-
-				By("verifying that log records carry Kubernetes metadata")
-				// The collector only starts collecting logs from the test namespace once kubelet has synced the updated
-				// collector config map to the node and the collector has reloaded it, which can take up to a minute.
-				Eventually(func(g Gomega) {
-					verifyWorkloadLogRecords(
-						g,
-						runtimeTypeNodeJs,
-						workloadTypeDeployment,
-						testEndpoint,
-						fmt.Sprintf("id=%s", testId),
-						timestampLowerBound,
-						"",
-						fmt.Sprintf("processing request %s", testId),
-					)
-				}, 120*time.Second, time.Second).Should(Succeed())
-
-				By("verifying that metrics carry Kubernetes metadata")
-				Eventually(func(g Gomega) {
-					verifyKubeletStatsMetrics(g, timestampLowerBound)
-				}, 120*time.Second, time.Second).Should(Succeed())
-				Eventually(func(g Gomega) {
-					verifyK8skClusterReceiverMetrics(g, timestampLowerBound)
-				}, 120*time.Second, time.Second).Should(Succeed())
 			})
 		})
 
@@ -5532,6 +6235,30 @@ spec:
 					)
 				}, 90*time.Second, 2*time.Second).Should(Succeed())
 			})
+
+			It("retries a Dash0 generative AI evaluation synchronization after a transient server error (HTTP 503)", func() {
+				By("configuring the API mock to fail the generative AI evaluation with HTTP 503 for the first sync attempt")
+				configureApiMockResponseOverrides(apiMockResponseOverride{
+					Method:         "PUT",
+					RouteSubstring: "generative-ai-evaluation-e2e-test",
+					StatusCode:     503,
+					Times:          apiMockFailTimesForOneSyncAttempt,
+				})
+
+				deployGenerativeAiEvaluationResource(applicationUnderTestNamespace)
+
+				//nolint:lll
+				generativeAiEvaluationPutRegex := "^/api/generative-ai-evaluations/dash0-operator_.*_default_e2e-test-ns_generative-ai-evaluation-e2e-test\\?dataset=default$"
+
+				//nolint:lll
+				By("verifying the operator performs a second synchronization attempt and the generative AI evaluation is synchronized")
+				Eventually(func(g Gomega) {
+					g.Expect(countCapturedApiRequests(g, "PUT", generativeAiEvaluationPutRegex)).To(
+						BeNumerically(">=", apiMockFailTimesForOneSyncAttempt+1),
+						"expected the generative AI evaluation to be re-synchronized by the periodic retry",
+					)
+				}, 90*time.Second, 2*time.Second).Should(Succeed())
+			})
 		})
 
 	}) // end of suite "without an existing operator deployment"
@@ -5700,11 +6427,7 @@ spec:
 
 	Context("with an existing operator deployment and profiling enabled", func() {
 		BeforeAll(func() {
-			if !includeProfilingTests {
-				Skip("profiling e2e tests are excluded by default because the eBPF profiler does not work in kind; " +
-					"set E2E_INCLUDE_PROFILING_TESTS=true to include them")
-			}
-			By("deploying the Dash0 operator with profiling enabled")
+			By("deploying the Dash0 operator with the eBPF profiler enabled")
 			deployOperatorWithDefaultAutoOperationConfiguration(
 				operatorNamespace,
 				operatorHelmChart,
@@ -5713,7 +6436,9 @@ spec:
 				&images,
 				false,
 				map[string]string{
-					"operator.profilingEnabled": "true",
+					"operator.ebpfProfilerEnabled": "true",
+					// kind nodes run in their own PID namespace, see helm-chart/dash0-operator/docs/profiling.md.
+					"operator.ebpfProfiler.pidNamespaceTranslationMode": "auto",
 				},
 			)
 			deployDash0MonitoringResourceWithRetry(
@@ -5722,16 +6447,12 @@ spec:
 				operatorNamespace,
 			)
 			Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
-			deployEbpfProfiler(operatorNamespace, applicationUnderTestNamespace)
+			waitForEbpfProfilerToStart(operatorNamespace)
 		})
 
 		AfterAll(func() {
-			if !includeProfilingTests {
-				return
-			}
 			removeAllTestApplications(applicationUnderTestNamespace)
 			undeployDash0MonitoringResource(applicationUnderTestNamespace)
-			teardownEbpfProfiler(operatorNamespace)
 			undeployOperator(operatorNamespace)
 		})
 
@@ -5742,6 +6463,11 @@ spec:
 				By("waiting for profiles to be captured")
 				timestampLowerBound := time.Now()
 				Eventually(func(g Gomega) {
+					// The profiler only samples processes that are on CPU. A single request per poll is too cheap to be
+					// sampled reliably, hence the burst.
+					for range 100 {
+						sendRequest(g, runtimeTypeNodeJs, workloadTypeDeployment, "/dash0-k8s-operator-test", "")
+					}
 					verifyProfiles(g, timestampLowerBound, applicationUnderTestNamespace)
 				}, 120*time.Second, 5*time.Second).Should(Succeed())
 				By("matching profiles have been received")

@@ -1187,6 +1187,9 @@ func testFilter() *dash0common.Filter {
 				"log-record-filter-1",
 				"log-record-filter-2",
 			},
+			DeprecatedLogRecordFilter: []string{
+				"deprecated-log-record-filter",
+			},
 		},
 		Profiles: &dash0common.ProfileFilter{
 			ProfileFilter: []string{

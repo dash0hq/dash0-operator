@@ -1,13 +1,15 @@
-# Transformations applied to the helm-chart/dash0-operator docs before they are copied to the Dash0 documentation
-# repository (see .github/workflows/sync-docs-to-website.yaml).
+# Transformations applied to the docs in helm-chart/dash0-operator and olm/docs before they are copied to the Dash0
+# documentation repository (see .github/workflows/sync-docs-to-website.yaml).
 #
-# This file is the source of truth for how the operator's Helm chart docs are adapted into the docs pages.
+# This file is the source of truth for how the operator's docs are adapted into the docs pages.
 # Edit this file whenever the required modifications change, or whenever a documentation file is added or removed.
 #
 # The documentation is a set of files: the top-level README.md (which becomes the operator overview page
 # dash0-operator/overview.md) and the topic files in helm-chart/dash0-operator/docs/*.md (which keep their names but
 # move into the same dash0-operator/ directory in the target repository, i.e. the docs/ directory is renamed to
-# dash0-operator/). All synced pages therefore end up as siblings in the dash0-operator/ directory.
+# dash0-operator/). The OLM docs in olm/docs/*.md are synced into the same directory, under target names that do not
+# collide with the Helm docs.
+# All synced pages therefore end up as siblings in the dash0-operator/ directory.
 # Relative links between the topic files are sibling links and are preserved as-is (only the .md suffix is dropped).
 # Two kinds of links are rewritten automatically (see below): links from the topic files back to the renamed README.md
 # (../README.md -> overview), and links from README.md into the renamed directory (docs/configuration.md ->
@@ -17,7 +19,8 @@
 #
 # - common   A list of transformations applied to every synced file, in order, before the file-specific ones.
 # - files    A list of file entries. Each entry has:
-#              source           Path of the source file, relative to helm-chart/dash0-operator.
+#              source           Path of the source file, relative to helm-chart/dash0-operator (../../olm/docs/ for
+#                               the OLM docs).
 #              target           Path of the output file, relative to the target directory in the docs repository.
 #              title            The `title` rendered into the page's frontmatter.
 #              description      The `description` rendered into the page's frontmatter.
@@ -25,8 +28,8 @@
 #
 # `files` is the sole opt-in list. The `coverage` block below guards against forgetting to wire up a new page: every
 # file matching a `coverage.include` glob must either appear as a `files` entry or be listed under `coverage.ignore`,
-# otherwise the sync (including the dry run on every CI build) fails. When adding a new topic file under docs/, add a
-# matching `files` entry (or, to intentionally exclude it, add it to `coverage.ignore`).
+# otherwise the sync (including the dry run on every CI build) fails. When adding a new topic file under docs/ or
+# olm/docs/, add a matching `files` entry (or, to intentionally exclude it, add it to `coverage.ignore`).
 #
 # A frontmatter block is generated from each entry's `title`/`description` (plus a `lastUpdated` timestamp) and
 # prepended to the transformed file. Two kinds of relative links are rewritten automatically by the transformation
@@ -70,14 +73,15 @@ coverage:
   include:
     - README.md
     - docs/*.md
+    - ../../olm/docs/*.md
   ignore: []
 
 # Generates navigation definition in the target repository. The navigation entries follow the order of `files` below.
 # Each entry is labeled with the file's `navTitle` (falling back to `title`).
 nav:
   target: dash0-operator/nav.json
-  # `order` must stay above the Kubernetes' nav entry's order  so the placeholder exists when this fragment is merged.
-  order: 52.5
+  # `order` must stay above the Kubernetes' nav entry's order so the placeholder exists when this fragment is merged.
+  order: 58.02
   id: monitoring-kubernetes-dash0-operator
   # The entries listed here are attached via `parentPath`, which must match the placeholder title of the parent item
   # exactly.
@@ -91,6 +95,11 @@ files:
     target: dash0-operator/overview.md
     title: Overview
     description: Learn about the Dash0 Operator for Kubernetes and how it provides automatic instrumentation for your workloads.
+    tags:
+      - kubernetes
+      - auto-instrumentation
+      - opentelemetry-instrumentation
+      - dash0-operator
     transformations:
       - description: strip the License and Artifact Hub badges
         type: replace-regex
@@ -113,65 +122,127 @@ files:
     target: dash0-operator/installation.md
     title: Installation
     description: Install the Dash0 operator Helm chart, including Prometheus CRDs, authorization, and target-allocator setup.
+    tags:
+      - kubernetes
+      - dash0-operator
+
+  - source: ../../olm/docs/installation.md
+    target: dash0-operator/olm-installation.md
+    title: Installation via the Operator Lifecycle Manager (OLM)
+    navTitle: Installation via OLM
+    description: Install the Dash0 operator via the Operator Lifecycle Manager (OLM) from the Dash0 operator catalog.
+    tags:
+      - kubernetes
+      - dash0-operator
+    transformations:
+      - description: rewrite links into the chart's docs/ directory, so the automatic docs/ link rewrite turns them into sibling links
+        type: replace-regex
+        find: '\]\(\.\./\.\./helm-chart/dash0-operator/docs/'
+        replace: '](docs/'
 
   - source: docs/configuration.md
     target: dash0-operator/configuration.md
     title: Configuration
     description: Configure the Dash0 operator and Dash0 monitoring resources, including backend connections, namespace monitoring, secrets, and datasets.
+    tags:
+      - kubernetes
+      - dash0-operator
 
   - source: docs/auto-instrumentation.md
     target: dash0-operator/auto-instrumentation.md
     title: Automatic Workload Instrumentation
     description: Automatically instrument Kubernetes workloads with OpenTelemetry using the Dash0 operator.
+    tags:
+      - auto-instrumentation
+      - opentelemetry-instrumentation
+      - kubernetes
+      - dash0-operator
 
   - source: docs/metrics-and-scraping.md
     target: dash0-operator/metrics-and-scraping.md
     title: Metrics Collection and Prometheus Scraping
     description: Collect Kubernetes metrics and scrape Prometheus endpoints with the Dash0 operator.
+    tags:
+      - prometheus
+      - kubernetes
+      - dash0-operator
+      - metrics
 
   - source: docs/profiling.md
     target: dash0-operator/profiling.md
     title: Profiling
     description: Support for profiling telemetry & collecting profiles with the OpenTelemetry eBPF Profiler.
+    tags:
+      - continuous-profiling
+      - ebpf
+      - dash0-operator
 
   - source: docs/managing-dash0-resources.md
     target: dash0-operator/managing-dash0-resources.md
     title: Managing Dash0 Resources
     description: Manage Dash0 dashboards, check rules, synthetic checks, views, notification channels, and more via Kubernetes custom resources.
+    tags:
+      - infrastructure-as-code
+      - kubernetes
+      - dash0-operator
 
   - source: docs/agent0-integration.md
     target: dash0-operator/agent0-integration.md
     title: Agent0 Kubernetes Integration
     description: Let Agent0, Dash0's observability and SRE assistant, run read-only kubectl commands in your cluster, and learn about the security mechanisms around it.
+    tags:
+      - agent0
+      - kubernetes
+      - ai-assisted-observability
+      - dash0-operator
 
   - source: docs/advanced-configuration.md
     target: dash0-operator/advanced-configuration.md
     title: Advanced Configuration
     description: Advanced Dash0 operator configuration, including webhook certificates, cert-manager, collector pod scheduling, sysctls, SELinux options, and filelog offset volumes.
+    tags:
+      - kubernetes
+      - dash0-operator
 
   - source: docs/signal-control-edge.md
     target: dash0-operator/signal-control-edge.md
     title: Dash0 SignalControl Edge
     navTitle: SignalControl Edge
     description: Configure SignalControl Edge in the Dash0 operator.
+    tags:
+      - telemetry-pipelines
+      - dash0-operator
+      - signalcontrol
 
   - source: docs/synthetics-worker.md
     target: dash0-operator/synthetics-worker.md
     title: Dash0 Synthetics Worker
     navTitle: Synthetics Worker
     description: Run Dash0 synthetic checks against private locations from inside your own Kubernetes cluster.
+    tags:
+      - synthetic-monitoring
+      - kubernetes
+      - dash0-operator
 
   - source: docs/platform-specific.md
     target: dash0-operator/platform-specific.md
     title: Platform-Specific Notes and Compatibility
     description: Platform-specific guidance and compatibility notes for running the Dash0 operator on various Kubernetes distributions.
+    tags:
+      - kubernetes
+      - dash0-operator
 
   - source: docs/troubleshooting.md
     target: dash0-operator/troubleshooting.md
     title: Troubleshooting
     description: Troubleshoot and debug the Dash0 operator.
+    tags:
+      - production-debugging
+      - dash0-operator
 
   - source: docs/upgrading.md
     target: dash0-operator/upgrading.md
     title: Upgrading and Uninstallation
     description: Upgrade the Dash0 operator, migrate CRD versions, and uninstall the operator from your cluster.
+    tags:
+      - dash0-operator

@@ -25,7 +25,42 @@ import (
 
 const (
 	commonExportErrorPrefix = "cannot assemble the exporters for the configuration:"
+
+	defaultExporterBatchMinSize = 8192
+	// exporterQueueSoftLimitPercent is the share of the memory_limiter soft limit that the sending queue of each
+	// exporter may hold, measured in protobuf-encoded bytes. Decoded telemetry takes up roughly 1.5 to 3.5 times its
+	// encoded size on the heap, so a single full queue stays below the soft limit, and one slow or unavailable export
+	// destination of one signal cannot take up all the collector's memory. The collector creates one queue per exporter
+	// and signal, though: while Dash0 is unavailable, the queues of all signals fill at the same time, and the
+	// memory_limiter, not the queue capacity, bounds how much telemetry is buffered. The in-memory queue does not
+	// preallocate its capacity.
+	exporterQueueSoftLimitPercent = 20
+	// defaultExporterQueueSizeMiB is the sending queue capacity of each exporter if the collector container has no
+	// memory limit to derive it from.
+	defaultExporterQueueSizeMiB = 64
+	mebibyte                    = 1024 * 1024
+	// nonDash0ExporterNumConsumers is the number of batches that an exporter to another backend than Dash0 sends
+	// concurrently (upstream default: 10), see nonDash0ExportSettings in exporters.partial.yaml.template. A batch keeps
+	// its share of the queue capacity until its export has finished, so more concurrent exports only help as long as
+	// the batches in flight fit into the queue.
+	nonDash0ExporterNumConsumers = 20
 )
+
+// exporterBatching holds the sending_queue settings that are rendered for every exporter, see the sendingQueue
+// template in exporters.partial.yaml.template. The queue is sized in bytes, the batches are sized in items. MaxSize
+// zero means no upper bound, NumConsumers zero means upstream's default.
+type exporterBatching struct {
+	QueueSizeBytes uint64
+	MinSize        uint32
+	MaxSize        uint32
+	NumConsumers   uint32
+}
+
+// NonDash0 returns the sending_queue settings for exporters to other backends than Dash0.
+func (b exporterBatching) NonDash0() exporterBatching {
+	b.NumConsumers = nonDash0ExporterNumConsumers
+	return b
+}
 
 type customFilters struct {
 	ErrorMode           dash0common.FilterTransformErrorMode
@@ -86,16 +121,16 @@ func (ct *customTransforms) HasProfileTransforms() bool {
 
 type collectorConfigurationTemplateValues struct {
 	OperatorNamespace                                string
-	OperatorResourcesNamePrefix                      string
+	NamePrefix                                       string
 	Exporters                                        otlpExporters
-	SendBatchSize                                    *uint32
-	SendBatchMaxSize                                 *uint32
+	ExporterBatching                                 exporterBatching
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	CollectPodLabelsAndAnnotationsEnabled            bool
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
 	CollectNodeLabelsAndAnnotationsEnabled           bool
 	LabelAndAnnotationExclusionPatterns              []string
 	K8sAttributesDisableReplicasetInformer           bool
+	K8sAttributesDisableJobInformer                  bool
 	K8sAttributesWaitForMetadata                     bool
 	K8sAttributesWaitForMetadataTimeout              string
 	PrometheusCrdSupportEnabled                      bool
@@ -134,6 +169,10 @@ type collectorConfigurationTemplateValues struct {
 	SignalControlCollectorServiceName                string
 	SignalControlCollectorDeploymentName             string
 	SignalControlSceOnlyMode                         bool
+	// DeploymentCollectorLeaderElection is set when the cluster metrics collector runs with more than one replica; its
+	// receivers then only run in the replica that holds the lease DeploymentCollectorLeaseName.
+	DeploymentCollectorLeaderElection bool
+	DeploymentCollectorLeaseName      string
 	// MemoryLimiterLimitMiB and MemoryLimiterSpikeLimitMiB are the memory_limiter limit_mib / spike_limit_mib
 	// derived from the collector container memory limit. When MemoryLimiterLimitMiB is zero (no limit set), the
 	// template falls back to the percentage-based memory_limiter configuration.
@@ -366,6 +405,39 @@ func assembleCollectorConfigMap(
 	return &configMap, nil
 }
 
+// newExporterBatching derives the sending_queue settings of all exporters of one collector. The optional
+// sendBatchSize and sendBatchMaxSize settings (Helm values operator.collectors.sendBatchSize/sendBatchMaxSize) map to
+// the batch's min_size and max_size. The queue capacity is sendingQueueSizeMiB (Helm value
+// operator.collectors.sendingQueueSizeMiB) if set, otherwise exporterQueueSoftLimitPercent of the collector's
+// memory_limiter soft limit, or defaultExporterQueueSizeMiB if the collector has no memory limit (memorySoftLimitMiB
+// is zero).
+func newExporterBatching(
+	sendBatchSize *uint32,
+	sendBatchMaxSize *uint32,
+	sendingQueueSizeMiB *uint32,
+	memorySoftLimitMiB int,
+) exporterBatching {
+	minSize := uint32(defaultExporterBatchMinSize)
+	if sendBatchSize != nil && *sendBatchSize > 0 {
+		minSize = *sendBatchSize
+	}
+	var maxSize uint32
+	if sendBatchMaxSize != nil {
+		maxSize = *sendBatchMaxSize
+	}
+	queueSizeMiB := uint64(defaultExporterQueueSizeMiB)
+	if sendingQueueSizeMiB != nil && *sendingQueueSizeMiB > 0 {
+		queueSizeMiB = uint64(*sendingQueueSizeMiB)
+	} else if memorySoftLimitMiB > 0 {
+		queueSizeMiB = uint64(max(1, memorySoftLimitMiB*exporterQueueSoftLimitPercent/100))
+	}
+	return exporterBatching{
+		QueueSizeBytes: queueSizeMiB * mebibyte,
+		MinSize:        minSize,
+		MaxSize:        maxSize,
+	}
+}
+
 // newCollectorConfigurationTemplateValues derives the values for one collector configuration template from the
 // operator's collector configuration. It is the single place where the template's view of the configuration is
 // assembled, which allows tests to inspect the exact values a template is rendered with.
@@ -400,13 +472,15 @@ func newCollectorConfigurationTemplateValues(
 			config.SelfMonitoringConfiguration,
 		)
 
-	targetAllocatorServiceName := taresources.ServiceName(config.TargetAllocatorNamePrefix)
+	targetAllocatorServiceName := taresources.ServiceName(config.NamePrefix)
 
 	memoryLimiterLimitMiB := 0
 	memoryLimiterSpikeMiB := 0
+	memoryLimiterSoftMiB := 0
 	if settings, ok := util.DeriveCollectorMemorySettings(collectorMemoryLimit); ok {
 		memoryLimiterLimitMiB = settings.LimitMiB
 		memoryLimiterSpikeMiB = settings.SpikeMiB
+		memoryLimiterSoftMiB = settings.SoftMiB
 	}
 	podAssociationPipelines := map[string]string{
 		"common-processors": "k8s_attributes",
@@ -416,17 +490,22 @@ func newCollectorConfigurationTemplateValues(
 	}
 
 	return &collectorConfigurationTemplateValues{
-		OperatorNamespace:           config.OperatorNamespace,
-		OperatorResourcesNamePrefix: config.NamePrefix,
-		Exporters:                   config.Exporters,
-		SendBatchSize:               config.SendBatchSize,
-		SendBatchMaxSize:            config.SendBatchMaxSize,
+		OperatorNamespace: config.OperatorNamespace,
+		NamePrefix:        config.NamePrefix,
+		Exporters:         config.Exporters,
+		ExporterBatching: newExporterBatching(
+			config.SendBatchSize,
+			config.SendBatchMaxSize,
+			config.SendingQueueSizeMiB,
+			memoryLimiterSoftMiB,
+		),
 		KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
 		CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
 		CollectNamespaceLabelsAndAnnotationsEnabled:      config.CollectNamespaceLabelsAndAnnotationsEnabled,
 		CollectNodeLabelsAndAnnotationsEnabled:           config.CollectNodeLabelsAndAnnotationsEnabled,
 		LabelAndAnnotationExclusionPatterns:              labelAndAnnotationExclusionPatterns(),
 		K8sAttributesDisableReplicasetInformer:           config.K8sAttributesDisableReplicasetInformer,
+		K8sAttributesDisableJobInformer:                  config.K8sAttributesDisableJobInformer,
 		K8sAttributesWaitForMetadata:                     config.K8sAttributesWaitForMetadata,
 		K8sAttributesWaitForMetadataTimeout:              config.K8sAttributesWaitForMetadataTimeout,
 		PrometheusCrdSupportEnabled:                      config.PrometheusCrdSupportEnabled,
@@ -465,6 +544,8 @@ func newCollectorConfigurationTemplateValues(
 		SignalControlCollectorServiceName:                SignalControlCollectorServiceName(config.NamePrefix),
 		SignalControlCollectorDeploymentName:             SignalControlCollectorDeploymentName(config.NamePrefix),
 		SignalControlSceOnlyMode:                         config.SignalControlSceOnlyMode,
+		DeploymentCollectorLeaderElection:                config.deploymentCollectorUsesLeaderElection(),
+		DeploymentCollectorLeaseName:                     deploymentCollectorLeaseName(config.NamePrefix),
 		MemoryLimiterLimitMiB:                            memoryLimiterLimitMiB,
 		MemoryLimiterSpikeLimitMiB:                       memoryLimiterSpikeMiB,
 	}
@@ -511,7 +592,7 @@ func renderOttlNamespaceFilter(
 	// config (and prometheusCrdSupportEnabled) from the Dash0OperatorConfiguration.
 	taExclusion := ""
 	if selfMonitoringEnabled && config.PrometheusCrdSupportEnabled {
-		taDeploymentName := taresources.DeploymentName(config.TargetAllocatorNamePrefix)
+		taDeploymentName := taresources.DeploymentName(config.NamePrefix)
 		taExclusion = fmt.Sprintf("(resource.attributes[\"k8s.deployment.name\"] != \"%s\" or "+
 			"resource.attributes[\"k8s.namespace.name\"] != \"%s\") and\n          ",
 			taDeploymentName,
@@ -636,11 +717,9 @@ func aggregateCustomFilters(
 			}
 		}
 		if filterSpecForNamespace.Logs != nil && filterSpecForNamespace.Logs.HasAnyFilters() {
-			if len(filterSpecForNamespace.Logs.LogRecordFilter) > 0 {
-				for _, condition := range filterSpecForNamespace.Logs.LogRecordFilter {
-					allLogRecordFilters =
-						append(allLogRecordFilters, prependNamespaceCheckToOttlCondition(namespace, condition))
-				}
+			for _, condition := range filterSpecForNamespace.Logs.EffectiveLogRecordFilter() {
+				allLogRecordFilters =
+					append(allLogRecordFilters, prependNamespaceCheckToOttlCondition(namespace, condition))
 			}
 		}
 		if filterSpecForNamespace.Profiles != nil && filterSpecForNamespace.Profiles.HasAnyFilters() {
@@ -670,7 +749,7 @@ func aggregateCustomFilters(
 			allDataPointFilters = slices.Concat(allDataPointFilters, globalFilter.Metrics.DataPointFilter)
 		}
 		if globalFilter.Logs != nil {
-			allLogRecordFilters = slices.Concat(allLogRecordFilters, globalFilter.Logs.LogRecordFilter)
+			allLogRecordFilters = slices.Concat(allLogRecordFilters, globalFilter.Logs.EffectiveLogRecordFilter())
 		}
 		if globalFilter.Profiles != nil {
 			allProfileFilters = slices.Concat(allProfileFilters, globalFilter.Profiles.ProfileFilter)

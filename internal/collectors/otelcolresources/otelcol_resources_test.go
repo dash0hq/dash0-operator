@@ -75,7 +75,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			util.CollectorConfig{
 				Images:                         TestImages,
 				OperatorNamespace:              OperatorNamespace,
-				OTelCollectorNamePrefix:        OTelCollectorNamePrefixTest,
+				NamePrefix:                     ManagedResourceNamePrefixTest,
 				KubeletStatsAutoDetectEndpoint: true,
 				DevelopmentMode:                true,
 			},
@@ -133,9 +133,9 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				k8sClient.Scheme(),
 				OperatorManagerDeployment,
 				util.CollectorConfig{
-					Images:                  TestImages,
-					OperatorNamespace:       OperatorNamespace,
-					OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
+					Images:            TestImages,
+					OperatorNamespace: OperatorNamespace,
+					NamePrefix:        ManagedResourceNamePrefixTest,
 				},
 				NewLeaderElectionAwareMock(true),
 			)
@@ -182,9 +182,9 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				k8sClient.Scheme(),
 				OperatorManagerDeployment,
 				util.CollectorConfig{
-					Images:                  TestImages,
-					OperatorNamespace:       OperatorNamespace,
-					OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
+					Images:            TestImages,
+					OperatorNamespace: OperatorNamespace,
+					NamePrefix:        ManagedResourceNamePrefixTest,
 				},
 				NewLeaderElectionAwareMock(true),
 			)
@@ -274,6 +274,98 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
 		})
 
+		It("should store the filelog offsets in a hostPath volume on a fresh installation, without a config map", func() {
+			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx, util.ExtraConfigDefaults, DefaultOperatorConfigurationResourceWithUid(), nil, nil, logger)
+			Expect(err).ToNot(HaveOccurred())
+
+			daemonSet := getDaemonSetFromCluster(ctx)
+			offsetsVolume := FindVolumeByName(daemonSet.Spec.Template.Spec.Volumes, "filelogreceiver-offsets")
+			Expect(offsetsVolume.HostPath.Path).To(Equal("/var/lib/dash0-operator/filelog-offsets/" + OperatorNamespace))
+			Expect(containerNames(daemonSet.Spec.Template.Spec.InitContainers)).
+				To(Equal([]string{"filelog-offset-volume-ownership"}))
+			VerifyResourceDoesNotExist(
+				ctx, k8sClient, OperatorNamespace, ExpectedDaemonSetFilelogOffsetSyncConfigMapName, &corev1.ConfigMap{})
+		})
+
+		It("should migrate the filelog offsets from the config map and delete the config map once the volume has "+
+			"rolled out", func() {
+			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
+			configMapMode := util.ExtraConfigDefaults
+			configMapMode.CollectorFilelogOffsetStorageMode = util.FilelogOffsetStorageModeConfigMap
+			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx, configMapMode, operatorConfiguration, nil, nil, logger)
+			Expect(err).ToNot(HaveOccurred())
+			VerifyResourceExists(
+				ctx, k8sClient, OperatorNamespace, ExpectedDaemonSetFilelogOffsetSyncConfigMapName, &corev1.ConfigMap{})
+			daemonSet := getDaemonSetFromCluster(ctx)
+			Expect(containerNames(daemonSet.Spec.Template.Spec.Containers)).To(ContainElement("filelog-offset-sync"))
+			Expect(FindVolumeByName(daemonSet.Spec.Template.Spec.Volumes, "filelogreceiver-offsets").EmptyDir).
+				ToNot(BeNil())
+
+			_, _, err = oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx, util.ExtraConfigDefaults, operatorConfiguration, nil, nil, logger)
+			Expect(err).ToNot(HaveOccurred())
+			VerifyResourceExists(
+				ctx, k8sClient, OperatorNamespace, ExpectedDaemonSetFilelogOffsetSyncConfigMapName, &corev1.ConfigMap{})
+			daemonSet = getDaemonSetFromCluster(ctx)
+			Expect(containerNames(daemonSet.Spec.Template.Spec.InitContainers)).
+				To(Equal([]string{"filelog-offset-volume-ownership", "filelog-offset-migrate"}))
+			Expect(containerNames(daemonSet.Spec.Template.Spec.Containers)).ToNot(ContainElement("filelog-offset-sync"))
+			Expect(FindVolumeByName(daemonSet.Spec.Template.Spec.Volumes, "filelogreceiver-offsets").HostPath).
+				ToNot(BeNil())
+
+			daemonSet.Status = appsv1.DaemonSetStatus{
+				ObservedGeneration:     daemonSet.Generation,
+				CurrentNumberScheduled: 2,
+				DesiredNumberScheduled: 2,
+				NumberReady:            2,
+				UpdatedNumberScheduled: 2,
+				NumberAvailable:        2,
+			}
+			Expect(k8sClient.Status().Update(ctx, daemonSet)).To(Succeed())
+
+			_, _, err = oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx, util.ExtraConfigDefaults, operatorConfiguration, nil, nil, logger)
+			Expect(err).ToNot(HaveOccurred())
+			VerifyResourceDoesNotExist(
+				ctx, k8sClient, OperatorNamespace, ExpectedDaemonSetFilelogOffsetSyncConfigMapName, &corev1.ConfigMap{})
+			daemonSet = getDaemonSetFromCluster(ctx)
+			Expect(containerNames(daemonSet.Spec.Template.Spec.InitContainers)).
+				To(Equal([]string{"filelog-offset-volume-ownership", "filelog-offset-migrate"}))
+
+			_, _, err = oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx, util.ExtraConfigDefaults, operatorConfiguration, nil, nil, logger)
+			Expect(err).ToNot(HaveOccurred())
+			VerifyResourceDoesNotExist(
+				ctx, k8sClient, OperatorNamespace, ExpectedDaemonSetFilelogOffsetSyncConfigMapName, &corev1.ConfigMap{})
+			Expect(getDaemonSetFromCluster(ctx).Generation).To(Equal(daemonSet.Generation))
+		})
+
+		It("should not probe the cluster for the filelog offset storage if no collector daemonset is deployed", func() {
+			probeClient := &dryRunPodClient{Client: k8sClient}
+			sceOnlyManager := NewOTelColResourceManager(
+				probeClient,
+				k8sClient.Scheme(),
+				OperatorManagerDeployment,
+				util.CollectorConfig{
+					Images:                   TestImages,
+					OperatorNamespace:        OperatorNamespace,
+					NamePrefix:               ManagedResourceNamePrefixTest,
+					SignalControlSceOnlyMode: true,
+				},
+				NewLeaderElectionAwareMock(true),
+			)
+			_, _, err := sceOnlyManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx, util.ExtraConfigDefaults, DefaultOperatorConfigurationResourceWithUid(), nil, nil, logger)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(probeClient.probePods).To(BeEmpty())
+			VerifyResourceDoesNotExist(ctx, k8sClient, OperatorNamespace, ExpectedDaemonSetName, &appsv1.DaemonSet{})
+			VerifyResourceDoesNotExist(
+				ctx, k8sClient, OperatorNamespace, ExpectedDaemonSetServiceAccountName, &corev1.ServiceAccount{})
+		})
+
 		It("should enable profiler source routing only with profiling and the profiler enabled without adding ports", func() {
 			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 			operatorConfiguration.Spec.Profiling = &dash0v1alpha1.Profiling{
@@ -315,6 +407,44 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			}
 		})
 
+		DescribeTable("should enable profiling pipelines when enabled explicitly or together with the eBPF profiler",
+			func(profiling *dash0v1alpha1.Profiling, ebpfProfilerEnabledViaHelm bool, wantProfiling bool, wantEbpf bool) {
+				oTelColResourceManager.collectorConfig.EbpfProfilerEnabledViaHelm = ebpfProfilerEnabledViaHelm
+				operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
+				operatorConfiguration.Spec.Profiling = profiling
+				_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+					ctx, util.ExtraConfigDefaults, operatorConfiguration, nil, nil, logger)
+				Expect(err).ToNot(HaveOccurred())
+				collectorConfig := parseConfigMapContent(GetOTelColDaemonSetConfigMap(ctx, k8sClient, OperatorNamespace))
+				daemonSet := &appsv1.DaemonSet{}
+				Expect(k8sClient.Get(ctx, client.ObjectKey{
+					Namespace: OperatorNamespace, Name: ExpectedDaemonSetName,
+				}, daemonSet)).To(Succeed())
+				featureGatesArg := ContainElement(ContainSubstring(profilesSupportFeatureGate))
+				if wantProfiling {
+					Expect(readPipelines(collectorConfig)).To(HaveKey("profiles/export/default"))
+					Expect(daemonSet.Spec.Template.Spec.Containers[0].Args).To(featureGatesArg)
+				} else {
+					Expect(readPipelines(collectorConfig)).ToNot(HaveKey("profiles/export/default"))
+					Expect(daemonSet.Spec.Template.Spec.Containers[0].Args).ToNot(featureGatesArg)
+				}
+				connectors := collectorConfig["connectors"].(map[string]any)
+				if wantEbpf {
+					Expect(connectors).To(HaveKey("routing/traces-source"))
+				} else {
+					Expect(connectors).ToNot(HaveKey("routing/traces-source"))
+				}
+			},
+			Entry("profiling omitted", nil, true, false, false),
+			Entry("profiling.enabled omitted without the eBPF profiler", &dash0v1alpha1.Profiling{}, true, false, false),
+			Entry("profiling.enabled omitted with the eBPF profiler",
+				&dash0v1alpha1.Profiling{EbpfProfiler: &dash0v1alpha1.EbpfProfiler{Enabled: ptr.To(true)}}, true, true, true),
+			Entry("profiling.enabled omitted with the eBPF profiler disabled via Helm",
+				&dash0v1alpha1.Profiling{EbpfProfiler: &dash0v1alpha1.EbpfProfiler{Enabled: ptr.To(true)}}, false, false, false),
+			Entry("profiling enabled explicitly", &dash0v1alpha1.Profiling{Enabled: ptr.To(true)}, false, true, false),
+			Entry("profiling disabled explicitly", &dash0v1alpha1.Profiling{Enabled: ptr.To(false)}, false, false, false),
+		)
+
 		It("should make the operator configuration resource the owner of cluster-scoped resources", func() {
 			operatorConfiguration := DefaultOperatorConfigurationResourceWithUid()
 			_, _, err :=
@@ -330,16 +460,16 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 			for _, object := range []client.Object{
 				&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{
-					Name: DaemonSetClusterRoleName(OTelCollectorNamePrefixTest),
+					Name: DaemonSetClusterRoleName(ManagedResourceNamePrefixTest),
 				}},
 				&rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{
-					Name: DaemonSetClusterRoleBindingName(OTelCollectorNamePrefixTest),
+					Name: DaemonSetClusterRoleBindingName(ManagedResourceNamePrefixTest),
 				}},
 				&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{
-					Name: DeploymentClusterRoleName(OTelCollectorNamePrefixTest),
+					Name: DeploymentClusterRoleName(ManagedResourceNamePrefixTest),
 				}},
 				&rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{
-					Name: DeploymentClusterRoleBindingName(OTelCollectorNamePrefixTest),
+					Name: DeploymentClusterRoleBindingName(ManagedResourceNamePrefixTest),
 				}},
 			} {
 				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(object), object)).To(Succeed())
@@ -354,14 +484,14 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			daemonSet := &appsv1.DaemonSet{}
 			Expect(k8sClient.Get(ctx, client.ObjectKey{
 				Namespace: OperatorNamespace,
-				Name:      DaemonSetName(OTelCollectorNamePrefixTest),
+				Name:      DaemonSetName(ManagedResourceNamePrefixTest),
 			}, daemonSet)).To(Succeed())
 			Expect(daemonSet.GetOwnerReferences()).To(HaveLen(1))
 			Expect(daemonSet.GetOwnerReferences()[0].UID).To(Equal(OperatorManagerDeploymentUID))
 		})
 
 		It("should add the owner reference to existing cluster-scoped resources that do not have one", func() {
-			clusterRoleName := DaemonSetClusterRoleName(OTelCollectorNamePrefixTest)
+			clusterRoleName := DaemonSetClusterRoleName(ManagedResourceNamePrefixTest)
 			existingClusterRole := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: clusterRoleName}}
 			Expect(patch.DefaultAnnotator.SetLastAppliedAnnotation(existingClusterRole)).To(Succeed())
 			Expect(k8sClient.Create(ctx, existingClusterRole)).To(Succeed())
@@ -410,7 +540,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			ds := ds_.(*appsv1.DaemonSet)
 
 			containers := ds.Spec.Template.Spec.Containers
-			Expect(containers).To(HaveLen(3))
+			Expect(containers).To(HaveLen(2))
 			for _, container := range containers {
 				Expect(container.Env).ToNot(
 					ContainElement(MatchEnvVar("SELF_MONITORING_AUTH_TOKEN", AuthorizationTokenTest)))
@@ -443,7 +573,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			ds := ds_.(*appsv1.DaemonSet)
 
 			containers := ds.Spec.Template.Spec.Containers
-			Expect(containers).To(HaveLen(3))
+			Expect(containers).To(HaveLen(2))
 			for _, container := range containers {
 				Expect(container.Env).To(
 					ContainElement(MatchEnvVar("SELF_MONITORING_AUTH_TOKEN", AuthorizationTokenTest)))
@@ -582,7 +712,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				util.CollectorConfig{
 					Images:                         TestImages,
 					OperatorNamespace:              OperatorNamespace,
-					OTelCollectorNamePrefix:        OTelCollectorNamePrefixTest,
+					NamePrefix:                     ManagedResourceNamePrefixTest,
 					KubeletStatsAutoDetectEndpoint: true,
 					DevelopmentMode:                true,
 					Agent0ConnectorEnabledViaHelm:  true,
@@ -612,7 +742,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					ExpectedDaemonSetCollectorConfigMapName,
 					&corev1.ConfigMap{},
 				).(*corev1.ConfigMap)
-				deploymentName := a0cresources.DeploymentName(OTelCollectorNamePrefixTest)
+				deploymentName := a0cresources.DeploymentName(ManagedResourceNamePrefixTest)
 				exclusion := fmt.Sprintf(
 					"(resource.attributes[\"k8s.deployment.name\"] != \"%s\" or resource.attributes[\"k8s.namespace.name\"] != \"%s\")",
 					deploymentName,
@@ -647,7 +777,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				util.CollectorConfig{
 					Images:                         TestImages,
 					OperatorNamespace:              OperatorNamespace,
-					OTelCollectorNamePrefix:        OTelCollectorNamePrefixTest,
+					NamePrefix:                     ManagedResourceNamePrefixTest,
 					KubeletStatsAutoDetectEndpoint: true,
 					DevelopmentMode:                true,
 					DaemonSetServiceAccountName:    OlmDaemonSetServiceAccountName,
@@ -705,7 +835,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				util.CollectorConfig{
 					Images:                         TestImages,
 					OperatorNamespace:              OperatorNamespace,
-					OTelCollectorNamePrefix:        OTelCollectorNamePrefixTest,
+					NamePrefix:                     ManagedResourceNamePrefixTest,
 					KubeletStatsAutoDetectEndpoint: true,
 					DevelopmentMode:                true,
 					SyntheticsWorkerEnabledViaHelm: enabledViaHelm,
@@ -741,7 +871,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			for _, locationId := range locationIds {
 				exclusion := fmt.Sprintf(
 					"(resource.attributes[\"k8s.deployment.name\"] != \"%s\" or resource.attributes[\"k8s.namespace.name\"] != \"%s\")",
-					swresources.DeploymentName(OTelCollectorNamePrefixTest, locationId),
+					swresources.DeploymentName(ManagedResourceNamePrefixTest, locationId),
 					OperatorNamespace,
 				)
 				if expectExclusion {
@@ -1300,10 +1430,10 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 		It("should find the main collectors in the desired state", func() {
 			Expect(deployedCollectors([]clientObject{
-				daemonSet(DaemonSetName(OTelCollectorNamePrefixTest)),
-				deployment(DeploymentName(OTelCollectorNamePrefixTest)),
-				deployment(SignalControlCollectorDeploymentName(OTelCollectorNamePrefixTest)),
-			}, OTelCollectorNamePrefixTest)).To(Equal(util.DeployedCollectors{
+				daemonSet(DaemonSetName(ManagedResourceNamePrefixTest)),
+				deployment(DeploymentName(ManagedResourceNamePrefixTest)),
+				deployment(SignalControlCollectorDeploymentName(ManagedResourceNamePrefixTest)),
+			}, ManagedResourceNamePrefixTest)).To(Equal(util.DeployedCollectors{
 				DaemonSetCollector:     true,
 				DeploymentCollector:    true,
 				SignalControlCollector: true,
@@ -1314,8 +1444,8 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(deployedCollectors([]clientObject{
 				daemonSet("other"),
 				deployment("other"),
-				{object: &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: DeploymentName(OTelCollectorNamePrefixTest)}}},
-			}, OTelCollectorNamePrefixTest)).To(Equal(util.DeployedCollectors{}))
+				{object: &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: DeploymentName(ManagedResourceNamePrefixTest)}}},
+			}, ManagedResourceNamePrefixTest)).To(Equal(util.DeployedCollectors{}))
 		})
 	})
 
@@ -1353,7 +1483,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				util.CollectorConfig{
 					Images:                         TestImages,
 					OperatorNamespace:              OperatorNamespace,
-					OTelCollectorNamePrefix:        OTelCollectorNamePrefixTest,
+					NamePrefix:                     ManagedResourceNamePrefixTest,
 					KubeletStatsAutoDetectEndpoint: false,
 					KubeletStatsReceiverConfig: &util.KubeletStatsReceiverConfig{
 						Endpoint:           "https://${env:K8S_NODE_IP}:10250",
@@ -1379,7 +1509,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				util.CollectorConfig{
 					Images:                         TestImages,
 					OperatorNamespace:              OperatorNamespace,
-					OTelCollectorNamePrefix:        OTelCollectorNamePrefixTest,
+					NamePrefix:                     ManagedResourceNamePrefixTest,
 					KubeletStatsAutoDetectEndpoint: false,
 					KubeletStatsReceiverConfig: &util.KubeletStatsReceiverConfig{
 						Endpoint: "https://${env:K8S_NODE_IP}:10250",
@@ -1401,7 +1531,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				util.CollectorConfig{
 					Images:                         TestImages,
 					OperatorNamespace:              OperatorNamespace,
-					OTelCollectorNamePrefix:        OTelCollectorNamePrefixTest,
+					NamePrefix:                     ManagedResourceNamePrefixTest,
 					KubeletStatsAutoDetectEndpoint: false,
 					KubeletStatsReceiverConfig:     nil,
 					DevelopmentMode:                true,
@@ -1423,7 +1553,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				util.CollectorConfig{
 					Images:                         TestImages,
 					OperatorNamespace:              OperatorNamespace,
-					OTelCollectorNamePrefix:        OTelCollectorNamePrefixTest,
+					NamePrefix:                     ManagedResourceNamePrefixTest,
 					KubeletStatsAutoDetectEndpoint: false,
 					KubeletStatsReceiverConfig: &util.KubeletStatsReceiverConfig{
 						Endpoint: "",
@@ -2177,4 +2307,19 @@ func verifyObject(ctx context.Context, testObject *corev1.ConfigMap) {
 	Expect(object.Namespace).To(Equal(testObject.Namespace))
 	Expect(object.Labels).To(Equal(testObject.Labels))
 	Expect(object.Data).To(Equal(testObject.Data))
+}
+
+func getDaemonSetFromCluster(ctx context.Context) *appsv1.DaemonSet {
+	GinkgoHelper()
+	return VerifyResourceExists(
+		ctx, k8sClient, OperatorNamespace, ExpectedDaemonSetName, &appsv1.DaemonSet{},
+	).(*appsv1.DaemonSet)
+}
+
+func containerNames(containers []corev1.Container) []string {
+	names := make([]string, 0, len(containers))
+	for _, container := range containers {
+		names = append(names, container.Name)
+	}
+	return names
 }

@@ -91,22 +91,24 @@ updates:
       - dependency-name: "github.com/spf13/cobra"
       - dependency-name: "github.com/spf13/pflag"
 
-  # Dash0 OpenTelemetry Distro for Node.js
-  - package-ecosystem: "npm"
-    directory: "images/instrumentation/node.js/"
-    schedule:
-      interval: "daily"
-      time: "07:10"
-      timezone: "Europe/Berlin"
-    cooldown:
-      default-days: 7
-    groups:
-      security-updates:
-        applies-to: "security-updates"
-        patterns:
-          - "*"
-    commit-message:
-      prefix: "chore(deps)"
+  # Paused until early December 2026 so the next operator release does not ship the Dash0 Node.js distro with
+  # dash0hq/opentelemetry-js-distribution#301. Restore this block to resume updates.
+  # # Dash0 OpenTelemetry Distro for Node.js
+  # - package-ecosystem: "npm"
+  #   directory: "images/instrumentation/node.js/"
+  #   schedule:
+  #     interval: "daily"
+  #     time: "07:10"
+  #     timezone: "Europe/Berlin"
+  #   cooldown:
+  #     default-days: 7
+  #   groups:
+  #     security-updates:
+  #       applies-to: "security-updates"
+  #       patterns:
+  #         - "*"
+  #   commit-message:
+  #     prefix: "chore(deps)"
 
   # OpenTelemetry Java agent
   - package-ecosystem: "maven"
@@ -136,6 +138,7 @@ updates:
       - "/images/volumeownership"
       - "/images/instrumentation"
       - "/images/target-allocator"
+      - "/olm/catalog"
     schedule:
       interval: "daily"
       time: "07:15"
@@ -181,8 +184,9 @@ updates:
     cooldown:
       default-days: 4
     groups:
-      development-dependencies:
-        dependency-type: "development"
+      all:
+        patterns:
+          - "*"
     commit-message:
       prefix: "test"
     ignore:
@@ -192,7 +196,6 @@ updates:
   - package-ecosystem: "helm"
     directories:
       - "/test/e2e/otlp-sink/helm-chart"
-      - "/test-resources/ebpf-profiler/helm-chart"
     schedule:
       interval: "daily"
       time: "09:00"
@@ -204,8 +207,9 @@ updates:
         # cooldown, it proposes such a tag as the update.
         - "otel/opentelemetry-collector-contrib"
     groups:
-      development-dependencies:
-        dependency-type: "development"
+      all:
+        patterns:
+          - "*"
     commit-message:
       prefix: "test"
 
@@ -299,3 +303,20 @@ updates:
           - "*"
     commit-message:
       prefix: "test"
+
+  # The requirements.txt in this directory deliberately pins a version of opentelemetry-api that conflicts with the Dash0
+  # OpenTelemetry Python distro. Without this block, Dependabot would still raise security updates for it. Since all
+  # dependencies are ignored, this block defines no security-updates group.
+  - package-ecosystem: "pip"
+    directory: "/images/instrumentation/test/python-dependency-conflict/test-cases/dependency-conflict"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:40"
+      timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 4
+    commit-message:
+      prefix: "test"
+    ignore:
+      - dependency-name: "*"

@@ -14,6 +14,7 @@ This document provides platform-specific guidance, compatibility notes, and work
 - [Kyverno Admission Controller](#notes-on-kyverno-admission-controller)
   - [Kyverno Policies and the Collector DaemonSet](#kyverno-policies-and-the-collector-daemonset)
 - [GitOps Deployments](#notes-on-gitops)
+  - [Long Release Names](#long-release-names)
 - [ArgoCD](#notes-on-argocd)
 - [Local Development Environments](#local-development-environments)
   - [Apple Silicon](#notes-on-running-the-operator-on-apple-silicon)
@@ -139,24 +140,47 @@ set to `true`, the Dash0 operator Helm chart and operator:
   an in-range UID instead of a pinned one that `restricted-v2` would reject (SCCs do not constrain `runAsGroup`, so
   these workloads keep their pinned non-root group), and
 - set the SELinux type `spc_t` on the collector DaemonSet pods. OpenShift nodes enforce SELinux, and the default
-  container type `container_t` is not allowed to read the pod log files in `/var/log/pods`. A value set via
+  container type `container_t` is not allowed to read the pod log files in `/var/log/pods`, nor to write the
+  [filelog offsets](advanced-configuration.md#filelog-offset-storage) to a `hostPath` volume. A value set via
   `operator.collectors.daemonSetSeLinuxOptions` replaces this default, `{}` removes it (see
-  [Configuring SELinux Options for the Collector DaemonSet](advanced-configuration.md#configuring-selinux-options-for-the-collector-daemonset)).
+  [Configuring SELinux Options for the Collector DaemonSet](advanced-configuration.md#configuring-selinux-options-for-the-collector-daemonset));
+  without `spc_t`, the operator stores the filelog offsets in a config map instead of the `hostPath` volume.
 
 ## Notes on SELinux-Enforcing Clusters
 
 For clusters that enforce SELinux, the SELinux options of the collector DaemonSet pods can be configured (see
 [Configuring SELinux Options for the Collector DaemonSet](advanced-configuration.md#configuring-selinux-options-for-the-collector-daemonset)).
 
+With the default container type `container_t`, the collector cannot write the
+[filelog offsets](advanced-configuration.md#filelog-offset-storage) to a `hostPath` volume on SELinux-enforcing nodes,
+since the kubelet does not relabel `hostPath` volumes.
+The dry run with which the operator checks whether the cluster admits the `hostPath` volume does not detect this, the
+collector pods would fail at runtime instead.
+Therefore, with `operator.collectors.filelogOffsetStorageMode=auto` (the default), the operator stores the offsets in a
+config map on clusters whose nodes likely enforce SELinux, unless the collector DaemonSet pods run with the SELinux type
+`spc_t`.
+Besides OpenShift, these are clusters with nodes that run the container runtime CRI-O, and clusters of the Kubernetes
+distributions RKE2, K3s and k0s, which support SELinux-enforcing nodes.
+The operator inspects up to 100 nodes when it starts, via `status.nodeInfo` of the node resources (a `cri-o://`
+container runtime version, or a kubelet version containing `+rke2`, `+k3s` or `+k0s`).
+This is a heuristic: whether SELinux is actually enforcing cannot be read from the Kubernetes API.
+On such clusters without SELinux enforcement, set `operator.collectors.filelogOffsetStorageMode` to `hostPath` to store
+the offsets in the `hostPath` volume anyway.
+Alternatively, set `operator.collectors.daemonSetSeLinuxOptions` to `{type: spc_t}`, if the cluster's policies allow
+that type.
+
 ## Notes on Azure AKS
 
-In [AKS](https://azure.microsoft.com/products/kubernetes-service) clusters that have the [Azure Policy add-on](https://learn.microsoft.com/azure/aks/use-azure-policy) enabled, it is highly recommended to [use a volume for filelog offsets](advanced-configuration.md#providing-a-filelog-offset-volume) instead of the default filelog offset config map.
+In [AKS](https://azure.microsoft.com/products/kubernetes-service) clusters that have the [Azure Policy add-on](https://learn.microsoft.com/azure/aks/use-azure-policy) enabled, make sure that the filelog offsets are [stored in a volume](advanced-configuration.md#filelog-offset-storage) instead of the filelog offset config map.
+By default, the operator stores the offsets in a `hostPath` volume if the cluster admits it; check the operator's log for the storage it has chosen.
 
 Using the default config map filelog offset storage in AKS clusters with this add-on can lead to severe performance issues.
 
 ## Notes on the Open Policy Agent
 
-In clusters that have the [OPA gatekeeper](https://github.com/open-policy-agent/gatekeeper) deployed, it is highly recommended to [use a volume for filelog offsets](advanced-configuration.md#providing-a-filelog-offset-volume) instead of the default filelog offset config map.
+In clusters that have the [OPA gatekeeper](https://github.com/open-policy-agent/gatekeeper) deployed, make sure that the filelog offsets are [stored in a volume](advanced-configuration.md#filelog-offset-storage) instead of the filelog offset config map.
+By default, the operator stores the offsets in a `hostPath` volume if the cluster admits it; check the operator's log for the storage it has chosen.
+If the gatekeeper constraints reject the collector pod with the writable `hostPath` volume, exempt the collector DaemonSet and its pods from them and restart the operator, so that it checks again, or [provide a volume](advanced-configuration.md#providing-a-filelog-offset-volume) that the constraints admit.
 
 Using the default config map filelog offset storage in clusters with this component can lead to severe performance issues.
 
@@ -165,11 +189,15 @@ Using the default config map filelog offset storage in clusters with this compon
 In clusters that have the [Kyverno admission controller](https://kyverno.io/docs/introduction/how-kyverno-works/#kubernetes-admission-controls) deployed, it is highly recommended to either:
 
 1. [Exclude](https://kyverno.io/docs/installation/customization/#resource-filters) ConfigMaps (or all resource types) in the Dash0 operator's namespace from Kyverno's processing, or
-2. [Use a volume for filelog offsets](advanced-configuration.md#providing-a-filelog-offset-volume) instead of the default filelog offset config map.
+2. Make sure that the filelog offsets are [stored in a volume](advanced-configuration.md#filelog-offset-storage)
+   instead of the filelog offset config map.
+   By default, the operator stores the offsets in a `hostPath` volume if the cluster admits it.
    The volume adds an init container to the collector DaemonSet that runs as root with the `CHOWN` capability, to
    hand the volume over to the collector's user, and a `hostPath` or `persistentVolumeClaim` volume. Kyverno policies
    that restrict users, capabilities or volume types reject that, unless the DaemonSet is exempted from them (see
-   [below](#kyverno-policies-and-the-collector-daemonset)).
+   [below](#kyverno-policies-and-the-collector-daemonset)); the operator then falls back to the config map.
+   Restart the operator after creating the policy exception, so that it checks again whether the cluster admits the
+   `hostPath` volume.
 
 Leaving Kyverno processing in place and using the config map filelog offset storage can lead to severe performance issues, since the default config map for filelog offsets is updated very frequently. This can cause Kyverno to consume a lot of CPU and memory resources, potentially even leading to OOMKills of the Kyverno admission controller.
 
@@ -203,13 +231,17 @@ Kyverno only applies policy exceptions if the feature is enabled, for example vi
 exception (or `*`).
 The following example assumes that the Dash0 operator has been installed with the Helm release name `dash0-operator`
 into the namespace `dash0-operator`. The name of the DaemonSet is
-`<release name>-opentelemetry-collector-agent-daemonset`.
+`<name-prefix>-opentelemetry-collector-agent-daemonset`, where `<name-prefix>` is the value of
+`operator.managedResourceNamePrefix`, or the Helm release name if that is not set.
 The policy and rule names in the example are those of the
 [upstream Kyverno policies](https://github.com/kyverno/policies), they need to match the names of the policies that are
 enforced in the cluster.
 Kyverno [automatically generates](https://kyverno.io/docs/policy-types/cluster-policy/autogen/) rules for workload
 resources like DaemonSets, with the prefix `autogen-`; the exception needs to list both rules, and match both the
 DaemonSet and its pods.
+The pod name pattern also matches the pod `<name-prefix>-opentelemetry-collector-agent-daemonset-filelog-offset-probe-*`
+of the server-side dry run with which the operator checks whether the cluster admits the `hostPath` volume for the
+[filelog offsets](advanced-configuration.md#filelog-offset-storage).
 
 ```yaml
 apiVersion: kyverno.io/v2
@@ -241,8 +273,9 @@ Add the `disallow-host-ports` policy (rules `host-ports-none` and `autogen-host-
 cluster enforces it and the host ports are not disabled.
 On OpenShift, the DaemonSet pods run with the SELinux type `spc_t` (see [OpenShift](#notes-on-openshift)), which the
 `disallow-selinux` policy rejects; add it to the exception as well (rules `selinux-type` and `autogen-selinux-type`).
-With a [filelog offset volume](advanced-configuration.md#providing-a-filelog-offset-volume), the init container that
-runs as root with the `CHOWN` capability additionally requires the policies `require-run-as-nonroot` (rules
+With a [filelog offset volume](advanced-configuration.md#filelog-offset-storage) (the default, if the cluster admits
+it), the init container that runs as root with the `CHOWN` capability additionally requires the policies
+`require-run-as-nonroot` (rules
 `run-as-non-root` and `autogen-run-as-non-root`), `require-run-as-non-root-user` (rules `run-as-non-root-user` and
 `autogen-run-as-non-root-user`) and `disallow-capabilities-strict` (rules `adding-capabilities-strict` and
 `autogen-adding-capabilities-strict`) in the exception.
@@ -273,6 +306,39 @@ Environment variable definitions in pod spec templates are the most likely sourc
 * `OTEL_INJECTOR_RESOURCE_ATTRIBUTES`
 
 This recommendation does not apply to workloads that are [excluded from workload instrumentation](auto-instrumentation.md#disabling-auto-instrumentation-for-specific-workloads) or workloads in namespaces without a [Dash0 monitoring resource](configuration.md#enable-dash0-monitoring-for-a-namespace) or a monitoring resource with instrumentation disabled.
+
+### Long Release Names
+
+By default, the operator uses the Helm release name as the name prefix for the resources it creates, for example
+`<release-name>-opentelemetry-collector-service`.
+GitOps tools often use long release names.
+ArgoCD uses the name of the ArgoCD application, and Flux uses `<targetNamespace>-<name>` if the HelmRelease sets a
+target namespace.
+Kubernetes limits service names to 63 characters, so the prefix must not be longer than
+* 24 characters if `operator.prometheusCrdSupportEnabled` is `true`,
+* 30 characters if `operator.signalControl.enabled` is `true`, and
+* 31 characters otherwise.
+
+Rendering the chart fails with an error message if the prefix is too long for the enabled features.
+The chart only checks the limit of 24 characters if it creates the operator configuration resource
+(`operator.dash0Export.enabled` is `true` or `operator.exports` is not empty).
+If the operator configuration resource is managed outside the chart, make sure the prefix is not longer than 24
+characters before enabling Prometheus CRD support.
+
+To use a shorter prefix, set it independently of the release name:
+
+```yaml
+operator:
+  managedResourceNamePrefix: dash0-operator
+```
+
+Alternatively, set a shorter release name explicitly (`spec.source.helm.releaseName` in an ArgoCD application,
+`spec.releaseName` in a Flux HelmRelease).
+
+Set `operator.managedResourceNamePrefix` when installing the operator and do not change it afterwards.
+The operator does not remove the resources it has created with the previous prefix, so the collectors with the old
+names would keep running next to the new ones.
+To change the prefix of an existing installation, uninstall and reinstall the operator.
 
 ## Notes on ArgoCD
 
@@ -413,9 +479,9 @@ When running a single-architecture `amd64` image (as opposed to a single-archite
 
 The reason for this is the interaction between Rosetta emulation and how the operator works:
 
-1. The Dash0 instrumentation image (which is added as an init container and contains the OpenTelemetry injector) is a multi-platform image, supporting both `amd64` and `arm64`.
+1. The Dash0 instrumentation image (which contains the OpenTelemetry injector and is added to the pod either as an image volume or as an init container) is a multi-platform image, supporting both `amd64` and `arm64`.
 2. When this image is pulled from an Apple Silicon machine, it automatically pulls the `arm64` variant.
-3. That is, the injector binary that is added via the init container is compiled for `arm64`.
+3. That is, the injector binary that is provided to the application container is compiled for `arm64`.
 4. Now, when the application from your `amd64` application image is started, the injector and the application will be incompatible, as they have been built for two different CPU architectures.
 
 Under normal circumstances, an `amd64` image would not work on an `arm64` Kubernetes node anyway, but in the case of Docker Desktop on MacOS, this combination is enabled due to Docker Desktop automatically running `amd64` images via Rosetta2 emulation.

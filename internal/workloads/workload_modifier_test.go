@@ -46,6 +46,8 @@ var (
 		false,
 		false,
 		false,
+		true,
+		true,
 	)
 
 	clusterInstrumentationConfigWithImageVolumes = util.NewClusterInstrumentationConfig(
@@ -58,6 +60,8 @@ var (
 		false,
 		false,
 		false,
+		true,
+		true,
 	)
 
 	clusterInstrumentationConfigWithServiceUrl = util.NewClusterInstrumentationConfig(
@@ -70,6 +74,8 @@ var (
 		false,
 		false,
 		false,
+		true,
+		true,
 	)
 )
 
@@ -89,6 +95,8 @@ func clusterInstrumentationConfigWithOptIns(
 		false,
 		enablePythonAutoInstrumentation,
 		enableRubyAutoInstrumentation,
+		true,
+		true,
 	)
 }
 
@@ -161,6 +169,8 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						false,
 						false,
 						false,
+						true,
+						true,
 					),
 					DefaultNamespaceInstrumentationConfig,
 					testActor,
@@ -202,6 +212,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							},
 							"OTEL_INJECTOR_CONFIG_FILE": {
 								Value: "/__otel_auto_instrumentation/injector/injector.conf",
+							},
+							"OTEL_JAVAAGENT_CONFIGURATION_FILE": {
+								Value: "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties",
 							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
 								Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -266,6 +279,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							},
 							"OTEL_INJECTOR_CONFIG_FILE": {
 								Value: "/__otel_auto_instrumentation/injector/injector.conf",
+							},
+							"OTEL_JAVAAGENT_CONFIGURATION_FILE": {
+								Value: "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties",
 							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
 								Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -347,6 +363,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							"OTEL_INJECTOR_CONFIG_FILE": {
 								Value: "/__otel_auto_instrumentation/injector/injector.conf",
 							},
+							"OTEL_JAVAAGENT_CONFIGURATION_FILE": {
+								Value: "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties",
+							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
 								Value: OTelCollectorNodeLocalBaseUrlTest,
 							},
@@ -386,6 +405,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							},
 							"OTEL_INJECTOR_CONFIG_FILE": {
 								Value: "/__otel_auto_instrumentation/injector/injector.conf",
+							},
+							"OTEL_JAVAAGENT_CONFIGURATION_FILE": {
+								Value: "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties",
 							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
 								Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -432,7 +454,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 
 		It("should instrument a basic ownerless pod", func() {
 			workload := BasicPod(TestNamespaceName, PodNamePrefix)
-			modificationResult := workloadModifierInitCnt.ModifyPod(workload)
+			modificationResult := workloadModifierInitCnt.ModifyPod(workload, nil)
 
 			Expect(modificationResult.HasBeenModified).To(BeTrue())
 			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
@@ -444,7 +466,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				APIVersion: "core.strimzi.io/v1beta2",
 				Kind:       "StrimziPodSet",
 			}}
-			modificationResult := workloadModifierInitCnt.ModifyPod(workload)
+			modificationResult := workloadModifierInitCnt.ModifyPod(workload, nil)
 
 			Expect(modificationResult.HasBeenModified).To(BeTrue())
 			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
@@ -456,12 +478,45 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				APIVersion: owner.APIVersion,
 				Kind:       owner.Kind,
 			}}
-			modificationResult := workloadModifierInitCnt.ModifyPod(workload)
+			modificationResult := workloadModifierInitCnt.ModifyPod(workload, nil)
 
 			Expect(modificationResult.HasBeenModified).To(BeFalse())
 			Expect(modificationResult.RenderReasonMessage(testActor)).To(Equal(
 				"The workload is part of a higher order workload that will be instrumented by the webhook, no modification by the actor is necessary."))
 			VerifyUnmodifiedPod(workload)
+		}, Entry("owned by a DaemonSet", util.K8sTypeMetaDaemonSet),
+			Entry("owned by a ReplicaSet", util.K8sTypeMetaReplicaSet),
+			Entry("owned by a StatefulSet", util.K8sTypeMetaStatefulSet),
+			Entry("owned by a CronJob", util.K8sTypeMetaCronJob),
+			Entry("owned by a Job", util.K8sTypeMetaJob),
+		)
+
+		DescribeTable("should instrument a basic pod owned by another higher level workload with instrumentWorkloads.mode=pods", func(owner metav1.TypeMeta) {
+			config := util.NewClusterInstrumentationConfig(
+				TestImages,
+				PossibleCollectorUrlsTest,
+				OTelCollectorNodeLocalBaseUrlTest,
+				util.ExtraConfigDefaults,
+				dash0v1alpha1.InstrumentationDeliveryInitContainer,
+				nil,
+				false,
+				false,
+				false,
+				true,
+				true,
+			)
+			namespaceConfig := DefaultNamespaceInstrumentationConfig
+			namespaceConfig.InstrumentPods = true
+			modifier := NewResourceModifier(config, namespaceConfig, testActor, logger)
+			workload := BasicPod(TestNamespaceName, PodNamePrefix)
+			workload.ObjectMeta.OwnerReferences = []metav1.OwnerReference{{
+				APIVersion: owner.APIVersion,
+				Kind:       owner.Kind,
+			}}
+			modificationResult := modifier.ModifyPod(workload, nil)
+
+			Expect(modificationResult.HasBeenModified).To(BeTrue())
+			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 		}, Entry("owned by a DaemonSet", util.K8sTypeMetaDaemonSet),
 			Entry("owned by a ReplicaSet", util.K8sTypeMetaReplicaSet),
 			Entry("owned by a StatefulSet", util.K8sTypeMetaStatefulSet),
@@ -629,10 +684,10 @@ var _ = Describe("Dash0 Workload Modification", func() {
 
 		It("ownerless pod instrumentation needs to be idempotent", func() {
 			workload := BasicPod(TestNamespaceName, PodNamePrefix)
-			modificationResult := workloadModifierInitCnt.ModifyPod(workload)
+			modificationResult := workloadModifierInitCnt.ModifyPod(workload, nil)
 			Expect(modificationResult.HasBeenModified).To(BeTrue())
 			instrumentedOnce := workload.DeepCopy()
-			modificationResult = workloadModifierInitCnt.ModifyPod(workload)
+			modificationResult = workloadModifierInitCnt.ModifyPod(workload, nil)
 			Expect(modificationResult.HasBeenModified).To(BeFalse())
 			Expect(modificationResult.RenderReasonMessage(testActor)).To(Equal(
 				"Dash0 instrumentation was already present on this workload, no modification by the actor is necessary."))
@@ -779,6 +834,31 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			VerifyUnmodifiedReplicaSet(workload)
 		})
 
+		It("should remove Dash0 from an instrumented pod", func() {
+			workload := InstrumentedPod(TestNamespaceName, PodNamePrefix)
+			modificationResult := workloadModifierInitCnt.RevertPod(workload)
+
+			Expect(modificationResult.HasBeenModified).To(BeTrue())
+			VerifyUnmodifiedPod(workload)
+		})
+
+		It("should only remove the labels from a pod for which an instrumentation attempt has failed", func() {
+			workload := BasicPod(TestNamespaceName, PodNamePrefix)
+			AddLabel(&workload.ObjectMeta, util.InstrumentedLabelKey, "false")
+			modificationResult := workloadModifierInitCnt.RevertPod(workload)
+
+			Expect(modificationResult.HasBeenModified).To(BeTrue())
+			VerifyUnmodifiedPod(workload)
+		})
+
+		It("should not modify a pod that is not instrumented", func() {
+			workload := BasicPod(TestNamespaceName, PodNamePrefix)
+			modificationResult := workloadModifierInitCnt.RevertPod(workload)
+
+			Expect(modificationResult.HasBeenModified).To(BeFalse())
+			VerifyUnmodifiedPod(workload)
+		})
+
 		It("should remove Dash0 from a replica set owned by an unrecognized type", func() {
 			workload := InstrumentedReplicaSet(TestNamespaceName, ReplicaSetNamePrefix)
 			workload.ObjectMeta.OwnerReferences = []metav1.OwnerReference{{
@@ -910,6 +990,8 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				false,
 				false,
 				false,
+				true,
+				true,
 			)
 			osConfig.IsOpenShift = true
 			modifier := NewResourceModifier(osConfig, DefaultNamespaceInstrumentationConfig, testActor, logger)
@@ -939,6 +1021,8 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				false,
 				false,
 				false,
+				true,
+				true,
 			)
 			modifier := NewResourceModifier(config, DefaultNamespaceInstrumentationConfig, testActor, logger)
 
@@ -3028,6 +3112,141 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					util.OtelPropagatorsEnvVarName: nil,
+				},
+			}),
+		)
+
+		type otelJavaagentConfigurationFileTest struct {
+			existingEnvVars                []corev1.EnvVar
+			namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig
+			expectedEnvVars                map[string]*EnvVarExpectation
+		}
+
+		const javaagentDefaultsFile = "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties"
+
+		DescribeTable("should point the OpenTelemetry Java agent at the defaults file",
+			func(testConfig otelJavaagentConfigurationFileTest) {
+				container := &corev1.Container{}
+				if testConfig.existingEnvVars != nil {
+					container.Env = testConfig.existingEnvVars
+				}
+
+				NewResourceModifier(
+					clusterInstrumentationConfigWithInitContainer,
+					testConfig.namespaceInstrumentationConfig,
+					testActor,
+					logger,
+				).addEnvironmentVariables(
+					container,
+					&metav1.ObjectMeta{},
+					&metav1.ObjectMeta{},
+				)
+
+				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, container.Env)
+			},
+			Entry("should set OTEL_JAVAAGENT_CONFIGURATION_FILE and no OTEL_PROPAGATORS when nothing is configured", otelJavaagentConfigurationFileTest{
+				namespaceInstrumentationConfig: DefaultNamespaceInstrumentationConfig,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelJavaagentConfigurationFileName: {Value: javaagentDefaultsFile},
+					util.OtelPropagatorsEnvVarName:           nil,
+				},
+			}),
+			Entry("should set OTEL_PROPAGATORS from traceContext.propagators, which overrides the defaults file", otelJavaagentConfigurationFileTest{
+				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
+					TraceContextPropagators: new("tracecontext,baggage"),
+				},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelJavaagentConfigurationFileName: {Value: javaagentDefaultsFile},
+					util.OtelPropagatorsEnvVarName:           {Value: "tracecontext,baggage"},
+				},
+			}),
+			Entry("should keep a user-set OTEL_PROPAGATORS, which overrides traceContext.propagators and the defaults file", otelJavaagentConfigurationFileTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  util.OtelPropagatorsEnvVarName,
+					Value: "b3multi",
+				}},
+				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
+					TraceContextPropagators: new("tracecontext,baggage"),
+				},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelJavaagentConfigurationFileName: {Value: javaagentDefaultsFile},
+					util.OtelPropagatorsEnvVarName:           {Value: "b3multi"},
+				},
+			}),
+			Entry("should keep a user-set OTEL_JAVAAGENT_CONFIGURATION_FILE", otelJavaagentConfigurationFileTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelJavaagentConfigurationFileName,
+					Value: "/app/otel.properties",
+				}},
+				namespaceInstrumentationConfig: DefaultNamespaceInstrumentationConfig,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelJavaagentConfigurationFileName: {Value: "/app/otel.properties"},
+				},
+			}),
+			Entry("should keep a user-set OTEL_JAVAAGENT_CONFIGURATION_FILE that uses ValueFrom", otelJavaagentConfigurationFileTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name: envVarOtelJavaagentConfigurationFileName,
+					ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{FieldPath: "field.path"},
+					},
+				}},
+				namespaceInstrumentationConfig: DefaultNamespaceInstrumentationConfig,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelJavaagentConfigurationFileName: {ValueFrom: "field.path"},
+				},
+			}),
+			Entry("should replace an empty OTEL_JAVAAGENT_CONFIGURATION_FILE", otelJavaagentConfigurationFileTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelJavaagentConfigurationFileName,
+					Value: " ",
+				}},
+				namespaceInstrumentationConfig: DefaultNamespaceInstrumentationConfig,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelJavaagentConfigurationFileName: {Value: javaagentDefaultsFile},
+				},
+			}),
+		)
+
+		DescribeTable("should remove OTEL_JAVAAGENT_CONFIGURATION_FILE when uninstrumenting workloads only when we set it",
+			func(testConfig otelJavaagentConfigurationFileTest) {
+				container := &corev1.Container{Env: testConfig.existingEnvVars}
+
+				NewResourceModifier(
+					clusterInstrumentationConfigWithInitContainer,
+					testConfig.namespaceInstrumentationConfig,
+					testActor,
+					logger,
+				).removeEnvironmentVariables(container)
+
+				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, container.Env)
+			},
+			Entry("should remove the value set by the operator", otelJavaagentConfigurationFileTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelJavaagentConfigurationFileName,
+					Value: javaagentDefaultsFile,
+				}},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelJavaagentConfigurationFileName: nil,
+				},
+			}),
+			Entry("should keep a user-set value", otelJavaagentConfigurationFileTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelJavaagentConfigurationFileName,
+					Value: "/app/otel.properties",
+				}},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelJavaagentConfigurationFileName: {Value: "/app/otel.properties"},
+				},
+			}),
+			Entry("should keep a user-set value that uses ValueFrom", otelJavaagentConfigurationFileTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name: envVarOtelJavaagentConfigurationFileName,
+					ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{FieldPath: "field.path"},
+					},
+				}},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelJavaagentConfigurationFileName: {ValueFrom: "field.path"},
 				},
 			}),
 		)

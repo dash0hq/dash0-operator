@@ -85,8 +85,7 @@ type environmentVariables struct {
 	iacPeriodicRetryEnabled                     bool
 	iacPeriodicRetryInterval                    time.Duration
 	autoPatchPersesDashboardConversionWebhook   bool
-	oTelCollectorNamePrefix                     string
-	targetAllocatorNamePrefix                   string
+	managedResourceNamePrefix                   string
 	operatorImage                               string
 	instrumentationImage                        string
 	instrumentationImagePullPolicy              corev1.PullPolicy
@@ -128,7 +127,9 @@ type environmentVariables struct {
 	podIp                                       string
 	sendBatchSize                               *uint32
 	sendBatchMaxSize                            *uint32
+	sendingQueueSizeMiB                         *uint32
 	k8sAttributesDisableReplicasetInformer      bool
+	k8sAttributesDisableJobInformer             bool
 	k8sAttributesWaitForMetadata                bool
 	k8sAttributesWaitForMetadataTimeout         string
 	k8sAttributesShareProcessor                 bool
@@ -170,11 +171,13 @@ type commandLineArguments struct {
 	operatorConfigurationPrometheusCrdSupportEnabled                      bool
 	operatorConfigurationProfilingEnabled                                 bool
 	operatorConfigurationEbpfProfilerEnabled                              bool
+	operatorConfigurationEbpfProfilerPIDNamespaceTranslationMode          string
 	operatorConfigurationClusterName                                      string
 	operatorConfigurationAutoMonitorNamespacesEnabled                     bool
 	operatorConfigurationAutoMonitorNamespacesLabelSelector               string
 	operatorConfigurationInstrumentationDelivery                          dash0v1alpha1.InstrumentationDelivery
 	telemetryCollectionEnabled                                            bool
+	instrumentationEnabled                                                bool
 	featureSignalControlEnabled                                           bool
 	signalControlSceOnlyMode                                              bool
 	forceUseOpenTelemetryCollectorServiceUrl                              bool
@@ -184,6 +187,7 @@ type commandLineArguments struct {
 	otlpGrpcHostPort                                                      int
 	otlpHttpHostPort                                                      int
 	otelCollectorDaemonSetServiceAccountName                              string
+	ebpfProfilerServiceAccountName                                        string
 	instrumentationDelays                                                 *util.DelayConfig
 	metricsAddr                                                           string
 	enableLeaderElection                                                  bool
@@ -212,6 +216,8 @@ func (l pprofLogger) Error(msg string, args ...any) {
 }
 
 const (
+	operatorConfigurationProfilingEnabledFlagName = "operator-configuration-profiling-enabled"
+
 	operatorNamespaceEnvVarName                           = "DASH0_OPERATOR_NAMESPACE"
 	deploymentNameEnvVarName                              = "DASH0_DEPLOYMENT_NAME"
 	webhookServiceNameEnvVarName                          = "DASH0_WEBHOOK_SERVICE_NAME"
@@ -222,8 +228,7 @@ const (
 	persesDashboardAutoPatchConversionWebhookEnvVarName   = "DASH0_PERSES_DASHBOARD_AUTO_PATCH_CONVERSION_WEBHOOK"
 	periodicRetryEnabledEnvVarName                        = "DASH0_IAC_PERIODIC_RETRY_ENABLED"
 	periodicRetryIntervalEnvVarName                       = "DASH0_IAC_PERIODIC_RETRY_INTERVAL"
-	oTelCollectorNamePrefixEnvVarName                     = "OTEL_COLLECTOR_NAME_PREFIX"
-	targetAllocatorNamePrefixEnvVarName                   = "OTEL_TARGET_ALLOCATOR_NAME_PREFIX"
+	managedResourceNamePrefixEnvVarName                   = "DASH0_MANAGED_RESOURCE_NAME_PREFIX"
 	operatorImageEnvVarName                               = "DASH0_OPERATOR_IMAGE"
 	instrumentationImageEnvVarName                        = "DASH0_INSTRUMENTATION_IMAGE"
 	instrumentationImagePullPolicyEnvVarName              = "DASH0_INSTRUMENTATION_IMAGE_PULL_POLICY"
@@ -272,7 +277,9 @@ const (
 	debugVerbosityDetailedEnvVarName                 = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
 	sendBatchSizeEnvVarName                          = "OTEL_COLLECTOR_SEND_BATCH_SIZE"
 	sendBatchMaxSizeEnvVarName                       = "OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
+	sendingQueueSizeMiBEnvVarName                    = "OTEL_COLLECTOR_SENDING_QUEUE_SIZE_MIB"
 	k8sAttributesDisableReplicasetInformerEnvVarName = "OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER"
+	k8sAttributesDisableJobInformerEnvVarName        = "OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_JOB_INFORMER"
 	k8sAttributesWaitForMetadataEnvVarName           = "OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA"
 	k8sAttributesWaitForMetadataTimeoutEnvVarName    = "OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA_TIMEOUT"
 	k8sAttributesShareProcessorEnvVarName            = "OTEL_COLLECTOR_K8SATTRIBUTES_SHARE_PROCESSOR_BETWEEN_PIPELINES"
@@ -433,16 +440,23 @@ func Start() {
 			c.GetCertificate = webhookCertificatesStore.GetCertificate
 		})
 	}
-	webhookServer := k8swebhook.NewServer(
-		k8swebhook.Options{
-			TLSOpts: webhookServerTlsOpts,
-		},
+	webhookServer := newDrainingWebhookServer(
+		k8swebhook.NewServer(
+			k8swebhook.Options{
+				TLSOpts: webhookServerTlsOpts,
+			},
+		),
 	)
 	if err = validateOtlpHostPorts(cliArgs.otlpGrpcHostPort, cliArgs.otlpHttpHostPort); err != nil {
 		setupLog.Error(err, "invalid OTLP collector host port configuration")
 		os.Exit(1)
 	}
 	cliArgs.isOpenShift = resolveOpenShiftMode(flag.CommandLine, cliArgs.isOpenShift, setupLog)
+	cliArgs.operatorConfigurationProfilingEnabled = resolveOperatorConfigurationProfilingEnabled(
+		flag.CommandLine,
+		cliArgs.operatorConfigurationProfilingEnabled,
+		cliArgs.operatorConfigurationEbpfProfilerEnabled,
+	)
 	extraConfigDefaults = util.ExtraConfigDefaultsFor(cliArgs.isGkeAutopilot, cliArgs.isOpenShift)
 	if err = readExtraConfigMap(extraConfigDefaults); err != nil {
 		setupLog.Error(err, "cannot read extra config map file at startup")
@@ -472,8 +486,9 @@ func Start() {
 		os.Exit(1)
 	}
 
-	// The signal handler can only be set up once; the webhook certificates controller and the manager share it.
-	signalHandlerCtx := ctrl.SetupSignalHandler()
+	// The signal handler can only be set up once; the webhook certificates controller and the manager share it. Both
+	// keep running for shutdownDelay after the signal, so the webhook server keeps serving with up-to-date certificates.
+	signalHandlerCtx := delayCancellation(ctrl.SetupSignalHandler(), shutdownDelay, webhookServer.startDraining, setupLog)
 	if webhookCertificatesStore != nil {
 		startWebhookCertificatesManagement(ctx, signalHandlerCtx, webhookCertificatesStore)
 	}
@@ -499,6 +514,7 @@ func Start() {
 			PrometheusCrdSupportEnabled:                      cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
 			ProfilingEnabled:                                 cliArgs.operatorConfigurationProfilingEnabled,
 			EbpfProfilerEnabled:                              cliArgs.operatorConfigurationEbpfProfilerEnabled,
+			EbpfProfilerPIDNamespaceTranslationMode:          cliArgs.operatorConfigurationEbpfProfilerPIDNamespaceTranslationMode,
 			TelemetryCollectionEnabled:                       cliArgs.telemetryCollectionEnabled,
 			ClusterName:                                      cliArgs.operatorConfigurationClusterName,
 			AutoMonitorNamespacesEnabled:                     cliArgs.operatorConfigurationAutoMonitorNamespacesEnabled,
@@ -703,10 +719,11 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 	)
 	fs.BoolVar(
 		&cliArgs.operatorConfigurationProfilingEnabled,
-		"operator-configuration-profiling-enabled",
+		operatorConfigurationProfilingEnabledFlagName,
 		false,
-		"The value for profiling.enabled on the operator configuration resource; "+
-			"will be ignored if operator-configuration-endpoint is not set.",
+		"The value for profiling.enabled on the operator configuration resource; if not set, it follows "+
+			"operator-configuration-ebpf-profiler-enabled; will be ignored if operator-configuration-endpoint is not "+
+			"set.",
 	)
 	fs.BoolVar(
 		&cliArgs.operatorConfigurationEbpfProfilerEnabled,
@@ -714,11 +731,26 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 		false,
 		"The value for profiling.ebpfProfiler.enabled on the operator configuration resource.",
 	)
+	fs.StringVar(
+		&cliArgs.operatorConfigurationEbpfProfilerPIDNamespaceTranslationMode,
+		"operator-configuration-ebpf-profiler-pid-namespace-translation-mode",
+		"",
+		"The value for profiling.ebpfProfiler.pidNamespaceTranslationMode on the operator configuration resource; "+
+			"will be ignored if operator-configuration-ebpf-profiler-enabled is not set.",
+	)
 	fs.BoolVar(
 		&cliArgs.telemetryCollectionEnabled,
 		"dash0-telemetry-collection-enabled",
 		true,
 		"The value for telemetryCollection.enabled on the operator configuration resource.",
+	)
+	fs.BoolVar(
+		&cliArgs.instrumentationEnabled,
+		"dash0-instrumentation-enabled",
+		true,
+		"Whether workloads are instrumented. If false, the operator does not instrument workloads and rejects "+
+			"Dash0 monitoring resources and monitoring templates with instrumentWorkloads.mode other than none. "+
+			"Setting --dash0-telemetry-collection-enabled=false implies --dash0-instrumentation-enabled=false.",
 	)
 	fs.StringVar(
 		&cliArgs.logLevel,
@@ -812,6 +844,13 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 		"The name of an existing service account in the operator namespace for the OpenTelemetry collector DaemonSet. "+
 			"The operator neither creates nor deletes it. When not set, the operator manages the service account itself.",
 	)
+	fs.StringVar(
+		&cliArgs.ebpfProfilerServiceAccountName,
+		"dash0-ebpf-profiler-service-account-name",
+		"",
+		"The name of an existing service account in the operator namespace for the eBPF profiler DaemonSet. The "+
+			"operator neither creates nor deletes it. When not set, the operator manages the service account itself.",
+	)
 	cliArgs.instrumentationDelays = &util.DelayConfig{}
 	fs.Uint64Var(
 		&cliArgs.instrumentationDelays.AfterEachWorkloadMillis,
@@ -892,12 +931,22 @@ func parseCommandLineOptions(cliArgs *commandLineArguments, developmentMode bool
 		opts.Level = &lvl
 	}
 
+	deriveImpliedCommandLineArguments(cliArgs)
+	return opts, appliedEnvVars, nil
+}
+
+// deriveImpliedCommandLineArguments derives the values of command line arguments that are implied by other command line
+// arguments.
+func deriveImpliedCommandLineArguments(cliArgs *commandLineArguments) {
 	if cliArgs.disableOpenTelemetryCollectorHostPorts {
 		// disableOpenTelemetryCollectorHostPorts implies forceUseOpenTelemetryCollectorServiceUrl
 		cliArgs.forceUseOpenTelemetryCollectorServiceUrl = true
 	}
+
+	// Workload instrumentation is implicitly disabled when telemetry collection is disabled via Helm.
+	cliArgs.instrumentationEnabled = cliArgs.instrumentationEnabled && cliArgs.telemetryCollectionEnabled
+
 	cliArgs.signalControlSceOnlyMode = cliArgs.featureSignalControlEnabled && !cliArgs.telemetryCollectionEnabled
-	return opts, appliedEnvVars, nil
 }
 
 func setUpLogging(crZapOpts crzap.Opts) *zaputil.DelegatingZapCoreWrapper {
@@ -977,14 +1026,9 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	iacPeriodicRetryInterval :=
 		readOptionalDurationFromEnvironmentVariable(periodicRetryIntervalEnvVarName, defaultPeriodicRetryInterval)
 
-	oTelCollectorNamePrefix, isSet := os.LookupEnv(oTelCollectorNamePrefixEnvVarName)
+	managedResourceNamePrefix, isSet := os.LookupEnv(managedResourceNamePrefixEnvVarName)
 	if !isSet {
-		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, oTelCollectorNamePrefixEnvVarName)
-	}
-
-	targetAllocatorNamePrefix, isSet := os.LookupEnv(targetAllocatorNamePrefixEnvVarName)
-	if !isSet {
-		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, targetAllocatorNamePrefixEnvVarName)
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, managedResourceNamePrefixEnvVarName)
 	}
 
 	operatorImage, isSet := os.LookupEnv(operatorImageEnvVarName)
@@ -1078,8 +1122,10 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	}
 
 	instrumentationDebug := readBooleanEnvVar(instrumentationDebugEnvVarName)
-	enablePythonAutoInstrumentation := readBooleanEnvVar(enablePythonAutoInstrumentationEnvVarName)
-	enableRubyAutoInstrumentation := readBooleanEnvVar(enableRubyAutoInstrumentationEnvVarName)
+	enablePythonAutoInstrumentation :=
+		readOptionalBoolFromEnvironmentVariable(enablePythonAutoInstrumentationEnvVarName, true)
+	enableRubyAutoInstrumentation :=
+		readOptionalBoolFromEnvironmentVariable(enableRubyAutoInstrumentationEnvVarName, true)
 
 	debugVerbosityDetailed := readBooleanEnvVar(debugVerbosityDetailedEnvVarName)
 
@@ -1107,7 +1153,22 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		}
 	}
 
+	var sendingQueueSizeMiB *uint32
+	sendingQueueSizeMiBRaw, isSet := os.LookupEnv(sendingQueueSizeMiBEnvVarName)
+	if isSet {
+		converted, err := strconv.ParseUint(sendingQueueSizeMiBRaw, 10, 32)
+		if err != nil {
+			logger.ErrorAsWarn(
+				err,
+				fmt.Sprintf("Ignoring invalid value for %s: %s", sendingQueueSizeMiBEnvVarName, sendingQueueSizeMiBRaw),
+			)
+		} else {
+			sendingQueueSizeMiB = ptr.To(uint32(converted))
+		}
+	}
+
 	k8sAttributesDisableReplicasetInformer := readBooleanEnvVar(k8sAttributesDisableReplicasetInformerEnvVarName)
+	k8sAttributesDisableJobInformer := readBooleanEnvVar(k8sAttributesDisableJobInformerEnvVarName)
 
 	k8sAttributesWaitForMetadata := readBooleanEnvVar(k8sAttributesWaitForMetadataEnvVarName)
 	k8sAttributesWaitForMetadataTimeout, _ := os.LookupEnv(k8sAttributesWaitForMetadataTimeoutEnvVarName)
@@ -1131,8 +1192,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		iacPeriodicRetryEnabled:                     iacPeriodicRetryEnabled,
 		iacPeriodicRetryInterval:                    iacPeriodicRetryInterval,
 		autoPatchPersesDashboardConversionWebhook:   autoPatchPersesDashboardConversionWebhook,
-		oTelCollectorNamePrefix:                     oTelCollectorNamePrefix,
-		targetAllocatorNamePrefix:                   targetAllocatorNamePrefix,
+		managedResourceNamePrefix:                   managedResourceNamePrefix,
 		operatorImage:                               operatorImage,
 		instrumentationImage:                        instrumentationImage,
 		instrumentationImagePullPolicy:              instrumentationImagePullPolicy,
@@ -1174,7 +1234,9 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		podIp:                                       podIp,
 		sendBatchSize:                               sendBatchSize,
 		sendBatchMaxSize:                            sendBatchMaxSize,
+		sendingQueueSizeMiB:                         sendingQueueSizeMiB,
 		k8sAttributesDisableReplicasetInformer:      k8sAttributesDisableReplicasetInformer,
+		k8sAttributesDisableJobInformer:             k8sAttributesDisableJobInformer,
 		k8sAttributesWaitForMetadata:                k8sAttributesWaitForMetadata,
 		k8sAttributesWaitForMetadataTimeout:         k8sAttributesWaitForMetadataTimeout,
 		k8sAttributesShareProcessor:                 k8sAttributesShareProcessor,
@@ -1212,6 +1274,22 @@ func readKubeletStatsReceiverConfigFromEnv() (bool, *util.KubeletStatsReceiverCo
 		AuthType:           authType,
 		InsecureSkipVerify: insecureSkipVerify,
 	}
+}
+
+// resolveOperatorConfigurationProfilingEnabled returns the value of --operator-configuration-profiling-enabled if the
+// flag has been set explicitly, either as a command-line argument or via its environment variable. Otherwise, profiling
+// is enabled together with the eBPF profiler (--operator-configuration-ebpf-profiler-enabled).
+func resolveOperatorConfigurationProfilingEnabled(fs *flag.FlagSet, flagValue bool, ebpfProfilerEnabled bool) bool {
+	explicit := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == operatorConfigurationProfilingEnabledFlagName {
+			explicit = true
+		}
+	})
+	if explicit {
+		return flagValue
+	}
+	return ebpfProfilerEnabled
 }
 
 // readExtraConfigMap reads the config map content, which is basically a container for structured configuration data
@@ -1352,6 +1430,28 @@ func setupTeamReconciler(
 	return teamReconciler, nil
 }
 
+// setupGenerativeAiEvaluationReconciler constructs and wires the generative AI evaluation reconciler with the manager
+// and the leader-election-aware runnable. Companion to setupSpamFilterReconciler; see its godoc for the rationale.
+func setupGenerativeAiEvaluationReconciler(
+	mgr manager.Manager,
+	k8sClient client.Client,
+	clusterUid types.UID,
+	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
+	apiClientPool *controller.ApiClientPool,
+) (*controller.GenerativeAiEvaluationReconciler, error) {
+	generativeAiEvaluationReconciler := controller.NewGenerativeAiEvaluationReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		apiClientPool,
+	)
+	if err := generativeAiEvaluationReconciler.SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("unable to set up the generative AI evaluation reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(generativeAiEvaluationReconciler)
+	return generativeAiEvaluationReconciler, nil
+}
+
 // setupTimeSeriesAggregationReconciler constructs and wires the time-series-aggregation reconciler with the manager and
 // the leader-election-aware runnable. Companion to setupSpamFilterReconciler; see its godoc for the rationale.
 func setupTimeSeriesAggregationReconciler(
@@ -1386,10 +1486,12 @@ func allOwnedIacResourceSynchronizationControllers(
 	syntheticCheckReconciler *controller.SyntheticCheckReconciler,
 	teamReconciler *controller.TeamReconciler,
 	timeSeriesAggregationReconciler *controller.TimeSeriesAggregationReconciler,
+	generativeAiEvaluationReconciler *controller.GenerativeAiEvaluationReconciler,
 	viewReconciler *controller.ViewReconciler,
 	samplingRuleReconciler *controller.SamplingRuleReconciler,
 ) []controller.OwnedIacResourceSynchronizationController {
 	controllers := []controller.OwnedIacResourceSynchronizationController{
+		generativeAiEvaluationReconciler,
 		notificationChannelReconciler,
 		signalToMetricsReconciler,
 		sloReconciler,
@@ -1573,6 +1675,30 @@ func detectDocker(
 	}
 }
 
+/*
+newManagerCacheOptions returns the cache options of the operator manager.
+
+The operator manager only reads secrets in the operator namespace and does not always hold cluster-wide permissions for
+secrets. Without restricting the secret cache to the operator namespace, the first Get for a secret would make
+controller-runtime list/watch secrets in the entire cluster to build its cache, which fails without cluster-wide
+permissions.
+
+The managed fields of all cached objects are stripped, since the operator never reads them from the cache, and they make
+up a large part of the memory of objects like config maps or the replica sets watched for pod-level instrumentation.
+*/
+func newManagerCacheOptions(operatorNamespace string) cache.Options {
+	return cache.Options{
+		ByObject: map[client.Object]cache.ByObject{
+			&corev1.Secret{}: {
+				Namespaces: map[string]cache.Config{
+					operatorNamespace: {},
+				},
+			},
+		},
+		DefaultTransform: cache.TransformStripManagedFields(),
+	}
+}
+
 func startOperatorManager(
 	ctx context.Context,
 	signalHandlerCtx context.Context,
@@ -1604,18 +1730,7 @@ func startOperatorManager(
 		// terminating (self monitoring OTel SDK shutdown etc.).
 		LeaderElectionReleaseOnCancel: false,
 
-		// The operator manager only reads secrets in the operator namespace and does not always hold cluster-wide
-		// permissions for secrets. Without this, the first Get for a secret would make controller-runtime list/watch
-		// secrets in the entire cluster to build its cache, which fails without cluster-wide permissions.
-		Cache: cache.Options{
-			ByObject: map[client.Object]cache.ByObject{
-				&corev1.Secret{}: {
-					Namespaces: map[string]cache.Config{
-						envVars.operatorNamespace: {},
-					},
-				},
-			},
-		},
+		Cache: newManagerCacheOptions(envVars.operatorNamespace),
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), options)
@@ -1686,8 +1801,8 @@ func startOperatorManager(
 		envVars.operatorNamespace,
 		"operator manager deployment name",
 		envVars.deploymentName,
-		"otel collector name prefix",
-		envVars.oTelCollectorNamePrefix,
+		"managed resource name prefix",
+		envVars.managedResourceNamePrefix,
 
 		"operator configuration endpoint",
 		cliArgs.operatorConfigurationEndpoint,
@@ -1728,6 +1843,8 @@ func startOperatorManager(
 
 		"telemetry collection enabled",
 		cliArgs.telemetryCollectionEnabled,
+		"instrumentation enabled",
+		cliArgs.instrumentationEnabled,
 		"feature Signal Control enabled",
 		cliArgs.featureSignalControlEnabled,
 		"Signal Control SCE-only mode",
@@ -1738,6 +1855,8 @@ func startOperatorManager(
 		cliArgs.disableOpenTelemetryCollectorHostPorts,
 		"OpenTelemetry collector DaemonSet service account name",
 		cliArgs.otelCollectorDaemonSetServiceAccountName,
+		"eBPF profiler service account name",
+		cliArgs.ebpfProfilerServiceAccountName,
 		"is GKE Autopilot",
 		cliArgs.isGkeAutopilot,
 		"is OpenShift",
@@ -1888,7 +2007,7 @@ func startDash0Controllers(
 
 	isIPv6Cluster := util.IsIPv6Address(envVars.podIp)
 	possibleCollectorUrls := collectors.RenderCollectorBaseUrls(
-		envVars.oTelCollectorNamePrefix,
+		envVars.managedResourceNamePrefix,
 		envVars.operatorNamespace,
 		int32(cliArgs.otlpHttpHostPort),
 	)
@@ -1903,12 +2022,13 @@ func startDash0Controllers(
 		return err
 	}
 
-	operatorConfigurationResource := createOrUpdateAutoOperatorConfigurationResource(
-		ctx,
-		readyCheckExecuter,
-		operatorConfigurationValues,
-		setupLog,
-	)
+	operatorConfigurationResource, autoOperatorConfigurationResourceHandler :=
+		createOrUpdateAutoOperatorConfigurationResource(
+			ctx,
+			readyCheckExecuter,
+			operatorConfigurationValues,
+			setupLog,
+		)
 
 	k8sClient := mgr.GetClient()
 
@@ -1926,9 +2046,11 @@ func startDash0Controllers(
 		envVars.instrumentationDebug,
 		envVars.enablePythonAutoInstrumentation,
 		envVars.enableRubyAutoInstrumentation,
+		cliArgs.telemetryCollectionEnabled,
+		cliArgs.instrumentationEnabled,
 	)
 	clusterInstrumentationConfig.IsOpenShift = cliArgs.isOpenShift
-	if err = watchInstrumentationInitContainerResources(
+	if err = watchOperatorConfigurationInstrumentationSettings(
 		ctx, mgr, clusterInstrumentationConfig, extraConfigDefaults,
 	); err != nil {
 		return err
@@ -1957,22 +2079,38 @@ func startDash0Controllers(
 				return fmt.Errorf("unable to add the task for checking for instrumented pods: %w", err)
 			}
 		} else {
-			if instrumenter, err = setupInstrumenters(mgr, k8sClient, clientset, clusterInstrumentationConfig); err != nil {
+			if instrumenter, err = setupInstrumenters(
+				mgr,
+				k8sClient,
+				clientset,
+				clusterInstrumentationConfig,
+				newWaitForHelmManagedInstrumentationSettings(
+					autoOperatorConfigurationResourceHandler,
+					startupTasksK8sClient,
+					clusterInstrumentationConfig,
+					extraConfigDefaults,
+				),
+			); err != nil {
 				return err
 			}
 		}
 
+		var nodeSELinuxIndication cluster.NodeSELinuxIndication
+		if !cliArgs.signalControlSceOnlyMode {
+			nodeSELinuxIndication = cluster.DetectNodeSELinuxIndication(ctx, clientset, setupLog)
+		}
 		collectorConfig := util.CollectorConfig{
 			Images:                                 images,
 			OperatorNamespace:                      envVars.operatorNamespace,
-			OTelCollectorNamePrefix:                envVars.oTelCollectorNamePrefix,
-			TargetAllocatorNamePrefix:              envVars.targetAllocatorNamePrefix,
+			NamePrefix:                             envVars.managedResourceNamePrefix,
 			Agent0ConnectorEnabledViaHelm:          envVars.agent0ConnectorEnabled,
 			SyntheticsWorkerEnabledViaHelm:         envVars.syntheticsWorkerEnabled,
 			EbpfProfilerEnabledViaHelm:             envVars.ebpfProfilerEnabled,
 			SendBatchSize:                          envVars.sendBatchSize,
 			SendBatchMaxSize:                       envVars.sendBatchMaxSize,
+			SendingQueueSizeMiB:                    envVars.sendingQueueSizeMiB,
 			K8sAttributesDisableReplicasetInformer: envVars.k8sAttributesDisableReplicasetInformer,
+			K8sAttributesDisableJobInformer:        envVars.k8sAttributesDisableJobInformer,
 			K8sAttributesWaitForMetadata:           envVars.k8sAttributesWaitForMetadata,
 			K8sAttributesWaitForMetadataTimeout:    envVars.k8sAttributesWaitForMetadataTimeout,
 			K8sAttributesShareProcessor:            envVars.k8sAttributesShareProcessor,
@@ -1990,6 +2128,7 @@ func startDash0Controllers(
 			DaemonSetServiceAccountName:            cliArgs.otelCollectorDaemonSetServiceAccountName,
 			IsGkeAutopilot:                         cliArgs.isGkeAutopilot,
 			IsOpenShift:                            cliArgs.isOpenShift,
+			NodeSELinuxIndication:                  nodeSELinuxIndication,
 			DevelopmentMode:                        developmentMode,
 			DebugVerbosityDetailed:                 envVars.debugVerbosityDetailed,
 			EnableProfExtension:                    envVars.enablePprofExtension,
@@ -2073,14 +2212,18 @@ func startDash0Controllers(
 	profilerResourceManager := prresources.NewResourceManager(
 		k8sClient, mgr.GetScheme(), operatorDeploymentSelfReference,
 		prresources.Config{
-			Namespace: envVars.operatorNamespace, NamePrefix: envVars.oTelCollectorNamePrefix,
+			Namespace: envVars.operatorNamespace, NamePrefix: envVars.managedResourceNamePrefix,
 			Enabled: envVars.ebpfProfilerEnabled, TelemetryCollectionEnabled: cliArgs.telemetryCollectionEnabled,
 			ProfilerImage: envVars.ebpfProfilerImage, ProfilerImagePullPolicy: envVars.ebpfProfilerImagePullPolicy,
 			ProxyImage: envVars.debuginfoProxyImage, ProxyImagePullPolicy: envVars.debuginfoProxyImagePullPolicy,
-			IsGkeAutopilot: cliArgs.isGkeAutopilot, IsOpenShift: cliArgs.isOpenShift,
+			ServiceAccountName: cliArgs.ebpfProfilerServiceAccountName, IsGkeAutopilot: cliArgs.isGkeAutopilot,
+			IsOpenShift: cliArgs.isOpenShift,
 		},
 	)
-	profilerManager := profiling.NewManager(profilerResourceManager)
+	profilerManager := profiling.NewManager(profilerResourceManager, extraConfig, extraConfigDefaults)
+	// Update the extra config in the profiling manager when the extra config map changes, and also trigger a
+	// reconciliation of the profiler and debuginfo proxy resources.
+	extraConfigMapWatcher.AddClient(profilerManager)
 	profilerReconciler := profiling.NewReconciler(k8sClient, profilerManager)
 	if err := profilerReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the eBPF profiler reconciler: %w", err)
@@ -2096,7 +2239,7 @@ func startDash0Controllers(
 			mgr.GetScheme(),
 			operatorDeploymentSelfReference,
 			envVars.operatorNamespace,
-			envVars.oTelCollectorNamePrefix,
+			envVars.managedResourceNamePrefix,
 			envVars.edgeProxyImage,
 			envVars.edgeProxyImagePullPolicy,
 			images.GetOperatorVersion(),
@@ -2210,6 +2353,17 @@ func startDash0Controllers(
 		return err
 	}
 
+	generativeAiEvaluationReconciler, err := setupGenerativeAiEvaluationReconciler(
+		mgr,
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		apiClientPool,
+	)
+	if err != nil {
+		return err
+	}
+
 	var samplingRuleReconciler *controller.SamplingRuleReconciler
 	if cliArgs.featureSignalControlEnabled {
 		samplingRuleReconciler = controller.NewSamplingRuleReconciler(
@@ -2297,6 +2451,7 @@ func startDash0Controllers(
 			syntheticCheckReconciler,
 			teamReconciler,
 			timeSeriesAggregationReconciler,
+			generativeAiEvaluationReconciler,
 			viewReconciler,
 			samplingRuleReconciler,
 		),
@@ -2316,6 +2471,7 @@ func startDash0Controllers(
 		spamFilterReconciler,
 		teamReconciler,
 		timeSeriesAggregationReconciler,
+		generativeAiEvaluationReconciler,
 		signalToMetricsReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
@@ -2332,7 +2488,6 @@ func startDash0Controllers(
 		agent0ConnectorManager,
 		syntheticsWorkerManager,
 		scManager,
-		clusterInstrumentationConfig,
 		clusterUid,
 		operatorDeploymentSelfReference.Namespace,
 		operatorDeploymentSelfReference.UID,
@@ -2359,6 +2514,7 @@ func startDash0Controllers(
 			spamFilterReconciler,
 			teamReconciler,
 			timeSeriesAggregationReconciler,
+			generativeAiEvaluationReconciler,
 			signalToMetricsReconciler,
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
@@ -2388,6 +2544,7 @@ func startDash0Controllers(
 			k8sClient,
 			envVars.operatorNamespace,
 			operatorDeploymentSelfReference.CreationTimestamp.Time,
+			cliArgs.instrumentationEnabled,
 		)
 		setupLog.Info("Starting the auto-namespace-monitoring reconciler.")
 		if err := autoNamespaceMonitoringReconciler.SetupWithManager(mgr); err != nil {
@@ -2395,19 +2552,13 @@ func startDash0Controllers(
 		}
 		setupLog.Info("The auto-namespace-monitoring reconciler has been started.")
 
-		instrumentationWebhookHandler := webhooks.NewInstrumentationWebhookHandler(
+		if err := setupInstrumentationWebhook(
+			mgr,
 			k8sClient,
-			mgr.GetAPIReader(),
-			mgr.GetEventRecorder("dash0-instrumentation-webhook"),
 			clusterInstrumentationConfig,
-		)
-		if err := instrumentationWebhookHandler.SetupWebhookWithManager(mgr); err != nil {
-			return fmt.Errorf("unable to create the instrumentation webhook: %w", err)
+		); err != nil {
+			return err
 		}
-		// For consistency, we update the extra config map in the instrumentation webhook handler as well.
-		// In case instrumentation-related settings have been changed (e.g., operator.initContainerResources), workloads
-		// that are created or updated afterwards will be instrumented with the updated settings.
-		extraConfigMapWatcher.AddClient(instrumentationWebhookHandler)
 	}
 
 	if err := setupResourceWebhooks(
@@ -2415,8 +2566,8 @@ func startDash0Controllers(
 		k8sClient,
 		envVars.operatorNamespace,
 		cliArgs.telemetryCollectionEnabled,
+		cliArgs.instrumentationEnabled,
 		cliArgs.featureSignalControlEnabled,
-		cliArgs.signalControlSceOnlyMode,
 		envVars.agent0ConnectorEnabled,
 		envVars.syntheticsWorkerEnabled,
 		envVars.ebpfProfilerEnabled,
@@ -2437,9 +2588,11 @@ func startDash0Controllers(
 		viewReconciler,
 		spamFilterReconciler,
 		timeSeriesAggregationReconciler,
+		generativeAiEvaluationReconciler,
 		signalToMetricsReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
+		&controller.ApiSyncMetrics{},
 	}
 	if autoNamespaceMonitoringReconciler != nil {
 		selfMonitoringClients = append(selfMonitoringClients, autoNamespaceMonitoringReconciler)
@@ -2475,6 +2628,10 @@ func registerHealthAndReadyChecks(ctx context.Context, mgr manager.Manager) (*Re
 	readyCheckExecuter.start(ctx, setupLog)
 	if err := mgr.AddReadyzCheck("readyz", readyCheckExecuter.isReady); err != nil {
 		return readyCheckExecuter, fmt.Errorf("unable to set up the operator manager ready check: %w", err)
+	}
+	// The webhook service endpoint check above is also satisfied by the endpoint of another replica.
+	if err := mgr.AddReadyzCheck("webhook-server", mgr.GetWebhookServer().StartedChecker()); err != nil {
+		return readyCheckExecuter, fmt.Errorf("unable to set up the webhook server ready check: %w", err)
 	}
 	if webhookCertificates != nil {
 		if err := mgr.AddReadyzCheck("webhook-certificates", webhookCertificates.Store().ReadyCheck); err != nil {
@@ -2524,9 +2681,9 @@ func createOrUpdateAutoOperatorConfigurationResource(
 	readyCheckExecuter *ReadyCheckExecuter,
 	operatorConfigurationValues *OperatorConfigurationValues,
 	logger logd.Logger,
-) *dash0v1alpha1.Dash0OperatorConfiguration {
+) (*dash0v1alpha1.Dash0OperatorConfiguration, *AutoOperatorConfigurationResourceHandler) {
 	if operatorConfigurationValues == nil {
-		return nil
+		return nil, nil
 	}
 	autoOperatorConfigurationResourceHandler := NewAutoOperatorConfigurationResourceHandler(
 		startupTasksK8sClient,
@@ -2541,10 +2698,10 @@ func createOrUpdateAutoOperatorConfigurationResource(
 			logger,
 		); err != nil {
 		logger.Error(err, "Failed to create the requested Dash0 operator configuration resource.")
-		return nil
+		return nil, autoOperatorConfigurationResourceHandler
 	} else {
 		extraConfigMapWatcher.AddClient(autoOperatorConfigurationResourceHandler)
-		return operatorConfigurationResource
+		return operatorConfigurationResource, autoOperatorConfigurationResourceHandler
 	}
 }
 
@@ -2577,30 +2734,43 @@ func startMinimumKubeletVersionDetection(
 	)
 }
 
-// setupInstrumenters registers the instrument-at-startup task and creates the instrumenter used by the controllers and
-// webhooks.
+// setupInstrumentationWebhook registers the handler for the instrumentation webhook, unless workload instrumentation
+// is disabled. The Helm chart does not register the webhook configuration for the instrumentation webhook in that case.
+func setupInstrumentationWebhook(
+	mgr ctrl.Manager,
+	k8sClient client.Client,
+	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
+) error {
+	if !clusterInstrumentationConfig.InstrumentationEnabledViaHelm {
+		return nil
+	}
+	instrumentationWebhookHandler := webhooks.NewInstrumentationWebhookHandler(
+		k8sClient,
+		mgr.GetAPIReader(),
+		mgr.GetCache(),
+		mgr.GetEventRecorder("dash0-instrumentation-webhook"),
+		clusterInstrumentationConfig,
+	)
+	if err := instrumentationWebhookHandler.SetupWebhookWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to create the instrumentation webhook: %w", err)
+	}
+	// For consistency, we update the extra config map in the instrumentation webhook handler as well.
+	// In case instrumentation-related settings have been changed (e.g., operator.initContainerResources),
+	// workloads that are created or updated afterwards will be instrumented with the updated settings.
+	extraConfigMapWatcher.AddClient(instrumentationWebhookHandler)
+	return nil
+}
+
+// setupInstrumenters creates the instrumenter used by the controllers and webhooks, and registers the
+// instrument-at-startup task. If workload instrumentation is disabled, the instrument-at-startup task is not registered,
+// and the instrumenter only removes instrumentation from workloads.
 func setupInstrumenters(
 	mgr ctrl.Manager,
 	k8sClient client.Client,
 	clientset *kubernetes.Clientset,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
+	waitForOperatorConfigurationResource func(context.Context, logd.Logger),
 ) (*instrumentation.Instrumenter, error) {
-	startupInstrumenter := instrumentation.NewInstrumenter(
-		// The k8s client will be added later, in internal/startup/instrument_at_startup.go#Start.
-		nil,
-		mgr.GetAPIReader(),
-		clientset,
-		mgr.GetEventRecorder("dash0-startup-tasks"),
-		clusterInstrumentationConfig,
-	)
-	// For consistency, we update the extra config map in the startupInstrumenter handler as well if it changes. Since
-	// this instrumenter only runs once at startup, this has no effect whatsoever.
-	extraConfigMapWatcher.AddClient(startupInstrumenter)
-	// register the instrument-at-startup task to run once this operator manager becomes leader
-	if err := mgr.Add(NewInstrumentAtStartupRunnable(mgr, startupInstrumenter)); err != nil {
-		return nil, fmt.Errorf("unable to add instrument-at-startup task: %w", err)
-	}
-
 	instrumenter := instrumentation.NewInstrumenter(
 		k8sClient,
 		mgr.GetAPIReader(),
@@ -2614,6 +2784,30 @@ func setupInstrumenters(
 	// only runs once at pod startup of the workload, so changing resource settings for the init container afterwards
 	// is useless.
 	extraConfigMapWatcher.AddClient(instrumenter)
+
+	if !clusterInstrumentationConfig.InstrumentationEnabledViaHelm {
+		// The instrumenter is still needed to remove the instrumentation from workloads, when the instrumentWorkloads.mode
+		// of a monitoring resource is changed to none, or when a monitoring resource is deleted.
+		return instrumenter, nil
+	}
+
+	startupInstrumenter := instrumentation.NewInstrumenter(
+		// The k8s client will be added later, in internal/startup/instrument_at_startup.go#Start.
+		nil,
+		mgr.GetAPIReader(),
+		clientset,
+		mgr.GetEventRecorder("dash0-startup-tasks"),
+		clusterInstrumentationConfig,
+	)
+	// For consistency, we update the extra config map in the startupInstrumenter handler as well if it changes. Since
+	// this instrumenter only runs once at startup, this has no effect whatsoever.
+	extraConfigMapWatcher.AddClient(startupInstrumenter)
+	// register the instrument-at-startup task to run once this operator manager becomes leader
+	if err := mgr.Add(
+		NewInstrumentAtStartupRunnable(mgr, startupInstrumenter, waitForOperatorConfigurationResource),
+	); err != nil {
+		return nil, fmt.Errorf("unable to add instrument-at-startup task: %w", err)
+	}
 	return instrumenter, nil
 }
 
@@ -2627,12 +2821,12 @@ func setupTargetAllocatorManager(
 	developmentMode bool,
 ) (*targetallocator.TargetAllocatorManager, error) {
 	targetAllocatorConfig := util.TargetAllocatorConfig{
-		Images:                    images,
-		OperatorNamespace:         envVars.operatorNamespace,
-		TargetAllocatorNamePrefix: envVars.targetAllocatorNamePrefix,
-		CollectorComponent:        otelcolresources.CollectorDaemonSetServiceComponent(),
-		IsGkeAutopilot:            cliArgs.isGkeAutopilot,
-		IsOpenShift:               cliArgs.isOpenShift,
+		Images:             images,
+		OperatorNamespace:  envVars.operatorNamespace,
+		NamePrefix:         envVars.managedResourceNamePrefix,
+		CollectorComponent: otelcolresources.CollectorDaemonSetServiceComponent(),
+		IsGkeAutopilot:     cliArgs.isGkeAutopilot,
+		IsOpenShift:        cliArgs.isOpenShift,
 	}
 	targetallocatorResourceManager := taresources.NewTargetAllocatorResourceManager(
 		k8sClient,
@@ -2650,7 +2844,7 @@ func setupTargetAllocatorManager(
 		k8sClient,
 		targetallocatorManager,
 		envVars.operatorNamespace,
-		envVars.targetAllocatorNamePrefix,
+		envVars.managedResourceNamePrefix,
 	)
 	if err := targetAllocatorReconciler.SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("unable to set up the target-allocator reconciler: %w", err)
@@ -2677,7 +2871,7 @@ func setupCollectorReconciler(
 		k8sClient,
 		collectorManager,
 		envVars.operatorNamespace,
-		envVars.oTelCollectorNamePrefix,
+		envVars.managedResourceNamePrefix,
 	)
 	if err := collectorReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the collector reconciler: %w", err)
@@ -2704,7 +2898,7 @@ func setupAgent0ConnectorManager(
 	agent0ConnectorConfig := util.Agent0ConnectorConfig{
 		Images:            images,
 		OperatorNamespace: envVars.operatorNamespace,
-		NamePrefix:        envVars.oTelCollectorNamePrefix,
+		NamePrefix:        envVars.managedResourceNamePrefix,
 		PseudoClusterUid:  pseudoClusterUid,
 		ServerAddress:     envVars.agent0ConnectorServerAddress,
 		Insecure:          envVars.agent0ConnectorInsecure,
@@ -2732,7 +2926,7 @@ func setupAgent0ConnectorManager(
 		k8sClient,
 		agent0ConnectorManager,
 		envVars.operatorNamespace,
-		envVars.oTelCollectorNamePrefix,
+		envVars.managedResourceNamePrefix,
 	)
 	if err := agent0ConnectorReconciler.SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("unable to set up the agent0-connector reconciler: %w", err)
@@ -2758,7 +2952,7 @@ func setupSyntheticsWorkerManager(
 	syntheticsWorkerConfig := util.SyntheticsWorkerConfig{
 		Images:            images,
 		OperatorNamespace: envVars.operatorNamespace,
-		NamePrefix:        envVars.oTelCollectorNamePrefix,
+		NamePrefix:        envVars.managedResourceNamePrefix,
 		ServerAddress:     envVars.syntheticsWorkerServerAddress,
 		Insecure:          envVars.syntheticsWorkerInsecure,
 		PriorityClassName: envVars.syntheticsWorkerPriorityClassName,
@@ -2782,7 +2976,7 @@ func setupSyntheticsWorkerManager(
 		k8sClient,
 		syntheticsWorkerManager,
 		envVars.operatorNamespace,
-		envVars.oTelCollectorNamePrefix,
+		envVars.managedResourceNamePrefix,
 	)
 	if err := syntheticsWorkerReconciler.SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("unable to set up the synthetics-worker reconciler: %w", err)
@@ -2933,14 +3127,7 @@ func waitForWebhookEndpointReadiness(ctx context.Context, logger logd.Logger) er
 	}
 
 	readyCheckExecuter := NewReadyCheckExecuter(k8sClient, operatorNamespace, webhookServiceName)
-	webhookServiceIsAvailable, err := readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(ctx, logger)
-	if err != nil {
-		return err
-	}
-	if !webhookServiceIsAvailable {
-		return fmt.Errorf("the Dash0 operator webhook service endpoint did not become ready")
-	}
-	return nil
+	return readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(ctx, logger)
 }
 
 // waitForWebhookReachability waits until the rollout of the operator manager deployment is complete and the API server
@@ -2997,18 +3184,22 @@ func setupResourceWebhooks(
 	k8sClient client.Client,
 	operatorNamespace string,
 	telemetryCollectionEnabled bool,
+	instrumentationEnabled bool,
 	signalControlEnabled bool,
-	signalControlSceOnlyMode bool,
 	agent0ConnectorEnabled bool,
 	syntheticsWorkerEnabled bool,
 	ebpfProfilerEnabled bool,
 ) error {
-	if err := webhooks.NewOperatorConfigurationMutatingWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
+	if err := webhooks.NewOperatorConfigurationMutatingWebhookHandler(
+		k8sClient,
+		instrumentationEnabled,
+	).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration mutating webhook: %w", err)
 	}
 	operatorConfigurationValidationWebhookHandler := webhooks.NewOperatorConfigurationValidationWebhookHandler(
 		k8sClient,
 		telemetryCollectionEnabled,
+		instrumentationEnabled,
 		agent0ConnectorEnabled,
 		syntheticsWorkerEnabled,
 		extraConfig,
@@ -3033,11 +3224,17 @@ func setupResourceWebhooks(
 	if err := webhooks.NewMonitoringMutatingWebhookHandler(
 		k8sClient,
 		operatorNamespace,
-		signalControlSceOnlyMode,
+		telemetryCollectionEnabled,
+		instrumentationEnabled,
 	).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the monitoring mutating webhook: %w", err)
 	}
-	if err := webhooks.NewMonitoringValidationWebhookHandler(k8sClient, operatorNamespace).SetupWebhookWithManager(mgr); err != nil {
+	if err := webhooks.NewMonitoringValidationWebhookHandler(
+		k8sClient,
+		operatorNamespace,
+		telemetryCollectionEnabled,
+		instrumentationEnabled,
+	).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the monitoring validation webhook: %w", err)
 	}
 	if err := webhooks.SetupDash0MonitoringConversionWebhookWithManager(mgr); err != nil {

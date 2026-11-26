@@ -45,6 +45,11 @@ type OTelColResourceManager struct {
 	obsoleteResourcesHaveBeenDeleted atomic.Bool
 	kubeletStatsReceiverConfig       atomic.Pointer[util.KubeletStatsReceiverConfig]
 	leaderElectionAware              util.LeaderElectionAware
+	// filelogOffsetHostPathProbeResult caches the conclusive outcome of the hostPath admission probe for the lifetime
+	// of the process, see probeFilelogOffsetHostPath. Nil until the probe has had a conclusive outcome.
+	filelogOffsetHostPathProbeResult atomic.Pointer[hostPathProbeResult]
+	lastInconclusiveHostPathProbe    atomic.Pointer[string]
+	lastFilelogOffsetStorageDecision atomic.Pointer[string]
 
 	// reportMutex guards the reporter and reportsHaveBeenSkipped, and serializes the leader check of
 	// reportGoMemLimitInversions with ConsumeSkippedReports.
@@ -162,11 +167,16 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			operatorConfigurationResource.Spec.PrometheusCrdSupport.Enabled,
 			false,
 		)
+	ebpfProfilerEnabled := m.collectorConfig.EbpfProfilerEnabledViaHelm &&
+		operatorConfigurationResource.Spec.Profiling != nil &&
+		operatorConfigurationResource.Spec.Profiling.EbpfProfiler != nil &&
+		pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.Profiling.EbpfProfiler.Enabled, false)
+	// An unset profiling.enabled follows the eBPF profiler.
 	profilingEnabled :=
 		operatorConfigurationResource.Spec.Profiling != nil &&
 			pointers.ReadBoolPointerWithDefault(
 				operatorConfigurationResource.Spec.Profiling.Enabled,
-				false,
+				ebpfProfilerEnabled,
 			)
 	agent0ConnectorEnabled :=
 		operatorConfigurationResource.Spec.Agent0Connector.IsEnabled(m.collectorConfig.Agent0ConnectorEnabledViaHelm)
@@ -175,7 +185,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		for _, instance := range operatorConfigurationResource.Spec.SyntheticsWorker.Instances {
 			syntheticsWorkerDeploymentNames = append(
 				syntheticsWorkerDeploymentNames,
-				swresources.DeploymentName(m.collectorConfig.OTelCollectorNamePrefix, instance.LocationID),
+				swresources.DeploymentName(m.collectorConfig.NamePrefix, instance.LocationID),
 			)
 		}
 	}
@@ -204,11 +214,12 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	config := &oTelColConfig{
 		OperatorNamespace:             m.collectorConfig.OperatorNamespace,
 		OperatorManagerDeploymentName: m.operatorManagerDeployment.Name,
-		NamePrefix:                    m.collectorConfig.OTelCollectorNamePrefix,
+		NamePrefix:                    m.collectorConfig.NamePrefix,
 		Exporters:                     otlpExporters,
 		AllMonitoringResources:        allMonitoringResources,
 		SendBatchSize:                 m.collectorConfig.SendBatchSize,
 		SendBatchMaxSize:              m.collectorConfig.SendBatchMaxSize,
+		SendingQueueSizeMiB:           m.collectorConfig.SendingQueueSizeMiB,
 		SelfMonitoringConfiguration:   selfMonitoringConfiguration,
 		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
 		CollectPodLabelsAndAnnotationsEnabled:            collectPodLabelsAndAnnotationsEnabled,
@@ -217,13 +228,13 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		KubernetesObjectCollectionEnabled:                kubernetesObjectCollectionEnabled,
 		CollectClusterScopedObjects:                      collectClusterScopedObjects,
 		K8sAttributesDisableReplicasetInformer:           m.collectorConfig.K8sAttributesDisableReplicasetInformer,
+		K8sAttributesDisableJobInformer:                  m.collectorConfig.K8sAttributesDisableJobInformer,
 		K8sAttributesWaitForMetadata:                     m.collectorConfig.K8sAttributesWaitForMetadata,
 		K8sAttributesWaitForMetadataTimeout:              m.collectorConfig.K8sAttributesWaitForMetadataTimeout,
 		K8sAttributesShareProcessor:                      m.collectorConfig.K8sAttributesShareProcessor,
 		PrometheusCrdSupportEnabled:                      prometheusCrdSupportEnabled,
-		TargetAllocatorNamePrefix:                        m.collectorConfig.TargetAllocatorNamePrefix,
 		Agent0ConnectorEnabled:                           agent0ConnectorEnabled,
-		Agent0ConnectorDeploymentName:                    a0cresources.DeploymentName(m.collectorConfig.OTelCollectorNamePrefix),
+		Agent0ConnectorDeploymentName:                    a0cresources.DeploymentName(m.collectorConfig.NamePrefix),
 		SyntheticsWorkerDeploymentNames:                  syntheticsWorkerDeploymentNames,
 		KubeletStatsReceiverConfig:                       kubeletStatsReceiverConfig,
 		AutoNamespaceMonitoringEnabled:                   operatorConfigurationResource.Spec.AutoMonitorNamespaces.IsEnabled(),
@@ -251,24 +262,23 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		),
 		GlobalFilter:              globalFilter(operatorConfigurationResource),
 		GlobalNormalizedTransform: globalNormalizedTransform(operatorConfigurationResource),
-		SignalControl:             signalControlConfigFromResource(signalControlResource, operatorConfigurationResource, m.collectorConfig.OperatorNamespace, m.collectorConfig.OTelCollectorNamePrefix, logger),
+		SignalControl:             signalControlConfigFromResource(signalControlResource, operatorConfigurationResource, m.collectorConfig.OperatorNamespace, m.collectorConfig.NamePrefix, logger),
 		DevelopmentMode:           m.collectorConfig.DevelopmentMode,
 		DebugVerbosityDetailed:    m.collectorConfig.DebugVerbosityDetailed,
 		EnableProfExtension:       m.collectorConfig.EnableProfExtension,
 		ProfilingEnabled:          profilingEnabled,
-		EbpfProfilerEnabled: m.collectorConfig.EbpfProfilerEnabledViaHelm && profilingEnabled &&
-			operatorConfigurationResource.Spec.Profiling.EbpfProfiler != nil &&
-			pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.Profiling.EbpfProfiler.Enabled, false),
-		CompressConfigMap:        m.collectorConfig.CompressConfigMap,
-		SignalControlSceOnlyMode: m.collectorConfig.SignalControlSceOnlyMode,
-	}
-	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
-		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume
+		EbpfProfilerEnabled:       ebpfProfilerEnabled && profilingEnabled,
+		CompressConfigMap:         m.collectorConfig.CompressConfigMap,
+		SignalControlSceOnlyMode:  m.collectorConfig.SignalControlSceOnlyMode,
 	}
 	config.DaemonSetCollectorMemoryLimit = *extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Memory()
 	config.DeploymentCollectorMemoryLimit = *extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory()
 	config.SignalControlCollectorMemoryLimit = *extraConfig.SignalControlCollectorContainerResources.Limits.Memory()
+	config.DeploymentCollectorReplicas = extraConfig.CollectorDeploymentReplicas
 	config.TargetAllocatorMtlsCaSha = m.targetAllocatorMtlsCaSha(ctx, extraConfig, logger)
+	if err = m.resolveFilelogOffsetStorage(ctx, config, extraConfig, operatorConfigurationResource, logger); err != nil {
+		return false, false, err
+	}
 	if config.signalControlGatewayActive() {
 		logger.Debug(fmt.Sprintf("Deploying the Signal Control collector (image %s), since Signal Control is enabled "+
 			"via the Dash0SignalControl resource. The daemonset and the cluster-metrics collector export their "+
@@ -356,7 +366,7 @@ func (m *OTelColResourceManager) targetAllocatorMtlsCaSha(
 	existingDaemonSet := &appsv1.DaemonSet{}
 	if err = m.Get(ctx, client.ObjectKey{
 		Namespace: m.collectorConfig.OperatorNamespace,
-		Name:      DaemonSetName(m.collectorConfig.OTelCollectorNamePrefix),
+		Name:      DaemonSetName(m.collectorConfig.NamePrefix),
 	}, existingDaemonSet); err != nil {
 		return ""
 	}
@@ -514,11 +524,11 @@ func (m *OTelColResourceManager) amendDeploymentAndDaemonSetWithSelfReferenceUID
 ) {
 	name := desiredResource.GetName()
 	uid := existingResource.GetUID()
-	if name == DaemonSetName(m.collectorConfig.OTelCollectorNamePrefix) {
+	if name == DaemonSetName(m.collectorConfig.NamePrefix) {
 		daemonset := desiredResource.(*appsv1.DaemonSet)
 		addSelfReferenceUidToAllContainers(&daemonset.Spec.Template.Spec.Containers, "K8S_DAEMONSET_UID", uid)
-	} else if name == DeploymentName(m.collectorConfig.OTelCollectorNamePrefix) ||
-		name == SignalControlCollectorDeploymentName(m.collectorConfig.OTelCollectorNamePrefix) {
+	} else if name == DeploymentName(m.collectorConfig.NamePrefix) ||
+		name == SignalControlCollectorDeploymentName(m.collectorConfig.NamePrefix) {
 		deployment := desiredResource.(*appsv1.Deployment)
 		addSelfReferenceUidToAllContainers(&deployment.Spec.Template.Spec.Containers, "K8S_DEPLOYMENT_UID", uid)
 	}
@@ -559,17 +569,19 @@ func (m *OTelColResourceManager) DeleteResources(
 
 	config := &oTelColConfig{
 		OperatorNamespace: m.collectorConfig.OperatorNamespace,
-		NamePrefix:        m.collectorConfig.OTelCollectorNamePrefix,
+		NamePrefix:        m.collectorConfig.NamePrefix,
 		// For deleting the resources, we do not need the actual export settings; we only use assembleDesiredState to
 		// collect the kinds and names of all resources that need to be deleted.
 		SendBatchSize:               m.collectorConfig.SendBatchSize,
 		SendBatchMaxSize:            m.collectorConfig.SendBatchMaxSize,
+		SendingQueueSizeMiB:         m.collectorConfig.SendingQueueSizeMiB,
 		SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{SelfMonitoringEnabled: false},
 		// KubernetesInfrastructureMetricsCollectionEnabled=false would lead to not deleting the collector-deployment-
 		// related resources, we always try to delete all collector resources (daemonset & deployment), no matter
 		// whether both sets have been created earlier or not.
 		KubernetesInfrastructureMetricsCollectionEnabled: true,
 		K8sAttributesDisableReplicasetInformer:           m.collectorConfig.K8sAttributesDisableReplicasetInformer,
+		K8sAttributesDisableJobInformer:                  m.collectorConfig.K8sAttributesDisableJobInformer,
 		K8sAttributesWaitForMetadata:                     m.collectorConfig.K8sAttributesWaitForMetadata,
 		K8sAttributesWaitForMetadataTimeout:              m.collectorConfig.K8sAttributesWaitForMetadataTimeout,
 		UseHostMetricsReceiver:                           !m.collectorConfig.IsDocker,                                 // irrelevant for deletion
@@ -682,7 +694,7 @@ func (m *OTelColResourceManager) deleteObsoleteResourcesFromPreviousOperatorVers
 	}
 	obsoleteResources := compileObsoleteResources(
 		namespace,
-		m.collectorConfig.OTelCollectorNamePrefix,
+		m.collectorConfig.NamePrefix,
 	)
 	var allErrors []error
 	for _, obsoleteResource := range obsoleteResources {
@@ -735,7 +747,7 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 			m.collectorConfig.KubeletStatsReceiverConfig.Endpoint == "" {
 			// This case does not actually occur, due to Helm level validations: the Helm chart guarantees that a
 			// configuration with a non-empty endpoint has been provided if auto-detection is disabled (see the
-			// validation in the deployment-and-webhooks.yaml template).
+			// validation in the deployment.yaml template).
 			logger.ErrorTelemetryCollectionIssue(
 				fmt.Errorf("no valid explicit kubeletstats receiver configuration provided"),
 				"Auto-detection of the kubeletstats receiver endpoint is disabled, but no valid explicit configuration "+

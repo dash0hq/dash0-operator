@@ -12,10 +12,12 @@ This document covers profiling support in the Dash0 operator.
 
 The Dash0 operator can be configured to accept, process, and export [profiling data](https://opentelemetry.io/docs/specs/otel/profiles/) via OTLP.
 
-To collect profiles, opt in to the [operator-managed eBPF profiler](#operator-managed-ebpf-profiler), or deploy the
+To collect profiles, opt in to the [operator-managed eBPF profiler](#operator-managed-ebpf-profiler), which also enables
+the profiling pipelines, or deploy the
 [OpenTelemetry eBPF profiler](#collecting-profiles-with-the-opentelemetry-ebpf-profiler) separately.
 
-To enable profiling support, set the `operator.profilingEnabled` Helm value to `true`:
+To enable profiling support without the operator-managed eBPF profiler, set the `operator.profilingEnabled` Helm value
+to `true`:
 
 ```console
 helm install \
@@ -44,18 +46,21 @@ See [Filtering and Transforming Telemetry](configuration.md#filtering-and-transf
 **Note:** [Namespace-specific exports](configuration.md#namespace-specific-exports-and-api-sync-overrides) (`spec.export` or `spec.exports` on a `Dash0Monitoring` resource) do not apply to profiling data.
 Profiles from all namespaces are sent to the default export of the operator configuration (for example via the `operator.dash0Export` or `operator.exports` Helm values), including profiles from namespaces that have a namespace-specific export.
 The reason is that the operator sends telemetry to namespace-specific exports via the routing connector of the OpenTelemetry collector, which does not support profiles.
+When Signal Control is enabled, profiles are also exported directly from the collector DaemonSet, not via the Signal Control collector.
 
 ## Operator-managed eBPF profiler
 
 Set `operator.ebpfProfilerEnabled: true` to let the operator deploy a Parca agent DaemonSet in the operator namespace.
-Telemetry collection must remain enabled. The chart rejects `operator.telemetryCollectionEnabled: false` with this opt-in.
-For a Helm-managed `Dash0OperatorConfiguration`, the opt-in also enables the profiling pipeline and sets
-`spec.profiling.ebpfProfiler.enabled: true`. If you manage that resource yourself, set both
-`spec.profiling.enabled: true` and `spec.profiling.ebpfProfiler.enabled: true` there.
+Unless `operator.profilingEnabled` is set explicitly, the opt-in also enables the profiling pipelines. The chart
+rejects this opt-in together with `operator.telemetryCollectionEnabled: false` or `operator.profilingEnabled: false`.
+For a Helm-managed `Dash0OperatorConfiguration`, the opt-in sets `spec.profiling.ebpfProfiler.enabled: true`. If you
+manage that resource yourself, set `spec.profiling.ebpfProfiler.enabled: true` there. If `spec.profiling.enabled` is
+not set, the profiling pipelines follow that setting. Setting it together with `spec.profiling.enabled: false` is a
+validation error.
 
 ### Agent image
 
-The profiler defaults to `ghcr.io/parca-dev/parca-agent:v0.51.2`. This version is independent of the operator's
+The profiler defaults to `ghcr.io/parca-dev/parca-agent:v0.51.5`. This version is independent of the operator's
 `appVersion`; enabling the profiler does not require an image override.
 
 [Parca agent v0.51.2](https://github.com/parca-dev/parca-agent/releases/tag/v0.51.2) supports the separate
@@ -65,7 +70,10 @@ indicated by `retry_required`. It also includes the startup and Go-label fixes f
 sampling from starting, and Go labels remain available when Go symbolization is disabled. Version `v0.51.1` adds local
 pod-UID discovery, retention of GPU/NVTX process identity until export, and external-label propagation across all OTLP
 signals. Earlier versions do not provide the source marker needed by the collector's profiler routing. Version
-`v0.51.2` also exposes PID namespace translation for environments with nested PID namespaces.
+`v0.51.2` also exposes PID namespace translation for environments with nested PID namespaces. Version `v0.51.4` links
+samples to trace contexts from custom labels and prefers Go build IDs over debuginfo hashes. Starting with `v0.51.5`, the
+agent uses the process resource attribution of the upstream OpenTelemetry eBPF profiler: it no longer derives
+`service.name` from the process name, and `process.executable.name` is the executable's base name, such as `java`.
 
 The image repository defaults to `ghcr.io/parca-dev/parca-agent`. The debuginfo proxy defaults to
 `ghcr.io/dash0hq/debuginfo-proxy` with the chart's `appVersion`. Both `operator.ebpfProfilerImage` and
@@ -84,9 +92,9 @@ resource-only pod-association pipeline. It associates workload telemetry using a
 telemetry without a pod identity remains host-level and uses the default exports. Unmarked application telemetry
 retains its existing pod association. No additional receiver or port is required.
 
-The source-routing and eBPF processing pipelines are rendered only when the Helm opt-in, `spec.profiling.enabled`, and
-`spec.profiling.ebpfProfiler.enabled` are all true. The common processing pipelines always drop marked profiler
-metrics, logs, and traces before Kubernetes enrichment. During collector enablement lag or agent shutdown, a
+The source-routing and eBPF processing pipelines are rendered only when the Helm opt-in and
+`spec.profiling.ebpfProfiler.enabled` are true and `spec.profiling.enabled` is not `false`. The common processing
+pipelines always drop marked profiler metrics, logs, and traces before Kubernetes enrichment. During collector enablement lag or agent shutdown, a
 collector without the eBPF pipelines drops these signals instead of associating them with the profiler Pod.
 
 The `parca.agent` attribute is reserved for profiler source routing, not authentication. Do not set a conflicting
@@ -96,7 +104,9 @@ When debuginfo uploads are enabled, the operator also deploys the proxy as a Dae
 same policy. There is no proxy replica count to tune as the cluster grows.
 
 The Services do not fall back to other nodes when a local endpoint is unavailable. Keep collector, profiler, and proxy
-scheduling settings aligned so every profiled node has both local receivers, including any required tolerations.
+scheduling settings aligned so every profiled node has both local receivers, including any required tolerations. The
+tolerations of the DaemonSet collector (`operator.collectors.daemonSetTolerations`) are not applied to the profiler and
+the proxy; set them in `operator.ebpfProfiler.tolerations` and `operator.debuginfoProxy.tolerations` as well.
 
 ### Security and namespace ownership
 
@@ -104,10 +114,10 @@ The agent runs as root in a privileged container with `hostPID: true` and read-o
 Use a Linux kernel supported by the selected agent release. This gives the agent access to processes visible from the
 node's PID namespace, not only to Kubernetes namespaces monitored by Dash0.
 
-For nested PID namespaces, such as kind nodes inside Docker Desktop, set
-`spec.profiling.ebpfProfiler.pidNamespaceTranslationMode: auto`. The operator passes this as
-`--pid-namespace-translation-mode=auto`; an image upgrade alone does not enable translation. When the setting is omitted,
-the operator leaves the flag unset and the agent retains its `none` default.
+For nested PID namespaces, such as kind nodes, set the Helm value `operator.ebpfProfiler.pidNamespaceTranslationMode` to
+`auto` (`spec.profiling.ebpfProfiler.pidNamespaceTranslationMode` if you manage the operator configuration resource
+yourself). The operator passes this as `--pid-namespace-translation-mode=auto`; an image upgrade alone does not enable
+translation. When the setting is omitted, the operator leaves the flag unset and the agent retains its `none` default.
 
 The allowed modes are `none`, `auto`, `exact`, and `recursive`. `exact` collects processes in the agent's PID namespace;
 `recursive` also includes descendant PID namespaces and requires kernel BTF. `auto` chooses recursive when supported,
@@ -124,8 +134,9 @@ The namespace and its labels are user-owned. The chart neither creates a namespa
 and installs no namespace-relabeling hooks. Review this policy with your cluster administrator before enabling profiling.
 
 On OpenShift, also set `operator.openShift.enabled: true`. The chart creates a separate profiler SCC and a namespaced
-SCC-use binding only when both options are enabled. Only the `<release>-ebpf-profiler` service account receives that
-binding. The collector SCC does not gain privileged-container or host-PID permissions.
+SCC-use binding only when both options are enabled. Only the `<name-prefix>-ebpf-profiler` service account receives that
+binding (`<name-prefix>` is `operator.managedResourceNamePrefix`, or the Helm release name if that is not set). The
+collector SCC does not gain privileged-container or host-PID permissions.
 
 ### Debuginfo uploads
 
@@ -167,9 +178,13 @@ GPU/NVTX collection with this deployment has not been validated on NVIDIA hardwa
 establish a supported NVIDIA runtime setup. To exclude CUDA tracing, configure a non-empty `tracers` list without
 `cuda` or `all`. When `offCPUThreshold` is unset or zero, the operator omits `--off-cpu-threshold` entirely.
 
-Configure these settings under `spec.profiling.ebpfProfiler` on the `Dash0OperatorConfiguration`. Customize resources
-and scheduling separately via `spec.components.ebpfProfiler` and `spec.components.debuginfoProxy`, rather than changing
-the operator manager's resources or scheduling settings.
+Configure these settings under `spec.profiling.ebpfProfiler` on the `Dash0OperatorConfiguration`. Customize resources,
+scheduling and metadata of the profiler and the proxy separately with the Helm values `operator.ebpfProfiler` and
+`operator.debuginfoProxy`, rather than changing the operator manager's resources or scheduling settings. Both accept
+`containerResources` (including `gomemlimit`), `labels`, `annotations`, `podLabels`, `podAnnotations`, `tolerations`,
+`nodeAffinity` and `priorityClassName`. A setting in `spec.components.ebpfProfiler` or `spec.components.debuginfoProxy`
+of the `Dash0OperatorConfiguration` replaces the respective Helm value as a whole. Empty labels, annotations,
+tolerations or priority class names keep the Helm value.
 
 ### Configuration example
 
@@ -177,7 +192,7 @@ For persistent customization, manage the operator configuration yourself. Do not
 `operator.dash0Export.enabled: false`. Helm-managed operator configurations are overwritten from Helm settings on
 operator startup, so manual sampling changes to that resource would not persist.
 
-Use these Helm values. The default agent image is `ghcr.io/parca-dev/parca-agent:v0.51.2`:
+Use these Helm values. The default agent image is `ghcr.io/parca-dev/parca-agent:v0.51.5`:
 
 ```yaml
 operator:
@@ -186,6 +201,21 @@ operator:
     enabled: false
   exports: []
   # On OpenShift, also set openShift.enabled: true.
+
+  # Optional: resources and scheduling of the profiler and the proxy, for example for nodes with a taint.
+  ebpfProfiler:
+    containerResources:
+      limits:
+        memory: 1Gi
+    tolerations:
+      - key: dedicated
+        operator: Exists
+        effect: NoSchedule
+  debuginfoProxy:
+    tolerations:
+      - key: dedicated
+        operator: Exists
+        effect: NoSchedule
 ```
 
 Create this operator configuration and provision `dash0-authorization` in the operator namespace. Replace the Dash0
@@ -225,29 +255,13 @@ spec:
         uploadEnabled: true
         maxConcurrentUploads: 25
         queueSize: 4096
-  components:
-    ebpfProfiler:
-      containerResources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          memory: 512Mi
-    debuginfoProxy:
-      containerResources:
-        requests:
-          cpu: 10m
-          memory: 32Mi
-        limits:
-          memory: 128Mi
 ```
 
-Both components also accept the existing workload settings `labels`, `annotations`, `podLabels`, `podAnnotations`,
-`tolerations`, `nodeAffinity`, and `priorityClassName`. The integer `threshold` accepts values from 1 to 100 and passes
-directly to the agent's `--profiling-probabilistic-threshold` flag. At each interval, the profiler draws a random integer
-from 0 to 99 and samples when it is less than `threshold`. Setting `threshold: 25` enables CPU sampling in 25% of
-intervals on average; `threshold: 100` keeps it always active. This setting does not affect off-CPU sampling.
-`offCPUThreshold` is a separate fraction from 0 to 1; set it to 0 to disable off-CPU sampling.
+The integer `threshold` accepts values from 1 to 100 and passes directly to the agent's
+`--profiling-probabilistic-threshold` flag. At each interval, the profiler draws a random integer from 0 to 99 and
+samples when it is less than `threshold`. Setting `threshold: 25` enables CPU sampling in 25% of intervals on average;
+`threshold: 100` keeps it always active. This setting does not affect off-CPU sampling. `offCPUThreshold` is a separate
+fraction from 0 to 1; set it to 0 to disable off-CPU sampling.
 
 Disabling the Helm opt-in sets `DASH0_EBPF_PROFILER_ENABLED=false` explicitly so the operator can remove its managed
 profiler resources. Namespace-scoped management permissions remain available for cleanup, including NetworkPolicies.
@@ -274,7 +288,7 @@ data:
 
     exporters:
       otlp/collector:
-        endpoint: ${helm-release-name}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4317
+        endpoint: ${name-prefix}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4317
         # The operator's OTLP receiver listens on plain-text gRPC (no TLS), so the exporter must
         # be configured accordingly. Without this, the gRPC exporter defaults to requiring TLS.
         tls:
@@ -335,7 +349,8 @@ spec:
             path: /sys
 ```
 
-Replace `${helm-release-name}` and `${namespace-of-the-dash0-operator}` with the actual Helm release name and namespace.
+Replace `${name-prefix}` with the value of `operator.managedResourceNamePrefix`, or with the Helm release name if that
+is not set, and `${namespace-of-the-dash0-operator}` with the namespace of the operator.
 
 The eBPF profiler requires:
 

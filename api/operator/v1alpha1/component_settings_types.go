@@ -50,12 +50,12 @@ type OperatorConfigurationComponents struct {
 type EbpfProfilerSettings struct {
 	WorkloadSettings `json:",inline"`
 
-	// The resource requests, limits and GOMEMLIMIT of the profiler container.
+	// The resources of the profiler container (Helm value operator.ebpfProfiler.containerResources).
 	//
 	// +kubebuilder:validation:Optional
 	ContainerResources *ContainerResourcesWithGoMemLimit `json:"containerResources,omitempty"`
 
-	// The priority class name for the pods. When omitted, no priority class is set.
+	// The priority class name for the pods. It replaces the one provided via the Helm chart, an empty value keeps it.
 	//
 	// +kubebuilder:validation:Optional
 	PriorityClassName string `json:"priorityClassName,omitempty"`
@@ -65,12 +65,12 @@ type EbpfProfilerSettings struct {
 type DebuginfoProxySettings struct {
 	WorkloadSettings `json:",inline"`
 
-	// The resource requests, limits and GOMEMLIMIT of the proxy container.
+	// The resources of the proxy container (Helm value operator.debuginfoProxy.containerResources).
 	//
 	// +kubebuilder:validation:Optional
 	ContainerResources *ContainerResourcesWithGoMemLimit `json:"containerResources,omitempty"`
 
-	// The priority class name for the pods. When omitted, no priority class is set.
+	// The priority class name for the pods. It replaces the one provided via the Helm chart, an empty value keeps it.
 	//
 	// +kubebuilder:validation:Optional
 	PriorityClassName string `json:"priorityClassName,omitempty"`
@@ -109,9 +109,9 @@ type ContainerResources struct {
 type ContainerResourcesWithGoMemLimit struct {
 	ContainerResources `json:",inline"`
 
-	// The GOMEMLIMIT environment variable, in the format of the Go runtime (e.g. 400MiB, not 400Mi), or off. If it is
-	// empty (recommended), the operator derives it from the memory limit. It must be greater than 0 and below the
-	// effective memory limit. In collectorContainerResources, it should also be below the memory_limiter soft limit.
+	// The GOMEMLIMIT in the format of the Go runtime (e.g. 400MiB, not 400Mi), or off. If empty (recommended), it is
+	// derived from the memory limit. It must be greater than 0 and below the effective memory limit. In
+	// collectorContainerResources, it should also be below the memory_limiter soft limit.
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Pattern=`^(off|[0-9]+(([KMGT]i)?B)?)$`
@@ -212,12 +212,10 @@ type WorkloadSettings struct {
 	// +kubebuilder:validation:Optional
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 
-	// The node affinity for the pods of the workload. It is merged with the default node affinity of the Helm chart,
-	// not with the one provided via Helm: requiredDuringSchedulingIgnoredDuringExecution and
-	// preferredDuringSchedulingIgnoredDuringExecution each replace their default, unless they are absent. The default
-	// requires nodes that are not labelled with dash0.com/enable=false and run Linux, and has no preferred node
-	// affinity. requiredDuringSchedulingIgnoredDuringExecution with an empty list of nodeSelectorTerms removes the
-	// required node affinity.
+	// The node affinity for the pods of the workload. The required and the preferred node affinity each replace the
+	// default of the Helm chart (not the one provided via Helm), unless they are absent. The default requires nodes that
+	// run Linux and are not labelled with dash0.com/enable=false, and has no preferred node affinity. A required node
+	// affinity with an empty list of nodeSelectorTerms removes it.
 	//
 	// +kubebuilder:validation:Optional
 	NodeAffinity *corev1.NodeAffinity `json:"nodeAffinity,omitempty"`
@@ -234,7 +232,7 @@ type CollectorPodSettings struct {
 	// The timing settings of the liveness, readiness and startup probes. The operator always sets the probe handler
 	// itself. The settings are merged with the default probes of the Helm chart per field, not with the probes provided
 	// via Helm: a probe or a field that is not set here keeps its default. The defaults are initialDelaySeconds 0,
-	// periodSeconds 2, timeoutSeconds 1, and failureThreshold 20 for the liveness, 3 for the readiness and 45 for the
+	// periodSeconds 2, timeoutSeconds 1, and failureThreshold 20 for the liveness, 3 for the readiness and 30 for the
 	// startup probe.
 	//
 	// +kubebuilder:validation:Optional
@@ -334,6 +332,15 @@ type FilelogOffsetStoragePersistentVolumeClaim struct {
 
 // DeploymentCollectorSettings are the settings for the OpenTelemetry collector Deployment (cluster-metrics-collector).
 type DeploymentCollectorSettings struct {
+	// The number of replicas of the cluster metrics collector Deployment (Helm value operator.collectors.deploymentReplicas,
+	// default 1). With more than one replica, the replicas use Kubernetes leader election, so that only one of them
+	// collects cluster metrics, Kubernetes events and Kubernetes objects at any time. The other replicas are on standby
+	// and take over when the leader becomes unavailable.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum=1
+	Replicas *int32 `json:"replicas,omitempty"`
+
 	// The resources of the OpenTelemetry collector container (Helm value
 	// operator.collectors.deploymentCollectorContainerResources).
 	//

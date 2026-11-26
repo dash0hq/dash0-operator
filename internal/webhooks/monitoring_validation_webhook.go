@@ -34,22 +34,45 @@ const ErrorMessageMonitoringGrpcExportInvalidInsecure = "The provided Dash0 moni
 	"explicitly enabled for the GRPC export. This is an invalid combination. " +
 	"Please set at most one of these two flags to true."
 
+// ErrorMessageMonitoringInstrumentationDisabled is the message for rejecting a monitoring resource with
+// instrumentWorkloads.mode other than none while workload instrumentation is disabled.
+const ErrorMessageMonitoringInstrumentationDisabled = "Rejecting the Dash0 monitoring resource \"%s\" in the " +
+	"namespace \"%s\" with instrumentWorkloads.mode=%s, since workload instrumentation is disabled via the Helm " +
+	"value %s. Use instrumentWorkloads.mode=none instead."
+
+// ErrorMessageMonitoringInstrumentationDisabledUpdate is the message for rejecting an update of a monitoring resource
+// that changes instrumentWorkloads.mode to a value other than none while workload instrumentation is disabled.
+const ErrorMessageMonitoringInstrumentationDisabledUpdate = "Rejecting the update of the Dash0 monitoring resource " +
+	"\"%s\" in the namespace \"%s\", which changes instrumentWorkloads.mode to %s, since workload instrumentation is " +
+	"disabled via the Helm value %s. While workload instrumentation is disabled, instrumentWorkloads.mode can only " +
+	"be changed to none."
+
 const ErrorMessageMonitoringExportAndExportsAreMutuallyExclusive = "The provided Dash0 monitoring resource has both the " +
 	"deprecated `export` and the `exports` field set. These fields are mutually exclusive. Please use only the " +
 	"`exports` field and remove the `export` field."
 
 type MonitoringValidationWebhookHandler struct {
-	Client            client.Client
-	operatorNamespace string
+	Client                            client.Client
+	operatorNamespace                 string
+	telemetryCollectionEnabledViaHelm bool
+	instrumentationEnabledViaHelm     bool
 }
 
+// NewMonitoringValidationWebhookHandler creates the validation webhook handler for monitoring resources. If
+// telemetryCollectionEnabledViaHelm is false, monitoring resources that enable instrumentation or telemetry collection
+// are rejected. If instrumentationEnabledViaHelm is false, monitoring resources with instrumentWorkloads.mode other
+// than none are rejected.
 func NewMonitoringValidationWebhookHandler(
 	k8sClient client.Client,
 	operatorNamespace string,
+	telemetryCollectionEnabledViaHelm bool,
+	instrumentationEnabledViaHelm bool,
 ) *MonitoringValidationWebhookHandler {
 	return &MonitoringValidationWebhookHandler{
-		Client:            k8sClient,
-		operatorNamespace: operatorNamespace,
+		Client:                            k8sClient,
+		operatorNamespace:                 operatorNamespace,
+		telemetryCollectionEnabledViaHelm: telemetryCollectionEnabledViaHelm,
+		instrumentationEnabledViaHelm:     instrumentationEnabledViaHelm,
 	}
 }
 
@@ -96,15 +119,26 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	if request.Operation == admissionv1.Update {
-		if !slices.Contains(monitoringResource.Finalizers, dash0common.MonitoringFinalizerId) {
-			// Always allow requests that remove the finalizer. Otherwise, we might accidentally block removing a manually
-			// managed monitoring resource from a namespace that is enabled for auto-namespace monitoring.
+	instrumentWorkloadsMode := monitoringResource.Spec.InstrumentWorkloads.Mode
+	if request.Operation == admissionv1.Update &&
+		!slices.Contains(monitoringResource.Finalizers, dash0common.MonitoringFinalizerId) {
+		// Always allow requests that remove the finalizer. Otherwise, we might accidentally block removing a manually
+		// managed monitoring resource from a namespace that is enabled for auto-namespace monitoring. The exception is
+		// a request that changes instrumentWorkloads.mode to a value other than none in a namespace that only allows
+		// mode none, or while workload instrumentation is disabled.
+		changesRestrictedMode, errorResponse := h.changesInstrumentWorkloadsModeWhereOnlyNoneIsAllowed(
+			request,
+			monitoringResource,
+		)
+		if errorResponse != nil {
+			logger.Warn("rejecting monitoring resource update", "error", errorResponse.Result.Message)
+			return *errorResponse
+		}
+		if !changesRestrictedMode {
 			return admission.Allowed("")
 		}
 	}
 
-	instrumentWorkloadsMode := monitoringResource.Spec.InstrumentWorkloads.Mode
 	if slices.Contains(util.RestrictedNamespaces, request.Namespace) && instrumentWorkloadsMode != dash0common.InstrumentWorkloadsModeNone {
 		msg := fmt.Sprintf(
 			"Rejecting the deployment of Dash0 monitoring resource \"%s\" to the Kubernetes system namespace "+
@@ -126,6 +160,31 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 		)
 		logger.Warn(msg)
 		return admission.Denied(msg)
+	}
+	if !h.instrumentationEnabledViaHelm && instrumentWorkloadsMode != dash0common.InstrumentWorkloadsModeNone {
+		rejectMode := true
+		messageTemplate := ErrorMessageMonitoringInstrumentationDisabled
+		if request.Operation == admissionv1.Update {
+			// Unrelated settings in a monitoring resource that has a mode other than none (from before workload
+			// instrumentation had been disabled) can still be updated, as long as the update keeps the mode as it is.
+			modeChanged, errorResponse := instrumentWorkloadsModeChanged(request, monitoringResource)
+			if errorResponse != nil {
+				return *errorResponse
+			}
+			rejectMode = modeChanged
+			messageTemplate = ErrorMessageMonitoringInstrumentationDisabledUpdate
+		}
+		if rejectMode {
+			msg := fmt.Sprintf(
+				messageTemplate,
+				request.Name,
+				request.Namespace,
+				instrumentWorkloadsMode,
+				util.InstrumentationDisabledHelmValue(h.telemetryCollectionEnabledViaHelm),
+			)
+			logger.Warn(msg)
+			return admission.Denied(msg)
+		}
 	}
 
 	availableOperatorConfigurations, errorResponse := loadAvailableOperatorConfigurationResources(ctx, h.Client)
@@ -149,7 +208,11 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 		logger.Info(admissionResponse.Result.Message)
 		return admissionResponse
 	}
-	admissionResponse, done = h.validateTelemetryRelatedSettingsIfTelemetryCollectionIsDisabled(availableOperatorConfigurations, monitoringResource)
+	admissionResponse, done = h.validateTelemetryRelatedSettingsIfTelemetryCollectionIsDisabled(
+		request,
+		availableOperatorConfigurations,
+		monitoringResource,
+	)
 	if done {
 		logger.Info(admissionResponse.Result.Message)
 		return admissionResponse
@@ -170,7 +233,51 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 		return admissionResponse
 	}
 
-	return admission.Allowed("")
+	return admission.Allowed("").
+		WithWarnings(deprecatedLogRecordsFilterWarnings(monitoringResource.Spec.Filter, "spec.filter")...)
+}
+
+// changesInstrumentWorkloadsModeWhereOnlyNoneIsAllowed checks whether an update request changes the effective
+// instrumentWorkloads.mode to a value other than none where only mode none is allowed, that is, in a Kubernetes system
+// namespace, in the operator namespace, or in any namespace while workload instrumentation is disabled.
+func (h *MonitoringValidationWebhookHandler) changesInstrumentWorkloadsModeWhereOnlyNoneIsAllowed(
+	request admission.Request,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+) (bool, *admission.Response) {
+	if h.instrumentationEnabledViaHelm &&
+		!slices.Contains(util.RestrictedNamespaces, request.Namespace) &&
+		request.Namespace != h.operatorNamespace {
+		return false, nil
+	}
+	if monitoringResource.Spec.InstrumentWorkloads.Mode == dash0common.InstrumentWorkloadsModeNone {
+		return false, nil
+	}
+	return instrumentWorkloadsModeChanged(request, monitoringResource)
+}
+
+// instrumentWorkloadsModeChanged checks whether an update request changes the effective instrumentWorkloads.mode.
+func instrumentWorkloadsModeChanged(
+	request admission.Request,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+) (bool, *admission.Response) {
+	oldMonitoringResource, errorResponse := decodeOldMonitoringResource(request)
+	if errorResponse != nil {
+		return false, errorResponse
+	}
+	return oldMonitoringResource.ReadInstrumentWorkloadsMode() != monitoringResource.ReadInstrumentWorkloadsMode(), nil
+}
+
+// decodeOldMonitoringResource decodes the previous version of the monitoring resource from an update request.
+func decodeOldMonitoringResource(request admission.Request) (*dash0v1beta1.Dash0Monitoring, *admission.Response) {
+	oldMonitoringResource := &dash0v1beta1.Dash0Monitoring{}
+	if _, _, err := decoder.Decode(request.OldObject.Raw, nil, oldMonitoringResource); err != nil {
+		response := admission.Errored(
+			http.StatusBadRequest,
+			fmt.Errorf("cannot decode the previous version of the monitoring resource: %w", err),
+		)
+		return nil, &response
+	}
+	return oldMonitoringResource, nil
 }
 
 func (h *MonitoringValidationWebhookHandler) rejectCustomMonitoringResourceInAutomaticallyMonitoredNamespace(
@@ -280,72 +387,106 @@ func (h *MonitoringValidationWebhookHandler) validateExport(
 }
 
 func (h *MonitoringValidationWebhookHandler) validateTelemetryRelatedSettingsIfTelemetryCollectionIsDisabled(
+	request admission.Request,
 	availableOperatorConfigurations []dash0v1alpha1.Dash0OperatorConfiguration,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 ) (admission.Response, bool) {
-	if len(availableOperatorConfigurations) == 0 {
-		// Since there is no operator configuration available, telemetry collection cannot be disabled via
-		// operatorconfiguration.spec.telemetryCollection.enabled=false, hence no further checks for this aspect are
-		// necessary.
-		return admission.Response{}, false
-	}
-	operatorConfigurationSpec := availableOperatorConfigurations[0].Spec
-	if pointers.ReadBoolPointerWithDefault(operatorConfigurationSpec.TelemetryCollection.Enabled, true) {
+	var reason, remedy string
+	var oldMonitoringResource *dash0v1beta1.Dash0Monitoring
+	if !h.telemetryCollectionEnabledViaHelm {
+		// The operator configuration resource might not exist yet, or it might be managed manually without having set
+		// telemetryCollection.enabled=false. Telemetry collection cannot be enabled there anyway if it has been
+		// disabled via Helm.
+		reason = "Telemetry collection is disabled via the Helm value operator.telemetryCollectionEnabled=false"
+		remedy = "set operator.telemetryCollectionEnabled=true via Helm"
+		if request.Operation == admissionv1.Update {
+			// Only reject settings that the update turns on, so that resources which have been created before telemetry
+			// collection has been disabled via Helm can still be updated.
+			var errorResponse *admission.Response
+			oldMonitoringResource, errorResponse = decodeOldMonitoringResource(request)
+			if errorResponse != nil {
+				return *errorResponse, true
+			}
+		}
+	} else if len(availableOperatorConfigurations) > 0 &&
+		!pointers.ReadBoolPointerWithDefault(availableOperatorConfigurations[0].Spec.TelemetryCollection.Enabled, true) {
+		reason = "The Dash0 operator configuration resource has telemetry collection disabled " +
+			"(telemetryCollection.enabled=false)"
+		remedy = "set telemetryCollection.enabled=true in the operator configuration resource"
+	} else {
 		return admission.Response{}, false
 	}
 
-	if monitoringResource.Spec.InstrumentWorkloads.Mode != dash0common.InstrumentWorkloadsModeNone {
-		return admission.Denied(
-			fmt.Sprintf(
-				"The Dash0 operator configuration resource has telemetry collection disabled "+
-					"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting "+
-					"instrumentWorkloads.mode=%s. This is an invalid combination. Please either set "+
-					"telemetryCollection.enabled=true in the operator configuration resource or set "+
-					"instrumentWorkloads.mode=none in the monitoring resource (or leave it unspecified).",
-				monitoringResource.Spec.InstrumentWorkloads.Mode,
-			)), true
+	conflictingSetting := func(setting string, resolution string) (admission.Response, bool) {
+		return admission.Denied(fmt.Sprintf(
+			"%s, and yet the monitoring resource has the setting %s. This is an invalid combination. Please either "+
+				"%s or %s.",
+			reason,
+			setting,
+			remedy,
+			resolution,
+		)), true
 	}
-	if pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.LogCollection.Enabled, true) {
-		return admission.Denied("The Dash0 operator configuration resource has telemetry collection disabled " +
-			"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
-			"logCollection.enabled=true. This is an invalid combination. Please either set " +
-			"telemetryCollection.enabled=true in the operator configuration resource or set " +
-			"logCollection.enabled=false in the monitoring resource (or leave it unspecified)."), true
+
+	telemetryRelatedSettings := []struct {
+		setting    string
+		resolution string
+		isSet      func(*dash0v1beta1.Dash0Monitoring) bool
+	}{
+		{
+			setting:    fmt.Sprintf("instrumentWorkloads.mode=%s", monitoringResource.Spec.InstrumentWorkloads.Mode),
+			resolution: "set instrumentWorkloads.mode=none in the monitoring resource (or leave it unspecified)",
+			isSet: func(m *dash0v1beta1.Dash0Monitoring) bool {
+				return m.Spec.InstrumentWorkloads.Mode != dash0common.InstrumentWorkloadsModeNone
+			},
+		},
+		{
+			setting:    "logCollection.enabled=true",
+			resolution: "set logCollection.enabled=false in the monitoring resource (or leave it unspecified)",
+			isSet: func(m *dash0v1beta1.Dash0Monitoring) bool {
+				return pointers.ReadBoolPointerWithDefault(m.Spec.LogCollection.Enabled, true)
+			},
+		},
+		{
+			setting:    "eventCollection.enabled=true",
+			resolution: "set eventCollection.enabled=false in the monitoring resource (or leave it unspecified)",
+			isSet: func(m *dash0v1beta1.Dash0Monitoring) bool {
+				return pointers.ReadBoolPointerWithDefault(m.Spec.EventCollection.Enabled, true)
+			},
+		},
+		{
+			setting: "kubernetesObjectCollection.enabled=true",
+			resolution: "set kubernetesObjectCollection.enabled=false in the monitoring resource (or leave it " +
+				"unspecified)",
+			isSet: func(m *dash0v1beta1.Dash0Monitoring) bool {
+				// Kubernetes object collection is opt-in, so unlike the other settings an unspecified value never
+				// conflicts; the mutating webhook does not derive it from telemetryCollection.enabled either.
+				return pointers.ReadBoolPointerWithDefault(m.Spec.KubernetesObjectCollection.Enabled, false)
+			},
+		},
+		{
+			setting:    "prometheusScraping.enabled=true",
+			resolution: "set prometheusScraping.enabled=false in the monitoring resource (or leave it unspecified)",
+			isSet: func(m *dash0v1beta1.Dash0Monitoring) bool {
+				return pointers.ReadBoolPointerWithDefault(m.Spec.PrometheusScraping.Enabled, true)
+			},
+		},
+		{
+			setting:    "filter",
+			resolution: "remove the filter setting in the monitoring resource",
+			isSet:      func(m *dash0v1beta1.Dash0Monitoring) bool { return m.Spec.Filter != nil },
+		},
+		{
+			setting:    "transform",
+			resolution: "remove the transform setting in the monitoring resource",
+			isSet:      func(m *dash0v1beta1.Dash0Monitoring) bool { return m.Spec.Transform != nil },
+		},
 	}
-	if pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.EventCollection.Enabled, true) {
-		return admission.Denied("The Dash0 operator configuration resource has telemetry collection disabled " +
-			"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
-			"eventCollection.enabled=true. This is an invalid combination. Please either set " +
-			"telemetryCollection.enabled=true in the operator configuration resource or set " +
-			"eventCollection.enabled=false in the monitoring resource (or leave it unspecified)."), true
-	}
-	// Kubernetes object collection is opt-in, so unlike the settings above an unspecified value never conflicts; the
-	// mutating webhook does not derive it from telemetryCollection.enabled either.
-	if pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.KubernetesObjectCollection.Enabled, false) {
-		return admission.Denied("The Dash0 operator configuration resource has telemetry collection disabled " +
-			"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
-			"kubernetesObjectCollection.enabled=true. This is an invalid combination. Please either set " +
-			"telemetryCollection.enabled=true in the operator configuration resource or set " +
-			"kubernetesObjectCollection.enabled=false in the monitoring resource (or leave it unspecified)."), true
-	}
-	if pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScraping.Enabled, true) {
-		return admission.Denied("The Dash0 operator configuration resource has telemetry collection disabled " +
-			"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
-			"prometheusScraping.enabled=true. This is an invalid combination. Please either set " +
-			"telemetryCollection.enabled=true in the operator configuration resource or set " +
-			"prometheusScraping.enabled=false in the monitoring resource (or leave it unspecified)."), true
-	}
-	if monitoringResource.Spec.Filter != nil {
-		return admission.Denied("The Dash0 operator configuration resource has telemetry collection disabled " +
-			"(telemetryCollection.enabled=false), and yet the monitoring resource has filter setting. " +
-			"This is an invalid combination. Please either set telemetryCollection.enabled=true in the " +
-			"operator configuration resource or remove the filter setting in the monitoring resource."), true
-	}
-	if monitoringResource.Spec.Transform != nil {
-		return admission.Denied("The Dash0 operator configuration resource has telemetry collection disabled " +
-			"(telemetryCollection.enabled=false), and yet the monitoring resource has a transform setting " +
-			"This is an invalid combination. Please either set telemetryCollection.enabled=true in the " +
-			"operator configuration resource or remove the transform setting in the monitoring resource."), true
+	for _, telemetryRelatedSetting := range telemetryRelatedSettings {
+		if telemetryRelatedSetting.isSet(monitoringResource) &&
+			(oldMonitoringResource == nil || !telemetryRelatedSetting.isSet(oldMonitoringResource)) {
+			return conflictingSetting(telemetryRelatedSetting.setting, telemetryRelatedSetting.resolution)
+		}
 	}
 	return admission.Response{}, false
 }
@@ -428,6 +569,17 @@ func validateFilter(filter *dash0common.Filter) error {
 	)
 }
 
+// deprecatedLogRecordsFilterWarnings returns an admission warning if the given filter uses the deprecated key
+// logs.log_records instead of logs.log_record. The path is the location of the filter in the resource, e.g.
+// "spec.filter".
+func deprecatedLogRecordsFilterWarnings(filter *dash0common.Filter, path string) []string {
+	//nolint:staticcheck
+	if filter == nil || filter.Logs == nil || len(filter.Logs.DeprecatedLogRecordFilter) == 0 {
+		return nil
+	}
+	return []string{fmt.Sprintf("%[1]s.logs.log_records is deprecated, use %[1]s.logs.log_record instead.", path)}
+}
+
 // validateTransform checks the transform statements of a monitoring resource by rendering them into the configuration
 // of the collector's transform processor and running that processor's own validation.
 func validateTransform(transform *dash0common.NormalizedTransformSpec) error {
@@ -474,7 +626,7 @@ func renderFilterProcessorConfig(filter *dash0common.Filter) map[string]any {
 	}
 	if filter.Logs != nil {
 		logs := map[string]any{}
-		addConditions(logs, "log_record", filter.Logs.LogRecordFilter)
+		addConditions(logs, "log_record", filter.Logs.EffectiveLogRecordFilter())
 		if len(logs) > 0 {
 			rawConfig["logs"] = logs
 		}

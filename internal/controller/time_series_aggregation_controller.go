@@ -99,6 +99,10 @@ func (r *TimeSeriesAggregationReconciler) ShortName() string {
 	return "time-series-aggregation"
 }
 
+func (r *TimeSeriesAggregationReconciler) Kind() string {
+	return "Dash0TimeSeriesAggregation"
+}
+
 func (r *TimeSeriesAggregationReconciler) GetDefaultApiConfigs() []ApiConfig {
 	return r.defaultApiConfigs.Get()
 }

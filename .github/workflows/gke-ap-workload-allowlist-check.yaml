@@ -80,7 +80,7 @@ jobs:
           persist-credentials: false
 
       - name: log in to GitHub container registry
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
@@ -162,24 +162,17 @@ jobs:
           .github/workflows/scripts/gke-ap-workload-allowlist-check.sh
 
       - name: Upload cluster diagnostics on failure
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: gke-ap-allowlist-check-diagnostics
           path: gke-ap-allowlist-check-diagnostics
           if-no-files-found: ignore
 
-      - name: send Slack notification on success
-        if: ${{ success() && !inputs.use_branch_chart }}
-        uses: ./.github/actions/slack-notification
-        with:
-          status: success
-          subject: GKE Autopilot WorkloadAllowlist check
-          botToken: ${{ secrets.SLACK_BOT_TOKEN }}
-          channelId: ${{ secrets.SLACK_CHANNEL_ID }}
-
+      # cancelled() covers a job that exceeds timeout-minutes, for which failure() is false. A manual cancellation is
+      # reported as a failure as well.
       - name: send Slack notification on failure
-        if: ${{ failure() && !inputs.use_branch_chart }}
+        if: ${{ (failure() || cancelled()) && !inputs.use_branch_chart }}
         uses: ./.github/actions/slack-notification
         with:
           status: failure

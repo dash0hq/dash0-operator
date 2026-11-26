@@ -5,8 +5,8 @@ metadata:
     alm-examples: '[]'
     capabilities: Seamless Upgrades
     categories: Monitoring,Logging & Tracing
-    description: Collect traces, metrics and logs from your Kubernetes workloads and infrastructure with OpenTelemetry
-      and send them to Dash0.
+    description: Collect traces, metrics, logs and profiles from your Kubernetes workloads and infrastructure with
+      OpenTelemetry and send them to Dash0.
     repository: https://github.com/dash0hq/dash0-operator
     support: Dash0
   name: dash0-operator.v0.0.0
@@ -186,6 +186,27 @@ spec:
         displayName: Sample
         path: sample
       version: v1alpha1
+    - description: An eval, an LLM judge that scores a sample of the generative AI spans that match its filters.
+      displayName: Dash0 Generative AI Evaluation
+      kind: Dash0GenerativeAiEvaluation
+      name: dash0generativeaievaluations.dash0.com
+      specDescriptors:
+      - description: Whether the eval judges spans.
+        displayName: Enabled
+        path: enabled
+      - description: The name and description of the eval shown in Dash0.
+        displayName: Display
+        path: display
+      - description: The spans that the eval judges.
+        displayName: Match
+        path: match
+      - description: The share of the matching traces that is judged.
+        displayName: Sample
+        path: sample
+      - description: The model, the prompts and the kind of result of the judge.
+        displayName: Judge
+        path: judge
+      version: v1alpha1
     - description: A saved Dash0 view with a filter and table layout for exploring telemetry such as logs, spans or
         metrics.
       displayName: Dash0 View
@@ -243,13 +264,13 @@ spec:
       version: v1
   description: |
     The Dash0 Operator brings OpenTelemetry-based observability to your Kubernetes cluster. It instruments your
-    workloads automatically, collects their traces, metrics and logs together with telemetry about the cluster itself,
-    and sends everything to Dash0.
+    workloads automatically, collects their traces, metrics, logs and profiles together with telemetry about the
+    cluster itself, and sends everything to Dash0.
 
     ### Features
 
-    * **Automatic instrumentation** of Java, Node.js and .NET workloads, without changes to images or manifests.
-      Python and Ruby support (beta) is opt-in.
+    * **Automatic instrumentation** of Java, Node.js, .NET, Python and Ruby workloads, without changes to images or
+      manifests.
     * **Log collection** from the pods in monitored namespaces.
     * **Kubernetes infrastructure metrics** for the cluster, its nodes, pods and containers.
     * **Prometheus scraping** of pods annotated with `prometheus.io/scrape`.
@@ -257,6 +278,8 @@ spec:
       the telemetry that matters and reduce egress costs.
     * **Dash0 configuration as code**: views, synthetic checks, notification channels, teams, SLOs and more are managed
       as Kubernetes resources and kept in sync with Dash0.
+    * **Agent0 Kubernetes integration** (off by default): lets Agent0, Dash0's observability and SRE assistant, run
+      read-only `kubectl` commands in the cluster during an investigation.
 
     ### Getting started
 
@@ -273,10 +296,11 @@ spec:
        like views and synthetic checks, are only synchronized in namespaces that have a `Dash0Monitoring` resource.
 
     Some operator settings are read from `DASH0_*` environment variables, which can be set in `spec.config.env` of the
-    Subscription. For example, `DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION=true` turns on Python instrumentation.
+    Subscription. For example, `DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION=false` turns off Python instrumentation.
 
-    On OpenShift, the collector DaemonSet runs with the built-in `privileged` SecurityContextConstraints, which the
-    bundle grants to its service account `dash0-operator-olm-collector`.
+    On OpenShift, the collector DaemonSet and the eBPF profiler DaemonSet run with the built-in `privileged`
+    SecurityContextConstraints, which the bundle grants to their service accounts `dash0-operator-olm-collector` and
+    `dash0-operator-olm-ebpf-profiler`.
 
     This bundle does not support GKE Autopilot.
   displayName: Dash0 Operator

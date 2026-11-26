@@ -212,11 +212,37 @@ func (i *Instrumenter) CheckSettingsAndInstrumentExistingWorkloads(
 		)
 		return nil
 	}
+	if !i.ClusterInstrumentationConfig.InstrumentationEnabledViaHelm {
+		logger.Info(
+			fmt.Sprintf(
+				"Workload instrumentation is disabled via the Helm value operator.instrumentation.enabled=false, "+
+					"ignoring instrumentWorkloads.mode=%s.",
+				instrumentWorkloadsMode,
+			))
+		return nil
+	}
 	if instrumentWorkloadsMode == dash0common.InstrumentWorkloadsModeCreatedAndUpdated {
 		logger.Info(
 			"Instrumenting existing workloads is not enabled, only new or updated workloads will be modified (at " +
 				"deploy time) to send telemetry to Dash0.",
 		)
+		return nil
+	}
+	if instrumentWorkloadsMode == dash0common.InstrumentWorkloadsModePods {
+		logger.Info(
+			"The instrumentation mode is pods, workloads will not be modified, pods will be instrumented when they " +
+				"are created. Existing pods will keep their current state until they are recreated.",
+		)
+		return nil
+	}
+	if slices.Contains(util.RestrictedNamespaces, dash0MonitoringResource.Namespace) {
+		logger.Info(
+			fmt.Sprintf(
+				"Workloads in the Kubernetes system namespace %s are never instrumented, ignoring "+
+					"instrumentWorkloads.mode=%s.",
+				dash0MonitoringResource.Namespace,
+				instrumentWorkloadsMode,
+			))
 		return nil
 	}
 
@@ -763,7 +789,7 @@ func (i *Instrumenter) postProcessInstrumentation(
 		} else {
 			logger.ErrorAsWarnTelemetryCollectionIssue(retryErr, "Dash0 instrumentation by controller has not been successful.")
 		}
-		util.QueueFailedInstrumentationEvent(i.Recorder, resource, actor, retryErr)
+		util.QueueFailedInstrumentationEvent(i.Recorder, resource, util.EventSubjectWorkload, actor, retryErr)
 		return false
 	} else if !modificationResult.HasBeenModified {
 		if !modificationResult.LogAtDebugOnly {
@@ -777,6 +803,7 @@ func (i *Instrumenter) postProcessInstrumentation(
 		util.HandlePotentiallySuccessfulInstrumentationEvent(
 			i.Recorder,
 			resource,
+			util.EventSubjectWorkload,
 			actor,
 			modificationResult.ContainersTotal,
 			modificationResult.InstrumentationIssuesPerContainer,
@@ -1213,8 +1240,10 @@ func (i *Instrumenter) revertWorkloadInstrumentation(
 		if modificationResult.HasBeenModified {
 			// Changing the workload spec sometimes triggers a new admission request, which would re-instrument the
 			// workload via the webhook immediately. To prevent this, we add a label that the webhook can check to
-			// prevent instrumentation.
-			util.AddWebhookIgnoreOnceLabel(objectMeta)
+			// prevent instrumentation. Without the webhook, nothing would remove the label again.
+			if i.ClusterInstrumentationConfig.InstrumentationEnabledViaHelm {
+				util.AddWebhookIgnoreOnceLabel(objectMeta)
+			}
 			return i.Update(ctx, workload.asClientObject(), &client.UpdateOptions{FieldManager: util.FieldManager})
 		} else {
 			return nil
@@ -1240,17 +1269,17 @@ func (i *Instrumenter) postProcessUninstrumentation(
 				"Dash0's removal of instrumentation by controller has not been successful.",
 			)
 		}
-		util.QueueFailedUninstrumentationEvent(i.Recorder, resource, actor, retryErr)
+		util.QueueFailedUninstrumentationEvent(i.Recorder, resource, util.EventSubjectWorkload, actor, retryErr)
 		return false
 	} else if !modificationResult.HasBeenModified {
 		if !modificationResult.LogAtDebugOnly {
 			logger.Info(modificationResult.RenderReasonMessage(actor))
 		}
-		util.QueueNoUninstrumentationNecessaryEvent(i.Recorder, resource, actor)
+		util.QueueNoUninstrumentationNecessaryEvent(i.Recorder, resource, util.EventSubjectWorkload, actor)
 		return false
 	} else {
 		logger.Info("The controller has removed the Dash0 instrumentation from the workload.")
-		util.QueueSuccessfulUninstrumentationEvent(i.Recorder, resource, actor)
+		util.QueueSuccessfulUninstrumentationEvent(i.Recorder, resource, util.EventSubjectWorkload, actor)
 		return true
 	}
 }

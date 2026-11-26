@@ -37,7 +37,10 @@ const signalControlResourceNameTest = "dash0-signal-control-test"
 var _ = Describe("The Signal Control controller", Ordered, func() {
 	ctx := context.Background()
 	scRequest := reconcile.Request{NamespacedName: types.NamespacedName{Name: signalControlResourceNameTest}}
-	edgeProxyName := types.NamespacedName{Namespace: OperatorNamespace, Name: OTelCollectorNamePrefixTest + "-edge-proxy"}
+	edgeProxyName := types.NamespacedName{
+		Namespace: OperatorNamespace,
+		Name:      ManagedResourceNamePrefixTest + "-edge-proxy",
+	}
 
 	var reconciler *SignalControlReconciler
 
@@ -51,7 +54,7 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 			k8sClient.Scheme(),
 			OperatorManagerDeployment,
 			OperatorNamespace,
-			OTelCollectorNamePrefixTest,
+			ManagedResourceNamePrefixTest,
 			"edge-proxy-image:test",
 			corev1.PullIfNotPresent,
 			OperatorVersionTest,
@@ -69,10 +72,9 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 			k8sClient.Scheme(),
 			OperatorManagerDeployment,
 			util.CollectorConfig{
-				Images:                    TestImages,
-				OperatorNamespace:         OperatorNamespace,
-				OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
-				TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
+				Images:            TestImages,
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        ManagedResourceNamePrefixTest,
 			},
 			NewLeaderElectionAwareMock(true),
 		)

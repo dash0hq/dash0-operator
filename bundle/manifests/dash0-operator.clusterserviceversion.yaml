@@ -6,6 +6,41 @@ metadata:
       [
         {
           "apiVersion": "dash0.com/v1alpha1",
+          "kind": "Dash0GenerativeAiEvaluation",
+          "metadata": {
+            "name": "answer-relevance"
+          },
+          "spec": {
+            "display": {
+              "name": "Answer relevance"
+            },
+            "enabled": true,
+            "judge": {
+              "model": "light",
+              "output": {
+                "kind": "numeric",
+                "spec": {
+                  "threshold": 0.7
+                }
+              },
+              "systemPrompt": "You review the answers of an AI assistant.",
+              "userPrompt": "Score from 0 to 1 how well the answer addresses the question.\nQuestion: {{ gen_ai.input.messages }}\nAnswer: {{ gen_ai.output.messages }}\n"
+            },
+            "match": {
+              "filters": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "operator": "is_set"
+                }
+              ]
+            },
+            "sample": {
+              "rate": 0.1
+            }
+          }
+        },
+        {
+          "apiVersion": "dash0.com/v1alpha1",
           "kind": "Dash0Team",
           "metadata": {
             "name": "backend-team"
@@ -358,9 +393,9 @@ metadata:
     capabilities: Seamless Upgrades
     categories: Monitoring,Logging & Tracing
     containerImage: ghcr.io/dash0hq/operator-controller:0.0.0
-    createdAt: "2026-11-09T10:57:22Z"
-    description: Collect traces, metrics and logs from your Kubernetes workloads and
-      infrastructure with OpenTelemetry and send them to Dash0.
+    createdAt: "2026-11-26T12:57:41Z"
+    description: Collect traces, metrics, logs and profiles from your Kubernetes workloads
+      and infrastructure with OpenTelemetry and send them to Dash0.
     operators.operatorframework.io/builder: operator-sdk-v1.42.3
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
     repository: https://github.com/dash0hq/dash0-operator
@@ -370,6 +405,49 @@ spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
     owned:
+    - description: An eval, an LLM judge that scores a sample of the generative AI
+        spans that match its filters.
+      displayName: Dash0 Generative AI Evaluation
+      kind: Dash0GenerativeAiEvaluation
+      name: dash0generativeaievaluations.dash0.com
+      specDescriptors:
+      - description: Whether the eval judges spans.
+        displayName: Enabled
+        path: enabled
+      - description: The name and description of the eval shown in Dash0.
+        displayName: Display
+        path: display
+      - description: The spans that the eval judges.
+        displayName: Match
+        path: match
+      - description: The share of the matching traces that is judged.
+        displayName: Sample
+        path: sample
+      - description: The model, the prompts and the kind of result of the judge.
+        displayName: Judge
+        path: judge
+      version: v1alpha1
+    - description: Turns on monitoring for its namespace, with automatic workload
+        instrumentation, log collection and Prometheus scraping.
+      displayName: Dash0 Monitoring
+      kind: Dash0Monitoring
+      name: dash0monitorings.operator.dash0.com
+      specDescriptors:
+      - description: Automatic instrumentation of the workloads in this namespace.
+        displayName: Instrument Workloads
+        path: instrumentWorkloads
+      - description: Collection of pod logs in this namespace.
+        displayName: Log Collection
+        path: logCollection
+      - description: Scraping of Prometheus metrics from pods in this namespace.
+        displayName: Prometheus Scraping
+        path: prometheusScraping
+      - description: Only used internally.
+        displayName: Internal
+        path: __dash0_internal__normalizedTransform
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      version: v1beta1
     - description: A destination for Dash0 alert notifications, for example a Slack
         channel, email recipients or a webhook.
       displayName: Dash0 Notification Channel
@@ -584,36 +662,15 @@ spec:
         displayName: Table
         path: table
       version: v1alpha1
-    - description: Turns on monitoring for its namespace, with automatic workload
-        instrumentation, log collection and Prometheus scraping.
-      displayName: Dash0 Monitoring
-      kind: Dash0Monitoring
-      name: dash0monitorings.operator.dash0.com
-      specDescriptors:
-      - description: Automatic instrumentation of the workloads in this namespace.
-        displayName: Instrument Workloads
-        path: instrumentWorkloads
-      - description: Collection of pod logs in this namespace.
-        displayName: Log Collection
-        path: logCollection
-      - description: Scraping of Prometheus metrics from pods in this namespace.
-        displayName: Prometheus Scraping
-        path: prometheusScraping
-      - description: Only used internally.
-        displayName: Internal
-        path: __dash0_internal__normalizedTransform
-        x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:hidden
-      version: v1beta1
   description: |
     The Dash0 Operator brings OpenTelemetry-based observability to your Kubernetes cluster. It instruments your
-    workloads automatically, collects their traces, metrics and logs together with telemetry about the cluster itself,
-    and sends everything to Dash0.
+    workloads automatically, collects their traces, metrics, logs and profiles together with telemetry about the
+    cluster itself, and sends everything to Dash0.
 
     ### Features
 
-    * **Automatic instrumentation** of Java, Node.js and .NET workloads, without changes to images or manifests.
-      Python and Ruby support (beta) is opt-in.
+    * **Automatic instrumentation** of Java, Node.js, .NET, Python and Ruby workloads, without changes to images or
+      manifests.
     * **Log collection** from the pods in monitored namespaces.
     * **Kubernetes infrastructure metrics** for the cluster, its nodes, pods and containers.
     * **Prometheus scraping** of pods annotated with `prometheus.io/scrape`.
@@ -621,6 +678,8 @@ spec:
       the telemetry that matters and reduce egress costs.
     * **Dash0 configuration as code**: views, synthetic checks, notification channels, teams, SLOs and more are managed
       as Kubernetes resources and kept in sync with Dash0.
+    * **Agent0 Kubernetes integration** (off by default): lets Agent0, Dash0's observability and SRE assistant, run
+      read-only `kubectl` commands in the cluster during an investigation.
 
     ### Getting started
 
@@ -637,10 +696,11 @@ spec:
        like views and synthetic checks, are only synchronized in namespaces that have a `Dash0Monitoring` resource.
 
     Some operator settings are read from `DASH0_*` environment variables, which can be set in `spec.config.env` of the
-    Subscription. For example, `DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION=true` turns on Python instrumentation.
+    Subscription. For example, `DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION=false` turns off Python instrumentation.
 
-    On OpenShift, the collector DaemonSet runs with the built-in `privileged` SecurityContextConstraints, which the
-    bundle grants to its service account `dash0-operator-olm-collector`.
+    On OpenShift, the collector DaemonSet and the eBPF profiler DaemonSet run with the built-in `privileged`
+    SecurityContextConstraints, which the bundle grants to their service accounts `dash0-operator-olm-collector` and
+    `dash0-operator-olm-ebpf-profiler`.
 
     This bundle does not support GKE Autopilot.
   displayName: Dash0 Operator
@@ -889,6 +949,22 @@ spec:
           - operator.dash0.com
           resources:
           - dash0timeseriesaggregations/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - dash0.com
+          resources:
+          - dash0generativeaievaluations
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - dash0.com
+          resources:
+          - dash0generativeaievaluations/status
           verbs:
           - get
           - patch
@@ -1364,6 +1440,7 @@ spec:
         - apiGroups:
           - dash0.com
           resources:
+          - dash0generativeaievaluations
           - dash0teams
           verbs:
           - get
@@ -1471,6 +1548,16 @@ spec:
           verbs:
           - use
         serviceAccountName: dash0-operator-olm-collector
+      - rules:
+        - apiGroups:
+          - security.openshift.io
+          resourceNames:
+          - privileged
+          resources:
+          - securitycontextconstraints
+          verbs:
+          - use
+        serviceAccountName: dash0-operator-olm-ebpf-profiler
       deployments:
       - label:
           app.kubernetes.io/component: controller
@@ -1535,9 +1622,7 @@ spec:
                   value: "true"
                 - name: DASH0_IAC_PERIODIC_RETRY_INTERVAL
                   value: 10m
-                - name: OTEL_COLLECTOR_NAME_PREFIX
-                  value: dash0-operator
-                - name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
+                - name: DASH0_MANAGED_RESOURCE_NAME_PREFIX
                   value: dash0-operator
                 - name: DASH0_OPERATOR_IMAGE
                   value: ghcr.io/dash0hq/operator-controller:0.0.0
@@ -1563,6 +1648,12 @@ spec:
                   value: "false"
                 - name: DASH0_SYNTHETICS_WORKER_IMAGE
                   value: ghcr.io/dash0hq/dash0-synthetics-worker:0.0.0
+                - name: DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION
+                  value: "true"
+                - name: DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION
+                  value: "true"
+                - name: OTEL_COLLECTOR_K8SATTRIBUTES_SHARE_PROCESSOR_BETWEEN_PIPELINES
+                  value: "true"
                 - name: K8S_POD_UID
                   valueFrom:
                     fieldRef:
@@ -1589,6 +1680,10 @@ spec:
                       fieldPath: metadata.annotations['openshift.io/scc']
                 - name: DASH0_EBPF_PROFILER_ENABLED
                   value: "false"
+                - name: DASH0_EBPF_PROFILER_IMAGE
+                  value: ghcr.io/parca-dev/parca-agent:0.0.0
+                - name: DASH0_DEBUGINFO_PROXY_IMAGE
+                  value: ghcr.io/dash0hq/debuginfo-proxy:0.0.0
                 - name: DASH0_TELEMETRY_COLLECTION_ENABLED
                   value: "true"
                 - name: DASH0_FEATURE_SIGNAL_CONTROL_ENABLED
@@ -1607,6 +1702,8 @@ spec:
                   value: info
                 - name: DASH0_OTEL_COLLECTOR_DAEMONSET_SERVICE_ACCOUNT_NAME
                   value: dash0-operator-olm-collector
+                - name: DASH0_EBPF_PROFILER_SERVICE_ACCOUNT_NAME
+                  value: dash0-operator-olm-ebpf-profiler
                 - name: RELATED_IMAGE_OPERATOR
                   value: ghcr.io/dash0hq/operator-controller:0.0.0
                 - name: RELATED_IMAGE_INSTRUMENTATION
@@ -1629,6 +1726,10 @@ spec:
                   value: ghcr.io/dash0hq/agent0-connector:0.0.0
                 - name: RELATED_IMAGE_SYNTHETICS_WORKER
                   value: ghcr.io/dash0hq/dash0-synthetics-worker:0.0.0
+                - name: RELATED_IMAGE_EBPF_PROFILER
+                  value: ghcr.io/parca-dev/parca-agent:0.0.0
+                - name: RELATED_IMAGE_DEBUGINFO_PROXY
+                  value: ghcr.io/dash0hq/debuginfo-proxy:0.0.0
                 image: ghcr.io/dash0hq/operator-controller:0.0.0
                 livenessProbe:
                   httpGet:
@@ -1675,7 +1776,7 @@ spec:
                 seccompProfile:
                   type: RuntimeDefault
               serviceAccountName: dash0-operator-controller
-              terminationGracePeriodSeconds: 10
+              terminationGracePeriodSeconds: 15
               volumes:
               - configMap:
                   name: dash0-operator-extra-config
@@ -1721,6 +1822,12 @@ spec:
           - pods
           verbs:
           - list
+        - apiGroups:
+          - ""
+          resources:
+          - pods
+          verbs:
+          - create
         - apiGroups:
           - ""
           resources:
@@ -1841,6 +1948,10 @@ spec:
     name: agent0-connector
   - image: ghcr.io/dash0hq/dash0-synthetics-worker:0.0.0
     name: synthetics-worker
+  - image: ghcr.io/parca-dev/parca-agent:0.0.0
+    name: ebpf-profiler
+  - image: ghcr.io/dash0hq/debuginfo-proxy:0.0.0
+    name: debuginfo-proxy
   version: 0.0.1
   webhookdefinitions:
   - admissionReviewVersions:

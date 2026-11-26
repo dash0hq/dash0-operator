@@ -105,11 +105,11 @@ func maximalMatrixBaseline() collectorConfigMatrixEntry {
 			CollectNodeLabelsAndAnnotationsEnabled:           true,
 			CollectClusterScopedObjects:                      true,
 			K8sAttributesDisableReplicasetInformer:           true,
+			K8sAttributesDisableJobInformer:                  true,
 			K8sAttributesWaitForMetadata:                     true,
 			K8sAttributesWaitForMetadataTimeout:              "10s",
 			K8sAttributesShareProcessor:                      true,
 			PrometheusCrdSupportEnabled:                      true,
-			TargetAllocatorNamePrefix:                        namePrefix,
 			Agent0ConnectorEnabled:                           true,
 			Agent0ConnectorDeploymentName:                    "dash0-operator-agent0-connector",
 			SyntheticsWorkerDeploymentNames:                  []string{"dash0-operator-synthetics-worker-location-a"},
@@ -130,6 +130,7 @@ func maximalMatrixBaseline() collectorConfigMatrixEntry {
 			DeploymentCollectorMemoryLimit:    resource.MustParse("500Mi"),
 			SignalControlCollectorMemoryLimit: resource.MustParse("500Mi"),
 			EnableProfExtension:               true,
+			DeploymentCollectorReplicas:       3,
 			ProfilingEnabled:                  true,
 			EbpfProfilerEnabled:               true,
 		},
@@ -289,6 +290,12 @@ func matrixSettings() []matrixSetting {
 			},
 		},
 		{
+			name: "k8s-attributes-disable-job-informer",
+			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				e.config.K8sAttributesDisableJobInformer = enabled
+			},
+		},
+		{
 			name: "k8s-attributes-wait-for-metadata",
 			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
 				e.config.K8sAttributesWaitForMetadata = enabled
@@ -316,18 +323,12 @@ func matrixSettings() []matrixSetting {
 			name: "prometheus-crd-support",
 			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
 				e.config.PrometheusCrdSupportEnabled = enabled
-				if enabled {
-					e.config.TargetAllocatorNamePrefix = namePrefix
-				} else {
-					e.config.TargetAllocatorNamePrefix = ""
-				}
 			},
 		},
 		{
 			name: "target-allocator-mtls",
 			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
 				e.config.PrometheusCrdSupportEnabled = true
-				e.config.TargetAllocatorNamePrefix = namePrefix
 				e.targetAllocatorMtlsConfig = TargetAllocatorMtlsConfig{Enabled: enabled}
 				if enabled {
 					e.targetAllocatorMtlsConfig.ClientCertSecretName = "target-allocator-client-certs"
@@ -430,6 +431,15 @@ func matrixSettings() []matrixSetting {
 			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
 				e.config.DevelopmentMode = true
 				e.config.DebugVerbosityDetailed = enabled
+			},
+		},
+		{
+			name: "deployment-collector-leader-election",
+			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				e.config.DeploymentCollectorReplicas = 1
+				if enabled {
+					e.config.DeploymentCollectorReplicas = 2
+				}
 			},
 		},
 		{

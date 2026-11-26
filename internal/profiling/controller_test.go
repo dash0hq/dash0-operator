@@ -37,6 +37,8 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/profiling"
 	"github.com/dash0hq/dash0-operator/internal/profiling/prresources"
+	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	testutil "github.com/dash0hq/dash0-operator/test/util"
 )
 
@@ -57,7 +59,7 @@ func TestProfilerRoutesSamplesAndDebuginfoSeparately(t *testing.T) {
 	require.True(t, pod.HostPID)
 	require.False(t, *pod.AutomountServiceAccountToken)
 	container := pod.Containers[0]
-	require.Equal(t, "ghcr.io/parca-dev/parca-agent:v0.51.2", container.Image)
+	require.Equal(t, "ghcr.io/parca-dev/parca-agent:v0.51.5", container.Image)
 	require.True(t, *container.SecurityContext.Privileged)
 	require.Zero(t, *container.SecurityContext.RunAsUser)
 	podUIDIndex := slices.IndexFunc(container.Env, func(env corev1.EnvVar) bool { return env.Name == "K8S_POD_UID" })
@@ -186,6 +188,13 @@ func TestProfilerOmitsDisabledOffCPUThreshold(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestProfilerTreatsOmittedProfilingEnabledAsEnabled(t *testing.T) {
+	r, configuration := fixture(t)
+	configuration.Spec.Profiling.Enabled = nil
+	reconcile(t, r, configuration)
+	require.NoError(t, r.Get(context.Background(), key("ebpf-profiler"), &appsv1.DaemonSet{}))
 }
 
 func TestDebuginfoDestinationsAndCredentialRotation(t *testing.T) {
@@ -448,6 +457,14 @@ func TestProfilerReconcilesWithNamespacedOperandPermissions(t *testing.T) {
 		return admin.Get(ctx, key("debuginfo-proxy"), proxy) == nil &&
 			proxy.Spec.Template.Annotations["dash0.com/configuration-revision"] != previousRevision
 	}, 10*time.Second, 100*time.Millisecond, "Secret updates must restart the proxy without a configuration update")
+	extraConfig := util.ExtraConfigDefaults
+	extraConfig.EbpfProfilerPodLabels = map[string]string{"source": "helm"}
+	r.Manager.UpdateExtraConfig(ctx, extraConfig, logd.Discard())
+	require.Eventually(t, func() bool {
+		profiler := &appsv1.DaemonSet{}
+		return admin.Get(ctx, key("ebpf-profiler"), profiler) == nil &&
+			profiler.Spec.Template.Labels["source"] == "helm"
+	}, 10*time.Second, 100*time.Millisecond, "extra config map updates must be applied without a configuration update")
 	_, err = r.Reconcile(ctx, ctrl.Request{})
 	require.NoError(t, err, "reconciling API-defaulted resources must succeed")
 	require.NoError(t, admin.Delete(ctx, configuration))
@@ -542,6 +559,127 @@ func TestGkeAutopilotResourceAdjustmentsAreNotReverted(t *testing.T) {
 	}
 }
 
+func TestProfilerUsesExternalServiceAccountWithoutManagingIt(t *testing.T) {
+	r, configuration := fixture(t)
+	ctx := context.Background()
+	external := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
+		Name: prresources.OlmEbpfProfilerServiceAccountName, Namespace: "operator",
+	}}
+	require.NoError(t, r.Create(ctx, external))
+	r.Manager.ResourceManager.Config.ServiceAccountName = prresources.OlmEbpfProfilerServiceAccountName
+	reconcile(t, r, configuration)
+	ds := &appsv1.DaemonSet{}
+	require.NoError(t, r.Get(ctx, key("ebpf-profiler"), ds))
+	require.Equal(t, prresources.OlmEbpfProfilerServiceAccountName, ds.Spec.Template.Spec.ServiceAccountName)
+	require.True(t, apierrors.IsNotFound(r.Get(ctx, key("ebpf-profiler"), &corev1.ServiceAccount{})))
+
+	configuration.Spec.Profiling.EbpfProfiler.Enabled = ptr.To(false)
+	reconcile(t, r, configuration)
+	require.True(t, apierrors.IsNotFound(r.Get(ctx, key("ebpf-profiler"), &appsv1.DaemonSet{})))
+	require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(external), &corev1.ServiceAccount{}))
+}
+
+func TestProfilerManagesTheServiceAccountIfItsOwnNameIsConfigured(t *testing.T) {
+	r, configuration := fixture(t)
+	r.Manager.ResourceManager.Config.ServiceAccountName = "test-ebpf-profiler"
+	reconcile(t, r, configuration)
+	ds := &appsv1.DaemonSet{}
+	require.NoError(t, r.Get(context.Background(), key("ebpf-profiler"), ds))
+	require.Equal(t, "test-ebpf-profiler", ds.Spec.Template.Spec.ServiceAccountName)
+	require.NoError(t, r.Get(context.Background(), key("ebpf-profiler"), &corev1.ServiceAccount{}))
+}
+
+// DeleteResources matches by name, so the OLM service account must not share the name of a managed resource.
+func TestProfilerNeverDeletesTheOlmServiceAccount(t *testing.T) {
+	r, _ := fixture(t)
+	ctx := context.Background()
+	// the OLM bundle sets DASH0_MANAGED_RESOURCE_NAME_PREFIX to dash0-operator
+	r.Manager.ResourceManager.Config.NamePrefix = "dash0-operator"
+	r.Manager.ResourceManager.Config.ServiceAccountName = prresources.OlmEbpfProfilerServiceAccountName
+	external := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
+		Name: prresources.OlmEbpfProfilerServiceAccountName, Namespace: "operator",
+		Labels: map[string]string{"app.kubernetes.io/instance": "dash0-operator", "app.kubernetes.io/component": "ebpf-profiler"},
+	}}
+	require.NoError(t, r.Create(ctx, external))
+	_, err := r.Manager.ResourceManager.DeleteResources(ctx, false)
+	require.NoError(t, err)
+	require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(external), &corev1.ServiceAccount{}))
+}
+
+func TestProfilerAndProxyUseHelmSettingsUnlessOverriddenBySpecComponents(t *testing.T) {
+	r, configuration := fixture(t)
+	ctx := context.Background()
+	toleration := corev1.Toleration{Key: "dedicated", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule}
+	extraConfig := util.ExtraConfigDefaults
+	extraConfig.EbpfProfilerContainerResources = util.ResourceRequirementsWithGoMemLimit{
+		Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")}, GoMemLimit: "700MiB",
+	}
+	extraConfig.EbpfProfilerLabels = map[string]string{"profiler": "helm"}
+	extraConfig.EbpfProfilerAnnotations = map[string]string{"profiler": "helm"}
+	extraConfig.EbpfProfilerPodAnnotations = map[string]string{"profiler-pod": "helm"}
+	extraConfig.EbpfProfilerTolerations = []corev1.Toleration{toleration}
+	extraConfig.EbpfProfilerNodeAffinity = nil
+	extraConfig.EbpfProfilerPriorityClassName = "profiler-priority"
+	extraConfig.DebuginfoProxyAnnotations = map[string]string{"proxy": "helm"}
+	extraConfig.DebuginfoProxyPodLabels = map[string]string{"proxy-pod": "helm"}
+	extraConfig.DebuginfoProxyTolerations = []corev1.Toleration{toleration}
+	extraConfig.DebuginfoProxyPriorityClassName = "proxy-priority"
+	r.Manager.UpdateExtraConfig(ctx, extraConfig, logd.Discard())
+	reconcile(t, r, configuration)
+
+	profiler := &appsv1.DaemonSet{}
+	require.NoError(t, r.Get(ctx, key("ebpf-profiler"), profiler))
+	pod := profiler.Spec.Template.Spec
+	require.Equal(t, "1Gi", pod.Containers[0].Resources.Limits.Memory().String())
+	require.Empty(t, pod.Containers[0].Resources.Requests)
+	require.Contains(t, pod.Containers[0].Env, corev1.EnvVar{Name: "GOMEMLIMIT", Value: "700MiB"})
+	require.Equal(t, "helm", profiler.Labels["profiler"])
+	require.Equal(t, "helm", profiler.Annotations["profiler"])
+	require.Equal(t, "ebpf-profiler", profiler.Labels["app.kubernetes.io/component"])
+	require.Equal(t, map[string]string{"profiler-pod": "helm"}, profiler.Spec.Template.Annotations)
+	require.Equal(t, []corev1.Toleration{toleration}, pod.Tolerations)
+	require.Nil(t, pod.Affinity.NodeAffinity)
+	require.Equal(t, "profiler-priority", pod.PriorityClassName)
+	proxy := &appsv1.DaemonSet{}
+	require.NoError(t, r.Get(ctx, key("debuginfo-proxy"), proxy))
+	require.Equal(t, "helm", proxy.Annotations["proxy"])
+	require.Equal(t, "helm", proxy.Spec.Template.Labels["proxy-pod"])
+	require.NotEmpty(t, proxy.Spec.Template.Annotations["dash0.com/configuration-revision"])
+	require.Equal(t, []corev1.Toleration{toleration}, proxy.Spec.Template.Spec.Tolerations)
+	require.NotNil(t, proxy.Spec.Template.Spec.Affinity.NodeAffinity)
+	require.Equal(t, "proxy-priority", proxy.Spec.Template.Spec.PriorityClassName)
+	require.Equal(t, "128Mi", proxy.Spec.Template.Spec.Containers[0].Resources.Limits.Memory().String())
+
+	configuration.Spec.Components = &dash0v1alpha1.OperatorConfigurationComponents{
+		EbpfProfiler: &dash0v1alpha1.EbpfProfilerSettings{
+			ContainerResources: &dash0v1alpha1.ContainerResourcesWithGoMemLimit{},
+			WorkloadSettings:   dash0v1alpha1.WorkloadSettings{Labels: map[string]string{"profiler": "resource"}},
+			PriorityClassName:  "resource-priority",
+		},
+		DebuginfoProxy: &dash0v1alpha1.DebuginfoProxySettings{
+			WorkloadSettings: dash0v1alpha1.WorkloadSettings{
+				Tolerations: []corev1.Toleration{{Key: "resource", Operator: corev1.TolerationOpExists}},
+			},
+		},
+	}
+	reconcile(t, r, configuration)
+	require.NoError(t, r.Get(ctx, key("ebpf-profiler"), profiler))
+	pod = profiler.Spec.Template.Spec
+	require.Equal(t, "512Mi", pod.Containers[0].Resources.Limits.Memory().String())
+	require.Equal(t, "100m", pod.Containers[0].Resources.Requests.Cpu().String())
+	require.Equal(t, "resource", profiler.Labels["profiler"])
+	require.Equal(t, "resource-priority", pod.PriorityClassName)
+	require.Equal(t, []corev1.Toleration{toleration}, pod.Tolerations)
+	require.NoError(t, r.Get(ctx, key("debuginfo-proxy"), proxy))
+	require.Equal(t, []corev1.Toleration{{Key: "resource", Operator: corev1.TolerationOpExists}},
+		proxy.Spec.Template.Spec.Tolerations)
+	require.Equal(t, "proxy-priority", proxy.Spec.Template.Spec.PriorityClassName)
+	require.Equal(t, map[string]string{"profiler": "helm"}, extraConfig.EbpfProfilerAnnotations,
+		"applying the resources must not modify the extra config shared with other clients")
+	require.Equal(t, map[string]string{"profiler-pod": "helm"}, extraConfig.EbpfProfilerPodAnnotations)
+	require.Equal(t, map[string]string{"proxy": "helm"}, extraConfig.DebuginfoProxyAnnotations)
+}
+
 func fixture(t *testing.T) (*profiling.Reconciler, *dash0v1alpha1.Dash0OperatorConfiguration) {
 	t.Helper()
 	return fixtureWithOpenShift(t, false)
@@ -567,9 +705,9 @@ func fixtureWithOpenShift(t *testing.T, isOpenShift bool) (*profiling.Reconciler
 	resourceManager := prresources.NewResourceManager(c, scheme, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
 		Name: "operator", Namespace: "operator", UID: "operator-deployment",
 	}}, prresources.Config{Namespace: "operator", NamePrefix: "test", Enabled: true, TelemetryCollectionEnabled: true,
-		ProfilerImage: "ghcr.io/parca-dev/parca-agent:v0.51.2", ProxyImage: "debuginfo-proxy:test", IsOpenShift: isOpenShift,
+		ProfilerImage: "ghcr.io/parca-dev/parca-agent:v0.51.5", ProxyImage: "debuginfo-proxy:test", IsOpenShift: isOpenShift,
 	})
-	r := profiling.NewReconciler(c, profiling.NewManager(resourceManager))
+	r := profiling.NewReconciler(c, profiling.NewManager(resourceManager, util.ExtraConfigDefaults, util.ExtraConfigDefaults))
 	require.NoError(t, c.Get(context.Background(), client.ObjectKeyFromObject(configuration), configuration))
 	return r, configuration
 }

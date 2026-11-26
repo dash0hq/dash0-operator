@@ -139,6 +139,7 @@ var credentialFieldsPerConfigObject = map[string][]string{
 	"googleChatWebhookConfig": {"url"},
 	"ilertConfig":             {"url"},
 	"allQuietConfig":          {"url"},
+	"mattermostWebhookConfig": {"url"},
 	"body":                    {"spec.content"},
 
 	// Prometheus Operator ScrapeConfig, spec.<provider>SDConfigs, both allow providing credentials as literal

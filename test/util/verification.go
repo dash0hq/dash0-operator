@@ -113,6 +113,9 @@ func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
 				"OTEL_INJECTOR_CONFIG_FILE": {
 					Value: "/__otel_auto_instrumentation/injector/injector.conf",
 				},
+				"OTEL_JAVAAGENT_CONFIGURATION_FILE": {
+					Value: "/__otel_auto_instrumentation/agents/jvm/otel-javaagent-defaults.properties",
+				},
 				"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 					ValueFrom: "metadata.namespace",
 				},
@@ -570,6 +573,27 @@ func VerifySuccessfulInstrumentationEvent(
 	)
 }
 
+// VerifySuccessfulPodInstrumentationEvent verifies the event about instrumenting a pod that has been recorded for the
+// workload owning the pod.
+func VerifySuccessfulPodInstrumentationEvent(
+	ctx context.Context,
+	clientset *kubernetes.Clientset,
+	namespace string,
+	resourceName string,
+	eventSource string,
+) *eventsv1.Event {
+	return VerifyEvent(
+		ctx,
+		clientset,
+		namespace,
+		resourceName,
+		corev1.EventTypeNormal,
+		util.ReasonSuccessfulInstrumentation,
+		util.ActionInstrumentation,
+		fmt.Sprintf("Dash0 instrumentation of a pod of this workload by the %s has been successful.", eventSource),
+	)
+}
+
 func VerifyInstrumentationViaHigherOrderWorkloadEvent(
 	ctx context.Context,
 	clientset *kubernetes.Clientset,
@@ -627,6 +651,27 @@ func VerifySuccessfulUninstrumentationEvent(
 		util.ReasonSuccessfulUninstrumentation,
 		util.ActionUninstrumentation,
 		fmt.Sprintf("The %s successfully removed the Dash0 instrumentation from this workload.", eventSource),
+	)
+}
+
+// VerifySuccessfulPodUninstrumentationEvent verifies the event about removing the instrumentation from a pod that has
+// been recorded for the workload owning the pod.
+func VerifySuccessfulPodUninstrumentationEvent(
+	ctx context.Context,
+	clientset *kubernetes.Clientset,
+	namespace string,
+	resourceName string,
+	eventSource string,
+) *eventsv1.Event {
+	return VerifyEvent(
+		ctx,
+		clientset,
+		namespace,
+		resourceName,
+		corev1.EventTypeNormal,
+		util.ReasonSuccessfulUninstrumentation,
+		util.ActionUninstrumentation,
+		fmt.Sprintf("The %s successfully removed the Dash0 instrumentation from a pod of this workload.", eventSource),
 	)
 }
 

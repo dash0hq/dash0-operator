@@ -4,11 +4,18 @@
 package e2e
 
 import (
+	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -32,6 +39,21 @@ const (
 
 	// agent0ConnectorDummyToken is the auth token configured for the agent0-connector in the corresponding test.
 	agent0ConnectorDummyToken = "auth_e2e-agent0-connector-dummy-token"
+
+	// operatorManagerMetricsPort is the port of the --metrics-bind-address argument of the operator manager.
+	operatorManagerMetricsPort = 8080
+)
+
+var (
+	operatorManagerHeapMetricNames = []string{
+		"go_gc_heap_live_bytes",
+		"go_memstats_heap_alloc_bytes",
+		"go_memstats_heap_inuse_bytes",
+		"go_memstats_heap_idle_bytes",
+		"go_memstats_heap_released_bytes",
+		"process_resident_memory_bytes",
+	}
+	portForwardLocalPortRegex = regexp.MustCompile(`^Forwarding from 127\.0\.0\.1:(\d+) -> `)
 )
 
 // secretsThatMustNeverAppearInLogs enumerates every plaintext secret value the e2e suite configures. The operator
@@ -385,6 +407,11 @@ func addHelmParametersForImages(arguments []string, images Images) []string {
 	arguments = setIfNotEmpty(arguments, "operator.syntheticsWorkerImage.digest", images.syntheticsWorker.digest)
 	arguments = setIfNotEmpty(arguments, "operator.syntheticsWorkerImage.pullPolicy", images.syntheticsWorker.pullPolicy)
 
+	arguments = setIfNotEmpty(arguments, "operator.debuginfoProxyImage.repository", images.debuginfoProxy.repository)
+	arguments = setIfNotEmpty(arguments, "operator.debuginfoProxyImage.tag", images.debuginfoProxy.tag)
+	arguments = setIfNotEmpty(arguments, "operator.debuginfoProxyImage.digest", images.debuginfoProxy.digest)
+	arguments = setIfNotEmpty(arguments, "operator.debuginfoProxyImage.pullPolicy", images.debuginfoProxy.pullPolicy)
+
 	return arguments
 }
 
@@ -581,7 +608,8 @@ func verifyOperatorManagerPodMemoryUsageIsReasonable() {
 	Eventually(func(g Gomega) {
 		memoryUsage = readOperatorManagerMemoryUsage(g)
 	}, 60*time.Second, 1*time.Second).Should(Succeed())
-	e2ePrint("operator manager pod memory usage: %d", memoryUsage)
+	e2ePrint("operator manager pod memory usage: %d\n", memoryUsage)
+	printOperatorManagerHeapMetrics()
 	Expect(memoryUsage).Should(
 		BeNumerically("<=", int64(128_000_000)),
 		"The operator manager pod is using more memory than expected. Check for a potential memory leak.",
@@ -661,6 +689,103 @@ func readOperatorManagerMemoryUsage(g Gomega) int64 {
 	return -1
 }
 
+// printOperatorManagerHeapMetrics prints the Go heap metrics of the operator manager. In contrast to the working set
+// reported by metrics-server, go_gc_heap_live_bytes does not include garbage that has not been collected yet. The
+// metrics are only printed for analysis, failing to read them does not fail the test.
+func printOperatorManagerHeapMetrics() {
+	metrics, err := readOperatorManagerMetrics()
+	if err != nil {
+		e2ePrint("could not read the operator manager metrics: %v\n", err)
+		return
+	}
+	found := false
+	for line := range strings.SplitSeq(metrics, "\n") {
+		for _, name := range operatorManagerHeapMetricNames {
+			if strings.HasPrefix(line, name+" ") {
+				e2ePrint("operator manager %s\n", line)
+				found = true
+			}
+		}
+	}
+	if !found {
+		e2ePrint("the operator manager metrics contain none of %v\n", operatorManagerHeapMetricNames)
+	}
+}
+
+// readOperatorManagerMetrics reads the metrics endpoint of the operator manager via kubectl port-forward, since the
+// endpoint only listens on 127.0.0.1.
+func readOperatorManagerMetrics() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	portForward := exec.CommandContext(
+		ctx,
+		"kubectl",
+		"port-forward",
+		"--namespace",
+		operatorNamespace,
+		fmt.Sprintf("deployment/%s", operatorManagerDeploymentName),
+		fmt.Sprintf(":%d", operatorManagerMetricsPort),
+	)
+	stdout, err := portForward.StdoutPipe()
+	if err != nil {
+		return "", err
+	}
+	var stderr bytes.Buffer
+	portForward.Stderr = &stderr
+	if err = portForward.Start(); err != nil {
+		return "", err
+	}
+	stopPortForward := sync.OnceFunc(func() {
+		cancel()
+		_ = portForward.Wait()
+	})
+	defer stopPortForward()
+
+	var localPort string
+	scanner := bufio.NewScanner(stdout)
+	for localPort == "" && scanner.Scan() {
+		if match := portForwardLocalPortRegex.FindStringSubmatch(scanner.Text()); match != nil {
+			localPort = match[1]
+		}
+	}
+	if localPort == "" {
+		err = errors.New("kubectl port-forward did not report a local port")
+		if scanErr := scanner.Err(); scanErr != nil {
+			err = fmt.Errorf("%w: %w", err, scanErr)
+		}
+	} else {
+		var metrics string
+		if metrics, err = fetchMetrics(ctx, localPort); err == nil {
+			return metrics, nil
+		}
+	}
+	// stderr must only be read after the process has terminated.
+	stopPortForward()
+	return "", fmt.Errorf("%w, kubectl port-forward stderr: %s", err, stderr.String())
+}
+
+func fetchMetrics(ctx context.Context, localPort string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%s/metrics", localPort), nil)
+	if err != nil {
+		return "", err
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		_ = res.Body.Close()
+	}()
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return "", err
+	}
+	if res.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status %d from the metrics endpoint, body: %s", res.StatusCode, string(body))
+	}
+	return string(body), nil
+}
+
 func failOnPodCrashOrOOMKill(cleanupSteps *neccessaryCleanupSteps) chan bool {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	stop := make(chan bool, 1)
@@ -700,8 +825,8 @@ func verifyNoPodCrashOrOOMKill() {
 			podName := strings.Split(line, " ")[0]
 			// The collector pods are deliberately restarted when a config change occurs, sometimes they show the status
 			// CrashLoopBackOff for a short time due to that. We need to find a better way to detect actual collector
-			// crashes, for example by inspecting the last exit code. If it is 143 (terminated by external signal), it
-			// is probably fine, for other exit codes we still might want to fail the test suite.
+			// crashes, for example by inspecting the last exit code. If it is 0 (shut down gracefully after a SIGTERM),
+			// it is probably fine, for other exit codes we still might want to fail the test suite.
 			if !strings.Contains(podName, "collector") {
 				Fail("Pod %s is in CrashLoopBackOff:\n" + output)
 			}

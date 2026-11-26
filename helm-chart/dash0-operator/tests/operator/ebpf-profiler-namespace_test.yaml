@@ -1,6 +1,8 @@
 suite: test profiling leaves namespace ownership to the user
 templates:
   - operator/*.yaml
+release:
+  name: test-release
 tests:
   - it: should not create namespaces or set PSA labels with profiling enabled on OpenShift
     set:

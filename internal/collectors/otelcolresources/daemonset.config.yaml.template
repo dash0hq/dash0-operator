@@ -545,12 +545,21 @@ receivers:
   {{- end }}
 
   {{- if .NamespacesWithLogCollection }}
+  {{- /*
+  With retry_on_failure, the file_log receivers stop reading and resend the current batch when the pipeline rejects it
+  (memory_limiter, or a full sending queue of a Dash0 exporter while Dash0 is unavailable), instead of dropping it. The
+  log files on disk act as the buffer. Exporters that had already accepted a rejected batch receive it again. Exporters
+  to other backends do not retry and keep their queues draining, see nonDash0ExportSettings in
+  exporters.partial.yaml.template, so an unavailable non-Dash0 backend does not stall the log collection.
+  */}}
   file_log:
     include:
     {{- range $i, $namespace := .NamespacesWithLogCollection }}
       - /var/log/pods/{{ $namespace }}_*/*/*.log
     {{- end}}
     storage: file_storage/filelogreceiver_offsets
+    retry_on_failure:
+      enabled: true
     include_file_path: true
     include_file_name: false
     include_file_record_number: true
@@ -575,7 +584,7 @@ receivers:
   file_log/selfmonitoring:
     include:
       {{- if .PrometheusCrdSupportEnabled }}
-      - /var/log/pods/{{ .OperatorNamespace }}_{{ .OperatorResourcesNamePrefix }}-opentelemetry-target-allocator*/*/*.log
+      - /var/log/pods/{{ .OperatorNamespace }}_{{ .NamePrefix }}-opentelemetry-target-allocator*/*/*.log
       {{- end }}
       {{- if and .SignalControl.Enabled .SignalControl.EdgeProxyEnabled }}
       - /var/log/pods/{{ .OperatorNamespace }}_{{ .SignalControl.EdgeProxyName }}*/*/*.log
@@ -584,6 +593,8 @@ receivers:
     # beginning or we will miss the logs it prints during startup
     start_at: beginning
     storage: file_storage/filelogreceiver_offsets
+    retry_on_failure:
+      enabled: true
     include_file_path: true
     include_file_name: false
     include_file_record_number: true
@@ -605,17 +616,6 @@ processors:
     logs:
       resource:
         - 'attributes["parca.agent"] == "true"'
-  {{- if or .SendBatchSize .SendBatchMaxSize }}
-  batch:
-    {{- if .SendBatchSize }}
-    send_batch_size: {{ .SendBatchSize }}
-    {{- end }}
-    {{- if .SendBatchMaxSize }}
-    send_batch_max_size: {{ .SendBatchMaxSize }}
-    {{- end }}
-  {{- else }}
-  batch: {}
-  {{- end }}
 
   resource_detection:
     fail_on_missing_metadata: false
@@ -647,7 +647,9 @@ processors:
       metadata:
       - k8s.cluster.uid
       - k8s.cronjob.name
+      {{- if not .K8sAttributesDisableJobInformer }}
       - k8s.cronjob.uid
+      {{- end }}
       - k8s.daemonset.name
       - k8s.daemonset.uid
       - k8s.deployment.name
@@ -732,7 +734,9 @@ processors:
       metadata:
       - k8s.cluster.uid
       - k8s.cronjob.name
+      {{- if not .K8sAttributesDisableJobInformer }}
       - k8s.cronjob.uid
+      {{- end }}
       - k8s.daemonset.name
       - k8s.daemonset.uid
       - k8s.deployment.name
@@ -1179,7 +1183,6 @@ service:
         {{- if .CustomFilters.HasTraceFilters }}
         - filter/traces/custom_telemetry_filter
         {{- end }}
-        - batch
         {{- if .CustomTransforms.HasTraceTransforms }}
         - transform/traces/custom_telemetry_transform
         {{- end }}
@@ -1321,7 +1324,6 @@ service:
         {{- if .CustomFilters.HasMetricFilters }}
         - filter/metrics/custom_telemetry_filter
         {{- end }}
-        - batch
         {{- if .CustomTransforms.HasMetricTransforms }}
         - transform/metrics/custom_telemetry_transform
         {{- end }}
@@ -1469,7 +1471,6 @@ service:
         {{- if .CustomFilters.HasLogFilters }}
         - filter/logs/custom_telemetry_filter
         {{- end }}
-        - batch
         {{- if .CustomTransforms.HasLogTransforms }}
         - transform/logs/custom_telemetry_transform
         {{- end }}
@@ -1585,7 +1586,6 @@ service:
         {{- if .CustomFilters.HasProfileFilters }}
         - filter/profiles/custom_telemetry_filter
         {{- end }}
-        {{- /* Note: the batch processor does not support profiles yet (upstream). */}}
         {{- if .CustomTransforms.HasProfileTransforms }}
         - transform/profiles/custom_telemetry_transform
         {{- end }}

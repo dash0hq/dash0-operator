@@ -11,6 +11,8 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/bep/debounce"
@@ -36,6 +38,23 @@ type CollectorProbes struct {
 	Startup   corev1.Probe `json:"startup"`
 }
 
+// FilelogOffsetStorageMode selects where the collector daemonset persists the offsets of the filelog receiver, see the
+// Helm value operator.collectors.filelogOffsetStorageMode.
+type FilelogOffsetStorageMode string
+
+const (
+	// FilelogOffsetStorageModeAuto uses a hostPath volume if the cluster admits a collector pod with a writable hostPath
+	// volume, and the config map otherwise.
+	FilelogOffsetStorageModeAuto FilelogOffsetStorageMode = "auto"
+	// FilelogOffsetStorageModeConfigMap stores the offsets in a config map, synchronized by a sidecar container.
+	FilelogOffsetStorageModeConfigMap FilelogOffsetStorageMode = "configMap"
+	// FilelogOffsetStorageModeHostPath stores the offsets in a hostPath volume, without checking whether the cluster
+	// admits it.
+	FilelogOffsetStorageModeHostPath FilelogOffsetStorageMode = "hostPath"
+
+	DefaultFilelogOffsetHostPath = "/var/lib/dash0-operator/filelog-offsets"
+)
+
 // ExtraConfig holds the additional configuration values for the operator, which the operator reads from
 // /etc/config/extra.yaml at startup, mostly Kubernetes-related settings like resource requests, resource limits, the
 // filelog offset volume and tolerations for the collector daemonset.
@@ -43,6 +62,11 @@ type ExtraConfig struct {
 	InstrumentationInitContainerResources ResourceRequirementsWithGoMemLimit `json:"initContainerResources"`
 
 	CollectorFilelogOffsetStorageVolume *corev1.Volume `json:"collectorFilelogOffsetStorageVolume,omitempty"`
+
+	// CollectorFilelogOffsetStorageMode and CollectorFilelogOffsetHostPath are only relevant when
+	// CollectorFilelogOffsetStorageVolume is nil; an explicitly configured volume always takes precedence.
+	CollectorFilelogOffsetStorageMode FilelogOffsetStorageMode `json:"collectorFilelogOffsetStorageMode,omitempty"`
+	CollectorFilelogOffsetHostPath    string                   `json:"collectorFilelogOffsetHostPath,omitempty"`
 
 	CollectorDaemonSetCollectorContainerResources             ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetCollectorContainerResources"`
 	CollectorDaemonSetConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetConfigurationReloaderContainerResources"`
@@ -78,6 +102,8 @@ type ExtraConfig struct {
 	DeploymentSysctls []corev1.Sysctl `json:"deploymentSysctls,omitempty"`
 
 	CollectorDeploymentPriorityClassName string `json:"collectorDeploymentPriorityClassName,omitempty"`
+
+	CollectorDeploymentReplicas int32 `json:"collectorDeploymentReplicas,omitempty"`
 
 	DeploymentProbes CollectorProbes `json:"deploymentProbes"`
 
@@ -135,24 +161,23 @@ type ExtraConfig struct {
 	Agent0ConnectorTolerations            []corev1.Toleration                `json:"agent0ConnectorTolerations,omitempty"`
 	Agent0ConnectorNodeAffinity           *corev1.NodeAffinity               `json:"agent0ConnectorNodeAffinity,omitempty"`
 
-	// Profiling component settings come from spec.components, not the extra config file.
-	EbpfProfilerContainerResources ResourceRequirementsWithGoMemLimit `json:"-"`
-	EbpfProfilerLabels             map[string]string                  `json:"-"`
-	EbpfProfilerAnnotations        map[string]string                  `json:"-"`
-	EbpfProfilerPodLabels          map[string]string                  `json:"-"`
-	EbpfProfilerPodAnnotations     map[string]string                  `json:"-"`
-	EbpfProfilerTolerations        []corev1.Toleration                `json:"-"`
-	EbpfProfilerNodeAffinity       *corev1.NodeAffinity               `json:"-"`
-	EbpfProfilerPriorityClassName  string                             `json:"-"`
+	EbpfProfilerContainerResources ResourceRequirementsWithGoMemLimit `json:"ebpfProfilerContainerResources"`
+	EbpfProfilerLabels             map[string]string                  `json:"ebpfProfilerLabels,omitempty"`
+	EbpfProfilerAnnotations        map[string]string                  `json:"ebpfProfilerAnnotations,omitempty"`
+	EbpfProfilerPodLabels          map[string]string                  `json:"ebpfProfilerPodLabels,omitempty"`
+	EbpfProfilerPodAnnotations     map[string]string                  `json:"ebpfProfilerPodAnnotations,omitempty"`
+	EbpfProfilerTolerations        []corev1.Toleration                `json:"ebpfProfilerTolerations,omitempty"`
+	EbpfProfilerNodeAffinity       *corev1.NodeAffinity               `json:"ebpfProfilerNodeAffinity,omitempty"`
+	EbpfProfilerPriorityClassName  string                             `json:"ebpfProfilerPriorityClassName,omitempty"`
 
-	DebuginfoProxyContainerResources ResourceRequirementsWithGoMemLimit `json:"-"`
-	DebuginfoProxyLabels             map[string]string                  `json:"-"`
-	DebuginfoProxyAnnotations        map[string]string                  `json:"-"`
-	DebuginfoProxyPodLabels          map[string]string                  `json:"-"`
-	DebuginfoProxyPodAnnotations     map[string]string                  `json:"-"`
-	DebuginfoProxyTolerations        []corev1.Toleration                `json:"-"`
-	DebuginfoProxyNodeAffinity       *corev1.NodeAffinity               `json:"-"`
-	DebuginfoProxyPriorityClassName  string                             `json:"-"`
+	DebuginfoProxyContainerResources ResourceRequirementsWithGoMemLimit `json:"debuginfoProxyContainerResources"`
+	DebuginfoProxyLabels             map[string]string                  `json:"debuginfoProxyLabels,omitempty"`
+	DebuginfoProxyAnnotations        map[string]string                  `json:"debuginfoProxyAnnotations,omitempty"`
+	DebuginfoProxyPodLabels          map[string]string                  `json:"debuginfoProxyPodLabels,omitempty"`
+	DebuginfoProxyPodAnnotations     map[string]string                  `json:"debuginfoProxyPodAnnotations,omitempty"`
+	DebuginfoProxyTolerations        []corev1.Toleration                `json:"debuginfoProxyTolerations,omitempty"`
+	DebuginfoProxyNodeAffinity       *corev1.NodeAffinity               `json:"debuginfoProxyNodeAffinity,omitempty"`
+	DebuginfoProxyPriorityClassName  string                             `json:"debuginfoProxyPriorityClassName,omitempty"`
 
 	// Actually we would like to use the types *dash0v1alpha1.MonitoringTemplate, *dash0common.Filter and
 	// *dash0common.Transform here, but that leads to circular package dependencies. We should revisit how to untangle
@@ -178,6 +203,8 @@ const (
 
 var (
 	ExtraConfigDefaults = ExtraConfig{
+		CollectorFilelogOffsetStorageMode: FilelogOffsetStorageModeAuto,
+		CollectorFilelogOffsetHostPath:    DefaultFilelogOffsetHostPath,
 		CollectorDaemonSetCollectorContainerResources: ResourceRequirementsWithGoMemLimit{
 			Limits: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
@@ -252,26 +279,6 @@ var (
 				corev1.ResourceMemory: resource.MustParse("64Mi"),
 			},
 		},
-		EbpfProfilerContainerResources: ResourceRequirementsWithGoMemLimit{
-			Limits: corev1.ResourceList{
-				corev1.ResourceMemory: resource.MustParse("512Mi"),
-			},
-			Requests: corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse("100m"),
-				corev1.ResourceMemory: resource.MustParse("128Mi"),
-			},
-		},
-		EbpfProfilerNodeAffinity: defaultNodeAffinity(),
-		DebuginfoProxyContainerResources: ResourceRequirementsWithGoMemLimit{
-			Limits: corev1.ResourceList{
-				corev1.ResourceMemory: resource.MustParse("128Mi"),
-			},
-			Requests: corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse("10m"),
-				corev1.ResourceMemory: resource.MustParse("32Mi"),
-			},
-		},
-		DebuginfoProxyNodeAffinity: defaultNodeAffinity(),
 
 		// The following defaults are only applied when the respective key is missing from the extra config map (see
 		// readExtraConfigurationFromFile), since the Helm chart renders them whenever the respective component is
@@ -281,6 +288,7 @@ var (
 		DaemonSetProbes:                       defaultCollectorProbes,
 		DeploymentNodeAffinity:                defaultNodeAffinity(),
 		DeploymentProbes:                      defaultCollectorProbes,
+		CollectorDeploymentReplicas:           1,
 		SignalControlCollectorReplicas:        2,
 		SignalControlCollectorNodeAffinity:    defaultNodeAffinity(),
 		SignalControlCollectorProbes:          defaultCollectorProbes,
@@ -323,6 +331,26 @@ var (
 			"version":       true,
 		},
 		Agent0ConnectorNodeAffinity: defaultNodeAffinity(),
+		EbpfProfilerContainerResources: ResourceRequirementsWithGoMemLimit{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("512Mi"),
+			},
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("100m"),
+				corev1.ResourceMemory: resource.MustParse("128Mi"),
+			},
+		},
+		EbpfProfilerNodeAffinity: defaultNodeAffinity(),
+		DebuginfoProxyContainerResources: ResourceRequirementsWithGoMemLimit{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("128Mi"),
+			},
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("10m"),
+				corev1.ResourceMemory: resource.MustParse("32Mi"),
+			},
+		},
+		DebuginfoProxyNodeAffinity: defaultNodeAffinity(),
 	}
 
 	// gkeAutopilotInstrumentationInitContainerResources mirrors the Helm chart's fallback for GKE Autopilot when
@@ -342,7 +370,7 @@ var (
 	defaultCollectorProbes = CollectorProbes{
 		Liveness:  defaultProbe(20),
 		Readiness: defaultProbe(3),
-		Startup:   defaultProbe(45),
+		Startup:   defaultProbe(30),
 	}
 )
 
@@ -432,6 +460,9 @@ func readExtraConfigurationFromFile(
 	if err = validateReplicaCounts(extraConfig); err != nil {
 		return ExtraConfig{}, err
 	}
+	if err = validateFilelogOffsetStorage(extraConfig); err != nil {
+		return ExtraConfig{}, err
+	}
 
 	applyDefaults(
 		&extraConfig.CollectorDaemonSetCollectorContainerResources,
@@ -482,6 +513,12 @@ func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig
 	if missing("initContainerResources") {
 		extraConfig.InstrumentationInitContainerResources = defaults.InstrumentationInitContainerResources.DeepCopy()
 	}
+	if missingOrNull("collectorFilelogOffsetStorageMode") || extraConfig.CollectorFilelogOffsetStorageMode == "" {
+		extraConfig.CollectorFilelogOffsetStorageMode = defaults.CollectorFilelogOffsetStorageMode
+	}
+	if missingOrNull("collectorFilelogOffsetHostPath") || extraConfig.CollectorFilelogOffsetHostPath == "" {
+		extraConfig.CollectorFilelogOffsetHostPath = defaults.CollectorFilelogOffsetHostPath
+	}
 	if missing("daemonSetNodeAffinity") {
 		extraConfig.DaemonSetNodeAffinity = defaults.DaemonSetNodeAffinity.DeepCopy()
 	}
@@ -496,6 +533,9 @@ func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig
 	}
 	if missing("deploymentProbes") {
 		extraConfig.DeploymentProbes = defaults.DeploymentProbes.DeepCopy()
+	}
+	if missingOrNull("collectorDeploymentReplicas") {
+		extraConfig.CollectorDeploymentReplicas = defaults.CollectorDeploymentReplicas
 	}
 	if missingOrNull("signalControlCollectorReplicas") {
 		extraConfig.SignalControlCollectorReplicas = defaults.SignalControlCollectorReplicas
@@ -530,6 +570,44 @@ func applyDefaultsForMissingKeys(extraConfig *ExtraConfig, defaults *ExtraConfig
 	if missing("agent0ConnectorNodeAffinity") {
 		extraConfig.Agent0ConnectorNodeAffinity = defaults.Agent0ConnectorNodeAffinity.DeepCopy()
 	}
+	if missing("ebpfProfilerContainerResources") {
+		extraConfig.EbpfProfilerContainerResources = defaults.EbpfProfilerContainerResources.DeepCopy()
+	}
+	if missing("ebpfProfilerNodeAffinity") {
+		extraConfig.EbpfProfilerNodeAffinity = defaults.EbpfProfilerNodeAffinity.DeepCopy()
+	}
+	if missing("debuginfoProxyContainerResources") {
+		extraConfig.DebuginfoProxyContainerResources = defaults.DebuginfoProxyContainerResources.DeepCopy()
+	}
+	if missing("debuginfoProxyNodeAffinity") {
+		extraConfig.DebuginfoProxyNodeAffinity = defaults.DebuginfoProxyNodeAffinity.DeepCopy()
+	}
+}
+
+// validateFilelogOffsetStorage rejects an unknown filelog offset storage mode and a host path that is not absolute or
+// contains parent directory segments.
+func validateFilelogOffsetStorage(extraConfig *ExtraConfig) error {
+	switch extraConfig.CollectorFilelogOffsetStorageMode {
+	case FilelogOffsetStorageModeAuto, FilelogOffsetStorageModeConfigMap, FilelogOffsetStorageModeHostPath:
+	default:
+		return fmt.Errorf(
+			"collectorFilelogOffsetStorageMode (operator.collectors.filelogOffsetStorageMode) must be one of %s, %s or "+
+				"%s, but was %q",
+			FilelogOffsetStorageModeAuto,
+			FilelogOffsetStorageModeConfigMap,
+			FilelogOffsetStorageModeHostPath,
+			extraConfig.CollectorFilelogOffsetStorageMode,
+		)
+	}
+	hostPath := extraConfig.CollectorFilelogOffsetHostPath
+	if !strings.HasPrefix(hostPath, "/") || slices.Contains(strings.Split(hostPath, "/"), "..") {
+		return fmt.Errorf(
+			"collectorFilelogOffsetHostPath (operator.collectors.filelogOffsetHostPath) must be an absolute path without "+
+				"\"..\" segments, but was %q",
+			hostPath,
+		)
+	}
+	return nil
 }
 
 // validateReplicaCounts rejects replica counts below 1 in the extra config map.

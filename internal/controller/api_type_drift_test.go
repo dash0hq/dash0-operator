@@ -14,11 +14,6 @@ import (
 	. "github.com/onsi/gomega"
 	prometheusv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	dash0dashv1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
-	openslov1 "github.com/dash0hq/dash0-operator/api/openslo/v1"
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
-	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 )
 
 var jsonMarshalerType = reflect.TypeFor[json.Marshaler]()
@@ -236,264 +231,31 @@ var _ = Describe("Comparing custom resource types with Dash0 API client types", 
 		Expect(failures).To(HaveLen(1))
 	})
 
-	It("finds no unexpected drift between Dash0View and the API client's view type", func() {
-		expectNoUnexpectedApiTypeDrift(
-			reflect.TypeFor[dash0v1alpha1.Dash0ViewSpec](),
-			reflect.TypeFor[dash0apiclient.ViewSpec](),
-			map[string]string{
-				"display.folder": "ignored by the Dash0 API, folders are set via the dash0.com/folder-path annotation",
-			},
-			map[string]string{
-				"query":                "not supported by Dash0View yet",
-				"serviceMapProperties": "not supported by Dash0View yet",
-				"serviceName":          "not supported by Dash0View yet",
-			},
-		)
-	})
-	syntheticCheckUnionReason := "a union in the API client which keeps the raw JSON, see synthetic_check_definition_roundtrip_test.go"
-
-	It("finds no unexpected drift between Dash0SyntheticCheck and the API client's synthetic check type", func() {
-		expectNoUnexpectedApiTypeDrift(
-			reflect.TypeFor[dash0v1alpha1.Dash0SyntheticCheckSpec](),
-			reflect.TypeFor[dash0apiclient.SyntheticCheckSpec](),
-			map[string]string{
-				"plugin.kind":  syntheticCheckUnionReason,
-				"plugin.spec":  syntheticCheckUnionReason,
-				"retries.kind": syntheticCheckUnionReason,
-				"retries.spec": syntheticCheckUnionReason,
-			},
-			map[string]string{
-				"annotations":                        "not supported by Dash0SyntheticCheck yet",
-				"notifications.onlyCriticalChannels": "not supported by Dash0SyntheticCheck yet",
-				"permissions":                        "not supported by Dash0SyntheticCheck yet",
-			},
-		)
-	})
-
-	It("finds no unexpected drift between the synthetic check plugin and the API client's HTTP check plugin", func() {
-		expectNoUnexpectedApiTypeDrift(
-			reflect.TypeFor[dash0v1alpha1.Dash0SyntheticCheckPlugin](),
-			reflect.TypeFor[dash0apiclient.SyntheticHttpCheckPlugin](),
-			map[string]string{
-				"spec.assertions.criticalAssertions.kind": syntheticCheckUnionReason,
-				"spec.assertions.criticalAssertions.spec": syntheticCheckUnionReason,
-				"spec.assertions.degradedAssertions.kind": syntheticCheckUnionReason,
-				"spec.assertions.degradedAssertions.spec": syntheticCheckUnionReason,
-			},
-			nil,
-		)
-	})
-
-	It("finds no unexpected drift between the synthetic check retries and the API client's retries types", func() {
-		expectNoUnexpectedApiTypeDrift(
-			reflect.TypeFor[dash0v1alpha1.Dash0SyntheticCheckRetries](),
-			reflect.TypeFor[dash0apiclient.SyntheticCheckRetriesExponential](),
-			nil,
-			nil,
-		)
-	})
-
-	It("finds no unexpected drift between Dash0NotificationChannel and the API client's notification channel type",
-		func() {
-			movedToConfig := "assembled into spec.config by prepareNotificationChannelApiPayload"
-			expectNoUnexpectedApiTypeDrift(
-				reflect.TypeFor[dash0v1beta1.Dash0NotificationChannelSpec](),
-				reflect.TypeFor[dash0apiclient.NotificationChannelSpec](),
-				map[string]string{
-					"display":                 "moved to metadata.name by prepareNotificationChannelApiPayload",
-					"slackConfig":             movedToConfig,
-					"slackBotConfig":          movedToConfig,
-					"emailV2Config":           movedToConfig,
-					"webhookConfig":           movedToConfig,
-					"incidentioConfig":        movedToConfig,
-					"opsgenieConfig":          movedToConfig,
-					"pagerdutyConfig":         movedToConfig,
-					"teamsWebhookConfig":      movedToConfig,
-					"discordWebhookConfig":    movedToConfig,
-					"googleChatWebhookConfig": movedToConfig,
-					"ilertConfig":             movedToConfig,
-					"allQuietConfig":          movedToConfig,
-				},
-				map[string]string{
-					"config": "assembled from the type-specific *Config field by prepareNotificationChannelApiPayload",
-				},
-			)
-		})
-
-	DescribeTable("finds no drift between the notification channel config types",
-		func(crdType reflect.Type, clientType reflect.Type) {
-			expectNoUnexpectedApiTypeDrift(crdType, clientType, nil, nil)
+	DescribeTable("finds no unexpected drift between the custom resource definitions and the Dash0 API client types",
+		func(check crdSchemaDriftCheck) {
+			expectNoUnexpectedCrdSchemaDrift(check)
 		},
-		Entry(
-			"slack",
-			reflect.TypeFor[dash0v1beta1.SlackConfig](),
-			reflect.TypeFor[dash0apiclient.SlackConfig](),
-		),
-		Entry(
-			"slack_bot",
-			reflect.TypeFor[dash0v1beta1.SlackBotConfig](),
-			reflect.TypeFor[dash0apiclient.SlackBotConfig](),
-		),
-		Entry(
-			"email_v2",
-			reflect.TypeFor[dash0v1beta1.EmailV2Config](),
-			reflect.TypeFor[dash0apiclient.EmailV2Config](),
-		),
-		Entry(
-			"webhook",
-			reflect.TypeFor[dash0v1beta1.WebhookConfig](),
-			reflect.TypeFor[dash0apiclient.WebhookConfig](),
-		),
-		Entry(
-			"incidentio",
-			reflect.TypeFor[dash0v1beta1.IncidentioConfig](),
-			reflect.TypeFor[dash0apiclient.IncidentIOConfig](),
-		),
-		Entry(
-			"opsgenie",
-			reflect.TypeFor[dash0v1beta1.OpsgenieConfig](),
-			reflect.TypeFor[dash0apiclient.OpsgenieConfig](),
-		),
-		Entry(
-			"pagerduty",
-			reflect.TypeFor[dash0v1beta1.PagerdutyConfig](),
-			reflect.TypeFor[dash0apiclient.PagerDutyConfig](),
-		),
-		Entry(
-			"teams_webhook",
-			reflect.TypeFor[dash0v1beta1.TeamsWebhookConfig](),
-			reflect.TypeFor[dash0apiclient.TeamsWebhookConfig](),
-		),
-		Entry(
-			"discord_webhook",
-			reflect.TypeFor[dash0v1beta1.DiscordWebhookConfig](),
-			reflect.TypeFor[dash0apiclient.DiscordWebhookConfig](),
-		),
-		Entry(
-			"google_chat_webhook",
-			reflect.TypeFor[dash0v1beta1.GoogleChatWebhookConfig](),
-			reflect.TypeFor[dash0apiclient.GoogleChatWebhookConfig](),
-		),
-		Entry(
-			"ilert",
-			reflect.TypeFor[dash0v1beta1.IlertConfig](),
-			reflect.TypeFor[dash0apiclient.IlertConfig](),
-		),
-		Entry(
-			"all_quiet",
-			reflect.TypeFor[dash0v1beta1.AllQuietConfig](),
-			reflect.TypeFor[dash0apiclient.AllQuietConfig](),
-		),
+		crdSchemaDriftCheckEntries(),
 	)
 
-	samplingConditionUnionReason := "a union in the API client which keeps the raw JSON, see sampling_rule_definition_roundtrip_test.go"
-	samplingConditionVariantReason := "the custom resource has one condition spec type for all condition kinds"
-
-	It("finds no unexpected drift between Dash0SamplingRule and the API client's sampling rule type", func() {
-		expectNoUnexpectedApiTypeDrift(
-			reflect.TypeFor[dash0v1alpha1.Dash0SamplingRuleSpec](),
-			reflect.TypeFor[dash0apiclient.SamplingSpec](),
-			map[string]string{
-				"conditions.kind": samplingConditionUnionReason,
-				"conditions.spec": samplingConditionUnionReason,
-			},
-			nil,
-		)
-	})
-
-	DescribeTable("finds no unexpected drift between the sampling rule condition and the API client's condition types",
-		func(clientType reflect.Type, allowedOnlyInCrd map[string]string) {
-			expectNoUnexpectedApiTypeDrift(
-				reflect.TypeFor[dash0v1alpha1.Dash0SamplingRuleCondition](),
-				clientType,
-				allowedOnlyInCrd,
-				nil,
-			)
-		},
-		Entry("probabilistic", reflect.TypeFor[dash0apiclient.SamplingConditionProbabilistic](), map[string]string{
-			"spec.ottl":       samplingConditionVariantReason,
-			"spec.conditions": samplingConditionVariantReason,
-		}),
-		Entry("ottl", reflect.TypeFor[dash0apiclient.SamplingConditionOttl](), map[string]string{
-			"spec.rate":       samplingConditionVariantReason,
-			"spec.conditions": samplingConditionVariantReason,
-		}),
-		Entry("and", reflect.TypeFor[dash0apiclient.SamplingConditionAnd](), map[string]string{
-			"spec.rate": samplingConditionVariantReason,
-			"spec.ottl": samplingConditionVariantReason,
-		}),
-	)
-
-	It("finds no unexpected drift between Dash0SpamFilter and the API client's spam filter type", func() {
-		expectNoUnexpectedApiTypeDrift(
-			reflect.TypeFor[dash0v1alpha1.Dash0SpamFilterSpec](),
-			reflect.TypeFor[dash0apiclient.SpamFilterSpec](),
-			nil,
-			nil,
-		)
-	})
-
-	It("finds no unexpected drift between Dash0SignalToMetrics and the API client's signal-to-metrics type", func() {
-		expectNoUnexpectedApiTypeDrift(
-			reflect.TypeFor[dash0v1alpha1.Dash0SignalToMetricsSpec](),
-			reflect.TypeFor[dash0apiclient.SignalToMetricsSpec](),
-			nil,
-			map[string]string{
-				"alternativeDatasetId": "not supported by Dash0SignalToMetrics yet",
-				"targetDatasetMode":    "not supported by Dash0SignalToMetrics yet",
-			},
-		)
-	})
-
-	It("finds no unexpected drift between Dash0TimeSeriesAggregation and the API client's time series aggregation type", func() {
-		expectNoUnexpectedApiTypeDrift(
-			reflect.TypeFor[dash0v1alpha1.Dash0TimeSeriesAggregationSpec](),
-			reflect.TypeFor[dash0apiclient.TimeSeriesAggregationSpec](),
-			nil,
-			nil,
-		)
-	})
-
-	It("finds no unexpected drift between Dash0Team and the API client's team type", func() {
-		expectNoUnexpectedApiTypeDrift(
-			reflect.TypeFor[dash0dashv1alpha1.Dash0TeamSpec](),
-			reflect.TypeFor[dash0apiclient.TeamSpec](),
-			nil,
-			nil,
-		)
-	})
-
-	sloMetricSourceSpecReason := "an untyped map in the API client, see slo_definition_roundtrip_test.go"
-	sloNotSupportedByApiReason := "accepted for OpenSLO compatibility, but ignored or rejected by the Dash0 API"
-
-	It("finds no unexpected drift between SLO and the API client's SLO type", func() {
-		expectNoUnexpectedApiTypeDrift(
-			reflect.TypeFor[openslov1.SLOSpec](),
-			reflect.TypeFor[dash0apiclient.SloSpec](),
-			map[string]string{
-				"indicator.spec.ratioMetric.good.metricSource.spec.query":  sloMetricSourceSpecReason,
-				"indicator.spec.ratioMetric.bad.metricSource.spec.query":   sloMetricSourceSpecReason,
-				"indicator.spec.ratioMetric.total.metricSource.spec.query": sloMetricSourceSpecReason,
-				"indicator.spec.ratioMetric.raw.metricSource.spec.query":   sloMetricSourceSpecReason,
-			},
-			map[string]string{
-				"alertPolicies":                  sloNotSupportedByApiReason,
-				"indicatorRef":                   sloNotSupportedByApiReason,
-				"indicator.spec.thresholdMetric": sloNotSupportedByApiReason,
-				"indicator.spec.ratioMetric.good.metricSource.metricSourceRef":  sloNotSupportedByApiReason,
-				"indicator.spec.ratioMetric.bad.metricSource.metricSourceRef":   sloNotSupportedByApiReason,
-				"indicator.spec.ratioMetric.total.metricSource.metricSourceRef": sloNotSupportedByApiReason,
-				"indicator.spec.ratioMetric.raw.metricSource.metricSourceRef":   sloNotSupportedByApiReason,
-				"objectives.compositeWeight":                                    sloNotSupportedByApiReason,
-				"objectives.indicator":                                          sloNotSupportedByApiReason,
-				"objectives.indicatorRef":                                       sloNotSupportedByApiReason,
-				"objectives.op":                                                 sloNotSupportedByApiReason,
-				"objectives.timeSliceTarget":                                    sloNotSupportedByApiReason,
-				"objectives.timeSliceWindow":                                    sloNotSupportedByApiReason,
-				"objectives.value":                                              sloNotSupportedByApiReason,
-				"timeWindow.calendar":                                           sloNotSupportedByApiReason,
-			},
-		)
+	It("compares every variant of the Dash0 API client unions with a custom resource definition", func() {
+		uncovered := uncoveredUnionVariants(crdSchemaDriftChecks)
+		var unexpected []string
+		for _, variant := range uncovered {
+			if _, allowed := unsupportedApiClientUnionVariants[variant]; !allowed {
+				unexpected = append(unexpected, variant.String())
+			}
+		}
+		var stale []string
+		for variant := range unsupportedApiClientUnionVariants {
+			if !slices.Contains(uncovered, variant) {
+				stale = append(stale, variant.String())
+			}
+		}
+		Expect(unexpected).To(BeEmpty(),
+			"union variants of the Dash0 API client that no drift check compares with a custom resource definition")
+		Expect(stale).To(BeEmpty(),
+			"entries in unsupportedApiClientUnionVariants that are compared by a drift check (or no longer exist)")
 	})
 
 	It("finds no unexpected drift between CheckRule and the API client's check rule type", func() {

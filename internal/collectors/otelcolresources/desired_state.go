@@ -9,9 +9,11 @@ import (
 	"math"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
+	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -99,9 +101,10 @@ type SignalControlOperationMatcher struct {
 type oTelColConfig struct {
 	// OperatorNamespace is the namespace of the Dash0 operator
 	OperatorNamespace string
-	// NamePrefix is used as a prefix for OTel collector Kubernetes resources created by the operator, set to
-	// value of the environment variable OTEL_COLLECTOR_NAME_PREFIX, which is set to the Helm release name by the operator
-	//Helm chart.
+	// NamePrefix is used as a prefix for all Kubernetes resources created by the operator, set to the value of
+	// the environment variable DASH0_MANAGED_RESOURCE_NAME_PREFIX, which the operator Helm chart sets to
+	// operator.managedResourceNamePrefix, or to the Helm release name if that is not set.
+	// The collector configuration also uses it to derive the names of the target-allocator resources.
 	NamePrefix string
 	// OperatorManagerDeploymentName is the name of the operator manager deployment, used to exclude the operator
 	// manager's own metrics from namespace-based filtering.
@@ -110,6 +113,7 @@ type oTelColConfig struct {
 	AllMonitoringResources                           []dash0v1beta1.Dash0Monitoring
 	SendBatchSize                                    *uint32
 	SendBatchMaxSize                                 *uint32
+	SendingQueueSizeMiB                              *uint32
 	SelfMonitoringConfiguration                      selfmonitoringapiaccess.SelfMonitoringConfiguration
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	CollectPodLabelsAndAnnotationsEnabled            bool
@@ -118,11 +122,11 @@ type oTelColConfig struct {
 	KubernetesObjectCollectionEnabled                bool
 	CollectClusterScopedObjects                      bool
 	K8sAttributesDisableReplicasetInformer           bool
+	K8sAttributesDisableJobInformer                  bool
 	K8sAttributesWaitForMetadata                     bool
 	K8sAttributesWaitForMetadataTimeout              string
 	K8sAttributesShareProcessor                      bool
 	PrometheusCrdSupportEnabled                      bool
-	TargetAllocatorNamePrefix                        string
 	Agent0ConnectorEnabled                           bool
 	Agent0ConnectorDeploymentName                    string
 	SyntheticsWorkerDeploymentNames                  []string
@@ -142,8 +146,20 @@ type oTelColConfig struct {
 	IsOpenShift                 bool
 	// ServiceTrafficDistribution is the value for spec.trafficDistribution on the operator's services, or nil when the
 	// Kubernetes version does not enable the field by default. See cluster.ResolveServiceTrafficDistribution.
-	ServiceTrafficDistribution     *string
-	OffsetStorageVolume            *corev1.Volume
+	ServiceTrafficDistribution *string
+	// OffsetStorageVolume is the volume for the filelog receiver offsets, either provided by the user or a hostPath
+	// volume chosen by the operator (see resolveFilelogOffsetStorage). When nil, the offsets are kept in an emptyDir
+	// volume and synchronized to a config map by a sidecar container.
+	OffsetStorageVolume *corev1.Volume
+	// MigrateFilelogOffsetsFromConfigMap adds an init container to a collector daemonset with OffsetStorageVolume that
+	// restores the offsets from the config map of the config map based storage into the volume, unless the volume holds
+	// offsets that are at least as recent, so that switching to the volume keeps the offsets. The init container
+	// tolerates a missing config map. See planFilelogOffsetsMigration.
+	MigrateFilelogOffsetsFromConfigMap bool
+	// KeepFilelogOffsetsConfigMap keeps the config map of the config map based storage in the desired state although
+	// the offsets are stored in OffsetStorageVolume, so that pods which have not been rolled over to the volume yet can
+	// still be migrated. See planFilelogOffsetsMigration.
+	KeepFilelogOffsetsConfigMap    bool
 	SignalControl                  SignalControlConfig
 	AutoNamespaceMonitoringEnabled bool
 	// GlobalFilter and GlobalNormalizedTransform are the cluster-wide filters and transformations from the operator
@@ -163,7 +179,11 @@ type oTelColConfig struct {
 	DaemonSetCollectorMemoryLimit     resource.Quantity
 	DeploymentCollectorMemoryLimit    resource.Quantity
 	SignalControlCollectorMemoryLimit resource.Quantity
-	SignalControlSceOnlyMode          bool
+	// DeploymentCollectorReplicas is the number of replicas of the cluster metrics collector deployment, a value below 1
+	// is treated as 1. With more than one replica, the replicas use leader election, so that only one of them runs the
+	// receivers at any time.
+	DeploymentCollectorReplicas int32
+	SignalControlSceOnlyMode    bool
 	// TargetAllocatorMtlsCaSha is a hash of the CA certificate in the target-allocator mTLS client cert secret, empty if
 	// mTLS is disabled. It is added to the daemonset collector's pod template, so that the collector pods are restarted
 	// when the CA changes; the collector reloads the client certificate and key at runtime, but not the CA.
@@ -172,6 +192,17 @@ type oTelColConfig struct {
 
 func (c *oTelColConfig) usesOffsetStorageVolume() bool {
 	return c.OffsetStorageVolume != nil
+}
+
+func (c *oTelColConfig) deploymentCollectorReplicas() int32 {
+	return max(c.DeploymentCollectorReplicas, 1)
+}
+
+// deploymentCollectorUsesLeaderElection reports whether the replicas of the cluster metrics collector deployment elect
+// a leader via the k8s_leader_elector extension. The receivers of that collector (k8s_cluster, k8s_events,
+// k8s_objects) produce cluster-wide telemetry, so only the leader runs them, the other replicas are on standby.
+func (c *oTelColConfig) deploymentCollectorUsesLeaderElection() bool {
+	return c.deploymentCollectorReplicas() > 1
 }
 
 // usesExternalDaemonSetServiceAccount treats the name of the operator-managed service account as not external, since
@@ -458,8 +489,6 @@ var (
 			Port: intstr.FromInt32(probesHttpPort),
 		},
 	}
-
-	deploymentReplicas int32 = 1
 )
 
 func assembleDesiredStateForUpsert(
@@ -655,7 +684,7 @@ func assembleDesiredState(
 		return desiredState, err
 	}
 	desiredState = append(desiredState, addCommonMetadata(daemonSetCollectorConfigMap))
-	if !config.usesOffsetStorageVolume() {
+	if forDeletion || !config.usesOffsetStorageVolume() || config.KeepFilelogOffsetsConfigMap {
 		desiredState = append(desiredState, addCommonMetadata(assembleFilelogOffsetsConfigMap(config)))
 	}
 	desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleForDaemonSet(config)))
@@ -675,6 +704,11 @@ func assembleDesiredState(
 		desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDeployment(config)))
 		desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleForDeployment(config)))
 		desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleBindingForDeployment(config)))
+		if forDeletion || config.deploymentCollectorUsesLeaderElection() {
+			desiredState = append(desiredState, addCommonMetadata(assembleRoleForDeployment(config)))
+			desiredState = append(desiredState, addCommonMetadata(assembleRoleBindingForDeployment(config)))
+			desiredState = append(desiredState, addCommonMetadata(assembleCollectorDeploymentPodDisruptionBudget(config)))
+		}
 		deploymentCollectorConfigMap, err := assembleDeploymentCollectorConfigMap(
 			config,
 			monitoredNamespaces,
@@ -964,6 +998,17 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 		// process is running under.
 		podSpec.InitContainers = []corev1.Container{
 			assembleFileLogVolumeOwnershipInitContainer(config, filelogOffsetsVolume),
+		}
+		if config.MigrateFilelogOffsetsFromConfigMap {
+			podSpec.InitContainers = append(
+				podSpec.InitContainers,
+				assembleFileLogOffsetMigrateInitContainer(
+					config,
+					workloadNameEnvVar,
+					extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources,
+					filelogOffsetsVolume,
+				),
+			)
 		}
 	} else {
 		podSpec.InitContainers = []corev1.Container{
@@ -1546,6 +1591,18 @@ func assembleConfigurationReloaderContainer(
 			workloadNameEnvVar,
 			k8sPodUidEnvVar,
 			k8sPodNameEnvVar,
+			{
+				Name: "DASH0_POD_IP",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: "status.podIP",
+					},
+				},
+			},
+			{
+				Name:  "DASH0_COLLECTOR_HEALTH_CHECK_PORT",
+				Value: strconv.Itoa(probesHttpPort),
+			},
 		},
 		Resources:    resourceRequirements.ToResourceRequirements(),
 		VolumeMounts: reloaderVolumeMounts,
@@ -1567,9 +1624,46 @@ func assembleFileLogOffsetSyncInitContainer(
 	workloadNameEnvVar corev1.EnvVar,
 	resourceRequirements util.ResourceRequirementsWithGoMemLimit,
 ) corev1.Container {
+	return assembleFileLogOffsetInitContainer(
+		config,
+		workloadNameEnvVar,
+		resourceRequirements,
+		"filelog-offset-init",
+		"init",
+		defaultFilelogReceiverOffsetsVolumeMount,
+	)
+}
+
+// assembleFileLogOffsetMigrateInitContainer restores the offsets from the config map into the offset storage volume,
+// unless the volume holds offsets that are at least as recent. It must run after the volume ownership init container,
+// which makes the volume writable for the collector's user. See images/filelogoffsetsync/README.md.
+func assembleFileLogOffsetMigrateInitContainer(
+	config *oTelColConfig,
+	workloadNameEnvVar corev1.EnvVar,
+	resourceRequirements util.ResourceRequirementsWithGoMemLimit,
+	filelogOffsetsVolume corev1.Volume,
+) corev1.Container {
+	return assembleFileLogOffsetInitContainer(
+		config,
+		workloadNameEnvVar,
+		resourceRequirements,
+		fileLogOffsetMigrateInitContainerName,
+		"migrate",
+		createVolumeMountForUserProvidedFileLogOffsetVolume(filelogOffsetsVolume),
+	)
+}
+
+func assembleFileLogOffsetInitContainer(
+	config *oTelColConfig,
+	workloadNameEnvVar corev1.EnvVar,
+	resourceRequirements util.ResourceRequirementsWithGoMemLimit,
+	name string,
+	mode string,
+	volumeMount corev1.VolumeMount,
+) corev1.Container {
 	initFilelogOffsetSyncContainer := corev1.Container{
-		Name: "filelog-offset-init",
-		Args: []string{"--mode=init"},
+		Name: name,
+		Args: []string{"--mode=" + mode},
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: new(false),
 			ReadOnlyRootFilesystem:   new(true),
@@ -1614,7 +1708,7 @@ func assembleFileLogOffsetSyncInitContainer(
 			k8sPodNameEnvVar,
 		},
 		Resources:    resourceRequirements.ToResourceRequirements(),
-		VolumeMounts: []corev1.VolumeMount{defaultFilelogReceiverOffsetsVolumeMount},
+		VolumeMounts: []corev1.VolumeMount{volumeMount},
 	}
 	if config.Images.FilelogOffsetSyncImagePullPolicy != "" {
 		initFilelogOffsetSyncContainer.ImagePullPolicy = config.Images.FilelogOffsetSyncImagePullPolicy
@@ -1795,6 +1889,82 @@ func assembleClusterRoleBindingForDeployment(config *oTelColConfig) *rbacv1.Clus
 	}
 }
 
+// assembleRoleForDeployment grants the cluster metrics collector access to the lease that its replicas use for leader
+// election. The create verb cannot be restricted to a resource name, see
+// https://kubernetes.io/docs/reference/access-authn-authz/rbac/#referring-to-resources.
+func assembleRoleForDeployment(config *oTelColConfig) *rbacv1.Role {
+	return &rbacv1.Role{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Role",
+			APIVersion: rbacApiVersion,
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      deploymentRoleName(config.NamePrefix),
+			Namespace: config.OperatorNamespace,
+			Labels:    labels(false),
+		},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{coordinationv1.GroupName},
+				Resources: []string{"leases"},
+				Verbs:     []string{"create"},
+			},
+			{
+				APIGroups:     []string{coordinationv1.GroupName},
+				Resources:     []string{"leases"},
+				ResourceNames: []string{deploymentCollectorLeaseName(config.NamePrefix)},
+				Verbs:         []string{"get", "update", "patch"},
+			},
+		},
+	}
+}
+
+func assembleRoleBindingForDeployment(config *oTelColConfig) *rbacv1.RoleBinding {
+	return &rbacv1.RoleBinding{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "RoleBinding",
+			APIVersion: rbacApiVersion,
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      deploymentRoleBindingName(config.NamePrefix),
+			Namespace: config.OperatorNamespace,
+			Labels:    labels(false),
+		},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: rbacApiGroup,
+			Kind:     "Role",
+			Name:     deploymentRoleName(config.NamePrefix),
+		},
+		Subjects: []rbacv1.Subject{{
+			Kind:      "ServiceAccount",
+			Name:      deploymentServiceAccountName(config.NamePrefix),
+			Namespace: config.OperatorNamespace,
+		}},
+	}
+}
+
+// assembleCollectorDeploymentPodDisruptionBudget keeps voluntary disruptions (node drains, cluster upgrades, node
+// scale-down) from evicting more than one replica of the cluster metrics collector at a time, so that a standby
+// replica is left to take over the leader election lease.
+func assembleCollectorDeploymentPodDisruptionBudget(config *oTelColConfig) *policyv1.PodDisruptionBudget {
+	maxUnavailable := intstr.FromInt32(1)
+	return &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: "policy/v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      DeploymentCollectorPodDisruptionBudgetName(config.NamePrefix),
+			Namespace: config.OperatorNamespace,
+			Labels:    labels(false),
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			MaxUnavailable: &maxUnavailable,
+			Selector:       &metav1.LabelSelector{MatchLabels: deploymentMatchLabels},
+		},
+	}
+}
+
 func assembleCollectorDeployment(
 	config *oTelColConfig,
 	extraConfig util.ExtraConfig,
@@ -1851,6 +2021,9 @@ func assembleCollectorDeployment(
 			NodeAffinity: extraConfig.DeploymentNodeAffinity,
 		}
 	}
+	if config.deploymentCollectorUsesLeaderElection() {
+		podSpec.TopologySpreadConstraints = spreadOverZonesAndNodes(deploymentMatchLabels)
+	}
 
 	priorityClassName := strings.TrimSpace(extraConfig.CollectorDeploymentPriorityClassName)
 	if priorityClassName != "" {
@@ -1867,7 +2040,7 @@ func assembleCollectorDeployment(
 			Annotations: util.MergeMaps(nil, extraConfig.CollectorDeploymentAnnotations),
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: &deploymentReplicas,
+			Replicas: ptr.To(config.deploymentCollectorReplicas()),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: deploymentMatchLabels,
 			},
@@ -2154,7 +2327,7 @@ func assembleSignalControlCollectorDeployment(
 			NodeAffinity: extraConfig.SignalControlCollectorNodeAffinity,
 		}
 	}
-	podSpec.TopologySpreadConstraints = signalControlCollectorTopologySpreadConstraints()
+	podSpec.TopologySpreadConstraints = spreadOverZonesAndNodes(signalControlMatchLabels)
 
 	priorityClassName := strings.TrimSpace(extraConfig.SignalControlCollectorPriorityClassName)
 	if priorityClassName != "" {
@@ -2215,10 +2388,10 @@ func assembleSignalControlCollectorDeployment(
 	return collectorDeployment, nil
 }
 
-// signalControlCollectorTopologySpreadConstraints spreads the Signal Control collector's replicas evenly over the
-// cluster's availability zones. maxSkew bounds the difference between the per-zone pod counts, not the count itself,
-// so with more replicas than zones several replicas share a zone (evenly), and with fewer replicas than zones each
-// one gets its own zone.
+// spreadOverZonesAndNodes spreads the replicas of a collector deployment (the Signal Control collector, or the
+// cluster metrics collector when it runs with more than one replica) evenly over the cluster's availability zones and
+// nodes. maxSkew bounds the difference between the per-zone pod counts, not the count itself, so with more replicas
+// than zones several replicas share a zone (evenly), and with fewer replicas than zones each one gets its own zone.
 //
 // Both constraints are advisory (ScheduleAnyway). DoNotSchedule must not be used for the zone constraint: the
 // scheduler rejects every node that does not carry the constraint's topology key outright, instead of ignoring it, so
@@ -2227,8 +2400,8 @@ func assembleSignalControlCollectorDeployment(
 //
 // matchLabelKeys scopes both constraints to one ReplicaSet, so that during a rolling update the outgoing pods are not
 // counted against the incoming ones (which would block the rollout on a zone-saturated cluster).
-func signalControlCollectorTopologySpreadConstraints() []corev1.TopologySpreadConstraint {
-	labelSelector := &metav1.LabelSelector{MatchLabels: signalControlMatchLabels}
+func spreadOverZonesAndNodes(matchLabels map[string]string) []corev1.TopologySpreadConstraint {
+	labelSelector := &metav1.LabelSelector{MatchLabels: matchLabels}
 	return []corev1.TopologySpreadConstraint{
 		{
 			MaxSkew:           1,
@@ -2413,12 +2586,30 @@ func roleBindingName(namePrefix string) string {
 	return renderName(namePrefix, openTelemetryCollector, "rolebinding")
 }
 
+func deploymentRoleName(namePrefix string) string {
+	return renderName(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "role")
+}
+
+func deploymentRoleBindingName(namePrefix string) string {
+	return renderName(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "rolebinding")
+}
+
+func deploymentCollectorLeaseName(namePrefix string) string {
+	return renderName(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "lease")
+}
+
 func ServiceName(namePrefix string) string {
 	return renderName(namePrefix, openTelemetryCollector, "service")
 }
 
 func SignalControlCollectorServiceName(namePrefix string) string {
 	return renderName(namePrefix, openTelemetryCollectorSignalControlNameSuffix, "service")
+}
+
+// DeploymentCollectorPodDisruptionBudgetName returns the name of the pod disruption budget of the cluster metrics
+// collector deployment.
+func DeploymentCollectorPodDisruptionBudgetName(namePrefix string) string {
+	return renderName(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "pdb")
 }
 
 func SignalControlCollectorPodDisruptionBudgetName(namePrefix string) string {

@@ -73,6 +73,7 @@ AGENT0_CONNECTOR_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
 
 DEBUGINFO_PROXY_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)debuginfo-proxy
 DEBUGINFO_PROXY_IMAGE_TAG ?= $(IMAGE_TAG)
+DEBUGINFO_PROXY_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
 
 # Variables for test application container images:
 
@@ -188,7 +189,7 @@ go-fix: ## Run go fix against code.
 test: go-unit-tests helm-unit-tests ## Run all unit tests (Go, Helm chart unit tests).
 
 .PHONY: go-unit-tests
-go-unit-tests: common-package-unit-tests nodeuid-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests collector-telemetry-unit-tests debuginfo-proxy-unit-tests ## Run the Go unit tests for all packages.
+go-unit-tests: common-package-unit-tests nodeuid-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests collector-telemetry-unit-tests configreloader-unit-tests debuginfo-proxy-unit-tests filelog-offset-sync-unit-tests ## Run the Go unit tests for all packages.
 
 .PHONY: operator-manager-unit-tests
 operator-manager-unit-tests: manifests generate fmt vet envtest ## Run the Go unit tests for the operator code.
@@ -214,9 +215,17 @@ agent0-connector-unit-tests: ## Run the Go unit tests for the agent0-connector i
 collector-telemetry-unit-tests: ## Run the Go unit tests for the collector image's custom internal-telemetry factory.
 	cd images/collector/src/telemetry && go test -race ./...
 
+.PHONY: configreloader-unit-tests
+configreloader-unit-tests: ## Run the Go unit tests for the configuration reloader image Go app.
+	cd images/configreloader/src && go test -race ./...
+
 .PHONY: debuginfo-proxy-unit-tests
 debuginfo-proxy-unit-tests: ## Run the debuginfo upload proxy tests.
 	cd images/debuginfo-proxy/src && go test -race ./...
+
+.PHONY: filelog-offset-sync-unit-tests
+filelog-offset-sync-unit-tests: ## Run the Go unit tests for the filelog offset sync image Go app.
+	cd images/filelogoffsetsync/src && go test -race ./...
 
 .PHONY: helm-unit-tests
 helm-unit-tests: ## Run the Helm chart unit tests.
@@ -328,7 +337,6 @@ helm-chart-lint: ## Run static code analysis for the Helm chart templates.
 	@echo "-------------------------------- (linting Helm charts)"
 	@$(call lint_helm_chart,helm-chart/dash0-operator)
 	@$(call lint_helm_chart,test-resources/dotnet/helm-chart)
-	@$(call lint_helm_chart,test-resources/ebpf-profiler/helm-chart)
 	@$(call lint_helm_chart,test-resources/jvm/spring-boot/helm-chart)
 	@$(call lint_helm_chart,test-resources/node.js/express/helm-chart)
 	@$(call lint_helm_chart,test-resources/python/flask/helm-chart)
@@ -796,7 +804,10 @@ HELM_BUILT_IMAGE_SETTINGS = \
 	--set operator.targetAllocatorImage.pullPolicy=$(TARGET_ALLOCATOR_IMAGE_PULL_POLICY) \
 	--set operator.agent0ConnectorImage.repository=$(AGENT0_CONNECTOR_IMAGE_REPOSITORY) \
 	--set operator.agent0ConnectorImage.tag=$(AGENT0_CONNECTOR_IMAGE_TAG) \
-	--set operator.agent0ConnectorImage.pullPolicy=$(AGENT0_CONNECTOR_IMAGE_PULL_POLICY)
+	--set operator.agent0ConnectorImage.pullPolicy=$(AGENT0_CONNECTOR_IMAGE_PULL_POLICY) \
+	--set operator.debuginfoProxyImage.repository=$(DEBUGINFO_PROXY_IMAGE_REPOSITORY) \
+	--set operator.debuginfoProxyImage.tag=$(DEBUGINFO_PROXY_IMAGE_TAG) \
+	--set operator.debuginfoProxyImage.pullPolicy=$(DEBUGINFO_PROXY_IMAGE_PULL_POLICY)
 
 HELM_IMAGE_SETTINGS = \
 	$(HELM_BUILT_IMAGE_SETTINGS) \
@@ -841,7 +852,8 @@ OLM_COMMITTED_BUNDLE_CHANNEL = stable
 OLM_COMMITTED_BUNDLE_HELM_SETTINGS = \
 	--set operator.signalControlCollectorImage.tag=0.0.0 \
 	--set operator.edgeProxyImage.tag=0.0.0 \
-	--set operator.syntheticsWorkerImage.tag=0.0.0
+	--set operator.syntheticsWorkerImage.tag=0.0.0 \
+	--set operator.ebpfProfilerImage.tag=0.0.0
 
 # The Signal Control collector and Edge Proxy images are not built in this repository. A test bundle keeps the images of
 # the chart unless SIGNAL_CONTROL_COLLECTOR_IMAGE_* or EDGE_PROXY_IMAGE_* are set via the environment or command line.
@@ -865,6 +877,9 @@ OPERATOR_SDK=$(OPERATOR_SDK) \
 olm/bin/generate-bundle.sh $(4)
 endef
 
+# Only olm-release-bundle sets OLM_CHART_APP_VERSION, a value from the environment must not change the other bundles.
+unexport OLM_CHART_APP_VERSION
+
 .PHONY: olm-bundle
 olm-bundle: operator-sdk ## Generate the committed OLM bundle from the Helm chart, into BUNDLE_DIR (default: bundle).
 	OLM_TEST_BUNDLE=false $(call generate_olm_bundle,$(OLM_COMMITTED_BUNDLE_VERSION),$(OLM_COMMITTED_BUNDLE_CHANNEL),$(OLM_COMMITTED_BUNDLE_CHANNEL),$(OLM_COMMITTED_BUNDLE_HELM_SETTINGS))
@@ -872,6 +887,11 @@ olm-bundle: operator-sdk ## Generate the committed OLM bundle from the Helm char
 .PHONY: olm-test-bundle
 olm-test-bundle: operator-sdk ## Generate an OLM bundle with the BUNDLE_* and image settings of this Makefile into BUNDLE_DIR, e.g. olm/build/test-bundle.
 	OLM_TEST_BUNDLE=true $(call generate_olm_bundle,$(BUNDLE_VERSION),$(BUNDLE_CHANNELS),$(BUNDLE_DEFAULT_CHANNEL),$(OLM_HELM_IMAGE_SETTINGS))
+
+.PHONY: olm-release-bundle
+olm-release-bundle: operator-sdk ## Generate an OLM bundle with the images of the chart, tagged with BUNDLE_OPERATOR_IMAGE_TAG, into BUNDLE_DIR, e.g. olm/build/release-bundle.
+	@if [ -z "$(BUNDLE_OPERATOR_IMAGE_TAG)" ]; then echo "error: BUNDLE_OPERATOR_IMAGE_TAG is required"; exit 1; fi
+	OLM_TEST_BUNDLE=true OLM_CHART_APP_VERSION="$(BUNDLE_OPERATOR_IMAGE_TAG)" $(call generate_olm_bundle,$(BUNDLE_VERSION),$(BUNDLE_CHANNELS),$(BUNDLE_DEFAULT_CHANNEL),)
 
 .PHONY: olm-bundle-check
 olm-bundle-check: ## Check that the committed OLM bundle in bundle/ is up to date.
@@ -897,6 +917,36 @@ olm-bundle-image: ## Build the image of the OLM bundle in BUNDLE_DIR locally, th
 push-olm-bundle-image: ## Push the OLM bundle image.
 	@$(call push_container_image,$(BUNDLE_IMAGE_REPOSITORY),$(BUNDLE_IMAGE_TAG))
 
+CATALOG_DIR ?= olm/build/catalog
+CATALOG_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)dash0-operator-catalog
+CATALOG_IMAGE_TAG ?= $(BUNDLE_IMAGE_TAG)
+# Space-separated bundle image references, preferably by digest.
+CATALOG_BUNDLE_IMAGES ?=
+# Optional: a bundle image from which the only bundle of CATALOG_BUNDLE_IMAGES is reachable via an upgrade edge.
+CATALOG_UPGRADE_FROM_BUNDLE_IMAGE ?=
+
+.PHONY: olm-catalog
+olm-catalog: opm ## Render and validate an FBC catalog with the bundle images of CATALOG_BUNDLE_IMAGES into CATALOG_DIR.
+	OPM=$(OPM) CATALOG_DIR="$(CATALOG_DIR)" CATALOG_BUNDLE_IMAGES="$(CATALOG_BUNDLE_IMAGES)" CATALOG_UPGRADE_FROM_BUNDLE_IMAGE="$(CATALOG_UPGRADE_FROM_BUNDLE_IMAGE)" olm/bin/generate-catalog.sh
+
+.PHONY: olm-catalog-image
+olm-catalog-image: ## Build the image of the OLM catalog in CATALOG_DIR locally, the image is not pushed.
+	@$(call build_container_image,$(CATALOG_IMAGE_REPOSITORY),$(CATALOG_IMAGE_TAG),$(CATALOG_DIR),olm/catalog/catalog.Dockerfile)
+
+.PHONY: push-olm-catalog-image
+push-olm-catalog-image: ## Push the OLM catalog image.
+	@$(call push_container_image,$(CATALOG_IMAGE_REPOSITORY),$(CATALOG_IMAGE_TAG))
+
+# A clone of community-operators-prod (or of a fork of it) and the release to submit.
+COMMUNITY_OPERATORS_DIR ?=
+COMMUNITY_BUNDLE_VERSION ?=
+# Comma-separated GitHub user names for ci.yaml, only needed for the first submission.
+COMMUNITY_REVIEWERS ?=
+
+.PHONY: olm-community-bundle
+olm-community-bundle: operator-sdk ## Prepare the submission of the release COMMUNITY_BUNDLE_VERSION to the OpenShift community catalog in COMMUNITY_OPERATORS_DIR.
+	OPERATOR_SDK=$(OPERATOR_SDK) CONTAINER_TOOL=$(CONTAINER_TOOL) COMMUNITY_OPERATORS_DIR="$(COMMUNITY_OPERATORS_DIR)" COMMUNITY_BUNDLE_VERSION="$(COMMUNITY_BUNDLE_VERSION)" COMMUNITY_REVIEWERS="$(COMMUNITY_REVIEWERS)" olm/bin/prepare-community-bundle.sh
+
 ##@ Build Dependencies
 
 ## Location to install dependencies to
@@ -911,12 +961,16 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 HUSKY ?= $(LOCALBIN)/husky
 OPERATOR_SDK ?= $(LOCALBIN)/operator-sdk
+OPM ?= $(LOCALBIN)/opm
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.7.1
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
 # Keep the scorecard-test image tags in config/scorecard/config.yaml in sync with this version.
 OPERATOR_SDK_VERSION ?= v1.42.3
+# The opm binary renders the catalog, the opm image in olm/catalog/catalog.Dockerfile serves it, both versions are
+# independent of each other.
+OPM_VERSION ?= v1.74.0
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
@@ -944,6 +998,14 @@ operator-sdk: $(LOCALBIN) ## Download operator-sdk locally if necessary. If wron
 		set -e; \
 		curl -sSfLo $(OPERATOR_SDK) https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$(shell go env GOOS)_$(shell go env GOARCH); \
 		chmod +x $(OPERATOR_SDK); \
+	}
+
+.PHONY: opm
+opm: $(LOCALBIN) ## Download opm locally if necessary. If wrong version is installed, it will be overwritten.
+	@test -s $(OPM) && $(OPM) version | grep -q $(OPM_VERSION) || { \
+		set -e; \
+		curl -sSfLo $(OPM) https://github.com/operator-framework/operator-registry/releases/download/$(OPM_VERSION)/$(shell go env GOOS)-$(shell go env GOARCH)-opm; \
+		chmod +x $(OPM); \
 	}
 
 .PHONY: husky-install

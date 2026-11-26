@@ -1,0 +1,93 @@
+suite: test monitoring resource CRD
+templates:
+  - operator/custom-resource-definition-monitoring.yaml
+release:
+  name: test-release
+tests:
+  - it: monitoring resource CRD should match snapshot
+    documentSelector:
+      path: metadata.name
+      value: dash0monitorings.operator.dash0.com
+    asserts:
+      - matchSnapshot:
+          path:
+            spec.versions
+
+  - it: monitoring resource CRD should render the live caBundle for the conversion webhook
+    kubernetesProvider:
+      scheme:
+        "apiextensions.k8s.io/v1/CustomResourceDefinition":
+          gvr:
+            group: apiextensions.k8s.io
+            version: v1
+            resource: customresourcedefinitions
+          namespaced: false
+      objects:
+        - apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          metadata:
+            name: dash0monitorings.operator.dash0.com
+          spec:
+            conversion:
+              strategy: Webhook
+              webhook:
+                clientConfig:
+                  caBundle: bGl2ZS1jb252ZXJzaW9u
+    documentSelector:
+      path: metadata.name
+      value: dash0monitorings.operator.dash0.com
+    asserts:
+      - equal:
+          path: spec.conversion.webhook.clientConfig.caBundle
+          value: bGl2ZS1jb252ZXJzaW9u
+      - equal:
+          path: spec.conversion.webhook.clientConfig.service.name
+          value: dash0-operator-webhook-service
+
+  - it: monitoring resource CRD should not render the caBundle for the conversion webhook if cert-manager is used
+    documentSelector:
+      path: metadata.name
+      value: dash0monitorings.operator.dash0.com
+    set:
+      operator:
+        certManager:
+          useCertManager: true
+          secretName: dash0-operator-certificate-secret
+          certManagerAnnotations:
+            cert-manager.io/inject-ca-from: dash0-system/dash0-operator-serving-certificate
+    asserts:
+      - exists:
+          path: spec.conversion.webhook.clientConfig.caBundle
+        not: true
+
+  - it: monitoring resource CRD should not render the caBundle for the conversion webhook if the live object cannot be read
+    documentSelector:
+      path: metadata.name
+      value: dash0monitorings.operator.dash0.com
+    asserts:
+      - notExists:
+          path: spec.conversion.webhook.clientConfig.caBundle
+
+  - it: monitoring resource CRD should be labelled as CA bundle injection target
+    documentSelector:
+      path: metadata.name
+      value: dash0monitorings.operator.dash0.com
+    asserts:
+      - equal:
+          path: metadata.labels["dash0.com/inject-ca-bundle"]
+          value: NAMESPACE
+
+  - it: monitoring resource CRD should not be labelled as CA bundle injection target if cert-manager is used
+    documentSelector:
+      path: metadata.name
+      value: dash0monitorings.operator.dash0.com
+    set:
+      operator:
+        certManager:
+          useCertManager: true
+          secretName: dash0-operator-certificate-secret
+          certManagerAnnotations:
+            cert-manager.io/inject-ca-from: dash0-system/dash0-operator-serving-certificate
+    asserts:
+      - notExists:
+          path: metadata.labels["dash0.com/inject-ca-bundle"]

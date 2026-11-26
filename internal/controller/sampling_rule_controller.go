@@ -99,6 +99,10 @@ func (r *SamplingRuleReconciler) ShortName() string {
 	return "sampling-rule"
 }
 
+func (r *SamplingRuleReconciler) Kind() string {
+	return "Dash0SamplingRule"
+}
+
 func (r *SamplingRuleReconciler) GetDefaultApiConfigs() []ApiConfig {
 	return r.defaultApiConfigs.Get()
 }
@@ -445,8 +449,8 @@ func samplingDefinitionId(samplingDefinition *dash0apiclient.SamplingDefinition)
 }
 
 // transformToSamplingApiPayload converts the K8s resource map into the SamplingDefinition format expected by the
-// Dash0 API. The API expects kind "Dash0Sampling", simplified metadata, and the probabilistic rate as a number
-// rather than a string.
+// Dash0 API. The API expects kind "Dash0Sampling", simplified metadata, the probabilistic rate as a number rather
+// than a string, and a spec for error conditions.
 func transformToSamplingApiPayload(resource map[string]interface{}, name string, dataset string) (map[string]interface{}, error) {
 	spec, ok := resource["spec"].(map[string]interface{})
 	if !ok {
@@ -457,7 +461,7 @@ func transformToSamplingApiPayload(resource map[string]interface{}, name string,
 	if err != nil {
 		return nil, fmt.Errorf("sampling rule %s: %w", name, err)
 	}
-	convertConditionRates(specCopy)
+	normalizeConditions(specCopy)
 
 	apiPayload := map[string]interface{}{
 		"kind": "Dash0Sampling",
@@ -484,8 +488,9 @@ func deepCopyMap(m map[string]interface{}) (map[string]interface{}, error) {
 	return result, nil
 }
 
-// convertConditionRates recursively converts probabilistic rate values from string to float in condition maps.
-func convertConditionRates(spec map[string]interface{}) {
+// normalizeConditions recursively converts the conditions of a sampling rule spec to the format the Dash0 API
+// expects, see normalizeCondition.
+func normalizeConditions(spec map[string]interface{}) {
 	conditions, ok := spec["conditions"]
 	if !ok {
 		return
@@ -494,10 +499,15 @@ func convertConditionRates(spec map[string]interface{}) {
 	if !ok {
 		return
 	}
-	convertRateInCondition(condMap)
+	normalizeCondition(condMap)
 }
 
-func convertRateInCondition(condition map[string]interface{}) {
+// normalizeCondition converts the probabilistic rate from a string to a number, and adds an empty spec to error
+// conditions, which the custom resource allows to omit but the Dash0 API requires.
+func normalizeCondition(condition map[string]interface{}) {
+	if condition["kind"] == "error" && condition["spec"] == nil {
+		condition["spec"] = map[string]interface{}{}
+	}
 	condSpec, ok := condition["spec"].(map[string]interface{})
 	if !ok {
 		return
@@ -510,7 +520,7 @@ func convertRateInCondition(condition map[string]interface{}) {
 	if subConditions, ok := condSpec["conditions"].([]interface{}); ok {
 		for _, sub := range subConditions {
 			if subMap, ok := sub.(map[string]interface{}); ok {
-				convertRateInCondition(subMap)
+				normalizeCondition(subMap)
 			}
 		}
 	}

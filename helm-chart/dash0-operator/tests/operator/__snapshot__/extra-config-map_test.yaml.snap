@@ -5,6 +5,8 @@ extra config map should match snapshot:
       extra.yaml: |-
         initContainerResources:
           {}
+        collectorFilelogOffsetStorageMode: auto
+        collectorFilelogOffsetHostPath: "/var/lib/dash0-operator/filelog-offsets"
         collectorDaemonSetCollectorContainerResources:
           gomemlimit: ""
           limits:
@@ -49,7 +51,7 @@ extra config map should match snapshot:
             periodSeconds: 2
             timeoutSeconds: 1
           startup:
-            failureThreshold: 45
+            failureThreshold: 30
             initialDelaySeconds: 0
             periodSeconds: 2
             timeoutSeconds: 1
@@ -91,10 +93,11 @@ extra config map should match snapshot:
             periodSeconds: 2
             timeoutSeconds: 1
           startup:
-            failureThreshold: 45
+            failureThreshold: 30
             initialDelaySeconds: 0
             periodSeconds: 2
             timeoutSeconds: 1
+        collectorDeploymentReplicas: 1
         signalControlCollectorContainerResources:
           gomemlimit: ""
           limits:
@@ -133,7 +136,7 @@ extra config map should match snapshot:
             periodSeconds: 2
             timeoutSeconds: 1
           startup:
-            failureThreshold: 45
+            failureThreshold: 30
             initialDelaySeconds: 0
             periodSeconds: 2
             timeoutSeconds: 1

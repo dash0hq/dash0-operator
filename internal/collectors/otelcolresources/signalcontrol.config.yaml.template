@@ -16,7 +16,7 @@ All enrichment that depends on the sending node or pod (resource_detection, k8s_
 resource/dash0_operator_attributes, custom filters and transforms) is applied upstream (in SCE-only mode, not at all)
 and must NOT be repeated here: k8s_attributes' "from: connection" pod association would resolve every record to the
 sending collector's pod, and the resource_detection k8s_api/eks detectors would report this collector's node. Batching
-is applied upstream as well, except in SCE-only mode, where this collector batches the received telemetry itself.
+happens in the exporters (sending_queue::batch), both here and in the producers.
 
 The producers route on k8s.namespace.name, keep the passthrough copies locally and forward one copy of the Dash0-bound
 telemetry here. This collector applies the same k8s.namespace.name routing again to pick the (namespace, dataset)
@@ -255,18 +255,6 @@ receivers:
 {{- end }}
 
 processors:
-  {{- if or .SendBatchSize .SendBatchMaxSize }}
-  batch:
-    {{- if .SendBatchSize }}
-    send_batch_size: {{ .SendBatchSize }}
-    {{- end }}
-    {{- if .SendBatchMaxSize }}
-    send_batch_max_size: {{ .SendBatchMaxSize }}
-    {{- end }}
-  {{- else }}
-  batch: {}
-  {{- end }}
-
   memory_limiter:
     check_interval: 1s
     {{- if .MemoryLimiterLimitMiB }}
@@ -491,9 +479,6 @@ service:
         - otlp
       processors:
         - memory_limiter
-        {{- if .SignalControlSceOnlyMode }}
-        - batch
-        {{- end }}
       exporters:
         {{- if $useRouting }}
         - routing/traces
@@ -539,8 +524,6 @@ service:
         {{- if .SignalControl.SignalToMetricsEnabled }}
         - dash0signaltometrics
         {{- end }}
-      processors:
-        - batch
       exporters:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
         - debug
@@ -624,8 +607,6 @@ service:
         {{- if $.SignalControl.SignalToMetricsEnabled }}
         - dash0signaltometrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- end }}
-      processors:
-        - batch
       exporters:
       {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
         - debug
@@ -654,9 +635,6 @@ service:
         - otlp
       processors:
         - memory_limiter
-        {{- if .SignalControlSceOnlyMode }}
-        - batch
-        {{- end }}
       exporters:
         {{- if $useRouting }}
         - routing/metrics
@@ -695,8 +673,6 @@ Dash0-Dataset header and the accountant sums what arrives, so a second delivery 
     metrics/signal-control-counters:
       receivers:
         - dash0metricrecorder
-      processors:
-        - batch
       exporters:
         {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
         - debug
@@ -742,8 +718,6 @@ Dash0-Dataset header and the accountant sums what arrives, so a second delivery 
     metrics/signal-control-counters/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
       receivers:
         - dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-      processors:
-        - batch
       exporters:
         {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
         - debug
@@ -757,9 +731,6 @@ Dash0-Dataset header and the accountant sums what arrives, so a second delivery 
         - otlp
       processors:
         - memory_limiter
-        {{- if .SignalControlSceOnlyMode }}
-        - batch
-        {{- end }}
       exporters:
         {{- if $useRouting }}
         - routing/logs
