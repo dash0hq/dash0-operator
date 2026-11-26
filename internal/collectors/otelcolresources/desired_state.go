@@ -113,6 +113,7 @@ type oTelColConfig struct {
 	AllMonitoringResources                           []dash0v1beta1.Dash0Monitoring
 	SendBatchSize                                    *uint32
 	SendBatchMaxSize                                 *uint32
+	SendingQueueSizeMiB                              *uint32
 	SelfMonitoringConfiguration                      selfmonitoringapiaccess.SelfMonitoringConfiguration
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	CollectPodLabelsAndAnnotationsEnabled            bool

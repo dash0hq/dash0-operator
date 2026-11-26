@@ -127,6 +127,7 @@ type environmentVariables struct {
 	podIp                                       string
 	sendBatchSize                               *uint32
 	sendBatchMaxSize                            *uint32
+	sendingQueueSizeMiB                         *uint32
 	k8sAttributesDisableReplicasetInformer      bool
 	k8sAttributesDisableJobInformer             bool
 	k8sAttributesWaitForMetadata                bool
@@ -276,6 +277,7 @@ const (
 	debugVerbosityDetailedEnvVarName                 = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
 	sendBatchSizeEnvVarName                          = "OTEL_COLLECTOR_SEND_BATCH_SIZE"
 	sendBatchMaxSizeEnvVarName                       = "OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
+	sendingQueueSizeMiBEnvVarName                    = "OTEL_COLLECTOR_SENDING_QUEUE_SIZE_MIB"
 	k8sAttributesDisableReplicasetInformerEnvVarName = "OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER"
 	k8sAttributesDisableJobInformerEnvVarName        = "OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_JOB_INFORMER"
 	k8sAttributesWaitForMetadataEnvVarName           = "OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA"
@@ -1151,6 +1153,20 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		}
 	}
 
+	var sendingQueueSizeMiB *uint32
+	sendingQueueSizeMiBRaw, isSet := os.LookupEnv(sendingQueueSizeMiBEnvVarName)
+	if isSet {
+		converted, err := strconv.ParseUint(sendingQueueSizeMiBRaw, 10, 32)
+		if err != nil {
+			logger.ErrorAsWarn(
+				err,
+				fmt.Sprintf("Ignoring invalid value for %s: %s", sendingQueueSizeMiBEnvVarName, sendingQueueSizeMiBRaw),
+			)
+		} else {
+			sendingQueueSizeMiB = ptr.To(uint32(converted))
+		}
+	}
+
 	k8sAttributesDisableReplicasetInformer := readBooleanEnvVar(k8sAttributesDisableReplicasetInformerEnvVarName)
 	k8sAttributesDisableJobInformer := readBooleanEnvVar(k8sAttributesDisableJobInformerEnvVarName)
 
@@ -1218,6 +1234,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		podIp:                                       podIp,
 		sendBatchSize:                               sendBatchSize,
 		sendBatchMaxSize:                            sendBatchMaxSize,
+		sendingQueueSizeMiB:                         sendingQueueSizeMiB,
 		k8sAttributesDisableReplicasetInformer:      k8sAttributesDisableReplicasetInformer,
 		k8sAttributesDisableJobInformer:             k8sAttributesDisableJobInformer,
 		k8sAttributesWaitForMetadata:                k8sAttributesWaitForMetadata,
@@ -2091,6 +2108,7 @@ func startDash0Controllers(
 			EbpfProfilerEnabledViaHelm:             envVars.ebpfProfilerEnabled,
 			SendBatchSize:                          envVars.sendBatchSize,
 			SendBatchMaxSize:                       envVars.sendBatchMaxSize,
+			SendingQueueSizeMiB:                    envVars.sendingQueueSizeMiB,
 			K8sAttributesDisableReplicasetInformer: envVars.k8sAttributesDisableReplicasetInformer,
 			K8sAttributesDisableJobInformer:        envVars.k8sAttributesDisableJobInformer,
 			K8sAttributesWaitForMetadata:           envVars.k8sAttributesWaitForMetadata,
