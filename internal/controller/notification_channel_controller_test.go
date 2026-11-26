@@ -634,6 +634,16 @@ var _ = Describe(
 						},
 						expectedKeys: []string{"url"},
 					}),
+
+					Entry("mattermost_webhook", ncMappingTestConfig{
+						channelType:     "mattermost_webhook",
+						configFieldName: "mattermostWebhookConfig",
+						configMap: map[string]any{
+							"url":     "https://mattermost.example.com/hooks/xxx",
+							"channel": "town-square",
+						},
+						expectedKeys: []string{"channel", "url"},
+					}),
 				)
 
 				It(

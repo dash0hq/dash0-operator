@@ -92,11 +92,11 @@ type Dash0SyntheticCheckHTTPRequest struct {
 	// +kubebuilder:validation:Required
 	Tracing Dash0SyntheticCheckHTTPTracing `json:"tracing"`
 
-	// +kubebuilder:validation:Required
-	Headers []Dash0SyntheticCheckHTTPHeader `json:"headers"`
+	// +kubebuilder:validation:Optional
+	Headers []Dash0SyntheticCheckHTTPHeader `json:"headers,omitempty"`
 
-	// +kubebuilder:validation:Required
-	QueryParameters []Dash0SyntheticCheckHTTPQueryParameter `json:"queryParameters"`
+	// +kubebuilder:validation:Optional
+	QueryParameters []Dash0SyntheticCheckHTTPQueryParameter `json:"queryParameters,omitempty"`
 
 	// +kubebuilder:validation:Optional
 	BasicAuthentication *Dash0SyntheticCheckHTTPBasicAuthentication `json:"basicAuthentication,omitempty"`
@@ -172,6 +172,10 @@ type Dash0SyntheticCheckHTTPAssertions struct {
 
 // Dash0SyntheticCheckAssertion defines a check assertion
 // +kubebuilder:validation:XValidation:rule="(self.kind == 'status_code' && has(self.spec.operator) && has(self.spec.value)) || (self.kind == 'response_header' && has(self.spec.key) && has(self.spec.operator) && has(self.spec.value)) || (self.kind == 'json_body' && has(self.spec.jsonPath) && has(self.spec.operator) && has(self.spec.value)) || (self.kind == 'text_body' && has(self.spec.operator) && has(self.spec.value)) || (self.kind == 'timing' && has(self.spec.type) && has(self.spec.operator) && has(self.spec.value)) || (self.kind == 'error' && has(self.spec.value)) || (self.kind == 'ssl_certificate' && has(self.spec.value))"
+// +kubebuilder:validation:XValidation:rule="self.kind != 'status_code' || !has(self.spec.operator) || self.spec.operator in ['is', 'is_not', 'is_one_of', 'is_not_one_of', 'gt', 'gte', 'lt', 'lte']",message="status_code assertions only support the operators is, is_not, is_one_of, is_not_one_of, gt, gte, lt and lte"
+// +kubebuilder:validation:XValidation:rule="self.kind != 'timing' || !has(self.spec.operator) || self.spec.operator in ['gte', 'lte']",message="timing assertions only support the operators gte and lte"
+// +kubebuilder:validation:XValidation:rule="!(self.kind in ['response_header', 'json_body', 'text_body']) || !has(self.spec.operator) || !(self.spec.operator in ['gt', 'gte', 'lt', 'lte'])",message="response_header, json_body and text_body assertions do not support the operators gt, gte, lt and lte"
+// +kubebuilder:validation:XValidation:rule="self.kind != 'error' || !has(self.spec.value) || self.spec.value in ['dns', 'tcp', 'timeout', 'tls', 'unknown']",message="the value of an error assertion must be one of dns, tcp, timeout, tls and unknown"
 type Dash0SyntheticCheckAssertion struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=status_code;response_header;json_body;text_body;timing;error;ssl_certificate
@@ -183,14 +187,17 @@ type Dash0SyntheticCheckAssertion struct {
 
 // Dash0SyntheticCheckAssertionSpec defines assertion specification
 type Dash0SyntheticCheckAssertionSpec struct {
-	// For status_code, timing assertions
+	// For status_code, timing, response_header, json_body and text_body assertions. The numeric operators gt, gte,
+	// lt and lte are only supported by status_code and timing assertions, the string operators (is_set, is_not_set,
+	// matches, contains, starts_with, ends_with and their negations) only by response_header, json_body and
+	// text_body assertions. Timing assertions only support gte and lte.
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:Enum=is;is_not;gt;lt;gte;lte
+	// +kubebuilder:validation:Enum=is;is_not;is_one_of;is_not_one_of;gt;lt;gte;lte;is_set;is_not_set;matches;does_not_match;contains;does_not_contain;starts_with;does_not_start_with;ends_with;does_not_end_with
 	Operator *string `json:"operator,omitempty"`
 
-	// For all assertions
-	// +kubebuilder:validation:Optional
-	Value *string `json:"value,omitempty"`
+	// For all assertions. For error assertions, one of dns, tcp, timeout, tls and unknown.
+	// +kubebuilder:validation:Required
+	Value *string `json:"value"`
 
 	// For response_header assertions
 	// +kubebuilder:validation:Optional

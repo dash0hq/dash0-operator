@@ -489,6 +489,7 @@ func prepareNotificationChannelApiPayload(resource map[string]any) {
 		"googleChatWebhookConfig",
 		"ilertConfig",
 		"allQuietConfig",
+		"mattermostWebhookConfig",
 	}
 	for _, fieldName := range configFieldNames {
 		if configValue, exists := spec[fieldName]; exists && configValue != nil {

@@ -119,14 +119,30 @@ spec:
                                       description: For response_header assertions
                                       type: string
                                     operator:
-                                      description: For status_code, timing assertions
+                                      description: |-
+                                        For status_code, timing, response_header, json_body and text_body assertions. The numeric operators gt, gte,
+                                        lt and lte are only supported by status_code and timing assertions, the string operators (is_set, is_not_set,
+                                        matches, contains, starts_with, ends_with and their negations) only by response_header, json_body and
+                                        text_body assertions. Timing assertions only support gte and lte.
                                       enum:
                                       - is
                                       - is_not
+                                      - is_one_of
+                                      - is_not_one_of
                                       - gt
                                       - lt
                                       - gte
                                       - lte
+                                      - is_set
+                                      - is_not_set
+                                      - matches
+                                      - does_not_match
+                                      - contains
+                                      - does_not_contain
+                                      - starts_with
+                                      - does_not_start_with
+                                      - ends_with
+                                      - does_not_end_with
                                       type: string
                                     type:
                                       description: For timing assertions
@@ -139,8 +155,11 @@ spec:
                                       - response
                                       type: string
                                     value:
-                                      description: For all assertions
+                                      description: For all assertions. For error assertions,
+                                        one of dns, tcp, timeout, tls and unknown.
                                       type: string
+                                  required:
+                                  - value
                                   type: object
                               required:
                               - kind
@@ -158,6 +177,27 @@ spec:
                                   && has(self.spec.operator) && has(self.spec.value))
                                   || (self.kind == 'error' && has(self.spec.value))
                                   || (self.kind == 'ssl_certificate' && has(self.spec.value))
+                              - message: status_code assertions only support the operators
+                                  is, is_not, is_one_of, is_not_one_of, gt, gte, lt
+                                  and lte
+                                rule: self.kind != 'status_code' || !has(self.spec.operator)
+                                  || self.spec.operator in ['is', 'is_not', 'is_one_of',
+                                  'is_not_one_of', 'gt', 'gte', 'lt', 'lte']
+                              - message: timing assertions only support the operators
+                                  gte and lte
+                                rule: self.kind != 'timing' || !has(self.spec.operator)
+                                  || self.spec.operator in ['gte', 'lte']
+                              - message: response_header, json_body and text_body
+                                  assertions do not support the operators gt, gte,
+                                  lt and lte
+                                rule: '!(self.kind in [''response_header'', ''json_body'',
+                                  ''text_body'']) || !has(self.spec.operator) || !(self.spec.operator
+                                  in [''gt'', ''gte'', ''lt'', ''lte''])'
+                              - message: the value of an error assertion must be one
+                                  of dns, tcp, timeout, tls and unknown
+                                rule: self.kind != 'error' || !has(self.spec.value)
+                                  || self.spec.value in ['dns', 'tcp', 'timeout',
+                                  'tls', 'unknown']
                             type: array
                           degradedAssertions:
                             items:
@@ -185,14 +225,30 @@ spec:
                                       description: For response_header assertions
                                       type: string
                                     operator:
-                                      description: For status_code, timing assertions
+                                      description: |-
+                                        For status_code, timing, response_header, json_body and text_body assertions. The numeric operators gt, gte,
+                                        lt and lte are only supported by status_code and timing assertions, the string operators (is_set, is_not_set,
+                                        matches, contains, starts_with, ends_with and their negations) only by response_header, json_body and
+                                        text_body assertions. Timing assertions only support gte and lte.
                                       enum:
                                       - is
                                       - is_not
+                                      - is_one_of
+                                      - is_not_one_of
                                       - gt
                                       - lt
                                       - gte
                                       - lte
+                                      - is_set
+                                      - is_not_set
+                                      - matches
+                                      - does_not_match
+                                      - contains
+                                      - does_not_contain
+                                      - starts_with
+                                      - does_not_start_with
+                                      - ends_with
+                                      - does_not_end_with
                                       type: string
                                     type:
                                       description: For timing assertions
@@ -205,8 +261,11 @@ spec:
                                       - response
                                       type: string
                                     value:
-                                      description: For all assertions
+                                      description: For all assertions. For error assertions,
+                                        one of dns, tcp, timeout, tls and unknown.
                                       type: string
+                                  required:
+                                  - value
                                   type: object
                               required:
                               - kind
@@ -224,6 +283,27 @@ spec:
                                   && has(self.spec.operator) && has(self.spec.value))
                                   || (self.kind == 'error' && has(self.spec.value))
                                   || (self.kind == 'ssl_certificate' && has(self.spec.value))
+                              - message: status_code assertions only support the operators
+                                  is, is_not, is_one_of, is_not_one_of, gt, gte, lt
+                                  and lte
+                                rule: self.kind != 'status_code' || !has(self.spec.operator)
+                                  || self.spec.operator in ['is', 'is_not', 'is_one_of',
+                                  'is_not_one_of', 'gt', 'gte', 'lt', 'lte']
+                              - message: timing assertions only support the operators
+                                  gte and lte
+                                rule: self.kind != 'timing' || !has(self.spec.operator)
+                                  || self.spec.operator in ['gte', 'lte']
+                              - message: response_header, json_body and text_body
+                                  assertions do not support the operators gt, gte,
+                                  lt and lte
+                                rule: '!(self.kind in [''response_header'', ''json_body'',
+                                  ''text_body'']) || !has(self.spec.operator) || !(self.spec.operator
+                                  in [''gt'', ''gte'', ''lt'', ''lte''])'
+                              - message: the value of an error assertion must be one
+                                  of dns, tcp, timeout, tls and unknown
+                                rule: self.kind != 'error' || !has(self.spec.value)
+                                  || self.spec.value in ['dns', 'tcp', 'timeout',
+                                  'tls', 'unknown']
                             type: array
                         required:
                         - criticalAssertions
@@ -332,9 +412,7 @@ spec:
                           url:
                             type: string
                         required:
-                        - headers
                         - method
-                        - queryParameters
                         - redirects
                         - tls
                         - tracing
