@@ -109,10 +109,42 @@ updates:
       prefix: "chore(deps)"
     ignore:
       # Paused until early December 2026 so the next operator release does not ship the Dash0 Node.js distro with
-      # dash0hq/opentelemetry-js-distribution#301 (stable semantic conventions only). Remove this entry to resume
+      # dash0hq/opentelemetry-js-distribution#301 (stable semantic conventions only). Remove these entries to resume
       # updates to 6.x.
       - dependency-name: "@dash0/opentelemetry"
         versions: [">=6.0.0"]
+      # A security update for a transitive dependency bumps the distro as its parent without checking the ignore rule
+      # above (see #1792). Ignoring the fixed versions of the transitive dependencies as well.
+      - dependency-name: "@opentelemetry/auto-instrumentations-node"
+        versions: [">=0.75.0"]
+      - dependency-name: "@opentelemetry/core"
+        versions: [">=2.8.0"]
+      - dependency-name: "@opentelemetry/exporter-prometheus"
+        versions: [">=0.217.0"]
+      - dependency-name: "@opentelemetry/instrumentation-cassandra-driver"
+        versions: [">=0.66.0"]
+      - dependency-name: "@opentelemetry/instrumentation-http"
+        versions: [">=0.222.0"]
+      - dependency-name: "@opentelemetry/instrumentation-knex"
+        versions: [">=0.65.0"]
+      - dependency-name: "@opentelemetry/instrumentation-mongoose"
+        versions: [">=0.67.0"]
+      - dependency-name: "@opentelemetry/instrumentation-mysql"
+        versions: [">=0.67.0"]
+      - dependency-name: "@opentelemetry/instrumentation-mysql2"
+        versions: [">=0.67.0"]
+      - dependency-name: "@opentelemetry/instrumentation-oracledb"
+        versions: [">=0.46.0"]
+      - dependency-name: "@opentelemetry/instrumentation-pg"
+        versions: [">=0.73.0"]
+      - dependency-name: "@opentelemetry/instrumentation-tedious"
+        versions: [">=0.40.0"]
+      - dependency-name: "@opentelemetry/propagator-jaeger"
+        versions: [">=2.9.0"]
+      - dependency-name: "@opentelemetry/sdk-node"
+        versions: [">=0.217.0"]
+      - dependency-name: "uuid"
+        versions: [">=11.1.1"]
 
   # OpenTelemetry Java agent
   - package-ecosystem: "maven"
