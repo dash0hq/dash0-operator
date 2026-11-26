@@ -13,8 +13,8 @@ telemetry themselves. In SCE-only mode, no producer collectors are deployed and 
 directly.
 
 All enrichment that depends on the sending node or pod (resource_detection, k8s_attributes,
-resource/dash0_operator_attributes, custom filters and transforms) is applied upstream (in SCE-only mode, not at all)
-and must NOT be repeated here: k8s_attributes' "from: connection" pod association would resolve every record to the
+transform/cluster_and_operator_attributes, custom filters and transforms) is applied upstream (in SCE-only mode, not at
+all) and must NOT be repeated here: k8s_attributes' "from: connection" pod association would resolve every record to the
 sending collector's pod, and the resource_detection k8s_api/eks detectors would report this collector's node. Batching
 is applied upstream as well, except in SCE-only mode, where this collector batches the received telemetry itself.
 
@@ -861,7 +861,7 @@ Dash0-Dataset header and the accountant sums what arrives, so a second delivery 
           value: "{{ .PseudoClusterUid }}"
         {{- if .ClusterName }}
         - name: k8s.cluster.name
-          value: "{{ .ClusterName }}"
+          value: {{ yamlString .ClusterName }}
         {{- end }}
         - name: k8s.node.name
           value: ${env:K8S_NODE_NAME}

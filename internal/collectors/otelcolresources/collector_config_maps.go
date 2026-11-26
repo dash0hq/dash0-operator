@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -166,12 +167,38 @@ var (
 		"signal-control-collector-configuration", signalControlCollectorConfigurationTemplateSource)
 )
 
+// collectorConfigurationTemplateFuncs are the functions available in the collector configuration templates. Values
+// that are not under the operator's control, like the cluster name, need to be rendered with one of them.
+var collectorConfigurationTemplateFuncs = template.FuncMap{
+	"yamlString":                   yamlString,
+	"ottlStringInSingleQuotedYaml": ottlStringInSingleQuotedYaml,
+}
+
 // parseCollectorConfigurationTemplate parses one collector configuration template together with the shared partials
 // from exporters.partial.yaml.template. The partial file contains only definitions, so parsing it into the template
 // set does not replace the main template's body.
 func parseCollectorConfigurationTemplate(name string, source string) *template.Template {
-	parsed := template.Must(template.New(name).Parse(source))
+	parsed := template.Must(template.New(name).Funcs(collectorConfigurationTemplateFuncs).Parse(source))
 	return template.Must(parsed.Parse(exportersPartialTemplateSource))
+}
+
+// yamlString renders s as a double-quoted YAML scalar for the collector configuration, including the surrounding
+// quotes. Dollar signs are doubled since the collector's configuration resolver would otherwise interpret them as
+// the start of an environment variable reference (${env:...}) and unescapes $$ to $.
+func yamlString(s string) string {
+	return strconv.Quote(escapeCollectorConfigDollarSigns(s))
+}
+
+// ottlStringInSingleQuotedYaml renders s as an OTTL string literal, including the surrounding double quotes, for use
+// in an OTTL statement that is a single-quoted YAML scalar in the collector configuration. OTTL unescapes string
+// literals with strconv.UnquoteChar, hence strconv.Quote produces a literal OTTL reads back as s. Single quotes are
+// doubled for the YAML scalar, and dollar signs for the collector's configuration resolver (see yamlString).
+func ottlStringInSingleQuotedYaml(s string) string {
+	return strings.ReplaceAll(strconv.Quote(escapeCollectorConfigDollarSigns(s)), "'", "''")
+}
+
+func escapeCollectorConfigDollarSigns(s string) string {
+	return strings.ReplaceAll(s, "$", "$$")
 }
 
 type excludedMetadataKey struct {
