@@ -1,0 +1,46 @@
+suite: test webhook service
+templates:
+  - operator/webhook-service.yaml
+release:
+  name: test-release
+tests:
+  - it: webhook service should not select pods by the "dash0.com/cert-digest" label
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-webhook-service
+    asserts:
+      - notExists:
+          path: spec.selector["dash0.com/cert-digest"]
+
+  - it: webhook service should match snapshot (default settings)
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-webhook-service
+    asserts:
+      - matchSnapshot: {}
+
+  - it: should render webhook service with custom settings
+    documentSelector:
+      path: metadata.name
+      value: custom-webhook-service-name
+    set:
+      operator:
+        webhookService:
+          name: custom-webhook-service-name
+          port: 554
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 554
+
+  - it: should render webhook service port with legacy setting
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-webhook-service
+    set:
+      operator:
+        webhookPort: 554
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 554

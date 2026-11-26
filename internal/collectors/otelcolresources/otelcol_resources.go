@@ -745,7 +745,7 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 			m.collectorConfig.KubeletStatsReceiverConfig.Endpoint == "" {
 			// This case does not actually occur, due to Helm level validations: the Helm chart guarantees that a
 			// configuration with a non-empty endpoint has been provided if auto-detection is disabled (see the
-			// validation in the deployment-and-webhooks.yaml template).
+			// validation in the deployment.yaml template).
 			logger.ErrorTelemetryCollectionIssue(
 				fmt.Errorf("no valid explicit kubeletstats receiver configuration provided"),
 				"Auto-detection of the kubeletstats receiver endpoint is disabled, but no valid explicit configuration "+

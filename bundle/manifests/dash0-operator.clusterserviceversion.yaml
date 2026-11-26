@@ -393,7 +393,7 @@ metadata:
     capabilities: Seamless Upgrades
     categories: Monitoring,Logging & Tracing
     containerImage: ghcr.io/dash0hq/operator-controller:0.0.0
-    createdAt: "2026-11-23T18:36:54Z"
+    createdAt: "2026-11-25T10:45:45Z"
     description: Collect traces, metrics, logs and profiles from your Kubernetes workloads
       and infrastructure with OpenTelemetry and send them to Dash0.
     operators.operatorframework.io/builder: operator-sdk-v1.42.3
@@ -427,6 +427,27 @@ spec:
         displayName: Judge
         path: judge
       version: v1alpha1
+    - description: Turns on monitoring for its namespace, with automatic workload
+        instrumentation, log collection and Prometheus scraping.
+      displayName: Dash0 Monitoring
+      kind: Dash0Monitoring
+      name: dash0monitorings.operator.dash0.com
+      specDescriptors:
+      - description: Automatic instrumentation of the workloads in this namespace.
+        displayName: Instrument Workloads
+        path: instrumentWorkloads
+      - description: Collection of pod logs in this namespace.
+        displayName: Log Collection
+        path: logCollection
+      - description: Scraping of Prometheus metrics from pods in this namespace.
+        displayName: Prometheus Scraping
+        path: prometheusScraping
+      - description: Only used internally.
+        displayName: Internal
+        path: __dash0_internal__normalizedTransform
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      version: v1beta1
     - description: A destination for Dash0 alert notifications, for example a Slack
         channel, email recipients or a webhook.
       displayName: Dash0 Notification Channel
@@ -641,27 +662,6 @@ spec:
         displayName: Table
         path: table
       version: v1alpha1
-    - description: Turns on monitoring for its namespace, with automatic workload
-        instrumentation, log collection and Prometheus scraping.
-      displayName: Dash0 Monitoring
-      kind: Dash0Monitoring
-      name: dash0monitorings.operator.dash0.com
-      specDescriptors:
-      - description: Automatic instrumentation of the workloads in this namespace.
-        displayName: Instrument Workloads
-        path: instrumentWorkloads
-      - description: Collection of pod logs in this namespace.
-        displayName: Log Collection
-        path: logCollection
-      - description: Scraping of Prometheus metrics from pods in this namespace.
-        displayName: Prometheus Scraping
-        path: prometheusScraping
-      - description: Only used internally.
-        displayName: Internal
-        path: __dash0_internal__normalizedTransform
-        x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:hidden
-      version: v1beta1
   description: |
     The Dash0 Operator brings OpenTelemetry-based observability to your Kubernetes cluster. It instruments your
     workloads automatically, collects their traces, metrics, logs and profiles together with telemetry about the

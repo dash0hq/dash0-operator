@@ -1,0 +1,384 @@
+{{- $selfManagedCertificates := include "dash0-operator.selfManagedCertificates" . }}
+{{- $chartName := include "dash0-operator.chartName" . }}
+{{- if and .Values.operator.certManager.useCertManager (empty .Values.operator.certManager.certManagerAnnotations) }}
+{{- fail "Error: operator.certManager.useCertManager is set to true, but you did not provide any annotations in operator.certManager.certManagerAnnotations. Please refer to the instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#using-cert-manager." -}}
+{{- end }}
+{{- if include "dash0-operator.instrumentationWebhookEnabled" . }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-injector
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: injector
+    app.kubernetes.io/instance: mutating-webhook
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+    {{- if $selfManagedCertificates }}
+    {{- include "dash0-operator.caBundleInjectionLabel" . | nindent 4 }}
+    {{- end }}
+  {{- if .Values.operator.certManager.useCertManager }}
+  {{- with .Values.operator.certManager.certManagerAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+webhooks:
+- name: inject.dash0.com
+  admissionReviewVersions:
+  - v1
+  namespaceSelector:
+    matchExpressions:
+      - key: kubernetes.io/metadata.name
+        operator: NotIn
+        values:
+          - kube-system
+          - kube-node-lease
+      {{- if .Values.operator.gke.autopilot.enabled }}
+      - key: kubernetes.io/metadata.name
+        operator: NotIn
+        values:
+          - kube-system
+          - gke-gmp-system
+          - gke-managed-cim
+          - gke-managed-volumepopulator
+          - gke-managed-checkpointing
+          - gke-managed-parallelstorecsi
+          - gke-managed-lustrecsi
+          - gke-managed-otel
+          - gke-managed-mldiagnostics
+          - gke-managed-networking-dra-driver
+          - gke-managed-pod-snapshots
+      {{- end }}
+  clientConfig:
+    {{- if $selfManagedCertificates }}
+    {{- with include "dash0-operator.liveCaBundle" (dict "kind" "MutatingWebhookConfiguration" "name" (printf "%s-injector" $chartName) "webhook" "inject.dash0.com") }}
+    caBundle: {{ . }}
+    {{- end }}
+    {{- end }}
+    service:
+      name: {{ template "dash0-operator.webhookServiceName" . }}
+      namespace: {{ .Release.Namespace }}
+      port: {{ template "dash0-operator.webhookServicePort" . }}
+      path: /workloads/inject
+  failurePolicy: Ignore
+  rules:
+  - apiGroups:
+    - apps
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - daemonsets
+    - deployments
+    - replicasets
+    - statefulsets
+    scope: Namespaced
+  - apiGroups:
+    - batch
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - cronjobs
+  - apiGroups:
+      - batch
+    apiVersions:
+      - v1
+    operations:
+      # do not listen to UPDATE for jobs, we cannot revert instrumentation or do anything on UPDATE requests, since jobs
+      # are immutable
+      - CREATE
+    resources:
+      - jobs
+    scope: Namespaced
+  - apiGroups: [""]
+    apiVersions:
+    - v1
+    operations:
+      # do not listen to UPDATE for pods, we cannot revert instrumentation or do anything on UPDATE requests, since pods
+      # are effectively immutable (we cannot restart ownerless pods)
+      - CREATE
+    resources:
+    - pods
+    scope: Namespaced
+  sideEffects: None
+  timeoutSeconds: 5
+{{- end }}{{/* closes "if include dash0-operator.instrumentationWebhookEnabled" */}}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-operator-configuration-mutating
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: validator
+    app.kubernetes.io/instance: operator-configuration-mutating-webhook
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+    {{- if $selfManagedCertificates }}
+    {{- include "dash0-operator.caBundleInjectionLabel" . | nindent 4 }}
+    {{- end }}
+  {{- if .Values.operator.certManager.useCertManager }}
+  {{- with .Values.operator.certManager.certManagerAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+webhooks:
+  - name: mutate-operator-configuration.dash0.com
+    clientConfig:
+      {{- if $selfManagedCertificates }}
+      {{- with include "dash0-operator.liveCaBundle" (dict "kind" "MutatingWebhookConfiguration" "name" (printf "%s-operator-configuration-mutating" $chartName) "webhook" "mutate-operator-configuration.dash0.com") }}
+      caBundle: {{ . }}
+      {{- end }}
+      {{- end }}
+      service:
+        name: {{ template "dash0-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        port: {{ template "dash0-operator.webhookServicePort" . }}
+        path: /operator-configuration/mutate
+    admissionReviewVersions:
+      - v1
+    {{- if .Values.operator.gke.autopilot.enabled }}
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-system
+            - gke-gmp-system
+            - gke-managed-cim
+            - gke-managed-volumepopulator
+            - gke-managed-checkpointing
+            - gke-managed-parallelstorecsi
+            - gke-managed-lustrecsi
+            - gke-managed-otel
+            - gke-managed-mldiagnostics
+            - gke-managed-networking-dra-driver
+            - gke-managed-pod-snapshots
+    {{- end }}
+    rules:
+      - apiGroups:
+          - operator.dash0.com
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - dash0operatorconfigurations
+        scope: Cluster
+    sideEffects: None
+    timeoutSeconds: 5
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-operator-configuration-validator
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: validator
+    app.kubernetes.io/instance: operator-configuration-validator-webhook
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+    {{- if $selfManagedCertificates }}
+    {{- include "dash0-operator.caBundleInjectionLabel" . | nindent 4 }}
+    {{- end }}
+  {{- if .Values.operator.certManager.useCertManager }}
+  {{- with .Values.operator.certManager.certManagerAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+webhooks:
+  - name: validate-operator-configuration.dash0.com
+    clientConfig:
+      {{- if $selfManagedCertificates }}
+      {{- with include "dash0-operator.liveCaBundle" (dict "kind" "ValidatingWebhookConfiguration" "name" (printf "%s-operator-configuration-validator" $chartName) "webhook" "validate-operator-configuration.dash0.com") }}
+      caBundle: {{ . }}
+      {{- end }}
+      {{- end }}
+      service:
+        name: {{ template "dash0-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        port: {{ template "dash0-operator.webhookServicePort" . }}
+        path: /operator-configuration/validate
+    admissionReviewVersions:
+      - v1
+    rules:
+      - apiGroups:
+          - operator.dash0.com
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - dash0operatorconfigurations
+        scope: Cluster
+    sideEffects: None
+    timeoutSeconds: 5
+{{- if .Values.operator.signalControl.enabled }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-signal-control-validator
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: validator
+    app.kubernetes.io/instance: signal-control-validator-webhook
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+    {{- if $selfManagedCertificates }}
+    {{- include "dash0-operator.caBundleInjectionLabel" . | nindent 4 }}
+    {{- end }}
+  {{- if .Values.operator.certManager.useCertManager }}
+  {{- with .Values.operator.certManager.certManagerAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+webhooks:
+  - name: validate-signal-control.dash0.com
+    clientConfig:
+      {{- if $selfManagedCertificates }}
+      {{- with include "dash0-operator.liveCaBundle" (dict "kind" "ValidatingWebhookConfiguration" "name" (printf "%s-signal-control-validator" $chartName) "webhook" "validate-signal-control.dash0.com") }}
+      caBundle: {{ . }}
+      {{- end }}
+      {{- end }}
+      service:
+        name: {{ template "dash0-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        port: {{ template "dash0-operator.webhookServicePort" . }}
+        path: /signal-control/validate
+    admissionReviewVersions:
+      - v1
+    rules:
+      - apiGroups:
+          - operator.dash0.com
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - dash0signalcontrols
+        scope: Cluster
+    sideEffects: None
+    timeoutSeconds: 5
+{{- end }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-monitoring-mutating
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: validator
+    app.kubernetes.io/instance: monitoring-mutating-webhook
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+    {{- if $selfManagedCertificates }}
+    {{- include "dash0-operator.caBundleInjectionLabel" . | nindent 4 }}
+    {{- end }}
+  {{- if .Values.operator.certManager.useCertManager }}
+  {{- with .Values.operator.certManager.certManagerAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+webhooks:
+  - name: mutate-monitoring.dash0.com
+    clientConfig:
+      {{- if $selfManagedCertificates }}
+      {{- with include "dash0-operator.liveCaBundle" (dict "kind" "MutatingWebhookConfiguration" "name" (printf "%s-monitoring-mutating" $chartName) "webhook" "mutate-monitoring.dash0.com") }}
+      caBundle: {{ . }}
+      {{- end }}
+      {{- end }}
+      service:
+        name: {{ template "dash0-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        port: {{ template "dash0-operator.webhookServicePort" . }}
+        path: /monitoring/mutate
+    admissionReviewVersions:
+      - v1
+    {{- if .Values.operator.gke.autopilot.enabled }}
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-system
+            - gke-gmp-system
+            - gke-managed-cim
+            - gke-managed-volumepopulator
+            - gke-managed-checkpointing
+            - gke-managed-parallelstorecsi
+            - gke-managed-lustrecsi
+            - gke-managed-otel
+            - gke-managed-mldiagnostics
+            - gke-managed-networking-dra-driver
+            - gke-managed-pod-snapshots
+    {{- end }}
+    rules:
+      - apiGroups:
+          - operator.dash0.com
+        apiVersions:
+          - v1beta1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - dash0monitorings
+        scope: Namespaced
+    sideEffects: None
+    timeoutSeconds: 5
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-monitoring-validator
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: validator
+    app.kubernetes.io/instance: monitoring-validator-webhook
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+    {{- if $selfManagedCertificates }}
+    {{- include "dash0-operator.caBundleInjectionLabel" . | nindent 4 }}
+    {{- end }}
+  {{- if .Values.operator.certManager.useCertManager }}
+  {{- with .Values.operator.certManager.certManagerAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+webhooks:
+  - name: validate-monitoring.dash0.com
+    clientConfig:
+      {{- if $selfManagedCertificates }}
+      {{- with include "dash0-operator.liveCaBundle" (dict "kind" "ValidatingWebhookConfiguration" "name" (printf "%s-monitoring-validator" $chartName) "webhook" "validate-monitoring.dash0.com") }}
+      caBundle: {{ . }}
+      {{- end }}
+      {{- end }}
+      service:
+        name: {{ template "dash0-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        port: {{ template "dash0-operator.webhookServicePort" . }}
+        path: /monitoring/validate
+    admissionReviewVersions:
+      - v1
+    rules:
+      - apiGroups:
+          - operator.dash0.com
+        apiVersions:
+          - v1beta1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - dash0monitorings
+        scope: Namespaced
+    sideEffects: None
+    timeoutSeconds: 5

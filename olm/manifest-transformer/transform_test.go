@@ -21,7 +21,7 @@ const (
 	testVersion = "1.2.3"
 
 	deploymentManifest = `
-# Source: dash0-operator/templates/operator/deployment-and-webhooks.yaml
+# Source: dash0-operator/templates/operator/deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:

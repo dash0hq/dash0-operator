@@ -1,0 +1,35 @@
+suite: test metrics service
+templates:
+  - operator/metrics-service.yaml
+release:
+  name: test-release
+tests:
+  - it: metrics service should match snapshot (default settings)
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-metrics
+    asserts:
+      - matchSnapshot: {}
+
+  - it: should render metrics service with custom settings
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-metrics
+    set:
+      operator:
+        metricsPort: 9554
+        serviceAnnotations:
+          annotation1: "metrics service annotation 1"
+          annotation2: "metrics service annotation 2"
+    asserts:
+      - notExists:
+          path: spec.selector["dash0.com/cert-digest"]
+      - equal:
+          path: spec.ports[0].port
+          value: 9554
+      - equal:
+          path: metadata.annotations['annotation1']
+          value: "metrics service annotation 1"
+      - equal:
+          path: metadata.annotations['annotation2']
+          value: "metrics service annotation 2"

@@ -1,0 +1,19 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "dash0-operator.webhookServiceName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: webhook-service
+    app.kubernetes.io/instance: webhook-service
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+spec:
+  ports:
+  - port: {{ template "dash0-operator.webhookServicePort" . }}
+    protocol: TCP
+    targetPort: 9443
+  selector:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
