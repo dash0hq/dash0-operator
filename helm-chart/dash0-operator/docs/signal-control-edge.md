@@ -98,7 +98,7 @@ spec:
 ## How it works
 
 SignalControl Edge does not replace the collector's normal processing — it runs after it. Telemetry first passes
-through the standard collector processors (resource detection, Kubernetes attributes, batching, and so on) in the
+through the standard collector processors (resource detection, Kubernetes attributes, and so on) in the
 per-node collector, which then forwards everything destined for Dash0 to the SignalControl collector over OTLP. That
 collector applies the SignalControl Edge components and exports to Dash0. Telemetry destined for a non-Dash0 exporter
 never leaves the per-node collector and is unaffected. The regular collection behavior stays unchanged; the
@@ -304,9 +304,10 @@ Telemetry without `k8s.namespace.name` is sent to the default export of the oper
 ### Sizing and load balancing
 
 The SignalControl collector receives the telemetry of every application process directly, instead of from a few
-collector pods that batch it. It batches the received telemetry itself, using `operator.collectors.sendBatchSize` and
-`operator.collectors.sendBatchMaxSize`. Size `operator.collectors.signalControlCollectorReplicas` and
-`operator.collectors.signalControlCollectorContainerResources` for the cluster's full telemetry volume.
+collector pods that batch it. Its exporters batch the telemetry before sending it to Dash0, using
+`operator.collectors.sendBatchSize` and `operator.collectors.sendBatchMaxSize`. Size
+`operator.collectors.signalControlCollectorReplicas` and `operator.collectors.signalControlCollectorContainerResources`
+for the cluster's full telemetry volume.
 
 The collector closes OTLP/gRPC connections after five minutes, so gRPC clients spread across new replicas after scaling
 up. OTLP/HTTP connections are not recycled and can stay unevenly distributed, so OTLP/gRPC is preferable.

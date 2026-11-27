@@ -85,6 +85,7 @@ type CollectorConfig struct {
 	EbpfProfilerEnabledViaHelm             bool
 	SendBatchSize                          *uint32
 	SendBatchMaxSize                       *uint32
+	SendingQueueSizeMiB                    *uint32
 	K8sAttributesDisableReplicasetInformer bool
 	K8sAttributesDisableJobInformer        bool
 	K8sAttributesWaitForMetadata           bool
@@ -209,6 +210,7 @@ type SyntheticsWorkerConfig struct {
 	// PriorityClassName is the priority class applied to every synthetics-worker pod, regardless of instance. It is
 	// set from the Helm value operator.syntheticsWorker.priorityClassName.
 	PriorityClassName string
+	IsGkeAutopilot    bool
 	IsOpenShift       bool
 	DevelopmentMode   bool
 }

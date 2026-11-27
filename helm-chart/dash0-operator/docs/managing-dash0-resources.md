@@ -761,6 +761,23 @@ spec:
     url: "https://allquiet.app/api/webhook/my-inbound-integration-id"
 ```
 
+##### Mattermost Webhook
+
+```yaml
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: mattermost-alerts
+spec:
+  display:
+    name: Mattermost Alerts
+  type: mattermost_webhook
+  mattermostWebhookConfig:
+    url: "https://mattermost.example.com/hooks/xxx-generatedkey-xxx"
+    # optional, a channel name or a direct message target (@username); defaults to the channel of the webhook
+    channel: town-square
+```
+
 #### Optional Fields
 
 **`frequency`**: Controls the notification frequency (e.g. `10m`, `5m`, `1h`). Defaults to `10m` if omitted.
@@ -849,7 +866,9 @@ spec:
       value: "kube-system"
 ```
 
-The `contexts` field specifies which signal types the filter applies to (e.g. `log`, `span`, `metric` or `datapoint`).
+The `contexts` field specifies the signal type the filter applies to (`datapoint`, `log`, `profile_sample`, `span` or
+`web_event`).
+It must contain exactly one entry; to filter several signal types, create one spam filter per signal type.
 The `filter` field contains one or more conditions. Each condition matches against an attribute `key` with an `operator`
 (e.g. `is`, `is_not`, `contains`, `starts_with`) and a `value` to compare against.
 

@@ -30,6 +30,10 @@ const (
 	componentLabel    = "app.kubernetes.io/component"
 	instanceLabel     = "app.kubernetes.io/instance"
 
+	gkeAutopilotAllowlistKey           = "cloud.google.com/matching-allowlist"
+	gkeAutopilotAllowlistProfilerValue = "dash0-ebpf-profiler-v1.0.5"
+	gkeAutopilotAllowlistProxyValue    = "dash0-debuginfo-proxy-v1.0.5"
+
 	// OlmEbpfProfilerServiceAccountName is the external service account of the profiler in the OLM bundle. OLM creates it
 	// from the CSV and grants it the use of the privileged SecurityContextConstraints on OpenShift.
 	OlmEbpfProfilerServiceAccountName = "dash0-operator-olm-ebpf-profiler"
@@ -45,6 +49,7 @@ type Config struct {
 	ProfilerImagePullPolicy    corev1.PullPolicy
 	ProxyImage                 string
 	ProxyImagePullPolicy       corev1.PullPolicy
+	IsGkeAutopilot             bool
 	// ServiceAccountName is the name of an external service account for the profiler, which the operator neither creates
 	// nor deletes. When empty, the profiler uses the service account the operator manages.
 	ServiceAccountName string
@@ -78,6 +83,16 @@ func (c Config) labels(component string) map[string]string {
 
 func (c Config) metadata(component string) metav1.ObjectMeta {
 	return metav1.ObjectMeta{Name: c.name(component), Namespace: c.Namespace, Labels: c.labels(component)}
+}
+
+// podTemplateLabels adds the GKE Autopilot WorkloadAllowlist match label on top of the selector labels; it must not be
+// part of the selector, which is immutable.
+func (c Config) podTemplateLabels(custom map[string]string, component string, allowlist string) map[string]string {
+	labels := mergeLabels(custom, c.labels(component))
+	if c.IsGkeAutopilot {
+		labels[gkeAutopilotAllowlistKey] = allowlist
+	}
+	return labels
 }
 
 func (c Config) profiler(
@@ -162,7 +177,7 @@ func (c Config) profiler(
 	ds := &appsv1.DaemonSet{ObjectMeta: metadata, Spec: appsv1.DaemonSetSpec{
 		Selector: &metav1.LabelSelector{MatchLabels: c.labels(profilerComponent)},
 		Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{
-			Labels:      mergeLabels(settings.EbpfProfilerPodLabels, c.labels(profilerComponent)),
+			Labels:      c.podTemplateLabels(settings.EbpfProfilerPodLabels, profilerComponent, gkeAutopilotAllowlistProfilerValue),
 			Annotations: util.MergeMaps(nil, settings.EbpfProfilerPodAnnotations),
 		}, Spec: pod},
 	}}
@@ -198,7 +213,8 @@ func (c Config) proxy(settings util.ExtraConfig, config proxyConfiguration, revi
 		},
 		Selector: &metav1.LabelSelector{MatchLabels: c.labels(proxyComponent)},
 		Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{
-			Labels: mergeLabels(settings.DebuginfoProxyPodLabels, c.labels(proxyComponent)), Annotations: podAnnotations,
+			Labels:      c.podTemplateLabels(settings.DebuginfoProxyPodLabels, proxyComponent, gkeAutopilotAllowlistProxyValue),
+			Annotations: podAnnotations,
 		}, Spec: corev1.PodSpec{
 			ServiceAccountName: c.name(proxyComponent), AutomountServiceAccountToken: ptr.To(false),
 			NodeSelector:    map[string]string{"kubernetes.io/os": "linux"},

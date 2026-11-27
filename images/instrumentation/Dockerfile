@@ -80,7 +80,6 @@ RUN . /tmp/dash0-python-distribution-version && \
 FROM python:3.14.10-trixie AS build-python-glibc
 RUN mkdir -p /dash0-instrumentation/python
 WORKDIR /dash0-instrumentation/python
-COPY python/extract-flattened-requirements.sh .
 COPY --from=download-dash0-python-distribution /dash0-python-distribution /tmp/dash0-python-distribution
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 # Install the Dash0 Python distribution's workspace packages from local paths, since a release tag can exist before its
@@ -88,7 +87,9 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 # against the local sources; a workspace package that dash0-opentelemetry depends on but that is missing from this list
 # is resolved from PyPI instead. The dash0-opentelemetry package pins the full instrumentation set as regular
 # dependencies, so we do not need to install any additional packages on top. Keep this list in sync with the musl stage
-# below and with python/extract-flattened-requirements.sh.
+# below.
+# sitecustomize.py checks the application's packages against the all-dependencies.txt next to it. The distribution ships
+# that manifest with the version ranges its injected tree supports, so it is copied along with sitecustomize.py.
 RUN pip install --quiet --root-user-action ignore --target . \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-pyproto \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-common \
@@ -96,15 +97,13 @@ RUN pip install --quiet --root-user-action ignore --target . \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-http \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-configuration \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry && \
-  ./extract-flattened-requirements.sh && \
-  rm extract-flattened-requirements.sh && \
+  cp dash0/opentelemetry/injector/all-dependencies.txt all-dependencies.txt && \
   cp dash0/opentelemetry/injector/sitecustomize.py sitecustomize.py
 
 # install Python artifacts (musl)
 FROM python:3.14.10-alpine3.24 AS build-python-musl
 RUN mkdir -p /dash0-instrumentation/python
 WORKDIR /dash0-instrumentation/python
-COPY python/extract-flattened-requirements.sh .
 COPY --from=download-dash0-python-distribution /dash0-python-distribution /tmp/dash0-python-distribution
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN pip install --quiet --root-user-action ignore --target . \
@@ -114,8 +113,7 @@ RUN pip install --quiet --root-user-action ignore --target . \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-http \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-configuration \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry && \
-  ./extract-flattened-requirements.sh && \
-  rm extract-flattened-requirements.sh && \
+  cp dash0/opentelemetry/injector/all-dependencies.txt all-dependencies.txt && \
   cp dash0/opentelemetry/injector/sitecustomize.py sitecustomize.py
 
 # download the Dash0 OpenTelemetry Ruby distribution source tree at a pinned release. The pin file
@@ -150,7 +148,7 @@ COPY ruby/install-bundle.sh /tmp/install-bundle.sh
 RUN /tmp/install-bundle.sh /tmp/dash0-ruby-distribution /dash0-instrumentation/ruby
 
 # install Ruby artifacts (musl)
-FROM ruby:4.0.9-alpine3.24 AS build-ruby-musl
+FROM ruby:4.0.10-alpine3.24 AS build-ruby-musl
 RUN apk add --no-cache build-base
 COPY --from=download-dash0-ruby-distribution /dash0-ruby-distribution /tmp/dash0-ruby-distribution
 COPY ruby/install-bundle.sh /tmp/install-bundle.sh

@@ -113,6 +113,7 @@ type oTelColConfig struct {
 	AllMonitoringResources                           []dash0v1beta1.Dash0Monitoring
 	SendBatchSize                                    *uint32
 	SendBatchMaxSize                                 *uint32
+	SendingQueueSizeMiB                              *uint32
 	SelfMonitoringConfiguration                      selfmonitoringapiaccess.SelfMonitoringConfiguration
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	CollectPodLabelsAndAnnotationsEnabled            bool
@@ -367,9 +368,9 @@ const (
 	traceReservoirDirPath    = "/var/lib/dash0/trace-reservoir"
 
 	gkeAutopilotAllowlistLabelKey                = "cloud.google.com/matching-allowlist"
-	gkeAutopilotAllowlistLabelDaemonsetValue     = "dash0-opentelemetry-collector-agent-v1.0.4"
-	gkeAutopilotAllowlistLabelDeploymentValue    = "dash0-opentelemetry-cluster-metrics-collector-v1.0.4"
-	gkeAutopilotAllowlistLabelSignalControlValue = "dash0-opentelemetry-signal-control-collector-v1.0.4"
+	gkeAutopilotAllowlistLabelDaemonsetValue     = "dash0-opentelemetry-collector-agent-v1.0.5"
+	gkeAutopilotAllowlistLabelDeploymentValue    = "dash0-opentelemetry-cluster-metrics-collector-v1.0.5"
+	gkeAutopilotAllowlistLabelSignalControlValue = "dash0-opentelemetry-signal-control-collector-v1.0.5"
 
 	targetAllocatorCertsVolumeName     = "ta-mtls-certs"
 	targetAllocatorCertsVolumeDir      = "/etc/certs/ta-client"

@@ -4482,6 +4482,7 @@ spec:
                           - beam
                           - luajit
                           type: string
+                        maxItems: 13
                         type: array
                     type: object
                   enabled:

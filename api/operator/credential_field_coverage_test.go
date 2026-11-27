@@ -70,6 +70,7 @@ var knownUnredactedFields = map[string]string{
 	"filters.key":        "an attribute key of a filter",
 	"otherFilters.key":   "an attribute key of a filter",
 	"implicitFilter.key": "an attribute key of a filter",
+	"clientFilter.key":   "an attribute key of a filter",
 	"columns.key":        "an attribute key of a table column",
 	"sort.key":           "an attribute key of a sort order",
 	"spec.key":           "the response header name of a synthetic check assertion",

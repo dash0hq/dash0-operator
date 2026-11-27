@@ -13,6 +13,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/yaml"
@@ -859,6 +860,122 @@ spec:
 						Expect(httpStatusCode).To(Equal(http.StatusBadRequest))
 						Expect(isRetryableSynchronizationError(synchronizationError, httpStatusCode)).To(BeFalse())
 					},
+				)
+			},
+		)
+
+		Describe(
+			"the CRD schema", func() {
+				const schemaTestSyntheticCheckName = "synthetic-check-schema-test"
+
+				AfterEach(
+					func() {
+						deleteSyntheticCheckResourceIfItExists(
+							ctx, k8sClient, TestNamespaceName, schemaTestSyntheticCheckName)
+					},
+				)
+
+				withAssertion := func(kind string, assertionSpec dash0v1alpha1.Dash0SyntheticCheckAssertionSpec) func(
+					plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin,
+				) {
+					return func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
+						plugin.Spec.Assertions.CriticalAssertions = []dash0v1alpha1.Dash0SyntheticCheckAssertion{
+							{Kind: kind, Spec: assertionSpec},
+						}
+					}
+				}
+
+				DescribeTable(
+					"validates the plugin",
+					func(modifyPlugin func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin), expectedError string) {
+						resource := createSyntheticCheckResource(TestNamespaceName, schemaTestSyntheticCheckName)
+						modifyPlugin(&resource.Spec.Plugin)
+						err := k8sClient.Create(ctx, resource)
+						if expectedError == "" {
+							Expect(err).ToNot(HaveOccurred())
+						} else {
+							Expect(err).To(MatchError(ContainSubstring(expectedError)))
+						}
+					},
+					Entry(
+						"accepts an http check",
+						func(*dash0v1alpha1.Dash0SyntheticCheckPlugin) {},
+						"",
+					),
+					Entry(
+						"accepts an http check without headers and query parameters",
+						func(plugin *dash0v1alpha1.Dash0SyntheticCheckPlugin) {
+							plugin.Spec.Request.Headers = nil
+							plugin.Spec.Request.QueryParameters = nil
+						},
+						"",
+					),
+					Entry(
+						"accepts a string operator for a response header assertion",
+						withAssertion("response_header", dash0v1alpha1.Dash0SyntheticCheckAssertionSpec{
+							Key:      ptr.To("Content-Type"),
+							Operator: ptr.To("contains"),
+							Value:    ptr.To("json"),
+						}),
+						"",
+					),
+					Entry(
+						"rejects a numeric operator for a json body assertion",
+						withAssertion("json_body", dash0v1alpha1.Dash0SyntheticCheckAssertionSpec{
+							JSONPath: ptr.To("$.count"),
+							Operator: ptr.To("gt"),
+							Value:    ptr.To("1"),
+						}),
+						"response_header, json_body and text_body assertions do not support the operators gt",
+					),
+					Entry(
+						"accepts is_one_of for a status code assertion",
+						withAssertion("status_code", dash0v1alpha1.Dash0SyntheticCheckAssertionSpec{
+							Operator: ptr.To("is_one_of"),
+							Value:    ptr.To("200,204"),
+						}),
+						"",
+					),
+					Entry(
+						"rejects a string operator for a status code assertion",
+						withAssertion("status_code", dash0v1alpha1.Dash0SyntheticCheckAssertionSpec{
+							Operator: ptr.To("contains"),
+							Value:    ptr.To("20"),
+						}),
+						"status_code assertions only support the operators",
+					),
+					Entry(
+						"accepts lte for a timing assertion",
+						withAssertion("timing", dash0v1alpha1.Dash0SyntheticCheckAssertionSpec{
+							Type:     ptr.To("response"),
+							Operator: ptr.To("lte"),
+							Value:    ptr.To("1000ms"),
+						}),
+						"",
+					),
+					Entry(
+						"rejects an operator other than gte and lte for a timing assertion",
+						withAssertion("timing", dash0v1alpha1.Dash0SyntheticCheckAssertionSpec{
+							Type:     ptr.To("response"),
+							Operator: ptr.To("lt"),
+							Value:    ptr.To("1000ms"),
+						}),
+						"timing assertions only support the operators gte and lte",
+					),
+					Entry(
+						"accepts a known error type for an error assertion",
+						withAssertion("error", dash0v1alpha1.Dash0SyntheticCheckAssertionSpec{
+							Value: ptr.To("timeout"),
+						}),
+						"",
+					),
+					Entry(
+						"rejects an unknown error type for an error assertion",
+						withAssertion("error", dash0v1alpha1.Dash0SyntheticCheckAssertionSpec{
+							Value: ptr.To("http"),
+						}),
+						"the value of an error assertion must be one of",
+					),
 				)
 			},
 		)

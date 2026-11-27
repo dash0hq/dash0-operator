@@ -219,6 +219,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		AllMonitoringResources:        allMonitoringResources,
 		SendBatchSize:                 m.collectorConfig.SendBatchSize,
 		SendBatchMaxSize:              m.collectorConfig.SendBatchMaxSize,
+		SendingQueueSizeMiB:           m.collectorConfig.SendingQueueSizeMiB,
 		SelfMonitoringConfiguration:   selfMonitoringConfiguration,
 		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
 		CollectPodLabelsAndAnnotationsEnabled:            collectPodLabelsAndAnnotationsEnabled,
@@ -573,6 +574,7 @@ func (m *OTelColResourceManager) DeleteResources(
 		// collect the kinds and names of all resources that need to be deleted.
 		SendBatchSize:               m.collectorConfig.SendBatchSize,
 		SendBatchMaxSize:            m.collectorConfig.SendBatchMaxSize,
+		SendingQueueSizeMiB:         m.collectorConfig.SendingQueueSizeMiB,
 		SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{SelfMonitoringEnabled: false},
 		// KubernetesInfrastructureMetricsCollectionEnabled=false would lead to not deleting the collector-deployment-
 		// related resources, we always try to delete all collector resources (daemonset & deployment), no matter
@@ -745,7 +747,7 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 			m.collectorConfig.KubeletStatsReceiverConfig.Endpoint == "" {
 			// This case does not actually occur, due to Helm level validations: the Helm chart guarantees that a
 			// configuration with a non-empty endpoint has been provided if auto-detection is disabled (see the
-			// validation in the deployment-and-webhooks.yaml template).
+			// validation in the deployment.yaml template).
 			logger.ErrorTelemetryCollectionIssue(
 				fmt.Errorf("no valid explicit kubeletstats receiver configuration provided"),
 				"Auto-detection of the kubeletstats receiver endpoint is disabled, but no valid explicit configuration "+

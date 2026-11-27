@@ -29,7 +29,7 @@ var _ = Describe("Converting a Dash0SpamFilter to the API client's SpamFilterDef
 		Expect(roundTripped["apiVersion"]).To(Equal("operator.dash0.com/v1alpha1"))
 		Expect(roundTripped["kind"]).To(Equal("Dash0SpamFilter"))
 		Expect(roundTripped["spec"]).To(Equal(map[string]any{
-			"contexts": []any{"log", "span", "metric"},
+			"contexts": []any{"span"},
 			"filter": []any{
 				map[string]any{
 					"key":      "k8s.namespace.name",
@@ -76,7 +76,7 @@ func fullyPopulatedSpamFilter() *dash0v1alpha1.Dash0SpamFilter {
 			},
 		},
 		Spec: dash0v1alpha1.Dash0SpamFilterSpec{
-			Contexts: []string{"log", "span", "metric"},
+			Contexts: []string{"span"},
 			Filter: []dash0v1alpha1.Dash0SpamFilterCondition{
 				{
 					Key:      "k8s.namespace.name",

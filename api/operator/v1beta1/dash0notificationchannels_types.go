@@ -26,7 +26,7 @@ type Dash0NotificationChannel struct {
 //
 // Exactly one of the type-specific config fields (slackConfig, slackBotConfig, emailV2Config, webhookConfig,
 // incidentioConfig, opsgenieConfig, pagerdutyConfig, teamsWebhookConfig, discordWebhookConfig,
-// googleChatWebhookConfig, ilertConfig, allQuietConfig) must be set, matching the value of the type field.
+// googleChatWebhookConfig, ilertConfig, allQuietConfig, mattermostWebhookConfig) must be set, matching the value of the type field.
 //
 // +kubebuilder:validation:XValidation:rule="self.type == 'slack' ? has(self.slackConfig) : !has(self.slackConfig)",message="slackConfig must be set when type is 'slack', and must not be set otherwise"
 // +kubebuilder:validation:XValidation:rule="self.type == 'slack_bot' ? has(self.slackBotConfig) : !has(self.slackBotConfig)",message="slackBotConfig must be set when type is 'slack_bot', and must not be set otherwise"
@@ -40,6 +40,7 @@ type Dash0NotificationChannel struct {
 // +kubebuilder:validation:XValidation:rule="self.type == 'google_chat_webhook' ? has(self.googleChatWebhookConfig) : !has(self.googleChatWebhookConfig)",message="googleChatWebhookConfig must be set when type is 'google_chat_webhook', and must not be set otherwise"
 // +kubebuilder:validation:XValidation:rule="self.type == 'ilert' ? has(self.ilertConfig) : !has(self.ilertConfig)",message="ilertConfig must be set when type is 'ilert', and must not be set otherwise"
 // +kubebuilder:validation:XValidation:rule="self.type == 'all_quiet' ? has(self.allQuietConfig) : !has(self.allQuietConfig)",message="allQuietConfig must be set when type is 'all_quiet', and must not be set otherwise"
+// +kubebuilder:validation:XValidation:rule="self.type == 'mattermost_webhook' ? has(self.mattermostWebhookConfig) : !has(self.mattermostWebhookConfig)",message="mattermostWebhookConfig must be set when type is 'mattermost_webhook', and must not be set otherwise"
 type Dash0NotificationChannelSpec struct {
 	// Display configuration for the notification channel.
 	// +kubebuilder:validation:Required
@@ -47,7 +48,7 @@ type Dash0NotificationChannelSpec struct {
 
 	// The type of notification channel integration.
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=slack;slack_bot;email;email_v2;webhook;incidentio;prometheus_webhook;betterstack;prometheus_alertmanager;opsgenie;pagerduty;jira_service_management_ops;teams_webhook;discord_webhook;google_chat_webhook;ilert;all_quiet
+	// +kubebuilder:validation:Enum=slack;slack_bot;email;email_v2;webhook;incidentio;prometheus_webhook;betterstack;prometheus_alertmanager;opsgenie;pagerduty;jira_service_management_ops;teams_webhook;discord_webhook;google_chat_webhook;ilert;all_quiet;mattermost_webhook
 	Type string `json:"type"`
 
 	// Configuration for Slack webhook notifications. Required when type is "slack".
@@ -97,6 +98,10 @@ type Dash0NotificationChannelSpec struct {
 	// Configuration for All Quiet notifications. Required when type is "all_quiet".
 	// +kubebuilder:validation:Optional
 	AllQuietConfig *AllQuietConfig `json:"allQuietConfig,omitempty"`
+
+	// Configuration for Mattermost webhook notifications. Required when type is "mattermost_webhook".
+	// +kubebuilder:validation:Optional
+	MattermostWebhookConfig *MattermostWebhookConfig `json:"mattermostWebhookConfig,omitempty"`
 
 	// Specifies the notification frequency. Optional, defaults to "10m".
 	// +kubebuilder:validation:Optional
@@ -222,6 +227,21 @@ type DiscordWebhookConfig struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Format=uri
 	URL string `json:"url"`
+}
+
+// MattermostWebhookConfig defines the configuration for Mattermost webhook notifications.
+type MattermostWebhookConfig struct {
+	// The Mattermost incoming webhook URL, as shown in "Integrations → Incoming Webhooks" of the Mattermost server
+	// (e.g. https://mattermost.example.com/hooks/xxx-generatedkey-xxx).
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Format=uri
+	URL string `json:"url"`
+
+	// Optional channel override. Accepts a channel name (town-square) or a direct message target (@username). When
+	// omitted, Mattermost posts to the channel the incoming webhook was created for. Overriding requires the
+	// webhook's creator to have access to the target channel; Mattermost rejects the post otherwise.
+	// +kubebuilder:validation:Optional
+	Channel string `json:"channel,omitempty"`
 }
 
 // GoogleChatWebhookConfig defines the configuration for Google Chat webhook notifications.

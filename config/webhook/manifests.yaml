@@ -1,7 +1,7 @@
 # Note: The kustomize configs are not used in production, but they are currently still used when setting up the unit
 # test environment, like in internal/webhooks/webhook_suite_test.go -> &envtest.Environment#WebhookInstallOptions.
 # Thus, they need to be kept in sync with the webhook resources defined in
-# helm-chart/dash0-operator/templates/operator/deployment-and-webhooks.yaml.
+# helm-chart/dash0-operator/templates/operator/webhook-configurations.yaml.
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration

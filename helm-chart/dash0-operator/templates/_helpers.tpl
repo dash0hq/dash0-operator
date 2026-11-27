@@ -159,6 +159,16 @@ true
 {{- end }}
 
 {{/*
+Renders the string "true" if the operator manager manages the webhook certificates itself, and the empty string if
+cert-manager provides them (operator.certManager.useCertManager).
+*/}}
+{{- define "dash0-operator.selfManagedCertificates" -}}
+{{- if not .Values.operator.certManager.useCertManager -}}
+true
+{{- end }}
+{{- end }}
+
+{{/*
 The Secret in which the operator manager stores the webhook certificates it manages itself, if cert-manager is not used.
 */}}
 {{- define "dash0-operator.webhookCertificatesSecretName" -}}

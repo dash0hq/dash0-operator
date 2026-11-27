@@ -82,6 +82,24 @@ var _ = Describe("The desired state of the synthetics-worker resources", func() 
 		Expect(deployment.Spec.Template.Labels).To(HaveKey(util.AppKubernetesIoManagedByLabel))
 	})
 
+	DescribeTable(
+		"adds the GKE Autopilot allowlist match label to the pod template on GKE Autopilot, but never to the selector",
+		func(isGkeAutopilot bool) {
+			config := testConfig()
+			config.IsGkeAutopilot = isGkeAutopilot
+			deployment := getDeployment(assembleDesiredStateOrFail(config, testSpec, testAuthTokenEnvVar))
+			if isGkeAutopilot {
+				Expect(deployment.Spec.Template.Labels).To(
+					HaveKeyWithValue("cloud.google.com/matching-allowlist", "dash0-synthetics-worker-v1.0.5"))
+			} else {
+				Expect(deployment.Spec.Template.Labels).ToNot(HaveKey("cloud.google.com/matching-allowlist"))
+			}
+			Expect(deployment.Spec.Selector.MatchLabels).ToNot(HaveKey("cloud.google.com/matching-allowlist"))
+		},
+		Entry("on GKE Autopilot", true),
+		Entry("not on GKE Autopilot", false),
+	)
+
 	Describe("the deployment", func() {
 		It("passes the configured priority class name through to the pod spec", func() {
 			config := testConfig()

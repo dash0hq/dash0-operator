@@ -58,10 +58,6 @@ manage that resource yourself, set `spec.profiling.ebpfProfiler.enabled: true` t
 not set, the profiling pipelines follow that setting. Setting it together with `spec.profiling.enabled: false` is a
 validation error.
 
-The operator-managed profiler is not yet supported on GKE Autopilot. It requires a new workload allowlist submitted
-to Google, reviewed, and published before it can run. This review usually takes a few weeks. See the
-[GKE Autopilot notes](platform-specific.md#notes-on-gke-autopilot).
-
 ### Agent image
 
 The profiler defaults to `ghcr.io/parca-dev/parca-agent:v0.51.5`. This version is independent of the operator's
@@ -82,6 +78,8 @@ agent uses the process resource attribution of the upstream OpenTelemetry eBPF p
 The image repository defaults to `ghcr.io/parca-dev/parca-agent`. The debuginfo proxy defaults to
 `ghcr.io/dash0hq/debuginfo-proxy` with the chart's `appVersion`. Both `operator.ebpfProfilerImage` and
 `operator.debuginfoProxyImage` accept `repository`, `tag`, `digest`, and `pullPolicy`; a digest takes precedence over a tag.
+On GKE Autopilot, the workload allowlists only accept the default repositories, so only the tag or digest can be
+changed there.
 
 ### Node-local delivery
 

@@ -1,0 +1,11 @@
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: operator-test-mattermost-webhook
+spec:
+  display:
+    name: Mattermost Alerts
+  type: mattermost_webhook
+  mattermostWebhookConfig:
+    url: "https://mattermost.example.com/hooks/xxx-generatedkey-xxx"
+  frequency: 10m

@@ -2380,6 +2380,13 @@ func (in *Dash0ViewSpec) DeepCopyInto(out *Dash0ViewSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.ClientFilter != nil {
+		in, out := &in.ClientFilter, &out.ClientFilter
+		*out = make([]Dash0ViewFilter, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.Table != nil {
 		in, out := &in.Table, &out.Table
 		*out = new(Dash0ViewTable)
