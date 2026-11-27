@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -42,11 +43,13 @@ const (
 
 	// operatorManagerMetricsPort is the port of the --metrics-bind-address argument of the operator manager.
 	operatorManagerMetricsPort = 8080
+
+	operatorManagerLiveHeapMetricName = "go_gc_heap_live_bytes"
 )
 
 var (
 	operatorManagerHeapMetricNames = []string{
-		"go_gc_heap_live_bytes",
+		operatorManagerLiveHeapMetricName,
 		"go_memstats_heap_alloc_bytes",
 		"go_memstats_heap_inuse_bytes",
 		"go_memstats_heap_idle_bytes",
@@ -603,17 +606,50 @@ func verifyDash0OperatorReleaseIsNotInstalled(g Gomega, operatorNamespace string
 	))).To(Succeed())
 }
 
+// verifyOperatorManagerPodMemoryUsageIsReasonable checks the working set of the operator manager pod and the live heap
+// of the operator manager. The working set includes garbage that has not been collected yet and varies with the timing
+// of the GC, hence its generous threshold. The live heap only counts what survived the last GC, so real memory growth
+// fails its tight threshold.
 func verifyOperatorManagerPodMemoryUsageIsReasonable() {
 	var memoryUsage int64
 	Eventually(func(g Gomega) {
 		memoryUsage = readOperatorManagerMemoryUsage(g)
 	}, 60*time.Second, 1*time.Second).Should(Succeed())
 	e2ePrint("operator manager pod memory usage: %d\n", memoryUsage)
-	printOperatorManagerHeapMetrics()
+
+	var metrics string
+	var liveHeapBytes float64
+	Eventually(func(g Gomega) {
+		By("getting operator manager metrics")
+		var err error
+		metrics, err = readOperatorManagerMetrics()
+		g.Expect(err).NotTo(HaveOccurred(), "could not read the operator manager metrics")
+		liveHeapBytes = parseOperatorManagerLiveHeapBytes(g, metrics)
+	}, 60*time.Second, 1*time.Second).Should(Succeed())
+	printOperatorManagerHeapMetrics(metrics)
+
 	Expect(memoryUsage).Should(
-		BeNumerically("<=", int64(128_000_000)),
+		BeNumerically("<=", int64(160_000_000)),
 		"The operator manager pod is using more memory than expected. Check for a potential memory leak.",
 	)
+	Expect(liveHeapBytes).Should(
+		BeNumerically("<=", float64(40_000_000)),
+		"The live heap of the operator manager is larger than expected. Check for a potential memory leak.",
+	)
+}
+
+func parseOperatorManagerLiveHeapBytes(g Gomega, metrics string) float64 {
+	for line := range strings.SplitSeq(metrics, "\n") {
+		if sample, ok := strings.CutPrefix(line, operatorManagerLiveHeapMetricName+" "); ok {
+			fields := strings.Fields(sample)
+			g.Expect(fields).NotTo(BeEmpty(), "the operator manager metrics line has no value: %s", line)
+			liveHeapBytes, err := strconv.ParseFloat(fields[0], 64)
+			g.Expect(err).NotTo(HaveOccurred(), "cannot parse the operator manager metrics line: %s", line)
+			return liveHeapBytes
+		}
+	}
+	g.Expect(false).To(BeTrue(), "the operator manager metrics contain no %s\n", operatorManagerLiveHeapMetricName)
+	return -1
 }
 
 func readOperatorManagerMemoryUsage(g Gomega) int64 {
@@ -689,33 +725,21 @@ func readOperatorManagerMemoryUsage(g Gomega) int64 {
 	return -1
 }
 
-// printOperatorManagerHeapMetrics prints the Go heap metrics of the operator manager. In contrast to the working set
-// reported by metrics-server, go_gc_heap_live_bytes does not include garbage that has not been collected yet. The
-// metrics are only printed for analysis, failing to read them does not fail the test.
-func printOperatorManagerHeapMetrics() {
-	metrics, err := readOperatorManagerMetrics()
-	if err != nil {
-		e2ePrint("could not read the operator manager metrics: %v\n", err)
-		return
-	}
-	found := false
+// printOperatorManagerHeapMetrics prints the Go heap metrics of the operator manager for analysis.
+func printOperatorManagerHeapMetrics(metrics string) {
 	for line := range strings.SplitSeq(metrics, "\n") {
 		for _, name := range operatorManagerHeapMetricNames {
 			if strings.HasPrefix(line, name+" ") {
 				e2ePrint("operator manager %s\n", line)
-				found = true
 			}
 		}
-	}
-	if !found {
-		e2ePrint("the operator manager metrics contain none of %v\n", operatorManagerHeapMetricNames)
 	}
 }
 
 // readOperatorManagerMetrics reads the metrics endpoint of the operator manager via kubectl port-forward, since the
 // endpoint only listens on 127.0.0.1.
 func readOperatorManagerMetrics() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	portForward := exec.CommandContext(
 		ctx,
