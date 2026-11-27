@@ -338,7 +338,7 @@ func (r *TimeSeriesAggregationReconciler) Reconcile(ctx context.Context, req rec
 			r.WriteSynchronizationResultToSynchronizedResource(
 				ctx,
 				timeSeriesAggregationResource,
-				synchronizationResults{},
+				newNotSynchronizedResult(fmt.Sprintf("%s: %v", msg, err)),
 				logger,
 			)
 		}
@@ -470,10 +470,16 @@ func (r *TimeSeriesAggregationReconciler) WriteSynchronizationResultToSynchroniz
 ) {
 	timeSeriesAggregation := synchronizedResource.(*dash0v1alpha1.Dash0TimeSeriesAggregation)
 
-	// common result
-	timeSeriesAggregation.Status.SynchronizationStatus = syncResults.resourceSyncStatus()
-	timeSeriesAggregation.Status.SynchronizedAt = metav1.Time{Time: time.Now()}
-	timeSeriesAggregation.Status.ValidationIssues = nil // we do not validate anything for time series aggregations
+	replaceSynchronizationResults := syncResults.writeCommonStatus(
+		timeSeriesAggregation.GetGeneration(),
+		ownedResourceCommonStatus{
+			synchronizationStatus:        &timeSeriesAggregation.Status.SynchronizationStatus,
+			synchronizedAt:               &timeSeriesAggregation.Status.SynchronizedAt,
+			observedGeneration:           &timeSeriesAggregation.Status.ObservedGeneration,
+			synchronizationSkippedReason: &timeSeriesAggregation.Status.SynchronizationSkippedReason,
+			validationIssues:             &timeSeriesAggregation.Status.ValidationIssues,
+		},
+	)
 
 	// result(s) per apiConfig
 	timeSeriesAggregationSyncResults :=
@@ -507,7 +513,9 @@ func (r *TimeSeriesAggregationReconciler) WriteSynchronizationResultToSynchroniz
 		}
 		timeSeriesAggregationSyncResults = append(timeSeriesAggregationSyncResults, syncResultPerEndpointAndDataset)
 	}
-	timeSeriesAggregation.Status.SynchronizationResults = timeSeriesAggregationSyncResults
+	if replaceSynchronizationResults || timeSeriesAggregation.Status.SynchronizationResults == nil {
+		timeSeriesAggregation.Status.SynchronizationResults = timeSeriesAggregationSyncResults
+	}
 
 	if err := r.Status().Update(ctx, timeSeriesAggregation); err != nil {
 		logger.Error(err, "Failed to update Dash0 time series aggregation status.")

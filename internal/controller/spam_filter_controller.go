@@ -315,7 +315,12 @@ func (r *SpamFilterReconciler) Reconcile(ctx context.Context, req reconcile.Requ
 		msg := "cannot serialize the spam filter resource"
 		logger.Error(err, msg)
 		if action != deleteAction {
-			r.WriteSynchronizationResultToSynchronizedResource(ctx, spamFilterResource, synchronizationResults{}, logger)
+			r.WriteSynchronizationResultToSynchronizedResource(
+				ctx,
+				spamFilterResource,
+				newNotSynchronizedResult(fmt.Sprintf("%s: %v", msg, err)),
+				logger,
+			)
 		}
 		return reconcile.Result{}, nil
 	}
@@ -441,10 +446,16 @@ func (r *SpamFilterReconciler) WriteSynchronizationResultToSynchronizedResource(
 ) {
 	spamFilter := synchronizedResource.(*dash0v1alpha1.Dash0SpamFilter)
 
-	// common result
-	spamFilter.Status.SynchronizationStatus = syncResults.resourceSyncStatus()
-	spamFilter.Status.SynchronizedAt = metav1.Time{Time: time.Now()}
-	spamFilter.Status.ValidationIssues = nil // we do not validate anything for spam filters
+	replaceSynchronizationResults := syncResults.writeCommonStatus(
+		spamFilter.GetGeneration(),
+		ownedResourceCommonStatus{
+			synchronizationStatus:        &spamFilter.Status.SynchronizationStatus,
+			synchronizedAt:               &spamFilter.Status.SynchronizedAt,
+			observedGeneration:           &spamFilter.Status.ObservedGeneration,
+			synchronizationSkippedReason: &spamFilter.Status.SynchronizationSkippedReason,
+			validationIssues:             &spamFilter.Status.ValidationIssues,
+		},
+	)
 
 	// result(s) per apiConfig
 	spamFilterSyncResults := make([]dash0v1alpha1.Dash0SpamFilterSynchronizationResultPerEndpointAndDataset, 0,
@@ -476,7 +487,9 @@ func (r *SpamFilterReconciler) WriteSynchronizationResultToSynchronizedResource(
 		}
 		spamFilterSyncResults = append(spamFilterSyncResults, syncResultPerEndpointAndDataset)
 	}
-	spamFilter.Status.SynchronizationResults = spamFilterSyncResults
+	if replaceSynchronizationResults || spamFilter.Status.SynchronizationResults == nil {
+		spamFilter.Status.SynchronizationResults = spamFilterSyncResults
+	}
 
 	if err := r.Status().Update(ctx, spamFilter); err != nil {
 		logger.Error(err, "Failed to update Dash0 spam filter status.")

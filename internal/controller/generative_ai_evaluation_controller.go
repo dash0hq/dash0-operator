@@ -338,7 +338,7 @@ func (r *GenerativeAiEvaluationReconciler) Reconcile(ctx context.Context, req re
 			r.WriteSynchronizationResultToSynchronizedResource(
 				ctx,
 				generativeAiEvaluationResource,
-				synchronizationResults{},
+				newNotSynchronizedResult(fmt.Sprintf("%s: %v", msg, err)),
 				logger,
 			)
 		}
@@ -471,10 +471,16 @@ func (r *GenerativeAiEvaluationReconciler) WriteSynchronizationResultToSynchroni
 ) {
 	generativeAiEvaluation := synchronizedResource.(*dash0dashv1alpha1.Dash0GenerativeAiEvaluation)
 
-	// common result
-	generativeAiEvaluation.Status.SynchronizationStatus = syncResults.resourceSyncStatus()
-	generativeAiEvaluation.Status.SynchronizedAt = metav1.Time{Time: time.Now()}
-	generativeAiEvaluation.Status.ValidationIssues = nil // we do not validate anything for generative AI evaluations
+	replaceSynchronizationResults := syncResults.writeCommonStatus(
+		generativeAiEvaluation.GetGeneration(),
+		ownedResourceCommonStatus{
+			synchronizationStatus:        &generativeAiEvaluation.Status.SynchronizationStatus,
+			synchronizedAt:               &generativeAiEvaluation.Status.SynchronizedAt,
+			observedGeneration:           &generativeAiEvaluation.Status.ObservedGeneration,
+			synchronizationSkippedReason: &generativeAiEvaluation.Status.SynchronizationSkippedReason,
+			validationIssues:             &generativeAiEvaluation.Status.ValidationIssues,
+		},
+	)
 
 	// result(s) per apiConfig
 	generativeAiEvaluationSyncResults :=
@@ -508,7 +514,9 @@ func (r *GenerativeAiEvaluationReconciler) WriteSynchronizationResultToSynchroni
 		}
 		generativeAiEvaluationSyncResults = append(generativeAiEvaluationSyncResults, syncResultPerEndpointAndDataset)
 	}
-	generativeAiEvaluation.Status.SynchronizationResults = generativeAiEvaluationSyncResults
+	if replaceSynchronizationResults || generativeAiEvaluation.Status.SynchronizationResults == nil {
+		generativeAiEvaluation.Status.SynchronizationResults = generativeAiEvaluationSyncResults
+	}
 
 	if err := r.Status().Update(ctx, generativeAiEvaluation); err != nil {
 		logger.Error(err, "Failed to update Dash0 generative AI evaluation status.")

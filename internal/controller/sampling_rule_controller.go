@@ -328,7 +328,7 @@ func (r *SamplingRuleReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			r.WriteSynchronizationResultToSynchronizedResource(
 				ctx,
 				samplingRuleResource,
-				synchronizationResults{},
+				newNotSynchronizedResult(fmt.Sprintf("%s: %v", msg, err)),
 				logger,
 			)
 		}
@@ -556,9 +556,16 @@ func (r *SamplingRuleReconciler) WriteSynchronizationResultToSynchronizedResourc
 ) {
 	samplingRule := synchronizedResource.(*dash0v1alpha1.Dash0SamplingRule)
 
-	samplingRule.Status.SynchronizationStatus = syncResults.resourceSyncStatus()
-	samplingRule.Status.SynchronizedAt = metav1.Time{Time: time.Now()}
-	samplingRule.Status.ValidationIssues = nil
+	replaceSynchronizationResults := syncResults.writeCommonStatus(
+		samplingRule.GetGeneration(),
+		ownedResourceCommonStatus{
+			synchronizationStatus:        &samplingRule.Status.SynchronizationStatus,
+			synchronizedAt:               &samplingRule.Status.SynchronizedAt,
+			observedGeneration:           &samplingRule.Status.ObservedGeneration,
+			synchronizationSkippedReason: &samplingRule.Status.SynchronizationSkippedReason,
+			validationIssues:             &samplingRule.Status.ValidationIssues,
+		},
+	)
 
 	samplingRuleSyncResults := make([]dash0v1alpha1.Dash0SamplingRuleSynchronizationResultPerEndpointAndDataset, 0,
 		len(syncResults.resultsPerApiConfig))
@@ -588,7 +595,9 @@ func (r *SamplingRuleReconciler) WriteSynchronizationResultToSynchronizedResourc
 		}
 		samplingRuleSyncResults = append(samplingRuleSyncResults, syncResultPerEndpointAndDataset)
 	}
-	samplingRule.Status.SynchronizationResults = samplingRuleSyncResults
+	if replaceSynchronizationResults || samplingRule.Status.SynchronizationResults == nil {
+		samplingRule.Status.SynchronizationResults = samplingRuleSyncResults
+	}
 
 	if err := r.Status().Update(ctx, samplingRule); err != nil {
 		logger.Error(err, "Failed to update Dash0 sampling rule status.")

@@ -141,12 +141,19 @@ var _ = Describe(
 						syntheticCheckResource := createSyntheticCheckResource(TestNamespaceName, syntheticCheckName)
 						Expect(k8sClient.Create(ctx, syntheticCheckResource)).To(Succeed())
 
+						_, err := syntheticCheckReconciler.Reconcile(
+							ctx, reconcile.Request{
+								NamespacedName: types.NamespacedName{Namespace: TestNamespaceName, Name: syntheticCheckName},
+							},
+						)
+						Expect(err).NotTo(HaveOccurred())
+
 						Expect(gock.IsPending()).To(BeTrue())
-						verifySyntheticCheckHasNoSynchronizationStatus(
+						verifyOwnedResourceIsNotSynchronized(
 							ctx,
 							k8sClient,
-							TestNamespaceName,
-							syntheticCheckName,
+							&dash0v1alpha1.Dash0SyntheticCheck{ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: syntheticCheckName}},
+							"There is no Dash0 monitoring resource in namespace",
 						)
 					},
 				)
@@ -174,11 +181,11 @@ var _ = Describe(
 						Expect(result).To(Equal(reconcile.Result{}))
 
 						Expect(gock.IsPending()).To(BeTrue())
-						verifySyntheticCheckHasNoSynchronizationStatus(
+						verifyOwnedResourceIsNotSynchronized(
 							ctx,
 							k8sClient,
-							TestNamespaceName,
-							syntheticCheckName,
+							&dash0v1alpha1.Dash0SyntheticCheck{ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: syntheticCheckName}},
+							"No valid Dash0 API config is available",
 						)
 					},
 				)
@@ -207,11 +214,11 @@ var _ = Describe(
 						Expect(result).To(Equal(reconcile.Result{}))
 
 						Expect(gock.IsPending()).To(BeTrue())
-						verifySyntheticCheckHasNoSynchronizationStatus(
+						verifyOwnedResourceIsNotSynchronized(
 							ctx,
 							k8sClient,
-							TestNamespaceName,
-							syntheticCheckName,
+							&dash0v1alpha1.Dash0SyntheticCheck{ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: syntheticCheckName}},
+							"No valid Dash0 API config is available",
 						)
 					},
 				)
@@ -1168,6 +1175,8 @@ func verifySyntheticCheckSynchronizationStatus(
 			)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(syntheticCheck.Status.SynchronizationStatus).To(Equal(expectedStatus))
+			g.Expect(syntheticCheck.Status.ObservedGeneration).To(Equal(syntheticCheck.Generation))
+			g.Expect(syntheticCheck.Status.SynchronizationSkippedReason).To(BeEmpty())
 			g.Expect(syntheticCheck.Status.SynchronizedAt.Time).To(BeTemporally(">=", testStartedAt.Add(-1*time.Second)))
 			g.Expect(syntheticCheck.Status.SynchronizedAt.Time).To(BeTemporally("<=", time.Now()))
 			// syntheticChecks have no operator-side validations, all local validations are encoded in the CRD already

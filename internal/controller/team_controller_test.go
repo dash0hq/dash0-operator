@@ -535,6 +535,8 @@ func verifyTeamSynchronizationStatus(
 			)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(t.Status.SynchronizationStatus).To(Equal(expectedStatus))
+			g.Expect(t.Status.ObservedGeneration).To(Equal(t.Generation))
+			g.Expect(t.Status.SynchronizationSkippedReason).To(BeEmpty())
 			g.Expect(t.Status.SynchronizedAt.Time).To(BeTemporally(">=", testStartedAt.Add(-1*time.Second)))
 			g.Expect(t.Status.SynchronizedAt.Time).To(BeTemporally("<=", time.Now()))
 			// teams have no operator-side validations

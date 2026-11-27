@@ -4,14 +4,20 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	. "github.com/dash0hq/dash0-operator/test/util"
@@ -281,6 +287,75 @@ var _ = Describe("The API Sync", Ordered, func() {
 			))
 		})
 	})
+
+	Describe("writeCommonStatus", func() {
+		type commonStatus struct {
+			synchronizationStatus        dash0common.Dash0ApiResourceSynchronizationStatus
+			synchronizedAt               metav1.Time
+			observedGeneration           int64
+			synchronizationSkippedReason string
+			validationIssues             []string
+		}
+
+		var status commonStatus
+		var pointers ownedResourceCommonStatus
+
+		BeforeEach(func() {
+			status = commonStatus{
+				synchronizationStatus:        dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
+				observedGeneration:           1,
+				synchronizationSkippedReason: "previous reason",
+				validationIssues:             []string{"previous issue"},
+			}
+			pointers = ownedResourceCommonStatus{
+				synchronizationStatus:        &status.synchronizationStatus,
+				synchronizedAt:               &status.synchronizedAt,
+				observedGeneration:           &status.observedGeneration,
+				synchronizationSkippedReason: &status.synchronizationSkippedReason,
+				validationIssues:             &status.validationIssues,
+			}
+		})
+
+		It("writes the result of a synchronization and asks to replace the results per endpoint", func() {
+			results := synchronizationResults{
+				resultsPerApiConfig: []synchronizationResultPerApiConfig{
+					{
+						apiConfig: ApiConfig{Endpoint: "ep1"},
+						successfullySynchronized: []SuccessfulSynchronizationResult{
+							{ItemName: "item1"},
+						},
+						resourceToRequestsResult: &ResourceToRequestsResult{},
+					},
+				},
+			}
+			testStartedAt := time.Now()
+			Expect(results.writeCommonStatus(3, pointers)).To(BeTrue())
+			Expect(status.synchronizationStatus).To(Equal(dash0common.Dash0ApiResourceSynchronizationStatusSuccessful))
+			Expect(status.observedGeneration).To(Equal(int64(3)))
+			Expect(status.synchronizedAt.Time).To(BeTemporally(">=", testStartedAt))
+			Expect(status.synchronizationSkippedReason).To(BeEmpty())
+			Expect(status.validationIssues).To(BeNil())
+		})
+
+		It("writes a skipped synchronization and asks to keep the results per endpoint", func() {
+			results := newNotSynchronizedResult("There is no Dash0 monitoring resource in namespace test.")
+			Expect(results.writeCommonStatus(3, pointers)).To(BeFalse())
+			Expect(status.synchronizationStatus).To(Equal(dash0common.Dash0ApiResourceSynchronizationStatusNotSynchronized))
+			Expect(status.observedGeneration).To(Equal(int64(3)))
+			Expect(status.synchronizationSkippedReason).To(
+				Equal("There is no Dash0 monitoring resource in namespace test."))
+			Expect(status.validationIssues).To(BeNil())
+		})
+
+		It("writes validation issues of the resource as failed and asks to keep the results per endpoint", func() {
+			results := synchronizationResults{resourceValidationIssues: []string{"The resource has no spec."}}
+			Expect(results.writeCommonStatus(3, pointers)).To(BeFalse())
+			Expect(status.synchronizationStatus).To(Equal(dash0common.Dash0ApiResourceSynchronizationStatusFailed))
+			Expect(status.observedGeneration).To(Equal(int64(3)))
+			Expect(status.synchronizationSkippedReason).To(BeEmpty())
+			Expect(status.validationIssues).To(Equal([]string{"The resource has no spec."}))
+		})
+	})
 })
 
 var _ = Describe("Converting API client errors", func() {
@@ -348,3 +423,24 @@ var _ = Describe("The dataset in the origin", func() {
 		Entry("dataset with non-ASCII and reserved characters", "ä+ö&x=y;z,?#"),
 	)
 })
+
+// verifyOwnedResourceIsNotSynchronized verifies that the status of the given resource reports that the current
+// generation of the resource has not been synchronized to the Dash0 API, for a reason containing expectedReason. The
+// given object only needs to have its namespace and name set; its type determines the resource type.
+func verifyOwnedResourceIsNotSynchronized(
+	ctx context.Context,
+	k8sClient client.Client,
+	resource client.Object,
+	expectedReason string,
+) {
+	Eventually(func(g Gomega) {
+		g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(resource), resource)).To(Succeed())
+		unstructuredResource, err := runtime.DefaultUnstructuredConverter.ToUnstructured(resource)
+		g.Expect(err).NotTo(HaveOccurred())
+		status, _, _ := unstructured.NestedMap(unstructuredResource, "status")
+		g.Expect(status["synchronizationStatus"]).To(
+			Equal(string(dash0common.Dash0ApiResourceSynchronizationStatusNotSynchronized)))
+		g.Expect(status["synchronizationSkippedReason"]).To(ContainSubstring(expectedReason))
+		g.Expect(status["observedGeneration"]).To(Equal(resource.GetGeneration()))
+	}).Should(Succeed())
+}

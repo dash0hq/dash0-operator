@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -20,6 +21,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -300,6 +302,13 @@ type preconditionValidationResult struct {
 	// resource should be synchronized (as opposed to synchronization not being configured).
 	preconditionFailure apiSyncPreconditionFailure
 
+	// notSynchronizedReason explains why the resource will not be synchronized when synchronizeResource is false,
+	// unless the reason is that the resource itself is invalid (see validationIssue).
+	notSynchronizedReason string
+
+	// validationIssue is set when synchronizeResource is false because the resource itself is invalid.
+	validationIssue string
+
 	// syncDisabledViaLabel = false means that the resource has the label dash0.com/enable=false set; this will turn
 	// any create/update event for the object into a delete request (for most purposes it would be enough to ignore
 	// resources with that label, but when a resource has been synchronized earlier, and then the dash0.com/enable=false
@@ -328,6 +337,52 @@ type synchronizationResults struct {
 	validationIssues    map[string][]string
 	resultsPerApiConfig []synchronizationResultPerApiConfig
 	isDeletion          bool
+
+	// notSynchronizedReason is set when the resource has not been synchronized because synchronization is not
+	// configured for it or a precondition is not met. Only used for resource types owned by the operator.
+	notSynchronizedReason string
+
+	// resourceValidationIssues is set when the resource has not been synchronized because the resource itself is
+	// invalid. Only used for resource types owned by the operator.
+	resourceValidationIssues []string
+}
+
+// ownedResourceCommonStatus holds pointers to the status fields that all resource types owned by the operator have in
+// common.
+type ownedResourceCommonStatus struct {
+	synchronizationStatus        *dash0common.Dash0ApiResourceSynchronizationStatus
+	synchronizedAt               *metav1.Time
+	observedGeneration           *int64
+	synchronizationSkippedReason *string
+	validationIssues             *[]string
+}
+
+// writeCommonStatus sets the status fields that all resource types owned by the operator have in common, and reports
+// whether the synchronization results per endpoint and dataset need to be replaced. That is only the case when the
+// resource has actually been synchronized; when the synchronization has been skipped, the results of the most recent
+// synchronization are kept.
+func (s *synchronizationResults) writeCommonStatus(generation int64, status ownedResourceCommonStatus) bool {
+	*status.observedGeneration = generation
+	*status.synchronizedAt = metav1.Time{Time: time.Now()}
+	*status.synchronizationSkippedReason = s.notSynchronizedReason
+	*status.validationIssues = s.resourceValidationIssues
+	switch {
+	case s.notSynchronizedReason != "":
+		*status.synchronizationStatus = dash0common.Dash0ApiResourceSynchronizationStatusNotSynchronized
+		return false
+	case len(s.resourceValidationIssues) > 0:
+		*status.synchronizationStatus = dash0common.Dash0ApiResourceSynchronizationStatusFailed
+		return false
+	default:
+		*status.synchronizationStatus = s.resourceSyncStatus()
+		return true
+	}
+}
+
+// newNotSynchronizedResult creates the synchronization result for an owned resource that has not been synchronized
+// for the given reason.
+func newNotSynchronizedResult(reason string) synchronizationResults {
+	return synchronizationResults{notSynchronizedReason: reason}
 }
 
 func (s *synchronizationResults) totalProcessed() int {
@@ -452,6 +507,9 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 			recordApiSyncPreconditionFailure(ctx, syncKey, action, preconditionChecksResult.preconditionFailure)
 		} else {
 			apiSyncFailures.delete(syncKey)
+		}
+		if action != deleteAction {
+			writeSkippedSynchronizationResult(ctx, apiSyncReconciler, ownedResource, preconditionChecksResult, logger)
 		}
 		return
 	}
@@ -670,6 +728,28 @@ func synchronizeViaApiAndUpdateStatusWithOriginsInNamespace(
 	)
 }
 
+// writeSkippedSynchronizationResult writes the reason why a resource has not been synchronized to the status of the
+// resource, for resource types owned by the operator. For third-party resource types, nothing is written.
+func writeSkippedSynchronizationResult(
+	ctx context.Context,
+	apiSyncReconciler ApiSyncReconciler,
+	ownedResource client.Object,
+	preconditionChecksResult *preconditionValidationResult,
+	logger logd.Logger,
+) {
+	ownedResourceReconciler, ok := apiSyncReconciler.(OwnedResourceReconciler)
+	if !ok || ownedResource == nil {
+		return
+	}
+	syncResults := newNotSynchronizedResult(preconditionChecksResult.notSynchronizedReason)
+	if preconditionChecksResult.validationIssue != "" {
+		syncResults = synchronizationResults{
+			resourceValidationIssues: []string{preconditionChecksResult.validationIssue},
+		}
+	}
+	ownedResourceReconciler.WriteSynchronizationResultToSynchronizedResource(ctx, ownedResource, syncResults, logger)
+}
+
 // validatePreconditionsAndPreprocess checks whether a resource can be synchronized to the Dash0 API and applies common
 // preprocessing steps to the resource payload.
 //
@@ -725,6 +805,11 @@ func validatePreconditionsAndPreprocess(
 		return &preconditionValidationResult{
 			synchronizeResource: false,
 			preconditionFailure: apiSyncPreconditionFailureMonitoringResourceLookup,
+			notSynchronizedReason: fmt.Sprintf(
+				"An error occurred when looking up the Dash0 monitoring resource in namespace %s: %v",
+				namespace,
+				err,
+			),
 		}
 	}
 	if monitoringRes == nil {
@@ -738,6 +823,10 @@ func validatePreconditionsAndPreprocess(
 		)
 		return &preconditionValidationResult{
 			synchronizeResource: false,
+			notSynchronizedReason: fmt.Sprintf(
+				"There is no Dash0 monitoring resource in namespace %s.",
+				namespace,
+			),
 		}
 	}
 	monitoringResource := monitoringRes.(*dash0v1beta1.Dash0Monitoring)
@@ -781,11 +870,22 @@ func validatePreconditionsAndPreprocess(
 		// namespace has no API endpoint, i.e. synchronization is not configured for this namespace.
 		var preconditionFailure apiSyncPreconditionFailure
 		var logAttributes []any
+		notSynchronizedReason := fmt.Sprintf(
+			"The Dash0 monitoring resource in namespace %s has a Dash0 export without a Dash0 API endpoint, "+
+				"synchronization to the Dash0 API is not configured for this namespace.",
+			namespace,
+		)
 		if monitoringResource.HasDash0ApiAccessConfigured() {
 			preconditionFailure = apiSyncPreconditionFailureApiConfigUnavailable
 			logAttributes = apiSyncPreconditionFailureLogAttributes(
 				newApiSyncResourceKey(apiSyncReconciler, namespace, name),
 				preconditionFailure,
+			)
+			notSynchronizedReason = fmt.Sprintf(
+				"The Dash0 API config of the Dash0 monitoring resource in namespace %s is not available (yet). "+
+					"Either the monitoring resource has not been reconciled so far, or its Dash0 auth token cannot "+
+					"be resolved.",
+				namespace,
 			)
 		}
 		logger.Warn(
@@ -798,8 +898,9 @@ func validatePreconditionsAndPreprocess(
 			logAttributes...,
 		)
 		return &preconditionValidationResult{
-			synchronizeResource: false,
-			preconditionFailure: preconditionFailure,
+			synchronizeResource:   false,
+			preconditionFailure:   preconditionFailure,
+			notSynchronizedReason: notSynchronizedReason,
 		}
 	}
 
@@ -855,6 +956,11 @@ func validatePreconditionsAndPreprocess(
 		)
 		return &preconditionValidationResult{
 			synchronizeResource: false,
+			notSynchronizedReason: fmt.Sprintf(
+				"No valid Dash0 API config is available, neither in the Dash0 monitoring resource in namespace %s "+
+					"nor in the Dash0 operator configuration resource.",
+				namespace,
+			),
 		}
 	}
 
@@ -870,7 +976,8 @@ func validatePreconditionsAndPreprocess(
 			),
 		)
 		return &preconditionValidationResult{
-			synchronizeResource: false,
+			synchronizeResource:   false,
+			notSynchronizedReason: "The resource object is absent or empty.",
 		}
 	}
 
@@ -890,6 +997,7 @@ func validatePreconditionsAndPreprocess(
 		)
 		return &preconditionValidationResult{
 			synchronizeResource: false,
+			validationIssue:     "The resource has no spec.",
 		}
 	}
 
@@ -929,7 +1037,8 @@ func validatePreconditionsForClusterScopedResource(
 			),
 		)
 		return &preconditionValidationResult{
-			synchronizeResource: false,
+			synchronizeResource:   false,
+			notSynchronizedReason: "No valid Dash0 API config is available in the Dash0 operator configuration resource.",
 		}
 	}
 
@@ -953,7 +1062,8 @@ func validatePreconditionsForClusterScopedResource(
 			),
 		)
 		return &preconditionValidationResult{
-			synchronizeResource: false,
+			synchronizeResource:   false,
+			notSynchronizedReason: "The resource object is absent or empty.",
 		}
 	}
 
@@ -971,6 +1081,7 @@ func validatePreconditionsForClusterScopedResource(
 		)
 		return &preconditionValidationResult{
 			synchronizeResource: false,
+			validationIssue:     "The resource has no spec.",
 		}
 	}
 

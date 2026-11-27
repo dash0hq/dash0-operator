@@ -143,12 +143,19 @@ var _ = Describe(
 						viewResource := createViewResource(TestNamespaceName, viewName)
 						Expect(k8sClient.Create(ctx, viewResource)).To(Succeed())
 
+						_, err := viewReconciler.Reconcile(
+							ctx, reconcile.Request{
+								NamespacedName: types.NamespacedName{Namespace: TestNamespaceName, Name: viewName},
+							},
+						)
+						Expect(err).NotTo(HaveOccurred())
+
 						Expect(gock.IsPending()).To(BeTrue())
-						verifyViewHasNoSynchronizationStatus(
+						verifyOwnedResourceIsNotSynchronized(
 							ctx,
 							k8sClient,
-							TestNamespaceName,
-							viewName,
+							&dash0v1alpha1.Dash0View{ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: viewName}},
+							"There is no Dash0 monitoring resource in namespace",
 						)
 					},
 				)
@@ -176,11 +183,11 @@ var _ = Describe(
 						Expect(result).To(Equal(reconcile.Result{}))
 
 						Expect(gock.IsPending()).To(BeTrue())
-						verifyViewHasNoSynchronizationStatus(
+						verifyOwnedResourceIsNotSynchronized(
 							ctx,
 							k8sClient,
-							TestNamespaceName,
-							viewName,
+							&dash0v1alpha1.Dash0View{ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: viewName}},
+							"No valid Dash0 API config is available",
 						)
 					},
 				)
@@ -209,11 +216,11 @@ var _ = Describe(
 						Expect(result).To(Equal(reconcile.Result{}))
 
 						Expect(gock.IsPending()).To(BeTrue())
-						verifyViewHasNoSynchronizationStatus(
+						verifyOwnedResourceIsNotSynchronized(
 							ctx,
 							k8sClient,
-							TestNamespaceName,
-							viewName,
+							&dash0v1alpha1.Dash0View{ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: viewName}},
+							"No valid Dash0 API config is available",
 						)
 					},
 				)
@@ -570,6 +577,63 @@ var _ = Describe(
 							"",
 						)
 						Expect(gock.IsDone()).To(BeTrue())
+					},
+				)
+
+				It(
+					"writes the observed generation and keeps the previous synchronization results when the "+
+						"synchronization of a new generation is skipped", func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						expectViewPutRequest(clusterId, defaultExpectedPathView)
+						defer gock.Off()
+
+						viewResource := createViewResource(TestNamespaceName, viewName)
+						Expect(k8sClient.Create(ctx, viewResource)).To(Succeed())
+						request := reconcile.Request{
+							NamespacedName: types.NamespacedName{Namespace: TestNamespaceName, Name: viewName},
+						}
+						_, err := viewReconciler.Reconcile(ctx, request)
+						Expect(err).NotTo(HaveOccurred())
+						verifyViewSynchronizationStatus(
+							ctx,
+							k8sClient,
+							TestNamespaceName,
+							viewName,
+							dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
+							testStartedAt,
+							viewId,
+							fmt.Sprintf(viewOriginPattern, clusterId),
+							ApiEndpointStandardizedTest,
+							DatasetCustomTest,
+							"",
+						)
+						Expect(gock.IsDone()).To(BeTrue())
+
+						viewReconciler.RemoveDefaultApiConfigs(ctx, logger)
+						Expect(k8sClient.Get(ctx, request.NamespacedName, viewResource)).To(Succeed())
+						viewResource.Spec.Display.Name = "Updated View"
+						Expect(k8sClient.Update(ctx, viewResource)).To(Succeed())
+						Expect(viewResource.Generation).To(Equal(int64(2)))
+
+						_, err = viewReconciler.Reconcile(ctx, request)
+						Expect(err).NotTo(HaveOccurred())
+
+						verifyOwnedResourceIsNotSynchronized(
+							ctx,
+							k8sClient,
+							&dash0v1alpha1.Dash0View{
+								ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: viewName},
+							},
+							"No valid Dash0 API config is available",
+						)
+						updatedView := &dash0v1alpha1.Dash0View{}
+						Expect(k8sClient.Get(ctx, request.NamespacedName, updatedView)).To(Succeed())
+						Expect(updatedView.Status.ObservedGeneration).To(Equal(int64(2)))
+						Expect(updatedView.Status.SynchronizationResults).To(HaveLen(1))
+						Expect(updatedView.Status.SynchronizationResults[0].Dash0Id).To(Equal(viewId))
+						Expect(updatedView.Status.SynchronizationResults[0].SynchronizationStatus).To(
+							Equal(dash0common.Dash0ApiResourceSynchronizationStatusSuccessful))
 					},
 				)
 
@@ -1389,6 +1453,8 @@ func verifyViewSynchronizationStatus(
 			)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(view.Status.SynchronizationStatus).To(Equal(expectedStatus))
+			g.Expect(view.Status.ObservedGeneration).To(Equal(view.Generation))
+			g.Expect(view.Status.SynchronizationSkippedReason).To(BeEmpty())
 			g.Expect(view.Status.SynchronizedAt.Time).To(BeTemporally(">=", testStartedAt.Add(-1*time.Second)))
 			g.Expect(view.Status.SynchronizedAt.Time).To(BeTemporally("<=", time.Now()))
 			// views have no operator-side validations, all local validations are encoded in the CRD already
@@ -1434,6 +1500,8 @@ func verifyViewMultiExportSynchronizationStatus(
 			)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(view.Status.SynchronizationStatus).To(Equal(expectedStatus))
+			g.Expect(view.Status.ObservedGeneration).To(Equal(view.Generation))
+			g.Expect(view.Status.SynchronizationSkippedReason).To(BeEmpty())
 			g.Expect(view.Status.SynchronizedAt.Time).To(BeTemporally(">=", testStartedAt.Add(-1*time.Second)))
 			g.Expect(view.Status.SynchronizedAt.Time).To(BeTemporally("<=", time.Now()))
 			g.Expect(view.Status.ValidationIssues).To(BeNil())

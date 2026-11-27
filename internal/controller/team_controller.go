@@ -335,7 +335,7 @@ func (r *TeamReconciler) Reconcile(
 			r.WriteSynchronizationResultToSynchronizedResource(
 				ctx,
 				teamResource,
-				synchronizationResults{},
+				newNotSynchronizedResult(fmt.Sprintf("%s: %v", msg, err)),
 				logger,
 			)
 		}
@@ -488,10 +488,16 @@ func (r *TeamReconciler) WriteSynchronizationResultToSynchronizedResource(
 ) {
 	team := synchronizedResource.(*dash0dashv1alpha1.Dash0Team)
 
-	// common result
-	team.Status.SynchronizationStatus = syncResults.resourceSyncStatus()
-	team.Status.SynchronizedAt = metav1.Time{Time: time.Now()}
-	team.Status.ValidationIssues = nil // we do not validate anything for teams operator-side
+	replaceSynchronizationResults := syncResults.writeCommonStatus(
+		team.GetGeneration(),
+		ownedResourceCommonStatus{
+			synchronizationStatus:        &team.Status.SynchronizationStatus,
+			synchronizedAt:               &team.Status.SynchronizedAt,
+			observedGeneration:           &team.Status.ObservedGeneration,
+			synchronizationSkippedReason: &team.Status.SynchronizationSkippedReason,
+			validationIssues:             &team.Status.ValidationIssues,
+		},
+	)
 
 	// result(s) per apiConfig
 	teamSyncResults := make(
@@ -525,7 +531,9 @@ func (r *TeamReconciler) WriteSynchronizationResultToSynchronizedResource(
 		}
 		teamSyncResults = append(teamSyncResults, syncResultPerEndpoint)
 	}
-	team.Status.SynchronizationResults = teamSyncResults
+	if replaceSynchronizationResults || team.Status.SynchronizationResults == nil {
+		team.Status.SynchronizationResults = teamSyncResults
+	}
 
 	if err := r.Status().Update(ctx, team); err != nil {
 		logger.Error(err, "Failed to update Dash0 team status.")

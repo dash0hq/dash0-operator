@@ -279,6 +279,14 @@ type Dash0SyntheticCheckStatus struct {
 	SynchronizedAt         metav1.Time                                                     `json:"synchronizedAt"`
 	ValidationIssues       []string                                                        `json:"validationIssues,omitempty"`
 	SynchronizationResults []Dash0SyntheticCheckSynchronizationResultPerEndpointAndDataset `json:"synchronizationResults"`
+	// ObservedGeneration is the metadata.generation of the resource that the operator has processed most recently.
+	// When it is equal to metadata.generation, the status reflects the current spec of the resource.
+	// +kubebuilder:validation:Optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+	// SynchronizationSkippedReason explains why the resource has not been synchronized to the Dash0 API. It is only
+	// set when synchronizationStatus is not-synchronized.
+	// +kubebuilder:validation:Optional
+	SynchronizationSkippedReason string `json:"synchronizationSkippedReason,omitempty"`
 }
 
 // Dash0SyntheticCheckSynchronizationResultPerEndpointAndDataset defines the synchronization result per endpoint and dataset
