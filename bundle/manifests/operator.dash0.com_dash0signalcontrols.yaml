@@ -1316,6 +1316,22 @@ spec:
                 required:
                 - enabled
                 type: object
+              transform:
+                description: |-
+                  Configuration for the dash0transform processor in the collector pipeline. The processor applies the
+                  transformation rules configured in Dash0 to spans, metric data points, and log records before they leave the
+                  cluster, and marks the telemetry it processed so that Dash0 does not apply the rules a second time.
+                properties:
+                  enabled:
+                    default: true
+                    description: |-
+                      Whether to wire the dash0transform processor into the collector pipelines. When disabled, transformation
+                      rules are not applied at the edge, and Dash0 applies them after ingestion instead. This setting is optional,
+                      it defaults to true.
+                    type: boolean
+                required:
+                - enabled
+                type: object
             required:
             - enabled
             type: object

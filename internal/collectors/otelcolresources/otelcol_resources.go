@@ -945,6 +945,7 @@ func signalControlConfigFromResource(
 	spamFilterEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.SpamFilter.Enabled, true)
 	spamFilterCacheExpiration := durationStringOrEmpty(resource.Spec.SpamFilter.CacheExpiration)
 	spamFilterAllowNoSettingsExt := pointers.ReadBoolPointerWithDefault(resource.Spec.SpamFilter.AllowNoSettingsExt, false)
+	transformEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.Transform.Enabled, true)
 
 	logEnrichmentEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.LogEnrichment.Enabled, false)
 	logPatternRefreshInterval := durationStringOrEmpty(resource.Spec.LogEnrichment.PatternRefreshInterval)
@@ -1023,6 +1024,7 @@ func signalControlConfigFromResource(
 		SpamFilterEnabled:                  spamFilterEnabled,
 		SpamFilterCacheExpiration:          spamFilterCacheExpiration,
 		SpamFilterAllowNoSettingsExt:       spamFilterAllowNoSettingsExt,
+		TransformEnabled:                   transformEnabled,
 		LogEnrichmentEnabled:               logEnrichmentEnabled,
 		LogPatternRefreshInterval:          logPatternRefreshInterval,
 		LogParserCacheExpiration:           logParserCacheExpiration,

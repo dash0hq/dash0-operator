@@ -179,6 +179,7 @@ func maximalSignalControlConfig() SignalControlConfig {
 		SpamFilterEnabled:                  true,
 		SpamFilterCacheExpiration:          "5m",
 		SpamFilterAllowNoSettingsExt:       true,
+		TransformEnabled:                   true,
 		OperationPreferSpanName:            true,
 		LogEnrichmentEnabled:               true,
 		LogPatternRefreshInterval:          "2m",
@@ -676,6 +677,13 @@ func matrixSettings() []matrixSetting {
 				} else {
 					e.config.SignalControl.SpamFilterCacheExpiration = ""
 				}
+			},
+		},
+		{
+			name: "signal-control-transform",
+			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
+				enableSignalControl(e)
+				e.config.SignalControl.TransformEnabled = enabled
 			},
 		},
 		{

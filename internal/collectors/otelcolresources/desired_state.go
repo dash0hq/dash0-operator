@@ -52,6 +52,7 @@ type SignalControlConfig struct {
 	SpamFilterEnabled                  bool
 	SpamFilterCacheExpiration          string
 	SpamFilterAllowNoSettingsExt       bool
+	TransformEnabled                   bool
 	LogEnrichmentEnabled               bool
 	LogPatternRefreshInterval          string
 	LogParserCacheExpiration           string

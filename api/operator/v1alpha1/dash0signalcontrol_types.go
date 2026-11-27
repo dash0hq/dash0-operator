@@ -79,6 +79,13 @@ type Dash0SignalControlSpec struct {
 	// +kubebuilder:validation:Optional
 	SpamFilter SpamFilterConfig `json:"spamFilter,omitempty"`
 
+	// Configuration for the dash0transform processor in the collector pipeline. The processor applies the
+	// transformation rules configured in Dash0 to spans, metric data points, and log records before they leave the
+	// cluster, and marks the telemetry it processed so that Dash0 does not apply the rules a second time.
+	//
+	// +kubebuilder:validation:Optional
+	Transform TransformConfig `json:"transform,omitempty"`
+
 	// Configuration for the dash0operation processor. This processor derives dash0.operation.* and dash0.span.*
 	// attributes from OpenTelemetry semantic conventions.
 	//
@@ -382,6 +389,17 @@ type SpamFilterConfig struct {
 	//
 	// +kubebuilder:validation:Optional
 	AllowNoSettingsExt *bool `json:"allowNoSettingsExt,omitempty"`
+}
+
+// TransformConfig configures the dash0transform processor. The processor applies the transformation rules
+// configured in Dash0 to spans, metric data points, and log records.
+type TransformConfig struct {
+	// Whether to wire the dash0transform processor into the collector pipelines. When disabled, transformation
+	// rules are not applied at the edge, and Dash0 applies them after ingestion instead. This setting is optional,
+	// it defaults to true.
+	//
+	// +kubebuilder:default=true
+	Enabled *bool `json:"enabled"`
 }
 
 // OperationProcessorConfig configures the dash0operation processor.

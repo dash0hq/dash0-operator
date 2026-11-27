@@ -3024,11 +3024,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			// With a default Dash0 exporter the metric recorder is active, so dash0filter always carries the
 			// metric_recorder wiring even when no spam-filter tunables are set.
 			Expect(webFilter).To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder"))
-			Expect(webFilter).To(HaveLen(2), "dash0filter/ingress should carry only its role and metric_recorder when no tunables set")
+			Expect(webFilter).To(HaveLen(3),
+				"dash0filter/ingress should carry only its role, signal_control_modes and metric_recorder when no tunables set")
 			Expect(webFilter).To(HaveKeyWithValue("signal_control_role", "ingress"))
 			Expect(processors["dash0filter/egress"]).To(Equal(map[string]interface{}{
-				"signal_control_role": "egress",
-				"metric_recorder":     "dash0metricrecorder",
+				"signal_control_role":  "egress",
+				"signal_control_modes": true,
+				"metric_recorder":      "dash0metricrecorder",
 			}))
 			Expect(processors).ToNot(HaveKey("dash0filter"))
 
@@ -3205,7 +3207,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			// With a default Dash0 exporter and infrastructure metrics enabled the metric recorder is active, so
 			// dash0filter always carries the metric_recorder wiring even when no spam-filter tunables are set.
 			Expect(webFilter).To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder"))
-			Expect(webFilter).To(HaveLen(2), "dash0filter/ingress should carry only its role and metric_recorder when no tunables set")
+			Expect(webFilter).To(HaveLen(3),
+				"dash0filter/ingress should carry only its role, signal_control_modes and metric_recorder when no tunables set")
 
 			extensions := collectorConfig["extensions"].(map[string]interface{})
 			Expect(extensions).To(HaveKey("dash0settingsonedgeextension"))
@@ -6870,6 +6873,221 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		})
 	})
 
+	Describe("Signal Control transformation rules [SignalControl]", func() {
+		transformSC := func() SignalControlConfig {
+			return SignalControlConfig{
+				Enabled:                        true,
+				SpamFilterEnabled:              true,
+				TransformEnabled:               true,
+				LogEnrichmentEnabled:           true,
+				CardholderDataRedactionEnabled: true,
+				Endpoint:                       "decision-maker.example.com:443",
+				ApiEndpoint:                    "https://control-plane-api.dash0.com",
+				Dataset:                        "default",
+			}
+		}
+
+		assembleWith := func(sc SignalControlConfig, exporters otlpExporters) map[string]interface{} {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         exporters,
+				SignalControl:     sc,
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, false)
+			Expect(err).ToNot(HaveOccurred())
+			return parseConfigMapContent(configMap)
+		}
+
+		It("runs transform after the ingress filter stage in every default Signal Control pipeline [SignalControl]", func() {
+			collectorConfig := assembleWith(transformSC(), cmTestSingleDefaultOtlpExporter())
+			pipelines := readPipelines(collectorConfig)
+
+			Expect(readPipelineProcessors(pipelines, "traces/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0operation",
+				"dash0filter/ingress",
+				"dash0transform",
+				"dash0redaction",
+			}))
+			Expect(readPipelineExporters(pipelines, "traces/sc/default")).
+				To(ContainElements("forward/traces-post-filter", "dash0redmetrics"))
+			Expect(readPipelineProcessors(pipelines, "traces/post-filter/default")).
+				To(Equal([]any{"dash0metering/post-filter", "dash0filter/egress"}))
+
+			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0filter/ingress",
+				"dash0transform",
+				"dash0filter/egress",
+				"dash0redaction",
+			}))
+
+			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0logparser",
+				"dash0loggrouping",
+				"dash0filter/ingress",
+				"dash0transform",
+				"dash0redaction",
+			}))
+			Expect(readPipelineProcessors(pipelines, "logs/post-filter/default")).
+				To(Equal([]any{"dash0metering/post-filter", "dash0filter/egress"}))
+
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors["dash0transform"]).To(Equal(map[string]interface{}{
+				"enable":          map[string]interface{}{"default": true},
+				"metric_recorder": "dash0metricrecorder",
+				"default_dataset": "default",
+			}))
+
+			extensions := collectorConfig["extensions"].(map[string]interface{})
+			Expect(extensions["dash0settingsonedgeextension"]).To(HaveKeyWithValue("drop_matched_logs", true))
+
+			assertCollectorConfigStructurallyValid(collectorConfig, "signal-control/transform-default")
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/transform-default")
+		})
+
+		It("wires a transform instance per dataset branch that falls back to the branch's dataset [SignalControl]", func() {
+			collectorConfig := assembleWith(transformSC(), cmTestNamespacedMultiDatasetExporters())
+			pipelines := readPipelines(collectorConfig)
+			processors := collectorConfig["processors"].(map[string]interface{})
+
+			for idx, dataset := range map[string]string{"0": "ds-a", "1": "ds-b"} {
+				branch := namespace1 + "/" + idx
+				Expect(readPipelineProcessors(pipelines, "traces/sc/ns/"+branch)).To(Equal([]any{
+					"resource/signal_control_attributes/ns/" + branch,
+					"dash0resource",
+					"dash0metering/ns/" + branch,
+					"dash0operation",
+					"dash0filter/ns/" + branch + "/ingress",
+					"dash0transform/ns/" + branch,
+					"dash0redaction/ns/" + branch,
+				}), branch)
+				Expect(readPipelineProcessors(pipelines, "traces/post-filter/ns/"+branch)).To(Equal([]any{
+					"dash0metering/ns/" + branch + "/post-filter",
+					"dash0filter/ns/" + branch + "/egress",
+				}), branch)
+				Expect(readPipelineProcessors(pipelines, "metrics/sc/ns/"+branch)).To(Equal([]any{
+					"resource/signal_control_attributes/ns/" + branch,
+					"dash0resource",
+					"dash0metering/ns/" + branch,
+					"dash0filter/ns/" + branch + "/ingress",
+					"dash0transform/ns/" + branch,
+					"dash0filter/ns/" + branch + "/egress",
+					"dash0redaction/ns/" + branch,
+				}), branch)
+				Expect(readPipelineProcessors(pipelines, "logs/sc/ns/"+branch)).To(Equal([]any{
+					"resource/signal_control_attributes/ns/" + branch,
+					"dash0resource",
+					"dash0metering/ns/" + branch,
+					"dash0logparser",
+					"dash0loggrouping",
+					"dash0filter/ns/" + branch + "/ingress",
+					"dash0transform/ns/" + branch,
+					"dash0redaction/ns/" + branch,
+				}), branch)
+				Expect(readPipelineProcessors(pipelines, "logs/post-filter/ns/"+branch)).To(Equal([]any{
+					"dash0metering/ns/" + branch + "/post-filter",
+					"dash0filter/ns/" + branch + "/egress",
+				}), branch)
+
+				Expect(processors["dash0transform/ns/"+branch]).To(Equal(map[string]interface{}{
+					"enable":          map[string]interface{}{"default": true},
+					"metric_recorder": "dash0metricrecorder/ns/" + branch,
+					"default_dataset": dataset,
+				}), branch)
+			}
+
+			assertCollectorConfigStructurallyValid(collectorConfig, "signal-control/transform-ns")
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/transform-ns")
+		})
+
+		It("runs metering before transform in every pipeline when transform is the only capability [SignalControl]", func() {
+			sc := transformSC()
+			sc.SpamFilterEnabled = false
+			sc.LogEnrichmentEnabled = false
+			sc.CardholderDataRedactionEnabled = false
+			collectorConfig := assembleWith(sc, cmTestSingleDefaultOtlpExporter())
+			pipelines := readPipelines(collectorConfig)
+
+			Expect(readPipelineProcessors(pipelines, "traces/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0operation",
+				"dash0transform",
+			}))
+			for _, pipelineName := range []string{"metrics/sc/default", "logs/sc/default"} {
+				Expect(readPipelineProcessors(pipelines, pipelineName)).To(Equal([]any{
+					"resource/signal_control_attributes",
+					"dash0resource",
+					"dash0metering",
+					"dash0transform",
+				}), pipelineName)
+			}
+			Expect(pipelines).ToNot(HaveKey("traces/post-filter/default"))
+			Expect(pipelines).ToNot(HaveKey("logs/post-filter/default"))
+			for name := range topLevelComponentKeys(collectorConfig, "processors") {
+				Expect(name).ToNot(HavePrefix("dash0filter"))
+			}
+			extensions := collectorConfig["extensions"].(map[string]interface{})
+			Expect(extensions["dash0settingsonedgeextension"]).ToNot(HaveKey("drop_matched_logs"))
+
+			assertCollectorConfigStructurallyValid(collectorConfig, "signal-control/transform-only")
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/transform-only")
+		})
+
+		It("keeps both filter stages and declares no transform when transform is disabled [SignalControl]", func() {
+			sc := transformSC()
+			sc.TransformEnabled = false
+			collectorConfig := assembleWith(sc, cmTestNamespacedMultiDatasetExporters())
+			pipelines := readPipelines(collectorConfig)
+
+			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0filter/ingress",
+				"dash0filter/egress",
+				"dash0redaction",
+			}))
+			Expect(readPipelineProcessors(pipelines, "logs/sc/ns/"+namespace1+"/0")).To(Equal([]any{
+				"resource/signal_control_attributes/ns/" + namespace1 + "/0",
+				"dash0resource",
+				"dash0metering/ns/" + namespace1 + "/0",
+				"dash0logparser",
+				"dash0loggrouping",
+				"dash0filter/ns/" + namespace1 + "/0/ingress",
+				"dash0redaction/ns/" + namespace1 + "/0",
+			}))
+			for name := range topLevelComponentKeys(collectorConfig, "processors") {
+				Expect(name).ToNot(HavePrefix("dash0transform"))
+			}
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/transform-disabled")
+		})
+
+		It("drops metering from metrics and logs again when transform is disabled and no capability is left [SignalControl]", func() {
+			sc := transformSC()
+			sc.TransformEnabled = false
+			sc.SpamFilterEnabled = false
+			sc.LogEnrichmentEnabled = false
+			sc.CardholderDataRedactionEnabled = false
+			pipelines := readPipelines(assembleWith(sc, cmTestSingleDefaultOtlpExporter()))
+
+			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).
+				To(Equal([]any{"resource/signal_control_attributes"}))
+			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).
+				To(Equal([]any{"resource/signal_control_attributes", "dash0resource"}))
+		})
+	})
+
 	Describe("Signal Control metering [SignalControl]", func() {
 		meteringSC := func() SignalControlConfig {
 			return SignalControlConfig{
@@ -7242,12 +7460,14 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			// The per-branch dash0filter instances record spam counts through their own per-branch metric recorder.
 			processors := collectorConfig["processors"].(map[string]interface{})
 			Expect(processors["dash0filter/ns/"+b0+"/ingress"]).To(Equal(map[string]interface{}{
-				"signal_control_role": "ingress",
-				"metric_recorder":     "dash0metricrecorder/ns/" + b0,
+				"signal_control_role":  "ingress",
+				"signal_control_modes": true,
+				"metric_recorder":      "dash0metricrecorder/ns/" + b0,
 			}))
 			Expect(processors["dash0filter/ns/"+b0+"/egress"]).To(Equal(map[string]interface{}{
-				"signal_control_role": "egress",
-				"metric_recorder":     "dash0metricrecorder/ns/" + b0,
+				"signal_control_role":  "egress",
+				"signal_control_modes": true,
+				"metric_recorder":      "dash0metricrecorder/ns/" + b0,
 			}))
 
 			assertCollectorConfigStructurallyValid(collectorConfig, "deployment/ns-multi-dataset")

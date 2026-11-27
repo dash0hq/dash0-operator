@@ -1970,6 +1970,33 @@ var _ = Describe("signalControlConfigFromResource", func() {
 		Expect(config.SpamFilterEnabled).To(BeFalse())
 	})
 
+	It("should have transform enabled by default", func() {
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+			},
+		}
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.Enabled).To(BeTrue())
+		Expect(config.TransformEnabled).To(BeTrue())
+	})
+
+	It("should allow disabling transform while keeping Signal Control enabled", func() {
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+				Transform: dash0v1alpha1.TransformConfig{
+					Enabled: boolPtr(false),
+				},
+			},
+		}
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.Enabled).To(BeTrue())
+		Expect(config.TransformEnabled).To(BeFalse())
+	})
+
 	It("should pass spam filter tunables through when set", func() {
 		resource := &dash0v1alpha1.Dash0SignalControl{
 			Spec: dash0v1alpha1.Dash0SignalControlSpec{
