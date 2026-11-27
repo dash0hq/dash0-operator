@@ -30,6 +30,7 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&Dash0SignalControl{}, &Dash0SignalControlList{},
 		&Dash0SamplingRule{}, &Dash0SamplingRuleList{},
 		&Dash0SignalToMetrics{}, &Dash0SignalToMetricsList{},
+		&Dash0TelemetryTransformationRule{}, &Dash0TelemetryTransformationRuleList{},
 		&Dash0SyntheticCheck{}, &Dash0SyntheticCheckList{},
 		&Dash0SpamFilter{}, &Dash0SpamFilterList{},
 		&Dash0View{}, &Dash0ViewList{},

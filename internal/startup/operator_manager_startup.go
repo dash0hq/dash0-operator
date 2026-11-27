@@ -1488,6 +1488,7 @@ func allOwnedIacResourceSynchronizationControllers(
 	timeSeriesAggregationReconciler *controller.TimeSeriesAggregationReconciler,
 	generativeAiEvaluationReconciler *controller.GenerativeAiEvaluationReconciler,
 	viewReconciler *controller.ViewReconciler,
+	telemetryTransformationRuleReconciler *controller.TelemetryTransformationRuleReconciler,
 	samplingRuleReconciler *controller.SamplingRuleReconciler,
 ) []controller.OwnedIacResourceSynchronizationController {
 	controllers := []controller.OwnedIacResourceSynchronizationController{
@@ -1500,6 +1501,7 @@ func allOwnedIacResourceSynchronizationControllers(
 		teamReconciler,
 		timeSeriesAggregationReconciler,
 		viewReconciler,
+		telemetryTransformationRuleReconciler,
 	}
 	if samplingRuleReconciler != nil {
 		controllers = append(controllers, samplingRuleReconciler)
@@ -2387,6 +2389,17 @@ func startDash0Controllers(
 	}
 	leaderElectionAwareRunnable.AddLeaderElectionClient(signalToMetricsReconciler)
 
+	telemetryTransformationRuleReconciler := controller.NewTelemetryTransformationRuleReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		apiClientPool,
+	)
+	if err := telemetryTransformationRuleReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to set up the telemetry transformation rule reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(telemetryTransformationRuleReconciler)
+
 	persesDashboardSynchronizationQueue =
 		controller.NewThirdPartyResourceSyncQueue("dash0-perses-dashboard-synchronization-queue")
 	prometheusRuleSynchronizationQueue =
@@ -2451,6 +2464,7 @@ func startDash0Controllers(
 			timeSeriesAggregationReconciler,
 			generativeAiEvaluationReconciler,
 			viewReconciler,
+			telemetryTransformationRuleReconciler,
 			samplingRuleReconciler,
 		),
 	); err != nil {
@@ -2471,6 +2485,7 @@ func startDash0Controllers(
 		timeSeriesAggregationReconciler,
 		generativeAiEvaluationReconciler,
 		signalToMetricsReconciler,
+		telemetryTransformationRuleReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
 	}
@@ -2514,6 +2529,7 @@ func startDash0Controllers(
 			timeSeriesAggregationReconciler,
 			generativeAiEvaluationReconciler,
 			signalToMetricsReconciler,
+			telemetryTransformationRuleReconciler,
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
 		},
@@ -2588,6 +2604,7 @@ func startDash0Controllers(
 		timeSeriesAggregationReconciler,
 		generativeAiEvaluationReconciler,
 		signalToMetricsReconciler,
+		telemetryTransformationRuleReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
 		&controller.ApiSyncMetrics{},
