@@ -901,37 +901,59 @@ processors:
       - set(attributes["service.name"], attributes["k8s.pod.label.app.kubernetes.io/name"])         where attributes["service.name"] == nil and attributes["k8s.pod.label.app.kubernetes.io/name"] != nil
   {{- end }}
 
-  {{- if .ClusterName }}
-  resource/clustername:
-    attributes:
-      - key: k8s.cluster.name
-        value: "{{ .ClusterName }}"
-        action: insert
-  {{- end }}
-
-  # The k8s_attributes processor only adds k8s.cluster.uid on pod-scoped telemetry, see
-  # See https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/49717. Since all telemetry collected
-  # here originates from this cluster, we add k8s.cluster.uid via the resource processor.
-  resource/cluster_uid:
-    attributes:
-      - key: k8s.cluster.uid
-        value: "{{ .PseudoClusterUid }}"
-        action: insert
-
-  resource/dash0_operator_attributes:
-    attributes:
-      - key: dash0.operator.collector_managed_by
-        value: "dash0-operator"
-        action: upsert
-      - key: dash0.operator.collector_role
-        value: "daemonset"
-        action: upsert
-      - key: dash0.operator.version
-        value: "{{ .OperatorVersion }}"
-        action: upsert
-      - key: dash0.operator.uid
-        value: "{{ .PseudoClusterUid }}"
-        action: upsert
+  # Adds k8s.cluster.name and k8s.cluster.uid unless already present, and the dash0.operator.* attributes. The
+  # k8s_attributes processor only adds k8s.cluster.uid on pod-scoped telemetry, see
+  # https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/49717. Since all telemetry collected here
+  # originates from this cluster, we add k8s.cluster.uid here for all telemetry.
+  # This needs to run before the custom filters, since they can match on k8s.cluster.name.
+  transform/cluster_and_operator_attributes:
+    error_mode: ignore
+    trace_statements:
+      - context: resource
+        statements:
+        {{- if .ClusterName }}
+        - 'set(resource.attributes["k8s.cluster.name"], {{ ottlStringInSingleQuotedYaml .ClusterName }}) where resource.attributes["k8s.cluster.name"] == nil'
+        {{- end }}
+        - 'set(resource.attributes["k8s.cluster.uid"], "{{ .PseudoClusterUid }}") where resource.attributes["k8s.cluster.uid"] == nil'
+        - 'set(resource.attributes["dash0.operator.collector_managed_by"], "dash0-operator")'
+        - 'set(resource.attributes["dash0.operator.collector_role"], "daemonset")'
+        - 'set(resource.attributes["dash0.operator.version"], "{{ .OperatorVersion }}")'
+        - 'set(resource.attributes["dash0.operator.uid"], "{{ .PseudoClusterUid }}")'
+    metric_statements:
+      - context: resource
+        statements:
+        {{- if .ClusterName }}
+        - 'set(resource.attributes["k8s.cluster.name"], {{ ottlStringInSingleQuotedYaml .ClusterName }}) where resource.attributes["k8s.cluster.name"] == nil'
+        {{- end }}
+        - 'set(resource.attributes["k8s.cluster.uid"], "{{ .PseudoClusterUid }}") where resource.attributes["k8s.cluster.uid"] == nil'
+        - 'set(resource.attributes["dash0.operator.collector_managed_by"], "dash0-operator")'
+        - 'set(resource.attributes["dash0.operator.collector_role"], "daemonset")'
+        - 'set(resource.attributes["dash0.operator.version"], "{{ .OperatorVersion }}")'
+        - 'set(resource.attributes["dash0.operator.uid"], "{{ .PseudoClusterUid }}")'
+    log_statements:
+      - context: resource
+        statements:
+        {{- if .ClusterName }}
+        - 'set(resource.attributes["k8s.cluster.name"], {{ ottlStringInSingleQuotedYaml .ClusterName }}) where resource.attributes["k8s.cluster.name"] == nil'
+        {{- end }}
+        - 'set(resource.attributes["k8s.cluster.uid"], "{{ .PseudoClusterUid }}") where resource.attributes["k8s.cluster.uid"] == nil'
+        - 'set(resource.attributes["dash0.operator.collector_managed_by"], "dash0-operator")'
+        - 'set(resource.attributes["dash0.operator.collector_role"], "daemonset")'
+        - 'set(resource.attributes["dash0.operator.version"], "{{ .OperatorVersion }}")'
+        - 'set(resource.attributes["dash0.operator.uid"], "{{ .PseudoClusterUid }}")'
+    {{- if .ProfilingEnabled }}
+    profile_statements:
+      - context: resource
+        statements:
+        {{- if .ClusterName }}
+        - 'set(resource.attributes["k8s.cluster.name"], {{ ottlStringInSingleQuotedYaml .ClusterName }}) where resource.attributes["k8s.cluster.name"] == nil'
+        {{- end }}
+        - 'set(resource.attributes["k8s.cluster.uid"], "{{ .PseudoClusterUid }}") where resource.attributes["k8s.cluster.uid"] == nil'
+        - 'set(resource.attributes["dash0.operator.collector_managed_by"], "dash0-operator")'
+        - 'set(resource.attributes["dash0.operator.collector_role"], "daemonset")'
+        - 'set(resource.attributes["dash0.operator.version"], "{{ .OperatorVersion }}")'
+        - 'set(resource.attributes["dash0.operator.uid"], "{{ .PseudoClusterUid }}")'
+    {{- end }}
 
   {{- if .NamespaceOttlFilter }}
   # This is a standard filter which is always on; metrics collection receivers generate metrics for all namespaces in
@@ -1175,11 +1197,7 @@ service:
         {{- end }}
         - resource_detection
         - {{ $podAssociation }}
-        {{- if .ClusterName }}
-        - resource/clustername
-        {{- end }}
-        - resource/cluster_uid
-        - resource/dash0_operator_attributes
+        - transform/cluster_and_operator_attributes
         {{- if .CustomFilters.HasTraceFilters }}
         - filter/traces/custom_telemetry_filter
         {{- end }}
@@ -1313,11 +1331,7 @@ service:
         {{- end }}
         - resource_detection
         - {{ $podAssociation }}
-        {{- if .ClusterName }}
-        - resource/clustername
-        {{- end }}
-        - resource/cluster_uid
-        - resource/dash0_operator_attributes
+        - transform/cluster_and_operator_attributes
         {{- if .NamespaceOttlFilter }}
         - filter/metrics/only_monitored_namespaces
         {{- end }}
@@ -1463,11 +1477,7 @@ service:
         {{- if .NamespacesWithLogCollection }}
         - transform/logs/filelog_service_attributes
         {{- end }}
-        {{- if .ClusterName }}
-        - resource/clustername
-        {{- end }}
-        - resource/cluster_uid
-        - resource/dash0_operator_attributes
+        - transform/cluster_and_operator_attributes
         {{- if .CustomFilters.HasLogFilters }}
         - filter/logs/custom_telemetry_filter
         {{- end }}
@@ -1575,11 +1585,7 @@ service:
         - memory_limiter
         - resource_detection
         - k8s_attributes/profiles
-        {{- if .ClusterName }}
-        - resource/clustername
-        {{- end }}
-        - resource/cluster_uid
-        - resource/dash0_operator_attributes
+        - transform/cluster_and_operator_attributes
         {{- if .NamespaceOttlFilter }}
         - filter/profiles/only_monitored_namespaces
         {{- end }}
@@ -1624,7 +1630,7 @@ service:
           value: "{{ .PseudoClusterUid }}"
         {{- if .ClusterName }}
         - name: k8s.cluster.name
-          value: "{{ .ClusterName }}"
+          value: {{ yamlString .ClusterName }}
         {{- end }}
         - name: k8s.node.name
           value: ${env:K8S_NODE_NAME}

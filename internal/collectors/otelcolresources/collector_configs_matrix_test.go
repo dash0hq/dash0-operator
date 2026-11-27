@@ -62,6 +62,10 @@ type renderedCollectorConfig struct {
 	featureGates []string
 }
 
+// matrixClusterName contains the characters that need escaping in the collector configuration (YAML, OTTL string
+// literals and references to environment variables), so that the validation checks that the escaping is correct.
+const matrixClusterName = `matrix-test-cluster "a" 'b' \c $d ${unknown:e} #f: g`
+
 // matrixSetting is one configuration option that at least one collector configuration template branches on. The matrix
 // contains one entry per setting and baseline, with only this setting flipped relative to the baseline.
 type matrixSetting struct {
@@ -121,7 +125,7 @@ func maximalMatrixBaseline() collectorConfigMatrixEntry {
 			},
 			UseHostMetricsReceiver:            true,
 			PseudoClusterUid:                  "d7d3d4f2-7f8f-4f0a-9f1a-2f0b9e1c4a55",
-			ClusterName:                       "matrix-test-cluster",
+			ClusterName:                       matrixClusterName,
 			Images:                            util.Images{OperatorImage: "dash0-operator-controller:1.2.3"},
 			SignalControl:                     maximalSignalControlConfig(),
 			DevelopmentMode:                   true,
@@ -389,7 +393,7 @@ func matrixSettings() []matrixSetting {
 			name: "cluster-name",
 			toggle: func(e *collectorConfigMatrixEntry, enabled bool) {
 				if enabled {
-					e.config.ClusterName = "matrix-test-cluster"
+					e.config.ClusterName = matrixClusterName
 				} else {
 					e.config.ClusterName = ""
 				}

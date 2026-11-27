@@ -127,7 +127,7 @@ spec:
 {{- end }}
 {{- end }}
 {{- if .Values.operator.clusterName }}
-        - --operator-configuration-cluster-name={{ .Values.operator.clusterName }}
+        - {{ printf "--operator-configuration-cluster-name=%v" .Values.operator.clusterName | quote }}
 {{- end }}{{/*closes "if .Values.operator.clusterName" */}}
 {{- if .Values.operator.dash0Export.enabled }}
 {{- if .Values.operator.dash0Export.dataset }}

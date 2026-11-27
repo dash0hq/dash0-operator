@@ -14,8 +14,10 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/contexts/ottldatapoint"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/contexts/ottlmetric"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/contexts/ottlresource"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/ottlfuncs"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
@@ -4243,45 +4245,123 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}
 	})
 
-	DescribeTable("should not render resource processor if the cluster name has not been set", func(cmTypeDef configMapTypeDefinition) {
-		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			KubernetesInfrastructureMetricsCollectionEnabled: true,
-			Exporters: cmTestSingleDefaultOtlpExporter(),
-		}, monitoredNamespaces, nil, nil, false)
+	Describe("the cluster and operator attributes", func() {
+		const pseudoClusterUid = "d7d3d4f2-7f8f-4f0a-9f1a-2f0b9e1c4a55"
+		const clusterNameStatementPrefix = `set(resource.attributes["k8s.cluster.name"], `
+		const clusterNameStatementSuffix = `) where resource.attributes["k8s.cluster.name"] == nil`
 
-		Expect(err).ToNot(HaveOccurred())
-		collectorConfig := parseConfigMapContent(configMap)
-		resourceProcessor := ReadFromMap(collectorConfig, []string{"processors", "resource/clustername"})
-		Expect(resourceProcessor).To(BeNil())
-		verifyProcessorDoesNotAppearInAnyPipeline(collectorConfig, "resource/clustername")
-	}, daemonSetAndDeployment)
+		expectedStatementsWithoutClusterName := func(cmTypeDef configMapTypeDefinition) []any {
+			return []any{
+				`set(resource.attributes["k8s.cluster.uid"], "` + pseudoClusterUid +
+					`") where resource.attributes["k8s.cluster.uid"] == nil`,
+				`set(resource.attributes["dash0.operator.collector_managed_by"], "dash0-operator")`,
+				`set(resource.attributes["dash0.operator.collector_role"], "` +
+					strings.ToLower(string(cmTypeDef.cmType)) + `")`,
+				`set(resource.attributes["dash0.operator.version"], "1.2.3")`,
+				`set(resource.attributes["dash0.operator.uid"], "` + pseudoClusterUid + `")`,
+			}
+		}
 
-	DescribeTable("should render resource processor with k8s.cluster.name if available", func(cmTypeDef configMapTypeDefinition) {
-		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			Exporters:         cmTestSingleDefaultOtlpExporter(),
-			KubernetesInfrastructureMetricsCollectionEnabled: true,
-			ClusterName: "cluster-name",
-		}, monitoredNamespaces, nil, nil, false)
+		assembleCollectorConfig := func(cmTypeDef configMapTypeDefinition, clusterName string) map[string]any {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				PseudoClusterUid: pseudoClusterUid,
+				ClusterName:      clusterName,
+				Images:           util.Images{OperatorImage: "dash0-operator-controller:1.2.3"},
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: true,
+					Export:                *Dash0ExportWithEndpointAndToken(),
+				},
+			}, monitoredNamespaces, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			return parseConfigMapContent(configMap)
+		}
 
-		Expect(err).ToNot(HaveOccurred())
-		collectorConfig := parseConfigMapContent(configMap)
-		resourceProcessor := ReadFromMap(collectorConfig, []string{"processors", "resource/clustername"})
-		Expect(resourceProcessor).ToNot(BeNil())
-		attributes := ReadFromMap(resourceProcessor, []string{"attributes"})
-		Expect(attributes).To(HaveLen(1))
-		attrs := attributes.([]any)
-		Expect(attrs[0].(map[string]any)["key"]).To(Equal("k8s.cluster.name"))
-		Expect(attrs[0].(map[string]any)["value"]).To(Equal("cluster-name"))
-		Expect(attrs[0].(map[string]any)["action"]).To(Equal("insert"))
-		pipelines := readPipelines(collectorConfig)
-		metricsProcessors := readPipelineProcessors(pipelines, "metrics/common-processors")
-		Expect(metricsProcessors).ToNot(BeNil())
-		Expect(metricsProcessors).To(ContainElement("resource/clustername"))
-	}, daemonSetAndDeployment)
+		DescribeTable("should add the cluster uid and the operator attributes, but not the cluster name if it has not "+
+			"been set", func(cmTypeDef configMapTypeDefinition) {
+			collectorConfig := assembleCollectorConfig(cmTypeDef, "")
+			for _, statementsKey := range []string{"trace_statements", "metric_statements", "log_statements"} {
+				Expect(readClusterAndOperatorAttributeStatements(collectorConfig, statementsKey)).
+					To(Equal(expectedStatementsWithoutClusterName(cmTypeDef)), statementsKey)
+			}
+			Expect(readPipelineProcessors(readPipelines(collectorConfig), "metrics/common-processors")).
+				To(ContainElement("transform/cluster_and_operator_attributes"))
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should add k8s.cluster.name if the cluster name has been set", func(cmTypeDef configMapTypeDefinition) {
+			collectorConfig := assembleCollectorConfig(cmTypeDef, "cluster-name")
+			expectedStatements := append(
+				[]any{clusterNameStatementPrefix + `"cluster-name"` + clusterNameStatementSuffix},
+				expectedStatementsWithoutClusterName(cmTypeDef)...,
+			)
+			for _, statementsKey := range []string{"trace_statements", "metric_statements", "log_statements"} {
+				Expect(readClusterAndOperatorAttributeStatements(collectorConfig, statementsKey)).
+					To(Equal(expectedStatements), statementsKey)
+			}
+			Expect(readSelfMonitoringResourceAttribute(collectorConfig, "k8s.cluster.name")).To(Equal("cluster-name"))
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should escape the cluster name", func(cmTypeDef configMapTypeDefinition) {
+			clusterName := `a "b" \c 'd' $e ${f} #g: h` + "\n"
+			collectorConfig := assembleCollectorConfig(cmTypeDef, clusterName)
+			Expect(readClusterAndOperatorAttributeStatements(collectorConfig, "log_statements")[0]).To(Equal(
+				clusterNameStatementPrefix + `"a \"b\" \\c 'd' $$e $${f} #g: h\n"` + clusterNameStatementSuffix))
+			Expect(readSelfMonitoringResourceAttribute(collectorConfig, "k8s.cluster.name")).
+				To(Equal(`a "b" \c 'd' $$e $${f} #g: h` + "\n"))
+
+			resourceAttributes := executeClusterAndOperatorAttributeStatements(collectorConfig, map[string]string{})
+			Expect(resourceAttributes["k8s.cluster.name"]).To(Equal(clusterName))
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should keep k8s.cluster.name and k8s.cluster.uid if present, and overwrite the operator attributes",
+			func(cmTypeDef configMapTypeDefinition) {
+				collectorConfig := assembleCollectorConfig(cmTypeDef, "cluster-name")
+				resourceAttributes := executeClusterAndOperatorAttributeStatements(collectorConfig, map[string]string{
+					"k8s.cluster.name":                    "existing-cluster-name",
+					"k8s.cluster.uid":                     "existing-cluster-uid",
+					"dash0.operator.collector_managed_by": "someone-else",
+					"dash0.operator.collector_role":       "something-else",
+					"dash0.operator.version":              "0.0.1",
+					"dash0.operator.uid":                  "existing-operator-uid",
+				})
+				Expect(resourceAttributes).To(Equal(map[string]any{
+					"k8s.cluster.name":                    "existing-cluster-name",
+					"k8s.cluster.uid":                     "existing-cluster-uid",
+					"dash0.operator.collector_managed_by": "dash0-operator",
+					"dash0.operator.collector_role":       strings.ToLower(string(cmTypeDef.cmType)),
+					"dash0.operator.version":              "1.2.3",
+					"dash0.operator.uid":                  pseudoClusterUid,
+				}))
+			}, daemonSetAndDeployment)
+
+		It("should escape the cluster name for the internal telemetry resource of the signal control collector "+
+			"[SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				ClusterName:       `a "b" \c 'd' $e ${f} #g: h`,
+				SignalControl: SignalControlConfig{
+					Enabled:     true,
+					Endpoint:    "decision-maker.example.com:443",
+					ApiEndpoint: "https://control-plane-api.dash0.com",
+					Dataset:     "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: true,
+					Export:                *Dash0ExportWithEndpointAndToken(),
+				},
+			}, monitoredNamespaces, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			Expect(readSelfMonitoringResourceAttribute(collectorConfig, "k8s.cluster.name")).
+				To(Equal(`a "b" \c 'd' $$e $${f} #g: h`))
+		})
+	})
 
 	Context("the resource_detection processor", func() {
 		DescribeTable("should render fail_on_missing_metadata: false if Signal Control is disabled",
@@ -4345,7 +4425,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			processors := collectorConfig["processors"].(map[string]interface{})
 			Expect(processors).ToNot(HaveKey("resource_detection"))
 			Expect(processors).ToNot(HaveKey("k8s_attributes"))
-			Expect(processors).ToNot(HaveKey("resource/dash0_operator_attributes"))
+			Expect(processors).ToNot(HaveKey("transform/cluster_and_operator_attributes"))
 		})
 	})
 
@@ -6208,8 +6288,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					"resource_detection",
 					"transform/k8s_events",
 					"k8s_attributes",
-					"resource/cluster_uid",
-					"resource/dash0_operator_attributes",
+					"transform/cluster_and_operator_attributes",
 					"filter/logs/custom_telemetry_filter",
 					"transform/logs/custom_telemetry_transform",
 					"transform/resources",
@@ -9318,6 +9397,60 @@ func readSelfMonitoringTelemetry(collectorConfig map[string]any) any {
 			"service",
 			"telemetry",
 		})
+}
+
+// readClusterAndOperatorAttributeStatements returns the statements of the transform/cluster_and_operator_attributes
+// processor for one signal, statementsKey is trace_statements, metric_statements, log_statements or
+// profile_statements.
+func readClusterAndOperatorAttributeStatements(collectorConfig map[string]any, statementsKey string) []any {
+	groupsRaw := ReadFromMap(
+		collectorConfig,
+		[]string{"processors", "transform/cluster_and_operator_attributes", statementsKey},
+	)
+	Expect(groupsRaw).ToNot(BeNil())
+	groups, ok := groupsRaw.([]any)
+	Expect(ok).To(BeTrue())
+	Expect(groups).To(HaveLen(1))
+	group, ok := groups[0].(map[string]any)
+	Expect(ok).To(BeTrue())
+	Expect(group["context"]).To(Equal("resource"))
+	statements, ok := group["statements"].([]any)
+	Expect(ok).To(BeTrue())
+	return statements
+}
+
+// executeClusterAndOperatorAttributeStatements runs the log statements of the
+// transform/cluster_and_operator_attributes processor with the OTTL parser on a resource with the given attributes
+// and returns the resulting resource attributes. Like the collector's configuration resolver, it unescapes $$ to $
+// before the statements are parsed.
+func executeClusterAndOperatorAttributeStatements(
+	collectorConfig map[string]any,
+	attributes map[string]string,
+) map[string]any {
+	renderedStatements := readClusterAndOperatorAttributeStatements(collectorConfig, "log_statements")
+	statements := make([]string, 0, len(renderedStatements))
+	for _, statement := range renderedStatements {
+		statements = append(statements, strings.ReplaceAll(statement.(string), "$$", "$"))
+	}
+	settings := component.TelemetrySettings{Logger: zap.NewNop()}
+	parser, err := ottlresource.NewParser(ottlfuncs.StandardFuncs[*ottlresource.TransformContext](), settings)
+	Expect(err).NotTo(HaveOccurred())
+	parsedStatements, err := parser.ParseStatements(statements)
+	Expect(err).NotTo(HaveOccurred())
+	statementSeq := ottlresource.NewStatementSequence(
+		parsedStatements,
+		settings,
+		ottlresource.WithStatementSequenceErrorMode(ottl.PropagateError),
+	)
+
+	resourceLogs := plog.NewResourceLogs()
+	for k, v := range attributes {
+		resourceLogs.Resource().Attributes().PutStr(k, v)
+	}
+	tCtx := ottlresource.NewTransformContext(resourceLogs.Resource(), resourceLogs)
+	defer tCtx.Close()
+	Expect(statementSeq.Execute(context.Background(), tCtx)).To(Succeed())
+	return resourceLogs.Resource().Attributes().AsRaw()
 }
 
 // readSelfMonitoringResourceAttribute returns the value of the resource attribute with the given name from the
