@@ -94,8 +94,8 @@ type Dash0SignalControlSpec struct {
 
 	// Configuration for log enrichment, which applies centrally learned log patterns to this cluster's
 	// logs: it sets the OTLP severity, a normalized dash0.log.message, and the dash0.log.pattern that the
-	// record matched. Enrichment runs before the spam filter, so spam filter rules can match on the
-	// pattern and severity it adds. This setting is optional.
+	// record matched. Enrichment runs after signal-to-metrics and before the post-filter step of the spam
+	// filter, so post-filter rules can match on the pattern and severity it adds. This setting is optional.
 	//
 	// +kubebuilder:validation:Optional
 	LogEnrichment LogEnrichmentConfig `json:"logEnrichment,omitempty"`
@@ -472,7 +472,8 @@ type OperationMatcher struct {
 
 // LogEnrichmentConfig configures log enrichment. Learned log patterns are applied to this cluster's
 // logs to set the OTLP severity, a normalized dash0.log.message, and the dash0.log.pattern the record
-// matched. Enrichment runs before the spam filter, so spam filter rules can match on what it adds.
+// matched. Enrichment runs after signal-to-metrics and before the post-filter step of the spam filter, so
+// post-filter rules can match on what it adds.
 type LogEnrichmentConfig struct {
 	// Whether to enrich logs with centrally learned log patterns. This setting is optional, it defaults
 	// to false.

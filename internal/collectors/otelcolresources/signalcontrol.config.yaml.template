@@ -33,13 +33,20 @@ never appear in any pipeline here. Variables:
 Metering: the mark a dash0metering processor stamps is what settles Signal Control usage for billing. Once Dash0 turns
 enforcement on for an organization it is also what every Signal Control component requires before it acts.
 
+Processor order: every SC branch runs the Signal Control processors in the order Dash0 runs them: metering, the ingress
+filter, redaction, transform, dash0resource, then signal-to-metrics; RED metrics, operation naming, log enrichment and the
+egress filter follow in a post-filter pipeline. The one intended difference is the position of dash0resource: Dash0 runs
+it after the metric-deriving connectors, here it runs before them, because it stamps dash0.edge.origin and the connectors
+copy the resource of the telemetry they derive metrics from; without the marker Dash0 does not treat these metrics as
+processed on the edge. Running after transform, dash0resource also hashes the transformed resource.
+
 Filter stages: with the spam filter enabled, every SC branch runs dash0filter twice, as Dash0 does: with the ingress role
-before the components that derive metrics from the telemetry, and with the egress role after them. Filters that only
-apply after the metrics are derived (postFilterOnly), such as the drop filters of signal-to-metrics rules with
-dropMatched, are skipped in the ingress stage. Traces and logs therefore continue in a post-filter pipeline; metrics
-derive nothing, so their two stages run back to back. dash0transform runs between the two stages, as on Dash0: after the
-ingress stage and before the components that derive metrics. signal_control_modes reports the two stages as pre-filter
-and post-filter.
+before the components that derive metrics from the telemetry, and with the egress role after them. The ingress stage
+only applies positive filters (apply_positive_filters_only), so rules with a negative match or one on what log enrichment
+adds only take effect in the egress stage. Filters that only apply after the metrics are derived (postFilterOnly), such
+as the drop filters of signal-to-metrics rules with dropMatched, are skipped in the ingress stage as well. Metrics derive
+nothing, so their two stages run in one pipeline. signal_control_modes reports the two stages as pre-filter and
+post-filter.
 */}}
 {{- $scDefault := gt (len .Exporters.DefaultDash0Exporters) 0 -}}
 {{- $hasNamespacedDash0 := .Exporters.HasNamespacedDash0Exporters -}}
@@ -96,12 +103,10 @@ connectors:
   forward/traces-default-exporter: {}
   forward/metrics-default-exporter: {}
   forward/logs-default-exporter: {}
-{{- if .SignalControl.SpamFilterEnabled }}
   forward/traces-post-filter: {}
   forward/logs-post-filter: {}
 {{- end }}
-{{- end }}
-{{- if and $hasNamespacedDash0 .SignalControl.SpamFilterEnabled }}
+{{- if $hasNamespacedDash0 }}
 {{- range $ns, $sc := .Exporters.NamespaceSC }}
 {{- range $b := $sc.DatasetBranches }}
   forward/traces-post-filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}: {}
@@ -319,12 +324,10 @@ processors:
   dash0metering:
     mode: count_and_mark
     metric_recorder: dash0metricrecorder
-{{- if .SignalControl.SpamFilterEnabled }}
   {{- /* The post-filter pipelines are fed by the SC pipelines, so their telemetry arrives already counted. */}}
   dash0metering/post-filter:
     mode: mark_only
     metric_recorder: dash0metricrecorder
-{{- end }}
 {{- end }}
 {{- if $samplingActive }}
   {{- /* The sampled pipeline is fed by the SC pipelines, so its spans arrive already marked and counting them
@@ -352,11 +355,9 @@ processors:
     mode: mark_only
 {{- end }}
     metric_recorder: dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-{{- if $.SignalControl.SpamFilterEnabled }}
   dash0metering/ns/{{ $ns }}/{{ $b.DatasetIndex }}/post-filter:
     mode: mark_only
     metric_recorder: dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -414,6 +415,7 @@ processors:
   dash0filter/ingress:
     signal_control_role: ingress
     signal_control_modes: true
+    apply_positive_filters_only: true
     metric_recorder: dash0metricrecorder
 {{- if .SignalControl.SpamFilterCacheExpiration }}
     cache_expiration: {{ .SignalControl.SpamFilterCacheExpiration }}
@@ -438,6 +440,7 @@ processors:
   dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}/ingress:
     signal_control_role: ingress
     signal_control_modes: true
+    apply_positive_filters_only: true
     metric_recorder: dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
 {{- if $.SignalControl.SpamFilterCacheExpiration }}
     cache_expiration: {{ $.SignalControl.SpamFilterCacheExpiration }}
@@ -484,8 +487,8 @@ resources a dash0metering processor marked, so metering runs before it in every 
 {{- end }}
 {{- if .SignalControl.CardholderDataRedactionEnabled }}
 {{- /* On edge, dash0redaction redacts everything it receives, so adding it to a pipeline is the switch. It marks each
-resource as redacted, which makes Dash0 skip its own redaction for it, so it must run after every processor that
-changes telemetry content. */}}
+resource as redacted, which makes Dash0 skip its own redaction for it. It runs right after the ingress filter, where
+Dash0 runs it, so every later processor and connector works on redacted telemetry. */}}
 {{- if $scDefault }}
   dash0redaction:
     metric_recorder: dash0metricrecorder
@@ -577,46 +580,39 @@ service:
         {{- end }}
       processors:
         - resource/signal_control_attributes
-        - dash0resource
         - dash0metering
-        - dash0operation
         {{- if .SignalControl.SpamFilterEnabled }}
         - dash0filter/ingress
-        {{- end }}
-        {{- if .SignalControl.TransformEnabled }}
-        - dash0transform
         {{- end }}
         {{- if .SignalControl.CardholderDataRedactionEnabled }}
         - dash0redaction
         {{- end }}
-      exporters:
-        {{- if .SignalControl.SpamFilterEnabled }}
-        - forward/traces-post-filter
-        {{- else if $samplingActive }}
-        - forward/traces-to-sampling
+        {{- if .SignalControl.TransformEnabled }}
+        - dash0transform
         {{- end }}
-        - dash0redmetrics
+        - dash0resource
+      exporters:
+        - forward/traces-post-filter
         {{- if .SignalControl.SignalToMetricsEnabled }}
         - dash0signaltometrics
         {{- end }}
-        {{- if not (or .SignalControl.SpamFilterEnabled $samplingActive) }}
-        - forward/traces-default-exporter
-        {{- end }}
-{{- if .SignalControl.SpamFilterEnabled }}
 
     traces/post-filter/default:
       receivers:
         - forward/traces-post-filter
       processors:
         - dash0metering/post-filter
+        - dash0operation
+        {{- if .SignalControl.SpamFilterEnabled }}
         - dash0filter/egress
+        {{- end }}
       exporters:
+        - dash0redmetrics
         {{- if $samplingActive }}
         - forward/traces-to-sampling
         {{- else }}
         - forward/traces-default-exporter
         {{- end }}
-{{- end }}
 
     metrics/derived/default:
       receivers:
@@ -676,49 +672,37 @@ service:
         - routing/traces
       processors:
         - resource/signal_control_attributes/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-        - dash0resource
         - dash0metering/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-        - dash0operation
         {{- if $.SignalControl.SpamFilterEnabled }}
         - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}/ingress
-        {{- end }}
-        {{- if $.SignalControl.TransformEnabled }}
-        - dash0transform/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- end }}
         {{- if $.SignalControl.CardholderDataRedactionEnabled }}
         - dash0redaction/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- end }}
+        {{- if $.SignalControl.TransformEnabled }}
+        - dash0transform/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
+        - dash0resource
       exporters:
-        {{- if $.SignalControl.SpamFilterEnabled }}
         - forward/traces-post-filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-        {{- else }}
-      {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
-        - debug
-      {{- end }}
-        {{- if and $samplingActive (eq $b.DatasetIndex 0) }}
-        - forward/traces-to-sampling
-        {{- else }}
-        {{- range $exporter := $b.Exporters }}
-        - {{ $exporter.Name }}
-        {{- end }}
-        {{- end }}
-        {{- end }}
-        - dash0redmetrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- if $.SignalControl.SignalToMetricsEnabled }}
         - dash0signaltometrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- end }}
-{{- if $.SignalControl.SpamFilterEnabled }}
 
     traces/post-filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
       receivers:
         - forward/traces-post-filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
       processors:
         - dash0metering/ns/{{ $ns }}/{{ $b.DatasetIndex }}/post-filter
+        - dash0operation
+        {{- if $.SignalControl.SpamFilterEnabled }}
         - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}/egress
+        {{- end }}
       exporters:
       {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
         - debug
       {{- end }}
+        - dash0redmetrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- if and $samplingActive (eq $b.DatasetIndex 0) }}
         - forward/traces-to-sampling
         {{- else }}
@@ -726,7 +710,6 @@ service:
         - {{ $exporter.Name }}
         {{- end }}
         {{- end }}
-{{- end }}
 
     metrics/derived/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
       receivers:
@@ -781,22 +764,25 @@ service:
       processors:
         - resource/signal_control_attributes
         {{- if or .SignalControl.SpamFilterEnabled .SignalControl.TransformEnabled }}
-        {{- /* dash0resource is what stamps the edge-origin marker. Dash0 only recognizes metering's mark as settled
-        usage when both travel together, so wherever metering runs, dash0resource runs before it. */}}
-        - dash0resource
         - dash0metering
         {{- end }}
         {{- if .SignalControl.SpamFilterEnabled }}
         - dash0filter/ingress
         {{- end }}
+        {{- if .SignalControl.CardholderDataRedactionEnabled }}
+        - dash0redaction
+        {{- end }}
         {{- if .SignalControl.TransformEnabled }}
         - dash0transform
         {{- end }}
+        {{- if or .SignalControl.SpamFilterEnabled .SignalControl.TransformEnabled }}
+        {{- /* dash0resource stamps the edge-origin marker. Dash0 only recognizes metering's mark as settled usage when
+        both travel together, so wherever metering runs, dash0resource runs as well. */}}
+        - dash0resource
+        {{- end }}
+        - dash0operation
         {{- if .SignalControl.SpamFilterEnabled }}
         - dash0filter/egress
-        {{- end }}
-        {{- if .SignalControl.CardholderDataRedactionEnabled }}
-        - dash0redaction
         {{- end }}
       exporters:
         - forward/metrics-default-exporter
@@ -835,20 +821,23 @@ Dash0-Dataset header and the accountant sums what arrives, so a second delivery 
       processors:
         - resource/signal_control_attributes/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- if or $.SignalControl.SpamFilterEnabled $.SignalControl.TransformEnabled }}
-        - dash0resource
         - dash0metering/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- end }}
         {{- if $.SignalControl.SpamFilterEnabled }}
         - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}/ingress
         {{- end }}
+        {{- if $.SignalControl.CardholderDataRedactionEnabled }}
+        - dash0redaction/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
         {{- if $.SignalControl.TransformEnabled }}
         - dash0transform/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- end }}
+        {{- if or $.SignalControl.SpamFilterEnabled $.SignalControl.TransformEnabled }}
+        - dash0resource
+        {{- end }}
+        - dash0operation
         {{- if $.SignalControl.SpamFilterEnabled }}
         - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}/egress
-        {{- end }}
-        {{- if $.SignalControl.CardholderDataRedactionEnabled }}
-        - dash0redaction/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- end }}
       exporters:
         {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
@@ -892,43 +881,43 @@ Dash0-Dataset header and the accountant sums what arrives, so a second delivery 
         {{- end }}
       processors:
         - resource/signal_control_attributes
-        - dash0resource
         {{- if or .SignalControl.SpamFilterEnabled .SignalControl.SignalToMetricsEnabled .SignalControl.TransformEnabled }}
         - dash0metering
+        {{- end }}
+        {{- if .SignalControl.SpamFilterEnabled }}
+        - dash0filter/ingress
+        {{- end }}
+        {{- if .SignalControl.CardholderDataRedactionEnabled }}
+        - dash0redaction
+        {{- end }}
+        {{- if .SignalControl.TransformEnabled }}
+        - dash0transform
+        {{- end }}
+        - dash0resource
+      exporters:
+        - forward/logs-post-filter
+        {{- if .SignalControl.SignalToMetricsEnabled }}
+        - dash0signaltometrics
+        {{- end }}
+
+    logs/post-filter/default:
+      receivers:
+        - forward/logs-post-filter
+      {{- if or .SignalControl.SpamFilterEnabled .SignalControl.LogEnrichmentEnabled }}
+      processors:
+        {{- if .SignalControl.SpamFilterEnabled }}
+        - dash0metering/post-filter
         {{- end }}
         {{- if .SignalControl.LogEnrichmentEnabled }}
         - dash0logparser
         - dash0loggrouping
         {{- end }}
         {{- if .SignalControl.SpamFilterEnabled }}
-        - dash0filter/ingress
-        {{- end }}
-        {{- if .SignalControl.TransformEnabled }}
-        - dash0transform
-        {{- end }}
-        {{- if .SignalControl.CardholderDataRedactionEnabled }}
-        - dash0redaction
-        {{- end }}
-      exporters:
-        {{- if .SignalControl.SpamFilterEnabled }}
-        - forward/logs-post-filter
-        {{- else }}
-        - forward/logs-default-exporter
-        {{- end }}
-        {{- if .SignalControl.SignalToMetricsEnabled }}
-        - dash0signaltometrics
-        {{- end }}
-{{- if .SignalControl.SpamFilterEnabled }}
-
-    logs/post-filter/default:
-      receivers:
-        - forward/logs-post-filter
-      processors:
-        - dash0metering/post-filter
         - dash0filter/egress
+        {{- end }}
+      {{- end }}
       exporters:
         - forward/logs-default-exporter
-{{- end }}
 
     logs/export/default:
       receivers:
@@ -950,45 +939,41 @@ Dash0-Dataset header and the accountant sums what arrives, so a second delivery 
         - routing/logs
       processors:
         - resource/signal_control_attributes/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-        - dash0resource
         {{- if or $.SignalControl.SpamFilterEnabled $.SignalControl.SignalToMetricsEnabled $.SignalControl.TransformEnabled }}
         - dash0metering/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
+        {{- if $.SignalControl.SpamFilterEnabled }}
+        - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}/ingress
+        {{- end }}
+        {{- if $.SignalControl.CardholderDataRedactionEnabled }}
+        - dash0redaction/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
+        {{- if $.SignalControl.TransformEnabled }}
+        - dash0transform/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
+        - dash0resource
+      exporters:
+        - forward/logs-post-filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- if $.SignalControl.SignalToMetricsEnabled }}
+        - dash0signaltometrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
+
+    logs/post-filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+      receivers:
+        - forward/logs-post-filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+      {{- if or $.SignalControl.SpamFilterEnabled $.SignalControl.LogEnrichmentEnabled }}
+      processors:
+        {{- if $.SignalControl.SpamFilterEnabled }}
+        - dash0metering/ns/{{ $ns }}/{{ $b.DatasetIndex }}/post-filter
         {{- end }}
         {{- if $.SignalControl.LogEnrichmentEnabled }}
         - dash0logparser
         - dash0loggrouping
         {{- end }}
         {{- if $.SignalControl.SpamFilterEnabled }}
-        - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}/ingress
-        {{- end }}
-        {{- if $.SignalControl.TransformEnabled }}
-        - dash0transform/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-        {{- end }}
-        {{- if $.SignalControl.CardholderDataRedactionEnabled }}
-        - dash0redaction/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-        {{- end }}
-      exporters:
-        {{- if $.SignalControl.SpamFilterEnabled }}
-        - forward/logs-post-filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-        {{- else }}
-        {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
-        - debug
-        {{- end }}
-        {{- range $exporter := $b.Exporters }}
-        - {{ $exporter.Name }}
-        {{- end }}
-        {{- end }}
-        {{- if $.SignalControl.SignalToMetricsEnabled }}
-        - dash0signaltometrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-        {{- end }}
-{{- if $.SignalControl.SpamFilterEnabled }}
-
-    logs/post-filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
-      receivers:
-        - forward/logs-post-filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-      processors:
-        - dash0metering/ns/{{ $ns }}/{{ $b.DatasetIndex }}/post-filter
         - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}/egress
+        {{- end }}
+      {{- end }}
       exporters:
         {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
         - debug
@@ -996,7 +981,6 @@ Dash0-Dataset header and the accountant sums what arrives, so a second delivery 
         {{- range $exporter := $b.Exporters }}
         - {{ $exporter.Name }}
         {{- end }}
-{{- end }}
 {{- end }}
 {{- end }}
 
