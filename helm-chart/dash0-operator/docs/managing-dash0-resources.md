@@ -1150,14 +1150,17 @@ Deleting a dataset in Dash0 is a soft delete:
 
 The operator adds a finalizer to each dataset resource.
 Kubernetes removes a deleted dataset resource only after the operator has deleted the dataset in Dash0.
-If the delete fails, for example because the Dash0 API is not reachable, the operator retries it and the resource stays
-in the cluster until the delete succeeds.
+If the delete fails with a server error (5xx), with rate limiting (429) or because the Dash0 API is not reachable, the
+operator retries it and the resource stays in the cluster until the delete succeeds.
+If the delete fails with any other error, for example because the token is invalid, retrying would not help.
+The operator then removes the finalizer, so the deletion of the resource or its namespace is not blocked, and the
+dataset stays in Dash0.
 
 If there is no Dash0 API endpoint and token for the namespace when the resource is deleted, the operator cannot delete
-the dataset.
-It then removes the finalizer anyway, so the deletion of the resource or its namespace is not blocked, and the dataset
-stays in Dash0.
+the dataset either, and removes the finalizer in the same way.
 This happens, for example, when the Dash0 monitoring resource of the namespace is removed before the dataset resource.
+When the monitoring resource has a Dash0 export but the operator cannot read its token yet, the operator waits up to
+10 minutes for the token before it removes the finalizer.
 
 When a dataset resource has been synchronized to Dash0, the operator writes a summary of that synchronization
 operation to the status of the resource.

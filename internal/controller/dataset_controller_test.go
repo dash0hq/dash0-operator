@@ -312,6 +312,42 @@ var _ = Describe(
 		)
 
 		It(
+			"removes the finalizer when the delete fails with an error that is not retried", func() {
+				deleteDatasetDeleteEndpoint().Times(1).Reply(400).JSON(map[string]any{"message": "rejected"})
+
+				createAndDeleteDatasetResourceWithFinalizer()
+				reconcileDataset()
+
+				verifyDatasetResourceIsGone(ctx)
+				Expect(gock.IsDone()).To(BeTrue())
+			},
+		)
+
+		It(
+			"deletes the dataset when the resource is deleted before the finalizer has been added", func() {
+				gock.New(ApiEndpointTest).Get(datasetSlugPath).Times(1).Reply(404)
+				gock.New(ApiEndpointTest).Post(datasetCollection).Times(1).Reply(201).JSON(datasetResponse(clusterId))
+				gock.New(ApiEndpointTest).
+					Put(datasetSlugPath).
+					AddMatcher(
+						func(_ *http.Request, _ *gock.Request) (bool, error) {
+							return true, client.IgnoreNotFound(k8sClient.Delete(ctx, createDatasetResource()))
+						},
+					).
+					Times(1).
+					Reply(200).
+					JSON(datasetResponse(clusterId))
+				deleteDatasetDeleteEndpoint().Times(1).Reply(200)
+
+				Expect(k8sClient.Create(ctx, createDatasetResource())).To(Succeed())
+				reconcileDataset()
+
+				verifyDatasetResourceIsGone(ctx)
+				Expect(gock.IsDone()).To(BeTrue())
+			},
+		)
+
+		It(
 			"removes the finalizer without deleting the dataset when there is no monitoring resource", func() {
 				createAndDeleteDatasetResourceWithFinalizer()
 				DeleteMonitoringResourceIfItExists(ctx, k8sClient)
@@ -346,6 +382,18 @@ var _ = Describe(
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result.RequeueAfter).To(Equal(datasetDeleteRetryDelay))
 				Expect(getDatasetResource(ctx).Finalizers).To(ContainElement(dash0dashv1alpha1.DatasetFinalizerId))
+			},
+		)
+
+		It(
+			"removes the finalizer when the API config of the namespace is still missing after the timeout", func() {
+				DeleteMonitoringResourceIfItExists(ctx, k8sClient)
+				EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+				datasetReconciler.namespacedApiConfigDeleteTimeout = 0
+				createAndDeleteDatasetResourceWithFinalizer()
+				reconcileDataset()
+
+				verifyDatasetResourceIsGone(ctx)
 			},
 		)
 

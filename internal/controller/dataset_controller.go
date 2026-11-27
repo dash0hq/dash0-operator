@@ -46,6 +46,8 @@ type DatasetReconciler struct {
 	initialSyncHasHappend atomic.Bool
 	namespacedSyncMutex   selfmonitoringapiaccess.NamespaceMutex
 	startedAt             time.Time
+
+	namespacedApiConfigDeleteTimeout time.Duration
 }
 
 const (
@@ -55,6 +57,10 @@ const (
 	// started. The operator configuration resource is reconciled concurrently, so the config can arrive after the first
 	// delete request; when there is no config at all, the finalizer must not block the namespace forever.
 	datasetApiConfigStartupGracePeriod = 2 * time.Minute
+
+	// datasetNamespacedApiConfigDeleteTimeout is how long a delete waits for the API config of a namespace whose
+	// monitoring resource has a Dash0 export. The config is missing for good when no token of the export can be read.
+	datasetNamespacedApiConfigDeleteTimeout = 10 * time.Minute
 )
 
 var (
@@ -78,6 +84,8 @@ func NewDatasetReconciler(
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
 		namespacedSyncMutex:  *selfmonitoringapiaccess.NewNamespaceMutex(),
 		startedAt:            time.Now(),
+
+		namespacedApiConfigDeleteTimeout: datasetNamespacedApiConfigDeleteTimeout,
 	}
 }
 
@@ -358,6 +366,11 @@ func (r *DatasetReconciler) Reconcile(
 	// coming back after the operator's pre-delete hook has removed it and deleted the monitoring resources.
 	if syncResults != nil && controllerutil.AddFinalizer(datasetResource, dash0dashv1alpha1.DatasetFinalizerId) {
 		if err := r.Update(ctx, datasetResource); err != nil {
+			if apierrors.IsNotFound(err) {
+				// The resource was deleted before it had the finalizer, so no delete reconcile request will follow.
+				synchronizeViaApiAndUpdateStatus(ctx, r, unstructuredResource, datasetResource, deleteAction, logger)
+				return reconcile.Result{}, nil
+			}
 			logger.Error(err, "Failed to add the finalizer to the dataset resource, requeuing reconcile request.")
 			return ctrl.Result{}, err
 		}
@@ -391,7 +404,9 @@ func (r *DatasetReconciler) deleteDatasetAndRemoveFinalizer(
 		deleteAction,
 		logger,
 	)
-	if preconditionsNotMetYet || (syncResults == nil && r.mightStillReceiveDefaultApiConfigs()) {
+	waitForNamespacedApiConfig := preconditionsNotMetYet &&
+		time.Since(datasetResource.DeletionTimestamp.Time) < r.namespacedApiConfigDeleteTimeout
+	if waitForNamespacedApiConfig || (syncResults == nil && r.mightStillReceiveDefaultApiConfigs()) {
 		logger.Info(
 			"Cannot delete the dataset in Dash0 yet, keeping the finalizer and retrying.",
 			"name", client.ObjectKeyFromObject(datasetResource).String(),
@@ -407,10 +422,21 @@ func (r *DatasetReconciler) deleteDatasetAndRemoveFinalizer(
 			"name", client.ObjectKeyFromObject(datasetResource).String(),
 		)
 	} else {
-		for _, syncErrors := range syncResults.allSynchronizationErrors() {
-			for _, syncError := range syncErrors {
+		for _, resultPerApiConfig := range syncResults.resultsPerApiConfig {
+			syncError, statusCode := firstSynchronizationErrorAndStatusCode(resultPerApiConfig.resourceToRequestsResult)
+			if syncError == "" {
+				continue
+			}
+			if isRetryableSynchronizationError(syncError, statusCode) {
 				return reconcile.Result{}, fmt.Errorf("failed to delete the dataset in Dash0: %s", syncError)
 			}
+			// Retrying would not help, and keeping the finalizer would block the deletion of the resource forever.
+			logger.Warn(
+				"Cannot delete the dataset in Dash0, the dataset stays in Dash0. Removing the finalizer.",
+				"name", client.ObjectKeyFromObject(datasetResource).String(),
+				"endpoint", resultPerApiConfig.apiConfig.Endpoint,
+				"error", syncError,
+			)
 		}
 	}
 
