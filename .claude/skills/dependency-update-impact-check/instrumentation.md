@@ -67,8 +67,7 @@ Every hand-over between these pieces is an interface:
   * the source layout that the build stages assume (the paths they copy or run)
   * post-processing (deleted files and directories)
   * the destination layout under `/dash0-instrumentation`
-* Build scripts: `images/instrumentation/dotnet/download-instrumentation.sh`,
-  `images/instrumentation/python/extract-flattened-requirements.sh`, `images/instrumentation/ruby/install-bundle.sh`.
+* Build scripts: `images/instrumentation/dotnet/download-instrumentation.sh`, `images/instrumentation/ruby/install-bundle.sh`.
 * Documented behavior and supported runtime versions: `helm-chart/dash0-operator/docs/auto-instrumentation.md` and
   `helm-chart/dash0-operator/README.md`.
 * Test expectations, which also show which behavior the operator relies on:
@@ -115,8 +114,10 @@ to exist in the new artifact and mean the same as before.
   * the env vars that the injector sets for it
   * the minimum .NET version
 * **Python distribution:**
-  * the source paths the Dockerfile builds from: the packages it installs, the `sitecustomize.py` it copies
-  * dependency pins that can conflict with applications (for example `protobuf`, `opentelemetry-api`)
+  * the source paths the Dockerfile builds from: the packages it installs, the `sitecustomize.py` and the
+    `all-dependencies.txt` it copies
+  * dependency pins that can conflict with applications (for example `protobuf`, `opentelemetry-api`): the ranges in
+    `dash0/opentelemetry/injector/all-dependencies.txt`, against which `sitecustomize.py` checks the application
   * the minimum Python version, and the self-deactivation behavior
 * **Ruby distribution:**
   * the gemspec, `packaging/Gemfile` and `Gemfile.lock`
