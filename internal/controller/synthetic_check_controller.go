@@ -333,7 +333,7 @@ func (r *SyntheticCheckReconciler) Reconcile(ctx context.Context, req reconcile.
 			r.WriteSynchronizationResultToSynchronizedResource(
 				ctx,
 				syntheticCheckResource,
-				synchronizationResults{},
+				newNotSynchronizedResult(fmt.Sprintf("%s: %v", msg, err)),
 				logger,
 			)
 		}
@@ -470,10 +470,16 @@ func (r *SyntheticCheckReconciler) WriteSynchronizationResultToSynchronizedResou
 ) {
 	syntheticCheck := synchronizedResource.(*dash0v1alpha1.Dash0SyntheticCheck)
 
-	// common result
-	syntheticCheck.Status.SynchronizationStatus = syncResults.resourceSyncStatus()
-	syntheticCheck.Status.SynchronizedAt = metav1.Time{Time: time.Now()}
-	syntheticCheck.Status.ValidationIssues = nil // we do not validate anything for synthetic checks
+	replaceSynchronizationResults := syncResults.writeCommonStatus(
+		syntheticCheck.GetGeneration(),
+		ownedResourceCommonStatus{
+			synchronizationStatus:        &syntheticCheck.Status.SynchronizationStatus,
+			synchronizedAt:               &syntheticCheck.Status.SynchronizedAt,
+			observedGeneration:           &syntheticCheck.Status.ObservedGeneration,
+			synchronizationSkippedReason: &syntheticCheck.Status.SynchronizationSkippedReason,
+			validationIssues:             &syntheticCheck.Status.ValidationIssues,
+		},
+	)
 
 	// result(s) per apiConfig
 	syntheticCheckSyncResults := make([]dash0v1alpha1.Dash0SyntheticCheckSynchronizationResultPerEndpointAndDataset, 0,
@@ -505,7 +511,9 @@ func (r *SyntheticCheckReconciler) WriteSynchronizationResultToSynchronizedResou
 		}
 		syntheticCheckSyncResults = append(syntheticCheckSyncResults, syncResultPerEndpointAndDataset)
 	}
-	syntheticCheck.Status.SynchronizationResults = syntheticCheckSyncResults
+	if replaceSynchronizationResults || syntheticCheck.Status.SynchronizationResults == nil {
+		syntheticCheck.Status.SynchronizationResults = syntheticCheckSyncResults
+	}
 
 	if err := r.Status().Update(ctx, syntheticCheck); err != nil {
 		logger.Error(err, "Failed to update Dash0 synthetic check status.")

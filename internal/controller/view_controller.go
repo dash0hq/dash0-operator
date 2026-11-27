@@ -328,7 +328,12 @@ func (r *ViewReconciler) Reconcile(ctx context.Context, req reconcile.Request) (
 		msg := "cannot serialize the view resource"
 		logger.Error(err, msg)
 		if action != deleteAction {
-			r.WriteSynchronizationResultToSynchronizedResource(ctx, viewResource, synchronizationResults{}, logger)
+			r.WriteSynchronizationResultToSynchronizedResource(
+				ctx,
+				viewResource,
+				newNotSynchronizedResult(fmt.Sprintf("%s: %v", msg, err)),
+				logger,
+			)
 		}
 		return reconcile.Result{}, nil
 	}
@@ -476,10 +481,16 @@ func (r *ViewReconciler) WriteSynchronizationResultToSynchronizedResource(
 ) {
 	view := synchronizedResource.(*dash0v1alpha1.Dash0View)
 
-	// common result
-	view.Status.SynchronizationStatus = syncResults.resourceSyncStatus()
-	view.Status.SynchronizedAt = metav1.Time{Time: time.Now()}
-	view.Status.ValidationIssues = nil // we do not validate anything for views
+	replaceSynchronizationResults := syncResults.writeCommonStatus(
+		view.GetGeneration(),
+		ownedResourceCommonStatus{
+			synchronizationStatus:        &view.Status.SynchronizationStatus,
+			synchronizedAt:               &view.Status.SynchronizedAt,
+			observedGeneration:           &view.Status.ObservedGeneration,
+			synchronizationSkippedReason: &view.Status.SynchronizationSkippedReason,
+			validationIssues:             &view.Status.ValidationIssues,
+		},
+	)
 
 	// result(s) per apiConfig
 	viewSyncResults := make([]dash0v1alpha1.Dash0ViewSynchronizationResultPerEndpointAndDataset, 0,
@@ -511,7 +522,9 @@ func (r *ViewReconciler) WriteSynchronizationResultToSynchronizedResource(
 		}
 		viewSyncResults = append(viewSyncResults, syncResultPerEndpointAndDataset)
 	}
-	view.Status.SynchronizationResults = viewSyncResults
+	if replaceSynchronizationResults || view.Status.SynchronizationResults == nil {
+		view.Status.SynchronizationResults = viewSyncResults
+	}
 
 	if err := r.Status().Update(ctx, view); err != nil {
 		logger.Error(err, "Failed to update Dash0 view status.")

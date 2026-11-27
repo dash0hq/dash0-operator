@@ -327,7 +327,7 @@ func (r *SignalToMetricsReconciler) Reconcile(ctx context.Context, req reconcile
 			r.WriteSynchronizationResultToSynchronizedResource(
 				ctx,
 				resource,
-				synchronizationResults{},
+				newNotSynchronizedResult(fmt.Sprintf("%s: %v", msg, err)),
 				logger,
 			)
 		}
@@ -464,9 +464,16 @@ func (r *SignalToMetricsReconciler) WriteSynchronizationResultToSynchronizedReso
 ) {
 	signalToMetrics := synchronizedResource.(*dash0v1alpha1.Dash0SignalToMetrics)
 
-	signalToMetrics.Status.SynchronizationStatus = syncResults.resourceSyncStatus()
-	signalToMetrics.Status.SynchronizedAt = metav1.Time{Time: time.Now()}
-	signalToMetrics.Status.ValidationIssues = nil
+	replaceSynchronizationResults := syncResults.writeCommonStatus(
+		signalToMetrics.GetGeneration(),
+		ownedResourceCommonStatus{
+			synchronizationStatus:        &signalToMetrics.Status.SynchronizationStatus,
+			synchronizedAt:               &signalToMetrics.Status.SynchronizedAt,
+			observedGeneration:           &signalToMetrics.Status.ObservedGeneration,
+			synchronizationSkippedReason: &signalToMetrics.Status.SynchronizationSkippedReason,
+			validationIssues:             &signalToMetrics.Status.ValidationIssues,
+		},
+	)
 
 	syncResultsForStatus := make([]dash0v1alpha1.Dash0SignalToMetricsSynchronizationResultPerEndpointAndDataset, 0,
 		len(syncResults.resultsPerApiConfig))
@@ -496,7 +503,9 @@ func (r *SignalToMetricsReconciler) WriteSynchronizationResultToSynchronizedReso
 		}
 		syncResultsForStatus = append(syncResultsForStatus, syncResultPerEndpointAndDataset)
 	}
-	signalToMetrics.Status.SynchronizationResults = syncResultsForStatus
+	if replaceSynchronizationResults || signalToMetrics.Status.SynchronizationResults == nil {
+		signalToMetrics.Status.SynchronizationResults = syncResultsForStatus
+	}
 
 	if err := r.Status().Update(ctx, signalToMetrics); err != nil {
 		logger.Error(err, "Failed to update Dash0 signal-to-metrics rule status.")

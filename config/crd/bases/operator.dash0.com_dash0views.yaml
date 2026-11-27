@@ -418,6 +418,12 @@ spec:
           status:
             description: Dash0ViewStatus defines the observed state of Dash0View
             properties:
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the metadata.generation of the resource that the operator has processed most recently.
+                  When it is equal to metadata.generation, the status reflects the current spec of the resource.
+                format: int64
+                type: integer
               synchronizationResults:
                 items:
                   description: Dash0ViewSynchronizationResultPerEndpointAndDataset
@@ -448,11 +454,17 @@ spec:
                       - successful
                       - partially-successful
                       - failed
+                      - not-synchronized
                       type: string
                   required:
                   - synchronizationStatus
                   type: object
                 type: array
+              synchronizationSkippedReason:
+                description: |-
+                  SynchronizationSkippedReason explains why the resource has not been synchronized to the Dash0 API. It is only
+                  set when synchronizationStatus is not-synchronized.
+                type: string
               synchronizationStatus:
                 description: |-
                   Dash0ApiResourceSynchronizationStatus describes the result of synchronizing a (non-third-party) Kubernetes resource
@@ -461,6 +473,7 @@ spec:
                 - successful
                 - partially-successful
                 - failed
+                - not-synchronized
                 type: string
               synchronizedAt:
                 format: date-time

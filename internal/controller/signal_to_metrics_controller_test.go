@@ -112,12 +112,19 @@ var _ = Describe(
 						resource := createSignalToMetricsResource(TestNamespaceName, signalToMetricsName)
 						Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
+						_, err := signalToMetricsReconciler.Reconcile(
+							ctx, reconcile.Request{
+								NamespacedName: types.NamespacedName{Namespace: TestNamespaceName, Name: signalToMetricsName},
+							},
+						)
+						Expect(err).NotTo(HaveOccurred())
+
 						Expect(gock.IsPending()).To(BeTrue())
-						verifySignalToMetricsHasNoSynchronizationStatus(
+						verifyOwnedResourceIsNotSynchronized(
 							ctx,
 							k8sClient,
-							TestNamespaceName,
-							signalToMetricsName,
+							&dash0v1alpha1.Dash0SignalToMetrics{ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: signalToMetricsName}},
+							"There is no Dash0 monitoring resource in namespace",
 						)
 					},
 				)
@@ -146,11 +153,11 @@ var _ = Describe(
 						Expect(result).To(Equal(reconcile.Result{}))
 
 						Expect(gock.IsPending()).To(BeTrue())
-						verifySignalToMetricsHasNoSynchronizationStatus(
+						verifyOwnedResourceIsNotSynchronized(
 							ctx,
 							k8sClient,
-							TestNamespaceName,
-							signalToMetricsName,
+							&dash0v1alpha1.Dash0SignalToMetrics{ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: signalToMetricsName}},
+							"No valid Dash0 API config is available",
 						)
 					},
 				)
@@ -815,6 +822,8 @@ func verifySignalToMetricsSynchronizationStatus(
 			)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(resource.Status.SynchronizationStatus).To(Equal(expectedStatus))
+			g.Expect(resource.Status.ObservedGeneration).To(Equal(resource.Generation))
+			g.Expect(resource.Status.SynchronizationSkippedReason).To(BeEmpty())
 			g.Expect(resource.Status.SynchronizedAt.Time).To(BeTemporally(">=", testStartedAt.Add(-1*time.Second)))
 			g.Expect(resource.Status.SynchronizedAt.Time).To(BeTemporally("<=", time.Now()))
 			g.Expect(resource.Status.ValidationIssues).To(BeNil())
@@ -831,29 +840,6 @@ func verifySignalToMetricsSynchronizationStatus(
 			} else {
 				g.Expect(syncResultPerEndpointAndDataset.SynchronizationError).To(ContainSubstring(expectedError))
 			}
-		},
-	).Should(Succeed())
-}
-
-func verifySignalToMetricsHasNoSynchronizationStatus(
-	ctx context.Context,
-	k8sClient client.Client,
-	namespace string,
-	name string,
-) {
-	Eventually(
-		func(g Gomega) {
-			resource := &dash0v1alpha1.Dash0SignalToMetrics{}
-			err := k8sClient.Get(
-				ctx, types.NamespacedName{
-					Namespace: namespace,
-					Name:      name,
-				}, resource,
-			)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(string(resource.Status.SynchronizationStatus)).To(Equal(""))
-			g.Expect(resource.Status.ValidationIssues).To(BeNil())
-			g.Expect(resource.Status.SynchronizationResults).To(HaveLen(0))
 		},
 	).Should(Succeed())
 }

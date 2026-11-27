@@ -134,12 +134,19 @@ var _ = Describe(
 						ncResource := createNotificationChannelResource(TestNamespaceName, notificationChannelName)
 						Expect(k8sClient.Create(ctx, ncResource)).To(Succeed())
 
+						_, err := ncReconciler.Reconcile(
+							ctx, reconcile.Request{
+								NamespacedName: types.NamespacedName{Namespace: TestNamespaceName, Name: notificationChannelName},
+							},
+						)
+						Expect(err).NotTo(HaveOccurred())
+
 						Expect(gock.IsPending()).To(BeTrue())
-						verifyNotificationChannelHasNoSynchronizationStatus(
+						verifyOwnedResourceIsNotSynchronized(
 							ctx,
 							k8sClient,
-							TestNamespaceName,
-							notificationChannelName,
+							&dash0v1beta1.Dash0NotificationChannel{ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: notificationChannelName}},
+							"There is no Dash0 monitoring resource in namespace",
 						)
 					},
 				)
@@ -819,6 +826,8 @@ func verifyNotificationChannelSynchronizationStatus(
 			)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(nc.Status.SynchronizationStatus).To(Equal(expectedStatus))
+			g.Expect(nc.Status.ObservedGeneration).To(Equal(nc.Generation))
+			g.Expect(nc.Status.SynchronizationSkippedReason).To(BeEmpty())
 			g.Expect(nc.Status.SynchronizedAt.Time).To(BeTemporally(">=", testStartedAt.Add(-1*time.Second)))
 			g.Expect(nc.Status.SynchronizedAt.Time).To(BeTemporally("<=", time.Now()))
 			// notification channels have no operator-side validations

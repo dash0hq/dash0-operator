@@ -123,8 +123,20 @@ var _ = Describe(
 						sloResource := createSLOResource()
 						Expect(k8sClient.Create(ctx, sloResource)).To(Succeed())
 
+						_, err := sloReconciler.Reconcile(
+							ctx, reconcile.Request{
+								NamespacedName: types.NamespacedName{Namespace: TestNamespaceName, Name: sloName},
+							},
+						)
+						Expect(err).NotTo(HaveOccurred())
+
 						Expect(gock.IsPending()).To(BeTrue())
-						verifySLOHasNoSynchronizationStatus(ctx, k8sClient)
+						verifyOwnedResourceIsNotSynchronized(
+							ctx,
+							k8sClient,
+							&openslov1.SLO{ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: sloName}},
+							"There is no Dash0 monitoring resource in namespace",
+						)
 					},
 				)
 
@@ -151,7 +163,12 @@ var _ = Describe(
 						Expect(result).To(Equal(reconcile.Result{}))
 
 						Expect(gock.IsPending()).To(BeTrue())
-						verifySLOHasNoSynchronizationStatus(ctx, k8sClient)
+						verifyOwnedResourceIsNotSynchronized(
+							ctx,
+							k8sClient,
+							&openslov1.SLO{ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: sloName}},
+							"No valid Dash0 API config is available",
+						)
 					},
 				)
 
@@ -1208,27 +1225,6 @@ func deleteSLOResourceIfItExists(
 	}
 }
 
-func verifySLOHasNoSynchronizationStatus(
-	ctx context.Context,
-	k8sClient client.Client,
-) {
-	Eventually(
-		func(g Gomega) {
-			slo := &openslov1.SLO{}
-			err := k8sClient.Get(
-				ctx, types.NamespacedName{
-					Namespace: TestNamespaceName,
-					Name:      sloName,
-				}, slo,
-			)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(string(slo.Status.SynchronizationStatus)).To(Equal(""))
-			g.Expect(slo.Status.ValidationIssues).To(BeNil())
-			g.Expect(slo.Status.SynchronizationResults).To(HaveLen(0))
-		},
-	).Should(Succeed())
-}
-
 func verifySLOSynchronizationStatus(
 	ctx context.Context,
 	k8sClient client.Client,
@@ -1251,6 +1247,8 @@ func verifySLOSynchronizationStatus(
 			)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(slo.Status.SynchronizationStatus).To(Equal(expectedStatus))
+			g.Expect(slo.Status.ObservedGeneration).To(Equal(slo.Generation))
+			g.Expect(slo.Status.SynchronizationSkippedReason).To(BeEmpty())
 			g.Expect(slo.Status.SynchronizedAt.Time).To(BeTemporally(">=", testStartedAt.Add(-1*time.Second)))
 			g.Expect(slo.Status.SynchronizedAt.Time).To(BeTemporally("<=", time.Now()))
 			g.Expect(slo.Status.ValidationIssues).To(BeNil())

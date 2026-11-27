@@ -262,6 +262,12 @@ custom resource definition for signal-to-metrics should match snapshot:
                 status:
                   description: Dash0SignalToMetricsStatus defines the observed state of a Dash0SignalToMetrics resource.
                   properties:
+                    observedGeneration:
+                      description: |-
+                        ObservedGeneration is the metadata.generation of the resource that the operator has processed most recently.
+                        When it is equal to metadata.generation, the status reflects the current spec of the resource.
+                      format: int64
+                      type: integer
                     synchronizationResults:
                       items:
                         description: Dash0SignalToMetricsSynchronizationResultPerEndpointAndDataset captures the result of a single sync attempt.
@@ -291,11 +297,17 @@ custom resource definition for signal-to-metrics should match snapshot:
                               - successful
                               - partially-successful
                               - failed
+                              - not-synchronized
                             type: string
                         required:
                           - synchronizationStatus
                         type: object
                       type: array
+                    synchronizationSkippedReason:
+                      description: |-
+                        SynchronizationSkippedReason explains why the resource has not been synchronized to the Dash0 API. It is only
+                        set when synchronizationStatus is not-synchronized.
+                      type: string
                     synchronizationStatus:
                       description: |-
                         Dash0ApiResourceSynchronizationStatus describes the result of synchronizing a (non-third-party) Kubernetes resource
@@ -304,6 +316,7 @@ custom resource definition for signal-to-metrics should match snapshot:
                         - successful
                         - partially-successful
                         - failed
+                        - not-synchronized
                       type: string
                     synchronizedAt:
                       format: date-time

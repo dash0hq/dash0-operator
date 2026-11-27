@@ -337,7 +337,7 @@ func (r *NotificationChannelReconciler) Reconcile(
 			r.WriteSynchronizationResultToSynchronizedResource(
 				ctx,
 				notificationChannelResource,
-				synchronizationResults{},
+				newNotSynchronizedResult(fmt.Sprintf("%s: %v", msg, err)),
 				logger,
 			)
 		}
@@ -530,10 +530,16 @@ func (r *NotificationChannelReconciler) WriteSynchronizationResultToSynchronized
 ) {
 	notificationChannel := synchronizedResource.(*dash0v1beta1.Dash0NotificationChannel)
 
-	// common result
-	notificationChannel.Status.SynchronizationStatus = syncResults.resourceSyncStatus()
-	notificationChannel.Status.SynchronizedAt = metav1.Time{Time: time.Now()}
-	notificationChannel.Status.ValidationIssues = nil // we do not validate anything for notification channels
+	replaceSynchronizationResults := syncResults.writeCommonStatus(
+		notificationChannel.GetGeneration(),
+		ownedResourceCommonStatus{
+			synchronizationStatus:        &notificationChannel.Status.SynchronizationStatus,
+			synchronizedAt:               &notificationChannel.Status.SynchronizedAt,
+			observedGeneration:           &notificationChannel.Status.ObservedGeneration,
+			synchronizationSkippedReason: &notificationChannel.Status.SynchronizationSkippedReason,
+			validationIssues:             &notificationChannel.Status.ValidationIssues,
+		},
+	)
 
 	// result(s) per apiConfig
 	ncSyncResults := make(
@@ -567,7 +573,9 @@ func (r *NotificationChannelReconciler) WriteSynchronizationResultToSynchronized
 		}
 		ncSyncResults = append(ncSyncResults, syncResultPerEndpoint)
 	}
-	notificationChannel.Status.SynchronizationResults = ncSyncResults
+	if replaceSynchronizationResults || notificationChannel.Status.SynchronizationResults == nil {
+		notificationChannel.Status.SynchronizationResults = ncSyncResults
+	}
 
 	if err := r.Status().Update(ctx, notificationChannel); err != nil {
 		logger.Error(err, "Failed to update Dash0 notification channel status.")

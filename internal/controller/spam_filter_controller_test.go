@@ -138,12 +138,19 @@ var _ = Describe(
 						spamFilterResource := createSpamFilterResource(TestNamespaceName, spamFilterName)
 						Expect(k8sClient.Create(ctx, spamFilterResource)).To(Succeed())
 
+						_, err := spamFilterReconciler.Reconcile(
+							ctx, reconcile.Request{
+								NamespacedName: types.NamespacedName{Namespace: TestNamespaceName, Name: spamFilterName},
+							},
+						)
+						Expect(err).NotTo(HaveOccurred())
+
 						Expect(gock.IsPending()).To(BeTrue())
-						verifySpamFilterHasNoSynchronizationStatus(
+						verifyOwnedResourceIsNotSynchronized(
 							ctx,
 							k8sClient,
-							TestNamespaceName,
-							spamFilterName,
+							&dash0v1alpha1.Dash0SpamFilter{ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: spamFilterName}},
+							"There is no Dash0 monitoring resource in namespace",
 						)
 					},
 				)
@@ -171,11 +178,11 @@ var _ = Describe(
 						Expect(result).To(Equal(reconcile.Result{}))
 
 						Expect(gock.IsPending()).To(BeTrue())
-						verifySpamFilterHasNoSynchronizationStatus(
+						verifyOwnedResourceIsNotSynchronized(
 							ctx,
 							k8sClient,
-							TestNamespaceName,
-							spamFilterName,
+							&dash0v1alpha1.Dash0SpamFilter{ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: spamFilterName}},
+							"No valid Dash0 API config is available",
 						)
 					},
 				)
@@ -846,6 +853,8 @@ func verifySpamFilterSynchronizationStatus(
 			)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(spamFilter.Status.SynchronizationStatus).To(Equal(expectedStatus))
+			g.Expect(spamFilter.Status.ObservedGeneration).To(Equal(spamFilter.Generation))
+			g.Expect(spamFilter.Status.SynchronizationSkippedReason).To(BeEmpty())
 			g.Expect(spamFilter.Status.SynchronizedAt.Time).To(BeTemporally(">=", testStartedAt.Add(-1*time.Second)))
 			g.Expect(spamFilter.Status.SynchronizedAt.Time).To(BeTemporally("<=", time.Now()))
 			// spam filters have no operator-side validations, all local validations are encoded in the CRD already

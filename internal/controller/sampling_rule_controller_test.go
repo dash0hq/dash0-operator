@@ -136,12 +136,19 @@ var _ = Describe(
 						samplingRuleResource := createSamplingRuleResource(TestNamespaceName, samplingRuleName)
 						Expect(k8sClient.Create(ctx, samplingRuleResource)).To(Succeed())
 
+						_, err := samplingRuleReconciler.Reconcile(
+							ctx, reconcile.Request{
+								NamespacedName: types.NamespacedName{Namespace: TestNamespaceName, Name: samplingRuleName},
+							},
+						)
+						Expect(err).NotTo(HaveOccurred())
+
 						Expect(gock.IsPending()).To(BeTrue())
-						verifySamplingRuleHasNoSynchronizationStatus(
+						verifyOwnedResourceIsNotSynchronized(
 							ctx,
 							k8sClient,
-							TestNamespaceName,
-							samplingRuleName,
+							&dash0v1alpha1.Dash0SamplingRule{ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: samplingRuleName}},
+							"There is no Dash0 monitoring resource in namespace",
 						)
 					},
 				)
@@ -169,11 +176,11 @@ var _ = Describe(
 						Expect(result).To(Equal(reconcile.Result{}))
 
 						Expect(gock.IsPending()).To(BeTrue())
-						verifySamplingRuleHasNoSynchronizationStatus(
+						verifyOwnedResourceIsNotSynchronized(
 							ctx,
 							k8sClient,
-							TestNamespaceName,
-							samplingRuleName,
+							&dash0v1alpha1.Dash0SamplingRule{ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: samplingRuleName}},
+							"No valid Dash0 API config is available",
 						)
 					},
 				)
@@ -856,6 +863,8 @@ func verifySamplingRuleSynchronizationStatus(
 			)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(samplingRule.Status.SynchronizationStatus).To(Equal(expectedStatus))
+			g.Expect(samplingRule.Status.ObservedGeneration).To(Equal(samplingRule.Generation))
+			g.Expect(samplingRule.Status.SynchronizationSkippedReason).To(BeEmpty())
 			g.Expect(samplingRule.Status.SynchronizedAt.Time).To(BeTemporally(">=", testStartedAt.Add(-1*time.Second)))
 			g.Expect(samplingRule.Status.SynchronizedAt.Time).To(BeTemporally("<=", time.Now()))
 			g.Expect(samplingRule.Status.ValidationIssues).To(BeNil())

@@ -119,6 +119,8 @@ var _ = Describe(
 						status := generativeAiEvaluation.Status
 						g.Expect(status.SynchronizationStatus).To(
 							Equal(dash0common.Dash0ApiResourceSynchronizationStatusSuccessful))
+						g.Expect(status.ObservedGeneration).To(Equal(generativeAiEvaluation.Generation))
+						g.Expect(status.SynchronizationSkippedReason).To(BeEmpty())
 						g.Expect(status.SynchronizedAt.Time).To(BeTemporally(">=", testStartedAt.Add(-1*time.Second)))
 						g.Expect(status.ValidationIssues).To(BeNil())
 						g.Expect(status.SynchronizationResults).To(HaveLen(1))

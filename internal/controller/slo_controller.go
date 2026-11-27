@@ -484,7 +484,7 @@ func (r *SLOReconciler) Reconcile(ctx context.Context, req reconcile.Request) (r
 			r.WriteSynchronizationResultToSynchronizedResource(
 				ctx,
 				sloResource,
-				synchronizationResults{},
+				newNotSynchronizedResult(fmt.Sprintf("%s: %v", msg, err)),
 				logger,
 			)
 		}
@@ -619,10 +619,16 @@ func (r *SLOReconciler) WriteSynchronizationResultToSynchronizedResource(
 ) {
 	slo := synchronizedResource.(*openslov1.SLO)
 
-	// common result
-	slo.Status.SynchronizationStatus = syncResults.resourceSyncStatus()
-	slo.Status.SynchronizedAt = metav1.Time{Time: time.Now()}
-	slo.Status.ValidationIssues = nil // we do not validate anything for SLOs beyond the CRD schema
+	replaceSynchronizationResults := syncResults.writeCommonStatus(
+		slo.GetGeneration(),
+		ownedResourceCommonStatus{
+			synchronizationStatus:        &slo.Status.SynchronizationStatus,
+			synchronizedAt:               &slo.Status.SynchronizedAt,
+			observedGeneration:           &slo.Status.ObservedGeneration,
+			synchronizationSkippedReason: &slo.Status.SynchronizationSkippedReason,
+			validationIssues:             &slo.Status.ValidationIssues,
+		},
+	)
 
 	// result(s) per apiConfig
 	sloSyncResults := make([]openslov1.SLOSynchronizationResultPerEndpointAndDataset, 0,
@@ -654,7 +660,9 @@ func (r *SLOReconciler) WriteSynchronizationResultToSynchronizedResource(
 		}
 		sloSyncResults = append(sloSyncResults, syncResultPerEndpointAndDataset)
 	}
-	slo.Status.SynchronizationResults = sloSyncResults
+	if replaceSynchronizationResults || slo.Status.SynchronizationResults == nil {
+		slo.Status.SynchronizationResults = sloSyncResults
+	}
 
 	if err := r.Status().Update(ctx, slo); err != nil {
 		logger.Error(err, "Failed to update SLO status.")

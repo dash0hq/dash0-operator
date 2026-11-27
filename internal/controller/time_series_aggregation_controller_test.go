@@ -141,12 +141,19 @@ var _ = Describe(
 							createTimeSeriesAggregationResource(TestNamespaceName, timeSeriesAggregationName)
 						Expect(k8sClient.Create(ctx, timeSeriesAggregationResource)).To(Succeed())
 
+						_, err := timeSeriesAggregationReconciler.Reconcile(
+							ctx, reconcile.Request{
+								NamespacedName: types.NamespacedName{Namespace: TestNamespaceName, Name: timeSeriesAggregationName},
+							},
+						)
+						Expect(err).NotTo(HaveOccurred())
+
 						Expect(gock.IsPending()).To(BeTrue())
-						verifyTimeSeriesAggregationHasNoSynchronizationStatus(
+						verifyOwnedResourceIsNotSynchronized(
 							ctx,
 							k8sClient,
-							TestNamespaceName,
-							timeSeriesAggregationName,
+							&dash0v1alpha1.Dash0TimeSeriesAggregation{ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: timeSeriesAggregationName}},
+							"There is no Dash0 monitoring resource in namespace",
 						)
 					},
 				)
@@ -175,11 +182,11 @@ var _ = Describe(
 						Expect(result).To(Equal(reconcile.Result{}))
 
 						Expect(gock.IsPending()).To(BeTrue())
-						verifyTimeSeriesAggregationHasNoSynchronizationStatus(
+						verifyOwnedResourceIsNotSynchronized(
 							ctx,
 							k8sClient,
-							TestNamespaceName,
-							timeSeriesAggregationName,
+							&dash0v1alpha1.Dash0TimeSeriesAggregation{ObjectMeta: metav1.ObjectMeta{Namespace: TestNamespaceName, Name: timeSeriesAggregationName}},
+							"No valid Dash0 API config is available",
 						)
 					},
 				)
@@ -878,6 +885,8 @@ func verifyTimeSeriesAggregationSynchronizationStatus(
 			)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(timeSeriesAggregation.Status.SynchronizationStatus).To(Equal(expectedStatus))
+			g.Expect(timeSeriesAggregation.Status.ObservedGeneration).To(Equal(timeSeriesAggregation.Generation))
+			g.Expect(timeSeriesAggregation.Status.SynchronizationSkippedReason).To(BeEmpty())
 			g.Expect(timeSeriesAggregation.Status.SynchronizedAt.Time).
 				To(BeTemporally(">=", testStartedAt.Add(-1*time.Second)))
 			g.Expect(timeSeriesAggregation.Status.SynchronizedAt.Time).To(BeTemporally("<=", time.Now()))
