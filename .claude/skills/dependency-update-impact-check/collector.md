@@ -189,7 +189,7 @@ Read these in the head copy:
   * env vars, ports, the health check probe path and port, volumes and host path mounts, `shareProcessNamespace`
   * the RBAC rules of both collectors
   * the constraints of the GKE Autopilot allowlist, which pins the args of some collectors
-* `images/collector/src/image/entrypoint.sh`: the env vars that it turns into feature gates, and the PID file.
+* `images/collector/src/image/entrypoint.sh`: the config decompression and the PID file.
 * Companions that rely on collector behavior:
   * `images/configreloader`: reloads the config with SIGHUP and reads the PID file.
   * `images/filelogoffsetsync`: depends on the file layout of the `file_storage` extension directory.
@@ -213,7 +213,7 @@ Read these in the head copy:
     * It does not catch unknown keys in configs that embed a type with its own `Unmarshal` method (see "Diff set"), and
       it does not catch semantic changes.
   * `collector_config_maps_test.go`: executes some OTTL in-process, with the root `go.mod` version of `pkg/ottl`.
-  * `desired_state_test.go`: feature gates, and drift between `desired_state.go` and `entrypoint.sh`.
+  * `desired_state_test.go`: feature gates.
   * The webhook tests assert exact OTTL parser error messages.
 
 ## Version consistency

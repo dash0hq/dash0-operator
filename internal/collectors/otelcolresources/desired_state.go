@@ -351,9 +351,6 @@ const (
 	profilesSupportFeatureGate                              = "service.profilesSupport"
 	k8sAttributesShareProcessorFeatureGate                  = "processor.k8sattributes.ShareProcessorBetweenPipelines"
 	disableK8sAttributesDontEmitV0K8sConventionsFeatureGate = "-processor.k8sattributes.DontEmitV0K8sConventions"
-	// read by images/collector/src/image/entrypoint.sh
-	gkeAutopilotWorkaroundEmitV0K8sConventionsEnvVarName        = "DASH0_GKE_AUTOPILOT_WORKAROUND_EMIT_V0_K8S_CONVENTIONS"
-	gkeAutopilotWorkaroundShareK8sAttributesProcessorEnvVarName = "DASH0_GKE_AUTOPILOT_WORKAROUND_SHARE_K8S_ATTRIBUTES_PROCESSOR"
 
 	// config volume names -- the collectors will either use only the collectorConfigMapVolumeNamePlainText (when config
 	// map compression is disabled), or collectorConfigMapCompressedVolumeName + collectorConfigMapDecompressedVolumeName
@@ -2155,28 +2152,12 @@ func assembleDeploymentCollectorContainer(
 		return corev1.Container{}, err
 	}
 
-	// The GKE Autopilot WorkloadAllowlist of this collector permits no --feature-gates argument, so there the image's
-	// entrypoint adds the gates instead.
 	var featureGates []string
 	if config.K8sAttributesShareProcessor {
-		if config.IsGkeAutopilot {
-			collectorEnv = append(collectorEnv, corev1.EnvVar{
-				Name:  gkeAutopilotWorkaroundShareK8sAttributesProcessorEnvVarName,
-				Value: "true",
-			})
-		} else {
-			featureGates = append(featureGates, k8sAttributesShareProcessorFeatureGate)
-		}
+		featureGates = append(featureGates, k8sAttributesShareProcessorFeatureGate)
 	}
 	// Keeps the legacy container.image.tag attribute next to container.image.tags.
-	if config.IsGkeAutopilot {
-		collectorEnv = append(collectorEnv, corev1.EnvVar{
-			Name:  gkeAutopilotWorkaroundEmitV0K8sConventionsEnvVarName,
-			Value: "true",
-		})
-	} else {
-		featureGates = append(featureGates, disableK8sAttributesDontEmitV0K8sConventionsFeatureGate)
-	}
+	featureGates = append(featureGates, disableK8sAttributesDontEmitV0K8sConventionsFeatureGate)
 	collectorArgs := assembleCollectorArgs(featureGates)
 
 	collectorContainer := corev1.Container{
