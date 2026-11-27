@@ -17,8 +17,9 @@
 #   branch. This script does not build or push images.
 #   With a local Helm chart, all images built in this repository are deployed with the image pull policy Always, so that
 #   a node does not reuse an image it has cached for the same tag in an earlier run.
-#   The Signal Control collector and Edge Proxy images are not built in this repository, they are always pulled from the
-#   official ghcr.io/dash0hq repositories. The same applies to the eBPF profiler image (ghcr.io/parca-dev/parca-agent).
+#   The Signal Control collector, Edge Proxy and synthetics-worker images are not built in this repository, they are
+#   always pulled from the official ghcr.io/dash0hq repositories. The same applies to the eBPF profiler image
+#   (ghcr.io/parca-dev/parca-agent).
 # - Use IMAGE_REPOSITORY_PREFIX to control the prefix of the container image repositories used with a local Helm chart
 #   (defaults to "ghcr.io/dash0hq/gke-ap-"). For example, set it to "ghcr.io/dash0hq/" to use the official image
 #   repositories (both prefixes are allow-listed on the GKE Autopilot cluster).
@@ -51,6 +52,7 @@ else
   chart="${OPERATOR_HELM_CHART:-dash0-operator/dash0-operator}"
 fi
 helm_release_name=dash0-operator
+synthetics_worker_location_id=gke-ap-allowlist-check
 
 # Directory used to collect cluster diagnostics when the check fails. The path is relative to the repository root (we cd
 # into it above), which is also the working directory of the GitHub Actions job, so the workflow can upload the directory
@@ -287,16 +289,10 @@ kubectl create secret \
   --namespace "$operator_namespace" \
   --from-literal=token=dummy-token
 
-# Try to install the Helm chart:
+# Try to install the Helm chart. The operator.dash0Export.* values are not set, the script creates the operator
+# configuration resource after the installation.
 helm_command="helm install --namespace $operator_namespace"
 helm_command+=" --set operator.gke.autopilot.enabled=true"
-helm_command+=" --set operator.dash0Export.enabled=true"
-helm_command+=" --set operator.dash0Export.endpoint=ingress.dummy-url.aws.dash0.com:4317"
-helm_command+=" --set operator.dash0Export.secretRef.name=dash0-authorization-secret"
-helm_command+=" --set operator.dash0Export.secretRef.key=token"
-helm_command+=" --set operator.dash0Export.apiEndpoint=https://api.dummy-url.aws.dash0.com"
-helm_command+=" --set operator.prometheusCrdSupportEnabled=true"
-helm_command+=" --set operator.clusterName=dummy-cluster-name"
 # Two replicas of the cluster metrics collector add the topology spread constraints, the pod disruption budget and the
 # k8s_leader_elector extension (with its lease role) to the cluster metrics collector.
 helm_command+=" --set operator.collectors.deploymentReplicas=2"
@@ -316,8 +312,16 @@ helm_command+=" --set operator.agent0Connector.serverAddress=agent0.dummy-url.aw
 helm_command+=" --set operator.agent0Connector.secretRef.name=dash0-authorization-secret"
 helm_command+=" --set operator.agent0Connector.secretRef.key=token"
 helm_command+=" --set operator.agent0Connector.insecure=true"
-# eBPF profiler: the Dash0 export above makes the operator deploy the debuginfo-proxy as well.
+# eBPF profiler: the Dash0 export in the operator configuration resource makes the operator deploy the debuginfo-proxy
+# as well.
 helm_command+=" --set operator.ebpfProfilerEnabled=true"
+# synthetics-worker: insecure adds the optional env vars DASH0_SYNTHETICS_WORKER_INSECURE to the operator manager and
+# SYNTHETICS_INSECURE to the synthetics-worker, the pull policy adds an optional env var to the operator manager. The
+# instance is configured in the operator configuration resource.
+helm_command+=" --set operator.syntheticsWorker.enabled=true"
+helm_command+=" --set operator.syntheticsWorker.serverAddress=synthetics.dummy-url.aws.dash0.com:4317"
+helm_command+=" --set operator.syntheticsWorker.insecure=true"
+helm_command+=" --set operator.syntheticsWorkerImage.pullPolicy=IfNotPresent"
 if [[ "$use_local_chart" = "true" ]]; then
   # Image tags of local builds are mutable, hence the pull policy Always, see the comment at the top of the file.
   helm_command+=" --set operator.image.repository=${image_repository_prefix}operator-controller"
@@ -353,6 +357,42 @@ helm_command+=" $chart"
 
 log "running: $helm_command"
 $helm_command
+
+# The operator configuration resource is created here instead of via operator.dash0Export.*: the resource the operator
+# creates from these Helm values has no synthetics-worker instances, and the validation webhook rejects an enabled
+# synthetics-worker without instances. The post-install hook has already waited for the webhook to become reachable.
+log "deploying the operator configuration resource"
+kubectl create -f - <<EOF
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0OperatorConfiguration
+metadata:
+  name: dash0-operator-configuration-resource
+spec:
+  exports:
+    - dash0:
+        endpoint: ingress.dummy-url.aws.dash0.com:4317
+        authorization:
+          secretRef:
+            name: dash0-authorization-secret
+            key: token
+        apiEndpoint: https://api.dummy-url.aws.dash0.com
+  clusterName: dummy-cluster-name
+  prometheusCrdSupport:
+    enabled: true
+  profiling:
+    ebpfProfiler:
+      enabled: true
+  syntheticsWorker:
+    instances:
+      - locationId: $synthetics_worker_location_id
+        authorization:
+          secretRef:
+            name: dash0-authorization-secret
+            key: token
+EOF
+log "waiting for the operator configuration resource to become available"
+kubectl wait dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-resource \
+  --for condition=Available --timeout 60s
 
 # Wait for the OTel collector workloads to become ready, this ensures that the WorkloadAllowlists for those also match.
 log "helm install has been successful, waiting for the collectors to be deployed and become ready"
@@ -455,6 +495,34 @@ kubectl \
 set +x
 log "the agent0-connector is ready now"
 verify_matching_allowlist app.kubernetes.io/name=dash0-agent0-connector "agent0-connector"
+
+log "waiting for the synthetics-worker to be created"
+set -x
+kubectl wait \
+  --for=create \
+  deployment "${helm_release_name}-synthetics-worker-${synthetics_worker_location_id}" \
+  --namespace "$operator_namespace" \
+  --timeout=60s
+set +x
+# The synthetics-worker only becomes ready once it is connected to the Dash0 backend, which never happens with the dummy
+# server address used here. A running pod is sufficient, it shows that GKE Autopilot has admitted it. No other workload
+# of this check uses the synthetics-worker image, and pulling an image on a GKE Autopilot node has taken almost two
+# minutes before, hence the longer timeout.
+log "waiting for at least one pod of the synthetics-worker to be running"
+deadline=$((SECONDS + 300))
+until [[ -n "$(kubectl get pods \
+  --namespace "$operator_namespace" \
+  --selector app.kubernetes.io/name=dash0-synthetics-worker \
+  --field-selector status.phase=Running \
+  -o name)" ]]; do
+  if (( SECONDS >= deadline )); then
+    log "ERROR: no pod of the synthetics-worker was running within 300 seconds"
+    exit 1
+  fi
+  sleep 5
+done
+log "at least one synthetics-worker pod is running now"
+verify_matching_allowlist app.kubernetes.io/name=dash0-synthetics-worker "synthetics-worker"
 
 # Like for the daemonset collector, wait for one ready pod per daemonset instead of using "kubectl rollout status".
 for component in ebpf-profiler debuginfo-proxy; do
