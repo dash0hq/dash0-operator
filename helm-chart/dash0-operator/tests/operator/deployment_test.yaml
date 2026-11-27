@@ -1479,6 +1479,38 @@ tests:
           path: spec.template.spec.containers[0].args[15]
           value: --operator-configuration-cluster-name=cluster-name
 
+  - it: should pass a cluster name with YAML special characters unchanged to the operator manager
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+        clusterName: "a \"b\" 'c' \\d e: f #g"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--operator-configuration-cluster-name=a \"b\" 'c' \\d e: f #g"
+
+  - it: should pass a numeric cluster name unchanged to the operator manager
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+        clusterName: 123
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--operator-configuration-cluster-name=123"
+
   - it: should add args for creating an operator configuration resource with a secretRef to the deployment
     documentSelector:
       path: metadata.name
