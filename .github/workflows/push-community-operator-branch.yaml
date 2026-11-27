@@ -3,22 +3,27 @@
 
 name: Push the community catalog submission branch
 
-# Pushes the branch dash0-operator-<version> with one signed-off commit that submits a release to the OpenShift
-# community catalog to the fork dash0hq/community-operators-prod. The commit adds operators/dash0-operator/<version>,
-# prepared by "make olm-community-bundle" from the release bundle image. A person opens the pull request against
-# redhat-openshift-ecosystem/community-operators-prod from the compare link in the job summary.
+# Pushes the branch dash0-operator-<version> with one signed-off commit that submits a release to a community catalog to
+# the fork of the catalog's repository in dash0hq. The input catalog selects the catalog:
+# * openshift: the OpenShift community catalog, fork dash0hq/community-operators-prod of
+#   redhat-openshift-ecosystem/community-operators-prod.
+# * operatorhub: the catalog of operatorhub.io, fork dash0hq/community-operators-operatorhub of
+#   k8s-operatorhub/community-operators.
+# The commit adds operators/dash0-operator/<version>, prepared by "make olm-community-bundle" from the release bundle
+# image. A person opens the pull request against the upstream repository from the compare link in the job summary.
 #
-# ci.yaml invokes this workflow (workflow_call) for every release tag after the bundle image has been pushed. Release
-# candidates are skipped, and so are all releases until the first submission (which adds operators/dash0-operator/ci.yaml)
-# has been merged upstream. A release whose branch exists in the fork already is skipped as well, so that a re-run does
-# not replace commits that have been added to an open pull request; delete the branch in the fork to push it again. The
-# manual run (workflow_dispatch) covers releases whose tag job failed or that were tagged before this workflow existed.
+# ci.yaml invokes this workflow (workflow_call) once per catalog for every release tag after the bundle image has been
+# pushed. Release candidates are skipped, and so are all releases until the first submission (which adds
+# operators/dash0-operator/ci.yaml) has been merged upstream. A release whose branch exists in the fork already is
+# skipped as well, so that a re-run does not replace commits that have been added to an open pull request; delete the
+# branch in the fork to push it again. The manual run (workflow_dispatch) covers releases whose tag job failed or that
+# were tagged before this workflow existed.
 #
-# The pipeline of community-operators-prod requires a DCO sign-off with a person's real name. Author and sign-off of the
-# commit are the inputs signer-name and signer-email if both are set, otherwise the entry of the person who triggered the
-# run in community-operator/signers.yaml.
+# The pipelines of both catalogs require a DCO sign-off with a person's real name. Author and sign-off of the commit are
+# the inputs signer-name and signer-email if both are set, otherwise the entry of the person who triggered the run in
+# community-operator/signers.yaml.
 #
-# The fork is accessed with an installation token of a GitHub App that is installed only on the fork, with Contents and
+# The fork is accessed with an installation token of a GitHub App that is installed only on the forks, with Contents and
 # Workflows: Read and write. Workflows is needed for syncing the fork with upstream, which GitHub refuses when the
 # upstream commits change workflow files.
 
@@ -28,6 +33,13 @@ name: Push the community catalog submission branch
 on:
   workflow_dispatch:
     inputs:
+      catalog:
+        description: The community catalog to submit to, openshift (community-operators-prod) or operatorhub (operatorhub.io).
+        type: choice
+        options:
+          - openshift
+          - operatorhub
+        required: true
       version:
         description: The release to submit (x.y.z).
         type: string
@@ -41,9 +53,14 @@ on:
         type: string
         required: false
   workflow_call:
+    inputs:
+      catalog:
+        description: The community catalog to submit to, openshift (community-operators-prod) or operatorhub (operatorhub.io).
+        type: string
+        required: true
     secrets:
       COMMUNITY_OPERATORS_SYNC_APP_PRIVATE_KEY:
-        description: Private key of the GitHub App that pushes to the fork dash0hq/community-operators-prod.
+        description: Private key of the GitHub App that pushes to the forks dash0hq/community-operators-prod and dash0hq/community-operators-operatorhub.
         required: true
 
 jobs:
@@ -54,10 +71,12 @@ jobs:
     permissions:
       contents: read
     env:
-      UPSTREAM_REPOSITORY: redhat-openshift-ecosystem/community-operators-prod
+      CATALOG: ${{ inputs.catalog }}
+      UPSTREAM_REPOSITORY: ${{ inputs.catalog == 'operatorhub' && 'k8s-operatorhub/community-operators' || 'redhat-openshift-ecosystem/community-operators-prod' }}
       FORK_OWNER: dash0hq
-      FORK_REPOSITORY: dash0hq/community-operators-prod
-      FORK_DIR: community-operators-prod
+      FORK_REPOSITORY_NAME: ${{ inputs.catalog == 'operatorhub' && 'community-operators-operatorhub' || 'community-operators-prod' }}
+      FORK_REPOSITORY: ${{ inputs.catalog == 'operatorhub' && 'dash0hq/community-operators-operatorhub' || 'dash0hq/community-operators-prod' }}
+      FORK_DIR: community-operators-fork
 
     steps:
       - name: determine the version
@@ -65,6 +84,10 @@ jobs:
         env:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
+          if [[ "$CATALOG" != openshift && "$CATALOG" != operatorhub ]]; then
+            echo "error: the catalog \"$CATALOG\" is not supported, use openshift or operatorhub"
+            exit 1
+          fi
           # Not GITHUB_EVENT_NAME: in a run called from ci.yaml it is the event of ci.yaml, which can be workflow_dispatch.
           if [[ -n "$INPUT_VERSION" ]]; then
             version="$INPUT_VERSION"
@@ -75,12 +98,12 @@ jobs:
           else
             version="$GITHUB_REF_NAME"
             if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "::notice::$version is not a release version (x.y.z), release candidates are not submitted to the community catalog."
+              echo "::notice::$version is not a release version (x.y.z), release candidates are not submitted to the community catalogs."
               echo "skip=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
           fi
-          echo "submitting the release $version"
+          echo "submitting the release $version to $UPSTREAM_REPOSITORY"
           {
             echo "version=$version"
             echo "skip=false"
@@ -175,7 +198,7 @@ jobs:
           client-id: ${{ vars.COMMUNITY_OPERATORS_SYNC_APP_CLIENT_ID }}
           private-key: ${{ secrets.COMMUNITY_OPERATORS_SYNC_APP_PRIVATE_KEY }}
           owner: ${{ env.FORK_OWNER }}
-          repositories: community-operators-prod
+          repositories: ${{ env.FORK_REPOSITORY_NAME }}
           permission-contents: write
           permission-workflows: write
 
@@ -212,7 +235,8 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          make olm-community-bundle COMMUNITY_OPERATORS_DIR="$FORK_DIR" COMMUNITY_BUNDLE_VERSION="$VERSION"
+          make olm-community-bundle COMMUNITY_CATALOG="$CATALOG" COMMUNITY_OPERATORS_DIR="$FORK_DIR" \
+            COMMUNITY_BUNDLE_VERSION="$VERSION"
 
       # The commit is created with git instead of createCommitOnBranch, which has no author field: the DCO check requires
       # the author to match the sign-off.
@@ -241,7 +265,7 @@ jobs:
         run: |
           compare_url="https://github.com/$UPSTREAM_REPOSITORY/compare/main...$FORK_OWNER:$BRANCH?expand=1"
           {
-            echo "### Community catalog submission of $VERSION"
+            echo "### Community catalog submission of $VERSION to $UPSTREAM_REPOSITORY"
             echo
             echo "The branch \`$BRANCH\` has been pushed to [$FORK_REPOSITORY](https://github.com/$FORK_REPOSITORY)."
             echo "[Open the pull request]($compare_url) against \`$UPSTREAM_REPOSITORY\` and follow its pipeline."

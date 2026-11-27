@@ -762,6 +762,24 @@ A merged bundle cannot be changed anymore, a defect has to be fixed in a new rel
 [File based catalog workflow](https://redhat-openshift-ecosystem.github.io/operator-pipelines/users/fbc_workflow/) and
 [Troubleshooting for Community Operators](https://redhat-openshift-ecosystem.github.io/operator-pipelines/users/community-operators-troubleshooting/).
 
+Releases can also be published on [operatorhub.io](https://operatorhub.io) via pull requests to
+[k8s-operatorhub/community-operators](https://github.com/k8s-operatorhub/community-operators). This repository uses
+the bundle format instead of a file-based catalog: `operators/dash0-operator/ci.yaml` sets `updateGraph: semver-mode`,
+so every bundle replaces the next lower version, and the channel is `stable` from `metadata/annotations.yaml` of the
+bundle, not `stable-v0`. `make olm-community-bundle COMMUNITY_CATALOG=operatorhub` prepares such a pull request in a
+clone of `community-operators`, without `release-config.yaml` and catalog template. The first pull request of a new
+operator, and every pull request whose author is listed in `reviewers` of `ci.yaml`, is merged automatically once its
+tests have passed. Of a merged bundle, only the description, the display name, the icon and `alm-examples` can still be
+changed. Since `stable` is not split by major version, `1.0.0` would upgrade existing installations with automatic
+approval directly; decide on the channel of the `1.0.0` bundle before releasing it. The pipeline is documented in
+[Submitting your Operator via Pull Requests](https://k8s-operatorhub.github.io/community-operators/contributing-via-pr/)
+and [Troubleshooting](https://k8s-operatorhub.github.io/community-operators/troubleshooting/).
+
+For every release tag, CI pushes a branch with the submission to the forks `dash0hq/community-operators-prod` and
+`dash0hq/community-operators-operatorhub` (workflow `.github/workflows/push-community-operator-branch.yaml`), as soon
+as the first submission to the catalog has been merged. A person opens the pull requests from the compare links in the
+job summaries.
+
 ## Testing with Kyverno
 
 [test-resources/bin/deploy-kyverno.sh](test-resources/bin/deploy-kyverno.sh) installs Kyverno and the upstream Kyverno
