@@ -46,6 +46,8 @@ const (
 	appKubernetesIoNameValue      = syntheticsWorker
 	appKubernetesIoInstanceValue  = "dash0-operator"
 	appKubernetesIoManagedByValue = "dash0-operator"
+	gkeAutopilotAllowlistKey      = "cloud.google.com/matching-allowlist"
+	gkeAutopilotAllowlistValue    = "dash0-synthetics-worker-v1.0.5"
 
 	// locationIDLabel identifies which synthetics-worker instance (that is, which Dash0 private location) a
 	// Deployment/ServiceAccount belongs to. It is part of matchLabels() so that each instance's Deployment gets its
@@ -225,6 +227,11 @@ func assembleDeployment(
 		podSpec.PriorityClassName = priorityClassName
 	}
 
+	templateLabels := labels(spec.LocationID)
+	if c.IsGkeAutopilot {
+		templateLabels[gkeAutopilotAllowlistKey] = gkeAutopilotAllowlistValue
+	}
+
 	deployment := &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "apps/v1",
@@ -242,7 +249,7 @@ func assembleDeployment(
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels(spec.LocationID),
+					Labels: templateLabels,
 				},
 				Spec: podSpec,
 			},

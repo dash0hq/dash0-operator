@@ -41,7 +41,7 @@ const (
 	defaultDataset = "default"
 
 	gkeAutopilotAllowlistLabelKey            = "cloud.google.com/matching-allowlist"
-	gkeAutopilotAllowlistLabelEdgeProxyValue = "dash0-edge-proxy-v1.0.4"
+	gkeAutopilotAllowlistLabelEdgeProxyValue = "dash0-edge-proxy-v1.0.5"
 )
 
 var (

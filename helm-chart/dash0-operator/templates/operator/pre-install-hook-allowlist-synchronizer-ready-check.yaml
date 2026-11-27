@@ -102,7 +102,7 @@ spec:
             - /manager
           args:
             - "--allowlist-synchronizer-ready-check"
-            - "--allowlist-version=v1.0.4"
+            - "--allowlist-version=v1.0.5"
           {{ include "dash0-operator.restrictiveContainerSecurityContext" dict | nindent 10 }}
           env:
             - name: GOMEMLIMIT

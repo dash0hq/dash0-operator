@@ -586,7 +586,7 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 		&cliArgs.allowlistVersion,
 		"allowlist-version",
 		"",
-		"The version of the Dash0 operator allowlist to wait for (e.g. v1.0.4). Used with --allowlist-synchronizer-ready-check.",
+		"The version of the Dash0 operator allowlist to wait for (e.g. v1.0.5). Used with --allowlist-synchronizer-ready-check.",
 	)
 	fs.BoolVar(
 		&cliArgs.deleteAllowlistSynchronizer,
@@ -2202,6 +2202,7 @@ func startDash0Controllers(
 		images,
 		operatorDeploymentSelfReference,
 		developmentMode,
+		cliArgs.isGkeAutopilot,
 		cliArgs.isOpenShift,
 	)
 	if err != nil {
@@ -2215,7 +2216,8 @@ func startDash0Controllers(
 			Enabled: envVars.ebpfProfilerEnabled, TelemetryCollectionEnabled: cliArgs.telemetryCollectionEnabled,
 			ProfilerImage: envVars.ebpfProfilerImage, ProfilerImagePullPolicy: envVars.ebpfProfilerImagePullPolicy,
 			ProxyImage: envVars.debuginfoProxyImage, ProxyImagePullPolicy: envVars.debuginfoProxyImagePullPolicy,
-			ServiceAccountName: cliArgs.ebpfProfilerServiceAccountName, IsOpenShift: cliArgs.isOpenShift,
+			ServiceAccountName: cliArgs.ebpfProfilerServiceAccountName, IsGkeAutopilot: cliArgs.isGkeAutopilot,
+			IsOpenShift: cliArgs.isOpenShift,
 		},
 	)
 	profilerManager := profiling.NewManager(profilerResourceManager, extraConfig, extraConfigDefaults)
@@ -2939,6 +2941,7 @@ func setupSyntheticsWorkerManager(
 	images util.Images,
 	operatorDeploymentSelfReference *appsv1.Deployment,
 	developmentMode bool,
+	isGkeAutopilot bool,
 	isOpenShift bool,
 ) (*syntheticsworker.SyntheticsWorkerManager, error) {
 	if !envVars.syntheticsWorkerEnabled {
@@ -2953,6 +2956,7 @@ func setupSyntheticsWorkerManager(
 		ServerAddress:     envVars.syntheticsWorkerServerAddress,
 		Insecure:          envVars.syntheticsWorkerInsecure,
 		PriorityClassName: envVars.syntheticsWorkerPriorityClassName,
+		IsGkeAutopilot:    isGkeAutopilot,
 		IsOpenShift:       isOpenShift,
 		DevelopmentMode:   developmentMode,
 	}
