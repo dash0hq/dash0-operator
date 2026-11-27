@@ -24,6 +24,9 @@ type Dash0SignalToMetrics struct {
 }
 
 // Dash0SignalToMetricsSpec defines the desired state of a SignalToMetrics rule.
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.dropMatched) || !self.dropMatched || self.match.signal == 'logs'",message="dropMatched is only allowed when match.signal is 'logs'"
+// +kubebuilder:validation:XValidation:rule="!has(self.dropMatched) || !self.dropMatched || self.match.filters.exists(f, f.operator != 'is_any')",message="dropMatched requires at least one filter with an operator other than 'is_any'"
 type Dash0SignalToMetricsSpec struct {
 	// Whether this rule is active.
 	// +kubebuilder:validation:Required
@@ -40,6 +43,12 @@ type Dash0SignalToMetricsSpec struct {
 	// Output controls the metric that is produced for matching signals.
 	// +kubebuilder:validation:Required
 	Output Dash0SignalToMetricsOutput `json:"output"`
+
+	// When true, the log records this rule matches are dropped once the metric is derived from them. The drop runs
+	// after signal-to-metrics conversion, so the dropped log records still count toward the metrics of every rule that
+	// matches them. Only allowed for logs rules with at least one filter other than is_any. Defaults to false.
+	// +kubebuilder:validation:Optional
+	DropMatched *bool `json:"dropMatched,omitempty"`
 }
 
 // Dash0SignalToMetricsDisplay defines display configuration.

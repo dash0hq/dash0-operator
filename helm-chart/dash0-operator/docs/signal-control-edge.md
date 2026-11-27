@@ -8,6 +8,7 @@ based on custom criteria via OTTL
 - signal-to-metrics derives metrics from logs and traces - like RED metrics, this happens before sampling to keep
 metrics accurate
 - spam filters that are evaluated in-cluster to reduce egress costs
+- the transformation rules configured in Dash0 are applied in-cluster, before telemetry leaves the cluster
 - the metric recorder emits operational counters from in-cluster components - currently the volume dropped by the spam
 filter - so you keep visibility into filtered data without shipping the raw signals. It also carries the SignalControl
 metering counters, which are classified internal: they are not billed at ingest and do not appear in your telemetry
@@ -126,7 +127,8 @@ The collector checks its own metering configuration at startup and logs a warnin
 rule such as `capability-without-metering`. If you are using namespaced exporters, one of them is expected here
 and can be ignored: `duplicate-counting-instance`, naming the counting pipelines that share a routing connector — the
 default branch and the first dataset branch of each namespace. It appears once per signal whose SignalControl pipelines
-carry metering: traces always, metrics with the spam filter on, logs with the spam filter or signal-to-metrics on.
+carry metering: traces always, metrics with the spam filter or transformation rules on, logs with the spam filter,
+signal-to-metrics or transformation rules on.
 
 It is a false positive. The rule groups pipelines by the receiver they share and assumes each of them receives a copy of
 everything that receiver emits. The pipelines it names here sit on *different routes* of that connector, and the routes
@@ -139,8 +141,9 @@ is how a namespace with several datasets gets a copy per dataset — and why onl
 Log enrichment applies centrally learned log patterns in-cluster. Two processors run in the SignalControl collector's
 logs pipeline: `dash0logparser` applies the learned patterns to set the OTLP severity and a normalized
 `dash0.log.message`, and `dash0loggrouping` tags each record with the `dash0.log.pattern` it matched and the values it
-extracted as `dash0.log.attribute.*`. Both run ahead of the spam filter, so spam-filter rules can match on the pattern and
-severity that enrichment adds.
+extracted as `dash0.log.attribute.*`. As in Dash0, both run after signal-to-metrics and before the post-filter step of
+the spam filter: spam-filter rules can match on the pattern and severity that enrichment adds, while signal-to-metrics
+rules cannot use them.
 
 The patterns are learned by Dash0 and polled back into the cluster at runtime: in direct mode the `dash0settingsonedge`
 extension fetches them; when the Edge Proxy is enabled they ride the proxy's settings stream instead. Either way, pattern
@@ -163,6 +166,51 @@ spec:
 The pattern refresh interval and the two cache expirations under `spec.logEnrichment` are optional; they are listed with
 all other fields and their defaults in the field reference linked in the [Quickstart](#quickstart).
 
+### Transformation rules
+
+The `dash0transform` processor applies the transformation rules configured in Dash0 to spans, metric data points and
+log records inside the cluster. The rules are created in Dash0, not as Kubernetes resources. The collector fetches them
+at runtime together with the other settings, so rule changes take effect without redeploying the collector. Each
+dataset branch applies the rules of the dataset it exports to.
+
+Telemetry that the processor handled is marked as such, and Dash0 does not apply the rules a second time.
+
+The processor runs where Dash0 runs it: after the pre-filter step of the spam filter and redaction, and before
+signal-to-metrics and RED metrics are derived. The traces and logs pipelines of the SignalControl collector run the
+processors in this order:
+
+1. `dash0metering`
+2. `dash0filter`, pre-filter step (with the spam filter on)
+3. `dash0redaction` (with cardholder data redaction on)
+4. `dash0transform`
+5. `dash0resource`
+6. signal-to-metrics are derived
+7. `dash0operation` and RED metrics (traces only), `dash0logparser` and `dash0loggrouping` (logs only, with log
+   enrichment on)
+8. `dash0filter`, post-filter step (with the spam filter on)
+
+The metrics pipeline runs steps 1 to 5, then `dash0operation` and the post-filter step. This is the order Dash0 uses,
+with one difference: Dash0 runs `dash0resource` after the metrics are derived. In the cluster it runs before, because it
+marks the telemetry as processed in the cluster, and the derived metrics take this mark from the telemetry they are
+derived from.
+
+The pre-filter step only applies spam filter rules that match positively. Rules with a negative match, rules on what log
+enrichment adds and rules on attributes a transformation rule sets take effect in the post-filter step.
+
+Transformation rules are applied by default. To turn them off, set `spec.transform.enabled: false` on the
+`Dash0SignalControl` resource. Dash0 then applies the rules after ingestion:
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SignalControl
+metadata:
+  name: dash0-signal-control
+spec:
+  transform:
+    enabled: false
+  # ... other settings
+```
+
 ### Cardholder data redaction
 
 Cardholder data redaction removes payment card data from telemetry inside the cluster, so it never reaches Dash0
@@ -173,8 +221,9 @@ links and metric data points, span names and span event names. Resource attribut
 are redacted in place, signals are never dropped. Detection is pattern-based and cannot catch encoded, encrypted, or
 split card numbers, so not emitting cardholder data at the source remains the primary safeguard.
 
-The processor runs last in each of the SignalControl collector's traces, metrics and logs pipelines, after every other
-SCE processor that changes telemetry. RED metrics and signal-to-metrics are derived from the redacted telemetry.
+The processor runs in each of the SignalControl collector's traces, metrics and logs pipelines, directly after the
+pre-filter step of the spam filter, as in Dash0. Transformation rules, RED metrics, signal-to-metrics and log enrichment
+work on the redacted telemetry. Card data that a transformation rule adds is not redacted.
 Telemetry that the per-node collector sends to a non-Dash0 exporter does not pass through the SignalControl collector
 and is not redacted.
 

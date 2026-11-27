@@ -79,6 +79,13 @@ type Dash0SignalControlSpec struct {
 	// +kubebuilder:validation:Optional
 	SpamFilter SpamFilterConfig `json:"spamFilter,omitempty"`
 
+	// Configuration for the dash0transform processor in the collector pipeline. The processor applies the
+	// transformation rules configured in Dash0 to spans, metric data points, and log records before they leave the
+	// cluster, and marks the telemetry it processed so that Dash0 does not apply the rules a second time.
+	//
+	// +kubebuilder:validation:Optional
+	Transform TransformConfig `json:"transform,omitempty"`
+
 	// Configuration for the dash0operation processor. This processor derives dash0.operation.* and dash0.span.*
 	// attributes from OpenTelemetry semantic conventions.
 	//
@@ -87,8 +94,8 @@ type Dash0SignalControlSpec struct {
 
 	// Configuration for log enrichment, which applies centrally learned log patterns to this cluster's
 	// logs: it sets the OTLP severity, a normalized dash0.log.message, and the dash0.log.pattern that the
-	// record matched. Enrichment runs before the spam filter, so spam filter rules can match on the
-	// pattern and severity it adds. This setting is optional.
+	// record matched. Enrichment runs after signal-to-metrics and before the post-filter step of the spam
+	// filter, so post-filter rules can match on the pattern and severity it adds. This setting is optional.
 	//
 	// +kubebuilder:validation:Optional
 	LogEnrichment LogEnrichmentConfig `json:"logEnrichment,omitempty"`
@@ -384,6 +391,17 @@ type SpamFilterConfig struct {
 	AllowNoSettingsExt *bool `json:"allowNoSettingsExt,omitempty"`
 }
 
+// TransformConfig configures the dash0transform processor. The processor applies the transformation rules
+// configured in Dash0 to spans, metric data points, and log records.
+type TransformConfig struct {
+	// Whether to wire the dash0transform processor into the collector pipelines. When disabled, transformation
+	// rules are not applied at the edge, and Dash0 applies them after ingestion instead. This setting is optional,
+	// it defaults to true.
+	//
+	// +kubebuilder:default=true
+	Enabled *bool `json:"enabled"`
+}
+
 // OperationProcessorConfig configures the dash0operation processor.
 type OperationProcessorConfig struct {
 	// Controls whether the OpenTelemetry span name is used as both dash0.operation.name and
@@ -454,7 +472,8 @@ type OperationMatcher struct {
 
 // LogEnrichmentConfig configures log enrichment. Learned log patterns are applied to this cluster's
 // logs to set the OTLP severity, a normalized dash0.log.message, and the dash0.log.pattern the record
-// matched. Enrichment runs before the spam filter, so spam filter rules can match on what it adds.
+// matched. Enrichment runs after signal-to-metrics and before the post-filter step of the spam filter, so
+// post-filter rules can match on what it adds.
 type LogEnrichmentConfig struct {
 	// Whether to enrich logs with centrally learned log patterns. This setting is optional, it defaults
 	// to false.
