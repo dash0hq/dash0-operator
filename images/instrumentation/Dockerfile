@@ -150,7 +150,7 @@ COPY ruby/install-bundle.sh /tmp/install-bundle.sh
 RUN /tmp/install-bundle.sh /tmp/dash0-ruby-distribution /dash0-instrumentation/ruby
 
 # install Ruby artifacts (musl)
-FROM ruby:4.0.9-alpine3.24 AS build-ruby-musl
+FROM ruby:4.0.10-alpine3.24 AS build-ruby-musl
 RUN apk add --no-cache build-base
 COPY --from=download-dash0-ruby-distribution /dash0-ruby-distribution /tmp/dash0-ruby-distribution
 COPY ruby/install-bundle.sh /tmp/install-bundle.sh
